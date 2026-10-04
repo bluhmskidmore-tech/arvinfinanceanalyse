@@ -53,6 +53,8 @@ class StockCandidateSnapshot:
     twelve_month_return: object = None
     volatility: object = None
     dividend_yield: object = None
+    total_mv: object = None
+    circ_mv: object = None
 
 
 @dataclass(frozen=True)
@@ -299,6 +301,8 @@ def _candidate_row(
         "twelve_month_return": _round_optional(snapshot.twelve_month_return),
         "volatility": _round_optional(snapshot.volatility),
         "dividend_yield": _round_optional(snapshot.dividend_yield),
+        "total_mv": _round_optional(snapshot.total_mv),
+        "circ_mv": _round_optional(snapshot.circ_mv),
     }, False
 
 
@@ -620,6 +624,14 @@ def _apply_fundamental_overlay(
     *,
     market_state: str,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
+    # 先为每一行标注缺失/不可用的打分因子（诊断用途，不改变入选逻辑）：
+    # 缺因子的行 factor_score 保持缺省（None），前端据此解释“为什么没有综合分”。
+    for row in items:
+        missing_inputs = _fundamental_missing_inputs(row)
+        if missing_inputs:
+            row.setdefault("factor_score", None)
+            row["factor_missing_inputs"] = missing_inputs
+
     valid_rows: list[tuple[dict[str, object], dict[str, float | None]]] = []
     missing_rows: list[dict[str, object]] = []
     for row in items:
@@ -697,6 +709,28 @@ def _fundamental_factor_inputs(row: dict[str, object]) -> dict[str, float | None
         "low_vol": 1 / volatility if volatility is not None and volatility > 0 else None,
         "dividend": dividend_yield,
     }
+
+
+def _fundamental_missing_inputs(row: dict[str, object]) -> list[str]:
+    """与 _fundamental_factor_inputs 相同的校验口径，返回缺失/不可用因子键列表。
+
+    pe/pb/ps 非正（如亏损股 PE 为负被归一为 None）或 roe/gross_margin 缺失时，
+    该行不参与基本面打分；此处把原因显式列出，供 workbench 队列行透出。"""
+    missing: list[str] = []
+    pe = _valid_float(row.get("pe"))
+    pb = _valid_float(row.get("pb"))
+    ps = _valid_float(row.get("ps"))
+    if pe is None or pe <= 0:
+        missing.append("pe")
+    if pb is None or pb <= 0:
+        missing.append("pb")
+    if ps is None or ps <= 0:
+        missing.append("ps")
+    if _valid_float(row.get("roe")) is None:
+        missing.append("roe")
+    if _valid_float(row.get("gross_margin")) is None:
+        missing.append("gross_margin")
+    return missing
 
 
 def _score_fundamental_rows(rows: list[tuple[dict[str, object], dict[str, float | None]]]) -> list[tuple[dict[str, object], float]]:

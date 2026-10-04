@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import warnings
 from decimal import Decimal
 from pathlib import Path
 
@@ -492,6 +493,195 @@ def test_control_conclusions_persist_with_the_gate_switched_off(monkeypatch):
 
     assert by_bucket["TPL"]["chain_status"] == "broken"
     assert by_bucket["TPL"]["reconciliation_status"] == "chain_broken"
+
+
+def test_enforce_from_boundary_escalates_new_period_and_keeps_history_warn(monkeypatch):
+    """基准模式保持默认 warn、只设报告期分界：分界前的历史回补仍按 warn
+    （警告 + 落库），分界起的新报告期按 enforce 拒绝落库。"""
+    monkeypatch.setenv(movement_task.CONTROL_GATE_ENFORCE_FROM_ENV, "2026-02")
+    conn = duckdb.connect(":memory:")
+    try:
+        _seed_movement_sources(
+            conn,
+            zqtz_rows=[
+                ("2025-12-31", "FVTPL", "asset", "CNY", "450", "0", "sv-zqtz", "rv-zqtz"),
+                ("2026-01-31", "FVTPL", "asset", "CNY", "110", "0", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "FVTPL", "asset", "CNY", "110", "0", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "AC", "asset", "CNY", "0", "225", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "FVOCI", "asset", "CNY", "80", "0", "sv-zqtz", "rv-zqtz"),
+            ],
+        )
+        # 12 月期末 TPL=450 vs 1 月期初 100、1 月期末 110 vs 2 月期初 100：
+        # 1 月、2 月都勾稽断裂，唯一区别是落在分界的哪一侧。
+        conn.executemany(
+            "insert into product_category_pnl_canonical_fact values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "2025-12-31", "14101010001", "CNX", "TPL",
+                    "400", "450", "0", "0", "0", 31, "sv-gl", "rv-gl",
+                ),
+                (
+                    "2026-01-31", "14101010001", "CNX", "TPL",
+                    "100", "110", "0", "0", "0", 31, "sv-gl", "rv-gl",
+                ),
+            ],
+        )
+        materialize_accounting_asset_movement_on_connection(
+            conn,
+            report_date="2025-12-31",
+            currency_basis="CNX",
+        )
+        # 2026-01-31 < 分界 2026-02：保持 warn，断链警告后照常落库。
+        with pytest.warns(AccountingAssetMovementControlWarning, match="chain is broken"):
+            materialize_accounting_asset_movement_on_connection(
+                conn,
+                report_date="2026-01-31",
+                currency_basis="CNX",
+            )
+        january = _persisted_rows(conn, "2026-01-31")
+        # 2026-02-28 >= 分界（YYYY-MM 按当月第一天解释）：升级 enforce，拒绝落库。
+        with pytest.raises(AccountingAssetMovementChainBrokenError, match="chain is broken"):
+            materialize_accounting_asset_movement_on_connection(
+                conn,
+                report_date="2026-02-28",
+                currency_basis="CNX",
+            )
+        february_row_count = conn.execute(
+            """
+            select count(*)
+            from fact_accounting_asset_movement_monthly
+            where report_date = '2026-02-28'
+            """
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert january["TPL"]["chain_status"] == "broken"
+    assert january["TPL"]["reconciliation_status"] == "chain_broken"
+    assert february_row_count == 0
+
+
+def test_enforce_from_boundary_is_inert_when_gate_mode_is_off(monkeypatch):
+    """off 是显式关闭：报告期落在分界之后也不升级、不警告、不拦截。"""
+    monkeypatch.setenv(movement_task.CONTROL_GATE_ENV, "off")
+    monkeypatch.setenv(movement_task.CONTROL_GATE_ENFORCE_FROM_ENV, "2026-01")
+    conn = duckdb.connect(":memory:")
+    try:
+        _seed_movement_sources(
+            conn,
+            zqtz_rows=[
+                ("2026-01-31", "FVTPL", "asset", "CNY", "500", "0", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "FVTPL", "asset", "CNY", "110", "0", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "AC", "asset", "CNY", "0", "225", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "FVOCI", "asset", "CNY", "80", "0", "sv-zqtz", "rv-zqtz"),
+            ],
+        )
+        conn.executemany(
+            "insert into product_category_pnl_canonical_fact values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "2026-01-31", "14101010001", "CNX", "TPL",
+                    "480", "500", "0", "0", "0", 31, "sv-gl", "rv-gl",
+                ),
+            ],
+        )
+        materialize_accounting_asset_movement_on_connection(
+            conn,
+            report_date="2026-01-31",
+            currency_basis="CNX",
+        )
+        # 若分界值在 off 下仍参与，2026-02-28 会被 enforce 拦下；同时把控制
+        # 警告升级为错误，证明 off 也没有退化成 warn。
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", AccountingAssetMovementControlWarning)
+            materialize_accounting_asset_movement_on_connection(
+                conn,
+                report_date="2026-02-28",
+                currency_basis="CNX",
+            )
+        by_bucket = _persisted_rows(conn, "2026-02-28")
+    finally:
+        conn.close()
+
+    assert by_bucket["TPL"]["chain_status"] == "broken"
+    assert by_bucket["TPL"]["reconciliation_status"] == "chain_broken"
+
+
+def test_enforce_from_boundary_never_weakens_explicit_enforce(monkeypatch):
+    """分界值只升级不降级：全局已是 enforce 时，分界之前的报告期不回落 warn。"""
+    monkeypatch.setenv(movement_task.CONTROL_GATE_ENV, "enforce")
+    monkeypatch.setenv(movement_task.CONTROL_GATE_ENFORCE_FROM_ENV, "2027-01")
+    conn = duckdb.connect(":memory:")
+    try:
+        _seed_movement_sources(
+            conn,
+            zqtz_rows=[
+                ("2026-01-31", "FVTPL", "asset", "CNY", "500", "0", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "FVTPL", "asset", "CNY", "110", "0", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "AC", "asset", "CNY", "0", "225", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "FVOCI", "asset", "CNY", "80", "0", "sv-zqtz", "rv-zqtz"),
+            ],
+        )
+        conn.executemany(
+            "insert into product_category_pnl_canonical_fact values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "2026-01-31", "14101010001", "CNX", "TPL",
+                    "480", "500", "0", "0", "0", 31, "sv-gl", "rv-gl",
+                ),
+            ],
+        )
+        materialize_accounting_asset_movement_on_connection(
+            conn,
+            report_date="2026-01-31",
+            currency_basis="CNX",
+        )
+        with pytest.raises(AccountingAssetMovementChainBrokenError, match="chain is broken"):
+            materialize_accounting_asset_movement_on_connection(
+                conn,
+                report_date="2026-02-28",
+                currency_basis="CNX",
+            )
+        february_row_count = conn.execute(
+            """
+            select count(*)
+            from fact_accounting_asset_movement_monthly
+            where report_date = '2026-02-28'
+            """
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert february_row_count == 0
+
+
+def test_enforce_from_boundary_invalid_format_fails_loud(monkeypatch):
+    """分界值格式错误必须立刻抛清晰错误：静默忽略会让运维误以为分级已生效。
+    种子数据本身完全对得平，若分界值被静默忽略，这次物化会正常成功。"""
+    monkeypatch.setenv(movement_task.CONTROL_GATE_ENFORCE_FROM_ENV, "2026Q1")
+    conn = duckdb.connect(":memory:")
+    try:
+        _seed_movement_sources(
+            conn,
+            zqtz_rows=[
+                ("2026-02-28", "FVTPL", "asset", "CNY", "110", "0", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "AC", "asset", "CNY", "0", "225", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "FVOCI", "asset", "CNY", "80", "0", "sv-zqtz", "rv-zqtz"),
+            ],
+        )
+        with pytest.raises(ValueError, match="MOSS_MOVEMENT_CONTROL_GATE_ENFORCE_FROM"):
+            materialize_accounting_asset_movement_on_connection(
+                conn,
+                report_date="2026-02-28",
+                currency_basis="CNX",
+            )
+        row_count = conn.execute(
+            "select count(*) from fact_accounting_asset_movement_monthly"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert row_count == 0
 
 
 def test_accounting_asset_movement_materialize_refuses_missing_control_source():

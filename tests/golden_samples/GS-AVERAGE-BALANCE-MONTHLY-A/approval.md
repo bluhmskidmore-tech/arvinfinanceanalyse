@@ -20,3 +20,9 @@
 - This is route-scoped candidate evidence, not a page closure approval.
 - It does not approve `MTR-ADB-*` metrics, formal balance truth, manual audit closure, or business-owner approval.
 - `formal_use_allowed=false` must remain visible until the dedicated page contract, golden approval, governance evidence, manual audit, and owner approval are all closed.
+
+## Recapture record — 2026-09-02
+
+- Reason: the previous file predated `result_meta.trace_id`, the top-level `calibration` block, and the monthly breakdown fields, so the new `AdbAnalysisEnvelope` response model rejected it (`tests/test_api_response_model_field_preservation.py`).
+- Key changes: `calibration` block, `result_meta.trace_id = tr_adb_monthly`, `months[0].breakdown_assets` / `breakdown_liabilities` / `nim_stress` / `month_label`, asset & liability rate-coverage ratios, `accounting_basis_daily_avg_trend: []`, explicit optional `result_meta` fields. Every previously present monthly ADB / NIM value is unchanged.
+- Approval boundary: this records the re-capture only; final approver and approval timestamp remain pending.

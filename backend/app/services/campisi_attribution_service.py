@@ -8,7 +8,7 @@ Campisi 完整归因桥接层 — 将 V3 的 DuckDB 数据转换为 campisi.py �
 
 数据来源：
 - bond_rows: BondAnalyticsRepository.fetch_bond_analytics_rows（期初+期末）
-- market: YieldCurveRepository.fetch_curve（国债曲线 + 信用利差）
+- market: YieldCurveRepository.resolve_curve_snapshot（国债曲线）+ fetch_curve（信用利差）
 """
 from __future__ import annotations
 
@@ -25,10 +25,17 @@ from threading import Lock
 from typing import Any
 
 import duckdb
+
 from backend.app.core_finance.accounting_basis_constants import (
     ACCOUNTING_BASIS_AC,
     ACCOUNTING_BASIS_FVOCI,
     ACCOUNTING_BASIS_FVTPL,
+)
+from backend.app.core_finance.bond_analytics.common import map_accounting_basis_to_risk_class, map_accounting_class
+from backend.app.core_finance.bond_analytics.engine import (
+    DURATION_QUALITY_OBSERVED,
+    RATE_INPUT_STATUS_OBSERVED,
+    _coerce_bool,
 )
 from backend.app.core_finance.campisi import (
     ACCRUED_INTEREST_MISSING_REASON,
@@ -41,13 +48,16 @@ from backend.app.core_finance.campisi import (
     coverage_status,
     effect_availability_entry,
     infer_credit_rating_from_asset_class,
-    maturity_bucket_attribution,
     treasury_tenor_coverage,
     usable_spread_bp,
+)
+from backend.app.core_finance.campisi import (
+    maturity_bucket_attribution as maturity_bucket_attribution,
 )
 from backend.app.core_finance.campisi_decision_grade import (
     DirtyNumericInputError,
     compute_decision_grade_row,
+    compute_decision_scope_disclosure,
     normalize_accounting_basis,
     primary_driver,
 )
@@ -57,13 +67,17 @@ from backend.app.core_finance.campisi_decision_grade import (
 from backend.app.core_finance.pnl_bridge import (
     CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX,
     CREDIT_SPREAD_CURVE_UNAVAILABLE_PREFIX,
+    DUPLICATE_BALANCE_KEY_PREFIX,
     MARKET_VALUE_BASE_MISSING_PREFIX,
     ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX,
     ROLL_DOWN_WINDOW_MISSING_PREFIX,
     TREASURY_CURVE_SAME_SOURCE_PREFIX,
     TREASURY_CURVE_UNAVAILABLE_PREFIX,
 )
-from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
+from backend.app.core_finance.rate_units import (
+    NEGATIVE_YIELD_DIRTY_FLOOR,
+    normalize_annual_rate_to_decimal,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
@@ -71,23 +85,31 @@ from backend.app.repositories.choice_macro_series_repo import ChoiceMacroSeriesR
 from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.risk_tensor_repo import RiskTensorRepository
+from backend.app.repositories.system_read_publication_repo import raise_if_system_read_failure
 from backend.app.repositories.yield_curve_repo import YieldCurveRepository
 from backend.app.services.formal_result_runtime import (
+    FallbackMode,
+    QualityFlag,
+    VendorStatus,
     build_formal_result_envelope,
     build_formal_result_meta,
 )
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 logger = logging.getLogger(__name__)
 
-RULE_VERSION = "rv_campisi_full_v1"
-CACHE_VERSION = "cv_campisi_full_v1"
+RULE_VERSION = "rv_campisi_full_v11"
+CACHE_VERSION = "cv_campisi_full_v11"
 SOURCE_VERSION = "sv_campisi_formal_fi_v1"
+DECISION_RULE_VERSION = "rv_campisi_decision_scope_fields_v2"
+DECISION_CACHE_VERSION = "cv_campisi_decision_scope_fields_v2"
 SOURCE_EMPTY = "sv_campisi_empty_v1"
 TABLES_CAMPISI = [
     "fact_formal_pnl_fi",
     "fact_formal_zqtz_balance_daily",
     "fact_formal_bond_analytics_daily",
     "yield_curve_daily",
+    "fact_formal_yield_curve_daily",
     "fact_choice_macro_daily",
     "choice_market_snapshot",
 ]
@@ -170,6 +192,9 @@ _POSITION_KEY_FIELDS = (
 
 _QUALITY_MISSING_FIELDS = (
     "ytm",
+    # 缺票息在计算端按 0 代入，而 estimate_duration 对 coupon<=0 直接按零息债
+    # 返回剩余年限；不在这里列出就等于该退化既不改数也不报数。
+    "coupon_rate",
     "maturity_date",
     "rating",
     "portfolio_name",
@@ -189,6 +214,18 @@ _GOVERNANCE_BRIDGE_DEPENDENCY_FILES = (
     "cache_build_run.jsonl",
 )
 _GOVERNANCE_FINGERPRINT_TAIL_BYTES = 8192
+
+# WP-A2 top-level envelope cache: sits in front of the existing state / bridge
+# caches so a hot request skips repository scans, position merging, market curve
+# fetches and envelope rebuilding entirely. Only serves a cached envelope when
+# both the DuckDB storage fingerprint and the governance bridge fingerprint are
+# available; on hit we shallow-copy the envelope and refresh trace_id in place
+# instead of deep-copying the large per-bond payload.
+_CAMPISI_FOUR_EFFECTS_ENVELOPE_CACHE_TTL_SECONDS = 900.0
+_CAMPISI_FOUR_EFFECTS_ENVELOPE_CACHE: InMemoryTTLCache[tuple[object, ...], dict[str, object]] = get_runtime_cache(
+    "campisi.four_effects_envelope",
+    ttl_seconds=_CAMPISI_FOUR_EFFECTS_ENVELOPE_CACHE_TTL_SECONDS,
+)
 
 
 def _trace_id() -> str:
@@ -272,6 +309,7 @@ def _campisi_bridge_cache_key(
     duckdb_fingerprint: tuple[tuple[str, int, int], ...] | None,
     governance_fingerprint: tuple[tuple[str, int, int, str], ...] | None,
     report_date: str,
+    start_date: str | None = None,
 ) -> tuple[object, ...] | None:
     if duckdb_fingerprint is None or governance_fingerprint is None:
         return None
@@ -285,6 +323,7 @@ def _campisi_bridge_cache_key(
         str(governance_path),
         governance_fingerprint,
         report_date,
+        start_date,
     )
 
 
@@ -352,6 +391,53 @@ def clear_campisi_four_effects_runtime_cache() -> None:
         _CAMPISI_BRIDGE_CACHE.clear()
 
 
+def clear_campisi_four_effects_envelope_runtime_cache() -> None:
+    _CAMPISI_FOUR_EFFECTS_ENVELOPE_CACHE.clear()
+
+
+def _campisi_four_effects_envelope_cache_key(
+    *,
+    detail: str,
+    duckdb_path: object,
+    governance_path: object,
+    duckdb_fingerprint: tuple[tuple[str, int, int], ...] | None,
+    governance_fingerprint: tuple[tuple[str, int, int, str], ...] | None,
+    requested_start_date: str | None,
+    requested_end_date: str | None,
+    lookback_days: int,
+) -> tuple[object, ...] | None:
+    if duckdb_fingerprint is None or governance_fingerprint is None:
+        return None
+    return (
+        "campisi.four_effects_envelope",
+        detail,
+        CACHE_VERSION,
+        SOURCE_VERSION,
+        RULE_VERSION,
+        str(duckdb_path),
+        duckdb_fingerprint,
+        str(governance_path),
+        governance_fingerprint,
+        requested_start_date,
+        requested_end_date,
+        int(lookback_days),
+    )
+
+
+def _campisi_envelope_with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
+    """Shallow-copy the envelope and refresh trace_id without deep-copying the payload.
+
+    The cached envelope's `result` may carry hundreds of `by_bond` rows; deep-copying
+    on every cache hit reintroduces the same GIL-bound cost this cache is meant to
+    eliminate. Callers must not mutate the returned envelope's nested structures.
+    """
+    response = dict(envelope)
+    meta = envelope.get("result_meta")
+    if isinstance(meta, dict):
+        response["result_meta"] = {**meta, "trace_id": _trace_id()}
+    return response
+
+
 def _meta_ok(
     result_kind: str,
     *,
@@ -399,7 +485,7 @@ def _meta_warn(
 
 
 def curve_to_market_dict(curve: dict[str, Any]) -> dict[str, Any]:
-    """将 YieldCurveRepository.fetch_curve 的 {tenor: rate_pct} 转为 campisi.py 需要的 market dict。"""
+    """将正式曲线的 {tenor: rate_pct} 转为 campisi.py 需要的百分数 market dict。"""
     market: dict[str, Any] = {}
     for tenor, field in _TREASURY_TENOR_MAP.items():
         val = curve.get(tenor) or curve.get(tenor.lower()) or curve.get(tenor.replace("Y", "y"))
@@ -408,11 +494,64 @@ def curve_to_market_dict(curve: dict[str, Any]) -> dict[str, Any]:
     return market
 
 
+def _attach_native_principal_evidence(
+    positions: list[dict[str, Any]],
+    bond_repo: BondAnalyticsRepository,
+    start_date: str,
+    end_date: str,
+    input_quality: dict[str, Any],
+) -> None:
+    """Use source quantities only for the model's holding-change guard.
+
+    Analytics face and market values remain CNY amounts. Snapshot inputs are
+    explanatory evidence and never replace the formal bridge's result.
+    """
+    foreign = [p for p in positions if _text_value(p.get("currency_code")).upper() not in {"", "CNY", "RMB", "156"}]
+    if not foreign:
+        return
+    input_quality["principal_evidence"] = {
+        "source": "zqtz_bond_daily_snapshot",
+        "basis": "native_face_value",
+        "period_start": start_date,
+        "period_end": end_date,
+        "model_only": True,
+    }
+    for endpoint, report_date in (("start", start_date), ("end", end_date)):
+        native_by_key: dict[tuple[str, ...], list[object]] = defaultdict(list)
+        for row in bond_repo.load_snapshot_rows(report_date):
+            if _coerce_bool(row.get("is_issuance_like")):
+                continue
+            accounting = map_accounting_basis_to_risk_class(_text_value(row.get("accounting_basis")))
+            if accounting is None:
+                accounting = map_accounting_class(_text_value(row.get("account_category")) or _text_value(row.get("asset_class")))
+            key = _position_key({**row, "accounting_class": accounting})
+            if key is not None:
+                native_by_key[key].append(row.get("face_value_native"))
+        for position in foreign:
+            key = (
+                _text_value(position.get("bond_code")),
+                _text_value(position.get("portfolio_name")),
+                _text_value(position.get("cost_center")),
+                map_accounting_basis_to_risk_class(_text_value(position.get("accounting_class")))
+                or _text_value(position.get("accounting_class")),
+                _text_value(position.get("currency_code")),
+            )
+            values = native_by_key.get(key, [])
+            native = None
+            try:
+                parsed = [Decimal(str(value)) for value in values]
+                if parsed and all(value.is_finite() for value in parsed):
+                    native = sum(parsed, Decimal("0"))
+            except (InvalidOperation, ValueError, TypeError):
+                pass
+            position[f"face_value_native_{endpoint}"] = native
+
+
 # Private alias kept for backward compatibility with existing internal callers.
 _curve_to_market_dict = curve_to_market_dict
 
 # 国债曲线不可用的三种成因，必须被调用方与页面分开处理：
-# - curve_absent：仓储对该交易日一行都没有（2026-07-31 的真实情形）
+# - curve_absent：目标日没有可采用的正式曲线行；超期旧行另附解析日和弃用告警
 # - curve_unusable：有行但 6 个关键期限没有一个可用（单位/符号/解析问题）
 # - insufficient_shared_tenors：两端各自可用，但共同正期限 < 2，
 #   于是 campisi._build_benchmark_change_evaluator 退化为恒 0 求值器
@@ -427,23 +566,33 @@ BRIDGE_CURVE_UNAVAILABLE_REASON = "bridge_curve_unavailable"
 def fetch_treasury_market_dict(
     curve_repo: YieldCurveRepository,
     trade_date: str,
-) -> tuple[dict[str, Any], bool]:
-    """取国债曲线并同时回报"仓储到底有没有这一天的行"。
+) -> tuple[dict[str, Any], bool, str | None, bool]:
+    """解析不晚于持仓日的正式快照；超出既有七天守卫的点位不得参与归因。
 
-    ``fetch_curve`` 对缺数据的日期返回 ``{}``，与"取到了但期限都不可用"在下游
-    完全同形。把 rows_present 单独带出来，``_add_market_curve_quality`` 才能把
-    "报告日没有曲线事实"和"曲线质量不够"分开披露，而不是都塌成一句
-    "treasury effect 为 0"。
+    返回 market、目标日是否有原始曲线行、实际曲线日、是否采用。保留超期曲线的
+    实际日期供质量披露，但 market 为空，不能把该旧点位标成已使用的 fallback。
     """
-    raw = curve_repo.fetch_curve(trade_date, "treasury")
-    rows_present = bool(raw)
-    if not rows_present:
+    snapshot, _warning = curve_repo.resolve_curve_snapshot(trade_date, "treasury")
+    resolved = str(snapshot.get("trade_date") or "") if snapshot else ""
+    if not resolved:
         logger.warning(
-            "No treasury yield curve rows for trade_date=%s; Campisi treasury_effect is "
+            "No treasury yield curve rows on or before trade_date=%s; Campisi treasury_effect is "
             "unavailable for this period, not an observed zero.",
             trade_date,
         )
-    return _curve_to_market_dict(raw), rows_present
+        return {}, False, None, False
+    deviation_days = (date.fromisoformat(trade_date) - date.fromisoformat(resolved)).days
+    if not 0 <= deviation_days <= _DECISION_CURVE_STALENESS_THRESHOLD_DAYS:
+        logger.warning(
+            "Treasury curve resolved to %s for trade_date=%s, deviation=%s days; "
+            "discarded by the %s-day staleness guard.",
+            resolved, trade_date, deviation_days, _DECISION_CURVE_STALENESS_THRESHOLD_DAYS,
+        )
+        return {}, False, resolved, False
+    curve = snapshot.get("curve") if snapshot else None
+    if not isinstance(curve, dict):
+        raise RuntimeError(f"Invalid formal treasury curve snapshot for trade_date={resolved}.")
+    return _curve_to_market_dict(curve), resolved == trade_date, resolved, True
 
 
 _fetch_treasury_market_dict = fetch_treasury_market_dict
@@ -534,23 +683,55 @@ def _aggregate_position_bucket(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "accounting_class": _text_value(first.get("accounting_class")),
         "currency_code": _text_value(first.get("currency_code")),
         "market_value": _sum_decimal(rows, "market_value"),
-        "face_value": _sum_decimal(rows, "face_value"),
+        "face_value": (None if any(_is_missing(row.get("face_value")) for row in rows)
+                       else _sum_decimal(rows, "face_value")),
         "accrued_interest": _sum_optional_decimal(rows, "accrued_interest"),
         "coupon_rate": _weighted_row_value(rows, "coupon_rate", "face_value"),
-        "ytm": _weighted_row_value(rows, "ytm", "market_value"),
+        # 合法负收益率（≥ −20%）必须在聚合时保留，否则下游 merge_positions 只会看到
+        # None → 0 → par 回退，与 bond_analytics 事实表按负收益率贴现的口径分叉。
+        "ytm": _weighted_row_value(
+            rows, "ytm", "market_value", negative_floor=NEGATIVE_YIELD_DIRTY_FLOOR
+        ),
         "asset_class_std": _dominant_value(rows, "asset_class_std"),
         "rating": _dominant_value(rows, "rating"),
+        "interest_mode": _dominant_value(rows, "interest_mode"),
         "maturity_date": _dominant_value(rows, "maturity_date"),
+        # 引擎在 fact_bond_analytics 上已经逐行判过「票息/收益率是观测值还是回退值」，
+        # 这里原样带出，免得同一个退化在归因链路上又变成一个没有来历的数。
+        "coupon_rate_input_status": _degraded_quality_flag(
+            rows, "coupon_rate_input_status", RATE_INPUT_STATUS_OBSERVED
+        ),
+        "ytm_input_status": _degraded_quality_flag(
+            rows, "ytm_input_status", RATE_INPUT_STATUS_OBSERVED
+        ),
+        "duration_quality_flag": _degraded_quality_flag(
+            rows, "duration_quality_flag", DURATION_QUALITY_OBSERVED
+        ),
     }
 
 
-def _weighted_row_value(rows: list[dict[str, Any]], value_field: str, weight_field: str) -> float | None:
+def _degraded_quality_flag(rows: list[dict[str, Any]], field: str, observed: str) -> str | None:
+    """聚合桶内的行级质量标记：任一行降级即整桶按降级报（fail-closed）。"""
+    present = [value for value in (_text_value(row.get(field)) for row in rows) if value]
+    if not present:
+        return None
+    degraded = [value for value in present if value != observed]
+    return degraded[0] if degraded else observed
+
+
+def _weighted_row_value(
+    rows: list[dict[str, Any]],
+    value_field: str,
+    weight_field: str,
+    *,
+    negative_floor: float | None = None,
+) -> float | None:
     numerator = Decimal("0")
     denominator = Decimal("0")
     equal_weight_sum = Decimal("0")
     equal_weight_count = 0
     for row in rows:
-        value = normalize_annual_rate_to_decimal(row.get(value_field))
+        value = normalize_annual_rate_to_decimal(row.get(value_field), negative_floor=negative_floor)
         if value is None:
             continue
         value_dec = Decimal(str(value))
@@ -663,6 +844,10 @@ def merge_positions(
     campisi.py 需要每行包含：
     - market_value_start/end, face_value_start, coupon_rate_start,
     - yield_to_maturity_start, asset_class_start, maturity_date_start, bond_code
+
+    键取两期并集，因此会出现只在一侧存在的持仓。这类行保留 ``start_present`` /
+    ``end_present`` 标记，缺失一侧的市值/面值留空而不是折成 0；把「不存在」写成 0
+    会让下游把整笔市值读成价格涨跌，差额 100% 落进 selection_effect。
     """
     start_by_key = _aggregate_position_rows(rows_start)
     end_by_key = _aggregate_position_rows(rows_end)
@@ -672,13 +857,23 @@ def merge_positions(
     for key in sorted(all_codes):
         s = start_by_key.get(key, {})
         e = end_by_key.get(key, {})
+        start_present = key in start_by_key
+        end_present = key in end_by_key
         code = str(s.get("instrument_code") or e.get("instrument_code") or "")
 
-        coupon_raw = s.get("coupon_rate") or e.get("coupon_rate")
+        coupon_source = e if _is_missing(s.get("coupon_rate")) else s
+        coupon_raw = coupon_source.get("coupon_rate")
         coupon_dec = normalize_annual_rate_to_decimal(coupon_raw) if coupon_raw is not None else None
 
-        ytm_raw = s.get("ytm") or e.get("ytm")
-        ytm_dec = normalize_annual_rate_to_decimal(ytm_raw) if ytm_raw is not None else None
+        ytm_source = e if _is_missing(s.get("ytm")) else s
+        ytm_raw = ytm_source.get("ytm")
+        # 与 bond_analytics 引擎同口径：合法负收益率（≥ −20%）保留为观测值，
+        # 否则 Campisi 会把同一只券按 par 回退而事实表按负收益率贴现。
+        ytm_dec = (
+            normalize_annual_rate_to_decimal(ytm_raw, negative_floor=NEGATIVE_YIELD_DIRTY_FLOOR)
+            if ytm_raw is not None
+            else None
+        )
 
         merged.append({
             "bond_code": code,
@@ -688,19 +883,33 @@ def merge_positions(
             "cost_center": key[2],
             "accounting_class": key[3],
             "currency_code": key[4],
-            "market_value_start": float(s.get("market_value") or 0),
-            "market_value_end": float(e.get("market_value") or 0),
-            "face_value_start": float(s.get("face_value") or 0),
+            "start_present": start_present,
+            "end_present": end_present,
+            "market_value_start": float(s.get("market_value") or 0) if start_present else None,
+            "market_value_end": float(e.get("market_value") or 0) if end_present else None,
+            "face_value_start": s.get("face_value") if start_present else None,
+            "face_value_end": e.get("face_value") if end_present else None,
             "accrued_interest_start": s.get("accrued_interest"),
             "accrued_interest_end": e.get("accrued_interest"),
-            "coupon_rate_start": coupon_dec or 0.0,
-            "yield_to_maturity_start": ytm_dec or 0.0,
+            # 缺票息/缺 YTM 留 None；真实观测 0 保留为有效收益率，
+            # 缺失 YTM 由下游按票息执行 par 回退。
+            "coupon_rate_start": coupon_dec,
+            "yield_to_maturity_start": ytm_dec,
+            "interest_mode_start": _merged_quality_flag(s, e, "interest_mode"),
             "asset_class_start": _campisi_asset_class(s, e),
             "rating_start": s.get("rating") or e.get("rating") or "",
             "maturity_date_start": s.get("maturity_date") or e.get("maturity_date"),
+            "coupon_rate_input_status": _text_value(coupon_source.get("coupon_rate_input_status")) or None,
+            "ytm_input_status": _text_value(ytm_source.get("ytm_input_status")) or None,
+            "duration_quality_flag": _merged_quality_flag(s, e, "duration_quality_flag"),
         })
 
     return merged
+
+
+def _merged_quality_flag(s: dict[str, Any], e: dict[str, Any], field: str) -> str | None:
+    """与 coupon/ytm 的取值顺序一致：先期初，缺则回退期末。"""
+    return _text_value(s.get(field)) or _text_value(e.get(field)) or None
 
 
 # Private alias kept for backward compatibility with existing internal callers.
@@ -715,9 +924,32 @@ def _build_input_quality(
 ) -> dict[str, Any]:
     start_quality = _side_input_quality(rows_start)
     end_quality = _side_input_quality(rows_end)
+    single_sided = _single_sided_position_summary(positions)
+    degraded_start = start_quality["duration_quality_degraded"]
+    degraded_end = end_quality["duration_quality_degraded"]
     warnings: list[str] = []
     if _has_missing_fields(start_quality) or _has_missing_fields(end_quality):
         warnings.append("Campisi input has missing pricing or classification fields.")
+    if single_sided["single_sided_positions"]:
+        warnings.append(
+            "Campisi merged positions include "
+            f"{single_sided['start_only_positions']} start-only and "
+            f"{single_sided['end_only_positions']} end-only rows (market_value "
+            f"{single_sided['start_only_market_value']:.2f} start-only, "
+            f"{single_sided['end_only_market_value']:.2f} end-only); all four effects and "
+            "total_return are 0 on those rows because a holding that exists on one period end "
+            "only is a position change, not a price move. Trade-level attribution for them is "
+            "undefined and their amounts are excluded from every effect."
+        )
+    if degraded_start["rows"] or degraded_end["rows"]:
+        warnings.append(
+            "Campisi input carries bond-analytics rows whose duration_quality_flag is not "
+            f"\"{DURATION_QUALITY_OBSERVED}\" ({degraded_start['rows']} start rows / "
+            f"market_value {degraded_start['market_value']:.2f}, {degraded_end['rows']} end rows / "
+            f"market_value {degraded_end['market_value']:.2f}); modified duration on those rows "
+            "is a fallback, so treasury and spread effects there are model output rather than "
+            "observed rate sensitivity."
+        )
     if start_quality["duplicate_instrument_codes"]["instrument_codes"] or end_quality["duplicate_instrument_codes"]["instrument_codes"]:
         warnings.append(
             "Campisi input has duplicate instrument_code rows; aggregation uses the business position key."
@@ -729,6 +961,8 @@ def _build_input_quality(
         "start_rows": len(rows_start),
         "end_rows": len(rows_end),
         "merged_positions": len(positions),
+        **single_sided,
+        "duration_quality_degraded": {"start": degraded_start, "end": degraded_end},
         "missing_fields": {
             "start": start_quality["missing_fields"],
             "end": end_quality["missing_fields"],
@@ -750,6 +984,12 @@ def _treasury_effect_availability(
     *,
     start_curve_rows_present: bool | None,
     end_curve_rows_present: bool | None,
+    start_requested_date: str | None = None,
+    start_resolved_date: str | None = None,
+    end_requested_date: str | None = None,
+    end_resolved_date: str | None = None,
+    start_curve_used: bool | None = None,
+    end_curve_used: bool | None = None,
 ) -> dict[str, Any]:
     """把国债曲线覆盖度折叠成一个页面可直接分支的显式状态块。
 
@@ -762,7 +1002,9 @@ def _treasury_effect_availability(
     end_usable = required - len(tenors["end_missing"])
     shared = tenors["shared_positive_tenors"]
 
-    if start_curve_rows_present is False or end_curve_rows_present is False:
+    start_available = start_curve_used if start_curve_used is not None else start_curve_rows_present
+    end_available = end_curve_used if end_curve_used is not None else end_curve_rows_present
+    if start_available is False or end_available is False:
         reason: str | None = TREASURY_CURVE_ABSENT_REASON
     elif start_usable == 0 or end_usable == 0:
         reason = TREASURY_CURVE_UNUSABLE_REASON
@@ -779,6 +1021,12 @@ def _treasury_effect_availability(
         "start_usable_tenors": start_usable,
         "end_usable_tenors": end_usable,
         "shared_positive_tenors": shared,
+        "start_requested_date": start_requested_date,
+        "start_resolved_date": start_resolved_date,
+        "end_requested_date": end_requested_date,
+        "end_resolved_date": end_resolved_date,
+        "start_curve_used": start_curve_used,
+        "end_curve_used": end_curve_used,
     }
 
 
@@ -790,16 +1038,18 @@ def _treasury_effect_warning(availability: dict[str, Any]) -> str | None:
     if reason == TREASURY_CURVE_ABSENT_REASON:
         sides = ", ".join(
             side
-            for side, present in (
-                ("start", availability["start_curve_rows_present"]),
-                ("end", availability["end_curve_rows_present"]),
+            for side, present, used in (
+                ("start", availability["start_curve_rows_present"], availability["start_curve_used"]),
+                ("end", availability["end_curve_rows_present"], availability["end_curve_used"]),
             )
-            if present is False
+            if used is False or (used is None and present is False)
         )
         return (
-            f"Campisi treasury curve is absent for the period {sides} date(s): the yield curve "
-            "fact table has no rows at all. Treasury effect and roll-down degrade to 0 for this "
-            "period; the 0 means \"no curve data\", not \"rates did not move\"."
+            f"Campisi treasury curve is absent or stale for the period {sides} date(s): "
+            "there is no admissible formal curve on a required side (no prior row, or the latest "
+            "prior row was discarded by the staleness guard). Treasury effect and roll-down "
+            "degrade to 0 for this period; the 0 means \"no usable curve data\", "
+            "not \"rates did not move\"."
         )
     if reason == TREASURY_CURVE_UNUSABLE_REASON:
         return (
@@ -822,6 +1072,12 @@ def _add_market_curve_quality(
     market_end: dict[str, Any],
     start_curve_rows_present: bool | None = None,
     end_curve_rows_present: bool | None = None,
+    start_requested_date: str | None = None,
+    start_resolved_date: str | None = None,
+    end_requested_date: str | None = None,
+    end_resolved_date: str | None = None,
+    start_curve_used: bool | None = None,
+    end_curve_used: bool | None = None,
 ) -> dict[str, Any]:
     coverage = _market_curve_coverage(positions=positions, market_start=market_start, market_end=market_end)
     input_quality["market_curve_coverage"] = coverage
@@ -837,8 +1093,31 @@ def _add_market_curve_quality(
         tenors,
         start_curve_rows_present=start_curve_rows_present,
         end_curve_rows_present=end_curve_rows_present,
+        start_requested_date=start_requested_date,
+        start_resolved_date=start_resolved_date,
+        end_requested_date=end_requested_date,
+        end_resolved_date=end_resolved_date,
+        start_curve_used=start_curve_used,
+        end_curve_used=end_curve_used,
     )
     coverage["treasury_effect"] = treasury_effect
+    for side, requested, resolved, used in (
+        ("start", start_requested_date, start_resolved_date, start_curve_used),
+        ("end", end_requested_date, end_resolved_date, end_curve_used),
+    ):
+        if not requested or not resolved or requested == resolved:
+            continue
+        if used:
+            input_quality["warnings"].append(
+                f"Campisi {side} treasury curve uses formal snapshot from {resolved} "
+                f"for position date {requested}; latest_snapshot fallback was applied."
+            )
+        else:
+            input_quality["warnings"].append(
+                f"Campisi {side} treasury curve resolved to {resolved} for position date {requested}, "
+                f"but exceeded the {_DECISION_CURVE_STALENESS_THRESHOLD_DAYS}-day staleness guard "
+                "and was discarded. Treasury effect remains unavailable."
+            )
     treasury_warning = _treasury_effect_warning(treasury_effect)
     if treasury_warning is not None:
         input_quality["warnings"].append(treasury_warning)
@@ -919,10 +1198,37 @@ def _side_input_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
         count = len(missing_rows)
         if count:
             missing[field] = {"rows": count, "market_value": float(_sum_decimal(missing_rows, "market_value"))}
+    degraded_rows = [
+        row
+        for row in rows
+        if (_text_value(row.get("duration_quality_flag")) or DURATION_QUALITY_OBSERVED)
+        != DURATION_QUALITY_OBSERVED
+    ]
     return {
         "missing_fields": missing,
+        "duration_quality_degraded": {
+            "rows": len(degraded_rows),
+            "market_value": float(_sum_decimal(degraded_rows, "market_value")),
+        },
         "duplicate_instrument_codes": _duplicate_value_summary(rows, "instrument_code", "instrument_codes"),
         "duplicate_position_keys": _duplicate_position_key_summary(rows),
+    }
+
+
+def _single_sided_position_summary(positions: list[dict[str, Any]]) -> dict[str, Any]:
+    """只在期初或只在期末存在的持仓：行数与两侧市值都要披露。
+
+    这些行的四效应与 total_return 都是 0，页面必须能区分「没有贡献」与
+    「持仓变动，归因口径未裁决」。
+    """
+    start_only = [row for row in positions if row.get("end_present") is False]
+    end_only = [row for row in positions if row.get("start_present") is False]
+    return {
+        "single_sided_positions": len(start_only) + len(end_only),
+        "start_only_positions": len(start_only),
+        "end_only_positions": len(end_only),
+        "start_only_market_value": float(_sum_decimal(start_only, "market_value_start")),
+        "end_only_market_value": float(_sum_decimal(end_only, "market_value_end")),
     }
 
 
@@ -984,14 +1290,37 @@ def _empty_campisi_payload(start: str, end: str) -> dict[str, Any]:
     }
 
 
-def _fetch_formal_bridge(*, settings: Any, report_date: str) -> dict[str, Any]:
+def _fetch_formal_bridge(
+    *, settings: Any, report_date: str, start_date: str | None = None,
+) -> dict[str, Any]:
     from backend.app.services.pnl_bridge_service import pnl_bridge_envelope
 
-    return pnl_bridge_envelope(
+    expected_start = _prior_month_end(report_date)
+    if start_date is not None and start_date != expected_start:
+        raise ValueError(
+            "PNL_BRIDGE_WINDOW_MISMATCH: "
+            f"Requested exposure window {start_date} through {report_date}; "
+            f"formal monthly PnL requires baseline {expected_start}. "
+            "Monthly PnL cannot be relabelled as a daily or multi-month return."
+        )
+    envelope = pnl_bridge_envelope(
         duckdb_path=str(settings.duckdb_path),
         governance_dir=str(settings.governance_path),
         report_date=report_date,
     )
+    result_meta = envelope.get("result_meta") or {}
+    assert isinstance(result_meta, dict)
+    window = result_meta.get("filters_applied") or {}
+    if start_date is not None and (
+        window.get("window_aligned") is not True
+        or (window.get("balance_window") or {}).get("start") != start_date
+        or (window.get("balance_window") or {}).get("end") != report_date
+    ):
+        raise ValueError(
+            "PNL_BRIDGE_WINDOW_MISMATCH: Exact monthly balance endpoints are unavailable; "
+            "the formal bridge cannot establish same-period Campisi closure."
+        )
+    return envelope
 
 
 # 正式桥接的"可用性降级"只覆盖数据/环境类失败（无数据 ValueError、血缘损坏 RuntimeError、
@@ -999,11 +1328,30 @@ def _fetch_formal_bridge(*, settings: Any, report_date: str) -> dict[str, Any]:
 _BRIDGE_UNAVAILABLE_ERRORS = (duckdb.Error, OSError, ValueError, RuntimeError)
 
 
-def _try_fetch_formal_bridge(*, settings: Any, report_date: str) -> dict[str, Any] | None:
+def _formal_bridge_failure_reason(exc: BaseException) -> str:
+    """Expose only known bridge failure codes, never source-bearing exception text."""
+    code = str(exc).partition(":")[0]
+    if code == "PNL_BRIDGE_WINDOW_MISMATCH":
+        reason = "PNL_BRIDGE_WINDOW_MISMATCH: Monthly PnL and balance endpoints are not aligned."
+    elif code == DUPLICATE_BALANCE_KEY_PREFIX:
+        reason = "DUPLICATE_BALANCE_KEY: The formal bridge requires a unique balance match."
+    else:
+        reason = "Formal bridge data or runtime is unavailable."
+    return f"{reason} (error_type={type(exc).__name__})"
+
+
+def _try_fetch_formal_bridge(
+    *, settings: Any, report_date: str, start_date: str | None = None,
+    warnings: list[str] | None = None,
+) -> dict[str, Any] | None:
     try:
-        return _fetch_formal_bridge(settings=settings, report_date=report_date)
+        return _fetch_formal_bridge(settings=settings, report_date=report_date, start_date=start_date)
     except _BRIDGE_UNAVAILABLE_ERRORS as exc:
-        logger.warning("正式 PnL 桥接不可用（report_date=%s）：%s", report_date, exc)
+        raise_if_system_read_failure(exc)
+        reason = _formal_bridge_failure_reason(exc)
+        logger.warning("正式 PnL 桥接不可用（report_date=%s）：%s", report_date, reason)
+        if warnings is not None:
+            warnings.append(f"Formal PnL bridge unavailable: {reason}")
         return None
 
 
@@ -1012,6 +1360,8 @@ def _try_fetch_cached_formal_bridge(
     settings: Any,
     report_date: str,
     duckdb_fingerprint: tuple[tuple[str, int, int], ...] | None,
+    start_date: str | None = None,
+    warnings: list[str] | None = None,
 ) -> dict[str, Any] | None:
     cache_key = _campisi_bridge_cache_key(
         duckdb_path=settings.duckdb_path,
@@ -1022,14 +1372,19 @@ def _try_fetch_cached_formal_bridge(
             _GOVERNANCE_BRIDGE_DEPENDENCY_FILES,
         ),
         report_date=report_date,
+        start_date=start_date,
     )
     cached = _get_cached_campisi_bridge(cache_key)
     if cached is not None:
         return cached
     try:
-        bridge = _fetch_formal_bridge(settings=settings, report_date=report_date)
+        bridge = _fetch_formal_bridge(settings=settings, report_date=report_date, start_date=start_date)
     except _BRIDGE_UNAVAILABLE_ERRORS as exc:
-        logger.warning("正式 PnL 桥接不可用（report_date=%s，缓存路径）：%s", report_date, exc)
+        raise_if_system_read_failure(exc)
+        reason = _formal_bridge_failure_reason(exc)
+        logger.warning("正式 PnL 桥接不可用（report_date=%s，缓存路径）：%s", report_date, reason)
+        if warnings is not None:
+            warnings.append(f"Formal PnL bridge unavailable: {reason}")
         return None
     return _set_cached_campisi_bridge(cache_key, bridge)
 
@@ -1071,6 +1426,41 @@ def _formal_bridge_has_position_overlap(
     if not position_keys:
         return False
     return any(_bridge_position_key(row) in position_keys for row in _formal_bridge_rows(bridge_envelope))
+
+
+def _add_formal_bridge_coverage(
+    input_quality: dict[str, Any],
+    *,
+    bridge_envelope: dict[str, Any],
+    attributed_rows: int,
+) -> None:
+    """Disclose inclusion of the bridge population without inventing model exclusions."""
+    summary = (bridge_envelope.get("result") or {}).get("summary") or {}
+    count = summary.get("row_count")
+    bridge_rows = count if type(count) is int and count >= 0 else None
+    coverage: dict[str, Any] = {
+        "source": "pnl.bridge.rows",
+        "basis": FORMAL_REPORT_BASIS,
+        "status": "unavailable",
+        "bridge_rows": bridge_rows,
+        "attributed_rows": attributed_rows,
+    }
+    if bridge_rows is None:
+        coverage["reason"] = "bridge_row_count_unavailable"
+    elif bridge_rows == 0:
+        coverage["reason"] = "bridge_rows_empty"
+    elif attributed_rows == bridge_rows:
+        coverage["status"] = "ok"
+    else:
+        coverage["status"] = "partial" if 0 < attributed_rows < bridge_rows else "unavailable"
+        coverage["reason"] = "bridge_row_count_mismatch"
+    input_quality["formal_bridge_coverage"] = coverage
+    if coverage["status"] != "ok":
+        input_quality["warnings"].append(
+            f"Campisi formal bridge row inclusion is {coverage['status']} "
+            f"({coverage['reason']}; attributed_rows={attributed_rows}, bridge_rows={bridge_rows}); "
+            "amount closure does not establish complete bridge population coverage."
+        )
 
 
 def _formal_asset_class(row: dict[str, Any], position: dict[str, Any] | None) -> str:
@@ -1240,6 +1630,7 @@ def _formal_bridge_effect_availability(
     by_bond: list[dict[str, Any]],
     *,
     enhanced: bool = False,
+    bridge_envelope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """formal-bridge 路径的可用性块，形状与 Campisi 直算路径完全一致。
 
@@ -1305,6 +1696,12 @@ def _formal_bridge_effect_availability(
                 unavailable_bonds=bonds,
                 unavailable_market_value_start=total_mv,
             )
+    summary = ((bridge_envelope or {}).get("result") or {}).get("summary") or {}
+    for key in ("roll_down_availability", "treasury_curve_availability", "credit_spread_availability"):
+        if isinstance(summary.get(key), dict):
+            # Relay rather than rebuild: applicable_rows is effect-specific,
+            # and not_applicable rows must not dilute the missing-input ratio.
+            availability[key] = deepcopy(summary[key])
     return availability
 
 
@@ -1359,13 +1756,18 @@ def _formal_bridge_bond_rows(
             "selection_effect": float(selection),
             "total_return": float(total),
             "mod_duration": float(_decimal_value((position or {}).get("mod_duration"))),
-            "has_accrued_interest": not _is_missing((position or {}).get("accrued_interest_start")),
+            "has_accrued_interest": position is not None
+            and not _is_missing(position.get("accrued_interest_start"))
+            and not _is_missing(position.get("accrued_interest_end")),
             # 桥已经在行级把"缺曲线 / 两端同源 / 缺市值基数 / 缺滚动窗口"标出来了；
             # 这里原样中继，免得同一个事实在 formal 路径上又退回成一个没有来历的 0。
             # 本路径的 treasury_effect 是 roll_down + treasury_curve 之和，所以把
             # 任一分量顶成 0 的诊断都会让这个和失去观测意义——只认曲线那两条前缀，
             # 就会漏掉"骑乘缺滚动窗口"这一半。
-            "treasury_effect_available": not _bridge_row_has_diagnostic(
+            "treasury_effect_available": not any(
+                bridge_row.get(key) == "unavailable"
+                for key in ("roll_down_availability", "treasury_curve_availability")
+            ) and not _bridge_row_has_diagnostic(
                 bridge_row,
                 (
                     TREASURY_CURVE_UNAVAILABLE_PREFIX,
@@ -1375,7 +1777,8 @@ def _formal_bridge_bond_rows(
                     MARKET_VALUE_BASE_MISSING_PREFIX,
                 ),
             ),
-            "spread_effect_available": not _bridge_row_has_diagnostic(
+            "spread_effect_available": bridge_row.get("credit_spread_availability") != "unavailable"
+            and not _bridge_row_has_diagnostic(
                 bridge_row,
                 (
                     CREDIT_SPREAD_CURVE_UNAVAILABLE_PREFIX,
@@ -1450,7 +1853,7 @@ def _formal_bridge_to_campisi_result(
         positions=positions,
         start_date=start_date,
     )
-    availability = _formal_bridge_effect_availability(by_bond)
+    availability = _formal_bridge_effect_availability(by_bond, bridge_envelope=bridge_envelope)
     return CampisiResult(
         num_days=max((end_date - start_date).days, 1),
         totals=_formal_totals(by_bond),
@@ -1474,7 +1877,7 @@ def _formal_bridge_to_enhanced_result(
         start_date=start_date,
         enhanced=True,
     )
-    availability = _formal_bridge_effect_availability(by_bond, enhanced=True)
+    availability = _formal_bridge_effect_availability(by_bond, enhanced=True, bridge_envelope=bridge_envelope)
     return {
         "num_days": max((end_date - start_date).days, 1),
         "totals": _formal_totals(by_bond, enhanced=True),
@@ -1562,6 +1965,7 @@ def _build_formal_closure(
         "bridge_quality_flag": meta.get("quality_flag"),
         "bridge_vendor_status": meta.get("vendor_status"),
         "bridge_fallback_mode": meta.get("fallback_mode"),
+        "bridge_fallback_date": meta.get("fallback_date"),
         "message": message,
     }
 
@@ -1583,6 +1987,7 @@ def _formal_closure_unavailable(
         "bridge_quality_flag": None,
         "bridge_vendor_status": None,
         "bridge_fallback_mode": None,
+        "bridge_fallback_date": None,
         "message": f"Formal PnL bridge unavailable for Campisi closure: {reason}",
     }
 
@@ -1592,14 +1997,16 @@ def _fetch_formal_closure(
     settings: Any,
     report_date: str,
     campisi_total_return: Decimal,
+    start_date: str | None = None,
 ) -> dict[str, Any]:
     try:
-        bridge = _fetch_formal_bridge(settings=settings, report_date=report_date)
-    except Exception as exc:  # pragma: no cover - formal bridge availability is data/runtime dependent.
+        bridge = _fetch_formal_bridge(settings=settings, report_date=report_date, start_date=start_date)
+    except _BRIDGE_UNAVAILABLE_ERRORS as exc:
+        raise_if_system_read_failure(exc)
         return _formal_closure_unavailable(
             report_date=report_date,
             campisi_total_return=campisi_total_return,
-            reason=str(exc),
+            reason=_formal_bridge_failure_reason(exc),
         )
     return _build_formal_closure(
         report_date=report_date,
@@ -1614,6 +2021,7 @@ def _resolve_formal_closure(
     report_date: str,
     campisi_total_return: Decimal,
     bridge_envelope: dict[str, Any] | None,
+    start_date: str | None = None,
 ) -> dict[str, Any]:
     if bridge_envelope is not None:
         return _build_formal_closure(
@@ -1625,6 +2033,7 @@ def _resolve_formal_closure(
         settings=settings,
         report_date=report_date,
         campisi_total_return=campisi_total_return,
+        start_date=start_date,
     )
 
 
@@ -1642,6 +2051,7 @@ def _campisi_four_effects_envelope_from_state(
     formal_closure = _resolve_formal_closure(
         settings=settings,
         report_date=anchor_end,
+        start_date=anchor_start,
         campisi_total_return=Decimal(str(result.totals.get("total_return") or 0)),
         bridge_envelope=formal_bridge,
     )
@@ -1701,6 +2111,7 @@ def _meta_with_quality(
     input_quality: dict[str, Any],
     formal_closure: dict[str, Any] | None = None,
     *,
+    upstream_meta: dict[str, Any] | None = None,
     filters_applied: dict[str, object] | None = None,
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
@@ -1722,13 +2133,74 @@ def _meta_with_quality(
         and resolved_report_date
         and requested_report_date != resolved_report_date
     )
-    return build_formal_result_meta(
+    # 金额闭合只证明加总关系，不能清除正式桥自身的数据质量与降级状态。
+    # 四效应的缓存/模型路径只保留闭合对照；使用同一份桥来源字段合并质量。
+    bridge_meta = upstream_meta
+    if bridge_meta is None and formal_closure is not None:
+        bridge_meta = {
+            key: formal_closure.get(f"bridge_{key}")
+            for key in ("quality_flag", "vendor_status", "fallback_mode", "fallback_date")
+        }
+    quality_flags = {"warning" if input_quality["warnings"] or has_closure_warning else "ok"}
+    vendor_status: VendorStatus = "ok"
+    fallback_mode: FallbackMode = "latest_snapshot" if report_date_fallback else "none"
+    fallback_date = resolved_report_date if report_date_fallback else None
+    treasury_coverage = (input_quality.get("market_curve_coverage") or {}).get("treasury_effect") or {}
+    adopted_curve_fallback_dates = [
+        str(treasury_coverage[f"{side}_resolved_date"])
+        for side in ("start", "end")
+        if treasury_coverage.get(f"{side}_curve_used") is True
+        and treasury_coverage.get(f"{side}_requested_date")
+        and treasury_coverage.get(f"{side}_resolved_date")
+        and treasury_coverage[f"{side}_requested_date"] != treasury_coverage[f"{side}_resolved_date"]
+    ]
+    if adopted_curve_fallback_dates:
+        quality_flags.add("stale")
+        vendor_status = "vendor_stale"
+        fallback_mode = "latest_snapshot"
+        # A report-date fallback has its own established meaning and takes
+        # precedence. Two different curve dates cannot be compressed into one.
+        if not report_date_fallback and len(set(adopted_curve_fallback_dates)) == 1:
+            fallback_date = adopted_curve_fallback_dates[0]
+    if bridge_meta is not None:
+        bridge_quality = bridge_meta.get("quality_flag")
+        bridge_vendor = bridge_meta.get("vendor_status")
+        bridge_fallback = bridge_meta.get("fallback_mode")
+        if bridge_quality in {"ok", "warning", "error", "stale"}:
+            quality_flags.add(bridge_quality)
+        else:
+            quality_flags.add("warning")
+        if bridge_vendor in {"vendor_stale", "vendor_unavailable"}:
+            vendor_status = bridge_vendor
+        elif bridge_vendor != "ok":
+            quality_flags.add("warning")
+        if bridge_fallback == "latest_snapshot":
+            fallback_mode = "latest_snapshot"
+            # 上游未给真实降级日期时保持空值；不能把业务报告日当作来源日期。
+            fallback_date = bridge_meta.get("fallback_date")
+        elif bridge_fallback != "none":
+            quality_flags.add("warning")
+        if bridge_vendor == "vendor_stale" or bridge_fallback == "latest_snapshot":
+            quality_flags.add("stale")
+    # 与正式 PnL 桥相同的严重程度顺序；vendor_unavailable 不被推断成 error。
+    quality_flag: QualityFlag = (
+        "error" if "error" in quality_flags else
+        "stale" if "stale" in quality_flags else
+        "warning" if "warning" in quality_flags else "ok"
+    )
+    if upstream_meta is not None:
+        filters_applied = {
+            **dict(upstream_meta.get("filters_applied") or {}),
+            **dict(filters_applied or {}),
+        }
+    meta = build_formal_result_meta(
         trace_id=_trace_id(),
         result_kind=result_kind,
         cache_version=CACHE_VERSION,
         source_version=SOURCE_VERSION,
         rule_version=RULE_VERSION,
-        quality_flag="warning" if input_quality["warnings"] or has_closure_warning else None,
+        quality_flag=quality_flag,
+        vendor_status=vendor_status,
         filters_applied=filters_applied,
         tables_used=tables_used,
         evidence_rows=evidence_rows,
@@ -1736,8 +2208,57 @@ def _meta_with_quality(
         requested_report_date=requested_report_date,
         resolved_report_date=resolved_report_date,
         as_of_date=as_of_date,
-        fallback_mode="latest_snapshot" if report_date_fallback else "none",
-        fallback_date=resolved_report_date if report_date_fallback else None,
+        fallback_mode=fallback_mode,
+        fallback_date=fallback_date,
+    )
+    position_change = input_quality.get("position_change") or {}
+    if position_change.get("status") in {"partial", "unavailable"} or input_quality.get("principal_evidence", {}).get("model_only"):
+        return meta.model_copy(update={"formal_use_allowed": False})
+    return meta
+
+
+def _add_position_change_quality(
+    input_quality: dict[str, Any], effect_availability: dict[str, Any]
+) -> None:
+    """Propagate model exclusions without changing the matched formal-bridge path."""
+    coverage = effect_availability.get("position_change")
+    if not coverage:
+        return
+    input_quality["position_change"] = dict(coverage)
+    if coverage["status"] == "ok":
+        return
+    input_quality["warnings"].append(
+        f"持仓变动或本金端点缺失导致 {coverage['unavailable_bonds']} 项无法进行模型归因，"
+        f"已排除期初绝对市值 {coverage['unavailable_market_value_start']:.2f} 元、"
+        f"期末绝对市值 {coverage['unavailable_market_value_end']:.2f} 元。"
+        "收益仅覆盖可归因持仓；排除后的零值不代表完整组合零收益。"
+    )
+
+
+def _add_included_maturity_unavailable_quality(
+    input_quality: dict[str, Any], result: CampisiResult
+) -> None:
+    """Disclose model-included rows whose maturity date was unusable to Campisi."""
+    # The model emits UNKNOWN only when its parsed maturity is None, and it
+    # appends by_bond after excluding one-sided / principal-change positions.
+    included = [row for row in result.by_bond if row.get("maturity_bucket") == "UNKNOWN"]
+    if not included:
+        return
+    market_value_start_abs = sum(
+        (abs(_decimal_value(row.get("market_value_start"))) for row in included), Decimal("0")
+    )
+    model_residual = sum(
+        (_decimal_value(row.get("selection_effect")) for row in included), Decimal("0")
+    )
+    input_quality["included_maturity_unavailable"] = {
+        "positions": len(included),
+        "market_value_start_abs": float(market_value_start_abs),
+        "model_residual": float(model_residual),
+    }
+    input_quality["warnings"].append(
+        f"模型已纳入 {len(included)} 项无法取得可用到期日的持仓，"
+        f"期初绝对市值 {market_value_start_abs:.2f} 元；"
+        f"其 selection_effect 合计 {model_residual:.2f} 元仅为模型剩余项，不代表选券能力。"
     )
 
 
@@ -1787,6 +2308,8 @@ def _empty_decision_grade_payload(start: str, end: str, warnings: list[str] | No
                 "difference": 0.0,
                 "difference_ratio": None,
                 "basis": "fact_formal_pnl_fi.total_pnl",
+                "scope": "matched_beginning_positions",
+                "message": "未取到完整输入，当前不能核对已匹配期初持仓或全月债券覆盖。",
             },
         },
         "valuation_oci_view": {
@@ -2175,6 +2698,8 @@ def _decision_pnl_closure(
         "difference": float(difference),
         "difference_ratio": difference_ratio,
         "basis": "fact_formal_pnl_fi.total_pnl",
+        "scope": "matched_beginning_positions",
+        "message": "仅核对已匹配期初持仓内部的固定因子解释闭合；闭合状态不代表全月全部债券已核对。",
     }
 
 
@@ -2193,7 +2718,7 @@ def _decision_quality_flag(
     warnings: list[str],
     residual_noise: Decimal,
     closure_status: str,
-) -> str:
+) -> QualityFlag:
     """closure 分级必须上抛：缺口只落在 selection_proxy 时 residual_noise 仍为 0。
 
     与 `_result_to_payload`/`_meta_with_quality` 对四效应 formal_closure 的处理同调：
@@ -2297,7 +2822,8 @@ def campisi_decision_grade_envelope(
         "requested_start_date": start_date,
         "requested_end_date": end_date,
         "lookback_days": lookback_days,
-        "scope": "bond_investment_assets_only",
+        "scope": "matched_beginning_positions",
+        "scope_decision_status": "PENDING",
     }
     duckdb_path = str(settings.duckdb_path)
     pnl_repo = PnlRepository(duckdb_path)
@@ -2380,6 +2906,8 @@ def campisi_decision_grade_envelope(
             if window_disclosure is not None and window_disclosure["level"] == "warning":
                 warnings.append(window_disclosure["message"])
             out_of_scope_rows = 0
+            matched_pnl_rows: list[dict[str, Any]] = []
+            unmatched_pnl_rows: list[dict[str, Any]] = []
             dirty_input_rows = 0
             duplicate_position_keys = 0
             aggregated_position_groups = 0
@@ -2395,7 +2923,9 @@ def campisi_decision_grade_envelope(
                 balance = balance_by_key.get(strict_key) or _lookup_unique(balance_loose, pnl_row)
                 if analytics is None and balance is None:
                     out_of_scope_rows += 1
+                    unmatched_pnl_rows.append(pnl_row)
                     continue
+                matched_pnl_rows.append(pnl_row)
 
                 accounting_basis = normalize_accounting_basis(pnl_row.get("accounting_basis"))
                 try:
@@ -2406,15 +2936,21 @@ def campisi_decision_grade_envelope(
                         or _decimal_value((balance or {}).get("source_row_count")) > 1
                     )
                     market_value = (analytics or {}).get("market_value")
+                    market_value_source = "bond_analytics"
+                    market_value_coverage = (analytics or {}).get("market_value_coverage_ratio")
                     if _is_missing(market_value):
                         market_value = (balance or {}).get("market_value_amount")
+                        market_value_coverage = (balance or {}).get("market_value_coverage_ratio")
+                        market_value_source = "missing" if _is_missing(market_value) else "formal_balance"
                     row_input = {
                         "actual_pnl": pnl_row.get("total_pnl"),
                         "carry": pnl_row.get("interest_income_514"),
                         "realized_trading": pnl_row.get("capital_gain_517"),
                         "manual_adjustment": pnl_row.get("manual_adjustment"),
                         "market_value": market_value,
+                        "market_value_coverage_ratio": market_value_coverage,
                         "modified_duration": (analytics or {}).get("modified_duration"),
+                        **{f"{field}_coverage_ratio": (analytics or {}).get(f"{field}_coverage_ratio") for field in ("modified_duration", "convexity", "years_to_maturity", "spread_dv01")},
                         "convexity": (analytics or {}).get("convexity"),
                         "spread_dv01": (analytics or {}).get("spread_dv01"),
                         "years_to_maturity": (analytics or balance or {}).get("years_to_maturity"),
@@ -2471,6 +3007,7 @@ def campisi_decision_grade_envelope(
                         "accounting_basis": accounting_basis,
                         "fair_value_change_516": row_valuation_516,
                         "market_value": row_market_value,
+                        "market_value_source": market_value_source,
                     }
                 )
                 warnings.extend(computed.get("diagnostics") or [])
@@ -2521,6 +3058,9 @@ def campisi_decision_grade_envelope(
                 component_dv01 += row_dv01
                 component_cs01 += row_cs01
 
+            scope_disclosure = compute_decision_scope_disclosure(pnl_rows, matched_pnl_rows, unmatched_pnl_rows, computed_rows)
+            if unmatched_pnl_rows:
+                warnings.append(scope_disclosure["message"])
             residual_noise = totals["residual_noise"]
             residual_ratio = _decision_residual_ratio(
                 formal_actual_pnl=formal_actual_pnl,
@@ -2560,6 +3100,7 @@ def campisi_decision_grade_envelope(
 
             payload = {
                 "basis": "campisi_decision_grade_v1",
+                "scope_disclosure": scope_disclosure,
                 "report_date": anchor_end,
                 "period_start": anchor_start,
                 "period_end": anchor_end,
@@ -2602,6 +3143,10 @@ def campisi_decision_grade_envelope(
                 "ability_matrix": _decision_ability_matrix(computed_rows),
                 "risk_tensor_check": risk_tensor_check,
                 "residual_diagnostics": {
+                    "market_value_source_counts": {
+                        source: sum(row.get("market_value_source") == source for row in computed_rows)
+                        for source in ("bond_analytics", "formal_balance", "missing")
+                    },
                     "missing_curve_count": missing_curve_count,
                     "missing_spread_count": missing_spread_count,
                     "duplicate_position_keys": duplicate_position_keys,
@@ -2625,9 +3170,9 @@ def campisi_decision_grade_envelope(
                 result_meta=build_formal_result_meta(
                     trace_id=_trace_id(),
                     result_kind="campisi.decision_grade",
-                    cache_version=CACHE_VERSION,
+                    cache_version=DECISION_CACHE_VERSION,
                     source_version=SOURCE_VERSION,
-                    rule_version=RULE_VERSION,
+                    rule_version=DECISION_RULE_VERSION,
                     quality_flag=quality_flag,
                     # 守卫弃用（discarded）的曲线虽未被采用，但反映供应商数据同样陈旧。
                     vendor_status=(
@@ -2670,7 +3215,51 @@ def campisi_four_effects_envelope(
     end_date: str | None = None,
     lookback_days: int = 30,
 ) -> dict[str, object]:
-    """Campisi 四效应归因（income/treasury/spread/selection）。"""
+    """Campisi 四效应归因（income/treasury/spread/selection）。
+
+    WP-A2: 在原有 state/bridge 缓存前面加一层进程内 envelope 缓存；命中路径不再
+    触发 repo 扫描、市场曲线拉取、campisi.py 计算或 envelope 重建，也不做大结构
+    deepcopy。key 覆盖归一化的请求参数 + DuckDB 存储指纹 + 治理桥依赖指纹，任一
+    输入变化都会失效；缺少指纹时自动降级为原计算路径。
+    """
+    settings = get_settings()
+    duckdb_fingerprint = _duckdb_storage_fingerprint(settings.duckdb_path)
+    governance_fingerprint = _selected_files_fingerprint(
+        settings.governance_path, _GOVERNANCE_BRIDGE_DEPENDENCY_FILES,
+    )
+    envelope_cache_key = _campisi_four_effects_envelope_cache_key(
+        detail="full",
+        duckdb_path=settings.duckdb_path,
+        governance_path=settings.governance_path,
+        duckdb_fingerprint=duckdb_fingerprint,
+        governance_fingerprint=governance_fingerprint,
+        requested_start_date=start_date,
+        requested_end_date=end_date,
+        lookback_days=lookback_days,
+    )
+    if envelope_cache_key is None:
+        return _campisi_four_effects_envelope_compute(
+            start_date=start_date,
+            end_date=end_date,
+            lookback_days=lookback_days,
+        )
+    cached = _CAMPISI_FOUR_EFFECTS_ENVELOPE_CACHE.get_or_set(
+        envelope_cache_key,
+        lambda: _campisi_four_effects_envelope_compute(
+            start_date=start_date,
+            end_date=end_date,
+            lookback_days=lookback_days,
+        ),
+    )
+    return _campisi_envelope_with_fresh_trace(cached)
+
+
+def _campisi_four_effects_envelope_compute(
+    *,
+    start_date: str | None,
+    end_date: str | None,
+    lookback_days: int,
+) -> dict[str, object]:
     settings = get_settings()
     bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
     curve_repo = YieldCurveRepository(str(settings.duckdb_path))
@@ -2714,7 +3303,7 @@ def campisi_four_effects_envelope(
     rows_end = bond_repo.fetch_bond_analytics_rows(report_date=anchor_end)
     positions = _merge_positions(rows_start, rows_end)
     input_quality = _build_input_quality(rows_start=rows_start, rows_end=rows_end, positions=positions)
-    filters = {
+    filters: dict[str, object] = {
         "requested_start_date": start_date,
         "requested_end_date": end_date,
         "resolved_start_date": anchor_start,
@@ -2742,13 +3331,18 @@ def campisi_four_effects_envelope(
         settings=settings,
         report_date=anchor_end,
         duckdb_fingerprint=duckdb_fingerprint,
+        start_date=anchor_start,
+        warnings=input_quality["warnings"],
     )
-    if _formal_bridge_has_position_overlap(formal_bridge, positions):
+    if formal_bridge is not None and _formal_bridge_has_position_overlap(formal_bridge, positions):
         result = _formal_bridge_to_campisi_result(
             bridge_envelope=formal_bridge,
             positions=positions,
             start_date=date.fromisoformat(anchor_start),
             end_date=date.fromisoformat(anchor_end),
+        )
+        _add_formal_bridge_coverage(
+            input_quality, bridge_envelope=formal_bridge, attributed_rows=len(result.by_bond),
         )
         formal_closure = _build_formal_closure(
             report_date=anchor_end,
@@ -2768,6 +3362,7 @@ def campisi_four_effects_envelope(
                 "campisi.four_effects",
                 input_quality,
                 formal_closure,
+                upstream_meta=formal_bridge.get("result_meta") or {},
                 filters_applied=filters,
                 tables_used=TABLES_CAMPISI,
                 evidence_rows=evidence_rows,
@@ -2785,8 +3380,14 @@ def campisi_four_effects_envelope(
             formal_bridge=formal_bridge,
         )
 
-    treasury_start, treasury_start_present = _fetch_treasury_market_dict(curve_repo, anchor_start)
-    treasury_end, treasury_end_present = _fetch_treasury_market_dict(curve_repo, anchor_end)
+    _attach_native_principal_evidence(positions, bond_repo, anchor_start, anchor_end, input_quality)
+
+    treasury_start, treasury_start_present, treasury_start_resolved, treasury_start_used = (
+        _fetch_treasury_market_dict(curve_repo, anchor_start)
+    )
+    treasury_end, treasury_end_present, treasury_end_resolved, treasury_end_used = (
+        _fetch_treasury_market_dict(curve_repo, anchor_end)
+    )
     spread_start = fetch_credit_spread_market(curve_repo, anchor_start)
     spread_end = fetch_credit_spread_market(curve_repo, anchor_end)
     market_start = {**treasury_start, **spread_start}
@@ -2798,6 +3399,12 @@ def campisi_four_effects_envelope(
         market_end=market_end,
         start_curve_rows_present=treasury_start_present,
         end_curve_rows_present=treasury_end_present,
+        start_requested_date=anchor_start,
+        start_resolved_date=treasury_start_resolved,
+        end_requested_date=anchor_end,
+        end_resolved_date=treasury_end_resolved,
+        start_curve_used=treasury_start_used,
+        end_curve_used=treasury_end_used,
     )
 
     result = campisi_attribution(
@@ -2807,6 +3414,8 @@ def campisi_four_effects_envelope(
         start_date=date.fromisoformat(anchor_start),
         end_date=date.fromisoformat(anchor_end),
     )
+    _add_position_change_quality(input_quality, result.effect_availability)
+    _add_included_maturity_unavailable_quality(input_quality, result)
     if result.diagnostics:
         input_quality["warnings"] = [*input_quality["warnings"], *result.diagnostics]
 
@@ -2857,14 +3466,43 @@ def campisi_four_effects_summary_envelope(
     """四效应 summary 投影：在完整（可能命中缓存的）envelope 之后置空 by_bond。
 
     不改动计算逻辑、缓存键或 meta；除 by_bond 外与 full 结果逐字段一致。
+    WP-A2: summary 使用独立的 envelope cache key（detail=summary），与 full 互
+    不串用；缓存的投影结构本身很轻，命中路径同样只做浅拷贝并刷新 trace_id。
     """
-    return _project_campisi_four_effects_summary(
-        campisi_four_effects_envelope(
-            start_date=start_date,
-            end_date=end_date,
-            lookback_days=lookback_days,
-        )
+    settings = get_settings()
+    duckdb_fingerprint = _duckdb_storage_fingerprint(settings.duckdb_path)
+    governance_fingerprint = _selected_files_fingerprint(
+        settings.governance_path, _GOVERNANCE_BRIDGE_DEPENDENCY_FILES,
     )
+    envelope_cache_key = _campisi_four_effects_envelope_cache_key(
+        detail="summary",
+        duckdb_path=settings.duckdb_path,
+        governance_path=settings.governance_path,
+        duckdb_fingerprint=duckdb_fingerprint,
+        governance_fingerprint=governance_fingerprint,
+        requested_start_date=start_date,
+        requested_end_date=end_date,
+        lookback_days=lookback_days,
+    )
+    if envelope_cache_key is None:
+        return _project_campisi_four_effects_summary(
+            campisi_four_effects_envelope(
+                start_date=start_date,
+                end_date=end_date,
+                lookback_days=lookback_days,
+            )
+        )
+    cached = _CAMPISI_FOUR_EFFECTS_ENVELOPE_CACHE.get_or_set(
+        envelope_cache_key,
+        lambda: _project_campisi_four_effects_summary(
+            campisi_four_effects_envelope(
+                start_date=start_date,
+                end_date=end_date,
+                lookback_days=lookback_days,
+            )
+        ),
+    )
+    return _campisi_envelope_with_fresh_trace(cached)
 
 
 def campisi_enhanced_envelope(
@@ -2900,7 +3538,7 @@ def campisi_enhanced_envelope(
     rows_end = bond_repo.fetch_bond_analytics_rows(report_date=anchor_end)
     positions = _merge_positions(rows_start, rows_end)
     input_quality = _build_input_quality(rows_start=rows_start, rows_end=rows_end, positions=positions)
-    filters = {
+    filters: dict[str, object] = {
         "requested_start_date": start_date,
         "requested_end_date": end_date,
         "resolved_start_date": anchor_start,
@@ -2922,8 +3560,11 @@ def campisi_enhanced_envelope(
             result_payload=_empty_campisi_payload(anchor_start, anchor_end),
         )
 
-    formal_bridge = _try_fetch_formal_bridge(settings=settings, report_date=anchor_end)
-    if _formal_bridge_has_position_overlap(formal_bridge, positions):
+    formal_bridge = _try_fetch_formal_bridge(
+        settings=settings, report_date=anchor_end, start_date=anchor_start,
+        warnings=input_quality["warnings"],
+    )
+    if formal_bridge is not None and _formal_bridge_has_position_overlap(formal_bridge, positions):
         result = _formal_bridge_to_enhanced_result(
             bridge_envelope=formal_bridge,
             positions=positions,
@@ -2939,6 +3580,7 @@ def campisi_enhanced_envelope(
             result_meta=_meta_with_quality(
                 "campisi.enhanced",
                 input_quality,
+                upstream_meta=formal_bridge.get("result_meta") or {},
                 filters_applied=filters,
                 tables_used=TABLES_CAMPISI,
                 evidence_rows=evidence_rows,
@@ -2947,8 +3589,14 @@ def campisi_enhanced_envelope(
             result_payload=result,
         )
 
-    treasury_start, treasury_start_present = _fetch_treasury_market_dict(curve_repo, anchor_start)
-    treasury_end, treasury_end_present = _fetch_treasury_market_dict(curve_repo, anchor_end)
+    _attach_native_principal_evidence(positions, bond_repo, anchor_start, anchor_end, input_quality)
+
+    treasury_start, treasury_start_present, treasury_start_resolved, treasury_start_used = (
+        _fetch_treasury_market_dict(curve_repo, anchor_start)
+    )
+    treasury_end, treasury_end_present, treasury_end_resolved, treasury_end_used = (
+        _fetch_treasury_market_dict(curve_repo, anchor_end)
+    )
     spread_start = fetch_credit_spread_market(curve_repo, anchor_start)
     spread_end = fetch_credit_spread_market(curve_repo, anchor_end)
     market_start = {**treasury_start, **spread_start}
@@ -2960,6 +3608,12 @@ def campisi_enhanced_envelope(
         market_end=market_end,
         start_curve_rows_present=treasury_start_present,
         end_curve_rows_present=treasury_end_present,
+        start_requested_date=anchor_start,
+        start_resolved_date=treasury_start_resolved,
+        end_requested_date=anchor_end,
+        end_resolved_date=treasury_end_resolved,
+        start_curve_used=treasury_start_used,
+        end_curve_used=treasury_end_used,
     )
 
     result = campisi_enhanced(
@@ -2969,6 +3623,7 @@ def campisi_enhanced_envelope(
         start_date=date.fromisoformat(anchor_start),
         end_date=date.fromisoformat(anchor_end),
     )
+    _add_position_change_quality(input_quality, result.get("effect_availability") or {})
     if result.get("diagnostics"):
         input_quality["warnings"] = [*input_quality["warnings"], *result["diagnostics"]]
 
@@ -3023,7 +3678,7 @@ def campisi_maturity_bucket_envelope(
     rows_end = bond_repo.fetch_bond_analytics_rows(report_date=anchor_end)
     positions = _merge_positions(rows_start, rows_end)
     input_quality = _build_input_quality(rows_start=rows_start, rows_end=rows_end, positions=positions)
-    filters = {
+    filters: dict[str, object] = {
         "requested_start_date": start_date,
         "requested_end_date": end_date,
         "resolved_start_date": anchor_start,
@@ -3045,8 +3700,11 @@ def campisi_maturity_bucket_envelope(
             result_payload={"buckets": {}, "period_start": anchor_start, "period_end": anchor_end},
         )
 
-    formal_bridge = _try_fetch_formal_bridge(settings=settings, report_date=anchor_end)
-    if _formal_bridge_has_position_overlap(formal_bridge, positions):
+    formal_bridge = _try_fetch_formal_bridge(
+        settings=settings, report_date=anchor_end, start_date=anchor_start,
+        warnings=input_quality["warnings"],
+    )
+    if formal_bridge is not None and _formal_bridge_has_position_overlap(formal_bridge, positions):
         buckets = _formal_bridge_to_maturity_buckets(
             bridge_envelope=formal_bridge,
             positions=positions,
@@ -3056,6 +3714,7 @@ def campisi_maturity_bucket_envelope(
             result_meta=_meta_with_quality(
                 "campisi.maturity_buckets",
                 input_quality,
+                upstream_meta=formal_bridge.get("result_meta") or {},
                 filters_applied=filters,
                 tables_used=TABLES_CAMPISI,
                 evidence_rows=evidence_rows,
@@ -3071,8 +3730,14 @@ def campisi_maturity_bucket_envelope(
             },
         )
 
-    treasury_start, treasury_start_present = _fetch_treasury_market_dict(curve_repo, anchor_start)
-    treasury_end, treasury_end_present = _fetch_treasury_market_dict(curve_repo, anchor_end)
+    _attach_native_principal_evidence(positions, bond_repo, anchor_start, anchor_end, input_quality)
+
+    treasury_start, treasury_start_present, treasury_start_resolved, treasury_start_used = (
+        _fetch_treasury_market_dict(curve_repo, anchor_start)
+    )
+    treasury_end, treasury_end_present, treasury_end_resolved, treasury_end_used = (
+        _fetch_treasury_market_dict(curve_repo, anchor_end)
+    )
     spread_start = fetch_credit_spread_market(curve_repo, anchor_start)
     spread_end = fetch_credit_spread_market(curve_repo, anchor_end)
     market_start = {**treasury_start, **spread_start}
@@ -3084,6 +3749,12 @@ def campisi_maturity_bucket_envelope(
         market_end=market_end,
         start_curve_rows_present=treasury_start_present,
         end_curve_rows_present=treasury_end_present,
+        start_requested_date=anchor_start,
+        start_resolved_date=treasury_start_resolved,
+        end_requested_date=anchor_end,
+        end_resolved_date=treasury_end_resolved,
+        start_curve_used=treasury_start_used,
+        end_curve_used=treasury_end_used,
     )
 
     # 复用四效应 envelope 已缓存的逐券结果做桶聚合，避免重跑完整 Campisi。
@@ -3101,15 +3772,18 @@ def campisi_maturity_bucket_envelope(
         )
     )
     if cached_state is not None:
-        buckets = aggregate_maturity_buckets(cached_state["result"].by_bond)
+        model_result = cached_state["result"]
     else:
-        buckets = maturity_bucket_attribution(
+        model_result = campisi_attribution(
             positions_merged=positions,
             market_start=market_start,
             market_end=market_end,
             start_date=date.fromisoformat(anchor_start),
             end_date=date.fromisoformat(anchor_end),
         )
+    buckets = aggregate_maturity_buckets(model_result.by_bond)
+    _add_position_change_quality(input_quality, model_result.effect_availability)
+    input_quality["warnings"].extend(model_result.diagnostics)
 
     return build_formal_result_envelope(
         result_meta=_meta_with_quality(
@@ -3124,6 +3798,7 @@ def campisi_maturity_bucket_envelope(
             "period_start": anchor_start,
             "period_end": anchor_end,
             "buckets": buckets,
+            "effect_availability": model_result.effect_availability,
             "input_quality": input_quality,
             "warnings": input_quality["warnings"],
         },

@@ -8,8 +8,9 @@ headline 规则（含 NaN / 缺文件退化），以及 FastAPI 端点的 envelo
 from __future__ import annotations
 
 import json
+import os
 import re
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -43,12 +44,17 @@ MODEL_FIELDS = {
     "script_name",
     "artifact",
     "artifact_status",
+    # 每个产物声明其来自同批快照，或是尚未纳入快照的 live_unverified 读取。
+    "artifact_provenance",
     "as_of",
+    "generated_at",
     "headline",
     "columns",
     "rows",
     # trend 契约：全部模型对象恒有该键，无历史数据源时为 None。
     "trend",
+    # 仅 backtest 非空；其余模型为 None，保持统一对象形状。
+    "backtest_context",
 }
 
 ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -56,6 +62,11 @@ ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 def _write_csv(directory: Path, name: str, text: str) -> None:
     (directory / name).write_text(text, encoding="utf-8-sig")
+
+
+def _set_mtime(path: Path, iso_text: str) -> None:
+    timestamp = datetime.fromisoformat(iso_text).astimezone(UTC).timestamp()
+    os.utime(path, (timestamp, timestamp))
 
 
 def _seed_full_output_dir(directory: Path) -> None:
@@ -142,6 +153,53 @@ def _seed_full_output_dir(directory: Path) -> None:
         "买持等权,18.73,14.99,1.150,1.502,-13.70,1.367,54.8,53.61\n"
         "全模型综合,26.86,14.35,1.767,2.244,-12.50,2.149,57.5,81.26\n",
     )
+    (directory / "backtest_run_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "backtest_run_manifest.v1",
+                "rule_version": "rv_macro_backtest_research_gate_v1",
+                "generated_at": "2026-08-12T09:00:00+08:00",
+                "status": "not_admitted",
+                "quality_flag": "warning",
+                "admission_status": None,
+                "observation_only": True,
+                "formal_use_allowed": False,
+                "sample": {
+                    "price_start_date": "2024-01-02",
+                    "price_end_date": "2026-08-11",
+                    "price_observation_days": 639,
+                    "return_start_date": "2024-01-03",
+                    "return_end_date": "2026-08-11",
+                    "return_trading_days": 638,
+                    "declared_window_years": 5,
+                },
+                "asset_coverage": {
+                    "configured_asset_count": 8,
+                    "used_asset_count": 5,
+                    "used_assets": ["hs300", "csi500", "gold", "copper", "crude_oil"],
+                    "missing_assets": ["bond_gov", "bond_10y", "bond_cdb"],
+                    "complete": False,
+                },
+                "pit_gate": {
+                    "status": "blocked",
+                    "reason_code": "pit_metadata_unavailable",
+                    "required_fields": ["release_at", "available_at", "vintage", "revision"],
+                    "available_fields": [],
+                    "missing_fields": ["release_at", "available_at", "vintage", "revision"],
+                    "completeness_pct": 0.0,
+                    "decision_rule": "available_at <= decision_at",
+                },
+                "warnings": [
+                    "PIT_METADATA_UNAVAILABLE",
+                    "BACKTEST_PIT_GATE_BLOCKED",
+                    "BACKTEST_ASSET_COVERAGE_INCOMPLETE",
+                ],
+                "research_output_generated": True,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     _write_csv(
         directory,
         "final_signal.csv",
@@ -149,6 +207,22 @@ def _seed_full_output_dir(directory: Path) -> None:
         "TS,2026-08-11,空,True,False,False,空仓,0.0,1,第二层拦截\n"
         "T,2026-08-11,空,True,False,False,空仓,0.0,1,第二层拦截\n",
     )
+    for name, generated_at in {
+        "merrill_clock_latest.csv": "2026-06-30T09:00:00+00:00",
+        "garch_results.csv": "2026-08-12T01:04:59+00:00",
+        "dcc_latest.csv": "2026-08-12T01:05:30+00:00",
+        "regime_results.csv": "2026-08-12T01:05:45+00:00",
+        "cta_results.csv": "2026-08-12T01:06:00+00:00",
+        "risk_parity_results.csv": "2026-08-12T01:06:15+00:00",
+        "crisis_score_latest.csv": "2026-08-12T01:06:30+00:00",
+        "risk_state.csv": "2026-08-12T01:06:45+00:00",
+        "risk_log.csv": "2026-08-12T01:07:00+00:00",
+        "rebalance_results.csv": "2026-08-12T01:07:15+00:00",
+        "performance_results.csv": "2026-08-12T01:07:30+00:00",
+        "backtest_results.csv": "2026-08-12T01:07:45+00:00",
+        "final_signal.csv": "2026-08-12T01:08:00+00:00",
+    }.items():
+        _set_mtime(directory / name, generated_at)
 
 
 def _models_by_id(result: dict[str, object]) -> dict[str, dict[str, object]]:
@@ -182,21 +256,26 @@ def test_build_model_chain_results_models_carry_full_contract_fields(tmp_path: P
     for model in models.values():
         assert set(model) == MODEL_FIELDS
         assert model["artifact_status"] == "ok"
+        assert isinstance(model["generated_at"], str) and model["generated_at"]
         assert isinstance(model["headline"], str) and model["headline"]
         assert len(model["columns"]) > 0
         assert all(len(row) == len(model["columns"]) for row in model["rows"])
         assert all(isinstance(cell, str) for row in model["rows"] for cell in row)
+        if model["id"] != "backtest":
+            assert model["backtest_context"] is None
 
     merrill = models["merrill_clock"]
     assert merrill["label"] == "美林时钟（中国版）"
     assert merrill["script_name"] == "merrill_clock_cn"
     assert merrill["artifact"] == "merrill_clock_latest.csv"
     assert merrill["as_of"] == "2026-06"
+    assert merrill["generated_at"] == "2026-06-30T09:00:00+00:00"
     assert merrill["columns"] == ["日期", "增长动量", "通胀动量", "流动性动量", "传统象限", "债券方向"]
     assert merrill["rows"] == [["2026-06", "0.228", "0.836", "-0.615", "过热", "空"]]
 
-    # 无日期列的产物用文件修改日（YYYY-MM-DD）作为 as_of。
-    assert ISO_DATE_PATTERN.match(str(models["garch"]["as_of"]))
+    # 无日期列的产物不再用文件修改日冒充 as_of；生成时间单独走 generated_at。
+    assert models["garch"]["as_of"] is None
+    assert models["garch"]["generated_at"] == "2026-08-12T01:04:59+00:00"
 
     # 全列原样的产物保留 CSV 表头与行序，NaN 输出 "—"。
     crisis = models["crisis_score"]
@@ -204,8 +283,15 @@ def test_build_model_chain_results_models_carry_full_contract_fields(tmp_path: P
     assert crisis["rows"][0][-1] == "—"
 
     backtest = models["backtest"]
+    assert backtest["as_of"] == "2026-08-11"
+    assert backtest["generated_at"] == "2026-08-12T01:07:45+00:00"
     assert backtest["columns"] == ["策略", "年化收益%", "夏普比率", "最大回撤%", "胜率%", "累计收益%"]
     assert backtest["rows"][1] == ["全模型综合", "26.86", "1.767", "-12.50", "57.5", "81.26"]
+    assert backtest["backtest_context"]["status"] == "not_admitted"
+    assert backtest["backtest_context"]["admission_status"] is None
+    assert backtest["backtest_context"]["sample"]["return_trading_days"] == 638
+    assert backtest["backtest_context"]["asset_coverage"]["used_asset_count"] == 5
+    assert backtest["backtest_context"]["pit_gate"]["status"] == "blocked"
 
     final_signal = models["final_signal"]
     assert final_signal["columns"] == ["品种", "日期", "第一层_方向", "最终信号", "仓位比例", "置信度", "信号说明"]
@@ -225,9 +311,9 @@ def test_build_model_chain_results_headline_rules(tmp_path: Path) -> None:
     assert models["crisis_score"]["headline"] == "-0.068 · 宽松"
     assert models["risk_monitor"]["headline"] == "无冷却 · 正常运行"
     assert models["monitor_alerts"]["headline"] == "告警 1 条 · VOL_ALERT 1"
-    assert models["rebalance"]["headline"] == "最优 阈值触发(5%) · 夏普 1.2084"
-    assert models["performance"]["headline"] == "最佳 黄金期货 · 夏普 1.2361"
-    assert models["backtest"]["headline"] == "最优 全模型综合 · 夏普 1.767"
+    assert models["rebalance"]["headline"] == "再平衡样本 2 条 · 夏普区间 1.0808-1.2084"
+    assert models["performance"]["headline"] == "绩效样本 2 条 · 夏普区间 0.3578-1.2361"
+    assert models["backtest"]["headline"] == "研究回测 · PIT 门禁阻断"
     assert models["final_signal"]["headline"] == "空仓 2/2"
 
 
@@ -327,12 +413,48 @@ def test_missing_empty_and_unparsable_artifacts_do_not_raise(tmp_path: Path) -> 
     assert result["as_of_date"] is None
     models = _models_by_id(result)
     assert len(models) == 13
-    for model in models.values():
+    for model_id, model in models.items():
         assert model["artifact_status"] == "missing"
         assert model["as_of"] is None
+        if model_id in {"merrill_clock", "garch"}:
+            assert isinstance(model["generated_at"], str) and model["generated_at"]
+        else:
+            assert model["generated_at"] is None
         assert model["headline"] == "产物缺失"
         assert model["columns"] == []
         assert model["rows"] == []
+
+
+def test_backtest_manifest_missing_fails_closed_without_hiding_research_artifact(
+    tmp_path: Path,
+) -> None:
+    _seed_full_output_dir(tmp_path)
+    (tmp_path / "backtest_run_manifest.json").unlink()
+
+    backtest = _models_by_id(build_model_chain_results(tmp_path))["backtest"]
+
+    assert backtest["artifact_status"] == "ok"
+    assert backtest["as_of"] is None
+    assert backtest["generated_at"] == "2026-08-12T01:07:45+00:00"
+    assert backtest["headline"] == "研究回测 · PIT 门禁阻断"
+    assert backtest["backtest_context"]["status"] == "not_admitted"
+    assert backtest["backtest_context"]["admission_status"] is None
+    assert backtest["backtest_context"]["pit_gate"]["reason_code"] == "backtest_manifest_missing"
+    assert backtest["backtest_context"]["formal_use_allowed"] is False
+
+
+def test_backtest_manifest_invalid_cannot_bypass_fail_closed_gate(tmp_path: Path) -> None:
+    _seed_full_output_dir(tmp_path)
+    (tmp_path / "backtest_run_manifest.json").write_text("{invalid", encoding="utf-8")
+
+    backtest = _models_by_id(build_model_chain_results(tmp_path))["backtest"]
+
+    assert backtest["artifact_status"] == "ok"
+    assert backtest["as_of"] is None
+    assert backtest["generated_at"] == "2026-08-12T01:07:45+00:00"
+    assert backtest["headline"] == "研究回测 · PIT 门禁阻断"
+    assert backtest["backtest_context"]["pit_gate"]["reason_code"] == "backtest_manifest_invalid"
+    assert backtest["backtest_context"]["quality_flag"] == "warning"
 
 
 def _grant_macro_toolkit_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, grant: bool = True) -> None:
@@ -377,7 +499,7 @@ def test_model_chain_results_endpoint_returns_contract_envelope(
     payload = response.json()
     meta = payload["result_meta"]
     assert meta["result_kind"] == "macro_toolkit.model_chain_results"
-    assert meta["quality_flag"] == "ok"
+    assert meta["quality_flag"] == "warning"
     assert meta["fallback_mode"] == "none"
     assert meta["as_of_date"] == "2026-08-11"
     assert payload["result"] == build_model_chain_results(output_dir)
@@ -671,6 +793,8 @@ def test_model_chain_scheduler_summarizes_both_receipts(tmp_path: Path) -> None:
     scheduler = build_model_chain_results(output_dir, logs_dir=logs_dir)["scheduler"]
 
     assert scheduler["daily_chain"] == {
+        "read_status": "ready",
+        "reason_code": None,
         "task_name": "macro_toolkit_daily_chain",
         "status": "degraded",
         "exit_code": 0,
@@ -679,6 +803,8 @@ def test_model_chain_scheduler_summarizes_both_receipts(tmp_path: Path) -> None:
         "summary": "链 degraded · 链外脚本 6/6 完成",
     }
     assert scheduler["freshness"] == {
+        "read_status": "ready",
+        "reason_code": None,
         "task_name": "refresh_macro_toolkit_freshness",
         "status": "failed",
         "exit_code": 1,
@@ -688,7 +814,9 @@ def test_model_chain_scheduler_summarizes_both_receipts(tmp_path: Path) -> None:
     }
 
 
-def test_model_chain_scheduler_degrades_to_null_when_receipts_unreadable(tmp_path: Path) -> None:
+def test_model_chain_scheduler_distinguishes_missing_from_invalid_receipts(
+    tmp_path: Path,
+) -> None:
     output_dir = tmp_path / "output"
     _seed_full_output_dir(output_dir)
 
@@ -696,13 +824,32 @@ def test_model_chain_scheduler_degrades_to_null_when_receipts_unreadable(tmp_pat
     result = build_model_chain_results(output_dir, logs_dir=tmp_path / "missing-logs")
     assert result["scheduler"] == {"daily_chain": None, "freshness": None}
 
-    # 回执损坏（非法 JSON / 非对象 JSON）→ 对应键为 None，不抛错。
+    # 回执存在但不可读/非对象时必须显式暴露损坏状态，不能伪装成“从未运行”。
     logs_dir = tmp_path / "logs"
     logs_dir.mkdir()
-    (logs_dir / "macro_toolkit_daily_chain_receipt.json").write_text("{not json", encoding="utf-8")
+    (logs_dir / "macro_toolkit_daily_chain_receipt.json").write_bytes(b"\xff")
     (logs_dir / "macro_toolkit_freshness_refresh_receipt.json").write_text("[1,2]", encoding="utf-8")
     result = build_model_chain_results(output_dir, logs_dir=logs_dir)
-    assert result["scheduler"] == {"daily_chain": None, "freshness": None}
+    assert result["scheduler"]["daily_chain"] == {
+        "read_status": "invalid",
+        "reason_code": "receipt_unreadable",
+        "task_name": "",
+        "status": "invalid",
+        "exit_code": None,
+        "generated_at": "",
+        "run_kind": "",
+        "summary": "回执不可读或已损坏",
+    }
+    assert result["scheduler"]["freshness"] == {
+        "read_status": "invalid",
+        "reason_code": "receipt_invalid",
+        "task_name": "",
+        "status": "invalid",
+        "exit_code": None,
+        "generated_at": "",
+        "run_kind": "",
+        "summary": "回执不可读或已损坏",
+    }
 
 
 def test_model_chain_scheduler_default_logs_dir_derived_from_output_dir(tmp_path: Path) -> None:

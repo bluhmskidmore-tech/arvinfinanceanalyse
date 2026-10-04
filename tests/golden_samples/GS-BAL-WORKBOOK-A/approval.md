@@ -38,3 +38,12 @@
   source-table, and evidence-row fields; no workbook business value changed.
 - Approval boundary is unchanged: final approver and approval timestamp remain
   pending.
+
+## Recapture record — 2026-09-02
+
+- Reason: the previous file predated `result_meta.source_surface`, `data_source`, and `calibration`, so `BalanceAnalysisWorkbookEnvelope` rejected it (`tests/test_api_response_model_field_preservation.py`). The full re-capture also surfaced three committed caliber changes that the selected-path validator never compared:
+  - `tables[0]`（债券业务种类）`rows[0].bond_type` `国债 → 其它`: since `7081771c` (2026-05-05) the table uses the governed `classify_zqtz_asset_bond_label`, whose 国债 row is CNY-only; the fixture bond is USD-denominated (FX 7.20), so it falls to 其它. The Campisi table still groups by raw `bond_type`, hence shows 国债.
+  - `tables[15]`（规则引用）4 → 7 rows: `bal_overdue_interest_days_placeholder`, `bal_campisi_benchmark_missing_null`, `bal_wb_rating_default_001` were registered after the previous capture.
+  - `tables[22]`（Campisi）`spread_bp` / `spread_income_amount` `2.50000000 / 0.0000180000000000 → null`: rule `bal_campisi_benchmark_missing_null` — the fixture has no benchmark curve, so the spread is fail-closed to null instead of being assumed.
+- Owner authorization: `arvin` (sample owner) reviewed the three content changes above and authorized this recapture in-session on 2026-09-02, mirroring the 2026-07-20 record.
+- Approval boundary: this records owner authorization to recapture; the three content changes are committed governed behaviour, not new decisions. Final approver and approval timestamp remain pending.

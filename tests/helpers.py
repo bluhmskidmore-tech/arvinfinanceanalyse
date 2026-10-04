@@ -56,6 +56,19 @@ def _exec_and_publish(spec: importlib.machinery.ModuleSpec, module_name: str):
     makes concurrent importers wait for the executed module instead.
     """
 
+    parent_name, _, child_name = module_name.rpartition(".")
+    parent = None
+    if parent_name:
+        try:
+            parent = importlib.import_module(parent_name)
+        except ModuleNotFoundError as exc:
+            # Tests also load isolated aliases whose parent does not exist.
+            # A real parent's missing dependency must still fail its import.
+            if not exc.name or not (
+                parent_name == exc.name or parent_name.startswith(f"{exc.name}.")
+            ):
+                raise
+
     loader = cast(importlib.abc.Loader, spec.loader)
     module = importlib.util.module_from_spec(spec)
     previous = sys.modules.get(module_name)
@@ -71,7 +84,12 @@ def _exec_and_publish(spec: importlib.machinery.ModuleSpec, module_name: str):
                 else:
                     sys.modules[module_name] = previous
             raise
-        return sys.modules.get(module_name, module)
+        published = sys.modules.get(module_name, module)
+        if parent is not None:
+            # Normal imports publish both references; replacing only the cache
+            # leaves dotted imports and string monkeypatches on the old object.
+            setattr(parent, child_name, published)
+        return published
     finally:
         spec._initializing = False
 

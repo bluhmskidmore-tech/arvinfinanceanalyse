@@ -494,7 +494,7 @@ def _seed_supplement_source(module: Any, duckdb_path: Path, *, source_date: str)
             [source_date],
         )
         conn.execute(
-            "insert into choice_stock_factor_snapshot values (?, '000001.SZ', 8.0, 1.1, 2.0, 12.0, 30.0, 0.1, 0.2, 0.3, 3.5, '银行', 'sv_prev', 'vv_choice_tushare_stock_factor_20260622_0123456789ab', 'rv', 'prev-run')",
+            "insert into choice_stock_factor_snapshot values (?, '000001.SZ', 8.0, 1.1, 2.0, 12.0, 30.0, 0.1, 0.2, 0.3, 3.5, null, null, '银行', 'sv_prev', 'vv_choice_tushare_stock_factor_20260622_0123456789ab', 'rv', 'prev-run')",
             [source_date],
         )
     finally:

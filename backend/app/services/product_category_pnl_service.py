@@ -46,6 +46,7 @@ from backend.app.schemas.product_category_pnl import (
     ProductCategoryPnlRow,
     ProductCategorySortDirection,
 )
+from backend.app.services.analysis_adapters import ProductCategoryPnlAnalysisAdapter
 from backend.app.services.analysis_service import (
     UnifiedAnalysisService,
     build_default_analysis_service,
@@ -84,13 +85,16 @@ materialize_product_category_pnl = _MaterializeProductCategoryPnlProxy()
 
 
 def product_category_pnl_payload_from_canonical_ytd_anchor(
-    *args: object, **kwargs: object
-) -> object:
-    from backend.app.tasks.product_category_pnl import (
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    ftp_rate_pct: float,
+) -> ProductCategoryPnlPayload | None:
+    from backend.app.services.product_category_pnl_read_service import (
         product_category_pnl_payload_from_canonical_ytd_anchor as _payload,
     )
 
-    return _payload(*args, **kwargs)
+    return _payload(duckdb_path, governance_dir, report_date, ftp_rate_pct)
 
 
 logger = logging.getLogger(__name__)
@@ -125,6 +129,10 @@ class ProductCategoryReadModelNotFoundError(LookupError):
 
 
 class ProductCategoryReadModelUnavailableError(RuntimeError):
+    pass
+
+
+class ProductCategoryAdjustmentDateConflictError(ValueError):
     pass
 
 
@@ -455,6 +463,8 @@ def update_product_category_manual_adjustment(
     current = next((record for record in records if record["adjustment_id"] == adjustment_id), None)
     if current is None:
         raise ValueError(f"Unknown product-category adjustment_id={adjustment_id}")
+    if payload.report_date != str(current["report_date"]):
+        raise ProductCategoryAdjustmentDateConflictError("report_date cannot be changed for an existing adjustment")
     updated = ProductCategoryManualAdjustmentPayload.model_validate(
         {
             **current,
@@ -531,6 +541,7 @@ def _resolve_product_category_refresh_source_dir(
     repo_source_dir = root / "data_input" / configured_dir.name
     if (
         str(settings.environment).lower() == "development"
+        and not settings._data_input_root_explicit
         and repo_source_dir != configured_dir
         and discover_source_pairs(repo_source_dir)
     ):
@@ -572,13 +583,13 @@ def product_category_attribution_envelope(
             f"Unsupported product-category attribution compare={compare!r}; expected 'mom' or 'yoy'"
         )
 
-    repo = ProductCategoryPnlRepository(duckdb_path)
+    adapter = ProductCategoryPnlAnalysisAdapter(duckdb_path)
     prior_report_date = (
         _previous_year_same_month_end(report_date) if compare == "yoy" else _previous_month_end(report_date)
     )
     try:
-        current_raw_rows = repo.fetch_rows(report_date, "monthly")
-        prior_raw_rows = repo.fetch_rows(prior_report_date, "monthly")
+        current_raw_rows = adapter.read_formal_rows(report_date, "monthly")
+        prior_raw_rows = adapter.read_formal_rows(prior_report_date, "monthly")
     except ProductCategoryPnlStorageError as exc:
         raise ProductCategoryReadModelUnavailableError(
             "Product-category read model is temporarily unavailable; refresh may be running."
@@ -897,11 +908,11 @@ def resolve_product_category_ytd_payload_for_home_snapshot(
     if isinstance(result_dict, dict):
         try:
             return ProductCategoryPnlPayload.model_validate(result_dict)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - Any persisted-payload validation failure must preserve the canonical-facts fallback.
             logger.warning(
-                "product_category read-model ytd payload failed validation for %s; falling back to canonical recompute",
+                "product_category read-model ytd payload failed validation for %s; falling back to canonical recompute; error_type=%s",
                 report_date,
-                exc_info=True,
+                type(exc).__name__,
             )
     return product_category_pnl_payload_from_canonical_ytd_anchor(
         duckdb_path, governance_dir, report_date, ftp_rate_pct
@@ -927,7 +938,8 @@ def _product_category_completeness_check(
 
 
 def _is_partial_ytd_view(*, report_dates: list[str], report_date: str, view: str) -> bool:
-    if view not in YTD_VIEWS:
+    """Check source-month coverage for the accumulated YTD and QTD views."""
+    if view not in YTD_VIEWS and view != "qtd":
         return False
     try:
         target = date.fromisoformat(report_date)
@@ -943,7 +955,8 @@ def _is_partial_ytd_view(*, report_dates: list[str], report_date: str, view: str
         if item_date.year == target.year and item_date.month <= target.month:
             available_months.add(item_date.month)
 
-    expected_months = set(range(1, target.month + 1))
+    start_month = ((target.month - 1) // 3) * 3 + 1 if view == "qtd" else 1
+    expected_months = set(range(start_month, target.month + 1))
     return not expected_months.issubset(available_months)
 
 
@@ -1281,7 +1294,8 @@ def _build_adjustment_csv(
     def serialize_row(row: ProductCategoryManualAdjustmentPayload) -> str:
         values = []
         for header in headers:
-            value = str(getattr(row, header, "") or "")
+            raw_value = getattr(row, header, None)
+            value = "" if raw_value is None else str(raw_value)
             escaped = value.replace('"', '""')
             values.append(f'"{escaped}"')
         return ",".join(values)

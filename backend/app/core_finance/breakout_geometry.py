@@ -17,22 +17,27 @@ from collections.abc import Mapping, Sequence
 # pattern 复用同文件 `deriveCandidatePattern` 的现行有效映射：其换手/跳空分支
 # 两侧输出相同标签，等效为仅按 close/breakout 比值分档；标签沿用「（参考）」
 # 后缀的观察降级语义。fail-closed：K 线缺失/长度不足/含非有限值/突破位非正时
-# 四个字段保持 None，禁止输出 0 或近似值。
+# 五个字段保持 None，禁止输出 0 或近似值。
 BREAKOUT_GEOMETRY_PRIOR_WINDOW = 55
 # 55 个先导收盘 + 1 个信号日收盘；不足时不得缩窗改算（那会变成另一种口径）。
 BREAKOUT_GEOMETRY_MIN_HISTORY = BREAKOUT_GEOMETRY_PRIOR_WINDOW + 1
 PATTERN_BREAKOUT_MIN_RATIO = 1.0025
 PATTERN_PULLBACK_MAX_RATIO = 0.985
+PATTERN_BREAKOUT_CODE = "breakout"
+PATTERN_PULLBACK_CODE = "pullback"
+PATTERN_CONSOLIDATION_CODE = "consolidation"
 PATTERN_BREAKOUT_LABEL = "突破（参考）"
 PATTERN_PULLBACK_LABEL = "回踩（参考）"
 PATTERN_CONSOLIDATION_LABEL = "缩量盘整（参考）"
 
-# attach 输出的四个几何键；对已带同名键（值非 None）的 item 只补缺失键，不覆盖。
+# attach 输出的五个几何键；pattern_code 是稳定机器分类，pattern 仅为展示文案。
+# 对已带同名键（值非 None）的 item 只补缺失键，不覆盖。
 BREAKOUT_GEOMETRY_FIELD_KEYS = (
     "close",
     "breakout_level",
     "distance_to_breakout_pct",
     "pattern",
+    "pattern_code",
 )
 
 
@@ -43,7 +48,7 @@ def attach_breakout_geometry(
     price_as_of_date: str,
     last_trade_date_by_code: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
-    """为观察候选 payload 补充观察位几何字段（close/breakout_level/distance_to_breakout_pct/pattern）。
+    """为观察候选 payload 补充观察位几何字段（含 pattern_code 稳定机器分类）。
 
     - close_history_by_code 必须与 Livermore 候选同源同序：升序收盘序列，
       锚定 price_as_of_date（策略日），服务层复用 fetch_stock_candidate_history_rows
@@ -115,6 +120,7 @@ def _breakout_geometry_fields(
         "breakout_level": None,
         "distance_to_breakout_pct": None,
         "pattern": None,
+        "pattern_code": None,
     }
     if close_history is None or len(close_history) < BREAKOUT_GEOMETRY_MIN_HISTORY:
         return empty
@@ -137,16 +143,20 @@ def _breakout_geometry_fields(
     ratio = close / breakout_level
     if ratio > PATTERN_BREAKOUT_MIN_RATIO:
         pattern = PATTERN_BREAKOUT_LABEL
+        pattern_code = PATTERN_BREAKOUT_CODE
     elif ratio < PATTERN_PULLBACK_MAX_RATIO:
         pattern = PATTERN_PULLBACK_LABEL
+        pattern_code = PATTERN_PULLBACK_CODE
     else:
         pattern = PATTERN_CONSOLIDATION_LABEL
+        pattern_code = PATTERN_CONSOLIDATION_CODE
     return {
         # 6 位小数与 Livermore 候选 item 的 close/breakout_level 舍入一致。
         "close": round(close, 6),
         "breakout_level": round(breakout_level, 6),
         "distance_to_breakout_pct": round((close - breakout_level) / breakout_level * 100.0, 4),
         "pattern": pattern,
+        "pattern_code": pattern_code,
     }
 
 

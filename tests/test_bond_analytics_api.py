@@ -55,7 +55,7 @@ def _perf_records(caplog, endpoint: str):
 
 
 def test_log_api_perf_message_includes_basic_formatter_fields(monkeypatch, caplog):
-    perf_logging = load_module("backend.app.api.perf_logging", "backend/app/api/perf_logging.py")
+    perf_logging = load_module("backend.app.observability.perf_logging", "backend/app/observability/perf_logging.py")
     monkeypatch.setattr(perf_logging.time, "perf_counter", lambda: 12.345)
 
     with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
@@ -81,7 +81,7 @@ def test_log_api_perf_message_includes_basic_formatter_fields(monkeypatch, caplo
 
 
 def test_log_api_perf_message_quotes_spaces_and_distinguishes_empty_from_none(monkeypatch, caplog):
-    perf_logging = load_module("backend.app.api.perf_logging", "backend/app/api/perf_logging.py")
+    perf_logging = load_module("backend.app.observability.perf_logging", "backend/app/observability/perf_logging.py")
     monkeypatch.setattr(perf_logging.time, "perf_counter", lambda: 12.345)
 
     with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
@@ -100,7 +100,7 @@ def test_log_api_perf_message_quotes_spaces_and_distinguishes_empty_from_none(mo
 
 
 def test_log_api_perf_skips_message_encoding_when_info_disabled(monkeypatch, caplog):
-    perf_logging = load_module("backend.app.api.perf_logging", "backend/app/api/perf_logging.py")
+    perf_logging = load_module("backend.app.observability.perf_logging", "backend/app/observability/perf_logging.py")
     payload = {"result_meta": {"trace_id": "trace-disabled", "result_kind": "test.disabled"}}
     encoded_values = []
 
@@ -308,9 +308,18 @@ async def _check_all_endpoints() -> None:
                 }
 
 
-def test_bond_analytics_endpoints_envelope_and_result_shape() -> None:
+def test_bond_analytics_endpoints_envelope_and_result_shape(tmp_path, monkeypatch) -> None:
     """Six bond-analytics routes return 200 + result_meta/result with required keys."""
-    asyncio.run(_check_all_endpoints())
+    duckdb_path = tmp_path / "bond-analytics-api.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_materialized_bond_analytics(duckdb_path, governance_dir)
+    try:
+        asyncio.run(_check_all_endpoints())
+    finally:
+        get_settings.cache_clear()
 
 
 def test_bond_analytics_each_path_distinct_contract() -> None:
@@ -375,14 +384,26 @@ def test_bond_analytics_return_decomposition_summary_detail_uses_summary_project
 
     def _summary(report_date, period_type, asset_class, accounting_class):
         called["args"] = (report_date.isoformat(), period_type, asset_class, accounting_class)
+        from backend.app.schemas.bond_analytics import ReturnDecompositionResponse
+        from backend.app.schemas.result_meta import ResultMeta
+        from backend.app.services.bond_analytics_service import _bond_analytics_api_payload
+
+        result = ReturnDecompositionResponse(
+            report_date=report_date,
+            period_type=period_type,
+            period_start=report_date,
+            period_end=report_date,
+            carry="0", roll_down="0", rate_effect="0", spread_effect="0", trading="0",
+            explained_pnl="0", actual_pnl="0", recon_error="0", recon_error_pct="0",
+            computed_at="2026-04-13T00:00:00Z", warnings=[], bond_details=[],
+        )
         return {
-            "result_meta": {"result_kind": "bond_analytics.return_decomposition"},
-            "result": {
-                "report_date": report_date.isoformat(),
-                "computed_at": "2026-04-13T00:00:00Z",
-                "warnings": [],
-                "bond_details": [],
-            },
+            "result_meta": ResultMeta(
+                trace_id="summary_test", result_kind="bond_analytics.return_decomposition",
+                source_surface="bond_analytics", source_version="synthetic",
+                rule_version="synthetic", cache_version="synthetic",
+            ).model_dump(mode="json"),
+            "result": _bond_analytics_api_payload(result.model_dump(mode="json")),
         }
 
     monkeypatch.setattr(route_module, "get_return_decomposition_summary", _summary)

@@ -287,20 +287,16 @@ function expectCandidateMetricStatus(
   expect(status.disclaimer).toContain("不构成正式金融指标");
 }
 
-describe("productCategoryPnlPageModel", () => {
-  it("builds H1 candidate management monitoring from six formal monthly payloads", () => {
-    const grandTotals = [4, 4, 4, 3, 3, 3];
-    const liabilityTotals = [0.03, 0.03, 0.03, 0.02, 0.04, 0.02];
-    const tplPnl = [1.2, 0.9, 0.9, 0.8, 0.6, 0.3];
-    const derivativePnl = [0.01, 0.02, -0.01, 0.03, 0.04, 0.01];
-    const monthEndDates = [
-      "2026-01-31",
-      "2026-02-28",
-      "2026-03-31",
-      "2026-04-30",
-      "2026-05-31",
-      "2026-06-30",
-    ];
+function buildManagementMonitorFixture(month = 6) {
+    const grandTotals = [4, 4, 4, 3, 3, 3, 9, 12, 6, 6, 6, 6];
+    const liabilityTotals = [0.03, 0.03, 0.03, 0.02, 0.04, 0.02, 0.1, 0.2, 0.1, 0.1, 0.1, 0.1];
+    const tplPnl = [1.2, 0.9, 0.9, 0.8, 0.6, 0.3, 2, 3, 1, 1, 1, 1];
+    const derivativePnl = [0.01, 0.02, -0.01, 0.03, 0.04, 0.01, 0.1, 0.2, 0.1, 0.1, 0.1, 0.1];
+    const monthEndDates = Array.from({ length: month }, (_, index) =>
+      new Date(Date.UTC(2026, index + 1, 0)).toISOString().slice(0, 10),
+    );
+    const reportDate = monthEndDates[month - 1]!;
+    const priorDate = new Date(Date.UTC(2026, month - 1, 0)).toISOString().slice(0, 10);
     const snapshots = monthEndDates.map((reportDate, index) =>
       buildProductCategoryTrendSnapshot({
         report_date: reportDate,
@@ -381,24 +377,24 @@ describe("productCategoryPnlPageModel", () => {
       }),
     );
     const currentAttribution = attributionPayload({
-      report_date: "2026-06-30",
-      current_report_date: "2026-06-30",
-      prior_report_date: "2026-05-31",
+      report_date: reportDate,
+      current_report_date: reportDate,
+      prior_report_date: priorDate,
       rows: [
         attributionRow({
           category_id: "bond_tpl",
           category_name: "TPL",
           current: {
-            report_date: "2026-06-30",
-            days: 30,
+            report_date: reportDate,
+            days: Number(reportDate.slice(-2)),
             scale: yi(800),
             yield_pct: "2.05625",
             cash: "0",
             ftp: "0",
-            business_net_income: yi(0.3),
+            business_net_income: yi(tplPnl[month - 1]!),
           },
           prior: {
-            report_date: "2026-05-31",
+            report_date: priorDate,
             days: 31,
             scale: yi(800),
             yield_pct: "2.50",
@@ -419,6 +415,12 @@ describe("productCategoryPnlPageModel", () => {
       ],
     });
 
+    return { snapshots, currentAttribution, reportDate };
+}
+
+describe("productCategoryPnlPageModel", () => {
+  it("preserves the June management monitor calculations with dynamic period labels", () => {
+    const { snapshots, currentAttribution } = buildManagementMonitorFixture();
     const surface = selectProductCategoryManagementMonitoringSurface({
       reportDate: "2026-06-30",
       snapshots,
@@ -439,7 +441,7 @@ describe("productCategoryPnlPageModel", () => {
           liftBpLabel: "+45.6 bp",
         },
         {
-          key: "h1_average",
+          key: "year_average",
           targetPnlLabel: "0.78",
           requiredYieldLabel: "2.79%",
           liftBpLabel: "+73.5 bp",
@@ -453,7 +455,7 @@ describe("productCategoryPnlPageModel", () => {
       ],
     });
     expect(surface.liability).toMatchObject({
-      h1NetLabel: "0.17",
+      yearNetLabel: "0.17",
       positivePoolLabel: "0.66",
       negativePoolLabel: "-0.48",
       offsetRatioLabel: "72.7%",
@@ -462,7 +464,7 @@ describe("productCategoryPnlPageModel", () => {
       leadingDriverLabel: "利率 -0.03",
     });
     expect(surface.derivatives).toMatchObject({
-      h1TotalLabel: "0.10",
+      yearTotalLabel: "0.10",
       monthlyAverageLabel: "0.02",
       volatilityLabel: "0.02",
       topThreeConcentrationLabel: "90.0%",
@@ -470,11 +472,13 @@ describe("productCategoryPnlPageModel", () => {
     });
     expect(surface.runRate).toEqual({
       q1MonthlyAverageLabel: "4.00",
-      q2MonthlyAverageLabel: "3.00",
-      h1MonthlyAverageLabel: "3.50",
+      recentPeriodLabel: "4—6 月",
+      recentMonthlyAverageLabel: "3.00",
+      yearMonthlyAverageLabel: "3.50",
       recoveryLiftLabel: "16.7%",
-      h2AtQ2PaceLabel: "18.00",
-      gapToH1Label: "-3.00",
+      remainingMonths: 6,
+      remainingAtRecentPaceLabel: "18.00",
+      gapToYearPaceLabel: "-3.00",
     });
 
     const allImprovingAttribution = {
@@ -504,7 +508,84 @@ describe("productCategoryPnlPageModel", () => {
     });
   });
 
-  it("does not derive the H1 monitor from FTP scenarios or incomplete month coverage", () => {
+  it("uses January through August and August attribution for the selected period", () => {
+    const fixture = buildManagementMonitorFixture(8);
+    const surface = selectProductCategoryManagementMonitoringSurface(fixture);
+    expect(surface).toMatchObject({
+      state: "ready",
+      periodLabel: "2026 年 1—8 月",
+      currentMonthLabel: "8 月",
+      coverageLabel: "8/8 月正式数据",
+      tpl: { currentPnlLabel: "3.00" },
+      liability: { yearNetLabel: "0.47", currentMonthDeltaLabel: "+0.10" },
+      derivatives: { yearTotalLabel: "0.40" },
+      runRate: {
+        recentPeriodLabel: "6—8 月",
+        recentMonthlyAverageLabel: "8.00",
+        yearMonthlyAverageLabel: "5.25",
+        remainingMonths: 4,
+        remainingAtRecentPaceLabel: "32.00",
+        gapToYearPaceLabel: "+11.00",
+      },
+    });
+    expect(surface.tpl?.thresholds[0]).toMatchObject({
+      label: "达到 7 月净营收水平",
+      targetPnlLabel: "2.00",
+    });
+    const june = buildManagementMonitorFixture();
+    expect(selectProductCategoryManagementMonitoringSurface({
+      ...fixture,
+      currentAttribution: june.currentAttribution,
+    }).state).toBe("insufficient");
+    expect(selectProductCategoryManagementMonitoringSurface({
+      ...fixture,
+      snapshots: fixture.snapshots.filter((snapshot) => snapshot.reportDate !== "2026-07-31"),
+    })).toMatchObject({
+      state: "insufficient",
+      periodLabel: "2026 年 1—8 月",
+      coverageLabel: "已覆盖 7/8 月",
+      emptyCopy: "需要 1—8 月连续正式月度数据；当前缺少 7月。",
+    });
+  });
+
+  it("keeps all twelve months and does not project beyond December", () => {
+    const fixture = buildManagementMonitorFixture(12);
+    expect(selectProductCategoryManagementMonitoringSurface(fixture)).toMatchObject({
+      state: "ready",
+      coverageLabel: "12/12 月正式数据",
+      derivatives: { yearTotalLabel: "0.80" },
+      runRate: {
+        recentPeriodLabel: "10—12 月",
+        yearMonthlyAverageLabel: "5.50",
+        remainingMonths: 0,
+        remainingAtRecentPaceLabel: "0.00",
+        gapToYearPaceLabel: "0.00",
+      },
+    });
+    expect(selectProductCategoryManagementMonitoringSurface({
+      ...fixture,
+      snapshots: fixture.snapshots.slice(-8),
+    })).toMatchObject({ state: "insufficient", coverageLabel: "已覆盖 8/12 月" });
+  });
+
+  it.each([1, 2])("does not use future months or unfinished Q1 in month %s", (month) => {
+    const fixture = buildManagementMonitorFixture(month);
+    const allYear = buildManagementMonitorFixture(12);
+    const surface = selectProductCategoryManagementMonitoringSurface({
+      ...fixture,
+      snapshots: allYear.snapshots,
+    });
+    expect(surface.state).toBe("ready");
+    expect(surface.coverageLabel).toBe(`${month}/${month} 月正式数据`);
+    expect(surface.tpl?.thresholds.map((threshold) => threshold.key)).toEqual(
+      month === 1 ? ["year_average"] : ["prior_month", "year_average"],
+    );
+    expect(surface.derivatives?.topThreeConcentrationLabel).toBe(EM_DASH);
+    expect(surface.runRate?.q1MonthlyAverageLabel).toBe(EM_DASH);
+    expect(surface.runRate?.remainingMonths).toBe(12 - month);
+  });
+
+  it("does not derive the monitor from FTP scenarios or incomplete month coverage", () => {
     expect(
       selectProductCategoryManagementMonitoringSurface({
         reportDate: "2026-06-30",
@@ -1495,7 +1576,7 @@ describe("productCategoryPnlPageModel", () => {
         rateLabel: "1.50%",
         assetNetIncomeLabel: "6.40",
         assetDeltaLabel: "+0.40",
-        liabilityNetIncomeLabel: "1.10",
+        liabilityNetIncomeLabel: "-1.10",
         liabilityDeltaLabel: "+0.10",
         grandNetIncomeLabel: "5.30",
         grandDeltaLabel: "+0.50",
@@ -1861,12 +1942,12 @@ describe("productCategoryPnlPageModel", () => {
         summaryLabel:
           "AC债券投资在 2.00% 情景较正式基线 -0.80 亿元；正式归因显示主导因素为 FTP因素 -0.55 亿元。",
         bridgeLabel:
-          "口径桥：情景压力 -0.80 亿元；正式归因合计 -0.75 亿元；差异 -0.05 亿元。",
+          "口径桥：情景压力 -0.80 亿元；正式归因合计 -0.90 亿元；差异 +0.10 亿元。",
         bridgeConclusionLabel:
-          "情景压力与正式归因差异 0.05 亿元，需分开复核情景 FTP 假设和正式归因期间口径。",
+          "正式归因闭合误差 +0.01 亿元，需先复核六项驱动和输入来源，再判断与情景压力的口径差异。",
         bridgeTone: "warning",
         reviewActionItems: [
-          "先复核情景 FTP 假设：确认 2.00% 情景是否只改变 FTP，不混入正式期间变动。",
+          "先复核正式归因闭合误差及六项驱动的输入来源。",
           "核对正式归因期间口径：确认正式归因的 current/prior 日期、月度/同比口径与情景基线不同。",
           "重点追踪 FTP因素：复核 FTP 输入、基准利率和资产负债侧映射。",
         ],
@@ -1893,6 +1974,16 @@ describe("productCategoryPnlPageModel", () => {
         label: "规模因素",
         valueLabel: "-0.15",
         tone: "negative",
+      }),
+      expect.objectContaining({
+        label: "天数因素",
+        valueLabel: "0.00",
+        tone: "neutral",
+      }),
+      expect.objectContaining({
+        label: "直接因素",
+        valueLabel: "0.00",
+        tone: "neutral",
       }),
     ]);
   });
@@ -2208,16 +2299,16 @@ describe("productCategoryPnlPageModel", () => {
         item.key,
         item.label,
         item.valueLabel,
-        item.shareLabel,
+        item.relationLabel,
       ]),
     ).toEqual([
-      ["rate_effect", "利率因素", "+0.24", "50.0%"],
-      ["scale_effect", "规模因素", "+0.16", "33.3%"],
-      ["ftp_effect", "FTP因素", "-0.08", "-16.7%"],
-      ["unexplained_effect", "未解释", "+0.07", "14.6%"],
-      ["direct_effect", "直接因素", "+0.03", "6.3%"],
-      ["closure_error", "闭合误差", "+0.01", "2.1%"],
-      ["day_effect", "天数因素", "0.00", "0.0%"],
+      ["rate_effect", "利率因素", "+0.24", "同向"],
+      ["scale_effect", "规模因素", "+0.16", "同向"],
+      ["ftp_effect", "FTP因素", "-0.08", "抵消"],
+      ["unexplained_effect", "未解释", "+0.07", "同向"],
+      ["direct_effect", "直接因素", "+0.03", "同向"],
+      ["closure_error", "闭合误差", "+0.01", "同向"],
+      ["day_effect", "天数因素", "0.00", "中性"],
     ]);
     expect(surface.evidenceItems).toEqual([
       "本期净营收 1.20 亿元",
@@ -2226,6 +2317,54 @@ describe("productCategoryPnlPageModel", () => {
       "当前收益率 2.80%",
       "闭合误差 +0.01 亿元",
     ]);
+  });
+
+  it("does not present an offset attribution driver as a percentage of net change", () => {
+    const surface = selectProductCategoryRootCauseSurface({
+      rows: [
+        row({
+          category_id: "bond_tpl",
+          category_name: "TPL",
+          business_net_income: yi(0.2),
+        }),
+      ],
+      attribution: attributionPayload({
+        rows: [
+          attributionRow({
+            category_id: "bond_tpl",
+            category_name: "TPL",
+            effects: {
+              delta_business_net_income: yi(0.84),
+              rate_effect: yi(0.86),
+              scale_effect: yi(-0.13),
+              ftp_effect: yi(0.11),
+            },
+          }),
+        ],
+      }),
+    });
+
+    expect(surface.driverRows.slice(0, 3)).toEqual([
+      expect.objectContaining({
+        key: "rate_effect",
+        valueLabel: "+0.86",
+        relationLabel: "同向",
+      }),
+      expect.objectContaining({
+        key: "scale_effect",
+        valueLabel: "-0.13",
+        relationLabel: "抵消",
+      }),
+      expect.objectContaining({
+        key: "ftp_effect",
+        valueLabel: "+0.11",
+        relationLabel: "同向",
+      }),
+    ]);
+    for (const driver of surface.driverRows) {
+      expect(driver).not.toHaveProperty("sharePct");
+      expect(driver).not.toHaveProperty("shareLabel");
+    }
   });
 
   it("includes the formal day effect in the product root-cause driver list", () => {
@@ -2274,7 +2413,7 @@ describe("productCategoryPnlPageModel", () => {
         key: "day_effect",
         label: "天数因素",
         valueLabel: "-0.01",
-        shareLabel: "100.0%",
+        relationLabel: "同向",
       }),
     );
   });
@@ -3177,6 +3316,82 @@ describe("productCategoryPnlPageModel", () => {
     );
   });
 
+  describe("interest-earning spread chart missing values", () => {
+    const snapshot = (
+      reportDate: string,
+      fields: Parameters<typeof interestSpreadPayload>[0] = {},
+    ) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+        interest_earning_spread: interestSpreadPayload(fields),
+      });
+
+    it("keeps sorted periods and valid series when individual fields are missing", () => {
+      const snapshots = [
+        snapshot("2026-04-30", { allAsset: "2.30", allLiability: "1.60" }),
+        snapshot("2026-02-28", { allLiability: "1.50", allSpread: "0.80" }),
+        snapshot("2026-05-31"),
+        snapshot("2026-01-31", {
+          allAsset: "2.40",
+          allLiability: "1.60",
+          allSpread: "0.80",
+        }),
+        snapshot("2026-03-31", { allAsset: "2.10", allSpread: "0.70" }),
+      ];
+
+      expect(selectProductCategoryInterestEarningSpreadChart(snapshots)).toEqual({
+        labels: [
+          "2026年01月",
+          "2026年02月",
+          "2026年03月",
+          "2026年04月",
+          "2026年05月",
+        ],
+        assetYield: [2.4, null, 2.1, 2.3, null],
+        liabilityYield: [1.6, 1.5, null, 1.6, null],
+        spread: [0.8, 0.8, 0.7, null, null],
+      });
+    });
+
+    it("keeps zero-valued yields and spread as observed values", () => {
+      expect(
+        selectProductCategoryInterestEarningSpreadChart([
+          snapshot("2026-01-31", {
+            allAsset: "0",
+            allLiability: "0",
+            allSpread: "0",
+          }),
+        ]),
+      ).toEqual({
+        labels: ["2026年01月"],
+        assetYield: [0],
+        liabilityYield: [0],
+        spread: [0],
+      });
+    });
+
+    it("keeps the empty state when every value is unavailable", () => {
+      expect(selectProductCategoryInterestEarningSpreadChart([])).toBeNull();
+      expect(
+        selectProductCategoryInterestEarningSpreadChart([
+          snapshot("2026-01-31"),
+          snapshot("2026-02-28"),
+        ]),
+      ).toBeNull();
+    });
+  });
+
   it("builds the interest-earning asset and interest-bearing liability scale chart from row and liability total fields", () => {
     const snapshot = (
       reportDate: string,
@@ -3445,6 +3660,12 @@ describe("productCategoryPnlPageModel", () => {
     const pageSource = [
       "src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
       "src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts",
+      "src/features/product-category-pnl/pages/model/productCategoryPnlDiagnosticsModel.ts",
+      "src/features/product-category-pnl/pages/model/productCategoryPnlDisplayModel.ts",
+      "src/features/product-category-pnl/pages/ProductCategoryDiagnosticsPanel.tsx",
+      "src/features/product-category-pnl/pages/ProductCategoryLiabilityTrendPanel.tsx",
+      "src/features/product-category-pnl/pages/ProductCategoryTrendWorkspace.tsx",
+      "src/features/product-category-pnl/pages/useProductCategoryTrendCharts.ts",
     ]
       .map((path) => readFileSync(path, "utf8"))
       .join("\n");
@@ -3459,7 +3680,7 @@ describe("productCategoryPnlPageModel", () => {
     expect(pageSource).not.toContain("资产收益率上行扩大利差");
     expect(pageSource).not.toContain("负债成本上行压缩利差");
     expect(pageSource).not.toContain("利差变化=资产收益率贡献+负债成本贡献");
-    expect(pageSource).toContain("后端返回的利差指标变动");
+    expect(pageSource).toContain("利差变化为后端当前月字段减上年同月字段");
   });
 
   it("groups intermediate business income by governed row without total fallback", () => {
@@ -3991,7 +4212,7 @@ describe("productCategoryPnlPageModel", () => {
       spreadCurrent: 0.85,
       spreadPrior: 0.7,
       assetContributionBp: 20,
-      liabilityContributionBp: -5,
+      liabilityContributionBp: 5,
       spreadDeltaBp: 15,
     });
     expect(surface.details.map((item) => item.key)).toEqual([
@@ -4131,7 +4352,7 @@ describe("productCategoryPnlPageModel", () => {
       spreadCurrent: 0.85,
       spreadPrior: 0.7,
       assetContributionBp: 25,
-      liabilityContributionBp: -10,
+      liabilityContributionBp: 10,
       spreadDeltaBp: 15,
     });
   });
@@ -5253,14 +5474,10 @@ describe("productCategoryPnlPageModel", () => {
       .map((rowItem) => ({
         categoryId: rowItem.category_id,
         side: rowItem.side,
-        businessNetIncomeDisplay: formatProductCategoryRowDisplayValue(
-          rowItem,
+        businessNetIncomeDisplay: formatProductCategoryValue(
           rowItem.business_net_income,
         ),
-        cnyNetDisplay: formatProductCategoryRowDisplayValue(
-          rowItem,
-          rowItem.cny_net,
-        ),
+        cnyNetDisplay: formatProductCategoryValue(rowItem.cny_net),
         cnyFtpDisplay: formatProductCategoryRowDisplayValue(
           rowItem,
           rowItem.cny_ftp,
@@ -5282,8 +5499,8 @@ describe("productCategoryPnlPageModel", () => {
       {
         categoryId: "repo_liabilities",
         side: "liability",
-        businessNetIncomeDisplay: "1.23",
-        cnyNetDisplay: "2.23",
+        businessNetIncomeDisplay: "-1.23",
+        cnyNetDisplay: "-2.23",
         cnyFtpDisplay: "3.23",
         weightedYieldDisplay: "1.41",
       },
@@ -5329,18 +5546,9 @@ describe("productCategoryPnlPageModel", () => {
         rowItem,
         rowItem.foreign_ftp,
       ),
-      "MTR-PCP-009": formatProductCategoryRowDisplayValue(
-        rowItem,
-        rowItem.cny_net,
-      ),
-      "MTR-PCP-010": formatProductCategoryForeignDisplayValue(
-        rowItem,
-        rowItem.foreign_net,
-      ),
-      "MTR-PCP-011": formatProductCategoryRowDisplayValue(
-        rowItem,
-        rowItem.business_net_income,
-      ),
+      "MTR-PCP-009": formatProductCategoryValue(rowItem.cny_net),
+      "MTR-PCP-010": formatProductCategoryValue(rowItem.foreign_net),
+      "MTR-PCP-011": formatProductCategoryValue(rowItem.business_net_income),
       "MTR-PCP-012": formatProductCategoryYieldValue(rowItem.weighted_yield),
     });
 
@@ -5363,9 +5571,9 @@ describe("productCategoryPnlPageModel", () => {
       "MTR-PCP-006": "-0.00",
       "MTR-PCP-007": "0.00",
       "MTR-PCP-008": "-0.00",
-      "MTR-PCP-009": "0.00",
-      "MTR-PCP-010": "0.00",
-      "MTR-PCP-011": "0.00",
+      "MTR-PCP-009": "-0.00",
+      "MTR-PCP-010": "-0.00",
+      "MTR-PCP-011": "-0.00",
       "MTR-PCP-012": "-115.87",
     });
   });
@@ -5419,18 +5627,9 @@ describe("productCategoryPnlPageModel", () => {
         rowItem,
         rowItem.foreign_ftp,
       ),
-      "MTR-PCP-009": formatProductCategoryRowDisplayValue(
-        rowItem,
-        rowItem.cny_net,
-      ),
-      "MTR-PCP-010": formatProductCategoryForeignDisplayValue(
-        rowItem,
-        rowItem.foreign_net,
-      ),
-      "MTR-PCP-011": formatProductCategoryRowDisplayValue(
-        rowItem,
-        rowItem.business_net_income,
-      ),
+      "MTR-PCP-009": formatProductCategoryValue(rowItem.cny_net),
+      "MTR-PCP-010": formatProductCategoryValue(rowItem.foreign_net),
+      "MTR-PCP-011": formatProductCategoryValue(rowItem.business_net_income),
       "MTR-PCP-012": formatProductCategoryYieldValue(rowItem.weighted_yield),
     });
 
@@ -5451,9 +5650,9 @@ describe("productCategoryPnlPageModel", () => {
       "MTR-PCP-006": "-2.03",
       "MTR-PCP-007": "2.04",
       "MTR-PCP-008": "-2.05",
-      "MTR-PCP-009": "2.06",
-      "MTR-PCP-010": "-2.07",
-      "MTR-PCP-011": "2.08",
+      "MTR-PCP-009": "-2.06",
+      "MTR-PCP-010": "2.07",
+      "MTR-PCP-011": "-2.08",
       "MTR-PCP-012": "1.23",
     });
   });

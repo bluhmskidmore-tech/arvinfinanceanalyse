@@ -11,7 +11,7 @@ from typing import Any
 import duckdb
 from backend.app.core_finance.adjusted_returns import PRICE_ADJUSTMENT_MODE
 from backend.app.core_finance.field_normalization import tradable_status_sql_condition
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 
 TABLE_HIST = "livermore_candidate_history"
 TABLE_OBS = "choice_stock_daily_observation"
@@ -61,114 +61,115 @@ def mature_livermore_candidate_outcomes(
         return _empty_result(status="not_ready", evaluation_as_of_date=evaluation_date, reason="duckdb_missing")
 
     run_id = f"livermore_candidate_outcome_maturity:{evaluation_date}:{OUTCOME_CONTRACT_VERSION}"
-    with acquire_lock(LIVERMORE_CANDIDATE_OUTCOME_LOCK, base_dir=path.parent):
-        conn = duckdb.connect(str(path), read_only=False)
-        try:
-            tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
-            missing_tables = [table for table in (TABLE_HIST, TABLE_OBS) if table not in tables]
-            if missing_tables:
-                return _empty_result(
-                    status="not_ready",
-                    evaluation_as_of_date=evaluation_date,
-                    reason=f"missing_tables:{','.join(missing_tables)}",
-                )
-
-            history_columns = _table_columns(conn, TABLE_HIST)
-            required_columns = {
-                "snapshot_as_of_date",
-                "stock_code",
-                "selection_close",
-                *_OUTCOME_COLUMNS,
-            }
-            missing_columns = sorted(required_columns - history_columns)
-            if missing_columns:
-                return _empty_result(
-                    status="not_ready",
-                    evaluation_as_of_date=evaluation_date,
-                    reason=f"missing_history_columns:{','.join(missing_columns)}",
-                )
-
-            observation_columns = _table_columns(conn, TABLE_OBS)
-            if not {"trade_date", "stock_code", "close_value"}.issubset(observation_columns):
-                return _empty_result(
-                    status="not_ready",
-                    evaluation_as_of_date=evaluation_date,
-                    reason="missing_observation_columns",
-                )
-
-            conn.execute("begin transaction")
-            candidates = _load_candidates(conn, evaluation_as_of_date=evaluation_date)
-            if not candidates:
-                conn.execute("commit")
-                return _empty_result(status="completed", evaluation_as_of_date=evaluation_date)
-
-            minimum_snapshot_date = min(str(row["snapshot_as_of_date"])[:10] for row in candidates)
-            observation_windows, market_dates, loaded_observation_row_count = (
-                _load_candidate_observation_windows(
-                    conn,
-                    candidates=candidates,
-                    evaluation_as_of_date=evaluation_date,
-                    minimum_snapshot_date=minimum_snapshot_date,
-                    observation_columns=observation_columns,
-                )
-            )
-            required_factor_keys = _required_factor_keys(
-                candidates,
-                observation_windows=observation_windows,
-            )
-            factors, loaded_factor_row_count = _load_adjustment_factors(
-                conn,
-                tables=tables,
-                factor_keys=required_factor_keys,
-            )
-            table_present = [TABLE_HIST, TABLE_OBS]
-            if TABLE_ADJ_FACTOR in tables:
-                table_present.append(TABLE_ADJ_FACTOR)
-
-            horizon_items = {horizon: [] for horizon in _HORIZONS}
-            updated_rows = 0
-            updated_fields = 0
-            arbitrated_conflict_units = 0
-            issues: list[str] = []
-            blocked_rows: list[dict[str, object]] = []
-            for candidate in candidates:
-                updates, maturity, row_issues, blocked_issue, row_arbitrations = _candidate_outcome_updates(
-                    candidate,
-                    observation_window=observation_windows.get(
-                        int(candidate["_rowid"]),
-                        _empty_observation_window(),
-                    ),
-                    market_dates=market_dates,
-                    factors=factors,
-                    evaluation_as_of_date=evaluation_date,
-                    run_id=run_id,
-                    table_present=table_present,
-                    arbitrate_conflicts=arbitrate_conflicts,
-                )
-                issues.extend(row_issues)
-                arbitrated_conflict_units += row_arbitrations
-                if blocked_issue:
-                    blocked_rows.append(
-                        {
-                            "rowid": int(candidate["_rowid"]),
-                            "issue": blocked_issue,
-                        }
-                    )
-                for horizon, item in maturity.items():
-                    horizon_items[horizon].append(item)
-                if updates:
-                    _update_candidate_outcomes(conn, row_id=int(candidate["_rowid"]), updates=updates)
-                    updated_rows += 1
-                    updated_fields += len(updates)
-            conn.execute("commit")
-        except Exception:
+    with acquire_lock(resolve_duckdb_writer_lock(path), base_dir=path.parent):
+        with acquire_lock(LIVERMORE_CANDIDATE_OUTCOME_LOCK, base_dir=path.parent):
+            conn = duckdb.connect(str(path), read_only=False)
             try:
-                conn.execute("rollback")
-            except duckdb.Error:
-                pass
-            raise
-        finally:
-            conn.close()
+                tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+                missing_tables = [table for table in (TABLE_HIST, TABLE_OBS) if table not in tables]
+                if missing_tables:
+                    return _empty_result(
+                        status="not_ready",
+                        evaluation_as_of_date=evaluation_date,
+                        reason=f"missing_tables:{','.join(missing_tables)}",
+                    )
+
+                history_columns = _table_columns(conn, TABLE_HIST)
+                required_columns = {
+                    "snapshot_as_of_date",
+                    "stock_code",
+                    "selection_close",
+                    *_OUTCOME_COLUMNS,
+                }
+                missing_columns = sorted(required_columns - history_columns)
+                if missing_columns:
+                    return _empty_result(
+                        status="not_ready",
+                        evaluation_as_of_date=evaluation_date,
+                        reason=f"missing_history_columns:{','.join(missing_columns)}",
+                    )
+
+                observation_columns = _table_columns(conn, TABLE_OBS)
+                if not {"trade_date", "stock_code", "close_value"}.issubset(observation_columns):
+                    return _empty_result(
+                        status="not_ready",
+                        evaluation_as_of_date=evaluation_date,
+                        reason="missing_observation_columns",
+                    )
+
+                conn.execute("begin transaction")
+                candidates = _load_candidates(conn, evaluation_as_of_date=evaluation_date)
+                if not candidates:
+                    conn.execute("commit")
+                    return _empty_result(status="completed", evaluation_as_of_date=evaluation_date)
+
+                minimum_snapshot_date = min(str(row["snapshot_as_of_date"])[:10] for row in candidates)
+                observation_windows, market_dates, loaded_observation_row_count = (
+                    _load_candidate_observation_windows(
+                        conn,
+                        candidates=candidates,
+                        evaluation_as_of_date=evaluation_date,
+                        minimum_snapshot_date=minimum_snapshot_date,
+                        observation_columns=observation_columns,
+                    )
+                )
+                required_factor_keys = _required_factor_keys(
+                    candidates,
+                    observation_windows=observation_windows,
+                )
+                factors, loaded_factor_row_count = _load_adjustment_factors(
+                    conn,
+                    tables=tables,
+                    factor_keys=required_factor_keys,
+                )
+                table_present = [TABLE_HIST, TABLE_OBS]
+                if TABLE_ADJ_FACTOR in tables:
+                    table_present.append(TABLE_ADJ_FACTOR)
+
+                horizon_items: dict[str, list[dict[str, Any]]] = {horizon: [] for horizon in _HORIZONS}
+                updated_rows = 0
+                updated_fields = 0
+                arbitrated_conflict_units = 0
+                issues: list[str] = []
+                blocked_rows: list[dict[str, object]] = []
+                for candidate in candidates:
+                    updates, maturity, row_issues, blocked_issue, row_arbitrations = _candidate_outcome_updates(
+                        candidate,
+                        observation_window=observation_windows.get(
+                            int(candidate["_rowid"]),
+                            _empty_observation_window(),
+                        ),
+                        market_dates=market_dates,
+                        factors=factors,
+                        evaluation_as_of_date=evaluation_date,
+                        run_id=run_id,
+                        table_present=table_present,
+                        arbitrate_conflicts=arbitrate_conflicts,
+                    )
+                    issues.extend(row_issues)
+                    arbitrated_conflict_units += row_arbitrations
+                    if blocked_issue:
+                        blocked_rows.append(
+                            {
+                                "rowid": int(candidate["_rowid"]),
+                                "issue": blocked_issue,
+                            }
+                        )
+                    for horizon, item in maturity.items():
+                        horizon_items[horizon].append(item)
+                    if updates:
+                        _update_candidate_outcomes(conn, row_id=int(candidate["_rowid"]), updates=updates)
+                        updated_rows += 1
+                        updated_fields += len(updates)
+                conn.execute("commit")
+            except Exception:
+                try:
+                    conn.execute("rollback")
+                except duckdb.Error:
+                    pass
+                raise
+            finally:
+                conn.close()
 
     return {
         "status": "partial" if blocked_rows else "completed",

@@ -25,6 +25,7 @@ _TENOR_YEARS: dict[str, Decimal] = {
 # 此处取两者合集：日历一年 cutoff 保证稀疏历史下 "1y" 语义成立，252 上限
 # 与交易日一年约定对齐。
 _PERCENTILE_1Y_MAX_OBSERVATIONS = 252
+_REQUIRED_TENORS = ("1Y", "10Y")
 
 
 def _one_year_cutoff(anchor: date) -> date:
@@ -132,9 +133,15 @@ def compute_yield_curve_shape(
 ) -> dict[str, Any]:
     curves = _build_curves(curve_rows, curve_id=curve_id, report_date=report_date)
     available_dates = sorted(curves.keys(), reverse=True)
+    requested_report_date = report_date.isoformat()
     if not available_dates:
         return {
-            "report_date": report_date.isoformat(),
+            "requested_report_date": requested_report_date,
+            "report_date": requested_report_date,
+            "curve_date": None,
+            "fallback_mode": "none_available",
+            "stale_days": None,
+            "missing_tenors": list(_REQUIRED_TENORS),
             "data_status": "unavailable",
             **_OBSERVATION_FLAGS,
             "shape": "Unavailable",
@@ -149,11 +156,31 @@ def compute_yield_curve_shape(
             "warnings": ["NO_GOV_CURVE"],
         }
 
-    current_curve = curves[available_dates[0]]
+    latest_curve_date = available_dates[0]
+    complete_dates = [
+        sample_date
+        for sample_date in available_dates
+        if all(tenor in curves[sample_date] for tenor in _REQUIRED_TENORS)
+    ]
+    current_date = complete_dates[0] if complete_dates else latest_curve_date
+    current_curve = curves[current_date]
+    missing_tenors = [tenor for tenor in _REQUIRED_TENORS if tenor not in current_curve]
+    fallback_mode = "none"
+    if not complete_dates:
+        fallback_mode = "none_available"
+    elif current_date != latest_curve_date:
+        fallback_mode = "latest_complete_snapshot"
+    stale_days = (report_date - current_date).days
+
     spread_10y_1y_bp = _spread_bp(current_curve, "10Y", "1Y")
     if spread_10y_1y_bp is None:
         return {
-            "report_date": report_date.isoformat(),
+            "requested_report_date": requested_report_date,
+            "report_date": requested_report_date,
+            "curve_date": current_date.isoformat(),
+            "fallback_mode": fallback_mode,
+            "stale_days": stale_days,
+            "missing_tenors": missing_tenors,
             "data_status": "unavailable",
             **_OBSERVATION_FLAGS,
             "shape": "Unavailable",
@@ -170,11 +197,12 @@ def compute_yield_curve_shape(
 
     # 只用当前观测日回看一年内的历史（排除当日自身），避免 "1y" 分位被
     # 更早年份的利差水平主导；窗口实际覆盖范围随 percentile_1y_window 披露。
-    current_date = available_dates[0]
     cutoff_1y = _one_year_cutoff(current_date)
     spread_history: list[Decimal] = []
     history_window_dates: list[date] = []
-    for history_date in available_dates[1:]:
+    for history_date in available_dates:
+        if history_date >= current_date:
+            continue
         if history_date < cutoff_1y:
             break
         history_spread = _spread_bp(curves[history_date], "10Y", "1Y")
@@ -209,6 +237,8 @@ def compute_yield_curve_shape(
     spread_10y_5y = _spread_bp(current_curve, "10Y", "5Y")
     spread_30y_10y = _spread_bp(current_curve, "30Y", "10Y")
     warnings: list[str] = []
+    if fallback_mode == "latest_complete_snapshot":
+        warnings.append("CURVE_DATE_FALLBACK")
     if spread_10y_5y is None:
         warnings.append("SPREAD_10Y_5Y_UNAVAILABLE")
     if spread_30y_10y is None:
@@ -220,7 +250,12 @@ def compute_yield_curve_shape(
     }
 
     return {
-        "report_date": report_date.isoformat(),
+        "requested_report_date": requested_report_date,
+        "report_date": requested_report_date,
+        "curve_date": current_date.isoformat(),
+        "fallback_mode": fallback_mode,
+        "stale_days": stale_days,
+        "missing_tenors": missing_tenors,
         "data_status": "degraded" if warnings else "complete",
         **_OBSERVATION_FLAGS,
         "shape": shape,

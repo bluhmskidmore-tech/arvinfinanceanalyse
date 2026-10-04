@@ -319,3 +319,30 @@ class HomeSnapshotPayload(BaseModel):
     verdict: VerdictPayload | None = None
     product_category_ytd: ProductCategoryYtdHeadlinePayload | None = None
     product_category_monthly: ProductCategoryMonthlyHeadlinePayload | None = None
+
+
+class HomeExecutiveResultMeta(ResultMeta):
+    """Typed shared metadata while preserving additive lineage disclosures."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class HomeSnapshotEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: HomeExecutiveResultMeta
+    result: HomeSnapshotPayload
+
+
+class HomeIncomeTrendEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: HomeExecutiveResultMeta
+    result: HomeIncomeTrendPayload
+
+
+class HomeResearchReportsEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: HomeExecutiveResultMeta
+    result: HomeResearchReportsPayload

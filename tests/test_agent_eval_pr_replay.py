@@ -18,6 +18,12 @@ from scripts.agent_eval.pr_replay import (
     _worktree_signature,
     main,
 )
+from scripts.agent_eval.reward import evaluate_result
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_agent_eval,
+]
 
 pytestmark = [
     pytest.mark.excluded_surface_regression,
@@ -108,6 +114,7 @@ def test_shipped_trigger_mapping_retains_cross_page_files_and_classifies_unknown
     assert len(all_ids) == 7
     assert selected("frontend/src/api/client.ts") == all_ids
     assert selected("frontend/src/api/httpResponseError.ts") == all_ids
+    assert selected("frontend/src/mocks/mockApiClient.ts") == all_ids
     assert selected("frontend/src/test/setup.ts") == all_ids
     embedded_agent_pages = {
         "bond_analytics_contract_001", "dashboard_home_contract_001",
@@ -134,13 +141,15 @@ def test_shipped_trigger_mapping_retains_cross_page_files_and_classifies_unknown
         "pnl_attribution_contract_001", "product_category_pnl_contract_001"
     }
     for dashboard_dependency in (
-        "pnlCoreClient.ts", "pnlCoreMockClient.ts", "candidateFinancialIndicatorsClient.ts",
-        "marketDataClient.ts", "marketDataMockClient.ts", "pnlAttributionMockClient.ts",
-        "contracts/researchCalendar.ts",
+        "frontend/src/api/pnlCoreClient.ts",
+        "frontend/src/mocks/pnlCoreMockClient.ts",
+        "frontend/src/api/candidateFinancialIndicatorsClient.ts",
+        "frontend/src/api/marketDataClient.ts",
+        "frontend/src/mocks/marketDataMockClient.ts",
+        "frontend/src/mocks/pnlAttributionMockClient.ts",
+        "frontend/src/api/contracts/researchCalendar.ts",
     ):
-        assert "dashboard_home_contract_001" in selected(
-            f"frontend/src/api/{dashboard_dependency}"
-        )
+        assert "dashboard_home_contract_001" in selected(dashboard_dependency)
     assert selected("frontend/src/test/BalanceAnalysisPage.test.tsx") == {
         "balance_analysis_contract_001"
     }
@@ -148,6 +157,92 @@ def test_shipped_trigger_mapping_retains_cross_page_files_and_classifies_unknown
     assert _unmapped_shared_files(["frontend/src/api/newSharedClient.ts"], tasks) == [
         "frontend/src/api/newSharedClient.ts"
     ]
+    assert _unmapped_shared_files(["frontend/src/mocks/newSharedMockClient.ts"], tasks) == [
+        "frontend/src/mocks/newSharedMockClient.ts"
+    ]
+
+
+SHIPPED_TASK_MOCK_FILES = {
+    "balance_analysis_contract_001": {
+        "mockApiClient.ts", "balanceMovementMockClient.ts",
+        "balanceAnalysisMockClient.ts", "liabilityAdbMockClient.ts",
+    },
+    "bond_analytics_contract_001": {
+        "mockApiClient.ts", "bondAnalyticsMockClient.ts",
+        "bondAnalyticsYieldCurveTermStructureMock.ts", "bondDashboardBundleMock.ts",
+        "bondDashboardWorkbenchMockEndpoints.ts", "dashboardCoreWorkbenchSamples.ts",
+        "homeMarketTickerMockClient.ts", "marketDataMockClient.ts", "marketDataMocks.ts",
+        "agentMockClient.ts",
+    },
+    "dashboard_home_contract_001": {
+        "mockApiClient.ts", "bondAnalyticsMockClient.ts",
+        "bondAnalyticsYieldCurveTermStructureMock.ts", "dashboardCoreWorkbenchSamples.ts",
+        "balanceMovementMockClient.ts", "pnlAttributionMockClient.ts", "pnlCoreMockClient.ts",
+        "homeMarketTickerMockClient.ts", "marketDataMockClient.ts", "marketDataMocks.ts",
+        "balanceAnalysisMockClient.ts", "liabilityAdbMockClient.ts", "executiveMockClient.ts",
+        "agentMockClient.ts", "homeExecutiveMockClient.ts", "workbenchDashboardMockApi.ts",
+    },
+    "ledger_pnl_unit_mismatch_001": {
+        "mockApiClient.ts", "pnlCoreMockClient.ts", "ledgerMockClient.ts",
+        "qdbGlMonthlyAnalysisMockClient.ts",
+    },
+    "pnl_attribution_contract_001": {
+        "mockApiClient.ts", "pnlAttributionMockClient.ts", "pnlCoreMockClient.ts",
+        "productCategoryMockClient.ts", "agentMockClient.ts",
+    },
+    "product_category_pnl_contract_001": {
+        "mockApiClient.ts", "productCategoryMockClient.ts", "qdbGlMonthlyAnalysisMockClient.ts",
+    },
+    "risk_tensor_contract_001": {"mockApiClient.ts", "executiveMockClient.ts"},
+}
+
+
+@pytest.mark.parametrize("task_id", SHIPPED_TASK_MOCK_FILES)
+def test_shipped_moved_mocks_keep_consumers_and_exact_authorized_scope(task_id):
+    tasks_dir = Path(__file__).resolve().parents[1] / "scripts/agent_eval/tasks"
+    tasks = {
+        path.stem: json.loads(path.read_text(encoding="utf-8"))
+        for path in tasks_dir.glob("*.json")
+    }
+    task = tasks[task_id]
+    prefix = "frontend/src/mocks/"
+    expected_paths = {prefix + name for name in SHIPPED_TASK_MOCK_FILES[task_id]}
+    assert {path for path in task["pr_trigger_scope"] if path.startswith(prefix)} == expected_paths
+    assert {path for path in task["allowed_scope"] if path.startswith(prefix)} == expected_paths
+
+    result = {
+        "evidence": task["required_evidence"],
+        "checks": {name: "passed" for name in task["checks"]},
+        "business_gates": {name: "passed" for name in task["business_gates"]},
+        "page_gates": {name: "passed" for name in task["page_gates"]},
+    }
+    for path in sorted(expected_paths):
+        expected_consumers = {
+            other_id for other_id, names in SHIPPED_TASK_MOCK_FILES.items()
+            if path.removeprefix(prefix) in names
+        }
+        assert {
+            other_id for other_id, other_task in tasks.items()
+            if _task_applies(other_task, [path])
+        } == expected_consumers
+        scorecard = evaluate_result(task, dict(result, changed_files=[path]))
+        assert scorecard["status"] == "pass"
+        assert scorecard["score"] == 100
+        assert scorecard["breakdown"]["diff"] == 20
+        assert scorecard["hard_failures"] == []
+        assert scorecard["warnings"] == []
+
+    for path in (
+        prefix + "unrelatedMockClient.ts",
+        prefix + "mockApiClient.ts.backup",
+    ):
+        assert not _task_applies(task, [path])
+        scorecard = evaluate_result(task, dict(result, changed_files=[path]))
+        assert scorecard["status"] == "fail"
+        assert scorecard["score"] == 80
+        assert scorecard["breakdown"]["diff"] == 0
+        assert scorecard["hard_failures"] == []
+        assert scorecard["warnings"] == [f"Out-of-scope path changed: {path}"]
 
 
 @pytest.mark.parametrize(
@@ -155,6 +250,8 @@ def test_shipped_trigger_mapping_retains_cross_page_files_and_classifies_unknown
     [
         ("frontend/src/api/pnlCoreClient.ts", 1, False),
         ("frontend/src/api/newSharedClient.ts", 2, True),
+        ("frontend/src/mocks/newSharedMockClient.ts", 2, True),
+        ("frontend/src/mocks/positionsMockClient.ts", 2, True),
         ("frontend/src/test/AgentClient.test.ts", 0, False),
     ],
 )

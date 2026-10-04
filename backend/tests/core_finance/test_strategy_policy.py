@@ -211,8 +211,8 @@ def test_strategy_formula_versions_match_current_contracts() -> None:
     from backend.app.tasks import livermore_candidate_history_materialize
 
     assert mean_reversion_candidates.FORMULA_VERSION == "rv_mean_reversion_candidates_v2"
-    assert factor_screen_candidates.FORMULA_VERSION == "rv_factor_screen_candidates_v4"
-    assert hybrid_fusion_candidates.FORMULA_VERSION == "rv_hybrid_fusion_candidates_v5"
+    assert factor_screen_candidates.FORMULA_VERSION == "rv_factor_screen_candidates_v5"
+    assert hybrid_fusion_candidates.FORMULA_VERSION == "rv_hybrid_fusion_candidates_v6"
     assert livermore_theme_breakout.FORMULA_VERSION == "rv_livermore_theme_breakout_real_concept_interval_v7"
     assert livermore_stock_candidates.FORMULA_VERSION == "rv_livermore_stock_candidates_bundle_v7"
     assert livermore_risk_exit.FORMULA_VERSION == "rv_livermore_risk_exit_ema10_volume_obsfallback_v3"
@@ -277,8 +277,18 @@ def test_existing_modules_alias_policy_values() -> None:
     from backend.app.tasks import livermore_candidate_history_materialize
 
     assert mean_reversion_candidates.ACTIVE_MARKET_STATES is POLICY.mean_reversion_active_states
+    assert mean_reversion_candidates.PARAMS is POLICY.mean_reversion
     assert hybrid_fusion_candidates.ACTIVE_MARKET_STATES is POLICY.hybrid_fusion_active_states
     assert factor_screen_candidates.ACTIVE_MARKET_STATES is POLICY.factor_screen_active_states
+    assert factor_screen_candidates.TOP_PCT == POLICY.factor_screen.top_pct
+    assert factor_screen_candidates.MAX_CANDIDATES == POLICY.factor_screen.max_candidates
+    assert (
+        factor_screen_candidates.MAX_CANDIDATES_PER_INDUSTRY
+        == POLICY.factor_screen.max_candidates_per_industry
+    )
+    assert factor_screen_candidates.MAX_ABS_ROE == POLICY.factor_screen.max_abs_roe
+    assert factor_screen_candidates.MAX_DIVIDEND_YIELD == POLICY.factor_screen.max_dividend_yield
+    assert factor_screen_candidates.MIN_POSITIVE_MARGIN == POLICY.factor_screen.min_positive_margin
     # v3 流动性地板阈值必须与动量族入场过滤同源,禁止另写字面量。
     assert factor_screen_candidates.MIN_AVG_AMOUNT_20D == POLICY.entry_filters.min_daily_amount
     assert livermore_signal_confluence_service.ENTRY_OBSERVATION_STATES is POLICY.entry_observation_states
@@ -294,3 +304,43 @@ def test_existing_modules_alias_policy_values() -> None:
     assert livermore_candidate_history_materialize.BUY_COST_RATE == POLICY.buy_cost_rate
     assert livermore_candidate_history_materialize.SELL_COST_RATE == POLICY.sell_cost_rate
     assert livermore_candidate_history_materialize.SLIPPAGE_RATE == POLICY.slippage_rate
+
+
+def test_consolidated_strategy_params_keep_v2_v4_values_and_weight_sums() -> None:
+    """mean_reversion v2 / factor_screen v4 字面量收编后的数值锁定：
+    任何数值变化都等于口径变更，必须走 formula_version 断代而不是改这里。"""
+    from backend.app.core_finance.strategy_policy import POLICY
+
+    mr = POLICY.mean_reversion
+    assert mr.drawdown_20d_trigger == -0.15
+    assert mr.drawdown_60d_trigger == -0.25
+    assert mr.vol_ratio_min == 1.5
+    assert mr.vol_ratio_max == 5.0
+    assert mr.close_strength_min == 0.60
+    assert mr.daily_change_max == 0.095
+    assert mr.score_vol_ratio_norm == 3.0
+    assert (
+        mr.score_weight_drawdown + mr.score_weight_close_strength + mr.score_weight_vol_ratio
+        == pytest.approx(1.0)
+    )
+
+    fs = POLICY.factor_screen
+    assert fs.top_pct == 0.10
+    assert fs.max_candidates == 30
+    assert fs.max_candidates_per_industry == 3
+    assert fs.max_abs_roe == 0.60
+    assert fs.max_dividend_yield == 0.12
+    assert fs.min_positive_margin == 0.03
+    factor_weights = (
+        fs.weight_roe,
+        fs.weight_margin,
+        fs.weight_pe,
+        fs.weight_pb,
+        fs.weight_ps,
+        fs.weight_mom_3m,
+        fs.weight_mom_12m,
+        fs.weight_vol,
+        fs.weight_div,
+    )
+    assert sum(factor_weights) == pytest.approx(1.0)
+    assert fs.industry_neutral_min_group_size == 3

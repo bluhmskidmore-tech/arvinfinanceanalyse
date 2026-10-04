@@ -76,14 +76,29 @@ def _strategy_envelope() -> dict[str, Any]:
     }
 
 
+def _ready_pretrade_qualification(module: Any, strategy_envelope: dict[str, Any]) -> dict[str, Any]:
+    strategy_result = strategy_envelope["result"]
+    return {
+        "schema": "pretrade_qualification/v1",
+        "status": "ready",
+        "target_date": strategy_result["as_of_date"],
+        "stock_candidate_policy": module.EXECUTION_STOCK_CANDIDATE_POLICY,
+        "outputs": {
+            "strategy_payload_sha256": module.canonical_pretrade_output_sha256(strategy_result),
+        },
+    }
+
+
 def test_workbench_first_screen_contract_snapshot_preserves_current_shape() -> None:
     module = load_module(
         "backend.app.services.stock_analysis_workbench_service",
         "backend/app/services/stock_analysis_workbench_service.py",
     )
 
+    strategy_envelope = _strategy_envelope()
     envelope = module.build_stock_analysis_workbench_envelope(
-        strategy_envelope=_strategy_envelope(),
+        strategy_envelope=strategy_envelope,
+        pretrade_qualification=_ready_pretrade_qualification(module, strategy_envelope),
         requested_as_of_date="2026-06-26",
         top_k=4,
     )

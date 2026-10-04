@@ -42,13 +42,10 @@ try {
 
   $stage = "startup"
   Set-Location -LiteralPath $repoRoot
-  $pythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
-  if (-not [IO.File]::Exists($pythonExe)) {
-    $pythonExe = Join-Path $repoRoot "backend\.venv\Scripts\python.exe"
-  }
+  . (Join-Path $root "scripts\dev-env.ps1")
+  $pythonExe = $devEnvPython
   if (-not [IO.File]::Exists($pythonExe)) { throw "Repository Python not found." }
   $env:PATH = "$(Split-Path -Parent $pythonExe);$env:PATH"
-  . (Join-Path $root "scripts\dev-env.ps1")
   $env:PYTHONIOENCODING = "utf-8"
   [IO.File]::AppendAllText(
     $logPath,

@@ -17,7 +17,7 @@ export function BondAnalyticsMarketContextStrip({
       <div className={styles.panelHeader}>
         <div className={styles.panelTitle}>{truthStrip.title}</div>
         <div className={styles.leadModule} data-testid="bond-analysis-lead-module">
-          <span>下钻主线</span>
+          <span>当前分析</span>
           <strong>{leadModuleLabel}</strong>
           <span>{leadPromotionLabel}</span>
         </div>

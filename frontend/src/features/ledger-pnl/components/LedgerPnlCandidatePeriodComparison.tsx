@@ -277,10 +277,10 @@ export function LedgerPnlCandidatePeriodComparison({
         </div>
       </header>
 
-      {model.hasUnlockedHistoricalSource ? (
+      {model.unlockedSourceMonths.length > 0 ? (
         <div className="candidate-period-comparison__source-warning" role="note">
-          <strong>历史源未锁 · 降级候选</strong>
-          <span>上期或上上期总账未登记锁定哈希；可比结果不得替代正式财务口径。</span>
+          <strong>来源未锁 · 降级候选</strong>
+          <span>{`${model.unlockedSourceMonths.join("、")} 总账未登记锁定哈希；可比结果不得替代正式财务口径。`}</span>
         </div>
       ) : null}
 

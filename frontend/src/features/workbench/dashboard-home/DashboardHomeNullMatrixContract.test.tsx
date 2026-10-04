@@ -15,6 +15,9 @@ vi.mock("../pages/useDashboardSnapshotBoundary", () => ({
 vi.mock("./useMockHomeFirstScreenView", () => ({
   useMockHomeFirstScreenView: () => null,
 }));
+vi.mock("./useHomeOperatingRevenueCandidate", () => ({
+  useHomeOperatingRevenueCandidate: () => null,
+}));
 
 import { useDashboardHomeFirstScreenViewModel } from "./useDashboardHomeFirstScreenViewModel";
 

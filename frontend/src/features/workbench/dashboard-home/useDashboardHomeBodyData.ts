@@ -346,12 +346,15 @@ export function useDashboardHomeBodyData({
   });
 
   const campisiFourEffectsQuery = useQuery({
-    queryKey: apiQueryKeys.pnlCampisiFourEffects(
-      dataClient.mode,
-      supplementalReportDate,
-      30,
-      "summary",
-    ),
+    queryKey: [
+      ...apiQueryKeys.pnlCampisiFourEffects(
+        dataClient.mode,
+        supplementalReportDate,
+        30,
+        "summary",
+      ),
+      "monthly-period",
+    ],
     queryFn: () =>
       getCampisiAttributionContext(dataClient, supplementalReportDate ?? "", {
         detail: "summary",

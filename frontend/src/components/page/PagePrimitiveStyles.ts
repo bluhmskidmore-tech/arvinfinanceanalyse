@@ -22,8 +22,6 @@ export const pageInsetCardStyle = {
 export const PAGE_V2_CONTRACT = {
   decisionHeroRoot: "moss-page-v2-decision-hero",
   dataStatusRoot: "moss-page-v2-data-status",
-  kpiBandRoot: "moss-page-v2-kpi-band",
-  kpiMetricItem: "moss-page-v2-kpi-metric",
   evidencePanelRoot: "moss-page-v2-evidence-panel",
   analysisGridCols: {
     "1": "moss-page-v2-analysis-grid moss-page-v2-analysis-grid--cols-1",

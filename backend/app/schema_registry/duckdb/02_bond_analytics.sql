@@ -25,6 +25,9 @@ create table if not exists fact_formal_bond_analytics_daily (
     interest_payment_frequency_fallback_used boolean,
     interest_rate_style varchar,
     ytm                 decimal(18, 8),
+    coupon_rate_input_status varchar,
+    ytm_input_status    varchar,
+    duration_quality_flag varchar,
     value_date          date,
     maturity_date       date,
     next_call_date      date,
@@ -62,3 +65,12 @@ add column if not exists value_date date
 -- MOSS:STMT
 alter table fact_formal_bond_analytics_daily
 add column if not exists interest_payment_frequency_fallback_used boolean
+-- MOSS:STMT
+alter table fact_formal_bond_analytics_daily
+add column if not exists coupon_rate_input_status varchar
+-- MOSS:STMT
+alter table fact_formal_bond_analytics_daily
+add column if not exists ytm_input_status varchar
+-- MOSS:STMT
+alter table fact_formal_bond_analytics_daily
+add column if not exists duration_quality_flag varchar

@@ -2,11 +2,13 @@ import { Segmented } from "antd";
 import { type EChartsOption } from "../../../lib/echarts";
 
 import type { AssetStructurePayload } from "../../../api/contracts";
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { EM_DASH } from "../../../pageModel";
 import { nocturneTokens } from "../../../theme/designSystem";
-import { formatYi, nativeToNumber } from "../utils/format";
+import type { BondSectionDataState } from "../sectionStatus";
+import { computeFallbackPercentages, formatYi, nativeToNumber } from "../utils/format";
 
 export type AssetGroupBy = "bond_type" | "rating" | "portfolio_name" | "tenor_bucket";
 
@@ -20,27 +22,27 @@ const GROUP_OPTIONS: { key: AssetGroupBy; label: string }[] = [
 /* 分类系列色板：首色为 Nocturne accent 紫，绿/红不用于分类序列首选位。 */
 const PIE_PALETTE = nocturneChartTheme.categoricalPalette;
 
+/** 2026-09-02 迁入 ChartCard：高度取阶梯 hero 档，载入骨架与画布同高由铬件保证。 */
+const CHART_HEIGHT = CHART_CARD_HEIGHTS.hero;
+
 export function AssetStructurePie({
   data,
-  loading,
+  state,
   groupBy,
   onGroupByChange,
 }: {
   data: AssetStructurePayload | undefined;
-  loading: boolean;
+  state: BondSectionDataState;
   groupBy: AssetGroupBy;
   onGroupByChange: (g: AssetGroupBy) => void;
 }) {
   const items = data?.items ?? [];
   const totalYi = data ? formatYi(data.total_market_value) : EM_DASH;
+  /* 仅供后端百分比缺失的降级路径消费：让各类别份额恰好合计 100.00%，避免独立截断漂移。 */
+  const fallbackPercentages = computeFallbackPercentages(items);
 
+  /* 图例位置 / tooltip 底色由 ChartCard 铬件统一（图例左下，多分类预留两行），环心留给中心读数叠层。 */
   const option: EChartsOption = nocturneChartTheme.createBaseChartOption({
-    legend: {
-      orient: "vertical",
-      right: "4%",
-      top: "middle",
-      textStyle: nocturneChartTheme.axisLabel,
-    },
     tooltip: {
       trigger: "item",
       formatter: (p: unknown) => {
@@ -48,22 +50,33 @@ export function AssetStructurePie({
           name: string;
           value: number | null;
           percent: number;
-          data?: { bondCount?: number; backendPercentage?: number | null };
+          data?: {
+            bondCount?: number;
+            backendPercentage?: number | null;
+            fallbackPercentage?: number | null;
+          };
         };
-        /* 占比优先消费后端 percentage（口径权威）；后端 null 时回退 ECharts 自算。 */
+        /* 占比优先消费后端 percentage（口径权威）；后端 null 时回退到已补差的份额，
+         * 保证降级路径下各分类合计恰为 100.00%（不使用未补差的 ECharts 自算 x.percent）。 */
         const backendPct = x.data?.backendPercentage;
+        const fallbackPct = x.data?.fallbackPercentage;
         const pctText = backendPct !== null && backendPct !== undefined
           ? (backendPct * 100).toFixed(2)
-          : x.percent.toFixed(2);
-        const countText = x.data?.bondCount !== undefined ? `<br/>${x.data.bondCount} 只` : "";
-        return `${x.name}<br/>${pctText}%<br/>${formatYi(x.value)} 亿${countText}`;
+          : (fallbackPct ?? x.percent).toFixed(2);
+        const content = document.createElement("div");
+        content.append(x.name, document.createElement("br"), `${pctText}%`, document.createElement("br"), `${formatYi(x.value)} 亿`);
+        if (x.data?.bondCount !== undefined) {
+          content.append(document.createElement("br"), `${x.data.bondCount} 只`);
+        }
+        return content;
       },
     },
     series: [
       {
         type: "pie",
         radius: ["42%", "68%"],
-        center: ["36%", "50%"],
+        /* 图例移到左下后环居中；overlay 锚点同步为 50%（见 BondDashboardChartSections.css）。 */
+        center: ["50%", "46%"],
         avoidLabelOverlap: true,
         label: { show: false },
         /* 空/错态骨架环：ECharts 默认浅灰整环刺穿深色，收敛为 Nocturne 面板底+发丝线。 */
@@ -78,6 +91,7 @@ export function AssetStructurePie({
           /* 自定义字段随 data item 透传给 tooltip formatter。 */
           bondCount: it.bond_count,
           backendPercentage: nativeToNumber(it.percentage),
+          fallbackPercentage: fallbackPercentages[index],
           itemStyle: {
             color: PIE_PALETTE[index % PIE_PALETTE.length],
           },
@@ -86,50 +100,38 @@ export function AssetStructurePie({
     ],
   });
 
+  /*
+   * 分组控件在真空态仍要可用（用户得能切到有数据的分组），所以它放在标题行 actions；
+   * 载入与失败态下与重构前一致地不渲染。真空时收缩为空态而不是画空环（DESIGN.md §12 第 13 条）。
+   */
   return (
-    <div
-      data-testid="bond-dashboard-asset-structure-pie"
-      className="bond-dashboard-page__panel bond-dashboard-charts__panel"
-    >
-      <div className="bond-dashboard-charts__head">
-        <h3 className="bond-dashboard-charts__head-title">债券资产结构</h3>
-      </div>
-      {loading ? (
-        <p className="bond-dashboard-page__surface bond-dashboard-page__surface--loading">
-          载入中…
-        </p>
-      ) : (
-        <>
+    <ChartCard
+      testId="bond-dashboard-asset-structure-pie"
+      title="债券资产结构"
+      height={CHART_HEIGHT}
+      legendRows={2}
+      option={items.length === 0 ? null : option}
+      state={state.status === "ready" ? undefined : state.status}
+      errorMessage={state.message ?? undefined}
+      actions={
+        state.status === "ready" ? (
           <Segmented
             size="small"
-            block
             value={groupBy}
             aria-label="bond-dashboard-asset-group"
             onChange={(value) => onGroupByChange(value as AssetGroupBy)}
             options={GROUP_OPTIONS.map((t) => ({ value: t.key, label: t.label }))}
             className="bond-dashboard-charts__segmented"
           />
-          {/*
-           * 仅真实空 payload 收敛为暂无数据；envelope 未到达（bundle 在途或
-           * 分区缺失）时维持图表骨架，等高网格 settle 前不做高度跳变（Card
-           * 时代同为空画布行为）。
-           */}
-          {data && items.length === 0 ? (
-            <p className="bond-dashboard-page__surface bond-dashboard-page__surface--empty">
-              暂无数据
-            </p>
-          ) : (
-            <div className="bond-dashboard-charts__pie-wrap bond-dashboard-charts__fill">
-              <BaseChart option={option} height={280} />
-              <div className="bond-dashboard-charts__pie-overlay">
-                <div className="bond-dashboard-charts__pie-overlay-label">合计</div>
-                <div className="bond-dashboard-charts__pie-overlay-value">{totalYi}</div>
-                <div className="bond-dashboard-charts__pie-overlay-label">亿元</div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
+        ) : undefined
+      }
+      canvasOverlay={
+        <div className="bond-dashboard-charts__pie-overlay">
+          <div className="bond-dashboard-charts__pie-overlay-label">合计</div>
+          <div className="bond-dashboard-charts__pie-overlay-value">{totalYi}</div>
+          <div className="bond-dashboard-charts__pie-overlay-label">亿元</div>
+        </div>
+      }
+    />
   );
 }

@@ -12,6 +12,7 @@ from __future__ import annotations
 import errno
 import os
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,9 +26,10 @@ def _load_locks_module():
     )
 
 
-def test_contention_timeout_chains_last_lock_error(tmp_path):
+@pytest.mark.parametrize("key", ["lock:test:contended", "lock:governance:jsonl:test"])
+def test_contention_timeout_chains_last_lock_error(tmp_path, caplog, key):
     locks_module = _load_locks_module()
-    definition = locks_module.LockDefinition(key="lock:test:contended", ttl_seconds=5)
+    definition = locks_module.LockDefinition(key=key, ttl_seconds=5)
 
     with locks_module.acquire_lock(definition, base_dir=tmp_path, timeout_seconds=1.0):
         with pytest.raises(TimeoutError) as excinfo:
@@ -41,6 +43,40 @@ def test_contention_timeout_chains_last_lock_error(tmp_path):
     cause = excinfo.value.__cause__
     assert isinstance(cause, OSError)
     assert cause.errno in locks_module._LOCK_CONTENTION_ERRNOS
+    messages = [record.getMessage() for record in caplog.records]
+    if key.startswith("lock:governance:jsonl:"):
+        assert any("governance_lock_timeout" in message and key in message for message in messages)
+    else:
+        assert not messages
+
+
+def test_slow_governance_holder_is_reported_after_unlock_without_masking_error(
+    tmp_path, monkeypatch, caplog,
+):
+    locks_module = _load_locks_module()
+    definition = locks_module.LockDefinition(key="lock:governance:jsonl:slow", ttl_seconds=5)
+    now = [100.0]
+    monkeypatch.setattr(
+        locks_module, "time",
+        SimpleNamespace(monotonic=lambda: now[0], sleep=time.sleep),
+    )
+    with pytest.raises(ValueError, match="body failure"):
+        with locks_module.acquire_lock(definition, base_dir=tmp_path):
+            now[0] += 1.5
+            assert not caplog.records
+            raise ValueError("body failure")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert len(messages) == 1
+    assert "governance_lock_slow" in messages[0]
+    assert "hold_ms=1500" in messages[0]
+    assert "wait_ms=0" in messages[0]
+    assert f"pid={os.getpid()}" in messages[0]
+    assert "test_slow_governance_holder_is_reported_after_unlock" in messages[0]
+    # Diagnostics must not keep the underlying file lock held on an error path.
+    with locks_module.acquire_lock(definition, base_dir=tmp_path, timeout_seconds=0):
+        pass
+    assert len(caplog.records) == 1
 
 
 def test_persistent_open_failure_raises_immediately_instead_of_spinning(tmp_path):

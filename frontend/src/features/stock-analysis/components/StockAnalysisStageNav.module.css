@@ -1,0 +1,232 @@
+.stageNav {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.stageNavViewport {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-color: var(--dh-api-line) transparent;
+  scrollbar-width: thin;
+}
+
+.stageList {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  min-width: 660px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stageItem {
+  min-width: 0;
+  border-right: 1px solid var(--dh-api-line);
+}
+
+.stageItem:last-child {
+  border-right: 0;
+}
+
+.stageLink {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 36px;
+  padding: 4px 9px;
+  color: var(--dh-api-ink);
+  text-decoration: none;
+}
+
+.stageLink::after {
+  position: absolute;
+  right: 10px;
+  bottom: 0;
+  left: 10px;
+  height: 2px;
+  background: transparent;
+  content: "";
+}
+
+.stageLink:hover {
+  background: color-mix(in srgb, var(--dh-api-blue-soft) 62%, transparent);
+}
+
+.stageLink:focus-visible {
+  z-index: 1;
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: -2px;
+}
+
+.stageLink[aria-current="page"] {
+  background: var(--dh-api-blue-soft);
+}
+
+.stageLink[aria-current="page"]::after {
+  background: var(--dh-api-blue);
+}
+
+.stageLink[aria-current="page"] .stageOrder,
+.stageLink[aria-current="page"] .stageStatus {
+  color: var(--dh-api-blue);
+}
+
+.stageOrder {
+  grid-row: 1 / span 2;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.stageLabel,
+.stageStatus {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stageLabel {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.stageStatus {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.stageLinkDisabled {
+  color: var(--dh-api-muted);
+  cursor: not-allowed;
+}
+
+.stageLinkDisabled:hover {
+  background: transparent;
+}
+
+.stageLinkDisabled .stageOrder,
+.stageLinkDisabled .stageStatus {
+  color: color-mix(in srgb, var(--dh-api-muted) 76%, transparent);
+}
+
+:global(.stock-analysis-page__compact-chrome .moss-page-v2-decision-hero__title) {
+  anchor-name: --stock-analysis-stage-title;
+}
+
+.stageMenu {
+  --stage-menu-gap: 8px;
+  --stage-menu-viewport-gutter: 12px;
+  position: relative;
+  z-index: 20;
+  justify-self: start;
+  inline-size: max-content;
+}
+
+.stageMenu > summary {
+  anchor-name: --stock-analysis-stage-trigger;
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  cursor: pointer;
+  font-size: 11px;
+  list-style: disclosure-closed;
+}
+
+.stageMenu[open] > summary {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 54%, var(--dh-api-line-soft));
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+.stageMenu > summary:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+.stageMenuPopover {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  inline-size: min(
+    760px,
+    calc(100dvw - var(--stage-menu-viewport-gutter) - var(--stage-menu-viewport-gutter))
+  );
+  max-inline-size: calc(
+    100dvw - var(--stage-menu-viewport-gutter) - var(--stage-menu-viewport-gutter)
+  );
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
+}
+
+@supports (position-anchor: --stock-analysis-stage-title) {
+  .stageMenu {
+    position: absolute;
+    position-anchor: --stock-analysis-stage-title;
+    top: anchor(top);
+    left: calc(anchor(right) + var(--stage-menu-gap));
+  }
+
+  .stageMenuPopover {
+    position: fixed;
+    position-anchor: --stock-analysis-stage-trigger;
+    top: calc(anchor(bottom) + 5px);
+    right: var(--stage-menu-viewport-gutter);
+    left: max(var(--stage-menu-viewport-gutter), anchor(left));
+    inline-size: auto;
+    max-inline-size: 760px;
+    max-block-size: min(70dvh, 360px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    position-try-fallbacks: flip-block;
+  }
+}
+
+@media (max-width: 719px) {
+  .stageList {
+    grid-template-columns: repeat(5, minmax(124px, 1fr));
+    min-width: 620px;
+  }
+
+  .stageLink {
+    min-height: 44px;
+    padding: 6px 9px;
+  }
+
+  .stageMenu {
+    position: relative;
+    top: auto;
+    left: auto;
+    justify-self: stretch;
+    inline-size: auto;
+  }
+
+  .stageMenuPopover {
+    position: absolute;
+    top: calc(100% + 5px);
+    right: 0;
+    left: 0;
+    inline-size: auto;
+    max-inline-size: none;
+    max-block-size: min(70dvh, 360px);
+  }
+}

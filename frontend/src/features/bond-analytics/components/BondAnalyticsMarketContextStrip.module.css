@@ -1,14 +1,14 @@
-/* 真值与证据条：单框横带（首页 productCategoryStrip / 页内 referenceMarketTicker 语言），
-   不再用 antd Card + panelStyle 内联面。 */
+/* 真值与证据属于次级元信息；保留全部状态，以底线和对齐形成横条。 */
 .contextPanel {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
-/* 分区头对齐首页 panelHeader：14px/600 标题 + 左沿 2px 强调条 + 发丝底线。 */
+/* 证据标题降低为标签层级，主判断保留最高阅读优先级。 */
 .panelHeader {
   position: relative;
   display: flex;
@@ -16,25 +16,15 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 2px 12px;
-  min-height: 34px;
-  padding: 6px 12px 6px 16px;
-  border-bottom: 1px solid var(--dh-api-line-soft);
-}
-
-.panelHeader::before {
-  position: absolute;
-  top: 7px;
-  bottom: 7px;
-  left: 0;
-  width: 2px;
-  background: var(--dh-api-blue);
-  content: "";
+  min-height: 24px;
+  padding: 0 0 var(--moss-space-1);
+  border-bottom: 0;
 }
 
 .panelTitle {
-  color: var(--dh-api-ink);
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 500;
   line-height: 20px;
 }
 
@@ -62,7 +52,7 @@
   font-weight: 400;
 }
 
-/* 四槽真值等宽排布，发丝竖缝分隔，不逐格铺 tone 底色。 */
+/* 四类证据等宽排布；标签与读数同一基线。 */
 .truthStrip {
   display: grid;
   grid-auto-flow: column;
@@ -71,14 +61,16 @@
 }
 
 .truthCell {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  gap: var(--moss-space-1) var(--moss-space-2);
   align-content: center;
   min-width: 0;
-  min-height: 46px;
-  padding: 6px 12px;
-  border-right: 1px solid var(--dh-api-line-soft);
+  min-height: 32px;
+  padding: var(--moss-space-1) var(--moss-space-3);
+  border-right: 0;
   box-sizing: border-box;
+  flex-wrap: wrap;
+  align-items: baseline;
 }
 
 .truthCell:last-child {
@@ -97,14 +89,13 @@
 
 /* 语义色只落在读数上（§5 色块减负）。 */
 .truthValue {
-  overflow: hidden;
+  overflow: visible;
   color: var(--dh-api-ink);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .truthCell[data-tone="positive"] .truthValue {
@@ -155,3 +146,5 @@
     border-bottom: 0;
   }
 }
+
+.truthCell:first-child { padding-left: 0; }

@@ -147,6 +147,91 @@ describe("buildLiabilityAnalyticsPageReadModel", () => {
     expect(model.evidenceCards[0]?.fallbackLabel).toBe("latest_snapshot");
   });
 
+  it("surfaces quality warning with requested and resolved dates from the envelope", () => {
+    const model = buildLiabilityAnalyticsPageReadModel({
+      mode: "real",
+      activeTab: "daily",
+      requestedReportDate: "2020-01-15",
+      resolvedReportDate: "2020-01-15",
+      selectedYear: 2026,
+      selectedMonthLabel: null,
+      yieldKpi: null,
+      liabilityTotalYi: null,
+      firstYearPressureYi: null,
+      topCounterpartyShare: "—",
+      warningCount: 0,
+      alertCount: 0,
+      resultMetas: [
+        {
+          key: "yield-metrics",
+          title: "负债收益指标",
+          required: true,
+          meta: meta({
+            result_kind: "liability_analytics.yield_metrics",
+            quality_flag: "warning",
+            fallback_mode: "none",
+            requested_report_date: "2020-01-15",
+            resolved_report_date: "2020-01-15",
+          }),
+        },
+      ],
+      syntheticSections: [],
+    });
+
+    expect(model.statusBadges.map((badge) => badge.key)).toContain("quality");
+    expect(model.stateSurfaces.map((surface) => surface.key)).toContain("quality");
+    const qualitySurface = model.stateSurfaces.find((surface) => surface.key === "quality");
+    expect(qualitySurface?.description).toContain("请求日 2020-01-15");
+    expect(qualitySurface?.description).toContain("实际日 2020-01-15");
+    expect(model.stateSurfaces.map((surface) => surface.key)).not.toContain("fallback");
+  });
+
+  it("surfaces latest_snapshot fallback with requested versus resolved dates from the envelope", () => {
+    const model = buildLiabilityAnalyticsPageReadModel({
+      mode: "real",
+      activeTab: "daily",
+      requestedReportDate: "2026-01-31",
+      resolvedReportDate: "2026-01-31",
+      selectedYear: 2026,
+      selectedMonthLabel: null,
+      yieldKpi: null,
+      liabilityTotalYi: null,
+      firstYearPressureYi: null,
+      topCounterpartyShare: "—",
+      warningCount: 0,
+      alertCount: 0,
+      resultMetas: [
+        {
+          key: "yield-metrics",
+          title: "负债收益指标",
+          required: true,
+          meta: meta({
+            result_kind: "liability_analytics.yield_metrics",
+            quality_flag: "ok",
+            fallback_mode: "latest_snapshot",
+            requested_report_date: "2026-01-15",
+            resolved_report_date: "2026-01-31",
+          }),
+        },
+      ],
+      syntheticSections: [],
+    });
+
+    expect(model.statusBadges.map((badge) => badge.key)).toEqual(
+      expect.arrayContaining(["fallback", "date"]),
+    );
+    expect(model.stateSurfaces.map((surface) => surface.key)).toEqual(
+      expect.arrayContaining(["date-mismatch", "fallback"]),
+    );
+    const fallbackSurface = model.stateSurfaces.find((surface) => surface.key === "fallback");
+    expect(fallbackSurface?.description).toContain("latest_snapshot");
+    expect(fallbackSurface?.description).toContain("请求日 2026-01-15");
+    expect(fallbackSurface?.description).toContain("实际日 2026-01-31");
+    expect(model.statusBadges.find((badge) => badge.key === "date")?.label).toBe(
+      "请求 2026-01-15 · 返回 2026-01-31",
+    );
+  });
+
   it("builds monthly readout without daily KPI assumptions", () => {
     const model = buildLiabilityAnalyticsPageReadModel({
       mode: "real",

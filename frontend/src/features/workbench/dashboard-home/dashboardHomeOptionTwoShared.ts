@@ -11,7 +11,8 @@ export function compactClock(value: string | undefined): string {
 export function stateLabel(kind: HomeStatusKind): string {
   switch (kind) {
     case "ready":
-      return "已就绪";
+      // 常态收声（DESIGN §12 结论 17）：就绪态不用「已就绪」类完成徽标词，只留中性描述。
+      return "正常";
     case "partial":
       return "部分可用";
     case "loading":

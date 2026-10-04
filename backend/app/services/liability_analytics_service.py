@@ -9,6 +9,8 @@ from typing import Any
 
 from backend.app.core_finance.liability_analytics_compat import (
     compute_liabilities_monthly,
+    compute_liabilities_monthly_detail,
+    compute_liabilities_monthly_summary,
     compute_liability_counterparty,
     compute_liability_risk_buckets,
     compute_liability_yield_metrics,
@@ -23,13 +25,17 @@ from backend.app.core_finance.yield_by_period import rollup_yield_periods
 from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.schemas.liability_analytics import (
+    LiabilitiesMonthlyDetailPayload,
     LiabilitiesMonthlyPayload,
+    LiabilitiesMonthlySummaryPayload,
     LiabilityBucketAmountItem,
     LiabilityCounterpartyByTypeItem,
     LiabilityCounterpartyPayload,
     LiabilityCounterpartyTopItem,
     LiabilityMonthlyBreakdownRow,
+    LiabilityMonthlyDetailItem,
     LiabilityMonthlyItem,
+    LiabilityMonthlySummaryItem,
     LiabilityNameAmountItem,
     LiabilityRiskBucketsPayload,
     LiabilityYieldHistoryPoint,
@@ -38,7 +44,7 @@ from backend.app.schemas.liability_analytics import (
     LiabilityYieldScatterPoint,
 )
 from backend.app.services.explicit_numeric import promote_payload_numerics
-from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.formal_result_runtime import FallbackMode, QualityFlag, build_result_envelope
 from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 logger = logging.getLogger(__name__)
@@ -55,6 +61,8 @@ def _degraded_log_level(exc: BaseException) -> int:
 
 LIABILITY_ANALYTICS_CACHE_VERSION = "cv_liability_analytics_v1"
 LIABILITY_ANALYTICS_RULE_VERSION = "rv_liability_analytics_compat_v1"
+LIABILITY_CONTRIBUTION_CACHE_VERSION = "cv_liability_contribution_split_v2"
+LIABILITY_CONTRIBUTION_RULE_VERSION = "rv_liability_contribution_split_v2"
 LIABILITY_ANALYTICS_EMPTY_SOURCE_VERSION = "sv_liability_analytics_empty"
 # 同一 -50bp 平移口径的两种数值单位表达：
 # 日度 KPI 的 NIM 是小数比率（0.0255 == 2.55%），-50bp 即 -0.005；
@@ -135,6 +143,31 @@ def _resolve_report_date(repo: LiabilityAnalyticsRepository, report_date: str | 
     return repo.resolve_latest_report_date() or ""
 
 
+def _normalize_report_date(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _fallback_mode_for_report_dates(
+    requested_report_date: str | None,
+    resolved_report_date: str | None,
+) -> FallbackMode:
+    requested = _normalize_report_date(requested_report_date)
+    resolved = _normalize_report_date(resolved_report_date)
+    if resolved and requested != resolved:
+        return "latest_snapshot"
+    return "none"
+
+
+_CORE_YIELD_KPI_FIELDS = ("asset_yield", "liability_cost", "market_liability_cost", "nim")
+
+
+def _core_yield_kpis_all_null(kpi: object) -> bool:
+    if not isinstance(kpi, dict):
+        return True
+    return all(kpi.get(field) is None for field in _CORE_YIELD_KPI_FIELDS)
+
+
 def _merge_lineage(rows: list[dict[str, object]]) -> tuple[str, str]:
     source_versions = sorted(
         {
@@ -156,26 +189,59 @@ def _merge_lineage(rows: list[dict[str, object]]) -> tuple[str, str]:
     )
 
 
+def _expand_compacted_lineage(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Expand repository ``string_agg(..., '|')`` values into unique lineage tokens."""
+    source_versions: set[str] = set()
+    rule_versions: set[str] = set()
+    for row in rows:
+        source_versions.update(
+            token.strip()
+            for token in str(row.get("source_version") or "").split("|")
+            if token.strip()
+        )
+        rule_versions.update(
+            token.strip()
+            for token in str(row.get("rule_version") or "").split("|")
+            if token.strip()
+        )
+    expanded: list[dict[str, object]] = [
+        {"source_version": version} for version in sorted(source_versions)
+    ]
+    expanded.extend({"rule_version": version} for version in sorted(rule_versions))
+    return expanded
+
+
 def _envelope(
     *,
     result_kind: str,
     result_payload: dict[str, object],
     source_rows: list[dict[str, object]],
-    quality_flag: str = "ok",
+    quality_flag: QualityFlag = "ok",
     filters_applied: dict[str, object] | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    calculation_rule_version: str | None = None,
+    cache_version: str = LIABILITY_ANALYTICS_CACHE_VERSION,
 ) -> dict[str, object]:
     source_version, rule_version = _merge_lineage(source_rows)
+    if calculation_rule_version is not None:
+        rule_version = f"{rule_version}__{calculation_rule_version}"
+    requested = _normalize_report_date(requested_report_date)
+    resolved = _normalize_report_date(resolved_report_date)
     return build_result_envelope(
         basis="analytical",
         trace_id=f"tr_{result_kind}",
         result_kind=result_kind,
-        cache_version=LIABILITY_ANALYTICS_CACHE_VERSION,
+        cache_version=cache_version,
         source_version=source_version,
         rule_version=rule_version,
         quality_flag=quality_flag,
         vendor_version="vv_none",
         source_surface="formal_liability",
         filters_applied=filters_applied,
+        fallback_mode=_fallback_mode_for_report_dates(requested, resolved),
+        requested_report_date=requested,
+        resolved_report_date=resolved,
         result_payload=result_payload,
     )
 
@@ -235,6 +301,31 @@ def _promote_liability_payload(payload: dict[str, object], payload_cls: type) ->
                 _promote_liability_month(item) if isinstance(item, dict) else item
                 for item in months
             ]
+        return promoted
+    if payload_cls is LiabilitiesMonthlySummaryPayload:
+        promoted = promote_payload_numerics(
+            payload,
+            payload_cls,
+            list_fields={"months": LiabilityMonthlySummaryItem},
+        )
+        return promoted if isinstance(promoted, dict) else payload
+    if payload_cls is LiabilitiesMonthlyDetailPayload:
+        promoted = promote_payload_numerics(
+            payload,
+            payload_cls,
+            object_fields={"detail": LiabilityMonthlyDetailItem},
+        )
+        if not isinstance(promoted, dict):
+            return payload
+        detail = promoted.get("detail")
+        if isinstance(detail, dict):
+            nested = promote_payload_numerics(
+                detail,
+                LiabilityMonthlyDetailItem,
+                list_fields=_LIABILITY_MONTH_LIST_FIELDS,
+            )
+            if isinstance(nested, dict):
+                promoted["detail"] = nested
         return promoted
     return payload
 
@@ -424,6 +515,8 @@ def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None)
             result_kind="liability_analytics.risk_buckets",
             source_rows=[],
             quality_flag="warning",
+            requested_report_date=report_date,
+            resolved_report_date=resolved_date,
             result_payload=LiabilityRiskBucketsPayload(
                 report_date="",
                 liabilities_structure=[],
@@ -445,6 +538,8 @@ def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None)
         result_kind="liability_analytics.risk_buckets",
         source_rows=[*zqtz_rows, *tyw_rows],
         quality_flag="warning" if missing_maturity_count > 0 else "ok",
+        requested_report_date=report_date,
+        resolved_report_date=resolved_date,
         filters_applied=(
             {"missing_maturity_count": missing_maturity_count}
             if missing_maturity_count > 0
@@ -480,6 +575,8 @@ def _compute_liability_yield_metrics_payload(*, duckdb_path: str, report_date: s
             result_kind="liability_analytics.yield_metrics",
             source_rows=[],
             quality_flag="warning",
+            requested_report_date=report_date,
+            resolved_report_date=resolved_date,
             result_payload=LiabilityYieldMetricsPayload(
                 report_date="",
                 kpi=LiabilityYieldKpi(),
@@ -505,10 +602,14 @@ def _compute_liability_yield_metrics_payload(*, duckdb_path: str, report_date: s
         "history": history_dicts,
         "scatter": scatter_dicts,
     }
+    no_data_for_date = _core_yield_kpis_all_null(payload.get("kpi")) or not history_dicts
+    quality_flag: QualityFlag = "warning" if history_skipped or no_data_for_date else "ok"
     return _envelope(
         result_kind="liability_analytics.yield_metrics",
         source_rows=[*zqtz_rows, *tyw_rows],
-        quality_flag="warning" if history_skipped else "ok",
+        quality_flag=quality_flag,
+        requested_report_date=report_date,
+        resolved_report_date=resolved_date,
         filters_applied=(
             {
                 "history_skipped_date_count": len(history_skipped),
@@ -576,15 +677,19 @@ def liability_counterparty_payload(
             result_kind="liability_analytics.counterparty",
             source_rows=[],
             quality_flag="warning",
-            result_payload=LiabilityCounterpartyPayload(
-                report_date="",
-                total_value=0.0,
-                top10_share=None,
-                hhi=None,
-                population_count=0,
-                is_truncated=False,
-                top_10=[],
-                by_type=[],
+            requested_report_date=report_date,
+            resolved_report_date=resolved_date,
+            result_payload=LiabilityCounterpartyPayload.model_validate(
+                {
+                    "report_date": "",
+                    "total_value": 0.0,
+                    "top10_share": None,
+                    "hhi": None,
+                    "population_count": 0,
+                    "is_truncated": False,
+                    "top_10": [],
+                    "by_type": [],
+                }
             ).model_dump(mode="json"),
         )
     payload = compute_liability_counterparty(
@@ -595,6 +700,8 @@ def liability_counterparty_payload(
     return _envelope(
         result_kind="liability_analytics.counterparty",
         source_rows=tyw_rows,
+        requested_report_date=report_date,
+        resolved_report_date=resolved_date,
         result_payload=LiabilityCounterpartyPayload.model_validate(
             _promote_liability_payload(payload, LiabilityCounterpartyPayload)
         ).model_dump(mode="json"),
@@ -603,8 +710,14 @@ def liability_counterparty_payload(
 
 def liabilities_monthly_payload(*, duckdb_path: str, year: int) -> dict[str, object]:
     repo = LiabilityAnalyticsRepository(duckdb_path)
-    zqtz_rows = repo.fetch_zqtz_liability_rows_for_year(year)
-    tyw_rows = repo.fetch_tyw_liability_rows_for_year(year)
+    zqtz_rows = [
+        *repo.fetch_zqtz_liability_daily_totals_for_year(year - 1),
+        *repo.fetch_zqtz_liability_rows_for_year(year),
+    ]
+    tyw_rows = [
+        *repo.fetch_tyw_liability_daily_totals_for_year(year - 1),
+        *repo.fetch_tyw_liability_rows_for_year(year),
+    ]
     payload = compute_liabilities_monthly(
         year,
         zqtz_rows,
@@ -620,6 +733,43 @@ def liabilities_monthly_payload(*, duckdb_path: str, year: int) -> dict[str, obj
     )
 
 
+def liabilities_monthly_summary_payload(*, duckdb_path: str, year: int) -> dict[str, object]:
+    repo = LiabilityAnalyticsRepository(duckdb_path)
+    zqtz_rows = [
+        *repo.fetch_zqtz_liability_daily_summary_for_year(year - 1),
+        *repo.fetch_zqtz_liability_daily_summary_for_year(year),
+    ]
+    tyw_rows = [
+        *repo.fetch_tyw_liability_daily_summary_for_year(year - 1),
+        *repo.fetch_tyw_liability_daily_summary_for_year(year),
+    ]
+    payload = compute_liabilities_monthly_summary(year, zqtz_rows, tyw_rows)
+    promoted = _promote_liability_payload(payload, LiabilitiesMonthlySummaryPayload)
+    return _envelope(
+        result_kind="liability_analytics.monthly_summary",
+        source_rows=_expand_compacted_lineage([*zqtz_rows, *tyw_rows]),
+        quality_flag="warning" if not payload.get("months") else "ok",
+        filters_applied={"year": year, "detail_level": "summary"},
+        result_payload=LiabilitiesMonthlySummaryPayload.model_validate(promoted).model_dump(mode="json"),
+    )
+
+
+def liabilities_monthly_detail_payload(*, duckdb_path: str, month: str) -> dict[str, object]:
+    repo = LiabilityAnalyticsRepository(duckdb_path)
+    zqtz_rows = repo.fetch_zqtz_liability_rows_for_month(month)
+    tyw_rows = repo.fetch_tyw_liability_rows_for_month(month)
+    year = int(month[:4])
+    payload = compute_liabilities_monthly_detail(year, month, zqtz_rows, tyw_rows)
+    promoted = _promote_liability_payload(payload, LiabilitiesMonthlyDetailPayload)
+    return _envelope(
+        result_kind="liability_analytics.monthly_detail",
+        source_rows=[*zqtz_rows, *tyw_rows],
+        quality_flag="warning" if payload.get("detail") is None else "ok",
+        filters_applied={"month": month},
+        result_payload=LiabilitiesMonthlyDetailPayload.model_validate(promoted).model_dump(mode="json"),
+    )
+
+
 def cockpit_warnings_payload(*, duckdb_path: str, report_date: str | None) -> dict[str, object]:
     repo = LiabilityAnalyticsRepository(duckdb_path)
     resolved_date = _resolve_report_date(repo, report_date)
@@ -628,6 +778,8 @@ def cockpit_warnings_payload(*, duckdb_path: str, report_date: str | None) -> di
             result_kind="liability_analytics.cockpit_warnings",
             source_rows=[],
             quality_flag="warning",
+            requested_report_date=report_date,
+            resolved_report_date=resolved_date,
             result_payload={"report_date": "", "watch_items": [], "alert_events": []},
         )
     zqtz_rows = repo.fetch_zqtz_rows(resolved_date)
@@ -636,6 +788,8 @@ def cockpit_warnings_payload(*, duckdb_path: str, report_date: str | None) -> di
     return _envelope(
         result_kind="liability_analytics.cockpit_warnings",
         source_rows=[*zqtz_rows, *tyw_rows],
+        requested_report_date=report_date,
+        resolved_report_date=resolved_date,
         result_payload=payload,
     )
 
@@ -647,7 +801,11 @@ def contribution_split_payload(*, duckdb_path: str, report_date: str | None) -> 
         return _envelope(
             result_kind="liability_analytics.contribution_split",
             source_rows=[],
+            calculation_rule_version=LIABILITY_CONTRIBUTION_RULE_VERSION,
+            cache_version=LIABILITY_CONTRIBUTION_CACHE_VERSION,
             quality_flag="warning",
+            requested_report_date=report_date,
+            resolved_report_date=resolved_date,
             result_payload={"report_date": "", "contributions": []},
         )
     zqtz_rows = repo.fetch_zqtz_rows(resolved_date)
@@ -656,5 +814,10 @@ def contribution_split_payload(*, duckdb_path: str, report_date: str | None) -> 
     return _envelope(
         result_kind="liability_analytics.contribution_split",
         source_rows=[*zqtz_rows, *tyw_rows],
+        calculation_rule_version=LIABILITY_CONTRIBUTION_RULE_VERSION,
+        cache_version=LIABILITY_CONTRIBUTION_CACHE_VERSION,
+        quality_flag="warning" if any(row["missing_rate_amount_yi"] > 0 for row in payload["contributions"]) else "ok",
+        requested_report_date=report_date,
+        resolved_report_date=resolved_date,
         result_payload=payload,
     )

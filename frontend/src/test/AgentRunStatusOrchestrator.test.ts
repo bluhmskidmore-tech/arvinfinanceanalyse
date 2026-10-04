@@ -253,6 +253,37 @@ describe("waitForAgentRunTerminal", () => {
     expect(onRunUpdate).not.toHaveBeenCalled();
   });
 
+  it("ignores mismatched SSE run updates and continues the same stream", async () => {
+    const running = buildRun("running", { elapsed_seconds: 1 });
+    const completed = buildRun("completed", { result: buildResult("target stream result") });
+    const mismatchedCompleted = buildRun("completed", {
+      run_id: "agent_run:other",
+      result: buildResult("wrong run result"),
+    });
+    const streamAgentRunEvents = vi.fn(async (_runId, onEvent) => {
+      expect(onEvent(mismatchedCompleted)).toBe(false);
+      expect(onEvent(running)).toBe(false);
+      expect(onEvent(completed)).toBe(true);
+    });
+    const fetchAgentRunStatus = vi.fn();
+    const onRunUpdate = vi.fn();
+
+    const payload = await waitForAgentRunTerminal({
+      runId: "agent_run:test",
+      initialPayload: buildRun("queued"),
+      streamAgentRunEvents,
+      fetchAgentRunStatus,
+      canCommit: () => true,
+      onRunUpdate,
+    });
+
+    expect(payload).toEqual(completed);
+    expect(fetchAgentRunStatus).not.toHaveBeenCalled();
+    expect(onRunUpdate).toHaveBeenNthCalledWith(1, running);
+    expect(onRunUpdate).toHaveBeenNthCalledWith(2, completed);
+    expect(onRunUpdate).not.toHaveBeenCalledWith(mismatchedCompleted);
+  });
+
   it("returns a cancelled terminal payload from GET polling", async () => {
     const cancelledRun = buildRun("cancelled", { error_message: "run cancelled" });
     const fetchAgentRunStatus = vi.fn(async () => cancelledRun);
@@ -360,9 +391,64 @@ describe("pollAgentRunUntilTerminal", () => {
 
     expect(fetchAgentRunStatus).toHaveBeenCalledTimes(1);
   });
+
+  it("ignores mismatched GET polling payloads and keeps polling for the requested run", async () => {
+    vi.useFakeTimers();
+    const completed = buildRun("completed", { result: buildResult("target polling result") });
+    const mismatchedCompleted = buildRun("completed", {
+      run_id: "agent_run:other",
+      result: buildResult("wrong polling result"),
+    });
+    const fetchAgentRunStatus = vi
+      .fn<(runId: string) => Promise<AgentRunPayload>>()
+      .mockResolvedValueOnce(mismatchedCompleted)
+      .mockResolvedValueOnce(completed);
+    const onUpdate = vi.fn();
+
+    const promise = pollAgentRunUntilTerminal({
+      runId: "agent_run:test",
+      initialPayload: buildRun("running"),
+      fetchAgentRunStatus,
+      onUpdate,
+    });
+    const settled = expect(promise).resolves.toEqual(completed);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settled;
+
+    expect(fetchAgentRunStatus).toHaveBeenCalledTimes(2);
+    expect(onUpdate).toHaveBeenNthCalledWith(1, buildRun("running"));
+    expect(onUpdate).toHaveBeenNthCalledWith(2, completed);
+    expect(onUpdate).not.toHaveBeenCalledWith(mismatchedCompleted);
+  });
 });
 
 describe("runManagedAgentPolling", () => {
+  it("resumes an existing run over the injected stream without creating or re-timing it", async () => {
+    const existingRun = buildRun("running");
+    const completed = buildRun("completed", { result: buildResult("resumed stream result") });
+    const createAgentRun = vi.fn();
+    const fetchAgentRunStatus = vi.fn();
+    const onRunAccepted = vi.fn();
+    const streamAgentRunEvents = vi.fn(async (_runId, onEvent) => { onEvent(completed); });
+
+    const payload = await runManagedAgentPolling({
+      requestBody: { question: "existing question" },
+      existingRun,
+      createAgentRun,
+      fetchAgentRunStatus,
+      canCommit: () => true,
+      onRunAccepted,
+      onRunUpdate: vi.fn(),
+      streamAgentRunEvents,
+    });
+
+    expect(payload).toEqual(completed);
+    expect(createAgentRun).not.toHaveBeenCalled();
+    expect(fetchAgentRunStatus).not.toHaveBeenCalled();
+    expect(streamAgentRunEvents).toHaveBeenCalledWith(existingRun.run_id, expect.any(Function), expect.any(Object));
+    expect(onRunAccepted).toHaveBeenCalledWith(existingRun, undefined);
+  });
+
   it("uses an injected stream handler for lab-only runs", async () => {
     const queued = buildRun("queued");
     const completed = buildRun("completed", { result: buildResult("streamed result") });

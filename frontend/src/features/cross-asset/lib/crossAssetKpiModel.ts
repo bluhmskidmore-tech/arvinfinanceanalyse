@@ -1,5 +1,8 @@
-import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../api/contracts";
+import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
 import { EM_DASH, fixedOrDash, pctOrDash, signedFixedOrDash } from "../../../pageModel";
+
+/** KPI 来源标注：预计算利差序列未下发时写入既有来源位。 */
+export const PRECOMPUTED_SPREAD_MISSING_NOTE = "后端预计算序列缺失";
 
 export type CrossAssetKpiFormat = "percent" | "bp" | "index" | "fx" | "plain";
 
@@ -17,16 +20,15 @@ export type CrossAssetSingleSlot = {
 export type CrossAssetSpreadSlot = {
   kind: "spread";
   key: string;
-  /** 中债10Y − 美债10Y（美债序列入库后自动启用） */
+  /** 中美10Y 利差（仅消费后端预计算 bp 序列） */
   labelCnUs: string;
-  /** 目录暂无美债时的国内代理：国开10Y − 国债10Y */
-  labelDomesticFallback: string;
   tag: string;
-  /** 发布方直接给出的中美10Y利差(bp)，优先于两收益率相减 */
+  /**
+   * 后端预计算中美10Y利差(bp)。
+   * `EM1` 为 Choice 目录核心序列；`CA.CN_US_SPREAD` 为工作台 ticker 同口径公共补充预计算序列。
+   * 缺失时 KPI 显示 EM_DASH，禁止前端用两条收益率相减重算。
+   */
   precomputedCnUsBpIds: readonly string[];
-  cnGov10yIds: readonly string[];
-  usGov10yIds: readonly string[];
-  cdb10yIds: readonly string[];
 };
 
 export type CrossAssetKpiSlot = CrossAssetSingleSlot | CrossAssetSpreadSlot;
@@ -57,12 +59,8 @@ export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
     kind: "spread",
     key: "gov_spread",
     labelCnUs: "中美10Y利差",
-    labelDomesticFallback: "国开-国债10Y",
     tag: "利差",
-    precomputedCnUsBpIds: ["EM1"],
-    cnGov10yIds: ["E1000180", "EMM00166466", "CA.CN_GOV_10Y"],
-    usGov10yIds: ["E1003238", "EMG00001310", "CA.US_GOV_10Y"],
-    cdb10yIds: ["EMM00166502"],
+    precomputedCnUsBpIds: ["EM1", "CA.CN_US_SPREAD"],
   },
   {
     kind: "single",
@@ -161,7 +159,7 @@ export type ResolvedCrossAssetKpi = {
   label: string;
   format: CrossAssetKpiFormat;
   tag: string;
-  /** 单序列时为该 id；利差时为合成键 */
+  /** 单序列时为该 id；利差为预计算序列 id，缺失为 `gov_spread:missing` */
   resolvedSeriesId: string;
   sourceKind: "choice" | "public" | "derived" | "missing";
   vendorName?: string | null;
@@ -179,6 +177,8 @@ export type ResolvedCrossAssetKpi = {
    * calculations must treat a missing value as unavailable, never positional.
    */
   sparklinePoints?: CrossAssetDatedValue[];
+  /** 缺预计算序列等缺口说明，写入既有来源/说明标注位。 */
+  missingNote?: string;
 };
 
 export type CrossAssetDatedValue = {
@@ -220,58 +220,12 @@ function sourceKindFromSeriesId(seriesId: string): ResolvedCrossAssetKpi["source
   return "missing";
 }
 
-function latestTradeDate(points: Array<ChoiceMacroLatestPoint | undefined>) {
-  const dates = points
-    .map((point) => point?.trade_date)
-    .filter((tradeDate): tradeDate is string => Boolean(tradeDate));
-  return dates.length > 0 ? dates.sort((left, right) => right.localeCompare(left))[0] : null;
-}
-
 function sparklinePointsFromPoint(point: ChoiceMacroLatestPoint | undefined): CrossAssetDatedValue[] {
   if (!point?.recent_points?.length) {
     return [];
   }
   const sorted = [...point.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
   return sorted.map((p) => ({ tradeDate: p.trade_date, value: p.value_numeric }));
-}
-
-function mergeRecentByDate(
-  left: ChoiceMacroRecentPoint[],
-  right: ChoiceMacroRecentPoint[],
-): { dates: string[]; leftV: number[]; rightV: number[] } {
-  const rm = new Map(right.map((p) => [p.trade_date, p.value_numeric]));
-  const sorted = [...left].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
-  const dates: string[] = [];
-  const leftV: number[] = [];
-  const rightV: number[] = [];
-  for (const p of sorted) {
-    const rv = rm.get(p.trade_date);
-    if (rv != null) {
-      dates.push(p.trade_date);
-      leftV.push(p.value_numeric);
-      rightV.push(rv);
-    }
-  }
-  return { dates, leftV, rightV };
-}
-
-/** 两收益率(%)之差 → bp */
-function toSpreadBp(minuendPct: number, subtrahendPct: number) {
-  return (minuendPct - subtrahendPct) * 100;
-}
-
-function spreadSparklinePointsFromPoints(
-  hi: ChoiceMacroLatestPoint | undefined,
-  lo: ChoiceMacroLatestPoint | undefined,
-): CrossAssetDatedValue[] {
-  if (!hi?.recent_points?.length || !lo?.recent_points?.length) {
-    return [];
-  }
-  const { dates, leftV, rightV } = mergeRecentByDate(hi.recent_points, lo.recent_points);
-  return dates.map((tradeDate, index) => ({
-    tradeDate,
-    value: toSpreadBp(leftV[index], rightV[index]),
-  }));
 }
 
 function spreadLatestChange(sparkline: number[]): number | null {
@@ -360,89 +314,48 @@ function valueLabelForSlot(
   return value.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 }
 
+function missingSpreadKpi(slot: CrossAssetSpreadSlot): ResolvedCrossAssetKpi {
+  return {
+    key: slot.key,
+    label: slot.labelCnUs,
+    format: "bp",
+    tag: slot.tag,
+    resolvedSeriesId: `${slot.key}:missing`,
+    sourceKind: "missing",
+    vendorName: null,
+    tradeDate: null,
+    unit: null,
+    valueLabel: EM_DASH,
+    changeLabel: EM_DASH,
+    changeTone: "default",
+    sparkline: [],
+    sparklinePoints: [],
+    missingNote: PRECOMPUTED_SPREAD_MISSING_NOTE,
+  };
+}
+
 function resolveSpreadSlot(
   slot: CrossAssetSpreadSlot,
   byId: Map<string, ChoiceMacroLatestPoint>,
 ): ResolvedCrossAssetKpi {
   const preBp = pickPoint(byId, slot.precomputedCnUsBpIds);
-  if (preBp) {
-    const sparklinePoints = sparklinePointsFromPoint(preBp);
-    const sparkline = sparklinePoints.map((point) => point.value);
-    const delta = spreadLatestChange(sparkline);
-    return {
-      key: slot.key,
-      label: slot.labelCnUs,
-      format: "bp",
-      tag: slot.tag,
-      resolvedSeriesId: preBp.series_id,
-      sourceKind: sourceKindFromSeriesId(preBp.series_id),
-      vendorName: preBp.vendor_name,
-      tradeDate: preBp.trade_date,
-      unit: preBp.unit,
-      valueLabel: valueLabelForSlot("bp", preBp.value_numeric),
-      changeLabel: changeLabelForSlot("bp", delta),
-      changeTone: toneForChange("bp", delta),
-      sparkline,
-      sparklinePoints,
-    };
+  if (!preBp) {
+    return missingSpreadKpi(slot);
   }
-
-  const cn = pickPoint(byId, slot.cnGov10yIds);
-  const us = pickPoint(byId, slot.usGov10yIds);
-  const cdb = pickPoint(byId, slot.cdb10yIds);
-
-  let label = slot.labelDomesticFallback;
-  let hi: ChoiceMacroLatestPoint | undefined;
-  let lo: ChoiceMacroLatestPoint | undefined;
-  let resolvedId = `${slot.key}:domestic`;
-
-  if (cn && us) {
-    label = slot.labelCnUs;
-    hi = cn;
-    lo = us;
-    resolvedId = `${slot.key}:cn_us`;
-  } else if (cdb && cn) {
-    label = slot.labelDomesticFallback;
-    hi = cdb;
-    lo = cn;
-    resolvedId = `${slot.key}:cdb_gov`;
-  }
-
-  if (!hi || !lo) {
-    return {
-      key: slot.key,
-      label: slot.labelCnUs,
-      format: "bp",
-      tag: slot.tag,
-      resolvedSeriesId: `${slot.key}:missing`,
-      sourceKind: "missing",
-      vendorName: null,
-      tradeDate: null,
-      unit: null,
-      valueLabel: EM_DASH,
-      changeLabel: EM_DASH,
-      changeTone: "default",
-      sparkline: [],
-      sparklinePoints: [],
-    };
-  }
-
-  const vBp = toSpreadBp(hi.value_numeric, lo.value_numeric);
-  const sparklinePoints = spreadSparklinePointsFromPoints(hi, lo);
+  const sparklinePoints = sparklinePointsFromPoint(preBp);
   const sparkline = sparklinePoints.map((point) => point.value);
   const delta = spreadLatestChange(sparkline);
-
   return {
     key: slot.key,
-    label,
+    label: slot.labelCnUs,
     format: "bp",
     tag: slot.tag,
-    resolvedSeriesId: resolvedId,
-    sourceKind: sourceKindFromSeriesId(resolvedId),
-    vendorName: null,
-    tradeDate: latestTradeDate([hi, lo]),
-    unit: "bp",
-    valueLabel: valueLabelForSlot("bp", vBp),
+    resolvedSeriesId: preBp.series_id,
+    sourceKind: sourceKindFromSeriesId(preBp.series_id),
+    vendorName: preBp.vendor_name,
+    tradeDate: preBp.trade_date,
+    unit: preBp.unit,
+    valueLabel: valueLabelForSlot("bp", preBp.value_numeric),
     changeLabel: changeLabelForSlot("bp", delta),
     changeTone: toneForChange("bp", delta),
     sparkline,
@@ -517,15 +430,6 @@ export function maxCrossAssetHeadlineTradeDate(series: ChoiceMacroLatestPoint[])
     const preBp = pickPoint(byId, slot.precomputedCnUsBpIds);
     if (preBp) {
       dates.push(preBp.trade_date);
-      continue;
-    }
-    const cn = pickPoint(byId, slot.cnGov10yIds);
-    const us = pickPoint(byId, slot.usGov10yIds);
-    const cdb = pickPoint(byId, slot.cdb10yIds);
-    if (cn && us) {
-      dates.push(cn.trade_date, us.trade_date);
-    } else if (cdb && cn) {
-      dates.push(cdb.trade_date, cn.trade_date);
     }
   }
   if (dates.length === 0) {
@@ -559,45 +463,15 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
     }
 
     const preBp = pickPoint(byId, slot.precomputedCnUsBpIds);
-    if (preBp?.recent_points?.length) {
-      const sorted = [...preBp.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
-      lines.push({
-        name: slot.labelCnUs,
-        ...dedupeDateSeries(
-          sorted.map((x) => x.trade_date),
-          sorted.map((x) => x.value_numeric),
-        ),
-      });
+    if (!preBp?.recent_points?.length) {
       continue;
     }
-
-    const cn = pickPoint(byId, slot.cnGov10yIds);
-    const us = pickPoint(byId, slot.usGov10yIds);
-    const cdb = pickPoint(byId, slot.cdb10yIds);
-    let hi: ChoiceMacroLatestPoint | undefined;
-    let lo: ChoiceMacroLatestPoint | undefined;
-    let name = slot.labelDomesticFallback;
-    if (cn && us) {
-      hi = cn;
-      lo = us;
-      name = slot.labelCnUs;
-    } else if (cdb && cn) {
-      hi = cdb;
-      lo = cn;
-      name = slot.labelDomesticFallback;
-    }
-    if (!hi?.recent_points?.length || !lo?.recent_points?.length) {
-      continue;
-    }
-    const { dates, leftV, rightV } = mergeRecentByDate(hi.recent_points, lo.recent_points);
-    if (dates.length === 0) {
-      continue;
-    }
+    const sorted = [...preBp.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
     lines.push({
-      name,
+      name: slot.labelCnUs,
       ...dedupeDateSeries(
-        dates,
-        leftV.map((lv, i) => toSpreadBp(lv, rightV[i])),
+        sorted.map((x) => x.trade_date),
+        sorted.map((x) => x.value_numeric),
       ),
     });
   }

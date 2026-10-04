@@ -47,16 +47,20 @@ powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1
 docker compose up api worker frontend postgres redis minio
 ```
 
+启动前必须在宿主机 shell 或 `.env` 中提供三个**必填**变量，`docker-compose.yml` 用 `${VAR:?...}` 声明，缺失即拒绝启动：
+`MOSS_POSTGRES_PASSWORD`、`MOSS_MINIO_ROOT_USER`、`MOSS_MINIO_ROOT_PASSWORD`。compose 文件里没有任何写死的凭据；
+`MOSS_POSTGRES_USER` / `MOSS_POSTGRES_DB` 默认 `moss`，各服务的宿主机端口可用 `MOSS_*_PORT` 覆盖（见 [CONFIGURATION.md](CONFIGURATION.md)）。
+
 服务与端口：
 
-| 服务 | 作用 | 端口 |
-| --- | --- | --- |
-| `api` | FastAPI 应用 | `8000` |
-| `worker` | Dramatiq worker | 无独立外部 HTTP 端口 |
-| `frontend` | Vite dev server | `5173` |
-| `postgres` | 主数据库 | `5432` |
-| `redis` | 队列/缓存 | `6379` |
-| `minio` | 对象存储 | `9000`, `9001` |
+| 服务 | 作用 | 容器内端口 | 宿主机映射 |
+| --- | --- | --- | --- |
+| `api` | FastAPI 应用 | `8000` | **无**（`api` 没有 `ports:`，仅 compose 网络内可达，由 `frontend` 经 `MOSS_VITE_API_PROXY=http://api:8000` 代理） |
+| `worker` | Dramatiq worker | 无 HTTP 端口 | 无 |
+| `frontend` | Vite dev server | `5173` | `127.0.0.1:${MOSS_FRONTEND_PORT:-5173}` |
+| `postgres` | 主数据库 | `5432` | `127.0.0.1:${MOSS_POSTGRES_PORT:-5432}` |
+| `redis` | 队列/缓存 | `6379` | `127.0.0.1:${MOSS_REDIS_PORT:-6379}` |
+| `minio` | 对象存储 | `9000`, `9001` | `127.0.0.1:${MOSS_MINIO_PORT:-9000}`, `127.0.0.1:${MOSS_MINIO_CONSOLE_PORT:-9001}` |
 
 需要注意，Compose 中使用的仍然是开发型命令：
 

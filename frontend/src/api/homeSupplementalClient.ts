@@ -1,12 +1,13 @@
 import type { ApiClient } from "./client";
 import type { BalanceMovementClientMethods } from "./balanceMovementClient";
+import { createRealBalanceAnalysisOverviewClient } from "./balanceAnalysisOverviewClient";
 import type {
   ApiEnvelope,
   AssetStructurePayload,
   BalanceAnalysisBasisBreakdownPayload,
   BalanceAnalysisDecisionItemsPayload,
   BalanceAnalysisDatesPayload,
-  BalanceAnalysisOverviewPayload,
+  BalanceAnalysisPublicationStatusPayload,
   BalanceAnalysisPayload,
   BalanceAnalysisSummaryTablePayload,
   BalanceAnalysisWorkbookPayload,
@@ -32,8 +33,8 @@ import type {
 } from "./contracts";
 import type { LiabilityAdbClientMethods } from "./liabilityAdbClient";
 import { readHttpJsonDetail } from "./httpResponseError";
-import { normalizeNumeric } from "./numeric";
-import { assertApiEnvelopeShape } from "./transport";
+import { normalizeCreditSpreadMigrationEnvelope, normalizePortfolioHeadlinesEnvelope } from "./bondAnalyticsNormalization";
+import { assertApiEnvelopeShape, requestJson as requestTransportJson } from "./transport";
 
 type FetchLike = typeof fetch;
 
@@ -51,6 +52,7 @@ export type HomeSupplementalClientMethods = Pick<
   | "getBondAnalyticsYieldCurveTermStructure"
   | "getBondAnalyticsKrdCurveRisk"
   | "getBalanceAnalysisDates"
+  | "getBalanceAnalysisPublicationStatus"
   | "getBalanceAnalysisOverview"
   | "getBalanceAnalysisSummaryByBasis"
   | "getBalanceAnalysisSummary"
@@ -95,19 +97,8 @@ async function ensureMockBundle(): Promise<HomeSupplementalMockBundle> {
   return mockBundlePromise;
 }
 
-async function requestJson<TData>(
-  fetchImpl: FetchLike,
-  baseUrl: string,
-  path: string,
-): Promise<ApiEnvelope<TData>> {
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) {
-    const detail = await readHttpJsonDetail(response);
-    throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
-  }
-  return (await response.json()) as ApiEnvelope<TData>;
+function requestJson<TData>(fetchImpl: FetchLike, baseUrl: string, path: string): Promise<ApiEnvelope<TData>> {
+  return requestTransportJson<TData>(fetchImpl, baseUrl, path, { errorDetail: "json-detail" });
 }
 
 async function requestActionJson<TData>(
@@ -153,155 +144,15 @@ function buildCampisiQuery(options?: {
   return query ? `?${query}` : "";
 }
 
-function normalizeConcentration(
-  value: unknown,
-): CreditSpreadMigrationPayload["concentration_by_rating"] {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const source = value as Record<string, unknown>;
-  const topItems = Array.isArray(source.top_items) ? source.top_items : [];
-  return {
-    ...source,
-    dimension: String(source.dimension ?? ""),
-    hhi: normalizeNumeric(source.hhi, "ratio", false),
-    top5_concentration: normalizeNumeric(source.top5_concentration, "ratio", false),
-    top_items: topItems.map((item) => {
-      const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-      return {
-        ...row,
-        name: String(row.name ?? ""),
-        weight: normalizeNumeric(row.weight, "ratio", false),
-        market_value: normalizeNumeric(row.market_value, "yuan", false),
-      };
-    }),
-  };
-}
-
-/**
- * envelope.result 关键结构运行时检查：后端返回可能偏离声明类型，
- * 非对象时披露并返回 null，由调用方走既有请求失败错误态。
- */
-function envelopeResultRecord(value: unknown, endpoint: string): Record<string, unknown> | null {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  console.error(`[homeSupplementalClient] ${endpoint} 返回的 envelope.result 不是对象，无法归一化。`);
-  return null;
-}
-
-function normalizeCreditSpreadMigrationEnvelope(
-  envelope: ApiEnvelope<CreditSpreadMigrationPayload>,
-): ApiEnvelope<CreditSpreadMigrationPayload> {
-  const source = envelopeResultRecord(envelope.result, "credit-spread-migration");
-  if (!source) {
-    throw new Error("credit-spread-migration envelope.result 缺失关键结构");
-  }
-  const spreadScenarios = Array.isArray(source.spread_scenarios) ? source.spread_scenarios : [];
-  const migrationScenarios = Array.isArray(source.migration_scenarios) ? source.migration_scenarios : [];
-  const bondDetails = Array.isArray(source.bond_details) ? source.bond_details : undefined;
-  return {
-    ...envelope,
-    result: {
-      ...envelope.result,
-      credit_market_value: normalizeNumeric(source.credit_market_value, "yuan", false),
-      credit_weight: normalizeNumeric(source.credit_weight, "ratio", false),
-      rating_aa_and_below_weight: normalizeNumeric(source.rating_aa_and_below_weight, "ratio", false),
-      spread_dv01: normalizeNumeric(source.spread_dv01, "dv01", false),
-      weighted_avg_spread: normalizeNumeric(source.weighted_avg_spread, "bp", false, 2),
-      weighted_avg_spread_duration: normalizeNumeric(source.weighted_avg_spread_duration, "ratio", false),
-      spread_scenarios: spreadScenarios.map((item) => {
-        const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-        return {
-          ...row,
-          scenario_name: String(row.scenario_name ?? ""),
-          spread_change_bp: normalizeNumeric(row.spread_change_bp, "bp", true),
-          pnl_impact: normalizeNumeric(row.pnl_impact, "yuan", true),
-          oci_impact: normalizeNumeric(row.oci_impact, "yuan", true),
-          tpl_impact: normalizeNumeric(row.tpl_impact, "yuan", true),
-        };
-      }),
-      migration_scenarios: migrationScenarios.map((item) => {
-        const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-        /* 缺失 ≠ 0：与 bondAnalyticsClient 同款，字段缺失/不可解析透传 null（消费方渲染 —）。 */
-        const affectedBondsRaw =
-          row.affected_bonds === null || row.affected_bonds === undefined
-            ? null
-            : Number(row.affected_bonds);
-        return {
-          ...row,
-          scenario_name: String(row.scenario_name ?? ""),
-          from_rating: String(row.from_rating ?? ""),
-          to_rating: String(row.to_rating ?? ""),
-          affected_bonds:
-            affectedBondsRaw !== null && Number.isFinite(affectedBondsRaw) ? affectedBondsRaw : null,
-          affected_market_value: normalizeNumeric(row.affected_market_value, "yuan", false),
-          pnl_impact: normalizeNumeric(row.pnl_impact, "yuan", true),
-          oci_impact: normalizeNumeric(row.oci_impact, "yuan", true),
-        };
-      }),
-      concentration_by_issuer: normalizeConcentration(source.concentration_by_issuer),
-      concentration_by_industry: normalizeConcentration(source.concentration_by_industry),
-      concentration_by_rating: normalizeConcentration(source.concentration_by_rating),
-      concentration_by_tenor: normalizeConcentration(source.concentration_by_tenor),
-      bond_details: bondDetails?.map((item) => {
-        const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-        return {
-          ...row,
-          market_value: normalizeNumeric(row.market_value, "yuan", false),
-        };
-      }),
-      oci_credit_exposure: normalizeNumeric(source.oci_credit_exposure, "yuan", false),
-      oci_spread_dv01: normalizeNumeric(source.oci_spread_dv01, "dv01", false),
-      oci_sensitivity_25bp: normalizeNumeric(source.oci_sensitivity_25bp, "yuan", true),
-    },
-  };
-}
-
-function normalizePortfolioHeadlinesEnvelope(
-  envelope: ApiEnvelope<BondPortfolioHeadlinesPayload>,
-): ApiEnvelope<BondPortfolioHeadlinesPayload> {
-  const source = envelopeResultRecord(envelope.result, "portfolio-headlines");
-  if (!source) {
-    throw new Error("portfolio-headlines envelope.result 缺失关键结构");
-  }
-  const byAssetClass = Array.isArray(source.by_asset_class) ? source.by_asset_class : [];
-  return {
-    ...envelope,
-    result: {
-      ...envelope.result,
-      total_market_value: normalizeNumeric(source.total_market_value, "yuan", false),
-      weighted_ytm: normalizeNumeric(source.weighted_ytm, "pct", true),
-      weighted_duration: normalizeNumeric(source.weighted_duration, "ratio", false),
-      weighted_coupon: normalizeNumeric(source.weighted_coupon, "pct", true),
-      total_dv01: normalizeNumeric(source.total_dv01, "dv01", false),
-      credit_weight: normalizeNumeric(source.credit_weight, "ratio", false),
-      issuer_hhi: normalizeNumeric(source.issuer_hhi, "ratio", false),
-      issuer_top5_weight: normalizeNumeric(source.issuer_top5_weight, "ratio", false),
-      by_asset_class: byAssetClass.map((item) => {
-        const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-        return {
-          ...row,
-          asset_class: String(row.asset_class ?? ""),
-          market_value: normalizeNumeric(row.market_value, "yuan", false),
-          duration: normalizeNumeric(row.duration, "ratio", false),
-          dv01: normalizeNumeric(row.dv01, "dv01", false),
-          weight: normalizeNumeric(row.weight, "ratio", false),
-        };
-      }),
-    },
-  };
-}
-
 async function loadMockClient(): Promise<HomeSupplementalClientMethods> {
   if (!mockClientPromise) {
     mockClientPromise = Promise.all([
-      import("./workbenchDashboardApi"),
-      import("./bondAnalyticsMockClient"),
-      import("./balanceAnalysisClient"),
-      import("./balanceMovementMockClient"),
-      import("./pnlAttributionMockClient"),
-      import("./liabilityAdbClient"),
+      import("../mocks/workbenchDashboardMockApi"),
+      import("../mocks/bondAnalyticsMockClient"),
+      import("../mocks/balanceAnalysisMockClient"),
+      import("../mocks/balanceMovementMockClient"),
+      import("../mocks/pnlAttributionMockClient"),
+      import("../mocks/liabilityAdbMockClient"),
     ]).then(
       ([
         dashboardModule,
@@ -473,24 +324,27 @@ export function createRealHomeSupplementalClient({
       ]);
       return envelope;
     },
-    getBalanceAnalysisOverview: ({ reportDate, positionScope, currencyBasis }) => {
-      const params = new URLSearchParams({
-        report_date: reportDate,
-        position_scope: positionScope,
-        currency_basis: currencyBasis,
-      });
-      return requestJson<BalanceAnalysisOverviewPayload>(
+    getBalanceAnalysisPublicationStatus: () =>
+      requestActionJson<BalanceAnalysisPublicationStatusPayload>(
         fetchImpl,
         baseUrl,
-        `/ui/balance-analysis/overview?${params.toString()}`,
-      );
-    },
-    getBalanceAnalysisSummaryByBasis: ({ reportDate, positionScope, currencyBasis }) => {
+        "/ui/balance-analysis/publication-status",
+      ),
+    ...createRealBalanceAnalysisOverviewClient({
+      fetchImpl,
+      baseUrl,
+      requestJson: (fetchImpl, baseUrl, path) =>
+        requestTransportJson(fetchImpl, baseUrl, path, { errorDetail: "json-detail" }),
+    }),
+    getBalanceAnalysisSummaryByBasis: ({ reportDate, positionScope, currencyBasis, generation }) => {
       const params = new URLSearchParams({
         report_date: reportDate,
         position_scope: positionScope,
         currency_basis: currencyBasis,
       });
+      if (generation) {
+        params.set("generation", generation);
+      }
       return requestJson<BalanceAnalysisBasisBreakdownPayload>(
         fetchImpl,
         baseUrl,

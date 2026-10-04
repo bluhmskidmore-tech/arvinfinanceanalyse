@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from calendar import monthrange
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -16,6 +17,11 @@ from decimal import Decimal
 from typing import Any
 
 from .safe_decimal import safe_decimal
+
+
+class ActionAttributionPnlUnavailableError(RuntimeError):
+    """The monthly flow or publication authority cannot be uniquely resolved."""
+
 
 ACTION_TYPE_NAMES: dict[str, str] = {
     "TIMING_BUY": "择时买入",
@@ -26,7 +32,7 @@ ACTION_TYPE_NAMES: dict[str, str] = {
     "ADJUST": "持仓调整",
     # 存续且久期/市值均无显著变化（未落入以上任一动作分桶）的持仓，
     # 仅在 by_action_type 中以汇总行披露，不生成 action_details 明细行。
-    "UNALLOCATED": "存续未变动（未分配）",
+    "UNALLOCATED": "无法由快照识别动作（未分配）",
 }
 
 
@@ -68,6 +74,13 @@ def build_action_attribution_success_payload(
     if not pnl_by_key:
         missing_inputs.append("fact_formal_pnl_fi_capital_gain_517")
     missing_inputs.append("independent_accounting_pnl")
+    pnl_coverage = dict(raw.get("pnl_coverage") or {})
+    missing_months = [code.split(":", 1)[1] for code in pnl_warning_codes if code.startswith("ACTION_ATTRIBUTION_PNL517_MISSING_MONTH:")]
+    if pnl_coverage:
+        pnl_coverage["period_status"] = "partial" if missing_months else "complete"
+        pnl_coverage["missing_months"] = missing_months
+        if missing_months:
+            pnl_coverage["status"] = "partial"
 
     return {
         "report_date": report_date,
@@ -76,6 +89,14 @@ def build_action_attribution_success_payload(
         "period_end": date.fromisoformat(str(raw["period_end"])),
         "total_actions": int(raw["total_actions"]),
         "total_pnl_from_actions": raw["total_pnl_from_actions"],
+        "snapshot_window": {
+            "requested_start": str(raw["period_start"]),
+            "resolved_start": prior_snapshot_date,
+            "resolved_end": str(raw["period_end"]) if raw.get("end_snapshot_available", True) else None,
+            "start_gap_days": (date.fromisoformat(str(raw["period_start"])) - date.fromisoformat(prior_snapshot_date)).days if prior_snapshot_date else None,
+            "staleness_limit_status": "PENDING",
+        },
+        "pnl_coverage": pnl_coverage or None,
         "by_action_type": list(raw.get("by_action_type", [])),
         "action_details": list(raw.get("action_details", [])),
         "period_start_duration": raw["period_start_duration"],
@@ -158,16 +179,32 @@ def select_action_attribution_pnl_report_dates(
     if period_type == "MoM":
         return [period_end.isoformat()], codes
 
-    selected: list[str] = []
+    if period_type == "TTM" and period_end.day != monthrange(period_end.year, period_end.month)[1]:
+        return [], ["ACTION_ATTRIBUTION_TTM_NON_MONTH_END_PENDING"]
+    end_month = period_end.year * 12 + period_end.month - 1
+    start_month = end_month - 11 if period_type == "TTM" else period_start.year * 12 + period_start.month - 1
+    expected_months = [f"{m // 12:04d}-{m % 12 + 1:02d}" for m in range(start_month, end_month + 1)]
+    by_month: dict[str, set[str]] = {}
     for raw in available_report_dates:
         try:
             ds = date.fromisoformat(str(raw))
         except ValueError:
             continue
-        if period_start <= ds <= period_end:
-            selected.append(str(raw))
-
-    selected = sorted(set(selected))
+        month = ds.isoformat()[:7]
+        if month in expected_months and ds <= period_end and (period_type == "TTM" or ds >= period_start):
+            by_month.setdefault(month, set()).add(ds.isoformat())
+    selected: list[str] = []
+    for month in expected_months:
+        dates = by_month.get(month, set())
+        if len(dates) == 1:
+            selected.extend(dates)
+        elif dates:
+            codes.append(f"ACTION_ATTRIBUTION_PNL517_MONTH_AUTHORITY_PENDING:{month}")
+        else:
+            codes.append(f"ACTION_ATTRIBUTION_PNL517_MISSING_MONTH:{month}")
+    selected.sort()
+    if any("AUTHORITY_PENDING" in code for code in codes):
+        return [], codes
     if len(selected) > 1:
         codes.append("ACTION_ATTRIBUTION_PNL517_MULTI_MONTH_SUM")
     return selected, codes
@@ -223,6 +260,8 @@ def compute_action_attribution_bonds(
     positions_start: list[dict[str, Any]],
     positions_end: list[dict[str, Any]],
     pnl_by_key: Mapping[str, Decimal],
+    start_snapshot_available: bool = True,
+    end_snapshot_available: bool = True,
     duration_epsilon: Decimal = Decimal("0.15"),
     mv_ratio_epsilon: Decimal = Decimal("0.02"),
 ) -> dict[str, Any]:
@@ -235,7 +274,7 @@ def compute_action_attribution_bonds(
     在接入真实会计口径来源前保留复制值以避免破坏契约，但消费方不应将其
     视为独立于经济口径的会计真值。
 
-    闭合语义：``keys_union``（期初∪期末持仓键）覆盖的 PnL 应等于
+    闭合语义：完整期间输入 PnL（含两端均无持仓的键）应等于
     ``by_action_type`` 各行之和。存续且久期变动 ≤ ``duration_epsilon`` 且
     市值变动比例 < ``mv_ratio_epsilon`` 的持仓不生成 action_details 明细行，
     其 PnL 会汇总进 ``by_action_type`` 的 ``UNALLOCATED`` 行以保持闭合。
@@ -243,7 +282,10 @@ def compute_action_attribution_bonds(
     warnings: list[str] = []
     if not positions_end:
         warnings.append("NO_POSITIONS_END")
-        return _empty(period_start, period_end, warnings)
+    if not start_snapshot_available:
+        warnings.append("ACTION_ATTRIBUTION_NO_PRIOR_SNAPSHOT")
+    if not end_snapshot_available:
+        warnings.append("ACTION_ATTRIBUTION_NO_END_SNAPSHOT")
 
     start_map: dict[str, _Line] = {}
     for row in positions_start:
@@ -264,7 +306,7 @@ def compute_action_attribution_bonds(
 
     # 新增
     for k, e in end_map.items():
-        if k not in start_map:
+        if k not in start_map and start_snapshot_available and end_snapshot_available:
             pnl = pnl_by_key.get(k, Decimal("0"))
             details.append(
                 {
@@ -285,7 +327,7 @@ def compute_action_attribution_bonds(
 
     # 卖出
     for k, s in start_map.items():
-        if k not in end_map:
+        if k not in end_map and start_snapshot_available and end_snapshot_available:
             pnl = pnl_by_key.get(k, Decimal("0"))
             inst, book = _parse_key(k)
             details.append(
@@ -308,7 +350,7 @@ def compute_action_attribution_bonds(
     # 存续：久期、类别、市值显著变化
     for k, e in end_map.items():
         s = start_map.get(k)
-        if s is None:
+        if s is None or not start_snapshot_available or not end_snapshot_available:
             continue
         mv_s, mv_e = s.market_value, e.market_value
         if mv_s <= 0:
@@ -375,7 +417,11 @@ def compute_action_attribution_bonds(
             action_id += 1
 
     keys_union = set(start_map) | set(end_map)
-    total_period_pnl = sum((pnl_by_key.get(k, Decimal("0")) for k in keys_union), Decimal("0"))
+    input_keys = set(pnl_by_key)
+    total_period_pnl = sum(pnl_by_key.values(), Decimal("0"))
+    pnl_only_keys = input_keys - keys_union
+    if pnl_only_keys:
+        warnings.append("ACTION_ATTRIBUTION_PNL_ONLY_KEYS")
 
     # 汇总按类型
     buckets: dict[str, dict[str, Any]] = {}
@@ -405,11 +451,11 @@ def compute_action_attribution_bonds(
     # 未分配残余：存续且久期/市值均无显著变化（或其他未落入以上分桶）的持仓
     # 不生成 action_details 明细行，但其 PnL 仍计入 total_period_pnl；此处显式
     # 汇总一行披露，使 by_action_type 合计与 total_pnl_from_actions 闭合。
-    allocated = sum((Decimal(str(d["pnl_economic"])) for d in details), Decimal("0"))
-    unallocated_keys = keys_union - covered_keys
+    allocated = sum((pnl_by_key.get(k, Decimal("0")) for k in covered_keys), Decimal("0"))
+    identified_pnl = allocated
+    unallocated_keys = input_keys - covered_keys
     unallocated_pnl = total_period_pnl - allocated
-    reconciliation_epsilon = Decimal("0.01")
-    if unallocated_keys and abs(unallocated_pnl) > reconciliation_epsilon:
+    if unallocated_keys:
         unallocated_count = len(unallocated_keys)
         by_type.append(
             {
@@ -441,7 +487,7 @@ def compute_action_attribution_bonds(
     # `allocated` 现已包含上面追加的 UNALLOCATED 汇总行，因此正常情况下应与
     # total_period_pnl 精确闭合；此检查仅用于捕捉真正的异常缺口（例如未来
     # 引入新分桶但遗漏归集、或存在浮点误差之外的计算错误）。
-    if keys_union and abs(total_period_pnl - allocated) > Decimal("0.01"):
+    if abs(total_period_pnl - allocated) > Decimal("0.01"):
         warnings.append("ACTION_ATTRIBUTION_PNL_NOT_FULLY_IN_DETAILS")
 
     return {
@@ -449,11 +495,28 @@ def compute_action_attribution_bonds(
         "period_end": period_end.isoformat(),
         "total_actions": len(details),
         "total_pnl_from_actions": float(total_period_pnl),
+        "pnl_coverage": {
+            "input_pnl": float(total_period_pnl),
+            "input_absolute_pnl": float(sum((abs(v) for v in pnl_by_key.values()), Decimal("0"))),
+            "identified_pnl": float(identified_pnl),
+            "unallocated_pnl": float(unallocated_pnl),
+            "unallocated_absolute_pnl": float(sum((abs(pnl_by_key[k]) for k in unallocated_keys), Decimal("0"))),
+            "pnl_only_pnl": float(sum((pnl_by_key[k] for k in pnl_only_keys), Decimal("0"))),
+            "pnl_only_absolute_pnl": float(sum((abs(pnl_by_key[k]) for k in pnl_only_keys), Decimal("0"))),
+            "input_key_count": len(input_keys),
+            "identified_key_count": len(input_keys & covered_keys),
+            "unallocated_key_count": len(unallocated_keys),
+            "pnl_only_key_count": len(pnl_only_keys),
+            "key_coverage_ratio": len(input_keys & covered_keys) / len(input_keys) if input_keys else None,
+            "reconciliation_difference": float(total_period_pnl - allocated),
+            "status": "partial" if unallocated_keys or not start_snapshot_available or not end_snapshot_available else "complete",
+        },
         "by_action_type": by_type,
         "action_details": details,
-        "period_start_duration": float(dur_s),
-        "period_end_duration": float(dur_e),
-        "duration_change_from_actions": float(dur_e - dur_s),
+        "period_start_duration": float(dur_s) if start_snapshot_available else None,
+        "period_end_duration": float(dur_e) if end_snapshot_available else None,
+        "duration_change_from_actions": float(dur_e - dur_s) if start_snapshot_available and end_snapshot_available else None,
+        "end_snapshot_available": end_snapshot_available,
         "period_start_dv01": None,
         "period_end_dv01": None,
         "warnings": warnings,

@@ -13,21 +13,8 @@
   min-width: 0;
 }
 
-/* health 为 null 的一句话空态（分区头另有状态注记），高度钳制 ≤120px。 */
-.macro-observation-datahealth__empty {
-  display: flex;
-  align-items: center;
-  min-height: 56px;
-  max-height: 120px;
-  margin: 0;
-  padding: 10px 14px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
-  color: var(--dh-api-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
+/* health 为 null 的一句话空态（分区头另有状态注记）改用共享 StateSurface
+   原语（status="empty" 的收缩消息框，DESIGN.md §5），不再自绘。 */
 
 /* 三格读数带：对齐 KPI 横带语言（单框 + 发丝竖缝）但更轻（16px 值、无最小高）。 */
 .macro-observation-datahealth__coverage {
@@ -62,9 +49,9 @@
 
 .macro-observation-datahealth__coverage-value {
   color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
   font-variant-numeric: tabular-nums;
   overflow-wrap: normal;
@@ -128,7 +115,7 @@
 /* 最新日期 / 滞后列：等宽数字，muted 降权。 */
 .macro-observation-datahealth__date-cell {
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -364,7 +351,7 @@
 .macro-observation-evidence__bundle-title {
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -437,7 +424,7 @@
 
 .macro-observation-evidence__artifact-size {
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 11px;
   line-height: 1.5;
   text-align: right;

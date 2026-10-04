@@ -40,6 +40,15 @@ from backend.app.core_finance.bond_duration import (
 TOL = Decimal("1E-9")
 
 
+def test_observed_zero_ytm_differs_from_missing_par_fallback():
+    maturity, report = date(2036, 1, 1), date(2026, 1, 1)
+    observed = estimate_duration(maturity, report, Decimal("0.03"), ytm=Decimal("0"), coupon_frequency=1)
+    missing = estimate_duration(maturity, report, Decimal("0.03"), ytm=None, coupon_frequency=1)
+    par = estimate_duration(maturity, report, Decimal("0.03"), ytm=Decimal("0.03"), coupon_frequency=1)
+    assert observed > missing
+    assert missing == par
+
+
 class TestComputeMacaulayDuration:
     """Test Macaulay duration (delegated cash-flow discounting)."""
 
@@ -122,11 +131,10 @@ class TestComputeMacaulayDuration:
         assert Decimal("4.6") < duration < Decimal("4.6666667")
 
     def test_negative_yield(self):
-        """Negative yield: fall back to remaining years (shared caliber).
+        """合法负收益率仍按逐期现金流贴现。
 
-        统一到 ``common`` 口径：ytm <= 0 不做贴现，直接返回剩余年限
-        （负利率下贴现因子 > 1，闭合式与逐期式都不再有金融意义）。
-        旧实现此处会落进 ytm <= 1e-4 的启发式分支，返回 4.5833。
+        独立逐笔式：Σ[t·CF_t/(1-0.01)^t] / Σ[CF_t/(1-0.01)^t]。
+        折现基数 0.99 > 0，因此负收益率并不破坏标准公式。
         """
         years = Decimal("5.0")
         coupon = Decimal("0.04")
@@ -135,7 +143,8 @@ class TestComputeMacaulayDuration:
 
         duration = compute_macaulay_duration(years, coupon, ytm, frequency)
 
-        assert duration == years
+        assert abs(duration - Decimal("4.675479660902428276750513395")) <= TOL
+        assert duration < years
 
     def test_semiannual_frequency(self):
         """Bond with semiannual coupon payments — 10 whole半年期."""
@@ -211,24 +220,33 @@ class TestFractionalPeriodRegression:
 
     @staticmethod
     def _in_stub_merge_window(days: int, freq: int) -> bool:
-        """剩余期数的小数部分 ∈ (0, 0.01]，即共享实现会把尾数并入上一期的那些天。"""
-        raw = Decimal(str(days)) / Decimal("365") * Decimal(str(freq))
-        full = int(raw)
-        return full > 0 and Decimal("0") < raw - Decimal(str(full)) <= Decimal("0.01")
+        """无日期共享实现保留整期后 0.01 期的历史小残期归并窗口。
+
+        直接复用生产判定 ``whole_period_calendar_merge_applies``，避免测试里再维护一份
+        阈值副本而与口径漂移。
+        """
+        from backend.app.core_finance.bond_analytics.common import (
+            whole_period_calendar_merge_applies,
+        )
+
+        years = Decimal(str(days)) / Decimal("365")
+        raw = years * Decimal(str(freq))
+        nearest = int(raw + Decimal("0.5"))
+        return nearest > 0 and whole_period_calendar_merge_applies(years, nearest, freq)
 
     @pytest.mark.parametrize("freq", [1, 2])
     def test_duration_is_monotonic_in_remaining_days(self, freq):
-        """久期必须随剩余天数单调不减（尾数归并窗口除外）。
+        """久期必须随剩余天数单调不减（日历归并窗口除外）。
 
         整期取整会制造锯齿：期数在 N 与 N+1 之间跳变时久期忽上忽下（1.4986 年的债
         算成 1.0000、1.5014 年的债算成 1.4695），本用例直接拦截这种非单调性——这是
         比单点黄金值更强的形状约束。
 
-        已知例外（共享实现的既有行为，不在本次修复范围内）：剩余期数小数部分
-        ∈ (0, 0.01] 时会触发尾数归并，等价于把一笔"即将支付"的票息按除息处理。
-        跨越该阈值会真实地增减一笔近在眼前的现金流，价格跳约一个票息、时间权重
-        几乎不变，久期因而不连续（29Y 年付券最大跳 0.56 年）。该窗口只覆盖约
-        0.8% 的剩余天数；窗口之外单调性严格成立，故此处跳过窗口及其相邻天。
+        已知例外：无日期调用在整期之后不超过历史 0.01 期阈值时会触发向下归并，
+        等价于把一笔"即将支付"的票息按除息处理。
+        跨越该容差会真实地增减一笔近在眼前的现金流，价格跳约一个票息、时间权重
+        几乎不变，久期因而不连续。该窗口只覆盖少量剩余天数；窗口之外单调性严格成立，
+        故此处跳过窗口及其相邻天。
         """
         prev: Decimal | None = None
         prev_days: int | None = None
@@ -336,23 +354,27 @@ class TestModifiedDuration:
         assert modified == macaulay
 
     def test_negative_yield(self):
-        """Negative yield: fallback to Macaulay."""
+        """合法负收益率：Dmod=Dmac/(1+y/f)，且高于 Macaulay。"""
         macaulay = Decimal("5.0")
         ytm = Decimal("-0.02")
         frequency = 1
 
         modified = modified_duration_from_macaulay(macaulay, ytm, frequency)
 
-        assert modified == macaulay
+        assert modified == macaulay / Decimal("0.98")
+        assert modified > macaulay
 
-    def test_invalid_frequency_returns_macaulay(self):
-        """Invalid coupon frequency should fail closed to Macaulay duration."""
+    def test_invalid_frequency_normalizes_to_annual_like_macaulay(self):
+        """coupon_frequency <= 0 归一为年付，与 _estimate_macaulay_duration_years /
+        estimate_convexity_bond 的本地归一化一致：修正久期 = Macaulay / (1 + y)，
+        而不是单独退回未折算的 Macaulay（否则三项指标口径分叉，修正久期高估 ~3%）。"""
         macaulay = Decimal("5.0")
         ytm = Decimal("0.05")
 
         modified = modified_duration_from_macaulay(macaulay, ytm, 0)
 
-        assert modified == macaulay
+        assert modified == macaulay / Decimal("1.05")
+        assert modified == modified_duration_from_macaulay(macaulay, ytm, 1)
 
     def test_wind_override(self):
         """Wind modified duration overrides calculation."""

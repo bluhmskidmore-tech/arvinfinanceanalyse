@@ -314,6 +314,41 @@ def test_sector_rank_series_top_k_limit(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
 
 
+def test_sector_rank_series_discloses_latest_snapshot_fallback(tmp_path, monkeypatch) -> None:
+    end = date(2026, 4, 10)
+    requested = date(2026, 4, 17)
+    days = _five_weekdays(end)
+    sectors = [
+        ("SW801010", "Sect01"),
+        ("SW801020", "Sect02"),
+        ("SW801030", "Sect03"),
+    ]
+    pct_matrix = [[float(i + j) * 0.1 for j in range(len(sectors))] for i in range(len(days))]
+    db_path = tmp_path / "moss.duckdb"
+    _seed_sector_series_fixture(str(db_path), days=days, sector_specs=sectors, pct_matrix=pct_matrix)
+    client = _build_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/ui/market-data/livermore/sector-rank-series",
+        params={"as_of_date": requested.isoformat(), "window_days": 5, "top_k": 10},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    meta = payload["result_meta"]
+    result = payload["result"]
+    assert meta["as_of_date"] == end.isoformat()
+    assert meta["fallback_date"] == end.isoformat()
+    assert meta["fallback_mode"] == "latest_snapshot"
+    assert meta["quality_flag"] == "warning"
+    assert result["requested_as_of_date"] == requested.isoformat()
+    assert result["as_of_date"] == end.isoformat()
+    assert result["fallback_date"] == end.isoformat()
+    assert result["stale"] is True
+    assert result["lag_days"] == 7
+    get_settings.cache_clear()
+
+
 def test_sector_rank_series_missing_empty_tables(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "moss.duckdb"
     duckdb.connect(str(db_path)).close()
@@ -345,8 +380,8 @@ def test_sector_rank_series_param_validation(tmp_path, monkeypatch) -> None:
         client.get(
             "/ui/market-data/livermore/sector-rank-series",
             params={"as_of_date": "not-a-date"},
-        ).status_code
-        == 422
+        ).json()["detail"]
+        == "LIVERMORE_AS_OF_DATE_INVALID：日期格式无效，应为 YYYY-MM-DD"
     )
     get_settings.cache_clear()
 

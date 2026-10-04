@@ -387,7 +387,7 @@ describe("candidate period comparison view model", () => {
       sourceLabel: "日均源",
       reasonLabel: "缺少工作表：微贷",
     });
-    expect(model.hasUnlockedHistoricalSource).toBe(true);
+    expect(model.unlockedSourceMonths).toEqual(["202605", "202604"]);
   });
 
   it("surfaces the backend standard candidate when all three source hashes are locked", () => {
@@ -412,8 +412,23 @@ describe("candidate period comparison view model", () => {
     expect(model.status).toBe("ready");
     if (model.status !== "ready") throw new Error("expected a ready view model");
     expect(model.headline).toBe("5项标准候选、2项暂不可比");
-    expect(model.hasUnlockedHistoricalSource).toBe(false);
+    expect(model.unlockedSourceMonths).toEqual([]);
     expect(model.rows[0].qualityLabel).toBe("标准候选");
+  });
+
+  it("includes an unlocked current source in the degraded-candidate warning evidence", () => {
+    const payload = mutableSyntheticComparison();
+    payload.source_periods = payload.source_periods.map((period, index) => ({
+      ...period,
+      locked_sha256: index === 0 ? null : period.ledger_sha256,
+      lock_status: index === 0 ? "unlocked" as const : "locked_match" as const,
+    }));
+
+    const model = buildCandidatePeriodComparisonViewModel(payload, "202606");
+
+    expect(model.status).toBe("ready");
+    if (model.status !== "ready") throw new Error("expected a ready view model");
+    expect(model.unlockedSourceMonths).toEqual(["202606"]);
   });
 
   it("explains a null comparable rate when the backend marks a zero denominator", () => {

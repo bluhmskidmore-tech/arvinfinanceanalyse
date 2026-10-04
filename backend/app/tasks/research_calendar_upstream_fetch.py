@@ -73,6 +73,9 @@ def _fetch_research_calendar_upstream_once(
         "ingest_batch_id": batch,
         "fetched_rows": fetch_result["row_count"],
         "raw_zone_path": fetch_result["raw_zone_path"],
+        "status": fetch_result["status"],
+        "warnings": fetch_result["warnings"],
+        "source_statuses": fetch_result["source_statuses"],
         "results": materialized,
     }
 

@@ -5,14 +5,21 @@
 
 param(
     [string]$TaskName = "MOSS-MacroToolkitFreshness",
-    [string]$RepoRoot = "F:\MOSS-V3",
-    [string]$PythonExe = "C:\Users\arvin\AppData\Local\Python\pythoncore-3.14-64\python.exe",
+    [string]$RepoRoot = "",
+    [string]$PythonExe = "",
     # Host-local clock. On a UTC-4 host, 06:30 ≈ Asia/Shanghai 18:30.
     [string]$Time = "06:30",
     [string]$ChoiceSourceIp = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+    $RepoRoot = Split-Path -Parent $PSScriptRoot
+}
+if ([string]::IsNullOrWhiteSpace($PythonExe)) {
+    $PythonExe = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+}
 $logDir = Join-Path $RepoRoot "data\logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logPath = Join-Path $logDir "macro_toolkit_freshness_refresh.log"
@@ -28,6 +35,18 @@ $choiceSourceArg = if ([string]::IsNullOrWhiteSpace($ChoiceSourceIp)) {
     }
     if ($parsedChoiceSourceIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
         throw "ChoiceSourceIp must be a valid IPv4 address."
+    }
+    $bindProbe = [System.Net.Sockets.Socket]::new(
+        [System.Net.Sockets.AddressFamily]::InterNetwork,
+        [System.Net.Sockets.SocketType]::Stream,
+        [System.Net.Sockets.ProtocolType]::Tcp
+    )
+    try {
+        $bindProbe.Bind([System.Net.IPEndPoint]::new($parsedChoiceSourceIp, 0))
+    } catch {
+        throw "ChoiceSourceIp $parsedChoiceSourceIp is not assigned to this host."
+    } finally {
+        $bindProbe.Dispose()
     }
     " --choice-source-ip `"$($parsedChoiceSourceIp.ToString())`""
 }

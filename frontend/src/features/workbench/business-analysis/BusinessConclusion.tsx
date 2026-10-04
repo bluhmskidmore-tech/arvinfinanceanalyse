@@ -27,20 +27,19 @@ export function BusinessConclusion({
     Boolean(grandBusinessNetIncome);
 
   const content = hasGovernedValues
-    ? `当前经营页首屏已切回产品分类损益正式读模型。报告日 ${reportDate ?? "待确认"}，视图 ${view ?? "月度"}，产品分类行 ${rowCount ?? 0} 行；资产净收入 ${assetBusinessNetIncome ?? EM_DASH}、负债净收入 ${liabilityBusinessNetIncome ?? EM_DASH}、经营净收入 ${grandBusinessNetIncome ?? EM_DASH}。资产负债余额读面降为专题入口，不作为首屏经营口径。`
-    : "当前经营页首屏只保留产品分类损益正式读模型和专题分流，不再把资产负债余额读面写成经营判断。";
+    ? `报告日 ${reportDate ?? "待确认"}，${view === "monthly" || !view ? "月度" : view}产品分类损益，产品分类行 ${rowCount ?? 0} 行。资产净收入 ${assetBusinessNetIncome ?? EM_DASH} 亿元、负债净收入 ${liabilityBusinessNetIncome ?? EM_DASH} 亿元、经营净收入 ${grandBusinessNetIncome ?? EM_DASH} 亿元。可在下方明细中比较各类产品的经营贡献。`
+    : "暂无可用的产品分类损益，补齐本期数据后再判断经营表现。";
 
   const tags = hasGovernedValues
     ? [
         { label: "经营口径: 产品分类损益", color: "green" },
         {
-          label: `外汇覆盖: ${missingFxCount > 0 ? `缺 ${missingFxCount} 对` : "可用"}`,
-          color: missingFxCount > 0 ? "gold" : "green",
+          label: `外汇覆盖: ${missingFxCount > 0 ? `缺 ${missingFxCount} 对` : "暂无缺口提示"}`,
+          color: missingFxCount > 0 ? "gold" : "default",
         },
-        { label: "余额读面: 专题入口", color: "blue" },
       ]
     : [
-        { label: "正式读链路: 待确认", color: "gold" },
+        { label: "经营数据: 待确认", color: "gold" },
         { label: "经营口径: 产品分类损益", color: "orange" },
       ];
 

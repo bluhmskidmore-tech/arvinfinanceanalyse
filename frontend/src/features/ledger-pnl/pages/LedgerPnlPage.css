@@ -47,7 +47,10 @@
 .ledger-pnl-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--moss-space-5);
+  gap: var(--moss-space-6);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .ledger-pnl-decision-stack {
@@ -70,8 +73,8 @@
 .ledger-pnl-page-title {
   margin: 0;
   color: var(--dh-api-ink);
-  font-size: 30px;
-  font-weight: 760;
+  font-size: 20px;
+  font-weight: 600;
   line-height: 1.08;
   letter-spacing: 0;
 }
@@ -92,7 +95,7 @@
   padding: 5px 10px;
   border-radius: var(--dh-api-radius);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1.35;
   letter-spacing: 0;
   white-space: nowrap;
@@ -125,7 +128,7 @@
   display: block;
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 500;
   line-height: 1.35;
 }
 
@@ -148,7 +151,7 @@
   max-width: 420px;
   color: var(--moss-color-warning-700);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.45;
 }
 
@@ -172,8 +175,8 @@
 .ledger-pnl-analysis__title {
   margin: 0;
   color: var(--dh-api-ink);
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -193,7 +196,7 @@
   background: var(--moss-color-neutral-100);
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0;
 }
 
@@ -207,9 +210,9 @@
 .ledger-pnl-analysis__kpi {
   min-width: 0;
   padding: var(--moss-space-3);
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-analysis__kpi-label {
@@ -221,8 +224,8 @@
 .ledger-pnl-analysis__kpi-value {
   margin-top: var(--moss-space-2);
   color: var(--dh-api-ink);
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 600;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -246,8 +249,8 @@
 .ledger-pnl-analysis__status-title {
   margin: 0;
   color: var(--dh-api-ink);
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -271,13 +274,13 @@
   align-items: center;
   min-height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border-radius: 0;
+  background: transparent;
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0;
+  border: 0;
 }
 
 .ledger-pnl-analysis__status-list {
@@ -317,7 +320,7 @@
   min-width: 0;
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -329,8 +332,8 @@
   border-radius: var(--dh-api-radius);
   background: var(--moss-color-neutral-100);
   color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.35;
   text-align: center;
   white-space: normal;
@@ -354,8 +357,8 @@
 .ledger-pnl-analysis__status-value {
   margin-top: var(--moss-space-2);
   color: var(--dh-api-ink);
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -379,10 +382,9 @@
   gap: 4px;
   margin-bottom: var(--moss-space-3);
   padding: var(--moss-space-3);
-  border: 1px solid var(--dh-api-line);
-  border-left: 3px solid var(--moss-color-neutral-400);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-analysis__source-contract-decision--warning {
@@ -414,7 +416,7 @@
   margin-top: var(--moss-space-2);
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.45;
 }
 
@@ -422,7 +424,7 @@
   margin-bottom: var(--moss-space-3);
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -432,9 +434,9 @@
   gap: 6px;
   margin-bottom: var(--moss-space-3);
   padding: var(--moss-space-3);
-  border: 1px solid var(--moss-color-warning-200);
-  border-radius: var(--dh-api-radius);
-  background: var(--moss-color-warning-50);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-analysis__source-contract-release-gate strong {
@@ -461,9 +463,9 @@
   gap: var(--moss-space-3);
   margin-bottom: var(--moss-space-3);
   padding: var(--moss-space-3);
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-analysis__source-contract-actions-header {
@@ -494,9 +496,9 @@
   gap: var(--moss-space-2);
   align-items: start;
   padding: var(--moss-space-2);
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-analysis__source-contract-action-item > strong {
@@ -521,7 +523,7 @@
 .ledger-pnl-analysis__source-contract-action-item span {
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.45;
 }
 
@@ -539,9 +541,9 @@
   gap: 5px;
   margin: 4px 0;
   padding: 7px 9px;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-analysis__source-contract-material-checklist strong {
@@ -570,15 +572,15 @@
 .ledger-pnl-analysis__source-contract-values div {
   min-width: 0;
   padding: var(--moss-space-2);
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-analysis__source-contract-values span {
   display: block;
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
@@ -595,7 +597,7 @@
   margin-top: var(--moss-space-2);
   color: var(--moss-color-warning-700);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.45;
 }
 
@@ -616,9 +618,9 @@
 .ledger-pnl-analysis__table {
   min-width: 0;
   overflow: auto;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-analysis__table-title {
@@ -640,22 +642,23 @@
 
 .ledger-pnl-analysis__residual-table th,
 .ledger-pnl-analysis__residual-table td {
-  padding: var(--moss-space-3);
+  padding: 0 var(--moss-space-3);
   border-top: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-800);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: var(--moss-table-font-size);
+  line-height: var(--moss-table-line-height);
   text-align: left;
   vertical-align: top;
   white-space: normal;
+  height: var(--moss-table-row-h);
 }
 
 .ledger-pnl-analysis__residual-table th {
   border-top: 0;
   background: var(--dh-api-panel-2);
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--moss-table-header-color);
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-header-weight);
 }
 
 .ledger-pnl-analysis__residual-table th:nth-child(2),
@@ -679,14 +682,14 @@
   margin-right: var(--moss-space-2);
   margin-bottom: 3px;
   padding: 3px 7px;
-  border: 1px solid var(--moss-color-warning-200);
-  border-radius: var(--dh-api-radius);
-  background: var(--moss-color-warning-50);
+  border-radius: 0;
+  background: transparent;
   color: var(--moss-color-warning-700);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.35;
   vertical-align: middle;
+  border: 0;
 }
 
 .ledger-pnl-analysis__table-head-row {
@@ -699,19 +702,30 @@
 
 .ledger-pnl-analysis__th,
 .ledger-pnl-analysis__td {
-  padding: var(--moss-space-3);
+  padding: 0 var(--moss-space-3);
   text-align: left;
   white-space: nowrap;
+  height: var(--moss-table-row-h);
+  line-height: var(--moss-table-line-height);
+  font-size: var(--moss-table-font-size);
 }
 
 .ledger-pnl-analysis__td {
   color: var(--moss-color-neutral-800);
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-cell-weight);
 }
 
+/* B5：空态收缩到消息框自身高度（DESIGN.md §5），居中一句话，不占满等高格。 */
 .ledger-pnl-analysis__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
   padding: var(--moss-space-4);
   color: var(--dh-api-muted);
   font-size: 13px;
+  text-align: center;
 }
 
 .ledger-pnl-functional-strip {
@@ -721,10 +735,9 @@
   align-items: start;
   margin-bottom: 0;
   padding: 12px;
-  border: 1px solid var(--dh-api-line);
-  border-left: 4px solid var(--moss-color-neutral-400);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-functional-strip__headline-facts {
@@ -737,15 +750,15 @@
 .ledger-pnl-functional-strip__headline-facts div {
   min-width: 0;
   padding: 7px 9px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-functional-strip__headline-facts span {
   display: block;
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.22;
 }
 
@@ -767,8 +780,8 @@
 .ledger-pnl-functional-strip__audit-summary {
   padding: 7px 0 0;
   color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.3;
   cursor: pointer;
   user-select: none;
@@ -802,22 +815,213 @@
   border-left-color: var(--moss-color-neutral-400);
 }
 
+/*
+ * B1：01「当日结论」经营结论卡，复用 KPI 横带的比例字体与等宽数字
+ * （font-family: var(--moss-font-tabular)，与 .ledger-pnl-summary-card__value 同源）。
+ * 展开区（.ledger-pnl-verdict-audit-collapse）默认折叠，装原 LedgerFunctionalAuditStrip 全量内容。
+ */
+.ledger-pnl-conclusion-card {
+  display: grid;
+  gap: var(--moss-space-4);
+  padding: var(--moss-space-4);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.ledger-pnl-conclusion-card__headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.ledger-pnl-conclusion-card__headline-label {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ledger-pnl-conclusion-card__headline-value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-tabular);
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.ledger-pnl-conclusion-card__headline-change {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-pnl-conclusion-card__headline-value[data-tone="positive"],
+.ledger-pnl-conclusion-card__headline-change[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.ledger-pnl-conclusion-card__headline-value[data-tone="negative"],
+.ledger-pnl-conclusion-card__headline-change[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+.ledger-pnl-conclusion-card__composition,
+.ledger-pnl-conclusion-card__balance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.ledger-pnl-conclusion-card__metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--moss-space-1);
+  min-width: 0;
+  padding: 0 var(--moss-space-3);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+}
+
+.ledger-pnl-conclusion-card__metric-label {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ledger-pnl-conclusion-card__metric-value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-tabular);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.ledger-pnl-conclusion-card__metric-secondary {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-pnl-conclusion-card__metric-value[data-tone="positive"],
+.ledger-pnl-conclusion-card__metric-secondary[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.ledger-pnl-conclusion-card__metric-value[data-tone="negative"],
+.ledger-pnl-conclusion-card__metric-secondary[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+.ledger-pnl-conclusion-card__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.ledger-pnl-conclusion-card__status-badge {
+  padding: 0;
+  border-radius: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 500;
+  border: 0;
+  background: transparent;
+}
+
+.ledger-pnl-conclusion-card__status-text {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.ledger-pnl-verdict-audit-collapse {
+  margin-top: 10px;
+}
+
+.ledger-pnl-verdict-audit-collapse__summary {
+  padding: 6px 2px;
+  color: var(--dh-api-blue);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ledger-pnl-verdict-audit-collapse[open] .ledger-pnl-verdict-audit-collapse__summary {
+  margin-bottom: 8px;
+}
+
+/*
+ * B5：正式财务指标源契约卡 + 缺契约补证 runbook 默认折叠为一行摘要，
+ * 展开区内容零删减（原 FormalIndicatorSourceContractPanel 原样渲染）。
+ */
+.ledger-pnl-formal-contract-collapse {
+  margin-bottom: var(--moss-space-4);
+}
+
+.ledger-pnl-formal-contract-collapse__summary {
+  padding: 10px 12px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 0;
+}
+
+.ledger-pnl-formal-contract-collapse[open] .ledger-pnl-formal-contract-collapse__summary {
+  margin-bottom: 10px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/*
+ * 治理/证据层通用折叠（规则符合性检查明细、接口 meta 证据层）：
+ * 摘要行沿用契约折叠语言，展开区内容零删减（DESIGN §6 溯源分层）。
+ */
+.ledger-pnl-governance-details > summary {
+  padding: 10px 12px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 0;
+}
+
+.ledger-pnl-governance-details[open] > summary {
+  margin-bottom: 10px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 .ledger-pnl-functional-strip__main {
   min-width: 0;
 }
 
 .ledger-pnl-functional-strip__eyebrow {
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.25;
 }
 
 .ledger-pnl-functional-strip__title {
   margin: var(--moss-space-1) 0 0;
   color: var(--dh-api-ink);
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.26;
   letter-spacing: 0;
 }
@@ -839,15 +1043,15 @@
 .ledger-pnl-functional-strip__facts div {
   min-width: 0;
   padding: 6px 7px;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-functional-strip__facts span {
   display: block;
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.22;
 }
 
@@ -855,7 +1059,7 @@
   display: block;
   margin-top: 2px;
   color: var(--dh-api-ink);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.26;
   overflow-wrap: anywhere;
 }
@@ -872,8 +1076,8 @@
 
 .ledger-pnl-functional-strip__explainability > span {
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.25;
 }
 
@@ -895,7 +1099,7 @@
   color: var(--dh-api-soft);
   font-size: 12px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -933,8 +1137,8 @@
 
 .ledger-pnl-functional-strip__decision-path > span {
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.25;
 }
 
@@ -947,17 +1151,17 @@
 .ledger-pnl-functional-strip__decision-list div {
   min-width: 0;
   padding: 6px 7px;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-functional-strip__decision-list span {
   display: block;
   margin-bottom: 2px;
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.22;
 }
 
@@ -965,7 +1169,7 @@
   display: block;
   color: var(--moss-color-neutral-800);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1.26;
   overflow-wrap: anywhere;
 }
@@ -988,8 +1192,8 @@
 
 .ledger-pnl-functional-strip__drill > span {
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.25;
 }
 
@@ -1009,7 +1213,7 @@
 .ledger-pnl-functional-strip__drill-item strong {
   margin-right: var(--moss-space-2);
   color: var(--dh-api-ink);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .ledger-pnl-functional-strip__drill-item em {
@@ -1027,9 +1231,9 @@
 .ledger-pnl-summary-card {
   min-width: 0;
   padding: var(--moss-space-3);
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .ledger-pnl-summary-card__header {
@@ -1037,6 +1241,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--moss-space-2);
+  min-height: 34px;
 }
 
 .ledger-pnl-summary-card__title {
@@ -1044,17 +1249,21 @@
   color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.4;
+  font-weight: 500;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+  display: block;
 }
 
 .ledger-pnl-summary-card__badge {
   flex: 0 0 auto;
-  padding: 3px 8px;
-  border: 1px solid var(--moss-color-warning-200);
-  border-radius: var(--dh-api-radius);
-  background: var(--moss-color-warning-50);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--moss-color-warning-700);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1.35;
   letter-spacing: 0;
 }
@@ -1062,9 +1271,9 @@
 .ledger-pnl-summary-card__value {
   margin-top: 10px;
   color: var(--dh-api-ink);
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -1073,7 +1282,7 @@
   margin-top: var(--moss-space-2);
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -1090,7 +1299,7 @@
   }
 
   .ledger-pnl-page-title {
-    font-size: 28px;
+    font-size: 20px;
     line-height: 1.05;
   }
 
@@ -1132,20 +1341,22 @@
 
   .ledger-pnl-summary-card__title,
   .ledger-pnl-summary-card__badge {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.25;
   }
 
   .ledger-pnl-summary-card__value {
     margin-top: 5px;
-    font-size: 17px;
-    line-height: 1.12;
+    font-size: 20px;
+    line-height: 1.25;
+    font-weight: 600;
   }
 
   .ledger-pnl-summary-card__note {
     margin-top: 5px;
     font-size: 11px;
     line-height: 1.3;
+    font-weight: 400;
   }
 
   .ledger-pnl-analysis__header {
@@ -1153,18 +1364,19 @@
   }
 
   .ledger-pnl-functional-strip__eyebrow {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.25;
+    color: var(--dh-api-muted);
   }
 
   .ledger-pnl-functional-strip__title {
-    font-size: 16px;
+    font-size: 14px;
     line-height: 1.22;
   }
 
   .ledger-pnl-functional-strip__detail {
     margin-top: 5px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.35;
   }
 
@@ -1182,13 +1394,13 @@
   }
 
   .ledger-pnl-functional-strip__facts span {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.2;
   }
 
   .ledger-pnl-functional-strip__facts strong {
     margin-top: 2px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.24;
   }
 
@@ -1203,7 +1415,7 @@
   .ledger-pnl-functional-strip__explainability > span,
   .ledger-pnl-functional-strip__decision-path > span,
   .ledger-pnl-functional-strip__drill > span {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.25;
   }
 
@@ -1239,7 +1451,7 @@
 
   .ledger-pnl-functional-strip__decision-list span {
     margin-bottom: 2px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.2;
   }
 
@@ -1355,10 +1567,10 @@
     display: grid !important;
     gap: 6px;
     padding: 8px !important;
-    border: 1px solid var(--moss-color-neutral-100) !important;
-    border-radius: var(--dh-api-radius);
-    background: var(--dh-api-panel);
+    border-radius: 0;
+    background: transparent;
     width: 100%;
+    border: 0;
   }
 
   [data-testid="ledger-pnl-currency-summary-table"] tr {
@@ -1380,13 +1592,14 @@
   [data-testid="ledger-pnl-account-summary-table"] td,
   [data-testid="ledger-pnl-detail-table"] td {
     display: grid !important;
+    height: auto;
     gap: 2px;
     align-content: start;
     padding: 0 !important;
     border: 0 !important;
-    color: var(--dh-api-ink);
-    font-size: 11px;
-    line-height: 1.35;
+    color: var(--moss-table-cell-color);
+    font-size: var(--moss-table-font-size);
+    line-height: var(--moss-table-line-height);
     text-align: left !important;
   }
 
@@ -1395,8 +1608,8 @@
   [data-testid="ledger-pnl-detail-table"] td::before {
     display: block;
     color: var(--dh-api-muted);
-    font-size: 11px;
-    font-weight: 700;
+    font-size: var(--moss-table-font-size);
+    font-weight: var(--moss-table-header-weight);
     line-height: 1.2;
   }
 
@@ -1489,7 +1702,7 @@
 }
 
 .ledger-pnl-detail-account-filter span {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1514,6 +1727,131 @@
   }
 }
 
+/* R1 合成行披露：明细表证据行文案、来源开关与占位/标记（DESIGN.md §2.2 Nocturne token）。 */
+.ledger-pnl-detail-table__caption-lines {
+  display: grid;
+  gap: 2px;
+}
+
+.ledger-pnl-detail-table__average-only-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 4px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.ledger-pnl-detail-table__average-only-toggle input {
+  accent-color: var(--dh-api-blue);
+}
+
+/* B6：科目汇总自带的搜索输入 + 展开全部按钮（表格内建搜索/分页已关闭，改由页面接管）。 */
+.ledger-pnl-account-summary-search {
+  min-width: 200px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--dh-api-line);
+}
+
+.ledger-pnl-account-summary-search::placeholder {
+  color: var(--dh-api-muted);
+}
+
+.ledger-pnl-account-summary-search:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 1px;
+}
+
+.ledger-pnl-account-summary-expand {
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-blue);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--dh-api-line);
+}
+
+.ledger-pnl-account-summary-expand:hover {
+  border-color: var(--dh-api-blue);
+}
+
+.ledger-pnl-account-summary-expand:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 1px;
+}
+
+.ledger-pnl-detail-row__placeholder {
+  color: var(--dh-api-muted);
+  font-style: normal;
+}
+
+.ledger-pnl-detail-row__source-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--dh-api-amber);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* R1 合成行披露：明细表证据行文案、来源开关与占位/标记（DESIGN.md §2.2 Nocturne token）。 */
+.ledger-pnl-detail-table__caption-lines {
+  display: grid;
+  gap: 2px;
+}
+
+.ledger-pnl-detail-table__average-only-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 4px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.ledger-pnl-detail-table__average-only-toggle input {
+  accent-color: var(--dh-api-blue);
+}
+
+.ledger-pnl-detail-row__placeholder {
+  color: var(--dh-api-muted);
+  font-style: normal;
+}
+
+.ledger-pnl-detail-row__source-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--dh-api-amber);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
 /*
  * Migrated 1:1 from LedgerPnlPage.tsx inline styles (2026-07). Values are kept
  * pixel-identical on purpose and differ from the older .ledger-pnl-page-* /
@@ -1533,7 +1871,7 @@
 
 .ledger-pnl-header__title {
   margin: 0;
-  font-size: 32px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -1543,30 +1881,32 @@
   margin-bottom: 0;
   max-width: 860px;
   color: var(--moss-color-neutral-600);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.75;
 }
 
 .ledger-pnl-header__mode-badge {
   display: inline-flex;
   align-items: center;
-  padding: 8px 12px;
-  border-radius: var(--dh-api-radius);
+  padding: 0;
+  border-radius: 0;
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
+  border: 0;
+  background: transparent;
 }
 
 .ledger-pnl-header__mode-badge--real {
-  background: var(--moss-color-success-50);
-  color: var(--moss-color-success-500);
+  background: transparent;
+  color: var(--dh-api-muted);
 }
 
 .ledger-pnl-header__mode-badge--mock {
-  background: var(--moss-color-primary-50);
-  color: var(--moss-color-info-500);
+  background: transparent;
+  color: var(--dh-api-muted);
 }
 
 .ledger-pnl-filters {
@@ -1581,9 +1921,11 @@
 
 .ledger-pnl-filters__select {
   min-width: 180px;
-  padding: 10px 12px;
+  padding: var(--moss-space-2) var(--moss-space-3);
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--dh-api-radius);
+  min-height: 36px;
+  font-size: 13px;
 }
 
 .ledger-pnl-filters__select--currency {
@@ -1602,10 +1944,12 @@
 }
 
 .ledger-pnl-summary-card-frame {
-  padding: var(--moss-space-4);
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  padding: var(--moss-space-3);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  gap: var(--moss-space-2);
+  min-height: 132px;
 }
 
 /*
@@ -1648,8 +1992,13 @@
 }
 
 .ledger-pnl-table__th {
-  padding: var(--moss-space-3);
+  padding: 0 var(--moss-space-3);
   text-align: left;
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-header-weight);
+  color: var(--moss-table-header-color);
+  height: var(--moss-table-row-h);
+  line-height: var(--moss-table-line-height);
 }
 
 .ledger-pnl-table__th--num {
@@ -1657,7 +2006,11 @@
 }
 
 .ledger-pnl-table__td {
-  padding: var(--moss-space-3);
+  padding: 0 var(--moss-space-3);
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-cell-weight);
+  height: var(--moss-table-row-h);
+  line-height: var(--moss-table-line-height);
 }
 
 .ledger-pnl-table__td--num {
@@ -1666,7 +2019,7 @@
 
 .ledger-pnl-table__td-sub {
   color: var(--moss-color-neutral-600);
-  font-size: 12px;
+  font-size: var(--moss-table-font-size);
 }
 
 .ledger-pnl-table__state-cell {
@@ -1708,8 +2061,8 @@
 
 .ledger-pnl-section-skeleton__title {
   color: var(--dh-api-ink);
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -1747,6 +2100,10 @@
  */
 .ledger-pnl-page {
   counter-reset: lpn-section;
+  gap: var(--moss-space-6);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .ledger-pnl-section {
@@ -1771,28 +2128,28 @@
 .ledger-pnl-section__lead::before {
   content: counter(lpn-section, decimal-leading-zero);
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
-  font-size: 11px;
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .ledger-pnl-section__lead h2 {
   margin: 0;
-  overflow: hidden;
+  overflow: visible;
   color: var(--dh-api-ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .ledger-pnl-section__note,
 .ledger-pnl-section__state {
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -1805,7 +2162,7 @@
   color: var(--dh-api-amber);
 }
 
-/* 页标题回到 DESIGN.md §3 的 18–20px；副文降为辅助级，模式徽标去掉大写宽字距。 */
+/* 页标题采用 DESIGN.md §3 的 20px；副文降为辅助级，模式提示保持中性。 */
 .ledger-pnl-header {
   align-items: center;
   margin-bottom: 0;
@@ -1815,7 +2172,7 @@
 .ledger-pnl-header__title {
   color: var(--dh-api-ink);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -1828,13 +2185,14 @@
 }
 
 .ledger-pnl-header__mode-badge {
-  padding: 4px 8px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  font-size: 11px;
-  font-weight: 600;
+  padding: 0;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
+  border: 0;
+  background: transparent;
 }
 
 .ledger-pnl-filters {
@@ -1851,8 +2209,8 @@
 .ledger-pnl-filters__label {
   margin-bottom: 0;
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 /* 口径边界与报告日回退说明放在控件行尾，避免塞进 label 把两个下拉的基线错开。 */
@@ -1865,7 +2223,7 @@
   margin: 0;
   padding-top: 8px;
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1874,13 +2232,15 @@
 }
 
 .ledger-pnl-filters__select {
-  min-height: 32px;
-  padding: 5px 9px;
+  min-height: 36px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: var(--moss-space-2) var(--moss-space-3);
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel-2);
   color: var(--dh-api-ink);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .ledger-pnl-filters small {
@@ -1893,7 +2253,7 @@
 
 /*
  * KPI 横带按首页 kpiRail 语言：单一外框 + 发丝竖分割（不做卡片套卡片），
- * 五格等高、标签 2 行 clamp 防同排数值错位（DESIGN.md §3/§5/§11.9）。
+ * 五格等高、标签保留两行高度并完整显示（DESIGN.md §3/§5/§11.9）。
  */
 .ledger-pnl-summary-grid {
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1908,10 +2268,10 @@
 .ledger-pnl-summary-card-frame {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--moss-space-2);
   min-height: 132px;
   min-width: 0;
-  padding: 12px 14px;
+  padding: var(--moss-space-3);
   border: 0;
   border-right: 1px solid var(--dh-api-line);
   border-radius: 0;
@@ -1928,43 +2288,69 @@
 }
 
 .ledger-pnl-summary-card__title {
-  display: -webkit-box;
-  overflow: hidden;
+  display: block;
+  overflow: visible;
   color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.4;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: unset;
 }
 
 .ledger-pnl-summary-card__badge {
-  padding: 2px 6px;
+  padding: 0;
   border-color: var(--dh-api-line-soft);
   background: transparent;
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 400;
+  border: 0;
+  border-radius: 0;
 }
 
 .ledger-pnl-summary-card__value {
   margin-top: 0;
-  font-family: var(--moss-font-mono);
-  font-size: clamp(19px, 1.5vw, 22px);
-  line-height: 1.2;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 600;
 }
 
-/* 口径注记属证据层：留在 DOM 供治理核验，但收到 2 行内，完整文案进 title。 */
+/**
+ * B2：治理脚注（MTR-LPN-*、pending_confirmation 等）保留在 DOM 供治理核验，
+ * 但视觉收敛为单行 + 溢出 ellipsis；完整文案进 title，不再多行平铺占版面。
+ */
 .ledger-pnl-summary-card__note {
-  display: -webkit-box;
   overflow: hidden;
   margin-top: auto;
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.4;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/** B2：环比变化小字（消费 analysis period_comparison.change，不做前端计算）。 */
+.ledger-pnl-summary-card__change {
+  margin-top: 2px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+.ledger-pnl-summary-card__change[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.ledger-pnl-summary-card__change[data-tone="negative"] {
+  color: var(--dh-api-red);
 }
 
 @media (max-width: 1280px) {
@@ -1987,9 +2373,11 @@
   }
 
   .ledger-pnl-summary-card-frame {
-    min-height: 0;
+    min-height: 132px;
     border-right: 0;
     border-bottom: 1px solid var(--dh-api-line);
+    gap: var(--moss-space-2);
+    padding: var(--moss-space-3);
   }
 }
 
@@ -2003,21 +2391,25 @@
 }
 
 .ledger-pnl-table__th {
-  padding: 6px 10px;
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.35;
+  padding: 0 var(--moss-space-3);
+  color: var(--moss-table-header-color);
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-header-weight);
+  line-height: var(--moss-table-line-height);
+  height: var(--moss-table-row-h);
 }
 
 .ledger-pnl-table__td {
-  padding: 5px 10px;
-  line-height: 1.35;
+  padding: 0 var(--moss-space-3);
+  line-height: var(--moss-table-line-height);
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-cell-weight);
+  height: var(--moss-table-row-h);
 }
 
 .ledger-pnl-table__th--num,
 .ledger-pnl-table__td--num {
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2029,7 +2421,7 @@
   padding: 10px 12px;
   border-bottom: 1px solid var(--dh-api-line-soft);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ledger-pnl-summary-table-grid,
@@ -2051,9 +2443,6 @@
  */
 .ledger-pnl-page .formal-result-meta-panel {
   --formal-result-meta-border-soft: var(--dh-api-line-soft);
-  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
-  --formal-meta-badge-ok-ink: var(--dh-api-green);
-  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
   --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
   --formal-meta-badge-warn-ink: var(--dh-api-amber);
   --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
@@ -2076,4 +2465,53 @@
   grid-template-columns: minmax(88px, 108px) minmax(0, 1fr);
   font-size: 12px;
   line-height: 1.5;
+}
+.ledger-pnl-page :is(h1, h2, h3, h4),
+.ledger-account-detail :is(h1, h2, h3, h4),
+.ledger-net-interest-detail :is(h1, h2, h3, h4) {
+  font-weight: 600;
+}
+.ledger-pnl-page :where(strong, b),
+.ledger-account-detail :where(strong, b),
+.ledger-net-interest-detail :where(strong, b) {
+  font-weight: 500;
+}
+.ledger-pnl-conclusion-card__metric:first-child {
+  padding-left: 0;
+}
+.ledger-pnl-conclusion-card__metric + .ledger-pnl-conclusion-card__metric {
+  border-left: 1px solid var(--dh-api-line-soft);
+}
+.ledger-pnl-table__account {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--moss-space-2);
+}
+.ledger-pnl-analysis__th {
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-header-weight);
+  color: var(--moss-table-header-color);
+}
+.ledger-pnl-analysis__residual-table td {
+  font-weight: var(--moss-table-cell-weight);
+}
+.ledger-pnl-page .formal-result-meta-panel__card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.ledger-pnl-money-unit {
+  color: var(--dh-api-soft);
+  font-size: var(--moss-font-size-14);
+  font-weight: 400;
+}
+
+/* 内嵌懒加载占位复用所属区块表面，保留原占位高度，避免第二层容器。 */
+.ledger-pnl-analysis > .ledger-pnl-section-skeleton {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }

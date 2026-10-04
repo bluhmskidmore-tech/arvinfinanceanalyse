@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import {
   fetchDataHealth,
@@ -19,12 +19,6 @@ import "./StockAnalysisDataHealthCard.css";
  * 每 section 一行：状态点 + 标签 + 指标，detail 作 tooltip；
  * 整体状态徽章由最差项决定(后端 overall_status，缺失时前端按严重度回退推导)。
  */
-
-type PanelPhase =
-  | { status: "loading" }
-  | { status: "hidden" }
-  | { status: "error"; reason: string }
-  | { status: "ready"; payload: DataHealthPayload };
 
 export type StockAnalysisDataHealthCardProps = {
   /** 测试/接线注入的加载函数；缺省直连真实端点(同源相对路径)。 */
@@ -89,50 +83,20 @@ function HealthRow({ section }: { section: DataHealthSection }) {
 }
 
 export function StockAnalysisDataHealthCard({ loadHealth }: StockAnalysisDataHealthCardProps) {
-  const [phase, setPhase] = useState<PanelPhase>({ status: "loading" });
-  const [attempt, setAttempt] = useState(0);
+  const healthQuery = useQuery({
+    queryKey: ["data-health", "overview"],
+    queryFn: () => (loadHealth ?? fetchDataHealth)(),
+    retry: false,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const result = healthQuery.data;
+  const payload = result?.kind === "ok" ? result.payload : undefined;
+  const sections = (payload?.sections ?? []).filter(
+    (section): section is DataHealthSection => Boolean(section),
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = loadHealth ?? (() => fetchDataHealth());
-    setPhase({ status: "loading" });
-    load()
-      .then((result) => {
-        if (cancelled) return;
-        if (result.kind === "error") {
-          setPhase({ status: "error", reason: result.reason });
-          return;
-        }
-        const sections =
-          result.kind === "ok"
-            ? (result.payload.sections ?? []).filter(
-                (section): section is DataHealthSection => Boolean(section),
-              )
-            : [];
-        if (result.kind === "ok" && sections.length > 0) {
-          setPhase({ status: "ready", payload: { ...result.payload, sections } });
-        } else {
-          // missing(404/明确空) 或 sections 为空 → 整面收缩隐藏。
-          setPhase({ status: "hidden" });
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setPhase({
-            status: "error",
-            reason: error instanceof Error ? error.message : String(error),
-          });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loadHealth, attempt]);
-
-  // 仅后端明确空/能力不存在时收缩隐藏。
-  if (phase.status === "hidden") return null;
-
-  if (phase.status === "loading") {
+  if (healthQuery.isPending && !result) {
     return (
       <section
         className="stock-analysis-data-health stock-analysis-data-health--placeholder"
@@ -154,7 +118,13 @@ export function StockAnalysisDataHealthCard({ loadHealth }: StockAnalysisDataHea
     );
   }
 
-  if (phase.status === "error") {
+  if (healthQuery.isError || result?.kind === "error") {
+    const reason =
+      result?.kind === "error"
+        ? result.reason
+        : healthQuery.error instanceof Error
+          ? healthQuery.error.message
+          : String(healthQuery.error);
     return (
       <section
         className="stock-analysis-data-health stock-analysis-data-health--placeholder"
@@ -166,12 +136,12 @@ export function StockAnalysisDataHealthCard({ loadHealth }: StockAnalysisDataHea
             <h3>数据健康</h3>
           </div>
         </header>
-        <p className="stock-analysis-data-health__error-line" role="alert" title={phase.reason}>
+        <p className="stock-analysis-data-health__error-line" role="alert" title={reason}>
           <span>健康面加载失败，请重试。</span>
           <button
             type="button"
             data-testid="stock-analysis-data-health-retry"
-            onClick={() => setAttempt((current) => current + 1)}
+            onClick={() => void healthQuery.refetch()}
           >
             重试
           </button>
@@ -180,19 +150,19 @@ export function StockAnalysisDataHealthCard({ loadHealth }: StockAnalysisDataHea
     );
   }
 
-  const { payload } = phase;
-  const sections = (payload.sections ?? []).filter(
-    (section): section is DataHealthSection => Boolean(section),
-  );
+  // 仅后端明确空/能力不存在或 sections 为空时收缩隐藏。
+  if (result?.kind === "missing" || sections.length === 0 || !payload) return null;
+
   const overall = overallStatus(payload, sections);
 
   return (
-    <section
+    <details
       className="stock-analysis-data-health"
       data-testid="stock-analysis-data-health"
       aria-label="数据健康总览"
+      open={overall !== "ok"}
     >
-      <header className="stock-analysis-data-health__head">
+      <summary className="stock-analysis-data-health__head">
         <div className="stock-analysis-data-health__title-group">
           <h3>数据健康</h3>
           <span className="stock-analysis-data-health__as-of">
@@ -207,12 +177,12 @@ export function StockAnalysisDataHealthCard({ loadHealth }: StockAnalysisDataHea
         >
           {statusPresentation(overall).label}
         </span>
-      </header>
+      </summary>
       <ul className="stock-analysis-data-health__rows">
         {sections.map((section, index) => (
           <HealthRow key={section.key ?? index} section={section} />
         ))}
       </ul>
-    </section>
+    </details>
   );
 }

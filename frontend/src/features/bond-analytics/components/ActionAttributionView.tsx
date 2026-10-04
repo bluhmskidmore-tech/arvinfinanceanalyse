@@ -1,4 +1,4 @@
-﻿import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, Statistic, Row, Col, Table, Tag, Alert } from "antd";
 import { useApiClient } from "../../../api/client";
 import type { ApiEnvelope, Numeric, ResultMeta } from "../../../api/contracts";
@@ -19,7 +19,8 @@ import {
   withNumericColumns,
 } from "./BondAnalyticsDetailPrimitives";
 import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
-import { SectionLead } from "./SectionLead";
+import styles from "./ActionAttributionView.module.css";
+import { SectionHead } from "../../../components/layout";
 
 interface Props {
   reportDate: string;
@@ -243,35 +244,50 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
 
   return (
     <div className={detailStyles.view}>
-      <SectionLead
-        eyebrow="动作归因"
+      <SectionHead
+        category="动作归因"
         title="交易动作归因概览"
-        description="读取治理后的动作归因结果，展示动作数量、损益贡献、久期和 DV01，不在前端重复计算。"
+        note="查看交易动作对损益、久期和 DV01 的影响。"
         testId="action-attribution-shell-lead"
+        numbered={false}
       />
-      <div
-        style={{ fontSize: 12, color: "var(--dh-api-muted)", lineHeight: 1.65 }}
-        data-testid="action-attribution-meta"
-      >
+      <div className={styles.metaLine} data-testid="action-attribution-meta">
         <span>报告日 {data.report_date}</span>
-        <span style={{ margin: "0 0.5em", opacity: 0.45 }}>|</span>
+        <span className={styles.metaSeparator}>|</span>
         <span>期间 {periodTypeLabel(data.period_type)}</span>
-        <span style={{ margin: "0 0.5em", opacity: 0.45 }}>|</span>
+        <span className={styles.metaSeparator}>|</span>
         <span>
           {data.period_start} — {data.period_end}
         </span>
         {data.computed_at ? (
           <>
-            <span style={{ margin: "0 0.5em", opacity: 0.45 }}>|</span>
+            <span className={styles.metaSeparator}>|</span>
             <span>计算时间 {formatDetailComputedAt(data.computed_at)}</span>
           </>
         ) : null}
       </div>
+      {data.snapshot_window ? (
+        <Alert type="info" showIcon message="持仓比较实际日期" data-testid="action-attribution-snapshot-window"
+          description={<span>请求期初 {data.snapshot_window.requested_start}；实际期初 {data.snapshot_window.resolved_start ?? EM_DASH}，
+            与请求期初相隔 {data.snapshot_window.start_gap_days ?? EM_DASH} 天；实际期末 {data.snapshot_window.resolved_end ?? EM_DASH}。
+            可接受陈旧天数待确认；缺少期初时无法识别新增动作。</span>} />
+      ) : null}
+      {data.pnl_coverage ? (
+        <Alert type={data.pnl_coverage.status === "partial" ? "warning" : "info"} showIcon
+          message="期间损益分配范围" data-testid="action-attribution-pnl-coverage"
+          description={<span>完整输入 {formatWan(data.pnl_coverage.input_pnl)}（{data.pnl_coverage.input_key_count} 个键），
+            已识别动作 {formatWan(data.pnl_coverage.identified_pnl)}，未分配 {formatWan(data.pnl_coverage.unallocated_pnl)}
+            （{data.pnl_coverage.unallocated_key_count} 个键、绝对金额 {formatWan(data.pnl_coverage.unallocated_absolute_pnl)}）。
+            两端无持仓的损益 {formatWan(data.pnl_coverage.pnl_only_pnl)}（{data.pnl_coverage.pnl_only_key_count} 个键、
+            绝对金额 {formatWan(data.pnl_coverage.pnl_only_absolute_pnl)}）；金额闭合差异 {formatWan(data.pnl_coverage.reconciliation_difference)}。
+            {data.pnl_coverage.missing_months?.length ? `月度输入不完整，缺少 ${data.pnl_coverage.missing_months.join("、")}；未以零值或更早月份补齐。` : null}
+            未分配键不计入已识别动作数量。</span>} />
+      ) : null}
       {metaIssues.length > 0 ? (
         <Alert
           type="warning"
           showIcon
-          message="证据链降级"
+          message="数据使用限制"
           description={metaIssues.join(" | ")}
           data-testid="action-attribution-result-meta-alert"
         />
@@ -280,25 +296,30 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         <Alert
           type={data.status && data.status !== "ok" ? "warning" : "info"}
           showIcon
-          message={data.status ? `读面状态：${readinessStatusText(data.status)}` : "读面组件信息"}
+          message={data.status ? `分析状态：${readinessStatusText(data.status)}` : "分析数据范围"}
           description={
-            <div style={{ fontSize: 13, lineHeight: 1.65 }}>
+            <div className={styles.readinessBody}>
               {(data.available_components?.length ?? 0) > 0 ? (
-                /* 组件技术名属证据层：正文只报数量，明细收进 title 供复核（DESIGN §6 溯源分层）。 */
-                <div title={data.available_components!.join(" / ")}>
-                  可用组件 {data.available_components!.length} 项（明细悬停查看）
+                <div>
+                  可用分析 {data.available_components!.length} 项
                 </div>
               ) : null}
               {(data.missing_inputs?.length ?? 0) > 0 ? (
-                <div title={data.missing_inputs!.join(" / ")}>
-                  缺失输入 {data.missing_inputs!.length} 项（明细悬停查看）
+                <div>
+                  缺少分析所需数据 {data.missing_inputs!.length} 项
                 </div>
               ) : null}
               {(data.blocked_components?.length ?? 0) > 0 ? (
-                <div title={data.blocked_components!.join(" / ")}>
-                  阻塞组件 {data.blocked_components!.length} 项（明细悬停查看）
+                <div>
+                  暂不可用分析 {data.blocked_components!.length} 项
                 </div>
               ) : null}
+              <details data-testid="action-attribution-readiness-diagnostics">
+                <summary>技术诊断</summary>
+                <div>available_components：{data.available_components?.join(" / ") || EM_DASH}</div>
+                <div>missing_inputs：{data.missing_inputs?.join(" / ") || EM_DASH}</div>
+                <div>blocked_components：{data.blocked_components?.join(" / ") || EM_DASH}</div>
+              </details>
             </div>
           }
           data-testid="action-attribution-readiness"
@@ -312,7 +333,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
-            <Statistic title="动作贡献损益" value={formatWan(data.total_pnl_from_actions)} />
+            <Statistic title="期间损益（含未分配）" value={formatWan(data.total_pnl_from_actions)} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
@@ -346,11 +367,12 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         </Col>
       </Row>
 
-      <SectionLead
-        eyebrow="汇总"
+      <SectionHead
+        category="汇总"
         title="动作汇总"
-        description="按动作类型汇总次数和损益，同时保留后端贡献值。"
+        note="按动作类型比较次数和损益贡献。"
         testId="action-attribution-summary-lead"
+        numbered={false}
       />
       <Alert
         type="warning"
@@ -361,29 +383,21 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
       />
       <Card title="按动作类型" size="small">
         {data.by_action_type.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className={styles.summaryList}>
             {data.by_action_type.map((item) => {
               const pnl = bondNumericRaw(item.total_pnl_economic);
               const totalPnl = bondNumericRaw(data.total_pnl_from_actions);
               const pct = pnl !== null && totalPnl !== null && totalPnl !== 0 ? (pnl / totalPnl) * 100 : 0;
               const pnlColor = pnl === null ? "var(--dh-api-muted)" : pnlToneColor(pnl);
               return (
-                <div key={item.action_type} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <Tag color={ACTION_COLORS[item.action_type] || "default"} style={{ width: 80, textAlign: "center" }}>
+                <div key={item.action_type} className={styles.summaryRow}>
+                  <Tag color={ACTION_COLORS[item.action_type] || "default"} className={styles.typeTag}>
                     {item.action_type_name}
                   </Tag>
-                  <span style={{ width: 50, textAlign: "right", fontSize: 12, color: "var(--dh-api-muted)" }}>
-                    {item.action_count}次
+                  <span className={styles.summaryCount}>
+                    {item.action_count}{item.action_type === "UNALLOCATED" ? "个键" : "次"}
                   </span>
-                  <div
-                    style={{
-                      flex: 1,
-                      height: 20,
-                      background: "var(--dh-api-panel-2)",
-                      borderRadius: 4,
-                      overflow: "hidden",
-                    }}
-                  >
+                  <div className={styles.summaryTrack} style={{ borderRadius: 4 }}>
                     <div
                       style={{
                         height: "100%",
@@ -393,22 +407,14 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
                       }}
                     />
                   </div>
-                  <div
-                    style={{
-                      width: 200,
-                      textAlign: "right",
-                      fontSize: 12,
-                      color: "var(--dh-api-muted)",
-                      lineHeight: 1.4,
-                    }}
-                  >
+                  <div className={styles.summaryPnl}>
                     <div style={{ fontVariantNumeric: "tabular-nums", color: pnlColor }}>
                       经济 {formatWan(item.total_pnl_economic)}
                     </div>
-                    <div style={{ fontVariantNumeric: "tabular-nums" }}>
+                    <div className={styles.tabularNums}>
                       会计 {formatWan(item.total_pnl_accounting)}
                     </div>
-                    <div style={{ fontVariantNumeric: "tabular-nums" }}>
+                    <div className={styles.tabularNums}>
                       均次 {formatWan(item.avg_pnl_per_action)}
                     </div>
                   </div>
@@ -423,11 +429,12 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         )}
       </Card>
 
-      <SectionLead
-        eyebrow="明细"
+      <SectionHead
+        category="明细"
         title="动作明细"
-        description="保留后端动作明细载荷中的类型、说明、损益、久期和 DV01 变动。"
+        note="查看每项动作的说明、损益及久期和 DV01 变动。"
         testId="action-attribution-detail-lead"
+        numbered={false}
       />
       <Card title="动作明细" size="small">
         {data.action_details.length > 0 ? (
@@ -435,9 +442,9 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
             {!hasOpportunityCost ? (
               <div
                 data-testid="action-attribution-opportunity-cost-note"
-                style={{ marginBottom: 8, fontSize: 12, color: "var(--dh-api-muted)" }}
+                className={styles.opportunityCostNote}
               >
-                机会成本与机会成本口径本期后端未返回，两列暂不列出。
+                本期缺少机会成本及其计算口径，暂不展示这两列。
               </div>
             ) : null}
             <Table

@@ -106,6 +106,9 @@ export function ResearchCalendarSection({
               <span className={styles.dhMacroReleaseLegacyTitle}>
                 重大信息发布日期前瞻
               </span>
+              <span className={styles.dhMacroReleaseLegacyTitle}>
+                {macroBriefing.releaseWindowLabel}
+              </span>
               {macroBriefing.releaseItems.length > 0 ? (
                 <>
                   <span>时间</span>
@@ -128,7 +131,8 @@ export function ResearchCalendarSection({
                     href={item.sourceUrl}
                     target="_blank"
                     rel="noreferrer"
-                    title={`${item.title} · ${item.sourceName}`}
+                    // 首页四列布局隐藏了行内的时间/分类，完整信息收进悬停提示。
+                    title={`${item.dateLabel} ${item.timeLabel} · ${item.title} · ${item.sourceName} · ${item.category} · ${item.importanceLabel}`}
                   >
                     <span className={styles.dhMacroReleaseDate}>
                       <b>{item.dateLabel}</b>
@@ -176,9 +180,8 @@ export function ResearchCalendarSection({
                   className={styles.dhMacroReleaseDisclosureSummary}
                   role="button"
                 >
-                  <span>更多日历</span>
+                  <span>过往数据与变动</span>
                   <span className={styles.dhMacroReleaseDisclosureMeta}>
-                    <small>{macroBriefing.releaseWindowLabel}</small>
                     <small>
                       {releaseHistoryItems.length > 0
                         ? `共 ${releaseHistoryItems.length} 项`
@@ -399,9 +402,13 @@ export function ResearchCalendarSection({
           data-layout-role="research-supply-strip"
           className={styles.dhMacroSupplyStrip}
         >
-          {macroBriefing.supplyItems.map((item) => (
-            <span key={item.id}>{item.label}</span>
-          ))}
+          {macroBriefing.supplyItems.length > 0 ? (
+            macroBriefing.supplyItems.map((item) => (
+              <span key={item.id}>{item.label}</span>
+            ))
+          ) : macroBriefing.supplyMessage ? (
+            <span data-state="empty">{macroBriefing.supplyMessage}</span>
+          ) : null}
         </div>
       </article>
     </section>

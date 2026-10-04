@@ -303,7 +303,8 @@ def _strategy_review_gate(*, stats: dict[str, dict[str, Any]], min_sample: int) 
         priority_label = "优先复核"
 
     base_reason = (
-        f"T+5 成熟样本 {available_count}/{required_sample}，胜率 {win_rate * 100:.1f}% ，"
+        f"T+5 成熟样本 {available_count}/{required_sample}，"
+        f"{_snapshot_day_disclosure_clause(t5_stats)}胜率 {win_rate * 100:.1f}% ，"
         f"均值 {avg_return * 100:+.2f}%（official 1.20%-2.40%），"
         f"中位数 {_format_optional_percent(median_return)}，"
         f"T+20 中位数 {_format_optional_percent(t20_median_return)}，评分 {score:.2f}。"
@@ -336,6 +337,19 @@ def _format_optional_percent(value: Any) -> str:
         return "待成熟"
     return f"{numeric * 100:+.2f}%"
 
+def _snapshot_day_disclosure_clause(horizon_stats: dict[str, Any]) -> str:
+    """独立快照日披露短语；未携带披露字段的 stats 返回空串以保持原有文案。"""
+    if "snapshot_day_count" not in horizon_stats:
+        return ""
+    try:
+        day_count = int(horizon_stats.get("snapshot_day_count") or 0)
+    except (TypeError, ValueError):
+        return ""
+    day_win_rate = _float_value(horizon_stats.get("snapshot_day_win_rate"))
+    if day_win_rate is None:
+        return f"来自 {day_count} 个独立快照日，"
+    return f"来自 {day_count} 个独立快照日（按日胜率 {day_win_rate * 100:.1f}%），"
+
 def _date_weighted_horizon_stat(items: list[dict[str, Any]], key: str) -> dict[str, Any]:
     by_date: dict[str, list[float]] = {}
     for item in items:
@@ -360,6 +374,26 @@ def _date_weighted_horizon_stat_from_daily(by_date: dict[str, list[float]]) -> d
         "worst_day_return": round(min(daily_returns), 6) if daily_returns else None,
         "best_day_return": round(max(daily_returns), 6) if daily_returns else None,
     }
+
+def _with_snapshot_day_disclosure(
+    stats: dict[str, dict[str, Any]],
+    items: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """给逐行 horizon 统计补上独立快照日维度的披露字段。
+
+    逐行 available_count 会把同一快照日的多只候选各计一次，且相邻交易日的前瞻
+    窗口高度重叠，因此额外披露独立快照日数，让消费方判断样本的真实效力。仅新增
+    披露字段，不参与任何评分、阈值或排序判定。
+    """
+    disclosed: dict[str, dict[str, Any]] = {}
+    for key, stat in stats.items():
+        day_stat = _date_weighted_horizon_stat(items, key)
+        disclosed[key] = {
+            **stat,
+            "snapshot_day_count": day_stat["available_day_count"],
+            "snapshot_day_win_rate": day_stat["positive_day_rate"],
+        }
+    return disclosed
 
 def _strategy_optimization_pending_summary(items: list[dict[str, Any]], *, primary_horizon: str) -> dict[str, Any]:
     pending_items = [item for item in items if item.get(primary_horizon) is None]
@@ -670,6 +704,8 @@ def _empty_horizon_stats_by_key() -> dict[str, dict[str, Any]]:
             "avg_return": None,
             "median_return": None,
             "win_rate": None,
+            "snapshot_day_count": 0,
+            "snapshot_day_win_rate": None,
         }
         for key in _HORIZON_LABELS
     }

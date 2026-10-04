@@ -49,10 +49,20 @@ class ChoiceClient:
         self._started = True
         return result
 
-    def edb(self, codes: list[str], options: str = "") -> Any:
+    def edb(
+        self,
+        codes: list[str],
+        options: str = "",
+        *,
+        exclude_option_prefixes: tuple[str, ...] = (),
+    ) -> Any:
         self.start()
         cmod = _get_em_c()
-        merged = self._merge_request_options(options, include_recv_timeout=True)
+        merged = self._merge_request_options(
+            options,
+            include_recv_timeout=True,
+            exclude_option_prefixes=exclude_option_prefixes,
+        )
         return cmod.edb(codes, merged)
 
     def edbquery(self, codes: str, options: str = "") -> Any:
@@ -124,15 +134,26 @@ class ChoiceClient:
             raise RuntimeError("Choice runtime does not expose fut_get_transaction_rankings.")
         return fetcher(symbols, trade_date, indicators)
 
-    def _merge_request_options(self, options: str, include_recv_timeout: bool) -> str:
+    def _merge_request_options(
+        self,
+        options: str,
+        include_recv_timeout: bool,
+        *,
+        exclude_option_prefixes: tuple[str, ...] = (),
+    ) -> str:
         merged = ",".join(
             item.strip()
             for item in [self.settings.choice_request_options, options]
             if item and item.strip()
         )
-        if include_recv_timeout:
+        excluded_prefixes = tuple(
+            prefix.strip().lower() for prefix in exclude_option_prefixes if prefix.strip()
+        )
+        if include_recv_timeout and not excluded_prefixes:
             return merged
         return ",".join(
             part for part in merged.split(",")
-            if part and not part.strip().lower().startswith("recvtimeout=")
+            if part
+            and (include_recv_timeout or not part.strip().lower().startswith("recvtimeout="))
+            and not any(part.strip().lower().startswith(prefix) for prefix in excluded_prefixes)
         )

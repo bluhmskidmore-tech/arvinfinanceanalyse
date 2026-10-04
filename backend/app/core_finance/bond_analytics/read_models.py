@@ -13,6 +13,7 @@ from backend.app.core_finance.bond_analytics.common import (
     infer_curve_type,
     interpolate_rate,
     safe_decimal,
+    tenor_to_years_or_none,
 )
 from backend.app.core_finance.bond_analytics.engine import ENGINE_RULE_VERSION
 from backend.app.core_finance.curve_engine.curve_types import (
@@ -435,6 +436,20 @@ def _duration_excluded_rows(
     ]
 
 
+def _tenor_bucket_sort_key(tenor_bucket: str) -> tuple[int, float | str]:
+    """Ascending tenor-years sort key (6M < 1Y < ... < 30Y).
+
+    Unknown bucket labels (not in ``common.TENOR_YEARS``) sort after all known
+    buckets, ordered by string, so the output stays deterministic without
+    ever raising on an unrecognized label (2026-08 audit: front-end curve-risk
+    consumers plot buckets in list order without re-sorting).
+    """
+    years = tenor_to_years_or_none(tenor_bucket)
+    if years is None:
+        return (1, tenor_bucket)
+    return (0, years)
+
+
 def build_krd_distribution(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Bucket-level duration summary for the curve-risk page.
 
@@ -458,7 +473,9 @@ def build_krd_distribution(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in rows:
         grouped[str(row["tenor_bucket"])].append(row)
     out: list[dict[str, Any]] = []
-    for tenor_bucket, bucket_rows in sorted(grouped.items()):
+    for tenor_bucket, bucket_rows in sorted(
+        grouped.items(), key=lambda item: _tenor_bucket_sort_key(item[0])
+    ):
         duration_rows = _duration_denominator_rows(bucket_rows)
         excluded_rows = _duration_excluded_rows(bucket_rows, duration_rows)
         avg_modified_duration = _weighted(duration_rows, "modified_duration")

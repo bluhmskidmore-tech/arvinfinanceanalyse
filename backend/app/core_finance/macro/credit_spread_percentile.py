@@ -128,10 +128,11 @@ def compute_credit_spread_percentile(
         pct_3y = _calc_percentile(float(cur), hist_3y)
         pct_1y = _calc_percentile(float(cur), hist_1y)
 
-        if pct_3y is not None and pct_3y <= 25:
+        # 固收估值极性：利差分位高=利差宽=信用补偿厚=偏便宜；分位低=利差窄=保护薄=偏贵。
+        if pct_3y is not None and pct_3y >= 75:
             valuation = "偏便宜"
             cheap_count += 1
-        elif pct_3y is not None and pct_3y >= 75:
+        elif pct_3y is not None and pct_3y <= 25:
             valuation = "偏贵"
             expensive_count += 1
         else:
@@ -151,16 +152,16 @@ def compute_credit_spread_percentile(
         )
 
     if expensive_count >= 3:
-        assessment = "多数利差处于历史高位（偏贵），信用债配置价值较低，建议等待利差收窄"
+        assessment = "多数利差处于历史低位，利差保护较薄（偏贵），配置性价比不足"
         overall_valuation = "偏贵"
     elif cheap_count >= 3:
-        assessment = "多数利差处于历史低位（偏便宜），信用债具备配置价值，可逐步加仓"
+        assessment = "多数利差处于历史高位，信用利差补偿较厚（偏便宜），具备配置价值"
         overall_valuation = "偏便宜"
     elif cheap_count > expensive_count:
-        assessment = "利差整体偏低，信用债有一定配置吸引力"
+        assessment = "利差多数处于偏高分位，信用利差补偿相对较厚，有一定配置吸引力"
         overall_valuation = "偏便宜"
     elif expensive_count > cheap_count:
-        assessment = "利差整体偏高，信用债估值不具吸引力"
+        assessment = "利差多数处于偏低分位，利差保护相对较薄，配置性价比不足"
         overall_valuation = "偏贵"
     else:
         assessment = "利差处于历史中位，中性配置"

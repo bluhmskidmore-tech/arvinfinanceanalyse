@@ -188,6 +188,8 @@ def backfill_crisis_score_inputs(
     resolved_end = end_date or date.today().isoformat()
     _validate_iso_date(start_date, field_name="start_date")
     _validate_iso_date(resolved_end, field_name="end_date")
+    start_date = date.fromisoformat(start_date).isoformat()
+    resolved_end = date.fromisoformat(resolved_end).isoformat()
     if resolved_end < start_date:
         raise ValueError("end_date must be on or after start_date.")
 
@@ -407,6 +409,13 @@ def _series_meta(spec: CrisisInputSpec) -> SeriesMeta:
     if spec.series_id in CHOICE_SERIES:
         return CHOICE_SERIES[spec.series_id]
     request_options = "IsLatest=0,StartDate=__START_DATE__,EndDate=__END_DATE__,Ispandas=1,RECVtimeout=20"
+    policy_note = (
+        "公开市场 7 天逆回购中标利率为事件型序列：中标利率仅产生于操作日，无操作区间无观测属正常节奏，"
+        "不得按连续日历判定停更（2026-08-11–08-20 供应商实证无数据）。"
+        "Crisis Score input backfill for alias M0041653."
+        if spec.series_id == "EMM00088132"
+        else f"Crisis Score input backfill for alias {spec.alias}."
+    )
     return SeriesMeta(
         series_id=spec.series_id,
         series_name=spec.series_name,
@@ -420,7 +429,7 @@ def _series_meta(spec: CrisisInputSpec) -> SeriesMeta:
         request_options=request_options,
         fetch_mode="date_slice",
         fetch_granularity="batch",
-        policy_note=f"Crisis Score input backfill for alias {spec.alias}.",
+        policy_note=policy_note,
     )
 
 

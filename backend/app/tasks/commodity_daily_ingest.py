@@ -22,7 +22,11 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import duckdb  # noqa: E402
-from backend.app.governance.locks import LockDefinition, acquire_lock  # noqa: E402
+from backend.app.governance.locks import (  # noqa: E402
+    LockDefinition,
+    acquire_lock,
+    resolve_duckdb_writer_lock,
+)
 from backend.app.governance.settings import get_settings  # noqa: E402
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection  # noqa: E402
 from backend.app.repositories.tushare_adapter import (  # noqa: E402
@@ -801,72 +805,80 @@ def run_commodity_daily_ingest(
 
     db_file = Path(duckdb_path or settings.duckdb_path)
     db_file.parent.mkdir(parents=True, exist_ok=True)
+    writer_lock = resolve_duckdb_writer_lock(db_file)
     with acquire_lock(COMMODITY_DAILY_LOCK, base_dir=db_file.parent):
-        conn = duckdb.connect(str(db_file), read_only=False)
-        try:
-            apply_pending_migrations_on_connection(conn)
-            stop_reason: str | None = None
-            for spec in selected_products:
-                if stop_reason is not None:
-                    vendors.add("none")
-                    per_product.append(
-                        {
-                            "product_code": spec.product_code,
-                            "name_zh": spec.name_zh,
-                            "row_count": 0,
-                            "vendor": "none",
-                            "status": "not_attempted",
-                            "reason": stop_reason,
-                            "series_id": _commodity_product_series_id(spec.product_code),
-                            "attempts": [
-                                _fetch_attempt(
-                                    vendor="none",
-                                    status="skipped",
-                                    reason=stop_reason,
-                                )
-                            ],
-                        }
-                    )
-                    continue
+        with acquire_lock(writer_lock, base_dir=db_file.parent):
+            conn = duckdb.connect(str(db_file), read_only=False)
+            try:
+                apply_pending_migrations_on_connection(conn)
+            finally:
+                conn.close()
 
-                product_started = time.monotonic()
-                rows, vendor, attempts = _fetch_product_rows(
-                    spec=spec,
-                    pro=pro,
-                    start_date=start_date,
-                    end_date=resolved_end,
-                )
-                written = _replace_product_rows(conn, rows)
-                vendors.add(vendor)
-                if written > 0:
-                    successful_product_codes.append(spec.product_code)
-                product_status = "completed" if written > 0 else "missing"
-                duration_seconds = round(max(time.monotonic() - product_started, 0.0), 6)
-                product_payload: dict[str, object] = {
-                    "product_code": spec.product_code,
-                    "name_zh": spec.name_zh,
-                    "row_count": written,
-                    "vendor": vendor,
-                    "status": product_status,
-                    "duration_seconds": duration_seconds,
-                    **_latest_product_observation(rows),
-                    "series_id": _commodity_product_series_id(spec.product_code),
-                    "attempts": attempts,
-                }
-                if written == 0:
-                    product_payload["missing_reason"] = "no_rows_returned"
-                if duration_seconds > COMMODITY_PRODUCT_SOFT_DEADLINE_SECONDS:
-                    stop_reason = (
-                        "product_soft_deadline_exceeded:"
-                        f"{spec.product_code}:{COMMODITY_PRODUCT_SOFT_DEADLINE_SECONDS:.3f}s"
-                    )
-                    product_payload["deadline_exceeded"] = True
+        stop_reason: str | None = None
+        for spec in selected_products:
+            if stop_reason is not None:
+                vendors.add("none")
                 per_product.append(
-                    product_payload
+                    {
+                        "product_code": spec.product_code,
+                        "name_zh": spec.name_zh,
+                        "row_count": 0,
+                        "vendor": "none",
+                        "status": "not_attempted",
+                        "reason": stop_reason,
+                        "series_id": _commodity_product_series_id(spec.product_code),
+                        "attempts": [
+                            _fetch_attempt(
+                                vendor="none",
+                                status="skipped",
+                                reason=stop_reason,
+                            )
+                        ],
+                    }
                 )
-                total_rows += written
-        finally:
-            conn.close()
+                continue
+
+            product_started = time.monotonic()
+            rows, vendor, attempts = _fetch_product_rows(
+                spec=spec,
+                pro=pro,
+                start_date=start_date,
+                end_date=resolved_end,
+            )
+            with acquire_lock(writer_lock, base_dir=db_file.parent):
+                conn = duckdb.connect(str(db_file), read_only=False)
+                try:
+                    written = _replace_product_rows(conn, rows)
+                finally:
+                    conn.close()
+            vendors.add(vendor)
+            if written > 0:
+                successful_product_codes.append(spec.product_code)
+            product_status = "completed" if written > 0 else "missing"
+            duration_seconds = round(max(time.monotonic() - product_started, 0.0), 6)
+            product_payload: dict[str, object] = {
+                "product_code": spec.product_code,
+                "name_zh": spec.name_zh,
+                "row_count": written,
+                "vendor": vendor,
+                "status": product_status,
+                "duration_seconds": duration_seconds,
+                **_latest_product_observation(rows),
+                "series_id": _commodity_product_series_id(spec.product_code),
+                "attempts": attempts,
+            }
+            if written == 0:
+                product_payload["missing_reason"] = "no_rows_returned"
+            if duration_seconds > COMMODITY_PRODUCT_SOFT_DEADLINE_SECONDS:
+                stop_reason = (
+                    "product_soft_deadline_exceeded:"
+                    f"{spec.product_code}:{COMMODITY_PRODUCT_SOFT_DEADLINE_SECONDS:.3f}s"
+                )
+                product_payload["deadline_exceeded"] = True
+            per_product.append(
+                product_payload
+            )
+            total_rows += written
 
     missing_required_products = [
         product_code

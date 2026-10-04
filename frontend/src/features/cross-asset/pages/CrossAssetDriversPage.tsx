@@ -2,7 +2,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import { KpiCard } from "../../../components/KpiCard";
-import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
+import { toneFromSignedNumber, type KpiTone } from "../../workbench/components/kpiFormat";
 import { CrossAssetDecisionAppendix } from "../components/CrossAssetDecisionAppendix";
 import { CrossAssetEventCalendar } from "../components/CrossAssetEventCalendar";
 import { MarketCandidateActions } from "../components/MarketCandidateActions";
@@ -84,6 +84,18 @@ function bondAdverseScoreTone(score: number | null | undefined) {
   return toneFromSignedNumber(score != null ? -score : null);
 }
 
+/*
+ * 利率方向卡的着色跟随展示出来的方向标签，而不是方向分值的符号：分值 -0.07 被判为「中性」
+ * 时仍按符号涂绿，会出现「中性」二字是绿色的矛盾（2026-09-02 走查）。上行对债市不利走
+ * negative，下行走 positive，中性 / 不可用保持 default。
+ */
+function linkageRateDirectionTone(direction: string | null | undefined): KpiTone {
+  const key = String(direction ?? "").trim().toLowerCase();
+  if (key === "rising") return "negative";
+  if (key === "falling") return "positive";
+  return "default";
+}
+
 export default function CrossAssetDriversPage() {
   const [deferredContentStage, setDeferredContentStage] =
     useState<CrossAssetDeferredContentStage>(0);
@@ -91,6 +103,7 @@ export default function CrossAssetDriversPage() {
     useState<CrossAssetDeferredChartStage>(0);
   const [forceAllDeferredContent, setForceAllDeferredContent] =
     useState(false);
+  const [expandAllDetails, setExpandAllDetails] = useState(false);
   const deferredContentSentinelRef = useRef<HTMLElement | null>(null);
   const setDeferredContentSentinel = useCallback((node: HTMLElement | null) => {
     deferredContentSentinelRef.current = node;
@@ -157,6 +170,7 @@ export default function CrossAssetDriversPage() {
   const revealAllDeferredContent = useCallback(() => {
     preloadCrossAssetECharts();
     flushSync(() => {
+      setExpandAllDetails(true);
       setForceAllDeferredContent(true);
       setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE);
       setDeferredChartStage(CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE);
@@ -267,6 +281,14 @@ export default function CrossAssetDriversPage() {
   }, [deferredContentStage]);
 
   useEffect(() => {
+    if (expandAllDetails) {
+      document.querySelectorAll<HTMLDetailsElement>(".cross-asset-drivers-page details").forEach((details) => {
+        details.open = true;
+      });
+    }
+  }, [expandAllDetails, deferredContentStage]);
+
+  useEffect(() => {
     const handleNativeFind = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
         revealAllDeferredContent();
@@ -318,8 +340,9 @@ export default function CrossAssetDriversPage() {
         <div className="cross-asset-drivers-page__flow">
           <div className="cross-asset-decision-board cross-asset-reference-depth" data-testid="cross-asset-decision-display">
 
-            {/* S2b 宏观-债券联动（评分与组合影响），自附录上移 */}
+            {/* S2b 宏观-债券联动（评分与组合影响），自附录上移；id 供 /market-data 摘要卡跨页锚点定位 */}
             <CrossAssetDecisionZone
+              id="cross-asset-zone-linkage"
               testId="cross-asset-zone-linkage"
               title="宏观 - 债券联动"
               className="cross-asset-zone-linkage"
@@ -374,7 +397,7 @@ export default function CrossAssetDriversPage() {
                             "缺少方向评分。",
                           )}
                           valueVariant="text"
-                          tone={bondAdverseScoreTone(env.rate_direction_score)}
+                          tone={linkageRateDirectionTone(env.rate_direction)}
                         />
                       </div>
                       <div data-testid="cross-asset-linkage-liquidity-score">
@@ -397,11 +420,14 @@ export default function CrossAssetDriversPage() {
                       </div>
                     </div>
 
-                    <EnvScoreFactorDetailPanel
-                      rows={envFactorDetailRows}
-                      scoringMethod={envFactorScoringMethod ?? undefined}
-                      loading={macroBondLinkageQuery.isLoading}
-                    />
+                    <details className="cross-asset-evidence-details" open={expandAllDetails || undefined}>
+                      <summary>评分因子与计算说明</summary>
+                      <EnvScoreFactorDetailPanel
+                        rows={envFactorDetailRows}
+                        scoringMethod={envFactorScoringMethod ?? undefined}
+                        loading={macroBondLinkageQuery.isLoading}
+                      />
+                    </details>
 
                     <section
                       data-testid="cross-asset-linkage-portfolio-impact"
@@ -458,30 +484,45 @@ export default function CrossAssetDriversPage() {
 
             {/* S4 传导与行动 */}
             <CrossAssetDecisionZone testId="cross-asset-zone-transmission" title="传导与行动">
+              <details className="cross-asset-evidence-details" data-testid="cross-asset-action-details" open={expandAllDetails || undefined}>
+                <summary>
+                  <span>研究行动参考</span>
+                  <strong>{candidateActions.length} 项</strong>
+                </summary>
+                <MarketCandidateActions rows={candidateActions} />
+              </details>
               <CrossAssetReferenceTransmission rows={transmissionAxisRows} />
               <CrossAssetReferenceJudgments cards={researchViewCards} />
-              <AssetClassAnalysisPanel
-                rows={assetClassAnalysisRows}
-                equityEvidenceItems={equityEvidenceItems}
-                bondJudgment={firstScreenDisplay.judgments.bond}
-              />
-              <div className="cross-asset-drivers-page__drivers-grid cross-asset-drivers-page__drivers-grid--flat">
-                {drivers.map((col) => (
-                  <div key={col.title} className="cross-asset-drivers-page__driver-cell">
-                    <div className="cross-asset-drivers-page__driver-title">{col.title}</div>
-                    <div className={`cross-asset-drivers-page__driver-stance cross-asset-drivers-page__driver-stance--${col.tone}`}>
-                      {col.stance}
+              <details className="cross-asset-evidence-details" data-testid="cross-asset-driver-details" open={expandAllDetails || undefined}>
+                <summary>
+                  <span>资产判断与驱动依据</span>
+                  <strong>
+                    {assetClassAnalysisRows.filter((row) => row.status === "ready").length}/{assetClassAnalysisRows.length} 已判断
+                    {" · "}{assetClassAnalysisRows.reduce((count, row) => count + row.lines.filter((line) => line.status !== "ready").length, 0)} 项待接入
+                  </strong>
+                </summary>
+                <AssetClassAnalysisPanel
+                  rows={assetClassAnalysisRows}
+                  equityEvidenceItems={equityEvidenceItems}
+                  bondJudgment={firstScreenDisplay.judgments.bond}
+                />
+                <div className="cross-asset-drivers-page__drivers-grid cross-asset-drivers-page__drivers-grid--flat">
+                  {drivers.map((col) => (
+                    <div key={col.title} className="cross-asset-drivers-page__driver-cell">
+                      <div className="cross-asset-drivers-page__driver-title">{col.title}</div>
+                      <div className={`cross-asset-drivers-page__driver-stance cross-asset-drivers-page__driver-stance--${col.tone}`}>
+                        {col.stance}
+                      </div>
+                      <ul className="cross-asset-drivers-page__driver-list">
+                        {col.bullets.map((bullet) => (
+                          <li key={bullet}>{bullet}</li>
+                        ))}
+                      </ul>
                     </div>
-                    <ul className="cross-asset-drivers-page__driver-list">
-                      {col.bullets.map((bullet) => (
-                        <li key={bullet}>{bullet}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-              <DriverWaterfallPanel bars={waterfallBars} env={env} theme="terminal" />
-              <MarketCandidateActions rows={candidateActions} />
+                  ))}
+                </div>
+                <DriverWaterfallPanel bars={waterfallBars} env={env} theme="terminal" />
+              </details>
             </CrossAssetDecisionZone>
 
             {/* S5 证据与指标 */}
@@ -490,6 +531,19 @@ export default function CrossAssetDriversPage() {
                 kpis={kpis}
                 sourceBlockedFlag={firstScreenDisplay.status.sourceBlockedFlag}
               />
+              <details className="cross-asset-evidence-details" data-testid="cross-asset-constraint-details" open={expandAllDetails || undefined}>
+                <summary>
+                  <span>证据与动作约束</span>
+                  <strong>
+                    {firstScreenDisplay.status.blockingFlag?.label
+                      ?? (statusFlags.some((flag) => flag.id === "fallback") ? "证据含降级" : "证据状态")}
+                    {" · "}{statusFlags.length > 0
+                      ? `${statusFlags.length} 项提示，使用结论前需核对来源`
+                      : macroBondLinkageQuery.isLoading || latestQuery.isLoading
+                        ? "等待数据返回"
+                        : "暂无提示"}
+                  </strong>
+                </summary>
               <div className="cross-asset-fusion-side-panel cross-asset-reference-fusion-side-panel" data-testid="cross-asset-fusion-side-panel">
                 <CrossAssetReferenceSourceAudit
                   reportDate={reportDate}
@@ -507,10 +561,16 @@ export default function CrossAssetDriversPage() {
                   isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
                 />
               </div>
+              </details>
               <CrossAssetEvidenceTape kpis={kpis} />
               <details
                 ref={deferredContentStage === 0 ? setDeferredContentSentinel : undefined}
-                open
+                open={expandAllDetails || undefined}
+                onToggle={(event) => {
+                  if (event.currentTarget.open) {
+                    setDeferredContentStage((stage) => Math.max(stage, 1) as CrossAssetDeferredContentStage);
+                  }
+                }}
                 className="cross-asset-evidence-details"
                 data-testid="cross-asset-evidence-details"
                 aria-label="指标明细与相关性热力"
@@ -666,7 +726,7 @@ export default function CrossAssetDriversPage() {
             </div>
 
             <details
-              open
+              open={expandAllDetails || undefined}
               className="cross-asset-observation-secondary"
               data-testid="cross-asset-observation-secondary"
             >
@@ -692,7 +752,12 @@ export default function CrossAssetDriversPage() {
             {/* 附录：A股策略 · NCD 代理 · 结构化输出 */}
             <details
               ref={deferredContentStage === 2 ? setDeferredContentSentinel : undefined}
-              open
+              open={expandAllDetails || undefined}
+              onToggle={(event) => {
+                if (event.currentTarget.open) {
+                  setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE);
+                }
+              }}
               className="cross-asset-decision-appendix"
               data-testid="cross-asset-decision-appendix"
             >
@@ -743,7 +808,7 @@ export default function CrossAssetDriversPage() {
                       evidence={ncdProxyEvidence}
                       isLoading={ncdFundingProxyQuery.isLoading}
                     />
-                    <details open className="cross-asset-structured-output">
+                    <details open={expandAllDetails || undefined} className="cross-asset-structured-output">
                       <summary>结构化输出与联动摘要</summary>
                       <div data-testid="cross-asset-page-output">
                         <PageOutput

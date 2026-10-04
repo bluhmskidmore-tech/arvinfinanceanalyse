@@ -19,6 +19,7 @@ import type {
   ResultMeta,
 } from "../api/contracts";
 import LedgerPnlPage from "../features/ledger-pnl/pages/LedgerPnlPage";
+import { EM_DASH } from "../utils/format";
 
 function renderLedgerPnlPage(client: ApiClient, initialEntry = "/ledger-pnl?report_date=2026-03-31") {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -191,6 +192,7 @@ function buildLedgerAnalysisEnvelope(
   };
 }
 
+// Artificial values preserve precision and reconciliation states without copying a workbook.
 function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicatorContractPayload {
   return {
     sample_id: "GS-LEDGER-PNL-FIN-IND-202603-B",
@@ -198,9 +200,9 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
     surface: "/ledger-pnl formal financial indicator source contract",
     report_month: "202603",
     report_date: "2026-03-31",
-    source_workbook: "C:/Users/arvin/Desktop/2026年财务指标表-3月最终(1).xlsx",
+    source_workbook: "/synthetic/financial-indicators/2026-03.xlsx",
     source_sheet: "财务指标-汇总",
-    source_basis: "Excel 2026-03 formal financial indicator table supplied by user",
+    source_basis: "Synthetic formal-indicator fixture for source-status tests",
     source_version: "sv_formal_financial_indicators_excel_202603_contract",
     rule_version: "rv_formal_financial_indicators_source_status_v1",
     formal_use_allowed: false,
@@ -229,14 +231,14 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
         metric_key: "group.total_assets",
         metric_name: "集团总资产",
         scope: "group_consolidated",
-        excel_value: "8342.0254700000",
+        excel_value: "1234.5678900000",
         unit: "亿元",
         excel_ref: "财务指标-汇总!K35 -> 财务指标-计算表!K30",
         formula: "external/formal calculation table input",
         source_status: "needs_reconciliation",
         system_metric: "qdb.total_assets",
-        system_value: "8144.05",
-        reconciliation_gap: "197.97547",
+        system_value: "1200.00",
+        reconciliation_gap: "34.56789",
         value: null,
         basis: "formal_financial_indicator_source_contract",
         formal_use_allowed: false,
@@ -251,10 +253,10 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
         metric_key: "group.operating_revenue",
         metric_name: "集团营业收入",
         scope: "group_consolidated",
-        excel_value: "43.4194731314",
+        excel_value: "12.3456789012",
         unit: "亿元",
         excel_ref: "财务指标-汇总!K5 -> 财务指标-计算表!K5",
-        formula: "=4341947313.14/100000000",
+        formula: "=1234567890.12/100000000",
         source_status: "formal_pending",
         system_metric: null,
         system_value: null,
@@ -272,14 +274,14 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
         metric_key: "parent.loan_balance",
         metric_name: "贷款余额（母公司）",
         scope: "parent_company",
-        excel_value: "4189.4674724087",
+        excel_value: "678.1265432109",
         unit: "亿元",
         excel_ref: "财务指标-汇总!K39 -> 财务指标-计算表!K76",
         formula: "external/formal calculation table input",
         source_status: "candidate_qdb_aligned",
         system_metric: "qdb.loan_spot",
-        system_value: "4189.47",
-        reconciliation_gap: "0.0025275913",
+        system_value: "678.13",
+        reconciliation_gap: "0.0034567891",
         value: null,
         basis: "formal_financial_indicator_source_contract",
         formal_use_allowed: false,
@@ -294,14 +296,14 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
         metric_key: "parent.deposit_balance",
         metric_name: "存款余额（母公司）",
         scope: "parent_company",
-        excel_value: "5120.6380974646",
+        excel_value: "890.8765432109",
         unit: "亿元",
         excel_ref: "财务指标-汇总!K40 -> 财务指标-计算表!K74",
         formula: "external/formal calculation table input",
         source_status: "needs_reconciliation",
         system_metric: "qdb.deposit_spot",
-        system_value: "5115.96",
-        reconciliation_gap: "4.6780974646",
+        system_value: "885.00",
+        reconciliation_gap: "5.8765432109",
         value: null,
         basis: "formal_financial_indicator_source_contract",
         formal_use_allowed: false,
@@ -316,14 +318,14 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
         metric_key: "group.asset_quality_loan_balance",
         metric_name: "贷款余额（集团资产质量口径）",
         scope: "group_consolidated",
-        excel_value: "4193.9954022127",
+        excel_value: "679.9876543210",
         unit: "亿元",
         excel_ref: "财务指标-汇总!K53 -> 财务指标-计算表!K41",
         formula: "external/formal calculation table input",
         source_status: "needs_reconciliation",
         system_metric: "qdb.loan_spot",
-        system_value: "4189.47",
-        reconciliation_gap: "4.5254022127",
+        system_value: "678.13",
+        reconciliation_gap: "1.8576543210",
         value: null,
         basis: "formal_financial_indicator_source_contract",
         formal_use_allowed: false,
@@ -338,14 +340,14 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
         metric_key: "group.allowance_to_loan_ratio",
         metric_name: "拨贷比",
         scope: "group_consolidated",
-        excel_value: "2.9263169853",
+        excel_value: "3.1234567890",
         unit: "%",
         excel_ref: "财务指标-汇总!K55 = K50 / K53",
         formula: "K50 / K53",
         source_status: "needs_reconciliation",
         system_metric: "qdb.allowance_to_loan_ratio",
-        system_value: "2.70",
-        reconciliation_gap: "0.2263169853",
+        system_value: "2.50",
+        reconciliation_gap: "0.6234567890",
         value: null,
         basis: "formal_financial_indicator_source_contract",
         formal_use_allowed: false,
@@ -495,17 +497,17 @@ describe("LedgerPnlPage", () => {
         result: {
           report_date: "2026-03-31",
           source_version: "sv_ledger_test",
-          ledger_monthly_pnl_core: money("10.00"),
-          ledger_monthly_pnl_all: money("10.00"),
+          ledger_monthly_pnl_core: money("1000000000.00"),
+          ledger_monthly_pnl_all: money("1000000000.00"),
           ledger_total_assets: money("100.00"),
           ledger_total_liabilities: money("50.00"),
           ledger_net_assets: money("50.00"),
-          by_currency: [{ currency: "CNX", total_pnl: money("10.00") }],
+          by_currency: [{ currency: "CNX", total_pnl: money("1000000000.00") }],
           by_account: [
             {
               account_code: "51401000001",
               account_name: "利息收入",
-              total_pnl: money("10.00"),
+              total_pnl: money("1000000000.00"),
               count: 1,
             },
           ],
@@ -516,10 +518,13 @@ describe("LedgerPnlPage", () => {
         result: {
           report_date: "2026-03-31",
           summary: {
-            total_pnl_cnx: money("10.00"),
+            total_pnl_cnx: money("1000000000.00"),
             total_pnl_cny: money("0.00"),
-            total_pnl: money("10.00"),
-            count: 1,
+            total_pnl: money("1000000000.00"),
+            count: 2,
+            ledger_evidence_rows: 2,
+            average_only_row_count: 0,
+            pnl_account_count: 1,
           },
           items: [
             {
@@ -528,9 +533,21 @@ describe("LedgerPnlPage", () => {
               currency: "CNX",
               beginning_balance: money("0.00"),
               ending_balance: money("0.00"),
-              monthly_pnl: money("10.00"),
+              monthly_pnl: money("1000000000.00"),
               daily_avg_balance: money("0.00"),
               days_in_period: 31,
+              source_presence: "ledger" as const,
+            },
+            {
+              account_code: "10101000001",
+              account_name: "库存现金",
+              currency: "CNX",
+              beginning_balance: money("8.00"),
+              ending_balance: money("9.00"),
+              monthly_pnl: money("-1.00"),
+              daily_avg_balance: money("8.50"),
+              days_in_period: 31,
+              source_presence: "ledger" as const,
             },
           ],
         },
@@ -566,17 +583,138 @@ describe("LedgerPnlPage", () => {
 
     expect(summaryMeta).toHaveTextContent("Ledger 汇总");
     expect(summaryMeta).toHaveTextContent("台账口径");
-    expect(summaryMeta).toHaveTextContent("正式可用");
+    expect(summaryMeta).toHaveTextContent("仅供分析，尚未获准正式使用");
+    expect(summaryMeta).toHaveTextContent("正式使用标识");
     expect(summaryMeta).toHaveTextContent("否");
     expect(summaryMeta).toHaveTextContent("ledger_report_date");
     expect(summaryMeta).toHaveTextContent("qdb_general_ledger_workbook");
 
     expect(dataMeta).toHaveTextContent("Ledger 明细");
     expect(dataMeta).toHaveTextContent("台账口径");
-    expect(dataMeta).toHaveTextContent("正式可用");
+    expect(dataMeta).toHaveTextContent("仅供分析，尚未获准正式使用");
+    expect(dataMeta).toHaveTextContent("正式使用标识");
     expect(dataMeta).toHaveTextContent("否");
     expect(dataMeta).toHaveTextContent("ledger_report_date");
     expect(dataMeta).toHaveTextContent("qdb_general_ledger_workbook");
+
+    const detail = screen.getByTestId("ledger-pnl-detail-table-anchor");
+    expect(detail).toHaveTextContent("5* 损益合计 10.00 亿元 · 1 个损益科目");
+    expect(detail).toHaveTextContent("全科目共 2 行");
+    expect(detail).toHaveTextContent("本月净发生额（贷－借）");
+    expect(detail).toHaveTextContent("仅 5* 科目可解释为损益");
+  });
+
+  it("R1: 默认隐藏日均侧合成行，开关显示后带来源标记与空名占位，证据行数文案分离总账/合成行", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-07-31"] },
+        })),
+        getLedgerPnlSummary: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.summary"),
+          result: {
+            report_date: "2026-07-31",
+            source_version: "sv_ledger_test",
+            ledger_monthly_pnl_core: money("2000000.00"),
+            ledger_monthly_pnl_all: money("2000000.00"),
+            ledger_total_assets: money("0.00"),
+            ledger_total_liabilities: money("0.00"),
+            ledger_net_assets: money("0.00"),
+            by_currency: [{ currency: "CNX", total_pnl: money("2000000.00") }],
+            by_account: [
+              {
+                account_code: "514100",
+                account_name: "利息收入",
+                total_pnl: money("2000000.00"),
+                count: 1,
+              },
+            ],
+          },
+        })),
+        getLedgerPnlData: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.data"),
+          result: {
+            report_date: "2026-07-31",
+            summary: {
+              total_pnl_cnx: money("2000000.00"),
+              total_pnl_cny: money("0.00"),
+              total_pnl: money("2000000.00"),
+              count: 2,
+              ledger_evidence_rows: 1,
+              average_only_row_count: 1,
+              pnl_account_count: 1,
+            },
+            items: [
+              {
+                account_code: "514100",
+                account_name: "利息收入",
+                currency: "CNX",
+                beginning_balance: money("0.00"),
+                ending_balance: money("0.00"),
+                monthly_pnl: money("2000000.00"),
+                daily_avg_balance: money("0.00"),
+                days_in_period: 31,
+                source_presence: "ledger" as const,
+              },
+              {
+                account_code: "999999",
+                account_name: "",
+                currency: "CNX",
+                beginning_balance: money("0.00"),
+                ending_balance: money("0.00"),
+                monthly_pnl: money("0.00"),
+                daily_avg_balance: money("500000.00"),
+                days_in_period: 31,
+                source_presence: "average_only" as const,
+              },
+            ],
+          },
+        })),
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: {
+            ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+            basis: "ledger" as const,
+            formal_use_allowed: false,
+          },
+          result: buildFormalIndicatorContractPayload(),
+        })),
+      },
+      "/ledger-pnl?report_date=2026-07-31",
+    );
+
+    const detailTable = await screen.findByTestId("ledger-pnl-detail-table");
+
+    // 默认视图：合成行不可见——账户代码、占位文案与行内来源标记均不渲染
+    // （证据行数一句本身固定出现"日均侧合成行"字样，不能用它判断合成行是否可见）。
+    expect(detailTable).not.toHaveTextContent("999999");
+    expect(detailTable).not.toHaveTextContent("——（仅日均侧科目）");
+    expect(detailTable.querySelector(".ledger-pnl-detail-row__source-badge")).toBeNull();
+    expect(detailTable).toHaveTextContent("全科目共 1 行");
+    expect(detailTable).toHaveTextContent("总账证据行 1 · 日均侧合成行 1");
+
+    const toggle = within(detailTable).getByTestId("ledger-pnl-detail-average-only-toggle");
+    expect(toggle).toHaveTextContent("显示日均侧合成行（1）");
+    const checkbox = within(toggle).getByRole("checkbox");
+    expect(checkbox).not.toBeChecked();
+
+    await user.click(checkbox);
+
+    // 开关打开后：合成行可见，空 account_name 显示占位而非空白，且带来源标记。
+    expect(checkbox).toBeChecked();
+    expect(detailTable).toHaveTextContent("999999");
+    expect(detailTable).toHaveTextContent("——（仅日均侧科目）");
+    expect(detailTable.querySelector(".ledger-pnl-detail-row__source-badge")).not.toBeNull();
+    expect(detailTable).toHaveTextContent("全科目共 2 行");
   });
 
   it("renders the formal financial indicator source contract without promoting candidate values", async () => {
@@ -622,6 +760,8 @@ describe("LedgerPnlPage", () => {
             total_pnl_cny: money("0.00"),
             total_pnl: money("0.00"),
             count: 0,
+            ledger_evidence_rows: 0,
+            average_only_row_count: 0,
           },
           items: [],
         },
@@ -703,7 +843,7 @@ describe("LedgerPnlPage", () => {
     );
     expect(formalPendingRow).toHaveTextContent("集团营业收入");
     expect(formalPendingRow).toHaveTextContent(/正式展示值\s*未接入/);
-    expect(formalPendingRow).toHaveTextContent(/Excel 样本值\s*43.4194731314 亿元/);
+    expect(formalPendingRow).toHaveTextContent(/Excel 样本值\s*12.3456789012 亿元/);
     expect(formalPendingRow).toHaveTextContent(/系统候选值\s*—/);
 
     const qdbCandidateRow = screen.getByTestId(
@@ -711,14 +851,14 @@ describe("LedgerPnlPage", () => {
     );
     expect(qdbCandidateRow).toHaveTextContent("贷款余额（母公司）");
     expect(qdbCandidateRow).toHaveTextContent(/正式展示值\s*未接入/);
-    expect(qdbCandidateRow).toHaveTextContent(/系统候选值\s*4189.47 亿元/);
+    expect(qdbCandidateRow).toHaveTextContent(/系统候选值\s*678.13 亿元/);
     expect(qdbCandidateRow).toHaveTextContent("候选对照，不具备正式使用权限");
 
     const reconciliationRow = screen.getByTestId(
       "ledger-pnl-formal-indicator-source-contract-row-parent.deposit_balance",
     );
     expect(reconciliationRow).toHaveTextContent("存款余额（母公司）");
-    expect(reconciliationRow).toHaveTextContent("对账差异 4.6780974646");
+    expect(reconciliationRow).toHaveTextContent("对账差异 5.8765432109");
     expect(reconciliationRow).toHaveTextContent("需先对账");
   });
 
@@ -773,6 +913,8 @@ describe("LedgerPnlPage", () => {
             total_pnl_cny: money("1.00"),
             total_pnl: money("1.00"),
             count: 1,
+            ledger_evidence_rows: 1,
+            average_only_row_count: 0,
           },
           items: [
             {
@@ -784,6 +926,7 @@ describe("LedgerPnlPage", () => {
               monthly_pnl: money("1.00"),
               daily_avg_balance: money("0.00"),
               days_in_period: 31,
+              source_presence: "ledger" as const,
             },
           ],
         },
@@ -871,6 +1014,8 @@ describe("LedgerPnlPage", () => {
             total_pnl_cny: money("1.00"),
             total_pnl: money("1.00"),
             count: 12,
+            ledger_evidence_rows: 12,
+            average_only_row_count: 0,
           },
           items: [],
         },
@@ -918,8 +1063,8 @@ describe("LedgerPnlPage", () => {
       "ledger-pnl-formal-indicator-source-contract-row-group.operating_revenue",
     );
     expect(revenueRow).toHaveTextContent("集团营业收入");
-    expect(revenueRow).toHaveTextContent(/正式展示值\s*43.4194731314 亿元/);
-    expect(revenueRow).toHaveTextContent(/Excel 样本值\s*43.4194731314 亿元/);
+    expect(revenueRow).toHaveTextContent(/正式展示值\s*12.3456789012 亿元/);
+    expect(revenueRow).toHaveTextContent(/Excel 样本值\s*12.3456789012 亿元/);
     expect(revenueRow).toHaveTextContent(/系统候选值\s*—/);
   });
 
@@ -982,6 +1127,8 @@ describe("LedgerPnlPage", () => {
             total_pnl_cny: money("1.00"),
             total_pnl: money("1.00"),
             count: 12,
+            ledger_evidence_rows: 12,
+            average_only_row_count: 0,
           },
           items: [
             {
@@ -993,6 +1140,7 @@ describe("LedgerPnlPage", () => {
               monthly_pnl: money("1.00"),
               daily_avg_balance: money("0.00"),
               days_in_period: 31,
+              source_presence: "ledger" as const,
             },
           ],
         },
@@ -1067,6 +1215,8 @@ describe("LedgerPnlPage", () => {
             total_pnl_cny: money("1.00"),
             total_pnl: money("1.00"),
             count: 1,
+            ledger_evidence_rows: 1,
+            average_only_row_count: 0,
           },
           items: [],
         },
@@ -1098,11 +1248,11 @@ describe("LedgerPnlPage", () => {
     expect(items[0]).toHaveTextContent("1");
     expect(items[0]).toHaveTextContent("集团总资产");
     expect(items[0]).toHaveTextContent("先对账 QDB 候选与 Excel 样本");
-    expect(items[0]).toHaveTextContent("对账差异 197.97547 亿元");
+    expect(items[0]).toHaveTextContent("对账差异 34.56789 亿元");
     expect(items[0]).toHaveTextContent("财务指标-汇总!K35 -> 财务指标-计算表!K30");
 
     expect(items[1]).toHaveTextContent("存款余额（母公司）");
-    expect(items[1]).toHaveTextContent("对账差异 4.6780974646 亿元");
+    expect(items[1]).toHaveTextContent("对账差异 5.8765432109 亿元");
 
     expect(items[2]).toHaveTextContent("贷款余额（集团资产质量口径）");
     expect(items[3]).toHaveTextContent("拨贷比");
@@ -1161,6 +1311,8 @@ describe("LedgerPnlPage", () => {
               total_pnl_cny: money("0.00"),
               total_pnl: money("0.00"),
               count: 0,
+              ledger_evidence_rows: 0,
+              average_only_row_count: 0,
             },
             items: [],
           },
@@ -1293,6 +1445,8 @@ describe("LedgerPnlPage", () => {
               total_pnl_cny: money("0.00"),
               total_pnl: money("0.00"),
               count: 0,
+              ledger_evidence_rows: 0,
+              average_only_row_count: 0,
             },
             items: [],
           },
@@ -1353,7 +1507,7 @@ describe("LedgerPnlPage", () => {
             source_version: "sv_ledger_test",
             ledger_monthly_pnl_core: money("123456789.00"),
             ledger_monthly_pnl_all: money("123456789.00"),
-            ledger_total_assets: money("814405000000.00"),
+            ledger_total_assets: money("120000000000.00"),
             ledger_total_liabilities: money("700000000000.00"),
             ledger_net_assets: money("114405000000.00"),
             by_currency: [{ currency: "CNY", total_pnl: money("123456789.00") }],
@@ -1384,6 +1538,8 @@ describe("LedgerPnlPage", () => {
               total_pnl_cny: money("123456789.00"),
               total_pnl: money("123456789.00"),
               count: 7751,
+              ledger_evidence_rows: 7751,
+              average_only_row_count: 0,
             },
             items: [
               {
@@ -1395,6 +1551,7 @@ describe("LedgerPnlPage", () => {
                 monthly_pnl: money("123456789.00"),
                 daily_avg_balance: money("0.00"),
                 days_in_period: 31,
+                source_presence: "ledger" as const,
               },
             ],
           },
@@ -1532,6 +1689,8 @@ describe("LedgerPnlPage", () => {
               total_pnl_cny: money("123456789.00"),
               total_pnl: money("123456789.00"),
               count: 7751,
+              ledger_evidence_rows: 7751,
+              average_only_row_count: 0,
             },
             items: [
               {
@@ -1543,6 +1702,7 @@ describe("LedgerPnlPage", () => {
                 monthly_pnl: money("123456789.00"),
                 daily_avg_balance: money("0.00"),
                 days_in_period: 31,
+                source_presence: "ledger" as const,
               },
             ],
           },
@@ -1617,7 +1777,7 @@ describe("LedgerPnlPage", () => {
             source_version: "sv_ledger_test",
             ledger_monthly_pnl_core: money("123456789.00"),
             ledger_monthly_pnl_all: money("123456789.00"),
-            ledger_total_assets: money("814405000000.00"),
+            ledger_total_assets: money("120000000000.00"),
             ledger_total_liabilities: money("700000000000.00"),
             ledger_net_assets: money("114405000000.00"),
             by_currency: [{ currency: "CNY", total_pnl: money("123456789.00") }],
@@ -1648,6 +1808,8 @@ describe("LedgerPnlPage", () => {
               total_pnl_cny: money("123456789.00"),
               total_pnl: money("123456789.00"),
               count: 7751,
+              ledger_evidence_rows: 7751,
+              average_only_row_count: 0,
             },
             items: [
               {
@@ -1659,6 +1821,7 @@ describe("LedgerPnlPage", () => {
                 monthly_pnl: money("123456789.00"),
                 daily_avg_balance: money("0.00"),
                 days_in_period: 31,
+                source_presence: "ledger" as const,
               },
             ],
           },
@@ -1896,6 +2059,8 @@ describe("LedgerPnlPage", () => {
               total_pnl_cny: money("123456789.00"),
               total_pnl: money("123456789.00"),
               count: 7751,
+              ledger_evidence_rows: 7751,
+              average_only_row_count: 0,
             },
             items: [
               {
@@ -1907,6 +2072,7 @@ describe("LedgerPnlPage", () => {
                 monthly_pnl: money("123456789.00"),
                 daily_avg_balance: money("0.00"),
                 days_in_period: 31,
+                source_presence: "ledger" as const,
               },
             ],
           },
@@ -1988,6 +2154,8 @@ describe("LedgerPnlPage", () => {
             total_pnl_cny: money("1.00"),
             total_pnl: money("1.00"),
             count: 1,
+            ledger_evidence_rows: 1,
+            average_only_row_count: 0,
           },
           items: [],
         },
@@ -2078,6 +2246,8 @@ describe("LedgerPnlPage", () => {
               total_pnl_cny: money("0.00"),
               total_pnl: money("0.00"),
               count: 1,
+              ledger_evidence_rows: 1,
+              average_only_row_count: 0,
             },
             items: [
               {
@@ -2089,6 +2259,7 @@ describe("LedgerPnlPage", () => {
                 monthly_pnl: money("0.00"),
                 daily_avg_balance: money("1000.00"),
                 days_in_period: 31,
+                source_presence: "ledger" as const,
               },
             ],
           },
@@ -2255,6 +2426,8 @@ describe("LedgerPnlPage", () => {
               total_pnl_cny: undefinedMoney,
               total_pnl: blankMoney,
               count: 1,
+              ledger_evidence_rows: 1,
+              average_only_row_count: 0,
             },
             items: [
               {
@@ -2266,6 +2439,7 @@ describe("LedgerPnlPage", () => {
                 monthly_pnl: money("100000000.00"),
                 daily_avg_balance: invalidMoney,
                 days_in_period: 31,
+                source_presence: "ledger" as const,
               },
             ],
           },
@@ -2337,6 +2511,8 @@ describe("LedgerPnlPage", () => {
               total_pnl_cny: money("0.00"),
               total_pnl: money("0.00"),
               count: 0,
+              ledger_evidence_rows: 0,
+              average_only_row_count: 0,
             },
             items: [],
           },
@@ -2440,6 +2616,7 @@ describe("LedgerPnlPage", () => {
                   monthly_pnl: money("10"),
                   daily_avg_balance: money("0"),
                   days_in_period: 31,
+                  source_presence: "ledger" as const,
                 },
                 {
                   account_code: "519900",
@@ -2450,6 +2627,7 @@ describe("LedgerPnlPage", () => {
                   monthly_pnl: money("20"),
                   daily_avg_balance: money("0"),
                   days_in_period: 31,
+                  source_presence: "ledger" as const,
                 },
               ],
               summary: {
@@ -2457,6 +2635,8 @@ describe("LedgerPnlPage", () => {
                 total_pnl_cny: money("0"),
                 total_pnl: money("30"),
                 count: 2,
+                ledger_evidence_rows: 2,
+                average_only_row_count: 0,
               },
             },
           })),
@@ -2533,6 +2713,7 @@ describe("LedgerPnlPage", () => {
         monthly_pnl: money(rowNumber === 201 ? "90000000000.00" : "300000000.00"),
         daily_avg_balance: money("400000000.00"),
         days_in_period: 31,
+        source_presence: "ledger" as const,
       };
     });
 
@@ -2566,6 +2747,8 @@ describe("LedgerPnlPage", () => {
               total_pnl_cny: money("0.00"),
               total_pnl: money("0.00"),
               count: detailItems.length,
+              ledger_evidence_rows: detailItems.length,
+              average_only_row_count: 0,
             },
             items: detailItems,
           },
@@ -2587,9 +2770,9 @@ describe("LedgerPnlPage", () => {
     await waitFor(() => {
       expect(accountTable).toHaveTextContent("account-row-201");
     });
-    expect(
-      within(accountTable).getByTestId("ledger-pnl-account-summary-table-range"),
-    ).toHaveTextContent("第 1-25 条 / 共 201 条");
+    // B6：科目汇总默认只渲染前 20 行（按损益绝对值降序，account-row-201 金额最大排第一）。
+    expect(within(accountTable).getByText("account-row-182")).toBeInTheDocument();
+    expect(within(accountTable).queryByText(/^account-row-181$/)).not.toBeInTheDocument();
     expect(within(accountTable).queryByText(/^account-row-1$/)).not.toBeInTheDocument();
 
     const detailTable = screen.getByTestId("ledger-pnl-detail-table");
@@ -2599,14 +2782,30 @@ describe("LedgerPnlPage", () => {
     );
     expect(within(detailTable).queryByText(/^detail-row-200$/)).not.toBeInTheDocument();
 
-    // 被分页隐去的行仍然可达：这是从"只渲染前 200 条"改为分页后的关键保证。
+    // 折叠隐去的行仍然可达：点击"展开全部"后 340（此处 201）行全量可见。
     await userEvent.click(
-      within(accountTable).getByTestId("ledger-pnl-account-summary-table-next"),
+      within(accountTable).getByTestId("ledger-pnl-account-summary-table-expand"),
     );
+    expect(within(accountTable).getByText("account-row-181")).toBeInTheDocument();
+    expect(within(accountTable).getByText("account-row-1")).toBeInTheDocument();
+
+    // 收起后恢复 Top 20 默认视图。
+    await userEvent.click(
+      within(accountTable).getByTestId("ledger-pnl-account-summary-table-expand"),
+    );
+    expect(within(accountTable).queryByText(/^account-row-1$/)).not.toBeInTheDocument();
+
+    // 搜索在全量数据中过滤，不受 Top 20 限制：account-row-1（科目代码 514001）默认被折叠但可搜到。
+    await userEvent.type(
+      within(accountTable).getByTestId("ledger-pnl-account-summary-table-search"),
+      "514001",
+    );
+    expect(within(accountTable).getByText("account-row-1")).toBeInTheDocument();
+    expect(within(accountTable).queryByText(/^account-row-2$/)).not.toBeInTheDocument();
+    // 搜索态下不显示"展开全部"按钮（Top 20 限制本就已解除）。
     expect(
-      within(accountTable).getByTestId("ledger-pnl-account-summary-table-range"),
-    ).toHaveTextContent("第 26-50 条 / 共 201 条");
-    expect(within(accountTable).getByText("account-row-176")).toBeInTheDocument();
+      within(accountTable).queryByTestId("ledger-pnl-account-summary-table-expand"),
+    ).not.toBeInTheDocument();
   });
 
   it("uses the report_date query for ledger reads while the date list is still loading", async () => {
@@ -2638,6 +2837,8 @@ describe("LedgerPnlPage", () => {
           total_pnl_cny: money("0.00"),
           total_pnl: money("100000000.00"),
           count: 0,
+          ledger_evidence_rows: 0,
+          average_only_row_count: 0,
         },
         items: [],
       },
@@ -2701,6 +2902,8 @@ describe("LedgerPnlPage", () => {
           total_pnl_cny: money("0.00"),
           total_pnl: money("100000000.00"),
           count: 0,
+          ledger_evidence_rows: 0,
+          average_only_row_count: 0,
         },
         items: [],
       },
@@ -2776,6 +2979,8 @@ describe("LedgerPnlPage", () => {
         total_pnl_cny: money("0.00"),
         total_pnl: money("0.00"),
         count: 1,
+        ledger_evidence_rows: 1,
+        average_only_row_count: 0,
       },
       items: [
         {
@@ -2787,6 +2992,7 @@ describe("LedgerPnlPage", () => {
           monthly_pnl: money("1100000000.00"),
           daily_avg_balance: money("1200000000.00"),
           days_in_period: 31,
+          source_presence: "ledger" as const,
         },
       ],
     };
@@ -2812,7 +3018,7 @@ describe("LedgerPnlPage", () => {
           rows: [
             {
               指标: "贷款总额（QDB源）",
-              当前值: 4189.47,
+              当前值: 678.13,
               单位: "亿元",
               口径状态: "QDB源可复算",
               口径来源: "QDB源分析：总账对账+日均可复算",
@@ -3034,7 +3240,7 @@ describe("LedgerPnlPage", () => {
         {
           key: "income_rate_attribution",
           title: "收益量价归因（年累计同比）",
-          columns: ["指标", "板块", "本期收益/支出", "对比期收益/支出", "增减额", "规模贡献", "利率贡献", "校验差异", "口径来源"],
+          columns: ["指标", "板块", "本期收益/支出", "对比期收益/支出", "增减额", "规模贡献", "利率贡献", "恒等式自检（非独立对账）", "口径来源"],
           rows: [
             {
               指标: "公司贷款利息收入",
@@ -3044,7 +3250,7 @@ describe("LedgerPnlPage", () => {
               增减额: 3.24,
               规模贡献: 6.12,
               利率贡献: -2.88,
-              校验差异: 0,
+              "恒等式自检（非独立对账）": 0,
               口径来源: "收益量价归因：总账收益科目+日均规模按年累计同比拆解",
             },
             {
@@ -3055,7 +3261,7 @@ describe("LedgerPnlPage", () => {
               增减额: -1.15,
               规模贡献: null,
               利率贡献: null,
-              校验差异: null,
+              "恒等式自检（非独立对账）": null,
               口径来源: "source_missing: 个人贷款收益率分母依赖信用卡生息规模/80297微贷拆分，当前总账+日均闭环未确认",
             },
           ],
@@ -3158,24 +3364,32 @@ describe("LedgerPnlPage", () => {
       expect(getLedgerPnlMonthlyAnalysisWorkbook).toHaveBeenCalledWith({ reportMonth: "202603" });
     });
 
-    for (const expected of [
-      "1.00 亿元",
-      "-2.00 亿元",
-      "3.00 亿元",
-      "-4.00 亿元",
-      "5.00 亿元",
-      "6.00 亿元",
-      "7.00 亿元",
-      "8.00 亿元",
-      "9.00 亿元",
-      "11.00 亿元",
-      "12.00 亿元",
-    ]) {
-      expect((await screen.findAllByText(expected)).length).toBeGreaterThan(0);
+    const summaryCards = await screen.findByTestId("ledger-pnl-summary-cards");
+    await waitFor(() => {
+      expect(Array.from(summaryCards.querySelectorAll(".ledger-pnl-summary-card__value"))
+        .map((element) => element.textContent?.trim())).toEqual([
+        "1.00 亿元",
+        "-2.00 亿元",
+        "3.00 亿元",
+        "-4.00 亿元",
+        "5.00 亿元",
+      ]);
+    });
+    for (const [testId, expectedValues] of [
+      ["ledger-pnl-currency-summary-table", ["6.00 亿元"]],
+      ["ledger-pnl-account-summary-table", ["7.00 亿元"]],
+      ["ledger-pnl-detail-table", ["8.00 亿元", "9.00 亿元", "11.00 亿元", "12.00 亿元"]],
+    ] as const) {
+      const table = await screen.findByTestId(testId);
+      await waitFor(() => {
+        const cellValues = Array.from(table.querySelectorAll("tbody td"))
+          .map((element) => element.textContent?.trim());
+        for (const expected of expectedValues) expect(cellValues).toContain(expected);
+      });
     }
 
-    expect(screen.queryByText("100000000.00")).not.toBeInTheDocument();
-    expect(screen.queryByText("999.99 万元")).not.toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-page")).not.toHaveTextContent("100000000.00");
+    expect(screen.getByTestId("ledger-pnl-page")).not.toHaveTextContent("999.99 万元");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-panel")).toHaveTextContent("总账对账 + 日均分析");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-month")).toHaveTextContent("202603");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-overview")).toHaveTextContent("总资产(亿)");
@@ -3189,7 +3403,7 @@ describe("LedgerPnlPage", () => {
     expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("QDB 可复算");
     expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("正式待接入");
     expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("贷款总额（QDB源）");
-    expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("4,189.47");
+    expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("678.13");
     expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("集团营业收入");
     expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("未接入");
     expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("formal_pending");
@@ -3306,6 +3520,8 @@ describe("LedgerPnlPage", () => {
           total_pnl_cny: money("0.00"),
           total_pnl: money("0.00"),
           count: 0,
+          ledger_evidence_rows: 0,
+          average_only_row_count: 0,
         },
         items: [],
       },
@@ -3487,8 +3703,18 @@ describe("LedgerPnlPage", () => {
 
     it("wakes the target and every gated section above it when navigating from the section nav", async () => {
       const { client, spies } = buildGatedClient();
+      const base = createApiClient({ mode: "mock" });
+      let releaseCandidateRead = () => {};
+      const candidateReadGate = new Promise<void>((resolve) => {
+        releaseCandidateRead = resolve;
+      });
+      spies.candidate.mockImplementation(async (reportMonth, options) => {
+        await candidateReadGate;
+        return base.getLedgerPnlCandidateFinancialIndicators(reportMonth, options);
+      });
       const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-      HTMLElement.prototype.scrollIntoView = vi.fn();
+      const scrollIntoView = vi.fn();
+      HTMLElement.prototype.scrollIntoView = scrollIntoView;
 
       try {
         renderLedgerPnlPage(client, "/ledger-pnl?report_date=2025-12-31");
@@ -3501,6 +3727,19 @@ describe("LedgerPnlPage", () => {
             "ledger-pnl-section-nav-item-ledger-pnl-section-reconciliation",
           ),
         );
+
+        await waitFor(() => {
+          expect(spies.candidate).toHaveBeenCalled();
+        });
+        await act(async () => {
+          await new Promise<void>((resolve) => {
+            window.requestAnimationFrame(() => {
+              window.requestAnimationFrame(() => resolve());
+            });
+          });
+        });
+        expect(scrollIntoView).toHaveBeenCalledTimes(1);
+        releaseCandidateRead();
 
         await waitFor(() => {
           expect(spies.indicatorSummary).toHaveBeenCalled();
@@ -3517,9 +3756,349 @@ describe("LedgerPnlPage", () => {
         expect(
           screen.queryByTestId("ledger-pnl-reconciliation-skeleton"),
         ).not.toBeInTheDocument();
+        await waitFor(() => {
+          expect(scrollIntoView).toHaveBeenCalledTimes(2);
+        });
+        expect(scrollIntoView.mock.instances).toEqual([
+          expect.objectContaining({ id: "ledger-pnl-section-reconciliation" }),
+          expect.objectContaining({ id: "ledger-pnl-section-reconciliation" }),
+        ]);
       } finally {
         HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
       }
+    });
+  });
+
+  /*
+   * B1：01「当日结论」经营结论卡。这组用例需要完全控制 /analysis 响应（当期值/变化值/
+   * 上一可用报告期），而模块级 renderLedgerPnlPage 把 getLedgerPnlAnalysis 硬编码成固定的
+   * buildLedgerAnalysisEnvelope 夹具（不响应传入的自定义 mock），因此这里用一个不做该覆盖的
+   * 独立渲染函数，其余 Provider 结构与模块级 renderLedgerPnlPage 一致。
+   */
+  describe("经营结论卡（B1）", () => {
+    function renderLedgerPnlPageWithFullControl(
+      client: ApiClient,
+      initialEntry = "/ledger-pnl?report_date=2026-05-31",
+    ) {
+      function Wrapper({ children }: { children: ReactNode }) {
+        const [queryClient] = useState(
+          () =>
+            new QueryClient({
+              defaultOptions: {
+                queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false },
+              },
+            }),
+        );
+        return (
+          <QueryClientProvider client={queryClient}>
+            <ApiClientProvider client={client}>
+              <MemoryRouter initialEntries={[initialEntry]}>{children}</MemoryRouter>
+            </ApiClientProvider>
+          </QueryClientProvider>
+        );
+      }
+      return render(
+        <Wrapper>
+          <LedgerPnlPage />
+        </Wrapper>,
+      );
+    }
+
+    const CONCLUSION_CALCULATION_BASIS = {
+      core_pnl_prefixes: ["514", "516", "517"],
+      all_pnl_prefixes: ["5"],
+      other_5_pnl_formula: "all_pnl - core_pnl",
+      other_5_pnl_boundary: "candidate arithmetic residual",
+      basis_difference_formula: "CNX - CNY",
+      basis_boundary: "overlapping accounting bases; not FX PnL",
+      basis_availability_boundary: "each metric follows its own evidence",
+      metric_boundary: "candidate ledger analysis",
+      previous_period_rule: "previous available report date",
+    };
+
+    function buildReadyAnalysisWithPreviousPeriod(): LedgerPnlAnalysisPayload {
+      return {
+        report_date: "2026-05-31",
+        source_version: "sv_ledger_conclusion_test",
+        currency_basis: "CNX",
+        basis_availability: { CNX: "ready", CNY: "ready" },
+        analysis_status: "ready",
+        metric_status: "candidate",
+        conclusion: {
+          direction: "positive",
+          other_effect: "support",
+          core_pnl: money("643000000"),
+          other_5_pnl: money("275000000"),
+          all_pnl: money("918000000"),
+        },
+        pnl_bridge: {
+          components: [
+            { metric_key: "core_pnl", metric_name: "核心损益", amount: money("643000000") },
+            { metric_key: "other_5_pnl", metric_name: "其他 5* 损益", amount: money("275000000") },
+          ],
+          total: money("918000000"),
+          residual: money("0"),
+        },
+        basis_comparison: [],
+        contributors: {
+          positive_total: money("918000000"),
+          negative_total: money("0"),
+          net_total: money("918000000"),
+          top_positive: [],
+          top_negative: [],
+        },
+        period_comparison: {
+          status: "available",
+          previous_report_date: "2026-04-30",
+          previous_source_version: "sv_ledger_conclusion_test_previous",
+          rows: [
+            {
+              metric_key: "core_pnl",
+              metric_name: "核心损益",
+              current: money("643000000"),
+              previous: money("343000000"),
+              change: money("300000000"),
+            },
+            {
+              metric_key: "other_5_pnl",
+              metric_name: "其他 5* 损益",
+              current: money("275000000"),
+              previous: money("-418000000"),
+              change: money("693000000"),
+            },
+            {
+              metric_key: "all_pnl",
+              metric_name: "全量损益",
+              current: money("918000000"),
+              previous: money("211000000"),
+              change: money("707000000"),
+            },
+          ],
+        },
+        calculation_basis: CONCLUSION_CALCULATION_BASIS,
+      };
+    }
+
+    function buildConclusionCardTestClient(analysis: LedgerPnlAnalysisPayload): ApiClient {
+      const base = createApiClient({ mode: "mock" });
+      return {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildLedgerMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlAnalysis: vi.fn(async () => ({
+          result_meta: buildLedgerMeta("ledger_pnl.analysis"),
+          result: analysis,
+        })),
+        getLedgerPnlSummary: vi.fn(async () => ({
+          result_meta: buildLedgerMeta("ledger_pnl.summary"),
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_conclusion_test",
+            ledger_monthly_pnl_core: money("643000000"),
+            ledger_monthly_pnl_all: money("918000000"),
+            ledger_total_assets: money("831000000000"),
+            ledger_total_liabilities: money("790000000000"),
+            ledger_net_assets: money("41000000000"),
+            by_currency: [{ currency: "CNX", total_pnl: money("918000000") }],
+            by_account: [],
+          },
+        })),
+        getLedgerPnlData: vi.fn(async () => ({
+          result_meta: buildLedgerMeta("ledger_pnl.data"),
+          result: {
+            report_date: "2026-05-31",
+            summary: {
+              total_pnl_cnx: money("918000000"),
+              total_pnl_cny: money("0"),
+              total_pnl: money("918000000"),
+              count: 0,
+              ledger_evidence_rows: 0,
+              average_only_row_count: 0,
+            },
+            items: [],
+          },
+        })),
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+          result: buildMissingFormalIndicatorContractPayload(),
+        })),
+      };
+    }
+
+    it("展示全量损益当期与变化、核心/其他5*构成、资产负债三格与状态行；审计详情默认折叠但内容仍在", async () => {
+      renderLedgerPnlPageWithFullControl(
+        buildConclusionCardTestClient(buildReadyAnalysisWithPreviousPeriod()),
+      );
+
+      const card = await screen.findByTestId("ledger-pnl-conclusion-card");
+      // 主读数行：全量损益当期 9.18 亿元，较上一可用报告期 +7.07 亿元。
+      expect(card).toHaveTextContent("全量损益");
+      expect(card).toHaveTextContent("9.18 亿元");
+      expect(card).toHaveTextContent("较上一可用报告期");
+      expect(card).toHaveTextContent("7.07 亿元");
+      // 构成行：核心损益当期+变化；其他 5* 损益当期与上期并列，不生成方向性修辞。
+      expect(card).toHaveTextContent("核心损益");
+      expect(card).toHaveTextContent("6.43 亿元");
+      expect(card).toHaveTextContent("其他 5* 损益");
+      expect(card).toHaveTextContent("2.75 亿元");
+      expect(card).toHaveTextContent("上期");
+      expect(card).toHaveTextContent("-4.18 亿元");
+      expect(card).not.toHaveTextContent("由负转正");
+      // 资产负债三格：仅当期值（period_comparison 无对应 metric_key，不放变化值）。
+      expect(card).toHaveTextContent("总资产");
+      expect(card).toHaveTextContent("8310.00 亿元");
+      expect(card).toHaveTextContent("总负债");
+      expect(card).toHaveTextContent("7900.00 亿元");
+      expect(card).toHaveTextContent("净资产");
+      expect(card).toHaveTextContent("410.00 亿元");
+
+      // 状态行：候选口径徽标 + 上一可用报告期日期 + 状态机 title；单行最多 1 个"·"。
+      const statusLine = within(card).getByTestId("ledger-pnl-conclusion-card-status");
+      expect(statusLine).toHaveTextContent("候选口径");
+      expect(statusLine).toHaveTextContent("上一可用报告期");
+      expect(statusLine).toHaveTextContent("2026-04-30");
+      const statusText = statusLine.textContent ?? "";
+      expect((statusText.match(/·/g) ?? []).length).toBeLessThanOrEqual(1);
+
+      // 展开区：details 默认收起，但沿用状态机 title 的原始审计条内容零删减地在 DOM 中。
+      const collapse = card.parentElement?.querySelector<HTMLDetailsElement>(
+        ".ledger-pnl-verdict-audit-collapse",
+      );
+      expect(collapse).not.toBeNull();
+      expect(collapse!.open).toBe(false);
+      const strip = within(collapse!).getByTestId("ledger-pnl-functional-audit-strip");
+      const stripTitle = strip.querySelector(".ledger-pnl-functional-strip__title")?.textContent ?? "";
+      expect(stripTitle.length).toBeGreaterThan(0);
+      // 状态行复用了同一个 title（不是各自独立拼写的文案）。
+      expect(statusText).toContain(stripTitle);
+      // 五格审计事实（解析报告日/数据截至日/分析证据行/候选分析状态/正式边界）零删减地保留在展开区。
+      expect(strip).toHaveTextContent("解析报告日");
+      expect(strip).toHaveTextContent("数据截至日");
+      expect(strip).toHaveTextContent("分析证据行");
+      expect(strip).toHaveTextContent("候选分析状态");
+      expect(strip).toHaveTextContent("正式边界");
+
+      await userEvent.click(within(collapse!).getByText("审计与证据详情"));
+      expect(collapse!.open).toBe(true);
+      expect(strip).toHaveTextContent("解析报告日");
+
+      // B2：账面总览「核心损益」「全量损益」卡在主值下加环比变化小字（消费同一 analysis 对比字段）；
+      // 总资产/总负债/净资产没有对应 period_comparison metric_key，不加变化小字。
+      const summaryCards = await screen.findByTestId("ledger-pnl-summary-cards");
+      const coreCard = within(summaryCards)
+        .getByText("核心损益")
+        .closest(".ledger-pnl-summary-card-frame");
+      expect(coreCard).toHaveTextContent("较上一可用报告期");
+      expect(coreCard).toHaveTextContent("3.00 亿元");
+      const allCard = within(summaryCards)
+        .getByText("全量损益")
+        .closest(".ledger-pnl-summary-card-frame");
+      expect(allCard).toHaveTextContent("较上一可用报告期");
+      expect(allCard).toHaveTextContent("7.07 亿元");
+      const assetsCard = within(summaryCards)
+        .getByText("总资产")
+        .closest(".ledger-pnl-summary-card-frame");
+      expect(assetsCard).not.toHaveTextContent("较上一可用报告期");
+      // MTR-LPN-001 治理脚注仍在 DOM（治理必显项，只做视觉降权，不得删除文本）。
+      expect(summaryCards).toHaveTextContent("MTR-LPN-001");
+      expect(summaryCards).toHaveTextContent("pending_confirmation=true");
+    });
+
+    it("no_data 时结论卡各值显示 EM_DASH，不出现空结论卡", async () => {
+      const noDataAnalysis: LedgerPnlAnalysisPayload = {
+        ...buildReadyAnalysisWithPreviousPeriod(),
+        analysis_status: "no_data",
+        conclusion: {
+          direction: "unavailable",
+          other_effect: "unavailable",
+          core_pnl: null,
+          other_5_pnl: null,
+          all_pnl: null,
+        },
+        period_comparison: {
+          status: "current_basis_no_data",
+          previous_report_date: null,
+          previous_source_version: null,
+          rows: [],
+        },
+      };
+
+      renderLedgerPnlPageWithFullControl(buildConclusionCardTestClient(noDataAnalysis));
+
+      const card = await screen.findByTestId("ledger-pnl-conclusion-card");
+      // 结论卡结构仍渲染（不是空白/隐藏），但缺失值一律 EM_DASH。
+      expect(card).toHaveTextContent("全量损益");
+      expect(within(card).getAllByText(EM_DASH).length).toBeGreaterThan(0);
+      const statusLine = within(card).getByTestId("ledger-pnl-conclusion-card-status");
+      expect(statusLine).toHaveTextContent(`上一可用报告期 ${EM_DASH}`);
+    });
+  });
+
+  /*
+   * B5：对账与日均区「正式财务指标源契约」卡 + 缺契约补证 runbook 默认折叠为一行摘要，
+   * 展开后原样显示 FormalIndicatorSourceContractPanel（内容零删减，已有专项测试覆盖细节，
+   * 此处只验证折叠/展开这一层新增行为）。
+   */
+  describe("正式财务指标源契约默认折叠（B5）", () => {
+    it("默认折叠为一行摘要，展开后 runbook（物料/阻断/验收/样本落盘/契约登记）内容完整", async () => {
+      const getLedgerPnlFormalFinancialIndicators = vi.fn(async () => ({
+        result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+        result: buildMissingFormalIndicatorContractPayload(),
+      }));
+      renderLedgerPnlPage(
+        {
+          ...createApiClient({ mode: "mock" }),
+          getLedgerPnlDates: vi.fn(async () => ({
+            result_meta: buildLedgerMeta("ledger_pnl.dates"),
+            result: { dates: ["2026-05-31"] },
+          })),
+          getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
+            result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+            result: { report_months: [] },
+          })),
+          getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
+          getLedgerPnlFormalFinancialIndicators,
+        },
+        "/ledger-pnl?report_date=2026-05-31",
+      );
+
+      await waitFor(() => {
+        expect(getLedgerPnlFormalFinancialIndicators).toHaveBeenCalled();
+      });
+
+      const summary = await screen.findByTestId(
+        "ledger-pnl-formal-indicator-source-contract-collapse-summary",
+      );
+      expect(summary).toHaveTextContent(
+        "本月正式财务指标契约未登记，正式值不可用；候选值不回填。",
+      );
+      const collapse = summary.closest<HTMLDetailsElement>(".ledger-pnl-formal-contract-collapse");
+      expect(collapse).not.toBeNull();
+      expect(collapse!.open).toBe(false);
+
+      const panel = screen.getByTestId("ledger-pnl-formal-indicator-source-contract-panel");
+      // 折叠态下 runbook 内容仍在 DOM（零删减），只是未展开显示。
+      expect(panel).toHaveTextContent("缺契约补证动作");
+      expect(panel).toHaveTextContent("补齐 202605 正式财务指标 Excel 冻结样本");
+
+      await userEvent.click(summary);
+      expect(collapse!.open).toBe(true);
+      expect(panel).toHaveTextContent("缺契约补证动作");
+      expect(panel).toHaveTextContent(
+        "先取得并冻结 202605 正式财务指标 Excel 样本，再登记 source contract 并重新核对 QDB 候选值。",
+      );
+      const checklist = within(panel).getByTestId(
+        "ledger-pnl-formal-indicator-source-contract-material-checklist",
+      );
+      expect(checklist).toHaveTextContent("样本落盘");
+      expect(checklist).toHaveTextContent("契约登记");
     });
   });
 });

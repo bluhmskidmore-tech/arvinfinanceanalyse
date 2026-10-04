@@ -1,0 +1,7 @@
+interface:
+  display_name: "Pro + Codex Closed Loop"
+  short_description: "Web Pro planning with local Codex execution"
+  default_prompt: "Use $pro-codex-loop to get a core-first plan from web Pro, then have Codex edit and verify the local repository within a bounded first cycle."
+
+policy:
+  allow_implicit_invocation: false

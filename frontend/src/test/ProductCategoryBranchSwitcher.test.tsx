@@ -155,9 +155,26 @@ describe("ProductCategoryPnlPage branch switching", () => {
       expect(screen.getByTestId("monthly-operating-analysis-controls-lead")).toHaveTextContent(
         "月度工作簿控制",
       );
+      expect(screen.getByTestId("monthly-operating-analysis-controls-lead")).toHaveAttribute(
+        "data-numbered",
+        "false",
+      );
+      expect(screen.getByTestId("monthly-operating-analysis-controls-lead")).toHaveAttribute(
+        "data-content-gap",
+        "tight",
+      );
       expect(screen.getByTestId("monthly-operating-analysis-workbook-lead")).toHaveTextContent(
         "月度经营分析工作表",
       );
+      expect(screen.getByTestId("monthly-operating-analysis-workbook-lead")).toHaveAttribute(
+        "data-numbered",
+        "false",
+      );
+      expect(screen.getByTestId("monthly-operating-analysis-workbook-lead")).toHaveAttribute(
+        "data-content-gap",
+        "tight",
+      );
+      expect(document.querySelector(".product-category-section-lead")).not.toBeInTheDocument();
       expect(screen.getByTestId("monthly-operating-analysis-workbook-meta")).toHaveTextContent(
         /quality_flag=stale/,
       );

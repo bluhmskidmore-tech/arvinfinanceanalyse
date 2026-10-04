@@ -23,8 +23,26 @@ def _card(key: str, tone: str, score: float | None) -> dict[str, object]:
     return {"key": key, "title": key, "stance": "", "tone": tone, "score": score, "evidence": []}
 
 
-def _crisis_capability(score: float) -> dict[str, object]:
-    return {"key": "crisis_score_cn", "score": score, "result": {"crisis_score": score}}
+def _crisis_capability(
+    score: float,
+    *,
+    eligible: bool = True,
+    triggered: bool | None = None,
+    threshold: float = 2.0,
+) -> dict[str, object]:
+    resolved_triggered = eligible and score >= threshold if triggered is None else triggered
+    return {
+        "key": "crisis_score_cn",
+        "score": score,
+        "result": {
+            "crisis_score": score,
+            "risk_gate": {
+                "eligible": eligible,
+                "triggered": resolved_triggered,
+                "threshold": threshold,
+            },
+        },
+    }
 
 
 def _direction_cards() -> list[dict[str, object]]:
@@ -85,6 +103,58 @@ def test_yellow_a_share_and_alert_crisis_do_not_trigger_the_risk_gate() -> None:
         [*_direction_cards(), _card("crisis_score_cn", "neutral", 1.4)],
         a_share_risk={"risk_level": "yellow", "risk_score": 48},
         capability_results=[_crisis_capability(1.4)],
+        capabilities_deferred=False,
+    )
+
+    assert primary["key"] == "liquidity"
+    assert primary["reason_code"] == "strongest_direction_signal"
+
+
+def test_ineligible_crisis_cannot_become_primary_signal_even_above_threshold() -> None:
+    """不完整的 Crisis 结果可展示，但不得驱动主信号。"""
+    primary = select_primary_signal(
+        [*_direction_cards(), _card("crisis_score_cn", "negative", 2.5)],
+        a_share_risk={"risk_level": "green", "risk_score": 27},
+        capability_results=[_crisis_capability(2.5, eligible=False, triggered=False)],
+        capabilities_deferred=False,
+    )
+
+    assert primary["key"] == "liquidity"
+    assert primary["reason_code"] == "strongest_direction_signal"
+
+
+def test_crisis_primary_signal_consumes_backend_gate_instead_of_recomputing_threshold() -> None:
+    """消费者只认后端闸门，不按裸分数重复判断。"""
+    primary = select_primary_signal(
+        [*_direction_cards(), _card("crisis_score_cn", "negative", 2.5)],
+        a_share_risk={"risk_level": "green", "risk_score": 27},
+        capability_results=[_crisis_capability(2.5, triggered=False)],
+        capabilities_deferred=False,
+    )
+
+    assert primary["key"] == "liquidity"
+    assert primary["reason_code"] == "strongest_direction_signal"
+
+
+def test_crisis_primary_signal_honors_a_triggered_backend_gate_with_a_new_threshold() -> None:
+    primary = select_primary_signal(
+        [*_direction_cards(), _card("crisis_score_cn", "negative", 1.5)],
+        a_share_risk={"risk_level": "green", "risk_score": 27},
+        capability_results=[_crisis_capability(1.5, threshold=1.5)],
+        capabilities_deferred=False,
+    )
+
+    assert primary["key"] == "crisis_score_cn"
+    assert primary["reason_code"] == "risk_gate_crisis_score"
+
+
+def test_crisis_without_risk_gate_fails_closed() -> None:
+    primary = select_primary_signal(
+        [*_direction_cards(), _card("crisis_score_cn", "negative", 2.5)],
+        a_share_risk={"risk_level": "green", "risk_score": 27},
+        capability_results=[
+            {"key": "crisis_score_cn", "score": 2.5, "result": {"crisis_score": 2.5}}
+        ],
         capabilities_deferred=False,
     )
 

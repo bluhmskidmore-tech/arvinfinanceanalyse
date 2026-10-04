@@ -195,9 +195,11 @@ def test_choice_stock_observation_manifest_verifies_matching_landed_rows(
         )
 
 
+@pytest.mark.parametrize("history_start_date", ["2026-07-01", None])
 def test_choice_stock_refresh_appends_completed_run_and_observation_manifest_atomically(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    history_start_date: str | None,
 ) -> None:
     from backend.app.services import macro_toolkit_service
     from backend.app.tasks.choice_stock_observation_manifest import (
@@ -205,10 +207,16 @@ def test_choice_stock_refresh_appends_completed_run_and_observation_manifest_ato
     )
 
     governance_path = tmp_path / "governance"
+    history_calls: list[dict[str, object]] = []
+
+    def fake_history(**kwargs: object) -> dict[str, object]:
+        history_calls.append(kwargs)
+        return _history_result()
+
     monkeypatch.setattr(
         macro_toolkit_service,
         "materialize_choice_stock_inputs",
-        lambda **_kwargs: _history_result(),
+        fake_history,
     )
     monkeypatch.setattr(
         macro_toolkit_service,
@@ -237,6 +245,8 @@ def test_choice_stock_refresh_appends_completed_run_and_observation_manifest_ato
         refresh_factors=True,
         factor_max_stock_count=None,
         permission={"mode": "fixture"},
+        history_start_date=history_start_date,
+        allow_cross_era_backfill=True,
     )
 
     repo = GovernanceRepository(base_dir=governance_path)
@@ -246,11 +256,54 @@ def test_choice_stock_refresh_appends_completed_run_and_observation_manifest_ato
         if row.get("run_id") == "choice_stock_refresh:2026-07-08:fixture"
     ]
     assert [row["status"] for row in runs] == ["running", "completed"]
+    assert history_calls == [
+        {
+            "as_of_date": "2026-07-08",
+            "duckdb_path": str(tmp_path / "moss.duckdb"),
+            "catalog_path": str(tmp_path / "catalog.json"),
+            "history_start_date": history_start_date or "2026-07-08",
+            "allow_cross_era_backfill": True,
+        }
+    ]
+    assert all(row["history_start_date"] == (history_start_date or "2026-07-08") for row in runs)
+    assert all(row["allow_cross_era_backfill"] is True for row in runs)
     manifest = repo.read_latest_manifest(CHOICE_STOCK_OBSERVATION_CACHE_KEY)
     assert manifest is not None
     assert manifest["report_date"] == "2026-07-08"
     assert manifest["source_version"] == "sv_choice_stock_fixture"
     assert manifest["vendor_version"] == "vv_choice_stock_fixture"
+
+
+def test_gap_refresh_failure_preserves_default_single_day_in_raw_governance(tmp_path, monkeypatch):
+    from backend.app.services import macro_toolkit_service
+
+    def fail_history(**kwargs):
+        assert kwargs["history_start_date"] == "2026-09-04"
+        assert kwargs["allow_cross_era_backfill"] is True
+        raise RuntimeError("fixture history failure")
+
+    monkeypatch.setattr(macro_toolkit_service, "materialize_choice_stock_inputs", fail_history)
+    governance_path = tmp_path / "governance"
+    with pytest.raises(RuntimeError, match="fixture history failure"):
+        macro_toolkit_service._run_choice_stock_refresh_job(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            catalog_path=str(tmp_path / "catalog.json"),
+            governance_path=str(governance_path),
+            run_id="gap-failure-fixture",
+            as_of_date="2026-09-04",
+            queued_at="2026-09-04T22:59:00Z",
+            refresh_history=True,
+            refresh_factors=True,
+            factor_max_stock_count=None,
+            permission={"mode": "fixture"},
+            allow_cross_era_backfill=True,
+            retry_managed_by_broker=False,
+        )
+    runs = GovernanceRepository(base_dir=governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+    assert [row["status"] for row in runs] == ["running", "failed"]
+    assert all(row["history_start_date"] == "2026-09-04" for row in runs)
+    assert all(row["report_date"] == "2026-09-04" for row in runs)
+    assert all(row["allow_cross_era_backfill"] is True for row in runs)
 
 
 def test_choice_stock_refresh_does_not_record_completed_when_manifest_append_fails(

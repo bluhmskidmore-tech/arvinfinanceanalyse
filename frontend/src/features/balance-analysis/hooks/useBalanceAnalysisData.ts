@@ -10,7 +10,9 @@ import type {
   BalanceBusinessMovementTrendMonth,
   BalancePageCalibration,
   BalanceZqtzConcentrationAnalysis,
+  ResultMeta,
 } from "../../../api/contracts";
+import { buildStateSurfaces } from "../../../pageModel";
 import { buildBalanceDetailGridRows, buildBalanceDetailSummaryGridRows } from "../pages/balanceAnalysisGridRows";
 import { useBalanceAnalysisFilters } from "./useBalanceAnalysisFilters";
 
@@ -72,8 +74,14 @@ function normalizeConcentrationDimensionLabel(value: unknown, kind: "top" | "oth
   return label;
 }
 
-function yuanAmountToWanString(value: unknown) {
-  const raw = String(value ?? "0").trim().replace(/,/g, "");
+export function yuanAmountToWanString(value: unknown): string {
+  if (value === null || value === undefined) {
+    return EM_DASH;
+  }
+  const raw = String(value).trim().replace(/,/g, "");
+  if (raw === "") {
+    return EM_DASH;
+  }
   const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(raw);
   if (!match) {
     return raw;
@@ -155,6 +163,40 @@ function buildMovementIndustryDistributionTable(
   };
 }
 
+export function buildBalanceDistributionEvidence({
+  linked,
+  reportDate,
+  requestedReportDate,
+  meta,
+  loading,
+  failed,
+}: {
+  linked: boolean;
+  reportDate: string | undefined;
+  requestedReportDate: string;
+  meta: ResultMeta | undefined;
+  loading: boolean;
+  failed: boolean;
+}) {
+  const source = linked ? "余额变动" : "工作簿";
+  return {
+    source,
+    reportDate: reportDate || EM_DASH,
+    meta,
+    stateSurfaces: buildStateSurfaces([
+      { when: loading, key: "loading", variant: "loading", title: "余额变动联动加载中", description: `当前展示${source}数据。` },
+      { when: failed, key: "error", variant: "error", title: "余额变动联动读取失败", description: `当前展示${source}数据，请复核来源后使用。` },
+      { when: !linked && !loading && !failed, key: "missing", variant: "definition-pending", title: "余额变动联动缺失", description: "当前展示工作簿数据，未使用余额变动覆盖。" },
+      { when: !meta, key: "meta-missing", variant: "definition-pending", title: "来源质量待确认", description: "当前分布数据未返回质量元信息。" },
+      { when: Boolean(reportDate && reportDate !== requestedReportDate), key: "date", variant: "fallback-date", title: "分布报告日不一致", description: `请求 ${requestedReportDate}，当前分布实际报告日 ${reportDate}。` },
+      { when: meta?.quality_flag === "stale", key: "stale", variant: "stale", title: "分布数据陈旧", description: `当前仍展示${source}返回值，请复核新鲜度。` },
+      { when: meta?.quality_flag === "warning", key: "partial", variant: "definition-pending", title: "分布质量需复核", description: `${source}返回质量预警，覆盖范围可能不完整。` },
+      { when: meta?.quality_flag === "error" || meta?.quality_flag === "missing", key: "quality-error", variant: "error", title: "分布质量异常", description: `${source}标记为错误或缺失，请复核后使用。` },
+      { when: meta?.fallback_mode === "latest_snapshot", key: "fallback", variant: "fallback-date", title: "分布使用回退快照", description: `实际报告日 ${reportDate || EM_DASH}。` },
+    ]),
+  };
+}
+
 export function useBalanceAnalysisData({
   summaryOffset,
   eventTypeFilter,
@@ -171,6 +213,18 @@ export function useBalanceAnalysisData({
     queryFn: () => client.getBalanceAnalysisDates(),
     retry: false,
   });
+  const publicationStatusQuery = useQuery({
+    queryKey: ["balance-analysis", "publication-status", client.mode],
+    queryFn: () => client.getBalanceAnalysisPublicationStatus(),
+    retry: false,
+  });
+  const publicationStatus = publicationStatusQuery.data;
+  const availableReportDates = Array.from(
+    new Set([
+      ...(publicationStatus?.enabled ? publicationStatus.report_dates : []),
+      ...(datesQuery.data?.result.report_dates ?? []),
+    ]),
+  );
   const {
     selectedReportDate,
     unavailableRequestedReportDate,
@@ -180,8 +234,22 @@ export function useBalanceAnalysisData({
     setSelectedReportDate,
     setPositionScope,
     setCurrencyBasis,
-  } = useBalanceAnalysisFilters(datesQuery.data?.result.report_dates ?? []);
+  } = useBalanceAnalysisFilters(availableReportDates);
   const activeAnalysisQueryKey = `${selectedReportDate}|${positionScope}|${currencyBasis}`;
+  const overviewGeneration =
+    publicationStatus?.enabled &&
+    publicationStatus.available &&
+    publicationStatus.generation &&
+    publicationStatus.report_dates.includes(selectedReportDate)
+      ? publicationStatus.generation
+      : undefined;
+  const overviewServingMode = !publicationStatusQuery.isSuccess
+    ? "pending"
+    : publicationStatus?.enabled
+      ? overviewGeneration
+        ? "published"
+        : "blocked"
+      : "legacy";
 
   useEffect(() => {
     setDeferredAnalysisQueryKey("");
@@ -195,13 +263,18 @@ export function useBalanceAnalysisData({
       selectedReportDate,
       positionScope,
       currencyBasis,
+      overviewServingMode,
+      overviewGeneration,
     ],
-    enabled: isSelectedReportDateAvailable,
+    enabled:
+      isSelectedReportDateAvailable &&
+      (overviewServingMode === "legacy" || overviewServingMode === "published"),
     queryFn: () =>
       client.getBalanceAnalysisOverview({
         reportDate: selectedReportDate,
         positionScope,
         currencyBasis,
+        ...(overviewGeneration ? { generation: overviewGeneration } : {}),
       }),
     retry: false,
   });
@@ -212,14 +285,14 @@ export function useBalanceAnalysisData({
       "workbook",
       client.mode,
       selectedReportDate,
-      positionScope,
+      "all",
       currencyBasis,
     ],
     enabled: isSelectedReportDateAvailable,
     queryFn: () =>
       client.getBalanceAnalysisWorkbook({
         reportDate: selectedReportDate,
-        positionScope,
+        positionScope: "all",
         currencyBasis,
       }),
     retry: false,
@@ -235,14 +308,14 @@ export function useBalanceAnalysisData({
     queryKey: apiQueryKeys.balanceAnalysisDecisionItems(
       client.mode,
       selectedReportDate,
-      positionScope,
+      "all",
       currencyBasis,
     ),
     enabled: isSelectedReportDateAvailable,
     queryFn: () =>
       client.getBalanceAnalysisDecisionItems({
         reportDate: selectedReportDate,
-        positionScope,
+        positionScope: "all",
         currencyBasis,
       }),
     retry: false,
@@ -288,7 +361,12 @@ export function useBalanceAnalysisData({
     retry: false,
   });
 
-  const summaryQueryEnabled = isSelectedReportDateAvailable && overviewQuery.isSuccess;
+  const summaryQueryEnabled =
+    isSelectedReportDateAvailable &&
+    (overviewQuery.isSuccess ||
+      (publicationStatusQuery.isSuccess &&
+        Boolean(publicationStatus?.enabled) &&
+        !overviewGeneration));
 
   const summaryQuery = useQuery({
     queryKey: [
@@ -373,7 +451,11 @@ export function useBalanceAnalysisData({
     retry: false,
   });
 
-  const overviewEnvelope = overviewQuery.data;
+  const overviewEnvelope =
+    overviewQuery.isSuccess &&
+    (overviewServingMode === "legacy" || overviewServingMode === "published")
+      ? overviewQuery.data
+      : undefined;
   // 把信封顶层 calibration 合并进 overview，页面继续消费 overview?.calibration 即可生效。
   const overview = useMemo(() => {
     const result = overviewEnvelope?.result;
@@ -383,11 +465,12 @@ export function useBalanceAnalysisData({
     const calibration = result.calibration ?? readEnvelopeCalibration(overviewEnvelope);
     return calibration === undefined ? result : { ...result, calibration };
   }, [overviewEnvelope]);
-  const overviewMeta = overviewQuery.data?.result_meta;
+  const overviewMeta = overviewEnvelope?.result_meta;
   const detailMeta = detailQuery.data?.result_meta;
   const decisionItemsMeta = decisionItemsQuery.data?.result_meta;
   const workbookMeta = workbookQuery.data?.result_meta;
   const summaryMeta = summaryQuery.data?.result_meta;
+  const movementMeta = movementLinkQuery.data?.result_meta;
   const currentUser = currentUserQuery.data;
   const decisionItems = decisionItemsQuery.data?.result;
   const workbookResult = workbookQuery.data?.result;
@@ -410,17 +493,7 @@ export function useBalanceAnalysisData({
   );
   const isBondBusinessLinkedToMovement =
     movementBondBusinessTypeTable !== undefined &&
-    (movementLinkQuery.data?.result.business_trend_months ?? []).some(
-      (month) =>
-        month.report_date === selectedReportDate &&
-        month.rows.some(
-          (row) =>
-            row.side === "asset" &&
-            row.source_kind === "zqtz" &&
-            row.row_key.startsWith("asset_zqtz_") &&
-            finiteNumber(row.current_balance) !== 0,
-        ),
-    );
+    movementBondBusinessTypeTable !== workbookTables.find((table) => table.key === "bond_business_types");
   const movementIndustryTable = buildMovementIndustryDistributionTable(
     workbookTables.find((table) => table.key === "industry_distribution"),
     movementLinkQuery.data?.result.zqtz_concentration_analysis,
@@ -433,6 +506,30 @@ export function useBalanceAnalysisData({
         dimension.status === "supported" &&
         dimension.items.length > 0,
     );
+
+  const movementMonth = movementLinkQuery.data?.result.business_trend_months?.find(
+    (month) => month.report_date === selectedReportDate,
+  ) ?? movementLinkQuery.data?.result.business_trend_months?.[0];
+  const distributionEvidence = {
+    bond_business_types: buildBalanceDistributionEvidence({
+      linked: isBondBusinessLinkedToMovement,
+      reportDate: isBondBusinessLinkedToMovement ? movementMonth?.report_date : workbook?.report_date,
+      requestedReportDate: selectedReportDate,
+      meta: isBondBusinessLinkedToMovement ? movementMeta : workbookMeta,
+      loading: deferredAnalysisQueriesPending || movementDatesQuery.isLoading || (movementDateAvailable && movementLinkQuery.isLoading),
+      failed: movementDatesQuery.isError || movementLinkQuery.isError,
+    }),
+    industry_distribution: buildBalanceDistributionEvidence({
+      linked: Boolean(isIndustryLinkedToMovement),
+      reportDate: isIndustryLinkedToMovement
+        ? movementLinkQuery.data?.result.zqtz_concentration_analysis?.meta.report_date
+        : workbook?.report_date,
+      requestedReportDate: selectedReportDate,
+      meta: isIndustryLinkedToMovement ? movementMeta : workbookMeta,
+      loading: deferredAnalysisQueriesPending || movementDatesQuery.isLoading || (movementDateAvailable && movementLinkQuery.isLoading),
+      failed: movementDatesQuery.isError || movementLinkQuery.isError,
+    }),
+  };
 
   const primaryWorkbookTables = primaryWorkbookTableKeys
     .map((tableKey) =>
@@ -542,6 +639,11 @@ export function useBalanceAnalysisData({
 
   return {
     datesQuery,
+    publicationStatusQuery,
+    publicationStatus,
+    availableReportDates,
+    overviewGeneration,
+    overviewServingMode,
     selectedReportDate,
     unavailableRequestedReportDate,
     isSelectedReportDateAvailable,
@@ -567,6 +669,8 @@ export function useBalanceAnalysisData({
     decisionItemsMeta,
     workbookMeta,
     summaryMeta,
+    movementMeta,
+    distributionEvidence,
     currentUser,
     decisionRows,
     workbook,

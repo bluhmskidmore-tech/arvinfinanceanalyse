@@ -6,6 +6,30 @@
  * --formal-meta-badge-* CSS 变量出口重定义，浅色页面零影响。
  */
 
+.positions-evidence {
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.positions-evidence__diagnostics {
+  margin-top: var(--moss-space-3);
+}
+
+.positions-evidence__summary {
+  padding: var(--moss-space-3) 0;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.positions-evidence__summary:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+.positions-evidence > .positions-view__caliber {
+  margin-bottom: var(--moss-space-3);
+}
+
 /* 分区头下口径说明：12px muted 单行（§7：无 · 超配额、无中英混排微标签）。 */
 [data-moss-theme-scope="positions"] .positions-evidence__note {
   margin: 0 0 8px;
@@ -16,9 +40,6 @@
 
 [data-moss-theme-scope="positions"] .formal-result-meta-panel {
   --formal-result-meta-border-soft: var(--dh-api-line-soft);
-  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
-  --formal-meta-badge-ok-ink: var(--dh-api-green);
-  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
   --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
   --formal-meta-badge-warn-ink: var(--dh-api-amber);
   --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
@@ -27,12 +48,12 @@
   --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
 
   margin-top: 0;
-  padding: 14px;
+  padding: 0;
   /* meta 未到达时 emptyText 占位自带背板与稳定高度，防内容到达时重排（§6）。 */
   min-height: 128px;
-  border-color: var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 [data-moss-theme-scope="positions"] .formal-result-meta-panel__title,
@@ -47,8 +68,9 @@
 }
 
 [data-moss-theme-scope="positions"] .formal-result-meta-panel__card {
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 [data-moss-theme-scope="positions"] .formal-result-meta-panel__badge {

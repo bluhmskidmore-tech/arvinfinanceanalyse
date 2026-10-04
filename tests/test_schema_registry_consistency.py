@@ -22,6 +22,8 @@ import duckdb
 
 from backend.app.schema_registry.duckdb_loader import (
     REGISTRY_DIR,
+    declared_controlled_migrations,
+    declared_readiness_columns,
     load_manifest,
     resolve_ensure,
 )
@@ -44,6 +46,7 @@ _EXPECTED_LAZY_ENSURE_EXEMPT = frozenset(
     {
         "30_stock_adjustment_factor.sql",
         "31_livermore_matched_baseline.sql",
+        "45_snapshot_natural_key_constraints.sql",
     }
 )
 
@@ -127,7 +130,9 @@ def test_manifest_matches_disk_one_to_one() -> None:
     )
 
     numbers = [_slice_number(path) for path in manifest_paths]
-    assert numbers == sorted(numbers), "manifest entries must stay in slice-number order"
+    assert numbers == sorted(numbers), (
+        "manifest entries must stay in slice-number order"
+    )
 
 
 def test_slice_numbering_gaps_match_recorded_history() -> None:
@@ -156,9 +161,13 @@ def test_manifest_entries_declare_resolvable_ensure_symbols() -> None:
 
 def test_lazy_exempt_entries_carry_reason_and_callsites() -> None:
     exempt_entries = [
-        entry for entry in _manifest_entries() if entry.get("lazy_ensure_exempt") is True
+        entry
+        for entry in _manifest_entries()
+        if entry.get("lazy_ensure_exempt") is True
     ]
-    assert {entry["path"] for entry in exempt_entries} == set(_EXPECTED_LAZY_ENSURE_EXEMPT)
+    assert {entry["path"] for entry in exempt_entries} == set(
+        _EXPECTED_LAZY_ENSURE_EXEMPT
+    )
     for entry in exempt_entries:
         assert str(entry.get("lazy_ensure_reason", "")).strip(), (
             f"exempt slice {entry['path']} must record a reason"
@@ -197,3 +206,23 @@ def test_lazy_exempt_ensures_provision_schema_idempotently(tmp_path) -> None:
         conn.close()
 
     assert set(_EXPECTED_LAZY_ENSURE_TABLES) <= tables
+
+
+def test_controlled_migration_descriptions_are_manifest_declared() -> None:
+    declarations = declared_controlled_migrations()
+
+    assert [(item.version, item.description) for item in declarations] == [
+        (46, "Controlled stock-analysis current-rule cohort storage")
+    ]
+
+
+def test_ledger_neutral_readiness_columns_are_manifest_declared() -> None:
+    declarations = declared_readiness_columns()
+
+    assert {
+        (item.table_name, item.column_name, item.data_type) for item in declarations
+    } == {
+        ("fact_formal_bond_analytics_daily", "coupon_rate_input_status", "VARCHAR"),
+        ("fact_formal_bond_analytics_daily", "ytm_input_status", "VARCHAR"),
+        ("fact_formal_bond_analytics_daily", "duration_quality_flag", "VARCHAR"),
+    }

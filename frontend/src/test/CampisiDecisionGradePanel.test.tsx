@@ -149,6 +149,21 @@ const decisionGradePayload: CampisiDecisionGradePayload = {
 };
 
 describe("CampisiDecisionGradePanel", () => {
+  it("shows pending scope, unmatched gross amount, and unknown input without fabricating zero", () => {
+    render(<CampisiDecisionGradePanel data={{ ...decisionGradePayload, scope_disclosure: {
+      actual_scope: "matched_beginning_positions", scope_decision_status: "PENDING",
+      full_input_pnl: null, matched_input_pnl: 100, included_pnl: 100, unmatched_pnl: 0,
+      full_input_absolute_pnl: null, unmatched_absolute_pnl: 200000000,
+      input_row_count: 3, matched_row_count: 1, included_row_count: 1, unmatched_row_count: 2,
+      full_month_coverage: false, message: "仅核对已匹配期初持仓；范围待确认。",
+    } }} state={{ kind: "ok" }} onRetry={() => {}} />);
+    const scope = screen.getByTestId("campisi-decision-scope-disclosure");
+    expect(scope).toHaveTextContent("完整输入 —（3 行）");
+    expect(scope).toHaveTextContent("未匹配绝对金额 +2.00 亿");
+    expect(scope).toHaveTextContent("范围决定：PENDING");
+    expect(screen.getByTestId("campisi-decision-headline")).toHaveTextContent("已匹配期初组合");
+  });
+
   it("renders formal PnL, valuation OCI, and ability boundary separately", () => {
     render(
       <CampisiDecisionGradePanel

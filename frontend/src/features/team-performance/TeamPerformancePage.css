@@ -30,7 +30,6 @@
   --moss-color-success-200: var(--dh-api-line);
   --moss-color-success-600: var(--dh-api-green);
   --moss-color-warning-50: var(--dh-api-amber-soft);
-  --moss-color-warning-200: var(--dh-api-line);
   --moss-color-warning-300: var(--dh-api-line-soft);
   --moss-color-warning-600: var(--dh-api-amber);
   --moss-color-warning-700: var(--dh-api-amber);
@@ -50,32 +49,12 @@
 }
 
 /*
- * 共享 SectionLead 的内联浅色字面量（标题 primary-900 深墨）在深色页不可读，
- * 页内 !important 压制（内联恒胜；pnl-by-business-insights 内联压制先例）。
- * 本页内联样式 h2 仅 SectionLead 渲染，:has()/相邻选择器锁定其结构。
- */
-.team-performance-page div[style] > h2[style] {
-  color: var(--dh-api-ink) !important;
-}
-
-.team-performance-page div[style] > h2[style] + p[style] {
-  color: var(--dh-api-soft) !important;
-}
-
-.team-performance-page div[style] > span[style]:has(+ h2[style]) {
-  color: var(--dh-api-muted) !important;
-}
-
-/*
  * 共享溯源面板（FormalResultMetaPanel）徽章 tone 的 Nocturne 收敛：
  * 徽章色经组件 --formal-meta-badge-* 变量出口（回退值为浅色字面量），
  * 页 scope 内拉回 --dh-api-* 链（risk-tensor / ledger-pnl / positions 同款）。
  */
 .team-performance-page .formal-result-meta-panel {
   --formal-result-meta-border-soft: var(--dh-api-line-soft);
-  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
-  --formal-meta-badge-ok-ink: var(--dh-api-green);
-  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
   --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
   --formal-meta-badge-warn-ink: var(--dh-api-amber);
   --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
@@ -101,7 +80,7 @@
   margin: 0;
   color: var(--ib-ink);
   font-size: 30px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -119,7 +98,7 @@
   justify-content: center;
   min-height: 36px;
   padding: 8px 12px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -181,7 +160,7 @@
 }
 
 .team-performance-page__state-card--warning {
-  border-color: var(--moss-color-warning-200);
+  border-color: var(--dh-api-line);
   background: var(--ib-surface);
 }
 
@@ -224,9 +203,9 @@
   width: fit-content;
   min-height: 28px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -371,7 +350,7 @@
   background: var(--ib-surface-muted);
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: left;
   white-space: nowrap;
 }
@@ -390,7 +369,7 @@
 .team-performance-page__table-cell--numeric {
   text-align: right !important;
   white-space: nowrap;
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
@@ -424,7 +403,7 @@
   display: inline-flex;
   align-items: center;
   min-height: 28px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   padding: 5px 10px;
   font-size: 12px;
   font-weight: 600;
@@ -539,7 +518,7 @@
   display: inline-flex;
   align-items: center;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--ib-surface-muted);
   color: var(--ib-ink-secondary);
   font-size: 11px;
@@ -570,7 +549,7 @@
 .team-performance-page__indicator-tag {
   flex-shrink: 0;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--ib-accent-surface);
   color: var(--ib-accent);
   font-size: 11px;
@@ -596,7 +575,7 @@
 .team-performance-page__indicator-target-label {
   color: var(--ib-ink-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
   text-transform: uppercase;
 }
@@ -653,7 +632,7 @@
 .team-performance-page__evidence-summary-label {
   color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
   text-transform: uppercase;
 }
@@ -813,7 +792,7 @@
   padding: 10px 12px;
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   color: var(--ib-warn);
   font-size: 12px;
   line-height: 1.6;
@@ -826,36 +805,6 @@
   border: 1px solid var(--ib-hairline);
   border-radius: var(--ib-radius, 2px);
   background: var(--ib-surface);
-}
-
-.team-performance-page__meta-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.team-performance-page__meta-eyebrow {
-  color: var(--ib-ink-secondary);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.4;
-  text-transform: uppercase;
-}
-
-.team-performance-page__meta-title {
-  margin: 6px 0 0;
-  color: var(--ib-ink);
-  font-size: 18px;
-  line-height: 1.35;
-}
-
-.team-performance-page__meta-copy {
-  max-width: 540px;
-  margin: 0;
-  color: var(--ib-ink-secondary);
-  font-size: 13px;
-  line-height: 1.7;
 }
 
 .team-performance-page__meta-grid {
@@ -884,7 +833,7 @@
 .team-performance-page__meta-card-label {
   color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
   text-transform: uppercase;
 }
@@ -901,7 +850,7 @@
   align-items: center;
   min-height: 28px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
@@ -1008,46 +957,12 @@
   background: var(--ib-surface);
 }
 
-.team-performance-page__q1-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.team-performance-page__q1-title {
-  margin: 6px 0 0;
-  color: var(--ib-ink);
-  font-size: 20px;
-  line-height: 1.35;
-}
-
-.team-performance-page__q1-copy {
-  max-width: 760px;
-  margin: 8px 0 0;
-  color: var(--ib-ink-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.team-performance-page__q1-date-card {
-  display: grid;
-  gap: 4px;
-  min-width: 220px;
-  padding: 12px 14px;
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-accent-surface);
-}
-
-.team-performance-page__q1-date-card span,
 .team-performance-page__q1-total span {
   color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
 
-.team-performance-page__q1-date-card strong,
 .team-performance-page__q1-total strong {
   color: var(--ib-ink);
   font-size: 14px;
@@ -1067,7 +982,7 @@
   align-items: center;
   min-height: 28px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--ib-surface-muted);
   color: var(--ib-ink-secondary);
   font-size: 12px;
@@ -1119,7 +1034,7 @@
 .team-performance-page__q1-center-head span {
   color: var(--ib-ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -1127,7 +1042,7 @@
   color: var(--ib-up);
   font-size: 20px;
   line-height: 1.25;
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1155,7 +1070,7 @@
 .team-performance-page__q1-lane-title {
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -1191,7 +1106,7 @@
   color: var(--ib-ink-secondary);
   font-size: 11px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -1205,7 +1120,7 @@
 }
 
 .team-performance-page__q1-rule-pill--aggregate {
-  border-color: var(--moss-color-warning-200);
+  border-color: var(--dh-api-line);
   background: var(--moss-color-warning-50);
 }
 
@@ -1253,7 +1168,7 @@
 .team-performance-page__q1-guide-panel > span {
   color: var(--ib-ink);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -1314,7 +1229,7 @@
   flex-shrink: 0;
   color: var(--ib-accent);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   content: "展开";
 }
 
@@ -1325,7 +1240,7 @@
 .team-performance-page__q1-ledger summary span {
   color: var(--ib-ink);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -1392,7 +1307,7 @@
   background: var(--ib-surface-muted);
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
   text-align: left;
   white-space: nowrap;
@@ -1482,19 +1397,6 @@
 @media (max-width: 840px) {
   .team-performance-page__hero {
     flex-direction: column;
-  }
-
-  .team-performance-page__meta-header {
-    flex-direction: column;
-  }
-
-  .team-performance-page__q1-header {
-    flex-direction: column;
-  }
-
-  .team-performance-page__q1-date-card {
-    width: 100%;
-    min-width: 0;
   }
 
   .team-performance-page__detail-summary-grid {
@@ -1602,7 +1504,7 @@
   .team-performance-page__q1-table td::before {
     content: attr(data-label);
     color: var(--ib-ink-secondary);
-    font-weight: 700;
+    font-weight: 600;
   }
 
   .team-performance-page__q1-table .team-performance-page__table-cell--numeric {

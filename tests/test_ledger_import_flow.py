@@ -22,6 +22,132 @@ EXPECTED_MAX_LEDGER_IMPORT_BYTES = 16 * 1024 * 1024
 EXPECTED_MAX_LEDGER_MULTIPART_OVERHEAD_BYTES = 64 * 1024
 
 
+def _isolated_import_route(monkeypatch, record, send):
+    from types import SimpleNamespace
+
+    route = import_module("backend.app.api.routes.ledger")
+    settings = SimpleNamespace(
+        governance_path="unused", governance_backend="unused", governance_sql_dsn="",
+        job_state_dsn="", duckdb_path="unused",
+    )
+
+    async def extract(*args, **kwargs):
+        return "synthetic.csv", b"synthetic"
+
+    monkeypatch.setattr(route, "get_settings", lambda: settings)
+    monkeypatch.setattr(route, "ensure_user_allowed", lambda **kwargs: None)
+    monkeypatch.setattr(route, "_reject_unknown_query_params", lambda *args: None)
+    monkeypatch.setattr(route, "_extract_multipart_file", extract)
+    monkeypatch.setattr(route, "_svc", lambda: SimpleNamespace(MAX_LEDGER_IMPORT_BYTES=1024, SUPPORTED_SUFFIXES={".csv"}))
+    monkeypatch.setattr(route, "_run_svc", lambda: SimpleNamespace(
+        normalize_ledger_import_file_name=lambda name: name, record_ledger_import_transition=record,
+    ))
+    monkeypatch.setattr(route, "_import_task", lambda: SimpleNamespace(run_ledger_import=SimpleNamespace(send=send)))
+    return route
+
+
+@pytest.mark.parametrize("failure", [None, "queued", "send", "failure_receipt"])
+def test_ledger_dispatch_runs_in_one_worker_and_keeps_receipt_order(monkeypatch, failure):
+    import asyncio
+    import threading
+
+    calls, thread_ids = [], []
+
+    def record(**kwargs):
+        calls.append(kwargs["status"])
+        thread_ids.append(threading.get_ident())
+        if kwargs["status"] == failure or (failure == "failure_receipt" and kwargs["status"] == "failed"):
+            raise RuntimeError("synthetic governance failure")
+
+    def send(**kwargs):
+        calls.append("send")
+        thread_ids.append(threading.get_ident())
+        assert base64.b64decode(kwargs["content_base64"]) == b"synthetic"
+        if failure in {"send", "failure_receipt"}:
+            raise RuntimeError("synthetic dispatch failure")
+
+    route = _isolated_import_route(monkeypatch, record, send)
+    loop_thread = threading.get_ident()
+    response = asyncio.run(route.import_ledger(object(), object()))
+    assert response.status_code == (202 if failure is None else 503)
+    assert calls == (["queued"] if failure == "queued" else ["queued", "send"] if failure is None else ["queued", "send", "failed"])
+    assert len(set(thread_ids)) == 1
+    assert loop_thread not in thread_ids
+
+
+def test_ledger_dispatch_does_not_block_loop_or_return_202_before_send(monkeypatch):
+    import asyncio
+    import threading
+    import time
+
+    entered, release = threading.Event(), threading.Event()
+    sent = []
+
+    def record(**kwargs):
+        entered.set()
+        release.wait(0.2)
+
+    route = _isolated_import_route(monkeypatch, record, lambda **kwargs: sent.append(kwargs))
+
+    async def scenario():
+        started = time.perf_counter()
+        task = asyncio.create_task(route.import_ledger(object(), object()))
+        try:
+            await asyncio.sleep(0.02)
+            assert time.perf_counter() - started < 0.15
+            assert entered.is_set()
+            assert not task.done(), "202 returned before synchronous dispatch completed"
+            assert sent == []
+        finally:
+            release.set()
+            response = await task
+        assert response.status_code == 202
+        assert len(sent) == 1
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_ledger_request_preserves_started_dispatch_failure_receipt(monkeypatch):
+    import asyncio
+    import threading
+
+    entered, release, finished = (threading.Event() for _ in range(3))
+    calls = []
+
+    def record(**kwargs):
+        calls.append(kwargs["status"])
+        if kwargs["status"] == "queued":
+            entered.set()
+            release.wait(0.2)
+        else:
+            finished.set()
+
+    def send(**kwargs):
+        calls.append("send")
+        raise RuntimeError("synthetic broker error")
+
+    route = _isolated_import_route(monkeypatch, record, send)
+
+    async def scenario():
+        task = asyncio.create_task(route.import_ledger(object(), object()))
+        try:
+            for _ in range(200):
+                if entered.is_set():
+                    break
+                await asyncio.sleep(0.001)
+            assert entered.is_set()
+            assert not task.done()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            release.set()
+        assert await asyncio.to_thread(finished.wait, 1)
+        assert calls == ["queued", "send", "failed"]
+
+    asyncio.run(scenario())
+
+
 def _scoped_import(service_mod, duckdb_path, *, run_id="ledger_import:test", **kwargs):
     from backend.app.tasks.ledger_import import run_ledger_import
 

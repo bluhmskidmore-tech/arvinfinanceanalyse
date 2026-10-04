@@ -13,6 +13,7 @@ CANONICAL_TASK_MODULES: tuple[str, ...] = (
     "backend.app.tasks.materialize",
     "backend.app.tasks.source_preview_refresh",
     "backend.app.tasks.pnl_materialize",
+    "backend.app.tasks.pnl_by_business_page_publication",
     "backend.app.tasks.balance_analysis_materialize",
     "backend.app.tasks.formal_balance_pipeline",
     "backend.app.tasks.accounting_asset_movement",
@@ -29,6 +30,7 @@ CANONICAL_TASK_MODULES: tuple[str, ...] = (
     "backend.app.tasks.home_macro_release_refresh",
     "backend.app.tasks.choice_news",
     "backend.app.tasks.stock_factor_refresh",
+    "backend.app.tasks.stock_adjustment_factor_daily_refresh",
     "backend.app.tasks.research_calendar_upstream_fetch",
     "backend.app.tasks.choice_stock_refresh",
     "backend.app.tasks.macro_toolkit_refresh",
@@ -56,3 +58,11 @@ from backend.app.tasks.hermes_stream_middleware import (  # noqa: E402
 
 register_hermes_stream_runtime_middleware(active_broker)
 LOADED_TASK_MODULES = tuple(import_module(module_path) for module_path in CANONICAL_TASK_MODULES)
+
+# Recovery is registered only after every actor is available.  The middleware
+# runs when Dramatiq starts the worker; importing this module never recomputes.
+from backend.app.tasks.worker_recovery import (  # noqa: E402
+    register_worker_recovery_middleware,
+)
+
+register_worker_recovery_middleware(active_broker)

@@ -9,17 +9,21 @@ import json
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
 import pandas as pd
+
 from backend.app.core_finance.macro.toolkit.paths import OUTPUT_DIR
+from backend.app.services.macro_toolkit_allocation_snapshot_service import (
+    MacroToolkitAllocationSnapshot,
+    load_macro_toolkit_allocation_snapshot,
+)
 from backend.app.services.macro_toolkit_service_support import (
     MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
     MACRO_TOOLKIT_OBSERVATION_ONLY,
     MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS,
     _float_or_none,
 )
-
 
 # ---------------------------------------------------------------------------
 # Model chain results (observation-only read surface over artifact CSVs)
@@ -29,6 +33,9 @@ _MODEL_CHAIN_MISSING_HEADLINE = "产物缺失"
 _MODEL_CHAIN_DETAIL_HEADLINE = "详见明细"
 _MODEL_CHAIN_NA_TEXT = "—"
 _MODEL_CHAIN_FINAL_SIGNAL_ARTIFACT = "final_signal.csv"
+_MODEL_CHAIN_BACKTEST_MANIFEST = "backtest_run_manifest.json"
+_MODEL_CHAIN_BACKTEST_BLOCKED_HEADLINE = "研究回测 · PIT 门禁阻断"
+_MODEL_CHAIN_BACKTEST_PIT_FIELDS = ("release_at", "available_at", "vintage", "revision")
 # dcc_latest.csv 宽表中除配对列以外的元信息列。
 _MODEL_CHAIN_DCC_META_COLUMNS = ("日期", "平均相关系数", "预警状态")
 
@@ -100,15 +107,35 @@ def _model_chain_latest_date_text(frame: pd.DataFrame) -> str | None:
     return max(texts)
 
 
-def _model_chain_as_of(frame: pd.DataFrame, path: Path) -> str | None:
+def _model_chain_as_of(frame: pd.DataFrame) -> str | None:
     latest = _model_chain_latest_date_text(frame)
     if latest is not None:
         return latest
+    return None
+
+
+def _model_chain_generated_at(path: Path) -> str | None:
     try:
         modified_at = path.stat().st_mtime
     except OSError:
         return None
-    return datetime.fromtimestamp(modified_at, UTC).date().isoformat()
+    return datetime.fromtimestamp(modified_at, UTC).isoformat()
+
+
+def _model_chain_numeric_range(frame: pd.DataFrame, column: str) -> tuple[int, str, str] | None:
+    if column not in frame.columns:
+        return None
+    parsed_rows: list[tuple[float, str]] = []
+    for _, row in frame.iterrows():
+        parsed = _float_or_none(row.get(column))
+        if parsed is None:
+            continue
+        parsed_rows.append((parsed, _model_chain_cell_text(row.get(column))))
+    if not parsed_rows:
+        return None
+    low = min(parsed_rows, key=lambda item: item[0])[1]
+    high = max(parsed_rows, key=lambda item: item[0])[1]
+    return len(parsed_rows), low, high
 
 
 def _model_chain_table(
@@ -238,31 +265,104 @@ def _model_chain_monitor_alerts_headline(frame: pd.DataFrame) -> str:
 
 
 def _model_chain_rebalance_headline(frame: pd.DataFrame) -> str:
-    top_row = _model_chain_max_row(frame, "夏普比率")
-    if top_row is None:
+    sharpe_range = _model_chain_numeric_range(frame, "夏普比率")
+    if sharpe_range is None:
         return _MODEL_CHAIN_DETAIL_HEADLINE
-    strategy = _model_chain_cell_text(top_row.get("策略"))
-    sharpe = _model_chain_cell_text(top_row.get("夏普比率"))
-    return f"最优 {strategy} · 夏普 {sharpe}"
+    count, low, high = sharpe_range
+    return f"再平衡样本 {count} 条 · 夏普区间 {low}-{high}"
 
 
 def _model_chain_performance_headline(frame: pd.DataFrame) -> str:
-    top_row = _model_chain_max_row(frame, "夏普比率")
-    if top_row is None:
+    sharpe_range = _model_chain_numeric_range(frame, "夏普比率")
+    if sharpe_range is None:
         return _MODEL_CHAIN_DETAIL_HEADLINE
-    # 第一列即「资产/组合」标识列（以实际表头为准）。
-    best = _model_chain_cell_text(top_row.get(str(frame.columns[0])))
-    sharpe = _model_chain_cell_text(top_row.get("夏普比率"))
-    return f"最佳 {best} · 夏普 {sharpe}"
+    count, low, high = sharpe_range
+    return f"绩效样本 {count} 条 · 夏普区间 {low}-{high}"
 
 
 def _model_chain_backtest_headline(frame: pd.DataFrame) -> str:
-    top_row = _model_chain_max_row(frame, "夏普比率")
-    if top_row is None:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    strategy = _model_chain_cell_text(top_row.get("策略"))
-    sharpe = _model_chain_cell_text(top_row.get("夏普比率"))
-    return f"最优 {strategy} · 夏普 {sharpe}"
+    del frame
+    # V1 页面不跨策略自动排名；具体样本内结果只在明细表披露。
+    return "研究回测 · 详见样本内明细"
+
+
+def _model_chain_backtest_fallback_context(reason_code: str) -> dict[str, object]:
+    return {
+        "status": "not_admitted",
+        "quality_flag": "warning",
+        "admission_status": None,
+        "observation_only": True,
+        "formal_use_allowed": False,
+        "sample": {
+            "price_start_date": None,
+            "price_end_date": None,
+            "price_observation_days": None,
+            "return_start_date": None,
+            "return_end_date": None,
+            "return_trading_days": None,
+            "declared_window_years": 5,
+        },
+        "asset_coverage": {
+            "configured_asset_count": 8,
+            "used_asset_count": None,
+            "used_assets": [],
+            "missing_assets": [],
+            "complete": False,
+        },
+        "pit_gate": {
+            "status": "blocked",
+            "reason_code": reason_code,
+            "required_fields": list(_MODEL_CHAIN_BACKTEST_PIT_FIELDS),
+            "available_fields": [],
+            "missing_fields": list(_MODEL_CHAIN_BACKTEST_PIT_FIELDS),
+            "completeness_pct": 0.0,
+            "decision_rule": "available_at <= decision_at",
+        },
+        "warnings": [reason_code.upper()],
+    }
+
+
+def _model_chain_backtest_context(
+    path: Path | None,
+    *,
+    missing_reason_code: str = "backtest_manifest_missing",
+) -> dict[str, object]:
+    if path is None:
+        return _model_chain_backtest_fallback_context(missing_reason_code)
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError):
+        return _model_chain_backtest_fallback_context("backtest_manifest_missing")
+    except ValueError:
+        return _model_chain_backtest_fallback_context("backtest_manifest_invalid")
+    if not isinstance(manifest, Mapping):
+        return _model_chain_backtest_fallback_context("backtest_manifest_invalid")
+    sample = manifest.get("sample")
+    coverage = manifest.get("asset_coverage")
+    pit_gate = manifest.get("pit_gate")
+    if not (isinstance(sample, Mapping) and isinstance(coverage, Mapping) and isinstance(pit_gate, Mapping)):
+        return _model_chain_backtest_fallback_context("backtest_manifest_invalid")
+    if (
+        manifest.get("status") != "not_admitted"
+        or manifest.get("admission_status") is not None
+        or manifest.get("observation_only") is not True
+        or manifest.get("formal_use_allowed") is not False
+        or pit_gate.get("status") != "blocked"
+    ):
+        return _model_chain_backtest_fallback_context("backtest_manifest_invalid")
+    raw_warnings = manifest.get("warnings")
+    warnings = [str(item) for item in raw_warnings] if isinstance(raw_warnings, list) else []
+    return {
+        "status": "not_admitted",
+        "quality_flag": "warning",
+        "admission_status": None,
+        "observation_only": True,
+        "formal_use_allowed": False,
+        "sample": dict(sample),
+        "asset_coverage": dict(coverage),
+        "pit_gate": dict(pit_gate),
+        "warnings": warnings,
+    }
 
 
 def _model_chain_final_signal_headline(frame: pd.DataFrame) -> str:
@@ -401,14 +501,17 @@ def _model_chain_trend_payload(
     model_def: Mapping[str, object],
     *,
     output_dir: Path,
-) -> dict[str, object] | None:
+    snapshot: MacroToolkitAllocationSnapshot,
+) -> tuple[dict[str, object] | None, dict[str, object] | None]:
     """构建模型卡 trend 序列；无 trend 数据源 / 历史文件缺失或损坏 / 每条线有效点 <2 → None，不抛错。"""
     trend_def = model_def.get("trend")
     if not isinstance(trend_def, Mapping):
-        return None
-    frame = _load_model_chain_frame(output_dir / str(trend_def["artifact"]))
+        return None, None
+    artifact = str(trend_def["artifact"])
+    resolved = snapshot.resolve(artifact, live_path=output_dir / artifact)
+    frame = _load_model_chain_frame(resolved.path) if resolved.path is not None else None
     if frame is None:
-        return None
+        return None, resolved.provenance
     series_builder = cast(
         "Callable[[pd.DataFrame], list[dict[str, object]]]", trend_def["series"]
     )
@@ -418,11 +521,18 @@ def _model_chain_trend_payload(
         if isinstance(points, list) and len(points) >= 2:
             series.append(item)
     if not series:
-        return None
-    return {"label": str(trend_def["label"]), "series": series}
+        return None, resolved.provenance
+    return {"label": str(trend_def["label"]), "series": series}, resolved.provenance
 
 
-_MODEL_CHAIN_STEP_DEFINITIONS: tuple[dict[str, object], ...] = (
+class _ModelChainStepDefinition(TypedDict):
+    key: str
+    step_no: int
+    label: str
+    models: tuple[dict[str, object], ...]
+
+
+_MODEL_CHAIN_STEP_DEFINITIONS: tuple[_ModelChainStepDefinition, ...] = (
     {
         "key": "market_state",
         "step_no": 1,
@@ -675,18 +785,48 @@ def _model_chain_model_payload(
     model_def: Mapping[str, object],
     *,
     output_dir: Path,
+    snapshot: MacroToolkitAllocationSnapshot,
 ) -> dict[str, object]:
     artifact = str(model_def["artifact"])
+    resolved = snapshot.resolve(artifact, live_path=output_dir / artifact)
+    trend, trend_provenance = _model_chain_trend_payload(
+        model_def,
+        output_dir=output_dir,
+        snapshot=snapshot,
+    )
+    artifact_provenance = dict(resolved.provenance)
+    artifact_provenance["trend"] = trend_provenance
+    artifact_provenance["backtest_manifest"] = None
     payload: dict[str, object] = {
         "id": model_def["id"],
         "label": model_def["label"],
         "script_name": model_def["script_name"],
         "artifact": artifact,
+        "generated_at": None,
+        "artifact_provenance": artifact_provenance,
         # trend 独立于快照产物：全部模型恒有该键（无历史数据源时为 None），保证前端类型统一。
-        "trend": _model_chain_trend_payload(model_def, output_dir=output_dir),
+        "trend": trend,
+        # 仅回测模型非空；技术产物状态与研究准入状态保持分离。
+        "backtest_context": None,
     }
-    path = output_dir / artifact
-    frame = _load_model_chain_frame(path)
+    backtest_context = None
+    if model_def["id"] == "backtest":
+        backtest_manifest = snapshot.resolve(
+            _MODEL_CHAIN_BACKTEST_MANIFEST,
+            live_path=output_dir / _MODEL_CHAIN_BACKTEST_MANIFEST,
+        )
+        backtest_context = _model_chain_backtest_context(
+            backtest_manifest.path,
+            missing_reason_code=str(
+                backtest_manifest.provenance.get("reason_code")
+                or "backtest_manifest_missing"
+            ),
+        )
+        payload["backtest_context"] = backtest_context
+        artifact_provenance["backtest_manifest"] = backtest_manifest.provenance
+    path = resolved.path
+    payload["generated_at"] = _model_chain_generated_at(path) if path is not None else None
+    frame = _load_model_chain_frame(path) if path is not None else None
     if frame is None:
         payload.update(
             {
@@ -699,12 +839,30 @@ def _model_chain_model_payload(
         )
         return payload
     columns, rows = _model_chain_table(frame, model_def)
-    headline_builder = model_def["headline"]
+    headline_builder = cast(Callable[[pd.DataFrame], str], model_def["headline"])
+    is_backtest_blocked = isinstance(backtest_context, Mapping) and (
+        backtest_context.get("status") == "not_admitted"
+        or (
+            isinstance(pit_gate := backtest_context.get("pit_gate"), Mapping)
+            and pit_gate.get("status") == "blocked"
+        )
+    )
+    backtest_sample = (
+        backtest_context.get("sample") if isinstance(backtest_context, Mapping) else None
+    )
     payload.update(
         {
             "artifact_status": "ok",
-            "as_of": _model_chain_as_of(frame, path),
-            "headline": headline_builder(frame),
+            "as_of": (
+                backtest_sample.get("return_end_date")
+                if isinstance(backtest_sample, Mapping)
+                else _model_chain_as_of(frame)
+            ),
+            "headline": (
+                _MODEL_CHAIN_BACKTEST_BLOCKED_HEADLINE
+                if is_backtest_blocked
+                else headline_builder(frame)
+            ),
             "columns": columns,
             "rows": rows,
         }
@@ -763,22 +921,41 @@ def _model_chain_receipt_summary(
     path: Path,
     summary_builder: Callable[[Mapping[str, object]], str],
 ) -> dict[str, object] | None:
-    """读取一个调度回执 JSON 并压缩为 ReceiptSummary；文件缺失/解析失败/非对象 → None，不抛错。"""
+    """读取调度回执；缺失保持 ``None``，存在但损坏则返回显式失败状态。"""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError):
+    except FileNotFoundError:
         return None
+    except (OSError, UnicodeError):
+        return _model_chain_invalid_receipt_summary("receipt_unreadable")
+    except ValueError:
+        return _model_chain_invalid_receipt_summary("receipt_invalid")
     if not isinstance(data, Mapping):
-        return None
+        return _model_chain_invalid_receipt_summary("receipt_invalid")
     exit_code = data.get("exit_code")
     result = data.get("result")
     return {
+        "read_status": "ready",
+        "reason_code": None,
         "task_name": str(data.get("task_name") or ""),
         "status": str(data.get("status") or ""),
         "exit_code": exit_code if isinstance(exit_code, int) else None,
         "generated_at": str(data.get("generated_at") or ""),
         "run_kind": str(data.get("run_kind") or ""),
         "summary": summary_builder(result if isinstance(result, Mapping) else {}),
+    }
+
+
+def _model_chain_invalid_receipt_summary(reason_code: str) -> dict[str, object]:
+    return {
+        "read_status": "invalid",
+        "reason_code": reason_code,
+        "task_name": "",
+        "status": "invalid",
+        "exit_code": None,
+        "generated_at": "",
+        "run_kind": "",
+        "summary": "回执不可读或已损坏",
     }
 
 
@@ -803,10 +980,13 @@ def build_model_chain_results(
 
     仅做文本透传与 headline 摘要拼装，不含任何业务计算；产物缺失/为空/解析失败时
     对应模型降级为 ``artifact_status="missing"``，不抛异常、不影响其他模型。
+    allocation 子链在请求开始时固定一次已发布快照；指针存在后若契约或哈希校验失败，
+    已纳入快照的模型 fail closed，不回退到平面目录旧文件。
 
     ``logs_dir`` 指向调度回执目录（默认从 ``output_dir`` 推导：
     ``data/macro_toolkit/output`` → ``data/logs``），用于组装顶层 ``scheduler`` 键；
-    回执缺失/损坏时对应键为 None，顶层 ``scheduler`` 恒存在。
+    回执缺失时对应键为 None；存在但损坏时返回显式 ``read_status=invalid``，
+    顶层 ``scheduler`` 恒存在。
     """
     directory = Path(output_dir)
     if logs_dir is not None:
@@ -815,10 +995,15 @@ def build_model_chain_results(
         logs_directory = directory.parents[1] / "logs"
     else:
         logs_directory = directory / "logs"
+    allocation_snapshot = load_macro_toolkit_allocation_snapshot(directory)
     steps: list[dict[str, object]] = []
     for step_def in _MODEL_CHAIN_STEP_DEFINITIONS:
         models = [
-            _model_chain_model_payload(model_def, output_dir=directory)
+            _model_chain_model_payload(
+                model_def,
+                output_dir=directory,
+                snapshot=allocation_snapshot,
+            )
             for model_def in step_def["models"]
         ]
         steps.append(
@@ -833,6 +1018,7 @@ def build_model_chain_results(
         "as_of_date": _model_chain_final_signal_as_of_date(directory),
         "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
         "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
+        "artifact_snapshot": allocation_snapshot.as_payload(),
         "scheduler": _model_chain_scheduler_payload(logs_directory),
         "steps": steps,
     }

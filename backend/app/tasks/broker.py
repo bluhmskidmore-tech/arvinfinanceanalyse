@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+from threading import Lock
 
 import dramatiq
 from backend.app.governance.settings import get_settings
@@ -13,6 +14,8 @@ broker: StubBroker | RedisBroker | None = None
 DEFAULT_MAX_RETRIES = 20
 DEFAULT_MIN_BACKOFF_MS = 15_000
 DEFAULT_TIME_LIMIT_MS = 600_000
+REDIS_MAINTENANCE_SCALE = 1_000_000
+_redis_maintenance_lock = Lock()
 
 
 def _is_pytest_process() -> bool:
@@ -72,6 +75,30 @@ def get_broker() -> StubBroker | RedisBroker:
         broker = _DevStubBroker() if _should_use_stub_broker() else RedisBroker(url=get_settings().redis_dsn)
         dramatiq.set_broker(broker)
     return broker
+
+
+def run_expired_redis_ack_maintenance(active_broker: RedisBroker) -> dict[str, object]:
+    """Run one deterministic broker-owned maintenance pass for every declared queue."""
+    queue_names = sorted(
+        {
+            *active_broker.get_declared_queues(),
+            *getattr(active_broker, "delay_queues", set()),
+        }
+    )
+    observed_sizes: dict[str, int] = {}
+    with _redis_maintenance_lock:
+        previous_chance = active_broker.maintenance_chance
+        active_broker.maintenance_chance = REDIS_MAINTENANCE_SCALE
+        try:
+            for queue_name in queue_names:
+                observed_sizes[queue_name] = int(active_broker.do_qsize(queue_name))
+        finally:
+            active_broker.maintenance_chance = previous_chance
+    return {
+        "status": "completed",
+        "queue_count": len(queue_names),
+        "observed_sizes": observed_sizes,
+    }
 
 
 def register_actor_once(

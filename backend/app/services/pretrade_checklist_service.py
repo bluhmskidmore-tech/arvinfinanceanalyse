@@ -31,12 +31,16 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 
 import duckdb
 from backend.app.core_finance.field_normalization import is_tradestatus_halted
 from backend.app.core_finance.gate_exposure_series import load_gate_exposure_by_date
+from backend.app.core_finance.livermore_stock_candidates import (
+    EXP3B_STOCK_CANDIDATE_POLICY,
+)
 from backend.app.core_finance.portfolio_paths import (
     LIMIT_PRICE_SOURCE_MISSING,
     resolve_limit_prices,
@@ -47,9 +51,18 @@ from backend.app.core_finance.position_sizing import (
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_stock_units import amount_rmb_sql
 from backend.app.repositories.duckdb_repo import read_only_connection
+from backend.app.repositories.system_read_publication_repo import (
+    current_system_read_context,
+)
 from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
     build_formal_result_envelope,
+)
+from backend.app.services.pretrade_qualification import (
+    canonical_pretrade_output_sha256,
+    normalize_pretrade_qualification,
+    qualify_pretrade_read_view,
+    qualify_sealed_pretrade_read,
 )
 
 RESULT_KIND = "pretrade_checklist.today"
@@ -65,6 +78,7 @@ SIGNAL_KIND = "factor_screen"
 DEFAULT_TOP_N = 10
 DEFAULT_MIN_AMOUNT = 0.0
 DEFAULT_STALE_CALENDAR_DAYS = 5
+DEFAULT_STOCK_CANDIDATE_POLICY = EXP3B_STOCK_CANDIDATE_POLICY
 
 #: 布尔位降级来源标记（choice 代际观测标志 / 候选表 closed_up_limit）。
 LIMIT_SOURCE_OBSERVATION_FLAG = "observation_flag"
@@ -86,6 +100,9 @@ def pretrade_checklist_envelope(
     min_amount: float = DEFAULT_MIN_AMOUNT,
     stale_calendar_days: int = DEFAULT_STALE_CALENDAR_DAYS,
     today: str | None = None,
+    qualification_evidence: object = None,
+    sealed_qualification_evidence: object = None,
+    stock_candidate_policy: str = DEFAULT_STOCK_CANDIDATE_POLICY,
 ) -> dict[str, object] | None:
     """读取 + 组装 + 打包 result_meta；数据面不可用时返回 None（路由映射 404）。"""
     path = Path(duckdb_path) if duckdb_path is not None else Path(get_settings().duckdb_path)
@@ -96,30 +113,78 @@ def pretrade_checklist_envelope(
             tables = _table_names(conn)
             if TABLE_HIST not in tables:
                 return None
-            resolved_as_of = _resolve_as_of_date(conn, as_of_date=as_of_date)
+            system_read_context = current_system_read_context()
+            sealed_qualification = (
+                normalize_pretrade_qualification(
+                    system_read_context.pretrade_availability
+                )
+                if system_read_context is not None
+                else None
+            )
+            sealed_target_date = (
+                str(sealed_qualification.get("target_date") or "")
+                if sealed_qualification is not None
+                and sealed_qualification.get("status") in {"ready", "ready_empty"}
+                else ""
+            )
+            resolved_as_of = _resolve_as_of_date(
+                conn,
+                as_of_date=as_of_date or sealed_target_date or None,
+            )
             if not resolved_as_of:
                 return None
+            qualification = (
+                qualify_sealed_pretrade_read(
+                    evidence=sealed_qualification,
+                    target_date=resolved_as_of,
+                    stock_candidate_policy=stock_candidate_policy,
+                )
+                if system_read_context is not None
+                else qualify_pretrade_read_view(
+                    conn,
+                    evidence=qualification_evidence,
+                    target_date=resolved_as_of,
+                    stock_candidate_policy=stock_candidate_policy,
+                )
+            )
+            if qualification["status"] == "unavailable":
+                return _unavailable_checklist_envelope(
+                    as_of_date=resolved_as_of,
+                    requested_as_of_date=as_of_date,
+                    top_n=max(1, int(top_n)),
+                    min_amount=float(min_amount),
+                    qualification=qualification,
+                )
             candidates = _load_candidates(conn, as_of_date=resolved_as_of)[: max(1, int(top_n))]
             codes = [str(row["stock_code"]) for row in candidates if row.get("stock_code")]
             daily_by_code = _load_daily_rows(conn, tables=tables, as_of_date=resolved_as_of, codes=codes)
             limit_by_code = _load_limit_price_rows(conn, tables=tables, as_of_date=resolved_as_of, codes=codes)
             adj_codes = _load_adj_factor_codes(conn, tables=tables, as_of_date=resolved_as_of, codes=codes)
             gate = _load_gate_status(conn, as_of_date=resolved_as_of)
+            payload = build_pretrade_checklist(
+                as_of_date=resolved_as_of,
+                candidates=candidates,
+                daily_by_code=daily_by_code,
+                limit_by_code=limit_by_code,
+                adj_codes=adj_codes,
+                gate=gate,
+                top_n=max(1, int(top_n)),
+                min_amount=float(min_amount),
+                stale_calendar_days=int(stale_calendar_days),
+                today=today,
+            )
+            input_snapshot = qualification["input_snapshot"]
+            if not isinstance(input_snapshot, Mapping):
+                raise TypeError("pretrade qualification input_snapshot must be a mapping")
+            payload["qualification"] = {
+                "status": qualification["status"],
+                "producer_run_id": qualification["producer_run_id"],
+                "evidence_sha256": qualification["evidence_sha256"],
+                "input_snapshot_sha256": input_snapshot["sha256"],
+                "projection_sha256": canonical_pretrade_output_sha256(payload),
+            }
     except (OSError, duckdb.Error):
         return None
-
-    payload = build_pretrade_checklist(
-        as_of_date=resolved_as_of,
-        candidates=candidates,
-        daily_by_code=daily_by_code,
-        limit_by_code=limit_by_code,
-        adj_codes=adj_codes,
-        gate=gate,
-        top_n=max(1, int(top_n)),
-        min_amount=float(min_amount),
-        stale_calendar_days=int(stale_calendar_days),
-        today=today,
-    )
     quality_flag = "ok"
     if payload["checklist_status"] != "ok" or gate.get("status") != "available":
         quality_flag = "warning"
@@ -140,6 +205,65 @@ def pretrade_checklist_envelope(
         },
         tables_used=[TABLE_HIST, TABLE_DAILY, TABLE_LIMIT_PRICE, TABLE_ADJ_FACTOR],
         evidence_rows=len(payload["items"]) if isinstance(payload.get("items"), list) else 0,
+    )
+    return build_formal_result_envelope(result_meta=meta, result_payload=payload)
+
+
+def _unavailable_checklist_envelope(
+    *,
+    as_of_date: str,
+    requested_as_of_date: str | None,
+    top_n: int,
+    min_amount: float,
+    qualification: dict[str, object],
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "as_of_date": as_of_date,
+        "signal_kind": SIGNAL_KIND,
+        "checklist_status": "unavailable",
+        "candidate_count": 0,
+        "top_n": top_n,
+        "staleness": {
+            "status": "unavailable",
+            "today": None,
+            "calendar_gap_days": None,
+            "stale_calendar_days": None,
+        },
+        "gate": {
+            "status": "unavailable",
+            "state": None,
+            "exposure": None,
+            "source": None,
+            "note": "Completed pretrade provenance is unavailable.",
+        },
+        "position_size_hint": None,
+        "items": [],
+        "summary": {
+            "buyable_count": 0,
+            "blocked_count": 0,
+            "review_count": 0,
+            "data_missing_count": 0,
+        },
+        "qualification": qualification,
+        "disclaimer": DISCLAIMER,
+    }
+    meta = build_analytical_result_meta(
+        trace_id=uuid.uuid4().hex,
+        result_kind=RESULT_KIND,
+        cache_version=CACHE_VERSION,
+        source_version=f"sv_pretrade_checklist_unavailable_{as_of_date}",
+        rule_version=RULE_VERSION,
+        quality_flag="error",
+        as_of_date=as_of_date,
+        filters_applied={
+            "requested_as_of_date": requested_as_of_date,
+            "as_of_date": as_of_date,
+            "signal_kind": SIGNAL_KIND,
+            "top_n": top_n,
+            "min_amount": min_amount,
+        },
+        tables_used=[TABLE_HIST],
+        evidence_rows=0,
     )
     return build_formal_result_envelope(result_meta=meta, result_payload=payload)
 

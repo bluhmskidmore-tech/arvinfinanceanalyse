@@ -5,6 +5,7 @@ from typing import Any
 
 import duckdb
 from backend.app.core_finance.adjusted_returns import net_return_after_costs
+from backend.app.core_finance.choice_stock_units import amount_rmb_sql, volume_shares_sql
 from backend.app.core_finance.field_normalization import is_tradestatus_halted
 
 TABLE_OBS = "choice_stock_daily_observation"
@@ -139,6 +140,15 @@ def _load_raw_bars_by_stock(
 ) -> dict[str, list[tuple[str, tuple[Any, ...]]]]:
     if not stock_codes:
         return {}
+    has_vendor = "vendor_version" in _columns(conn, TABLE_OBS)
+    volume_select = (
+        volume_shares_sql(table_alias="d", alias="volume")
+        if has_vendor else "cast(null as double) as volume"
+    )
+    amount_select = (
+        amount_rmb_sql(table_alias="d", alias="amount")
+        if has_vendor else "cast(null as double) as amount"
+    )
     adj_select = "af.adj_factor" if has_adj else "cast(null as double) as adj_factor"
     adj_join = (
         f"""
@@ -173,8 +183,8 @@ def _load_raw_bars_by_stock(
           d.high_value,
           d.low_value,
           d.close_value,
-          d.volume,
-          d.amount,
+          {volume_select},
+          {amount_select},
           d.tradestatus,
           d.highlimit,
           d.lowlimit,

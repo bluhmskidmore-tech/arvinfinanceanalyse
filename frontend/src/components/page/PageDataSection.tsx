@@ -17,7 +17,7 @@ type PageDataSectionProps = {
 /**
  * Phase 2.1 迁移桥：props 与旧 `DataSection` 完全兼容，外壳换成 page-v2
  * `EvidencePanel`，状态分支换成 `PageStateSurface`。所有 `data-section-*`
- * data-testid 与用户可见文案与旧实现逐字一致，存量测试无需弱化。
+ * data-testid 保持稳定，业务状态与调用方提供的具体说明继续保留。
  *
  * variant 映射：loading→"loading"、error→"error"、empty→"empty"、
  * stale→"stale"、fallback→"fallback-date"；vendor_unavailable / explicit_miss
@@ -83,7 +83,7 @@ function renderStateBody(opts: {
         testId="data-section-error"
         title="数据载入失败。"
         description={
-          state.message ?? "当前页面保留重试入口，不在浏览器端自行拼接正式口径。"
+          state.message ?? "暂时无法获取数据，请重试。"
         }
         actions={
           <button

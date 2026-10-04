@@ -26,8 +26,8 @@ DEFAULT_CONFIG_PATH = ROOT / "config" / "macro_etf_strategy.json"
 DEFAULT_MACRO_STATE_PATH = ROOT / "config" / "macro_etf_macro_state.json"
 
 RESULT_KIND = "market_data.macro_etf_strategy"
-RULE_VERSION = "rv_macro_etf_strategy_observation_v2"
-CACHE_VERSION = "cv_macro_etf_strategy_observation_v2"
+RULE_VERSION = "rv_macro_etf_strategy_observation_v3"
+CACHE_VERSION = "cv_macro_etf_strategy_observation_v3"
 SOURCE_VERSION = "sv_macro_etf_strategy_config_choice_history_v2"
 VENDOR_VERSION = "vv_local_config+choice_duckdb"
 

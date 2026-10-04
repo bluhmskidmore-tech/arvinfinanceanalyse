@@ -15,6 +15,7 @@ import styles from "./dashboardHomeOptionTwoGovernanceSection.module.css";
 import { EM_DASH } from "../../../utils/format";
 type DashboardHomeOptionTwoGovernanceSectionProps = {
   view: DashboardHomeBodyView;
+  newsLoading?: { macro: boolean; bond: boolean };
   availability?: DashboardHomeAvailability;
   supplementalStateLabel?: string;
 };
@@ -35,7 +36,7 @@ const GOVERNANCE_TABS: ReadonlyArray<{
 ];
 
 const STATE_FALLBACK: Record<HomeDataStateKind, string> = {
-  ready: "已就绪",
+  ready: "正常",
   partial: "部分可用",
   empty: "暂无数据",
   loading: "读取中",
@@ -107,9 +108,21 @@ function toneForState(kind: HomeDataStateKind): LedgerTone {
   return "muted";
 }
 
+/** 上游就绪态带来的完成徽标词（§12 结论 17 常态收声），台账里一律折回中性 fallback。 */
+const QUIET_READY_LABELS: ReadonlySet<string> = new Set([
+  "已接入",
+  "已就绪",
+  "已同步",
+  "已更新",
+  "已完成",
+]);
+
 function statusFromState(state: HomeTerminalListState): LedgerStatus {
+  const label = optionalText(state.label);
+  const quietReady =
+    state.kind === "ready" && (!label || QUIET_READY_LABELS.has(label));
   return {
-    label: optionalText(state.label) || STATE_FALLBACK[state.kind],
+    label: quietReady ? STATE_FALLBACK.ready : label || STATE_FALLBACK[state.kind],
     tone: toneForState(state.kind),
   };
 }
@@ -150,6 +163,21 @@ function availabilityStatus(
   return { label: label || "部分可用", tone: "warn" };
 }
 
+/**
+ * 新闻来源状态：「来源状态：」前缀与列头重复，剥离；「正常」回归 ok 暗点，
+ * 偏旧/兜底/异常保留告警 tone（此前「正常」也被固定成琥珀胶囊）。
+ */
+function newsSourceStatus(
+  label: string | null | undefined,
+  stale: boolean,
+): LedgerStatus {
+  if (stale) return { label: "数据偏旧", tone: "warn" };
+  const text = optionalText(label).replace(/^来源状态[：:]\s*/u, "");
+  if (text === "偏旧") return { label: "数据偏旧", tone: "warn" };
+  if (text === "正常") return { label: STATE_FALLBACK.ready, tone: "ok" };
+  return { label: text || "部分可用", tone: "warn" };
+}
+
 function supplementalStatus(label: string | undefined): LedgerStatus {
   const normalized = optionalText(label);
   if (!normalized) return UNKNOWN_STATUS;
@@ -159,15 +187,18 @@ function supplementalStatus(label: string | undefined): LedgerStatus {
 }
 
 function Status({ status }: { status: LedgerStatus }) {
+  // 常态只留暗点（§12 结论 17）：文字进 title 与读屏文本，异常态才可见发声。
+  const quiet = status.tone === "ok";
   return (
     <span className={styles.status} data-tone={status.tone} title={status.label}>
-      {status.label}
+      {quiet ? <span className={styles.srOnly}>{status.label}</span> : status.label}
     </span>
   );
 }
 
 export function DashboardHomeOptionTwoGovernanceSection({
   view,
+  newsLoading,
   availability,
   supplementalStateLabel,
 }: DashboardHomeOptionTwoGovernanceSectionProps) {
@@ -195,21 +226,15 @@ export function DashboardHomeOptionTwoGovernanceSection({
 
   const bondNewsStatus: LedgerStatus =
     bondNewsCount === 0
-      ? { label: "暂无数据", tone: "muted" }
-      : {
-          label: optionalText(view.bondNews.statusLabel) || "部分可用",
-          tone: "warn",
-        };
+      ? { label: newsLoading?.bond ? "读取中" : "暂无数据", tone: "muted" }
+      : newsSourceStatus(view.bondNews.statusLabel, false);
   const macroNewsStatus: LedgerStatus =
     macroNewsCount === 0
-      ? { label: "暂无数据", tone: "muted" }
-      : view.macroBriefing.newsStale
-        ? { label: "数据偏旧", tone: "warn" }
-        : {
-            label:
-              optionalText(view.macroBriefing.newsStatusLabel) || "部分可用",
-            tone: "warn",
-          };
+      ? { label: newsLoading?.macro ? "读取中" : "暂无数据", tone: "muted" }
+      : newsSourceStatus(
+          view.macroBriefing.newsStatusLabel,
+          view.macroBriefing.newsStale,
+        );
 
   const sourceRows = [
     {
@@ -447,7 +472,7 @@ export function DashboardHomeOptionTwoGovernanceSection({
           className={styles.panel}
           data-testid="dashboard-home-source-gate"
         >
-          <div className={styles.tableWrap}>
+          <div className={styles.tableWrap} role="region" aria-label="来源核验明细滚动区" tabIndex={0}>
             <table aria-label="来源核验明细">
               <thead>
                 <tr>

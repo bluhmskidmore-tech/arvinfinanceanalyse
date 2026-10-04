@@ -19,6 +19,16 @@ create table if not exists fact_formal_risk_tensor_daily (
     duration_excluded_count       integer,
     missing_maturity_market_value decimal(24, 8),
     missing_maturity_count        integer,
+    fund_no_maturity_market_value decimal(24, 8),
+    fund_no_maturity_count         integer,
+    unknown_maturity_market_value decimal(24, 8),
+    unknown_maturity_count         integer,
+    matured_outstanding_market_value decimal(24, 8),
+    matured_outstanding_count      integer,
+    nonpositive_duration_market_value decimal(24, 8),
+    nonpositive_duration_count     integer,
+    missing_liability_maturity_principal_amount decimal(24, 8),
+    missing_liability_maturity_count integer,
     floating_rate_proxy_market_value decimal(24, 8),
     floating_rate_proxy_count     integer,
     payment_frequency_fallback_market_value decimal(24, 8),
@@ -80,6 +90,26 @@ alter table fact_formal_risk_tensor_daily add column if not exists upstream_cach
 alter table fact_formal_risk_tensor_daily add column if not exists missing_maturity_market_value decimal(24, 8)
 -- MOSS:STMT
 alter table fact_formal_risk_tensor_daily add column if not exists missing_maturity_count integer
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists fund_no_maturity_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists fund_no_maturity_count integer
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists unknown_maturity_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists unknown_maturity_count integer
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists matured_outstanding_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists matured_outstanding_count integer
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists nonpositive_duration_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists nonpositive_duration_count integer
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists missing_liability_maturity_principal_amount decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists missing_liability_maturity_count integer
 -- MOSS:STMT
 alter table fact_formal_risk_tensor_daily add column if not exists floating_rate_proxy_market_value decimal(24, 8)
 -- MOSS:STMT

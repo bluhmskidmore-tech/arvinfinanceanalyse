@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { Numeric } from "../../../api/contracts";
 import type { CashflowProjectionVM } from "../adapters/cashflowProjectionAdapter";
 import {
+  cashflowRateSensitivityYiDisplay,
   describeCashflowWarning,
+  selectCashflowConclusion,
   selectCashflowDurationGapTone,
+  selectCashflowDurationGapTrendLabel,
   selectCashflowMonthlyProjectionSeries,
   selectCashflowProjectionRiskReadout,
   selectCashflowRateSensitivitySemantic,
@@ -105,6 +108,90 @@ describe("selectCashflowMonthlyProjectionSeries", () => {
 });
 
 describe("selectCashflowProjectionRiskReadout", () => {
+  it("uses raw_text for the negative-month decision when approximate raw crosses zero", () => {
+    const readout = selectCashflowProjectionRiskReadout(
+      makeVM({
+        monthlyBuckets: [
+          {
+            yearMonth: "2026-04",
+            assetInflow: n({ raw: 1 }),
+            liabilityOutflow: n({ raw: 1 }),
+            netCashflow: n({ raw: 0, raw_text: "-0.01" }),
+            cumulativeNet: n({ raw: 0, raw_text: "-0.01", display: "-0.01" }),
+          },
+        ],
+      }),
+    );
+
+    expect(readout).toMatchObject({
+      tone: "warning",
+      negativeCumulativeMonths: 1,
+      missingCumulativeMonths: 0,
+      worstCumulativeMonth: "2026-04",
+    });
+  });
+
+  it("uses raw_text for extrema and keeps the first bucket when exact values tie", () => {
+    const readout = selectCashflowProjectionRiskReadout(
+      makeVM({
+        monthlyBuckets: [
+          {
+            yearMonth: "2026-04",
+            assetInflow: n({ raw: 1 }),
+            liabilityOutflow: n({ raw: 10, raw_text: "10.01" }),
+            netCashflow: n({ raw: -1 }),
+            cumulativeNet: n({ raw: -1, raw_text: "-1.01" }),
+          },
+          {
+            yearMonth: "2026-05",
+            assetInflow: n({ raw: 1 }),
+            liabilityOutflow: n({ raw: 10, raw_text: "10.02" }),
+            netCashflow: n({ raw: -1 }),
+            cumulativeNet: n({ raw: -1, raw_text: "-1.02" }),
+          },
+          {
+            yearMonth: "2026-06",
+            assetInflow: n({ raw: 1 }),
+            liabilityOutflow: n({ raw: 10, raw_text: "10.02" }),
+            netCashflow: n({ raw: -1 }),
+            cumulativeNet: n({ raw: -1, raw_text: "-1.02" }),
+          },
+        ],
+      }),
+    );
+
+    expect(readout).toMatchObject({
+      worstCumulativeMonth: "2026-05",
+      largestOutflowMonth: "2026-05",
+    });
+  });
+
+  it("uses raw_text for the displayed yi-yuan rounding after selecting the bucket", () => {
+    const readout = selectCashflowProjectionRiskReadout(
+      makeVM({
+        monthlyBuckets: [
+          {
+            yearMonth: "2026-04",
+            assetInflow: n({ raw: 1 }),
+            liabilityOutflow: n({ raw: 1 }),
+            netCashflow: n({ raw: 100_499_999.9, raw_text: "100500000.00000000" }),
+            cumulativeNet: n({
+              raw: 100_499_999.9,
+              raw_text: "100500000.00000000",
+              display: "100,500,000.00",
+            }),
+          },
+        ],
+      }),
+    );
+
+    expect(readout).toMatchObject({
+      worstCumulativeDisplay: "1.01 亿",
+      worstCumulativeTitle: "100,500,000.00",
+      finalCumulativeDisplay: "1.01 亿",
+    });
+  });
+
   it("summarizes negative cumulative months and peak liability outflow", () => {
     const readout = selectCashflowProjectionRiskReadout(
       makeVM({
@@ -336,12 +423,12 @@ describe("describeCashflowWarning", () => {
     const asset =
       "1000000000.00000000 of 4000000000.00000000 asset market value lacks duration information; the duration gap uses only the duration-covered balance and does not extrapolate the covered average duration onto the excluded balance.";
     expect(describeCashflowWarning(asset).summary).toBe(
-      "资产市值 10.00 亿（合计 40.00 亿）缺久期信息；久期缺口仅按久期覆盖余额计算，不向缺失部分外推。",
+      "资产市值 10.00 亿（合计 40.00 亿）未纳入久期计算；久期缺口仅按已覆盖余额计算，不向未覆盖部分外推。",
     );
     const liability =
       "500000000.00000000 of 2000000000.00000000 liability value lacks duration information; the duration gap uses only the duration-covered balance and does not extrapolate the covered average duration onto the excluded balance.";
     expect(describeCashflowWarning(liability).summary).toBe(
-      "负债价值 5.00 亿（合计 20.00 亿）缺久期信息；久期缺口仅按久期覆盖余额计算，不向缺失部分外推。",
+      "负债价值 5.00 亿（合计 20.00 亿）未纳入久期计算；久期缺口仅按已覆盖余额计算，不向未覆盖部分外推。",
     );
   });
 
@@ -377,6 +464,29 @@ describe("selectCashflowRateSensitivitySemantic", () => {
       detail: "利率上行 1bp → 权益增加（原始单位：元）",
     });
   });
+
+  it("uses raw_text for both sign semantics and yi-yuan display", () => {
+    const value = n({
+      raw: 0,
+      raw_text: "-125000000.00000000",
+      unit: "yuan",
+      display: "-125,000,000.00",
+      sign_aware: true,
+    });
+
+    expect(selectCashflowRateSensitivitySemantic(value)).toEqual({
+      tone: "negative",
+      detail: "利率上行 1bp → 权益减少（原始单位：元）",
+    });
+    expect(cashflowRateSensitivityYiDisplay(value)).toBe("-1.25 亿");
+  });
+
+  it("keeps raw-only legacy display and sign behavior when raw_text is absent", () => {
+    const value = n({ raw: 125_000_000, unit: "yuan", sign_aware: true });
+
+    expect(selectCashflowRateSensitivitySemantic(value).tone).toBe("positive");
+    expect(cashflowRateSensitivityYiDisplay(value)).toBe("+1.25 亿");
+  });
 });
 
 describe("selectCashflowDurationGapTone", () => {
@@ -393,5 +503,34 @@ describe("selectCashflowDurationGapTone", () => {
   it("marks missing duration gap as warning", () => {
     expect(selectCashflowDurationGapTone(n({ raw: null, unit: "years" }))).toBe("warning");
     expect(selectCashflowDurationGapTone(undefined)).toBe("warning");
+  });
+
+  it("follows raw_text at the threshold boundary so tone and trend stay aligned", () => {
+    const value = n({ raw: 0.04, raw_text: "0.06000000", unit: "years", display: "0.04" });
+    expect(selectCashflowDurationGapTone(value)).toBe("warning");
+    expect(selectCashflowDurationGapTrendLabel(value)).toBe("正缺口");
+    expect(selectCashflowDurationGapTrendLabel(n({ raw: 0.04, unit: "years", display: "0.04" }))).toBe(
+      "正缺口",
+    );
+  });
+});
+
+describe("selectCashflowConclusion", () => {
+  it("prefers raw_text Decimal at the positive threshold boundary", () => {
+    expect(
+      selectCashflowConclusion(
+        n({ raw: 0.04, raw_text: "0.06000000", unit: "years", display: "0.04" }),
+      ),
+    ).toMatchObject({
+      tone: "positive",
+      body: "资产久期长于负债，当前为正久期缺口。",
+    });
+  });
+
+  it("keeps raw-only legacy behavior when raw_text is absent", () => {
+    expect(selectCashflowConclusion(n({ raw: 0.04, unit: "years", display: "0.04" }))).toMatchObject({
+      tone: "neutral",
+      body: "资产与负债久期基本匹配，缺口已收敛到接近平衡区间。",
+    });
   });
 });

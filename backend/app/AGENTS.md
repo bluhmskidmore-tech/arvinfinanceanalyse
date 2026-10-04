@@ -2,46 +2,13 @@
 
 ## Default Backend Boundary
 
-The default backend execution boundary is now `repo-wide Phase 2` for the governed formal-compute mainline.
-
-This default applies to files under `backend/app/` only for these formal-compute chains:
-
-- formal balance
-- formal PnL
-- formal FX
-- formal yield curve
-- PnL bridge
-- risk tensor
-- core bond-analytics formal read surfaces
-
-For these chains, backend work no longer needs to rely on historical per-stream scoped overrides as its main authorization basis.
+For work under `backend/app/`, use [DOCUMENT_AUTHORITY.md — 阶段边界规则](../../docs/DOCUMENT_AUTHORITY.md#阶段边界规则) for the default formal-compute scope and authorization rules. These mainline chains do not require historical per-stream overrides.
 
 ## Explicit Exclusions
 
-The following backend surfaces are still outside the current repo-wide `Phase 2` cutover:
+The [current surface boundaries](../../docs/DOCUMENT_AUTHORITY.md#current-surface-boundaries) distinguish included executive E1 routes, reserved routes, and landed query/analytical compatibility surfaces. An open compatibility endpoint does not promote it to formal financial truth. Use the task's existing authorization for scoped work; do not infer broader feature enablement from route availability.
 
-- `backend/app/api/routes/executive.py` except the E1 surfaces:
-  - `/ui/home/overview`
-  - `/ui/home/summary`
-  - `/ui/home/snapshot`
-  - `/ui/pnl/attribution`
-- `backend/app/services/executive_service.py` except:
-  - `executive_overview`
-  - `executive_summary`
-  - `executive_pnl_attribution`
-  - `home_snapshot_envelope` / `_compute_home_snapshot_envelope` / `_build_product_category_ytd_headline`
-    （经 `product_category_pnl_service.resolve_product_category_ytd_payload_for_home_snapshot`：读模型 ytd 缺失时自 canonical 重算）
-- `backend/app/api/routes/agent.py`
-- Agent MVP / real agent query enablement
-- `source_preview`
-- `macro-data`
-- `choice-news`
-- market-data preview / vendor / analytical surfaces
-- `qdb_gl_monthly_analysis`
-- `liability_analytics_compat`
-- cube-query and other `Phase 3 / Phase 4` style expansion items
-
-Historical scoped overrides remain useful only for excluded or legacy streams. They should not be reinterpreted as limiting the formal-compute mainline back to `Phase 1`.
+In `executive_service.py`, E1 implementation includes `executive_overview`, `executive_summary`, `executive_pnl_attribution`, and the `/ui/home/snapshot` helpers `home_snapshot_envelope`, `_compute_home_snapshot_envelope`, and `_build_product_category_ytd_headline`. The snapshot uses `product_category_pnl_service.resolve_product_category_ytd_payload_for_home_snapshot` to recompute from canonical facts when the read model lacks YTD data.
 
 ## Snapshot And Preview Semantics
 

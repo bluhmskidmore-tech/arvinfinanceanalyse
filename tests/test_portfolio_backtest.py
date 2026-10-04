@@ -123,17 +123,15 @@ def test_portfolio_backtest_applies_exposure_slots_and_entry_blocks() -> None:
     assert curve_by_date["2026-06-01"]["buy_notional"] == pytest.approx(50.0)
     assert curve_by_date["2026-06-01"]["max_single_name_weight"] == pytest.approx(0.25)
     assert curve_by_date["2026-06-03"]["net_value"] == pytest.approx(97.5)
-    # 敞口 T+1 生效（审计 MAC-01）：06-03 建仓使用 06-02 收盘的 WARM(0.5) 决策，
-    # 而不是 06-03 当日的 HOT(1.0)：97.5 × 0.5 / 2 = 24.375。
-    assert curve_by_date["2026-06-03"]["buy_notional"] == pytest.approx(24.375)
-    assert curve_by_date["2026-06-04"]["net_value"] == pytest.approx(102.375)
-    assert result.metrics["cumulative_return"] == pytest.approx(0.02375)
+    # Both slots are occupied at the open; the June 3 close releases them later.
+    assert curve_by_date["2026-06-03"]["buy_notional"] == 0
+    assert curve_by_date["2026-06-04"]["net_value"] == pytest.approx(97.5)
+    assert result.metrics["cumulative_return"] == pytest.approx(-0.025)
     assert result.skip_counts["entry_blocked"] == 1
-    assert result.skip_counts["no_slot"] == 1
+    assert result.skip_counts["no_slot"] == 2
     assert [row["amount"] for row in result.trades if row["action"] == "buy"] == [
         pytest.approx(25.0),
         pytest.approx(25.0),
-        pytest.approx(24.375),
     ]
 
 
@@ -237,7 +235,7 @@ def test_portfolio_backtest_entry_exposure_uses_prior_day_decision() -> None:
     """建仓敞口 T+1 生效（审计 MAC-01）：当日收盘才产生的敞口决策不得用于当日建仓。
 
     与 gate_timing_csi300 基准和 vol_target_overlay 的既有 T+1 规则
-    （2026-07-19 审计 宏观 H-1）同一口径；序列首日退回当日决策。
+    （2026-07-19 审计 宏观 H-1）同一口径；首日保留窗口前已知信号状态。
     """
     rows = [
         _execution_row(
@@ -277,7 +275,7 @@ def test_portfolio_backtest_entry_exposure_uses_prior_day_decision() -> None:
 
     buys = [trade for trade in result.trades if trade["action"] == "buy"]
     buy_codes_by_date = {(trade["date"], trade["stock_code"]) for trade in buys}
-    # 首日无 T-1 决策，退回当日决策（1.0）→ 可建仓。
+    # First entry uses its known May 29 signal state, never the June 1 close.
     assert ("2026-06-01", "000001.SZ") in buy_codes_by_date
     # 06-02 建仓使用 06-01 收盘的决策（1.0），而不是 06-02 当日的 0.0。
     assert ("2026-06-02", "000002.SZ") in buy_codes_by_date
@@ -1715,7 +1713,8 @@ def test_portfolio_script_nulls_signal_high_when_signal_adjustment_factor_missin
         conn.close()
 
     assert rows[0]["signal_high"] is None
-    assert rows[0]["signal_close"] is None
+    # Raw close remains usable for premium comparison without an adjustment factor.
+    assert rows[0]["signal_close"] == 10.0
     assert any("lacked signal-day adjustment factors" in issue for issue in issues)
 
 

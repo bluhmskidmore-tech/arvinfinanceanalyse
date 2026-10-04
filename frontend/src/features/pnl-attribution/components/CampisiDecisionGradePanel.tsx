@@ -113,7 +113,7 @@ export function CampisiDecisionGradePanel({ data, state, onRetry }: Props) {
               {data.period_start} 至 {data.period_end}
             </div>
             <div className="campisi-headline">
-              本期{conclusionVerb(data.summary.formal_actual_pnl)} {formatYi(data.summary.formal_actual_pnl)}，
+              已匹配期初组合本期{conclusionVerb(data.summary.formal_actual_pnl)} {formatYi(data.summary.formal_actual_pnl)}，
               主要来自 {effectLabel(data)}。
             </div>
             <div className="campisi-chip-row">
@@ -143,6 +143,17 @@ export function CampisiDecisionGradePanel({ data, state, onRetry }: Props) {
                 {data.window_disclosure.message}
               </div>
             ) : null}
+            {data.scope_disclosure ? (
+              <div data-testid="campisi-decision-scope-disclosure" className="campisi-disclosure" data-level="warning">
+                <p>{data.scope_disclosure.message}</p>
+                <p>完整输入 {formatYi(data.scope_disclosure.full_input_pnl)}（{data.scope_disclosure.input_row_count} 行），
+                  已匹配 {formatYi(data.scope_disclosure.matched_input_pnl)}（{data.scope_disclosure.matched_row_count} 行），
+                  实际纳入 {formatYi(data.scope_disclosure.included_pnl)}（{data.scope_disclosure.included_row_count} 行）。</p>
+                <p>未匹配 {formatYi(data.scope_disclosure.unmatched_pnl)}（{data.scope_disclosure.unmatched_row_count} 行），
+                  未匹配绝对金额 {formatYi(data.scope_disclosure.unmatched_absolute_pnl)}。
+                  范围决定：{data.scope_disclosure.scope_decision_status}。</p>
+              </div>
+            ) : null}
           </div>
 
           <div className="campisi-view-grid">
@@ -158,7 +169,7 @@ export function CampisiDecisionGradePanel({ data, state, onRetry }: Props) {
                   <div className="campisi-field-value">{formatYi(data.formal_pnl_view.explained_pnl)}</div>
                 </div>
                 <div>
-                  <div className="campisi-field-label">闭合差异</div>
+                  <div className="campisi-field-label">已匹配组合闭合差异</div>
                   <div className="campisi-field-value">{formatYi(data.formal_pnl_view.closure.difference)}</div>
                 </div>
                 <div>
@@ -166,6 +177,7 @@ export function CampisiDecisionGradePanel({ data, state, onRetry }: Props) {
                   <div className="campisi-field-value">{formatPct(data.summary.residual_ratio)}</div>
                 </div>
               </div>
+              {data.formal_pnl_view.closure.message ? <p className="campisi-panel__footnote">{data.formal_pnl_view.closure.message}</p> : null}
               {renderComponents(data.formal_pnl_view.components)}
             </div>
 

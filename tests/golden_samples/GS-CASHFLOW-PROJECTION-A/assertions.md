@@ -17,9 +17,9 @@
 - `result_meta.basis == "analytical"`.
 - `result_meta.result_kind == "cashflow_projection.overview"`.
 - `result_meta.formal_use_allowed == false`.
-- `result_meta.source_version == "sv_cashflow_projection_gs_a_asset__sv_cashflow_projection_gs_a_liability"`.
-- `result_meta.rule_version == "rv_cashflow_projection_gs_a"`.
-- `result_meta.cache_version == "cv_cashflow_projection_read_v1"`.
+- `result_meta.source_version == "sv_cashflow_projection_gs_a_asset__sv_cashflow_projection_gs_a_bond_analytics__sv_cashflow_projection_gs_a_liability"`.
+- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v6__rv_cashflow_projection_gs_a__rv_cashflow_projection_read_v3"`.
+- `result_meta.cache_version == "cv_cashflow_projection_read_v3"`.
 - `result_meta.quality_flag == "warning"`.
 - `result_meta.fallback_mode == "none"`.
 - `result_meta.requested_report_date == "2026-04-30"`.
@@ -27,8 +27,8 @@
 - `result_meta.as_of_date == "2026-04-30"`.
 - `result_meta.date_basis == "cashflow_projection_report_date"`.
 - `result_meta.source_surface == "cashflow"`.
-- `result_meta.tables_used == ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"]`.
-- `result_meta.evidence_rows == 2`.
+- `result_meta.tables_used == ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily", "fact_formal_bond_analytics_daily"]`.
+- `result_meta.evidence_rows == 3`.
 
 ## Frozen Values
 
@@ -36,6 +36,10 @@
 - `MTR-CFP-002`: `result.asset_duration.display == "0.50"`.
 - `MTR-CFP-003`: `result.liability_duration.display == "0.25"`.
 - `MTR-CFP-004`: `result.rate_sensitivity_1bp.unit == "yuan"` and `display == "-0.03"` (equity value change for a +1bp rate move; positive equity duration implies a negative sensitivity).
+- `result.asset_duration_covered_balance.raw == 1000.0` and `result.asset_excluded_balance.raw == 0.0`.
+- `result.liability_duration_covered_balance.raw == 800.0` and `result.liability_excluded_balance.raw == 0.0`.
+- `result.asset_duration_coverage_ratio.raw == 1.0` and `result.liability_duration_coverage_ratio.raw == 1.0`; both are decimal ratios serialized as `pct` Numeric values.
+- `result.input_lineage` contains one row each for `fact_formal_zqtz_balance_daily`, `fact_formal_tyw_balance_daily`, and `fact_formal_bond_analytics_daily`, with the controlled source/rule/batch/trace metadata; the bond-analytics row is explicitly `rv_bond_analytics_formal_materialize_v6`.
 - `result.warnings` includes the liability remaining-term proxy disclosure.
 - `result.reinvestment_risk_12m.display == "100.00%"`.
 - `result.monthly_buckets[3].year_month == "2026-07"` and `net_cashflow.display == "-800.00"`.

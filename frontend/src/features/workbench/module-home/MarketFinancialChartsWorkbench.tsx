@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ResultMeta } from "../../../api/contracts";
-import ReactECharts from "../../../lib/echarts";
+import { ChartCard as UnifiedChartCard } from "../../../components/charts/ChartCard";
+import DeferredChart from "../../../lib/echarts";
 import type { MarketChartPalette } from "./marketChartPalette";
 import {
   buildMarketFinancialChartSections,
+  DENSE_FIRST_SCREEN_CHART_PICKS,
   type MarketFinancialChartSpec,
   type MarketFinancialChartSection,
 } from "./marketFinancialChartsModel";
 import type { ModuleHomeSourceQueries } from "./moduleHomeModel";
+import { EM_DASH } from "../../../utils/format";
 import { useDeferredChartMount } from "./useDeferredChartMount";
 import styles from "./marketFinancialChartsWorkbench.module.css";
 
@@ -21,14 +24,20 @@ const SECTION_KEYS = [
   "coverage",
 ] as const satisfies readonly MarketFinancialChartSection["key"][];
 
-/**
- * 这两张图已在 02 区「市场证据」以 A/B 卡渲染（C10）：
- * 03 区保留分组头与「怎么看」说明，画布改为锚点引用，不再重复绘制。
- */
-const DENSE_FIRST_SCREEN_CHART_KEYS = new Set(["yield-curve", "key-rate-trend"]);
+function denseFirstScreenChartKeys(sections: MarketFinancialChartSection[]) {
+  const sectionsByKey = new Map(sections.map((section) => [section.key, section]));
+  return new Set(
+    DENSE_FIRST_SCREEN_CHART_PICKS.flatMap(
+      (pick) => sectionsByKey.get(pick.sectionKey)?.charts[pick.chartIndex]?.key ?? [],
+    ),
+  );
+}
 
-function shouldReferenceFirstScreenChart(chart: MarketFinancialChartSpec) {
-  if (!DENSE_FIRST_SCREEN_CHART_KEYS.has(chart.key)) {
+function shouldReferenceFirstScreenChart(
+  chart: MarketFinancialChartSpec,
+  firstScreenChartKeys: ReadonlySet<string>,
+) {
+  if (!firstScreenChartKeys.has(chart.key)) {
     return false;
   }
   // 单期限/稀疏报价状态下 03 区渲染的是文字对照表（非重复画布），保留原卡。
@@ -38,9 +47,23 @@ function shouldReferenceFirstScreenChart(chart: MarketFinancialChartSpec) {
   return true;
 }
 
+function firstOverviewExpandedSectionKey(
+  sections: MarketFinancialChartSection[],
+  firstScreenChartKeys: ReadonlySet<string>,
+) {
+  return (
+    sections.find((section) =>
+      section.charts.some(
+        (chart) => !shouldReferenceFirstScreenChart(chart, firstScreenChartKeys),
+      ),
+    )?.key ?? SECTION_KEYS[0]
+  );
+}
+
 type MarketFinancialChartsWorkbenchProps = {
   queries: ModuleHomeSourceQueries;
   chartPalette?: MarketChartPalette;
+  onChartSectionsChange?: (keys: MarketFinancialChartSection["key"][]) => void;
 };
 
 type MarketFinancialSectionKey = MarketFinancialChartSection["key"];
@@ -69,7 +92,7 @@ function metaStatus(meta: ResultMeta | undefined) {
   return { label: "已返回", tone: "ok" };
 }
 
-function ChartCard({ chart }: { chart: MarketFinancialChartSpec }) {
+function MarketFinancialChartCard({ chart }: { chart: MarketFinancialChartSpec }) {
   const { containerRef, ready, onChartReady } =
     useDeferredChartMount<HTMLDivElement>();
   const yieldQuoteComparison =
@@ -83,14 +106,16 @@ function ChartCard({ chart }: { chart: MarketFinancialChartSpec }) {
       data-chart-view={yieldQuoteComparison?.kind ?? "chart"}
       data-testid={`module-home-market-chart-${chart.key}`}
     >
-      <header>
-        <div>
-          <h3 title={chart.title}>{chart.title}</h3>
-          <p title={`${chart.subtitle} · ${chart.footnote}`}>
-            {chart.subtitle}
-          </p>
-        </div>
-      </header>
+      {yieldQuoteComparison ? (
+        <header>
+          <div>
+            <h3 title={chart.title}>{chart.title}</h3>
+            <p title={`${chart.subtitle} · ${chart.footnote}`}>
+              {chart.subtitle}
+            </p>
+          </div>
+        </header>
+      ) : null}
       <div
         className={styles.chartCanvas}
         ref={containerRef}
@@ -126,24 +151,30 @@ function ChartCard({ chart }: { chart: MarketFinancialChartSpec }) {
               ))}
             </dl>
           </div>
-        ) : !chart.option ? (
-          <div className={styles.chartEmpty}>
-            后端暂未返回足够的可绘制数据。
-          </div>
-        ) : ready ? (
-          <ReactECharts
+        ) : (
+          <UnifiedChartCard
+            flat
+            title={chart.title}
+            question={chart.subtitle}
             option={chart.option}
-            style={{
-              height: "var(--market-chart-canvas-height)",
-              width: "100%",
-            }}
-            notMerge
-            lazyUpdate
-            onChartReady={onChartReady}
+            height={220}
+            footnote={chart.footnote}
+            emptyMessage="后端暂未返回足够的可绘制数据。"
+            chartRenderer={({ option, height }) =>
+              ready ? (
+                <DeferredChart
+                  option={option}
+                  style={{ height, width: "100%" }}
+                  notMerge
+                  lazyUpdate
+                  onChartReady={onChartReady}
+                />
+              ) : null
+            }
           />
-        ) : null}
+        )}
       </div>
-      <footer>{chart.footnote}</footer>
+      {yieldQuoteComparison ? <footer>{chart.footnote}</footer> : null}
     </article>
   );
 }
@@ -169,8 +200,8 @@ function ChartReferenceCard({ chart }: { chart: MarketFinancialChartSpec }) {
           </p>
         ) : null}
         <p className={styles.chartReference}>
-          <span>该图已在上方市场证据区渲染，此处不再重复。</span>
-          <a href="#market-overview-evidence">见 02 市场证据 →</a>
+          <span>该图已在上方首页展示。</span>
+          <a href={`#market-overview-chart-${chart.key}`}>查看上方原图</a>
         </p>
       </div>
       <footer>{chart.footnote}</footer>
@@ -200,23 +231,26 @@ function sectionStatus(query: MarketFinancialSectionQuery | undefined) {
   return metaStatus(query?.data?.result_meta);
 }
 
-function sectionAsOf(meta: ResultMeta | undefined) {
+/** 分组行业务日期；缺失时返回 undefined，由调用方省略日期段（不渲染占位文案）。 */
+function sectionAsOf(meta: ResultMeta | undefined): string | undefined {
   return (
     meta?.as_of_date ??
     meta?.resolved_report_date ??
     meta?.fallback_date ??
-    "日期未返回"
+    undefined
   );
 }
 
 export function MarketFinancialChartsWorkbench({
   queries,
   chartPalette,
+  onChartSectionsChange,
 }: MarketFinancialChartsWorkbenchProps) {
   const [activeKey, setActiveKey] = useState<MarketFinancialSectionKey>("rates");
   const [expandedKeys, setExpandedKeys] = useState<
     ReadonlySet<MarketFinancialSectionKey>
-  >(() => new Set<MarketFinancialSectionKey>([SECTION_KEYS[0]]));
+  >(() => new Set<MarketFinancialSectionKey>());
+  const hasUserManagedExpansion = useRef(false);
   const [viewMode, setViewMode] =
     useState<MarketFinancialViewMode>("overview");
   const viewModeRef = useRef<MarketFinancialViewMode>("overview");
@@ -226,6 +260,16 @@ export function MarketFinancialChartsWorkbench({
   >({});
   const newsSampleSize =
     queries.newsEvents?.data?.result.limit ?? NEWS_CHART_SAMPLE_SIZE;
+  // 新闻信封的 result_meta.as_of_date 是查询日（后端按 date.today() 生成的
+  // received_at 过滤截止，date_basis=received_at_as_of_filter），不是样本日期；
+  // 分组行按事件 received_at 最大值披露真实样本最新日期，停更时旧日期直接可见。
+  const latestNewsSampleDate = useMemo(() => {
+    const sampleDays = (queries.newsEvents?.data?.result.events ?? [])
+      .map((event) => event.received_at.slice(0, 10))
+      .filter(Boolean)
+      .sort((left, right) => left.localeCompare(right));
+    return sampleDays.at(-1);
+  }, [queries.newsEvents?.data]);
 
   const sections = useMemo(
     () =>
@@ -249,6 +293,26 @@ export function MarketFinancialChartsWorkbench({
     ],
   );
   const headerAsOf = sectionAsOf(queries.marketRates?.data?.result_meta);
+  const firstScreenChartKeys = useMemo(
+    () => denseFirstScreenChartKeys(sections),
+    [sections],
+  );
+  const defaultExpandedKey = useMemo(
+    () => firstOverviewExpandedSectionKey(sections, firstScreenChartKeys),
+    [firstScreenChartKeys, sections],
+  );
+  const effectiveExpandedKeys = hasUserManagedExpansion.current
+    ? expandedKeys
+    : new Set<MarketFinancialSectionKey>([defaultExpandedKey]);
+
+  const requestedSectionKey = SECTION_KEYS.filter((key) =>
+    viewMode === "focus" ? key === activeKey : effectiveExpandedKeys.has(key),
+  ).join(",");
+  useEffect(() => {
+    onChartSectionsChange?.(
+      requestedSectionKey ? requestedSectionKey.split(",") as MarketFinancialSectionKey[] : [],
+    );
+  }, [onChartSectionsChange, requestedSectionKey]);
 
   useEffect(() => {
     if (
@@ -313,8 +377,12 @@ export function MarketFinancialChartsWorkbench({
   }
 
   function handleSectionToggle(key: MarketFinancialSectionKey) {
+    const hasExplicitExpansion = hasUserManagedExpansion.current;
+    hasUserManagedExpansion.current = true;
     setExpandedKeys((current) => {
-      const next = new Set(current);
+      const next = new Set(
+        hasExplicitExpansion ? current : [defaultExpandedKey],
+      );
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
@@ -324,7 +392,11 @@ export function MarketFinancialChartsWorkbench({
   function handleSectionNav(key: MarketFinancialSectionKey) {
     setActiveKey(key);
     if (viewMode === "focus") return;
-    setExpandedKeys((current) => new Set(current).add(key));
+    const hasExplicitExpansion = hasUserManagedExpansion.current;
+    hasUserManagedExpansion.current = true;
+    setExpandedKeys(
+      (current) => new Set(hasExplicitExpansion ? current : [defaultExpandedKey]).add(key),
+    );
     const sectionNode = sectionRefs.current[key];
     if (typeof sectionNode?.scrollIntoView === "function") {
       sectionNode.scrollIntoView({
@@ -336,7 +408,6 @@ export function MarketFinancialChartsWorkbench({
 
   return (
     <section
-      id="market-financial-charts-all"
       className={styles.workbench}
       data-view-mode={viewMode}
       data-testid="module-home-market-financial-charts"
@@ -373,7 +444,7 @@ export function MarketFinancialChartsWorkbench({
         </div>
         <div className={styles.headerStatus}>
           <span>数据日期</span>
-          <em>{headerAsOf}</em>
+          <em>{headerAsOf ?? EM_DASH}</em>
         </div>
       </header>
 
@@ -412,8 +483,9 @@ export function MarketFinancialChartsWorkbench({
           const query = sectionQuery(section.key, queries);
           const meta = query?.data?.result_meta;
           const status = sectionStatus(query);
+          const sectionDate = sectionAsOf(meta);
           const isExpanded =
-            viewMode === "focus" || expandedKeys.has(section.key);
+            viewMode === "focus" || effectiveExpandedKeys.has(section.key);
           const bodyId = `market-financial-section-body-${section.key}`;
 
           return (
@@ -440,32 +512,38 @@ export function MarketFinancialChartsWorkbench({
                   >
                     {status.label}
                   </strong>
-                  <span>{sectionAsOf(meta)}</span>
+                  {section.key === "news" ? (
+                    <span>最新样本 {latestNewsSampleDate ?? EM_DASH}</span>
+                  ) : sectionDate ? (
+                    <span>{sectionDate}</span>
+                  ) : null}
                   {section.key === "news" ? (
                     <em>最新 {newsSampleSize} 条样本</em>
                   ) : (
                     <em>{section.charts.length} 张图表</em>
                   )}
                 </div>
-                <button
-                  type="button"
-                  className={styles.sectionToggle}
-                  aria-controls={bodyId}
-                  aria-expanded={isExpanded}
-                  data-testid={`module-home-market-section-toggle-${section.key}`}
-                  onClick={() => handleSectionToggle(section.key)}
-                >
-                  {isExpanded ? "收起" : "展开"}
-                </button>
+                {viewMode === "overview" ? (
+                  <button
+                    type="button"
+                    className={styles.sectionToggle}
+                    aria-controls={bodyId}
+                    aria-expanded={isExpanded}
+                    data-testid={`module-home-market-section-toggle-${section.key}`}
+                    onClick={() => handleSectionToggle(section.key)}
+                  >
+                    {isExpanded ? "收起" : "展开"}
+                  </button>
+                ) : null}
               </aside>
 
               <div className={styles.sectionBody} id={bodyId}>
                 <div className={styles.chartGrid}>
                   {section.charts.map((chart) =>
-                    shouldReferenceFirstScreenChart(chart) ? (
+                    shouldReferenceFirstScreenChart(chart, firstScreenChartKeys) ? (
                       <ChartReferenceCard chart={chart} key={chart.key} />
                     ) : (
-                      <ChartCard chart={chart} key={chart.key} />
+                      <MarketFinancialChartCard chart={chart} key={chart.key} />
                     ),
                   )}
                 </div>

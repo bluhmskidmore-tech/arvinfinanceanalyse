@@ -55,7 +55,7 @@ const sectionLeadWrapStyle: CSSProperties = {
 
 const sectionEyebrowStyle: CSSProperties = {
   fontSize: 11,
-  fontWeight: 700,
+  fontWeight: 600,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
   color: "#8090a8",

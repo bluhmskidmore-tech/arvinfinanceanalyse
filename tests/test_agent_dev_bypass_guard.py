@@ -14,6 +14,7 @@ from backend.app.agent.schemas.agent_response import (
     AgentResultMeta,
 )
 from tests.helpers import load_module
+from backend.app.security.local_access import LocalDevelopmentAccessMiddleware
 
 import pytest
 
@@ -81,6 +82,7 @@ def _client(monkeypatch, settings: SimpleNamespace, *, client_host: str) -> Test
     app.include_router(route_module.router)
     return TestClient(
         app,
+        base_url="http://127.0.0.1:7888",
         client=(client_host, 50000),
         raise_server_exceptions=False,
     )
@@ -227,6 +229,30 @@ def test_agent_dev_scope_bypass_is_inert_outside_development(
     assert query_response.status_code == 403
     assert project_response.status_code == 403
     assert scope_checks == ["agent:read", "agent:write"]
+
+
+@pytest.mark.parametrize("headers", [{"Origin": "https://malicious.example"}, {"Host": "attacker.example"}, {"X-Forwarded-For": "127.0.0.1"}])
+def test_agent_local_entrance_rejects_untrusted_request_before_bypass(monkeypatch, tmp_path, headers):
+    settings = _settings(tmp_path, bypass=True)
+    client = _client(monkeypatch, settings, client_host="127.0.0.1")
+    client.app.add_middleware(LocalDevelopmentAccessMiddleware, environment=settings.environment, local_only_api=True)
+    route_module = importlib.import_module("backend.app.api.routes.agent")
+    calls = []
+    monkeypatch.setattr(route_module, "execute_agent_query", lambda *_args, **_kwargs: calls.append("query"))
+    response = client.post("/api/agent/query", json={"question": "synthetic ping"}, headers=headers)
+    assert response.status_code == 403
+    assert calls == []
+
+
+def test_agent_local_entrance_preserves_loopback_bypass_query(monkeypatch, tmp_path):
+    settings = _settings(tmp_path, bypass=True)
+    client = _client(monkeypatch, settings, client_host="127.0.0.1")
+    client.app.add_middleware(LocalDevelopmentAccessMiddleware, environment=settings.environment, local_only_api=True)
+    route_module = importlib.import_module("backend.app.api.routes.agent")
+    monkeypatch.setattr(route_module, "execute_agent_query", lambda *_args, **_kwargs: _sample_envelope())
+    response = client.post("/api/agent/query", json={"question": "synthetic ping"}, headers={"Origin": "http://127.0.0.1:5890"})
+    assert response.status_code == 200
+    assert response.json()["answer"] == "Development bypass response."
 
 
 def test_agent_dev_scope_bypass_false_still_uses_scope_authorization(

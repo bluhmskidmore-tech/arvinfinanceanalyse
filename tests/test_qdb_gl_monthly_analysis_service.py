@@ -49,6 +49,28 @@ def test_service_blocks_generation_when_input_contract_validation_fails(tmp_path
     else:
         raise AssertionError("Expected month-pair generation to fail when the canonical source file is missing.")
 
+@pytest.mark.parametrize("invalid_amount", ["BROKEN", "NaN", "Infinity"])
+def test_service_rejects_nonempty_invalid_ledger_amount_before_workbook_generation(tmp_path, invalid_amount):
+    module = load_module(
+        "backend.app.services.qdb_gl_monthly_analysis_service",
+        "backend/app/services/qdb_gl_monthly_analysis_service.py",
+    )
+    source_dir = tmp_path / "qdb_sources"
+    source_dir.mkdir()
+    _avg_path, ledger_path = _write_month_pair(source_dir, "202602")
+    workbook = load_workbook(ledger_path)
+    worksheet = workbook["综本"]
+    for cell, value in {"D7": 100_000_000, "E7": 0, "F7": 0, "G7": invalid_amount}.items():
+        worksheet[cell] = value
+    workbook.save(ledger_path)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="input-contract validation.*202602"):
+        module.qdb_gl_monthly_analysis_workbook_envelope(
+            source_dir=str(source_dir), report_month="202602",
+        )
+
+
 def test_service_workbook_envelope_includes_qdb_source_evidence_metadata(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_monthly_analysis_service",

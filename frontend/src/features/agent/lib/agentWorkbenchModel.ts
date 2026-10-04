@@ -6,10 +6,12 @@ import type {
   AgentPageContext,
   AgentQueryRequest,
   AgentRunStatus,
+  AgentRunStopReason,
+  AgentSemanticContext,
   AgentSuggestedAction,
 } from "../../../api/contracts";
 
-export type { AgentRunStatus };
+export type { AgentRunStatus, AgentRunStopReason };
 
 export type AgentResultCard = {
   title: string;
@@ -17,6 +19,7 @@ export type AgentResultCard = {
   type: string;
   data?: Record<string, unknown>[] | Record<string, unknown> | null;
   spec?: Record<string, unknown> | null;
+  metric_id?: string | null;
 };
 
 export type AgentEvidence = {
@@ -40,6 +43,7 @@ export type AgentQueryResult = {
   result_meta: Record<string, unknown>;
   next_drill: AgentNextDrill[];
   suggested_actions: AgentSuggestedAction[];
+  semantic_context?: AgentSemanticContext | null;
 };
 
 export type AgentCopyFeedback = { turnId: string; status: "success" | "error" };
@@ -59,6 +63,7 @@ export type AgentRunPayload = PollingTaskPayload & {
   started_at?: string | null;
   finished_at?: string | null;
   elapsed_seconds?: number | null;
+  stop_reason?: AgentRunStopReason | null;
   result?: AgentQueryResult | null;
 };
 
@@ -159,6 +164,12 @@ export const AGENT_RUN_STATUSES = new Set<AgentRunStatus>([
   "cancelled",
 ]);
 
+export const AGENT_RUN_STOP_REASONS = new Set<AgentRunStopReason>([
+  "completed",
+  "provider_error",
+  "cancel_requested_provider_stop_unconfirmed",
+]);
+
 /** 后端 AgentRunStatus 终态集合：cancelled 与 completed/failed 一样结束 SSE/轮询等待。 */
 export const AGENT_RUN_TERMINAL_STATUSES = new Set<string>(["completed", "failed", "cancelled"]);
 
@@ -187,10 +198,10 @@ export function getAgentRunPollTransientRetryDelayMs(consecutiveErrorCount: numb
 }
 
 export const AGENT_RUN_POLL_NETWORK_RECOVERABLE_MESSAGE =
-  "网络连接不稳定，已暂停等待。任务可能仍在后台运行：可稍后重试这一轮，或刷新页面尝试恢复。";
+  "网络连接不稳定，已暂停等待。任务可能仍在后台运行：可稍后重新连接，或刷新页面尝试恢复。";
 
 export const AGENT_RUN_POLL_TIMEOUT_RECOVERABLE_MESSAGE =
-  "等待超时：任务可能仍在后台运行。可刷新页面尝试恢复，或重试这一轮。";
+  "等待超时：任务可能仍在后台运行。可重新连接，或刷新页面尝试恢复。";
 
 export const AGENT_STICKY_BOTTOM_THRESHOLD_PX = 96;
 
@@ -278,6 +289,10 @@ export const LOCAL_AGENT_QUERY_INTENT_PATTERNS = [
       "asset size",
     ],
   },
+  {
+    intent: "pnl_summary",
+    patterns: ["损益", "pnl"],
+  },
 ];
 
 export const LOCAL_OPEN_CHAT_EXACT = new Set([
@@ -291,6 +306,10 @@ export const LOCAL_OPEN_CHAT_EXACT = new Set([
   "hi",
   "hey",
   "ping",
+  "早上好",
+  "晚上好",
+  "谢谢",
+  "没事",
 ]);
 
 export const LOCAL_OPEN_CHAT_PATTERNS = [
@@ -300,23 +319,9 @@ export const LOCAL_OPEN_CHAT_PATTERNS = [
   "怎么用",
   "如何使用",
   "你是谁",
-  "闲聊",
-  "随便聊聊",
-  "聊聊天",
-  "帮我想想",
-  "给点建议",
-  "有什么建议",
-  "该关注什么",
-  "需要关注什么",
-  "早上好",
-  "晚上好",
-  "谢谢",
-  "没事",
   "what can you do",
   "who are you",
   "how do i use",
-  "help me think",
-  "chat",
 ];
 
 export const PROVIDER_CHAT_CARD_TITLES = new Set(["Hermes Agent", "Provider", "Model"]);
@@ -420,7 +425,7 @@ export function isLocalOpenChatQuestion(question: string) {
   if (!normalized) {
     return false;
   }
-  const compact = normalized.replace(/\s+/g, "");
+  const compact = normalized.replace(/\s+/g, "").replace(/[，。！？,.!?]+$/u, "");
   if (LOCAL_OPEN_CHAT_EXACT.has(compact)) {
     return true;
   }
@@ -429,7 +434,7 @@ export function isLocalOpenChatQuestion(question: string) {
   }
   return (
     compact.length <= 32 &&
-    LOCAL_OPEN_CHAT_PATTERNS.some((pattern) => normalized.includes(pattern) || compact.includes(pattern))
+    LOCAL_OPEN_CHAT_PATTERNS.some((pattern) => compact === pattern.replace(/\s+/g, ""))
   );
 }
 
@@ -494,6 +499,10 @@ export function isAgentRunStatus(value: unknown): value is AgentRunStatus {
   return typeof value === "string" && AGENT_RUN_STATUSES.has(value as AgentRunStatus);
 }
 
+export function isAgentRunStopReason(value: unknown): value is AgentRunStopReason {
+  return typeof value === "string" && AGENT_RUN_STOP_REASONS.has(value as AgentRunStopReason);
+}
+
 export function isAgentRunPayload(value: unknown): value is AgentRunPayload {
   if (!isRecord(value)) {
     return false;
@@ -512,6 +521,7 @@ export function isAgentRunPayload(value: unknown): value is AgentRunPayload {
     (value.finished_at == null || typeof value.finished_at === "string") &&
     (value.elapsed_seconds == null || typeof value.elapsed_seconds === "number") &&
     (value.error_message == null || typeof value.error_message === "string") &&
+    (value.stop_reason == null || isAgentRunStopReason(value.stop_reason)) &&
     (value.result == null || isAgentQueryResult(value.result))
   );
 }
@@ -700,6 +710,17 @@ export const GOVERNANCE_QUALITY_FLAG_NOTICES: Record<string, string> = {
 
 export function buildGovernanceNotices(result: AgentQueryResult) {
   const notices: string[] = [];
+  // An intentional greeting is not a provider outage or a financial result.
+  if (
+    result.result_meta.result_kind === "agent.local_chat" &&
+    result.evidence.filters_applied.fallback_reason === "short_open_chat" &&
+    result.evidence.evidence_rows === 0 &&
+    result.evidence.tables_used.every((table) => table === "agent_local_chat") &&
+    result.evidence.quality_flag !== "stale" &&
+    (!result.result_meta.fallback_mode || result.result_meta.fallback_mode === "none")
+  ) {
+    return ["本地快捷回复，未查询业务数据"];
+  }
   const evidenceStrength = String(
     result.evidence.evidence_strength ?? result.result_meta.evidence_strength ?? "",
   ).trim();
@@ -848,6 +869,17 @@ export function formatManagedRunFailureMessage(provider: unknown) {
   return providerLabel
     ? `${providerLabel} 托管任务失败，请稍后重试。`
     : "托管任务失败，请稍后重试。";
+}
+
+export function formatAgentRunStopReason(stopReason: unknown): string | null {
+  switch (stopReason) {
+    case "provider_error":
+      return "provider 执行失败";
+    case "cancel_requested_provider_stop_unconfirmed":
+      return "已请求取消，provider 停止未确认";
+    default:
+      return null;
+  }
 }
 
 export function formatManagedRunRestoreQuestion(provider: unknown) {
@@ -1257,6 +1289,7 @@ export function buildAgentRequestBody(
   conversationContext?: AgentConversationContext,
   pageContext?: AgentPageContext,
   contextPatch?: Record<string, unknown>,
+  routingSurface?: AgentQueryRequest["routing_surface"],
 ): AgentQueryRequest {
   return {
     question,
@@ -1270,6 +1303,7 @@ export function buildAgentRequestBody(
       ...(contextPatch ?? {}),
     },
     ...(pageContext ? { page_context: pageContext } : {}),
+    ...(routingSurface ? { routing_surface: routingSurface } : {}),
   };
 }
 

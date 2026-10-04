@@ -19,16 +19,7 @@ const nocturnePalette = [
 
 const marketDataTooltipBase: TooltipComponentOption = {
   confine: true,
-  backgroundColor: nocturneTokens.color.panel3,
-  borderColor: nocturneTokens.color.line,
-  borderWidth: 1,
   padding: [8, 10],
-  extraCssText: `box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28); border-radius: ${nocturneTokens.radius}px; font-variant-numeric: tabular-nums;`,
-  textStyle: {
-    color: nocturneTokens.color.ink,
-    fontSize: designTokens.fontSize[12],
-    fontFamily: designTokens.fontFamily.sans,
-  },
 };
 
 export function buildMarketDataChartTooltip(
@@ -37,10 +28,6 @@ export function buildMarketDataChartTooltip(
   return {
     ...marketDataTooltipBase,
     ...overrides,
-    textStyle: {
-      ...marketDataTooltipBase.textStyle,
-      ...overrides.textStyle,
-    },
   };
 }
 
@@ -74,8 +61,8 @@ export const marketDataChartTheme = {
     // blueSoft 自带 12% 透明度，再乘 0.4 得到 ~5% 的安静悬停带。
     shadowStyle: { color: nocturneTokens.color.blueSoft, opacity: 0.4 },
   },
-  gridCompact: { left: 52, right: 44, top: 20, bottom: 34, containLabel: true },
-  gridWithTitle: { left: 52, right: 52, top: 36, bottom: 34, containLabel: true },
+  gridCompact: { left: 52, right: 44, top: 20 },
+  gridWithTitle: { left: 52, right: 52, top: 36 },
   /** 深色阶：低值沉入 panel-2 深井，高值抬到强调蓝紫。 */
   heatmapRange: [nocturneTokens.color.panel2, nocturneTokens.color.blue] as const,
   heatmapEmptyColor: nocturneTokens.color.panel2,

@@ -40,33 +40,12 @@
  */
 [data-moss-theme-scope="pnl"] .formal-result-meta-panel {
   --formal-result-meta-border-soft: var(--dh-api-line-soft);
-  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
-  --formal-meta-badge-ok-ink: var(--dh-api-green);
-  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
   --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
   --formal-meta-badge-warn-ink: var(--dh-api-amber);
   --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
   --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
   --formal-meta-badge-danger-ink: var(--dh-api-red);
   --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
-}
-
-/*
- * 共享 SectionLead 为内联浅色墨色（eyebrow neutral-500 / 标题 primary-900 /
- * 描述 neutral-600），内联恒胜普通规则，页内升权覆盖为 Nocturne 墨阶
- * （stock-analysis「页内升权覆盖」先例）；[style] 只命中内联样式元素，
- * 不影响走 class 取色的 moss-page-v2 标题。
- */
-[data-moss-theme-scope="pnl"] span[style] + h2[style] {
-  color: var(--dh-api-ink) !important;
-}
-
-[data-moss-theme-scope="pnl"] h2[style] + p[style] {
-  color: var(--dh-api-soft) !important;
-}
-
-[data-moss-theme-scope="pnl"] span[style]:has(+ h2[style]) {
-  color: var(--dh-api-muted) !important;
 }
 
 .formal-pnl-v1-page-header {
@@ -81,7 +60,7 @@
 .formal-pnl-v1-title {
   margin: 0;
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
   color: var(--dh-api-ink);
 }
@@ -105,7 +84,7 @@
   display: inline-flex;
   align-items: center;
   padding: 8px 12px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -133,7 +112,7 @@
   align-items: center;
   padding: 8px 12px;
   border: 1px solid var(--dh-api-line-soft);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--dh-api-panel);
   color: var(--dh-api-ink);
   font-size: 12px;
@@ -204,7 +183,7 @@
 .formal-pnl-v1-tab-button--active {
   border-color: var(--dh-api-blue);
   background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
+  color: var(--dh-api-ink);
 }
 
 .formal-pnl-v1-tab-button:disabled {
@@ -235,7 +214,7 @@
   background: var(--dh-api-ink);
   color: var(--dh-api-panel);
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .formal-pnl-v1-refresh-button:disabled {
@@ -260,6 +239,22 @@
 
 .formal-pnl-v1-data-section {
   margin-top: var(--moss-space-6);
+}
+
+/*
+ * 骨架占位防重排（DESIGN.md §6，WP-D）：loading 占位贴近默认视图的最终高度，
+ * 避免 /api/pnl/overview（7 张 KPI 卡，实测 320px）与 /api/pnl/v1-data（默认
+ * 「固收」页签 grid-shell 480px + 18px 上边距）到达时整块下移。数值取自
+ * 1440×900、生产构建下的两次 getBoundingClientRect 实测（loading vs loaded），
+ * 与 cross-asset-drivers 同类占位防重排先例一致的写法（页 scope 覆写共享
+ * PageAsyncSection 的 loading surface，不改共享组件本身）。
+ */
+.formal-pnl-v1-overview-section .moss-page-v2-state-surface[data-state-variant="loading"] {
+  min-height: 320px;
+}
+
+.formal-pnl-v1-data-section .moss-page-v2-state-surface[data-state-variant="loading"] {
+  min-height: 498px;
 }
 
 .formal-pnl-v1-summary-grid {

@@ -117,7 +117,9 @@ class TestLiabilitiesMonthlyNumericMigration:
                     "avg_issued_liabilities": 600000.0,
                     "avg_liability_cost": 0.018,
                     "mom_change": 50000.0,
-                    "mom_change_pct": 5.0,
+                    "mom_change_pct": 0.05,
+                    "yoy_change": -25000.0,
+                    "yoy_change_pct": -0.025,
                     "counterparty_top10": [
                         {
                             "name": "Bank A",
@@ -146,6 +148,13 @@ class TestLiabilitiesMonthlyNumericMigration:
         month = payload.months[0]
         assert month.avg_total_liabilities is not None
         assert month.avg_total_liabilities.unit == "yuan"
+        assert month.mom_change is not None
+        assert month.mom_change.display == "+50,000.00"
+        assert month.mom_change_pct is not None
+        assert month.mom_change_pct.display == "+5.00%"
+        assert month.yoy_change is not None
+        assert month.yoy_change_pct is not None
+        assert month.yoy_change_pct.display == "-2.50%"
         assert month.counterparty_top10[0].weighted_cost is not None
         assert month.counterparty_top10[0].weighted_cost.unit == "pct"
 

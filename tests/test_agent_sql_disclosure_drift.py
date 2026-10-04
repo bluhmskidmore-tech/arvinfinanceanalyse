@@ -231,8 +231,14 @@ def test_news_disclosure_tracks_choice_news_execution_template_and_filters():
     assert "order by received_at desc" in disclosed
     assert "limit ? offset ?" in disclosed
     # 运行期 where 槽位的同源生成器只产出 `?` 绑定的过滤子句，过滤值不进披露文本。
+    # received_to 边界按日截断（含 as_of 当天全部时刻），与未来行统计同一口径。
     filters_source = _source(choice_news_repo.choice_news_filters)
-    for clause in ("group_id = ?", "topic_code = ?", "received_at >= ?", "received_at <= ?"):
+    for clause in (
+        "group_id = ?",
+        "topic_code = ?",
+        "received_at >= ?",
+        "try_cast(substr(cast(received_at as varchar), 1, 10) as date) <= try_cast(substr(?, 1, 10) as date)",
+    ):
         assert clause in filters_source
 
 

@@ -14,7 +14,7 @@ pytestmark = [
 
 SCHEDULER_TASK_NAME = "MOSS-MacroToolkitFreshness"
 RECEIPT_TASK_NAME = "refresh_macro_toolkit_freshness"
-SOURCE_VERSION = "macro_toolkit_freshness_refresh_v3"
+SOURCE_VERSION = "macro_toolkit_freshness_refresh_v4"
 CORE_LATEST_DATES = {
     "fact_commodity_futures_daily": "2026-07-20",
     "CA.CSI300": "2026-07-20",
@@ -27,6 +27,7 @@ CORE_LATEST_DATES = {
     "NCD.SHIBOR.9M": "2026-07-20",
     "NCD.SHIBOR.1Y": "2026-07-20",
     "EMM00088132": "2026-07-20",
+    "EMM00166683": "2026-07-20",
 }
 
 
@@ -96,6 +97,17 @@ def _scheduled_receipt(
                 "step": "choice_policy_rate_7d",
                 "status": "success",
                 "result": {"row_count": 21},
+            },
+            {
+                "step": "choice_crisis_aa_5y",
+                "status": "success",
+                "result": {
+                    "row_count": 21,
+                    "series_id": "EMM00166683",
+                    "latest_valid_date": "2026-07-20",
+                    "lag_days": 0,
+                    "max_lag_days": 3,
+                },
             },
             {
                 "step": "tushare_ncd_shibor",
@@ -391,6 +403,41 @@ def test_post_enable_requires_task1_policy_rate_step_and_date(tmp_path) -> None:
         "receipt.result.latest_observation_dates.EMM00088132"
         in result["missing_fields"]
     )
+
+
+def test_post_enable_requires_crisis_aa5y_step_and_date(tmp_path) -> None:
+    paths = _write_repo_documents(tmp_path)
+    receipt_path = tmp_path / "receipt.json"
+    receipt = _scheduled_receipt()
+    result_payload = receipt["result"]
+    assert isinstance(result_payload, dict)
+    steps = result_payload["steps"]
+    assert isinstance(steps, list)
+    result_payload["steps"] = [
+        step
+        for step in steps
+        if isinstance(step, dict) and step.get("step") != "choice_crisis_aa_5y"
+    ]
+    latest_dates = result_payload["latest_observation_dates"]
+    assert isinstance(latest_dates, dict)
+    latest_dates.pop("EMM00166683")
+    _write_receipt(receipt_path, receipt)
+
+    result = run_preflight(
+        **paths,
+        stage="post-enable",
+        receipt_path=receipt_path,
+        task_name=SCHEDULER_TASK_NAME,
+        scheduler_probe=_ready_scheduler,
+    )
+
+    assert result["ops_status"] == "blocked"
+    assert "receipt.result.steps.choice_crisis_aa_5y" in result["missing_fields"]
+    assert (
+        "receipt.result.latest_observation_dates.EMM00166683"
+        in result["missing_fields"]
+    )
+
 
 def test_pre_enable_blocks_on_missing_packet_file(tmp_path) -> None:
     paths = _write_repo_documents(tmp_path)

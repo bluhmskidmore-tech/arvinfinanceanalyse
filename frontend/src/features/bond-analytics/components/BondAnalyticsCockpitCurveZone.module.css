@@ -93,7 +93,7 @@
 
 .leadDelta strong {
   color: var(--moss-color-neutral-900);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -129,7 +129,7 @@
 
 .footerRow strong {
   color: var(--moss-color-neutral-600);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
@@ -139,15 +139,16 @@
   font-size: 11px;
 }
 
+/* 待返回说明贴近曲线，在一级卡片内只用顶部分隔线。 */
 .pendingPanel {
   display: grid;
   gap: 8px;
   align-content: start;
   min-height: 96px;
-  padding: 10px 12px;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--moss-color-neutral-50);
+  padding: var(--moss-space-3) 0;
+  border-radius: 0;
+  background: transparent;
+  border-top: 1px solid var(--moss-color-neutral-200);
 }
 
 .pendingHeader {
@@ -158,14 +159,14 @@
 .pendingHeader strong {
   color: var(--moss-color-neutral-900);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.3;
 }
 
 .pendingHeader span {
   color: var(--moss-color-neutral-600);
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .pendingList {
@@ -187,7 +188,7 @@
   flex: 0 0 auto;
   min-width: 84px;
   color: var(--moss-color-neutral-500);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.3;
 }
 
@@ -203,6 +204,6 @@
   flex: 1 1 120px;
   min-width: 0;
   color: var(--moss-color-neutral-500);
-  font-size: 11px;
-  line-height: 1.3;
+  font-size: 12px;
+  line-height: 1.5;
 }

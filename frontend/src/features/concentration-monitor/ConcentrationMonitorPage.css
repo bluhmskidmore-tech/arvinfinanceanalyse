@@ -99,9 +99,10 @@
   display: block;
   margin-top: 4px;
   color: var(--ib-ink-secondary);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -136,11 +137,8 @@
   height: 100%;
 }
 
-.concentration-monitor-page__block-title {
-  margin: 24px 0 0;
-  color: var(--ib-ink);
-  font-size: 16px;
-  font-weight: 600;
+.concentration-monitor-page__block-head {
+  margin-top: 24px;
 }
 
 .concentration-monitor-page__grid-2x2 {

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-import { EM_DASH } from "../../../pageModel";
+import type { ChartCardState } from "../../../components/charts/ChartCard";
 import type { MacroObservationCrisisEvidenceView } from "../model/macroObservationPageModel";
 import MacroObservationCrisisChart from "./MacroObservationCrisisChart";
 import "./MacroObservationModelCrisis.css";
@@ -13,6 +13,18 @@ import "./MacroObservationModelCrisis.css";
 
 /** 历史折线至少 2 点才画；不足时占位说明，禁止用演示数据冒充。 */
 const CRISIS_CHART_MIN_POINTS = 2;
+
+/**
+ * 历史折线占位（图表侧）→ StateSurface 五态。三种输入态收敛成两档：
+ * ready（有读数但历史点不足 2 个）与 empty（full 态确认无证据）都是「确认没有
+ * 可画的序列」，映射 "empty"；deferred（core 首发延后，完整分析后确认）映射
+ * "loading"——StateSurface 没有 "deferred" 词条，loading 是与迁移前视觉最
+ * 接近、且不带告警色的现成选项（与分区头的同款映射同一理由，见
+ * macroObservationSectionHeadNumbering.ts）。
+ */
+function crisisSurfaceStatus(state: MacroObservationCrisisEvidenceView["state"]): ChartCardState {
+  return state === "deferred" ? "loading" : "empty";
+}
 
 export default function MacroObservationCrisisSection({
   crisis,
@@ -64,24 +76,11 @@ export default function MacroObservationCrisisSection({
         </p>
       </div>
 
-      <div className="macro-observation-crisis-chart-panel">
-        <div className="macro-observation-view__panel-head">
-          <h3 className="macro-observation-view__panel-title">危机分历史</h3>
-          <span className="macro-observation-view__panel-hint">
-            {hasChart ? `${history.length} 点` : EM_DASH}
-          </span>
-        </div>
-        <div
-          className="macro-observation-crisis-chart"
-          data-testid="macro-observation-crisis-chart"
-        >
-          {hasChart ? (
-            <MacroObservationCrisisChart history={history} />
-          ) : (
-            <p className="macro-observation-crisis-placeholder">{placeholderNote}</p>
-          )}
-        </div>
-      </div>
+      <MacroObservationCrisisChart
+        history={history}
+        state={hasChart ? undefined : crisisSurfaceStatus(crisis.state)}
+        emptyMessage={placeholderNote}
+      />
     </div>
   );
 }

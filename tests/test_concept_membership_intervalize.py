@@ -259,6 +259,75 @@ def test_intervalize_appended_snapshot_closes_and_opens_incrementally(tmp_path) 
     assert (by_code["C_enter"][4], by_code["C_enter"][5]) == ("2026-07-08", None)
 
 
+def test_intervalize_dry_run_previews_coverage_and_staleness_without_writes(tmp_path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute(_SNAPSHOT_DDL)
+        _insert_snapshots(
+            conn,
+            [
+                _snapshot("2026-05-13", "S1", "C_exit"),
+                _snapshot("2026-05-13", "S1", "C_stay"),
+                _snapshot("2026-07-08", "S1", "C_stay"),
+                _snapshot("2026-07-08", "S1", "C_enter"),
+            ],
+        )
+        tables_before = conn.execute("show tables").fetchall()
+    finally:
+        conn.close()
+
+    result = intervalize_concept_membership(
+        duckdb_path=str(duckdb_path),
+        dry_run=True,
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        tables_after = conn.execute("show tables").fetchall()
+    finally:
+        conn.close()
+
+    assert result["status"] == "preview"
+    assert result["dry_run"] is True
+    assert result["snapshot_dates"] == ["2026-05-13", "2026-07-08"]
+    assert result["coverage_first_date"] == "2026-05-13"
+    assert result["coverage_last_snapshot_date"] == "2026-07-08"
+    assert result["interval_row_count"] == 3
+    assert result["last_observed_date_distribution"] == {
+        "2026-05-13": 1,
+        "2026-07-08": 2,
+    }
+    assert result["open_interval_last_observed_date_distribution"] == {"2026-07-08": 2}
+    assert result["staleness_risk"] == {
+        "status": "not_assessed",
+        "threshold_days": None,
+        "oldest_last_observed_date": "2026-05-13",
+        "latest_last_observed_date": "2026-07-08",
+        "oldest_open_interval_last_observed_date": "2026-07-08",
+        "latest_open_interval_last_observed_date": "2026-07-08",
+        "reason": (
+            "No approved concept-membership staleness threshold; "
+            "last_observed_date is disclosed without a freshness classification."
+        ),
+    }
+    assert tables_after == tables_before
+    assert (INTERVAL_TABLE,) not in tables_after
+
+
+def test_intervalize_dry_run_missing_database_does_not_create_file(tmp_path) -> None:
+    duckdb_path = tmp_path / "missing.duckdb"
+
+    result = intervalize_concept_membership(
+        duckdb_path=str(duckdb_path),
+        dry_run=True,
+    )
+
+    assert result["status"] == "no_snapshots"
+    assert result["dry_run"] is True
+    assert not duckdb_path.exists()
+
+
 def test_intervalize_empty_snapshot_table_reports_no_snapshots_and_preserves_intervals(
     tmp_path,
 ) -> None:

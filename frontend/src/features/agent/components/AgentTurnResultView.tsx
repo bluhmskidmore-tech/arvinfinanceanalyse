@@ -1,7 +1,7 @@
-import { CheckOutlined, CopyOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ArrowDownOutlined, CheckOutlined, CopyOutlined, MoreOutlined, ReloadOutlined } from "@ant-design/icons";
 import { memo, useMemo } from "react";
 
-import type { AgentSuggestedAction } from "../../../api/contracts";
+import type { AgentSemanticContext, AgentSuggestedAction } from "../../../api/contracts";
 import {
   AGENT_FOLLOW_UP_CHIPS,
   buildGovernanceNotices,
@@ -64,17 +64,20 @@ function AgentResultSideDrawer({
   turnResult,
   resultMetaEntries,
   hasEvidence,
+  semanticContext,
   onSideDrawerOpen,
 }: {
   turnResult: AgentQueryResult;
   resultMetaEntries: Array<[string, unknown]>;
   hasEvidence: boolean;
+  semanticContext: AgentSemanticContext | null;
   onSideDrawerOpen: () => void;
 }) {
-  const detailSectionCount = (hasEvidence ? 1 : 0) + (resultMetaEntries.length > 0 ? 1 : 0);
+  const showEvidencePanel = hasEvidence || semanticContext !== null;
+  const detailSectionCount = (showEvidencePanel ? 1 : 0) + (resultMetaEntries.length > 0 ? 1 : 0);
   const resultSide = (
     <aside className="agent-result-side" aria-label="回答依据与运行信息">
-      {hasEvidence ? (
+      {showEvidencePanel ? (
         <StaticAgentEvidencePanel
           tablesUsed={turnResult.evidence.tables_used}
           filtersApplied={turnResult.evidence.filters_applied}
@@ -87,6 +90,8 @@ function AgentResultSideDrawer({
           }
           evidenceRows={turnResult.evidence.evidence_rows}
           qualityFlag={turnResult.evidence.quality_flag}
+          semanticContext={semanticContext}
+          resultMeta={turnResult.result_meta}
         />
       ) : null}
       <StaticAgentResultMetaPanel
@@ -114,6 +119,7 @@ function AgentResultSideDrawer({
 export function AgentTurnResultView({
   turn,
   isEmbedded,
+  isLatestResultTurn,
   readOnly,
   loading,
   latestConversationTurnId,
@@ -139,6 +145,7 @@ export function AgentTurnResultView({
     const compactProviderChatResult = isCompactProviderChatResult(turnResult);
     const visibleCards = compactProviderChatResult ? [] : turnResult.cards;
     const gitNexusResult = isGitNexusResult(turnResult);
+    const semanticContext = turnResult.semantic_context ?? null;
 
     return {
       governanceNotices: buildGovernanceNotices(turnResult),
@@ -152,6 +159,7 @@ export function AgentTurnResultView({
         : visibleCards.filter((card) => !isGitNexusCard(card)),
       renderableResult: hasRenderableResult(turnResult),
       hasEvidence: hasEvidenceContent(turnResult.evidence),
+      semanticContext,
     };
   }, [turnResult]);
 
@@ -169,6 +177,7 @@ export function AgentTurnResultView({
     genericCards,
     renderableResult,
     hasEvidence,
+    semanticContext,
   } = staticResultModel;
   const copyStatus = copyFeedback?.turnId === turn.id ? copyFeedback.status : null;
   const copyLabel = copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制回答";
@@ -181,6 +190,40 @@ export function AgentTurnResultView({
         <StaticAgentGenericCardsGrid cards={genericCards} formatValue={formatMetaValue} />
       </div>
     ) : null;
+  const inlineFollowUps = !isEmbedded && !researchRadarResult && Boolean(turnResult.answer.trim());
+  const followUpActions = isLatestResultTurn ? (
+    <div className="agent-follow-up-chips" aria-label="继续追问">
+      <button
+        type="button"
+        className="agent-follow-up-chips__button agent-follow-up-chips__button--primary"
+        aria-label={`继续输入：${turn.question}`}
+        title="继续输入"
+        onClick={(event) => onFocusComposerFromFollowUp(event.currentTarget)}
+        disabled={loading}
+      >
+        {inlineFollowUps ? <><ArrowDownOutlined aria-hidden="true" /><span className="agent-chat-action-label">继续输入</span></> : "继续输入"}
+      </button>
+      <details className="agent-follow-up-chips__details">
+        <summary title="更多追问" aria-label="更多追问">
+          {inlineFollowUps ? <><MoreOutlined aria-hidden="true" /><span className="agent-chat-action-label">更多追问</span></> : "更多追问"}
+        </summary>
+        <div className="agent-follow-up-chips__options">
+          {AGENT_FOLLOW_UP_CHIPS.map((chip) => (
+            <button
+              key={chip.label}
+              type="button"
+              className="agent-follow-up-chips__button"
+              aria-label={`${chip.label}：${turn.question}`}
+              onClick={(event) => onApplyFollowUpChip(chip.question, event.currentTarget)}
+              disabled={loading}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      </details>
+    </div>
+  ) : null;
   const answerMessage = turnResult.answer.trim() ? (
     <div className="agent-answer-message">
       <StaticAgentAnswerPanel
@@ -194,23 +237,26 @@ export function AgentTurnResultView({
               type="button"
               className="agent-result-toolbar__button"
               aria-label={`重新生成：${turn.question}`}
+              title="重新生成"
               onClick={() => onRegenerate(turn)}
               disabled={loading}
             >
               <ReloadOutlined aria-hidden="true" />
-              <span>重新生成</span>
+              <span className={isEmbedded ? undefined : "agent-chat-action-label"}>重新生成</span>
             </button>
           ) : null}
           <button
             type="button"
             className="agent-result-toolbar__button"
             aria-label={`${copyLabel}：${turn.question}`}
+            title={copyLabel}
             onClick={() => onCopyAnswer(turn)}
             disabled={!turnResult.answer.trim()}
           >
             {copyStatus === "success" ? <CheckOutlined aria-hidden="true" /> : <CopyOutlined aria-hidden="true" />}
-            <span>{copyLabel}</span>
+            <span className={isEmbedded ? undefined : "agent-chat-action-label"}>{copyLabel}</span>
           </button>
+          {inlineFollowUps ? followUpActions : null}
           {copyStatus ? (
             <span
               aria-label="复制状态"
@@ -229,7 +275,7 @@ export function AgentTurnResultView({
 
   return (
     <div className="agent-result-shell">
-      {governanceNotices.length > 0 ? (
+      {governanceNotices.length > 0 && !compactProviderChatResult ? (
         <div
           className="agent-callout agent-callout--warning agent-governance-callout"
           role="status"
@@ -246,6 +292,12 @@ export function AgentTurnResultView({
           <div className="agent-result-main">
             {researchRadarResult ? resultCards : answerMessage}
             {researchRadarResult ? answerMessage : resultCards}
+
+            {compactProviderChatResult && governanceNotices.length > 0 ? (
+              <div className="agent-answer-notice" role="status" aria-label="数据可信状态提示">
+                {governanceNotices.map((notice) => <span key={notice}>{notice}</span>)}
+              </div>
+            ) : null}
 
             {turnResult.next_drill.length > 0 ? (
               <div className="agent-next-drill-row" aria-label="继续下钻">
@@ -277,34 +329,7 @@ export function AgentTurnResultView({
               onActionClick={(action, sourceElement) => onSuggestedAction(turn.id, action, sourceElement)}
             />
 
-            <div className="agent-follow-up-chips" aria-label="继续追问">
-              <button
-                type="button"
-                className="agent-follow-up-chips__button agent-follow-up-chips__button--primary"
-                aria-label={`继续输入：${turn.question}`}
-                onClick={(event) => onFocusComposerFromFollowUp(event.currentTarget)}
-                disabled={loading}
-              >
-                继续输入
-              </button>
-              <details className="agent-follow-up-chips__details">
-                <summary>更多追问</summary>
-                <div className="agent-follow-up-chips__options">
-                  {AGENT_FOLLOW_UP_CHIPS.map((chip) => (
-                    <button
-                      key={chip.label}
-                      type="button"
-                      className="agent-follow-up-chips__button"
-                      aria-label={`${chip.label}：${turn.question}`}
-                      onClick={(event) => onApplyFollowUpChip(chip.question, event.currentTarget)}
-                      disabled={loading}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
-              </details>
-            </div>
+            {!inlineFollowUps ? followUpActions : null}
           </div>
 
           {compactProviderChatResult ? null : (
@@ -312,6 +337,7 @@ export function AgentTurnResultView({
               turnResult={turnResult}
               resultMetaEntries={resultMetaEntries}
               hasEvidence={hasEvidence}
+              semanticContext={semanticContext}
               onSideDrawerOpen={onSideDrawerOpen}
             />
           )}

@@ -96,6 +96,23 @@ class CashflowMaturingAssetPayload(BaseModel):
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
+class CashflowProjectionInputLineagePayload(BaseModel):
+    """One fact table read by the cashflow-projection service.
+
+    Empty version, batch, or trace lists mean that no non-empty value was present
+    in the rows returned by that fact read; they must not be interpreted as a
+    synthetic or inherited lineage value. ``row_count`` is the number of rows
+    directly read from ``table_name`` before any duration attachment.
+    """
+
+    table_name: str
+    row_count: int = Field(ge=0)
+    source_versions: list[str] = Field(default_factory=list)
+    rule_versions: list[str] = Field(default_factory=list)
+    ingest_batch_ids: list[str] = Field(default_factory=list)
+    trace_ids: list[str] = Field(default_factory=list)
+
+
 class CashflowProjectionResponse(BaseModel):
     report_date: date
     duration_gap: Numeric
@@ -104,6 +121,37 @@ class CashflowProjectionResponse(BaseModel):
     equity_duration: Numeric
     rate_sensitivity_1bp: Numeric
     reinvestment_risk_12m: Numeric
+    # Covered/excluded balances are CNY yuan amounts. The current service always
+    # emits a Numeric (including raw=0 when the relevant balance is zero); a
+    # field-level null means a legacy response that predates this disclosure.
+    asset_duration_covered_balance: Numeric | None = Field(
+        default=None,
+        description="CNY asset market value included in the duration numerator and denominator.",
+    )
+    liability_duration_covered_balance: Numeric | None = Field(
+        default=None,
+        description="CNY liability value included in the duration numerator and denominator.",
+    )
+    asset_excluded_balance: Numeric | None = Field(
+        default=None,
+        description="CNY asset market value excluded because a usable duration was unavailable.",
+    )
+    liability_excluded_balance: Numeric | None = Field(
+        default=None,
+        description="CNY liability value excluded because a usable duration was unavailable.",
+    )
+    # Raw values are decimal ratios (not percent points). On a current response,
+    # ``raw=null`` means the corresponding total balance is zero; a field-level
+    # null means the response predates this coverage disclosure.
+    asset_duration_coverage_ratio: Numeric | None = Field(
+        default=None,
+        description="Covered asset balance divided by total asset market value; raw is a decimal ratio.",
+    )
+    liability_duration_coverage_ratio: Numeric | None = Field(
+        default=None,
+        description="Covered liability balance divided by total liability value; raw is a decimal ratio.",
+    )
+    input_lineage: list[CashflowProjectionInputLineagePayload] | None = None
     monthly_buckets: list[CashflowMonthlyBucketPayload]
     top_maturing_assets_12m: list[CashflowMaturingAssetPayload]
     floating_rate_proxy_count: int = 0
@@ -131,6 +179,12 @@ class CashflowProjectionResponse(BaseModel):
         "equity_duration": ("years", True),
         "rate_sensitivity_1bp": ("yuan", True),
         "reinvestment_risk_12m": ("pct", False, "ratio"),
+        "asset_duration_covered_balance": ("yuan", False),
+        "liability_duration_covered_balance": ("yuan", False),
+        "asset_excluded_balance": ("yuan", False),
+        "liability_excluded_balance": ("yuan", False),
+        "asset_duration_coverage_ratio": ("pct", False, "ratio"),
+        "liability_duration_coverage_ratio": ("pct", False, "ratio"),
         "floating_rate_proxy_market_value": ("yuan", False),
         "payment_frequency_fallback_market_value": ("yuan", False),
         "bullet_value_date_fallback_market_value": ("yuan", False),

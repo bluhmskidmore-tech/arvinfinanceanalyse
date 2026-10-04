@@ -2,7 +2,7 @@
 
 执行状态：**BLOCKED — 本文档不授权当前直接写生产**。
 
-本文档记录 `2026-07-31` 的 Decimal 精度单日回填边界、停写、备份、执行门禁、验收和回滚要求。仓库现已提供固定单日 runner `scripts/run_decimal_precision_backfill.py` 和强只读 verifier `scripts/verify_decimal_precision_backfill.py`，并已在私有、静止的隔离 DuckDB 上完成全链演练。该结果只证明代码和数据链具备隔离执行能力；它不验证生产维护窗口、生产 writer quiescence、SQL authority/JSONL/DB/archive 协调备份与恢复，也不构成业务 owner 的生产批准。操作员在这些外部门禁闭合前仍不得执行生产物化。
+本文档记录 `2026-07-31` 的 Decimal 精度单日回填边界、停写、备份、执行门禁、验收和回滚要求。仓库现已提供固定单日 runner `scripts/archive/decimal-backfill-2026-07-31/run_decimal_precision_backfill.py` 和强只读 verifier `scripts/archive/decimal-backfill-2026-07-31/verify_decimal_precision_backfill.py`（两者已按 `docs/plans/tech-debt-remediation/C5-scripts-inventory.md` 归档到 `scripts/archive/`，下文简写为脚本文件名），并已在私有、静止的隔离 DuckDB 上完成全链演练。该结果只证明代码和数据链具备隔离执行能力；它不验证生产维护窗口、生产 writer quiescence、SQL authority/JSONL/DB/archive 协调备份与恢复，也不构成业务 owner 的生产批准。操作员在这些外部门禁闭合前仍不得执行生产物化。
 
 ## 1. 范围与非授权事项
 
@@ -86,11 +86,11 @@ TYW 原始解析为 3,133 行；按 canonical grain `(report_date, position_id)`
 
 ## 3. 受支持入口与明确禁用入口
 
-### `scripts/run_decimal_precision_backfill.py`
+### `scripts/archive/decimal-backfill-2026-07-31/run_decimal_precision_backfill.py`
 
 这是本次唯一受支持的工作流入口。它固定 date/batch/families/input hashes，提供 `--dry-run`、`--verify-only`、`--apply`，且没有默认写入模式或 CLI 生产门禁绕过。`--apply` 仍必须通过脚本内生产 gate，并同时满足本文档第 4、6、8、10 节的外部审批、停写、备份和恢复条件。`maintenance-window-ref` 与 `dba-backup-ref` 只是操作员提供的证据引用；脚本明确不独立验证这些外部事实，因此两个非空字符串不能解除本页顶部的 `BLOCKED`。
 
-### `scripts/verify_decimal_precision_backfill.py`
+### `scripts/archive/decimal-backfill-2026-07-31/verify_decimal_precision_backfill.py`
 
 这是本次唯一受支持的 baseline/current DuckDB 强只读 verifier。它本身不执行物化，也不能替代 runner 的 source、stage、governance 或生产授权检查。
 
@@ -581,7 +581,7 @@ Get-FileHash -Algorithm SHA256 -LiteralPath $PreflightReceipt
 
 ## 7. 受支持入口的写入阶段
 
-本节定义 `scripts/run_decimal_precision_backfill.py` 的阶段合同。由于当前状态仍为 `BLOCKED`，本文档不提供可直接复制执行的生产 `--apply` 命令；最终命令必须来自 owner 审批的维护工单，并使用与 `get_settings()` 解析完全一致的绝对路径和已审 commit。
+本节定义 `scripts/archive/decimal-backfill-2026-07-31/run_decimal_precision_backfill.py` 的阶段合同。由于当前状态仍为 `BLOCKED`，本文档不提供可直接复制执行的生产 `--apply` 命令；最终命令必须来自 owner 审批的维护工单，并使用与 `get_settings()` 解析完全一致的绝对路径和已审 commit。
 
 每一步均须使用绝对生产路径、唯一 run ID，并在下一步前核对返回 `status=completed`：
 

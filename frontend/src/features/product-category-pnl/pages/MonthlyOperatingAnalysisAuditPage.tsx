@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
+import { SectionHead } from "../../../components/layout";
 import type {
   QdbGlMonthlyAnalysisManualAdjustmentPayload,
   QdbGlMonthlyAnalysisManualAdjustmentRequest,
@@ -146,11 +147,14 @@ function SectionLead(props: {
   testId?: string;
 }) {
   return (
-    <div data-testid={props.testId} className="product-category-section-lead">
-      <span className="product-category-section-lead__eyebrow">{props.eyebrow}</span>
-      <h2 className="product-category-section-lead__title">{props.title}</h2>
-      <p className="product-category-section-lead__description">{props.description}</p>
-    </div>
+    <SectionHead
+      title={props.title}
+      category={props.eyebrow}
+      note={props.description}
+      numbered={false}
+      contentGap="tight"
+      testId={props.testId}
+    />
   );
 }
 

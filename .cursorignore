@@ -22,3 +22,15 @@ audit_pack/
 *.duckdb
 *.wal
 *.log
+# Large agent/session scratch directories (already git-ignored; keep them out of the IDE index too).
+.omx/
+.worktrees/
+tmp-governance/
+unused/
+.tmp-agent/
+.tmp/
+test_output/
+output/
+.codex_tmp/
+review-*/
+wp2-review-*/

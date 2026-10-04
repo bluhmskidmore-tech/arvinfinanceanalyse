@@ -102,10 +102,14 @@ function collectPortfolioMetaBlockers(
   if (metaDates.some((entry) => !entry.date)) {
     blockingReasons.push(`${label} report_date 缺失`);
   }
-  for (const entry of metaDates) {
-    if (expectedDate && entry.date && entry.date !== expectedDate) {
-      blockingReasons.push(`${label} meta_date=${entry.date}`);
-    }
+  // 三个日期字段通常同值，按唯一日期各推一条，避免同一原因重复三次。
+  const mismatchedDates = new Set(
+    metaDates
+      .map((entry) => entry.date)
+      .filter((date) => expectedDate && date && date !== expectedDate),
+  );
+  for (const date of mismatchedDates) {
+    blockingReasons.push(`${label} meta_date=${date}`);
   }
 }
 

@@ -16,10 +16,19 @@ import { EM_DASH } from "../../../utils/format";
 import { localizeStrategyPanelErrorDetail } from "../lib/stockAnalysisPageModel";
 import { normalizeIsoCalendarDate } from "../lib/stockAnalysisDate";
 import type { StockDetailReviewThesis } from "../lib/stockAnalysisDetailSelection";
+import {
+  PENDING_TEXT,
+  choiceNewsDataDateLabel,
+  choiceNewsTopicLabel,
+  formatChoiceNewsReceivedAt,
+  formatFixed,
+  formatMultiple,
+  formatRatioPercent,
+  formatRatioSignedPercent,
+  truncateChoiceNewsText,
+} from "../lib/stockAnalysisFormat";
 import { stockAnalysisPageCssVars } from "../lib/stockAnalysisTokens";
 import "./StockDetailDrawer.css";
-
-
 
 const LOOKBACK_CHOICES = [30, 60, 120] as const;
 const STOCK_DETAIL_CHART_HEIGHT = 300;
@@ -136,41 +145,6 @@ function buildCandleVolumeOption(
   };
 }
 
-function formatPePb(value: number | null): string {
-  if (!isFiniteNumber(value)) return "待补";
-  return value.toFixed(2);
-}
-
-function formatRoe(value: number | null): string {
-  if (!isFiniteNumber(value)) return "待补";
-  return `${(value * 100).toFixed(2)}%`;
-}
-
-function formatDividendYield(value: number | null): string {
-  if (!isFiniteNumber(value)) return "待补";
-  return `${(value * 100).toFixed(2)}%`;
-}
-
-function formatStockDetailPrice(value: number | null | undefined): string {
-  if (!isFiniteNumber(value)) return "待补";
-  return value.toFixed(2);
-}
-
-function formatStockDetailSignedPercent(
-  value: number | null | undefined,
-): string {
-  if (!isFiniteNumber(value)) return "待补";
-  const percentage = value * 100;
-  return `${percentage >= 0 ? "+" : ""}${percentage.toFixed(2)}%`;
-}
-
-function formatStockDetailVolumeRatio(
-  value: number | null | undefined,
-): string {
-  if (!isFiniteNumber(value)) return "待补";
-  return `${value.toFixed(1)}x`;
-}
-
 const stockKlineSignalLabels: Record<string, string> = {
   constructive_watch: "观察增强",
   watch: "继续观察",
@@ -233,13 +207,11 @@ function formatStockKlineScore(value: number | null | undefined): string {
 }
 
 function formatStockKlinePercent(value: number | null | undefined): string {
-  if (!isFiniteNumber(value)) return "待补";
-  return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
+  return formatRatioSignedPercent(value, 2, PENDING_TEXT);
 }
 
 function formatStockKlineIndicator(value: number | null | undefined): string {
-  if (!isFiniteNumber(value)) return "待补";
-  return value.toFixed(2);
+  return formatFixed(value, 2, PENDING_TEXT);
 }
 
 function firstStockKlinePattern(
@@ -317,83 +289,11 @@ export type StockDetailDrawerProps = {
   onClose: () => void;
 };
 
-function formatChoiceNewsReceivedAt(iso: string): string {
-  const t = iso.trim();
-  if (t.length >= 16) return t.slice(0, 16).replace("T", " ");
-  return t || EM_DASH;
-}
-
 function formatChoiceNewsDataDate(
   asOfDate: string | null | undefined,
   excludedFutureRows: number | null | undefined,
 ): string {
-  const dateLabel = asOfDate?.trim() || "待确认";
-  const futureRows = Number.isFinite(excludedFutureRows)
-    ? Number(excludedFutureRows)
-    : 0;
-  return futureRows > 0
-    ? `数据日期 ${dateLabel}（已剔除未来 ${futureRows} 条）`
-    : `数据日期 ${dateLabel}`;
-}
-
-function truncateChoiceNewsText(text: string | null, maxLen: number): string {
-  if (text == null || text === "") return EM_DASH;
-  const s = text.trim();
-  if (s.length <= maxLen) return s;
-  return `${s.slice(0, maxLen)}…`;
-}
-
-const choiceNewsContentTypeLabels: Record<string, string> = {
-  announcement: "公告",
-  research: "研报",
-  research_report: "研报",
-  sectornews: "行业新闻",
-  stocknews: "个股新闻",
-};
-
-function choiceNewsTopicLabel(
-  topicCode: string | null | undefined,
-  contentType: string | null | undefined,
-): string {
-  const normalizedContentType = contentType?.trim().toLowerCase();
-  if (
-    normalizedContentType &&
-    choiceNewsContentTypeLabels[normalizedContentType]
-  ) {
-    return choiceNewsContentTypeLabels[normalizedContentType];
-  }
-
-  const value = topicCode?.trim();
-  if (!value) return "事件分类待确认";
-  if (
-    isTechnicalChoiceNewsCode(contentType) ||
-    isTechnicalChoiceNewsCode(value)
-  )
-    return "事件分类待确认";
-  if (/^[A-Z0-9_]+$/.test(value) || value.includes("_"))
-    return "事件分类待确认";
-  return value;
-}
-
-function isTechnicalChoiceNewsCode(value: string | null | undefined): boolean {
-  const normalized = value
-    ?.trim()
-    .toLowerCase()
-    .replace(/[\s_-]+/g, "");
-  if (!normalized) return false;
-  return (
-    normalized.includes("externalvendor") ||
-    normalized.includes("vendorstatus") ||
-    normalized.includes("sourcetable") ||
-    normalized.includes("choicestock")
-  );
-}
-
-function formatCandidateHistoryReturn(
-  value: number | null | undefined,
-): string {
-  if (!isFiniteNumber(value)) return EM_DASH;
-  return `${(value * 100).toFixed(2)}%`;
+  return `数据日期 ${choiceNewsDataDateLabel(asOfDate, excludedFutureRows)}`;
 }
 
 function candidateHistoryRowClass(status: string): string {
@@ -454,7 +354,7 @@ function CandidateHistoryMaturityCell({
       data-maturity-status={maturityStatus}
       data-testid={`candidate-maturity-${horizon}`}
     >
-      <span>{formatCandidateHistoryReturn(returnValue)}</span>
+      <span>{formatRatioPercent(returnValue)}</span>
       {statusLabel ? (
         <>
           {" "}
@@ -535,24 +435,6 @@ function previousClose(
     if (isFiniteNumber(close)) return close;
   }
   return null;
-}
-
-function latestVolumeRatio(
-  candles: LivermoreStockDetailCandle[],
-  latest: LivermoreStockDetailCandle | null,
-): number | null {
-  if (!latest || !isFiniteNumber(latest.volume)) return null;
-  const latestIndex = candles.lastIndexOf(latest);
-  const previousVolumes = candles
-    .slice(Math.max(0, latestIndex - 20), latestIndex)
-    .map((candle) => candle.volume)
-    .filter((value): value is number => isFiniteNumber(value) && value > 0);
-  if (previousVolumes.length === 0) return null;
-  const average =
-    previousVolumes.reduce((sum, value) => sum + value, 0) /
-    previousVolumes.length;
-  if (!isFiniteNumber(average) || average <= 0) return null;
-  return latest.volume / average;
 }
 
 function firstReviewText(
@@ -699,10 +581,10 @@ export function StockDetailDrawer({
     previousCloseValue !== 0
       ? latestCloseValue / previousCloseValue - 1
       : null;
-  const volumeRatio = latestVolumeRatio(candles, latestCandle);
   const klineAnalysis = klineAnalysisQuery.data?.result ?? null;
   const klineSignal = klineAnalysis?.observation_signal ?? null;
   const klineIndicators = klineAnalysis?.indicators ?? {};
+  const volumeRatio = klineIndicators.volume_ratio_20d;
   const klineValidity = klineAnalysis?.validity ?? null;
   const klinePatternLabel = firstStockKlinePattern(klineAnalysis);
   const observationLine = reviewContext?.distanceToBreakoutPct ?? "待补";
@@ -962,11 +844,11 @@ export function StockDetailDrawer({
                 <div>
                   <span>价格</span>
                   <strong className="stock-detail-drawer__tabular">
-                    {formatStockDetailPrice(latestCloseValue)}
+                    {formatFixed(latestCloseValue, 2, PENDING_TEXT)}
                   </strong>
                   <small>
-                    较前日 {formatStockDetailSignedPercent(priceChange)} · 量能{" "}
-                    {formatStockDetailVolumeRatio(volumeRatio)}
+                    较前日 {formatRatioSignedPercent(priceChange, 2, PENDING_TEXT)} · 量能{" "}
+                    {formatMultiple(volumeRatio)}
                   </small>
                 </div>
                 <div>
@@ -1084,7 +966,7 @@ export function StockDetailDrawer({
                       </strong>
                       <small>
                         20日 {formatStockKlinePercent(klineIndicators.return_20d)} · 量能{" "}
-                        {formatStockDetailVolumeRatio(klineIndicators.volume_ratio_20d)}
+                        {formatMultiple(klineIndicators.volume_ratio_20d)}
                       </small>
                     </div>
                     <div data-tone={klineValidity?.usable ? undefined : "warning"}>
@@ -1219,7 +1101,7 @@ export function StockDetailDrawer({
                         PE
                       </div>
                       <div className="stock-detail-drawer__factor-value stock-detail-drawer__tabular">
-                        {formatPePb(factor?.pe ?? null)}
+                        {formatFixed(factor?.pe, 2, PENDING_TEXT)}
                       </div>
                     </div>
                     <div data-testid="stock-detail-factor-pb">
@@ -1227,7 +1109,7 @@ export function StockDetailDrawer({
                         PB
                       </div>
                       <div className="stock-detail-drawer__factor-value stock-detail-drawer__tabular">
-                        {formatPePb(factor?.pb ?? null)}
+                        {formatFixed(factor?.pb, 2, PENDING_TEXT)}
                       </div>
                     </div>
                     <div data-testid="stock-detail-factor-roe">
@@ -1235,7 +1117,7 @@ export function StockDetailDrawer({
                         ROE
                       </div>
                       <div className="stock-detail-drawer__factor-value stock-detail-drawer__tabular">
-                        {formatRoe(factor?.roe ?? null)}
+                        {formatRatioPercent(factor?.roe, 2, PENDING_TEXT)}
                       </div>
                     </div>
                     <div data-testid="stock-detail-factor-dividend">
@@ -1243,7 +1125,7 @@ export function StockDetailDrawer({
                         股息率
                       </div>
                       <div className="stock-detail-drawer__factor-value stock-detail-drawer__tabular">
-                        {formatDividendYield(factor?.dividend_yield ?? null)}
+                        {formatRatioPercent(factor?.dividend_yield, 2, PENDING_TEXT)}
                       </div>
                     </div>
                   </div>
@@ -1325,9 +1207,10 @@ export function StockDetailDrawer({
                           </tr>
                         </thead>
                         <tbody>
-                          {(candidateHistoryResult?.items ?? []).map((row) => (
+                          {(candidateHistoryResult?.items ?? []).map((row, index) => (
                             <tr
-                              key={`${row.snapshot_as_of_date}-${row.candidate_rank}-${row.stock_code}`}
+                              // 同日同排名的同一只股票可能来自不同信号池，需要 signal_kind 与序号才唯一。
+                              key={`${row.snapshot_as_of_date}-${row.candidate_rank}-${row.stock_code}-${row.signal_kind ?? "unknown"}-${index}`}
                               className={candidateHistoryRowClass(
                                 row.data_status,
                               )}

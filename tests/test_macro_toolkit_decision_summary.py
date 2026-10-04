@@ -8,6 +8,8 @@ definition metadata must not claim the aggregation is still unwired.
 
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
 import json
 from datetime import date
 from pathlib import Path
@@ -39,15 +41,15 @@ def _make_card(key: str, status: str, tone: str) -> dict[str, object]:
 
 def _decision_definition() -> dict[str, object]:
     return next(
-        item for item in macro_toolkit_route._CAPABILITY_DEFINITIONS if item["key"] == "decision_summary"
+        item for item in macro_toolkit_support._CAPABILITY_DEFINITIONS if item["key"] == "decision_summary"
     )
 
 
 def test_decision_summary_denominator_matches_aggregated_card_count() -> None:
-    non_decision_count = len(macro_toolkit_route._CAPABILITY_DEFINITIONS) - 1
+    non_decision_count = len(macro_toolkit_support._CAPABILITY_DEFINITIONS) - 1
     cards = [_make_card(f"m{index}", "complete", "positive") for index in range(non_decision_count)]
 
-    card = macro_toolkit_route._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
+    card = macro_toolkit_support._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
 
     assert card["primary_metric"]["unit"] == f"/{non_decision_count}"
     assert card["primary_metric"]["value"] == non_decision_count
@@ -62,7 +64,7 @@ def test_decision_summary_excludes_observation_cards_from_tone_voting() -> None:
         *[_make_card(key, "complete", "positive") for key in observation_keys],
     ]
 
-    card = macro_toolkit_route._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
+    card = macro_toolkit_support._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
 
     # 4 张 observation 卡全是 positive，也不得驱动方向性久期/信用建议
     assert card["tone"] == "neutral"
@@ -80,7 +82,7 @@ def test_decision_summary_excludes_observation_cards_from_tone_voting() -> None:
 def test_decision_summary_result_marks_formal_use_not_allowed() -> None:
     cards = [_make_card("m7", "complete", "positive")]
 
-    card = macro_toolkit_route._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
+    card = macro_toolkit_support._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
 
     assert card["result"]["formal_use_allowed"] is False
     assert card["tone"] == "positive"
@@ -94,7 +96,7 @@ def test_decision_summary_marks_degraded_when_any_module_unavailable() -> None:
         _make_card("m9", "unavailable", "missing"),
     ]
 
-    card = macro_toolkit_route._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
+    card = macro_toolkit_support._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
 
     assert card["status"] == "degraded"
     assert card["primary_metric"]["unit"] == "/3"
@@ -105,7 +107,7 @@ def test_decision_summary_marks_degraded_when_any_module_unavailable() -> None:
 def test_decision_summary_with_all_modules_unavailable_does_not_claim_neutral_stance() -> None:
     cards = [_make_card(f"m{index}", "unavailable", "missing") for index in range(10)]
 
-    card = macro_toolkit_route._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
+    card = macro_toolkit_support._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
 
     assert card["status"] == "unavailable"
     assert card["tone"] == "missing"
@@ -115,18 +117,18 @@ def test_decision_summary_with_all_modules_unavailable_does_not_claim_neutral_st
 
 
 def test_decision_summary_counts_all_non_decision_definitions_regardless_of_order() -> None:
-    original = macro_toolkit_route._CAPABILITY_DEFINITIONS
+    original = macro_toolkit_support._CAPABILITY_DEFINITIONS
     decision = next(item for item in original if item["key"] == "decision_summary")
     others = [item for item in original if item["key"] != "decision_summary"]
     reordered = tuple([others[0], decision, *others[1:]])
     try:
-        macro_toolkit_route._CAPABILITY_DEFINITIONS = reordered
-        cards = macro_toolkit_route._assemble_capability_cards(
+        macro_toolkit_support._CAPABILITY_DEFINITIONS = reordered
+        cards = macro_toolkit_support._assemble_capability_cards(
             {},
             date(2026, 7, 10),
         )
     finally:
-        macro_toolkit_route._CAPABILITY_DEFINITIONS = original
+        macro_toolkit_support._CAPABILITY_DEFINITIONS = original
 
     decision_card = next(item for item in cards if item["key"] == "decision_summary")
     assert decision_card["primary_metric"]["unit"] == f"/{len(others)}"
@@ -148,12 +150,12 @@ def test_decision_summary_observation_keys_match_shared_json_config() -> None:
 
     assert json_keys == sorted(json_keys)
     assert macro_toolkit_route._DECISION_SUMMARY_OBSERVATION_KEYS == set(json_keys)
-    assert macro_toolkit_route._load_decision_summary_observation_keys() == set(json_keys)
+    assert macro_toolkit_support._load_decision_summary_observation_keys() == set(json_keys)
 
 
 def test_decision_summary_observation_keys_are_not_eager_module_globals() -> None:
     # Lazy via __getattr__ / lru_cache: import must not materialize the frozenset into __dict__.
     assert "_DECISION_SUMMARY_OBSERVATION_KEYS" not in vars(macro_toolkit_route)
-    assert macro_toolkit_route._decision_summary_observation_keys() == (
+    assert macro_toolkit_support._decision_summary_observation_keys() == (
         macro_toolkit_route._DECISION_SUMMARY_OBSERVATION_KEYS
     )

@@ -90,19 +90,19 @@
   color: var(--dh-api-ink);
 }
 
+/* 子导航同壳层页签规则：常态无框文字，hover 显细线，当前页＝强调色描边 + 淡底。 */
 [data-testid="workbench-main-content"]:has(.pnl-by-business-page)
   .workbench-section-subnav__link {
-  border-color: var(--dh-api-line);
+  border-color: transparent;
   border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  background: transparent;
   color: var(--dh-api-soft);
   box-shadow: none;
 }
 
 [data-testid="workbench-main-content"]:has(.pnl-by-business-page)
   .workbench-section-subnav__link:hover {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line) 58%);
-  background: var(--dh-api-blue-soft);
+  border-color: var(--dh-api-line-soft);
   color: var(--dh-api-ink);
 }
 
@@ -130,25 +130,6 @@
   > [data-testid="workbench-governance-banner"]
   .workbench-notice__hint {
   color: var(--dh-api-soft);
-}
-
-/* Shared primitives still carry static light-theme colours inline. Keep the
- * correction scoped to this route until those primitives become theme-aware. */
-.pnl-by-business-section-lead > div > span {
-  color: var(--dh-api-muted) !important;
-}
-
-/* 英文眉标删除后（§7），空眉标 span 不再占据节题网格首行。 */
-.pnl-by-business-page [class*="sectionLeadEyebrow"]:empty {
-  display: none;
-}
-
-.pnl-by-business-section-lead > div > h2 {
-  color: var(--dh-api-ink) !important;
-}
-
-.pnl-by-business-section-lead > div > p {
-  color: var(--dh-api-soft) !important;
 }
 
 .pnl-by-business-page .formal-result-meta-panel__badge[title$="正常"],
@@ -180,7 +161,7 @@
 .pnl-by-business-hero-conclusion strong {
   color: var(--moss-color-neutral-900);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .pnl-by-business-hero-conclusion__mode {
@@ -220,7 +201,7 @@
   background: var(--moss-color-card-bg);
   color: var(--moss-color-neutral-700);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -265,37 +246,12 @@
 
 .pnl-by-business-hero-report-date strong {
   color: var(--moss-color-neutral-900);
-  font-weight: 800;
-}
-
-.pnl-by-business-kpi-band {
-  margin-bottom: 2px;
+  font-weight: 600;
 }
 
 .pnl-by-business-leadership-summary {
   display: grid;
   gap: 10px;
-}
-
-.pnl-by-business-kpi-item {
-  min-width: 0;
-}
-
-.pnl-by-business-kpi-item.pnl-by-business-kpi-metric--positive .moss-page-v2-kpi-metric__value,
-.pnl-by-business-kpi-item.pnl-by-business-kpi-metric--negative .moss-page-v2-kpi-metric__value {
-  color: var(--moss-color-neutral-900);
-}
-
-.pnl-by-business-kpi-metric__tabular-value {
-  font-family: var(--moss-font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-.pnl-by-business-kpi-metric__text-value {
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.35;
 }
 
 .pnl-by-business-evidence-panel {
@@ -345,7 +301,7 @@
 
 .pnl-by-business-data-status-strip > span strong {
   color: var(--moss-color-neutral-900);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .pnl-by-business-data-status-strip > span:nth-child(n + 6) {
@@ -387,7 +343,7 @@
 .pnl-by-business-precompute-status__eyebrow {
   color: var(--moss-color-neutral-500);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -406,7 +362,7 @@
 .pnl-by-business-precompute-status__error {
   color: var(--moss-color-danger-800);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   word-break: break-word;
 }
 
@@ -432,7 +388,7 @@
 .pnl-by-business-precompute-status__facts strong {
   overflow: hidden;
   color: var(--moss-color-neutral-800);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
@@ -503,7 +459,7 @@
 .pnl-by-business-management-change__eyebrow {
   color: var(--moss-color-primary-700);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -516,7 +472,7 @@
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-700);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-by-business-management-change__metrics {
@@ -544,7 +500,7 @@
 
 .pnl-by-business-management-change__metrics strong {
   color: var(--moss-color-neutral-900);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
@@ -621,7 +577,7 @@
 
 .pnl-by-business-management-change__components-grid strong {
   color: var(--moss-color-neutral-800);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   word-break: keep-all;
@@ -668,7 +624,7 @@
 .pnl-by-business-management-change__table-shell th {
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-by-business-management-change__table-shell th:first-child,
@@ -701,7 +657,7 @@
 .pnl-by-business-management-change__table-shell td small {
   color: var(--moss-color-primary-700);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-by-business-management-change__definition,
@@ -784,7 +740,7 @@
   flex: 0 0 auto;
   color: var(--moss-color-primary-700);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-by-business-detail-disclosure[open] .pnl-by-business-detail-disclosure__action::after {
@@ -821,7 +777,7 @@
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-900);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.5;
 }
 
@@ -848,7 +804,7 @@
 }
 
 .pnl-by-business-unallocated-toggle span:first-child {
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .pnl-by-business-unallocated-toggle span:last-child {
@@ -1065,7 +1021,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--moss-color-neutral-900);
 }
 
@@ -1084,7 +1040,7 @@
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -1101,7 +1057,7 @@
 }
 
 .pnl-by-business-table__decision-cell {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-by-business-table__decision-cell[data-pnl-tone="positive"] {
@@ -1188,7 +1144,7 @@
 
 .pnl-by-business-insight-strip__lead strong {
   color: var(--moss-color-neutral-900);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .pnl-by-business-insight-strip__lead span,
@@ -1206,7 +1162,7 @@
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   /* 「预警/降级」等徽标文案禁止在窄框内折行（§3 KPI 标签不错位）。 */
   white-space: nowrap;
 }
@@ -1258,7 +1214,7 @@
   overflow: hidden;
   color: var(--moss-color-neutral-900);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1308,13 +1264,13 @@
   background: var(--moss-color-card-bg);
   color: var(--moss-color-primary-800);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .pnl-by-business-drilldown-recommendation__lead strong {
   color: var(--moss-color-neutral-900);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .pnl-by-business-drilldown-recommendation__lead small {
@@ -1348,7 +1304,7 @@
   overflow: hidden;
   color: var(--moss-color-neutral-900);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1424,7 +1380,7 @@
   overflow: hidden;
   color: var(--moss-color-neutral-900);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1468,7 +1424,7 @@
   background: var(--moss-color-primary-50);
   color: var(--moss-color-primary-700);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-by-business-selected-trend__quality {
@@ -1484,18 +1440,6 @@
   line-height: 1.5;
 }
 
-.pnl-by-business-selected-trend__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-}
-
-.pnl-by-business-selected-trend__toolbar > span {
-  color: var(--moss-color-neutral-700);
-  font-size: 12px;
-}
-
 .pnl-by-business-selected-trend__tabs {
   display: inline-flex;
   gap: 2px;
@@ -1503,6 +1447,26 @@
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
   background: var(--moss-color-neutral-50);
+}
+
+.pnl-by-business-analysis-table {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pnl-by-business-analysis-table__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.pnl-by-business-analysis-table__count {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .pnl-by-business-selected-trend__tabs button {
@@ -1514,7 +1478,7 @@
   color: var(--moss-color-neutral-600);
   font: inherit;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -1535,27 +1499,6 @@
 .pnl-by-business-evidence-disclosure__summary:focus-visible {
   outline: 2px solid var(--moss-color-primary-500);
   outline-offset: 2px;
-}
-
-.pnl-by-business-selected-trend__card {
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-card-bg);
-}
-
-.pnl-by-business-selected-trend__card h3 {
-  margin: 0;
-  color: var(--moss-color-neutral-900);
-  font-size: 14px;
-}
-
-.pnl-by-business-selected-trend__card p {
-  margin: 4px 0 0;
-  color: var(--moss-color-neutral-600);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .pnl-by-business-deep-dive,
@@ -1607,7 +1550,7 @@
   flex: 0 0 auto;
   color: var(--moss-color-primary-700);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-by-business-evidence-disclosure__action-open {
@@ -1717,7 +1660,7 @@
 .pnl-by-business-month-title strong {
   color: var(--moss-color-neutral-900);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .pnl-by-business-month-title span {
@@ -1750,7 +1693,7 @@
 .pnl-by-business-month-metrics strong {
   color: var(--moss-color-neutral-900);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1783,7 +1726,7 @@
   border-top-color: var(--moss-color-primary-200);
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-900);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-by-business-month-table-shell .pnl-by-business-table th:first-child,
@@ -1838,7 +1781,8 @@
   border-radius: var(--moss-radius-sm);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-neutral-800);
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -2019,7 +1963,6 @@
   }
 
   .pnl-by-business-hero-actions,
-  .pnl-by-business-selected-trend__toolbar,
   .pnl-by-business-detail-disclosure__summary,
   .pnl-by-business-deep-dive__summary,
   .pnl-by-business-evidence-disclosure__summary {

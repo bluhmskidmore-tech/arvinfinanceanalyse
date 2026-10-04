@@ -548,39 +548,44 @@ class VendorAdapter(VendorAdapterBase):
     def _fetch_akshare_fx_records_locally(self, trade_date: str) -> list[dict[str, object]]:
         import akshare as ak  # type: ignore
 
-        loader_names = [
-            "currency_boc_safe",
-            "fx_spot_quote",
-            "currency_latest",
-        ]
-        last_error: Exception | None = None
-        for loader_name in loader_names:
-            loader = getattr(ak, loader_name, None)
-            if loader is None:
-                continue
-            for kwargs in (
-                {"trade_date": trade_date},
-                {"date": trade_date},
-                {"trade_date": trade_date.replace("-", "")},
-                {"date": trade_date.replace("-", "")},
-                {},
-            ):
-                try:
-                    frame = loader(**kwargs)
-                except TypeError:
-                    continue
-                except Exception as exc:  # noqa: BLE001  # 逐个探测 akshare loader 变体；最后一个错误聚合进 RuntimeError 再抛出
-                    last_error = exc
-                    continue
-                if frame is None:
-                    continue
-                if hasattr(frame, "to_dict"):
-                    return [dict(item) for item in frame.to_dict(orient="records")]
-                if isinstance(frame, list):
-                    return [dict(item) for item in frame]
-        if last_error is not None:
-            raise RuntimeError(f"AkShare FX local fetch failed: {last_error}")
-        raise RuntimeError("No supported local AkShare FX loader is available.")
+        loader = getattr(ak, "currency_boc_safe", None)
+        if loader is None:
+            raise RuntimeError("AkShare currency_boc_safe loader is unavailable.")
+
+        try:
+            frame = loader()
+        except Exception as exc:  # noqa: BLE001  # AkShare 供应商异常面无界，保留原始 cause 供正式刷新回执诊断
+            raise RuntimeError(f"AkShare currency_boc_safe fetch failed: {exc}") from exc
+
+        if frame is None:
+            raise RuntimeError("AkShare currency_boc_safe returned no records.")
+        if hasattr(frame, "to_dict"):
+            try:
+                raw_records = frame.to_dict(orient="records")
+            except Exception as exc:  # noqa: BLE001  # 第三方 DataFrame-like 对象可能抛出非标准转换异常
+                raise RuntimeError(
+                    "AkShare currency_boc_safe returned an unsupported payload shape."
+                ) from exc
+        elif isinstance(frame, list):
+            raw_records = frame
+        else:
+            raise RuntimeError(
+                "AkShare currency_boc_safe returned an unsupported payload shape."
+            )
+
+        if not isinstance(raw_records, list):
+            raise RuntimeError(
+                "AkShare currency_boc_safe returned an unsupported payload shape."
+            )
+        try:
+            records = [dict(item) for item in raw_records]
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "AkShare currency_boc_safe returned an unsupported payload shape."
+            ) from exc
+        if not records:
+            raise RuntimeError("AkShare currency_boc_safe returned no records.")
+        return records
 
     def _match_akshare_fx_candidate(
         self,

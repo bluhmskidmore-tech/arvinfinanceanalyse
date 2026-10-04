@@ -7,15 +7,15 @@ import type { CellClassParams, ColDef, IHeaderParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import "../../styles/agGridInstitutional.css";
-import ReactECharts from "../../lib/echarts";
-
 import { useApiClient } from "../../api/client";
 import { runPollingTask } from "../../app/jobs/polling";
 import type { DataSectionState } from "../../components/DataSection.types";
 import { FilterBar } from "../../components/FilterBar";
+import { ChartCard } from "../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../components/charts/chartCardScale";
 import { PageDataSection } from "../../components/page/PageDataSection";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
-import { SectionLead } from "../../components/page/SectionLead";
+import { SectionHead } from "../../components/layout";
 import type {
   Numeric,
   PnlBridgeEffectAvailability,
@@ -175,6 +175,23 @@ const bridgeGridDefaultColDef: ColDef = {
   filter: true,
   resizable: true,
 };
+
+/**
+ * 明细行的 AG Grid 节点 id。后端桥接明细是按（债券、组合、成本中心、会计分类）出行的，
+ * 同一债券在同一组合与会计分类下可以分属多个成本中心（实测 2026-07-31：1715 行里
+ * 有 34 组三元组重复），只用三元组会触发 AG Grid warning #2 Duplicate node id，
+ * 重复行被静默丢弃。report_date 一并纳入，切换报告日时不复用上一日的节点。
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- 纯函数导出供测试直接断言行 id 唯一性
+export function bridgeRowId(row: PnlBridgeRow): string {
+  return [
+    row.report_date ?? "",
+    row.instrument_code,
+    row.portfolio_name,
+    row.cost_center ?? "",
+    row.accounting_basis,
+  ].join("|");
+}
 
 const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
   { field: "instrument_code", headerName: "债券代码", width: 140, pinned: "left" },
@@ -406,10 +423,11 @@ export default function PnlBridgePage() {
         data-state={summaryState.kind}
         className="pnl-bridge-summary-section"
       >
-        <SectionLead
-          eyebrow="总览"
+        <SectionHead
+          category="总览"
           title="损益闭合校验汇总"
-          description="先看校验是否通过，再核对解释损益、实际损益、残差和质量标识；所有数值均来自后端正式桥接读模型。"
+          note="先看校验是否通过，再核对解释损益、实际损益、残差和质量标识；所有数值均来自后端正式桥接读模型。"
+          numbered={false}
         />
         {firstScreenMetaNotice ? (
           <Alert
@@ -508,17 +526,16 @@ export default function PnlBridgePage() {
               </div>
 
               {chartOption ? (
-                <div data-testid="pnl-bridge-waterfall-card" className="pnl-bridge-waterfall-card">
-                  <div className="pnl-bridge-waterfall-card__title">解释因子拆解（用于校验闭合）</div>
-                  <div className="pnl-bridge-waterfall-card__body">
-                    <div className="pnl-bridge-waterfall-chart">
-                      <ReactECharts
-                        option={chartOption}
-                        className="pnl-bridge-waterfall-chart__canvas"
-                        opts={{ renderer: "canvas" }}
-                      />
-                    </div>
-                  </div>
+                <div className="pnl-bridge-waterfall-slot">
+                  <ChartCard
+                    testId="pnl-bridge-waterfall-card"
+                    title="解释因子拆解"
+                    question="用于校验闭合"
+                    unit="元"
+                    height={CHART_CARD_HEIGHTS.hero}
+                    legend="none"
+                    option={chartOption}
+                  />
                 </div>
               ) : null}
 
@@ -544,10 +561,11 @@ export default function PnlBridgePage() {
       </div>
 
       <div data-testid="pnl-bridge-detail-section" data-state={detailState.kind}>
-        <SectionLead
-          eyebrow="明细"
+        <SectionHead
+          category="明细"
           title="闭合明细与归因瀑布"
-          description="逐行查看债券、组合、会计分类的可解释损益、实际损益和残差，用来定位没有闭合的来源。"
+          note="逐行查看债券、组合、会计分类的可解释损益、实际损益和残差，用来定位没有闭合的来源。"
+          numbered={false}
         />
         <PageDataSection
           title="桥接明细"
@@ -569,9 +587,7 @@ export default function PnlBridgePage() {
               animateRows
               pagination
               paginationPageSize={50}
-              getRowId={(params) =>
-                `${String(params.data.instrument_code)}-${String(params.data.portfolio_name)}-${String(params.data.accounting_basis)}`
-              }
+              getRowId={(params) => bridgeRowId(params.data)}
             />
           </div>
         </PageDataSection>

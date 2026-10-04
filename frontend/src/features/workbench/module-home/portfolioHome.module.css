@@ -21,7 +21,7 @@
   color: var(--dh-muted);
   font-size: 12px;
   font-style: normal;
-  font-weight: 760;
+  font-weight: 400;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -29,34 +29,28 @@
 
 .holdingsHeroFigureHead strong {
   color: var(--dh-blue);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-
 .holdingsHeroStackSegment {
   flex: 0 0 var(--holdings-hero-segment-width);
   border-right: 1px solid var(--dh-api-panel);
   background: var(--portfolio-chart-blue);
 }
-
 .holdingsHeroStackSegment:last-child {
   border-right: 0;
 }
-
 .holdingsHeroStackSegment[data-color-index="1"] {
   background: var(--portfolio-chart-info);
 }
-
 .holdingsHeroStackSegment[data-color-index="2"] {
   background: var(--portfolio-chart-green);
 }
-
 .holdingsHeroStackSegment[data-color-index="3"] {
   background: var(--portfolio-chart-amber);
 }
-
 .holdingsHeroStackSegment[data-color-index="4"] {
   background: var(--portfolio-chart-red);
 }
@@ -65,7 +59,7 @@
    其余页面级变量与布局声明已并入文件末尾的 V3 深蓝终端皮肤 .portfolioPage 块。 */
 .portfolioPage {
   min-height: calc(100vh - 32px);
-  border: 1px solid var(--dh-api-line-soft);
+  border: 0;
   color: var(--dh-ink);
 }
 
@@ -100,10 +94,10 @@
 .portfolioTopbar {
   min-width: 0;
   padding: 11px 14px;
-  border: 1px solid var(--dh-line);
-  border-left: 2px solid color-mix(in srgb, var(--dh-api-blue) 76%, transparent);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
+  border: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--dh-ink);
   box-shadow: none;
 }
@@ -112,7 +106,7 @@
   color: var(--dh-ink);
   font-family: var(--dh-font-sans, var(--ib-serif));
   font-size: 20px;
-  font-weight: 780;
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
 
@@ -138,9 +132,9 @@
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
-  color: var(--dh-ink);
-  font-size: 12.5px;
-  font-weight: 700;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1.5;
   max-width: 72ch;
   -webkit-box-orient: vertical;
@@ -180,7 +174,7 @@
   padding: 0 10px 0 0;
   color: var(--dh-muted);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -215,14 +209,14 @@
   background: transparent;
   color: var(--dh-muted-2);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 400;
   white-space: nowrap;
 }
 
 .datePill strong {
   color: var(--dh-ink-2);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-weight: 760;
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -246,7 +240,7 @@
 
 .workbenchSectionHead > div:first-child {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px 9px;
   min-width: 0;
 }
@@ -260,18 +254,18 @@
   min-width: 0;
   margin: 0;
   color: var(--dh-ink);
-  font-size: 16px;
-  font-weight: 860;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.25;
 }
 
 .workbenchSectionHead p {
-  grid-column: 2;
+  grid-column: 1;
   max-width: 76ch;
   margin: 0;
   color: var(--dh-muted-2);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1.45;
 }
 
@@ -296,15 +290,14 @@
   color: var(--dh-muted);
   font-size: 12px;
   font-style: normal;
-  font-weight: 780;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .holdingsPanoramaGrid,
 .exposureLedger,
-.closureWorkbenchGrid,
-.actionMatrixGrid {
+.closureWorkbenchGrid {
   display: grid;
   gap: 12px;
   min-width: 0;
@@ -342,14 +335,14 @@
 .closureGateHead span {
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
 .closureGateHead strong {
   min-width: 0;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -369,7 +362,7 @@
   padding-left: 11px;
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -391,7 +384,7 @@
 
 .closureGateReasons li[data-more] {
   color: var(--dh-muted-2);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .sectionBlock {
@@ -410,12 +403,6 @@
   box-shadow: none;
 }
 
-.terminalCard > .sectionHead {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--dh-line-soft, var(--ib-hairline));
-  background: var(--dh-card-soft);
-}
-
 .structureStatusBar {
   margin: 8px 10px 0;
   padding: 7px 9px;
@@ -424,7 +411,7 @@
   background: var(--dh-card-soft);
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .structureGapAction:hover {
@@ -445,82 +432,14 @@
   background: var(--dh-card-soft, var(--ib-paper));
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 500;
   text-align: center;
 }
 
-.quickAccessBlock {
-  min-width: 0;
-  padding-top: 2px;
-}
-
-.quickAccessCard:hover,
-.drillCard:hover {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, transparent);
-  background: var(--moss-color-primary-50);
-  text-decoration: none;
-}
-
-.quickAccessCard em,
-.drillCard em {
-  grid-column: 2;
-  justify-self: start;
-  color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 760;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.drillCardCurrent {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
-  background: var(--moss-color-primary-50);
-}
-
-.drillCardCurrent em {
-  color: var(--dh-blue-deep, var(--ib-accent));
-}
-
-.drilldownBlock {
-  min-width: 0;
-  overflow: hidden;
-  border: 0;
-  border-radius: 0 var(--dh-api-radius, 6px) var(--dh-api-radius, 6px) 0;
-  box-shadow: none;
-}
-
-.sectionHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--dh-space-2, 12px);
-  padding: 0 2px;
-  flex-wrap: wrap;
-}
-
-.sectionHead span {
-  color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 12px;
-  font-weight: 750;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.sectionHead strong {
-  color: var(--dh-blue, var(--ib-accent));
-  font-size: 14px;
-  font-weight: 850;
-}
+/* 卡头已迁到 components/layout 的 SectionHead 原语（numbered={false}）：分类眉标
+   与标题的字号、色阶由原语的 CSS module 定义，页面不再持有一份。 */
 
 /* 组头右侧汇总徽注（如「N 个入口临时开放」），承接行内不再重复的状态（B6）。 */
-.sectionHeadNote {
-  margin-left: auto;
-  color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 720;
-}
 
 .chartSnapshot {
   display: grid;
@@ -528,9 +447,9 @@
   min-width: 0;
   padding: 10px 12px 12px;
   overflow: hidden;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
 }
 
@@ -544,15 +463,15 @@
 .chartSnapshotHead span {
   color: var(--dh-muted-2);
   font-size: 12px;
-  font-weight: 850;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .chartSnapshotHead strong {
-  color: var(--dh-blue);
+  color: var(--dh-ink);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 500;
 }
 
 .chartSnapshotGrid {
@@ -567,9 +486,9 @@
   gap: 8px;
   min-width: 0;
   padding: 9px 10px;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card-soft);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .chartSnapshotCardHead {
@@ -584,7 +503,7 @@
   overflow: hidden;
   color: var(--dh-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -592,9 +511,9 @@
 .chartSnapshotCardHead strong {
   justify-self: start;
   color: var(--dh-ink);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -618,16 +537,17 @@
   overflow: hidden;
   color: var(--dh-muted-2);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .chartMiniMetric {
   color: var(--moss-color-info-100);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -694,7 +614,7 @@
 .terminalPanelHead strong {
   color: var(--dh-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.01em;
 }
 
@@ -715,7 +635,7 @@
   overflow: hidden;
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -723,7 +643,7 @@
 .decisionReadinessBar strong {
   color: var(--dh-blue-deep, var(--ib-accent));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -772,7 +692,7 @@
 .decisionActionLabel {
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -814,13 +734,13 @@
 
 .decisionActionText strong {
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .decisionActionText small {
   color: var(--dh-muted-2, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .decisionActionTarget {
@@ -829,7 +749,7 @@
   align-items: center;
   color: var(--dh-blue-deep, var(--ib-accent));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -837,11 +757,11 @@
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 1fr));
   gap: 8px;
-  padding: 1px;
+  padding: 0;
   overflow: hidden;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-line-soft);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .briefCard {
@@ -852,48 +772,34 @@
   padding: 7px 9px;
   overflow: hidden;
   border: 0;
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
-}
-
-.briefCard::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-blue, var(--ib-accent));
-}
-
-.briefCardOk::before {
-  background: var(--dh-green, var(--ib-up));
-}
-
-.briefCardWatch::before {
-  background: var(--dh-amber, var(--ib-warn));
-}
-
-.briefCardError::before {
-  background: var(--dh-red, var(--ib-down));
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .briefCardPrimary {
-  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+  background: transparent;
   box-shadow: none;
+}
+
+.briefCardOk::before,
+.briefCardWatch::before,
+.briefCardError::before {
+  content: none;
 }
 
 .briefTitle {
   color: var(--dh-muted-2, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 750;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .briefConclusion {
   color: var(--dh-ink, var(--ib-ink));
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 500;
   line-height: 1.42;
 }
 
@@ -911,28 +817,8 @@
   -webkit-line-clamp: 2;
 }
 
-.portfolioKpiValueRow {
-  display: block;
-  min-width: 0;
-}
-
 .portfolioKpiSparkline {
   display: none;
-}
-
-.kpiGridTape {
-  min-width: 0;
-  overflow: visible;
-  padding-bottom: 0;
-}
-
-.kpiGridTape::-webkit-scrollbar {
-  height: 6px;
-}
-
-.kpiGridTape::-webkit-scrollbar-thumb {
-  border-radius: var(--dh-api-radius, 6px);
-  background: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
 }
 
 .portfolioRiskTickerBar {
@@ -960,7 +846,7 @@
 .portfolioRiskTickerHead span {
   color: var(--moss-color-info-300);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -968,7 +854,7 @@
 .portfolioRiskTickerHead strong {
   color: var(--dh-blue-deep, var(--ib-accent));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .portfolioRiskTickerTrack {
@@ -993,7 +879,7 @@
 .portfolioRiskTickerLabel {
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -1008,14 +894,14 @@
 .portfolioRiskTickerValue {
   color: var(--dh-ink, var(--ib-ink));
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.1;
 }
 
 .portfolioRiskTickerChange {
   color: var(--dh-muted-2, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   font-style: normal;
   line-height: 1.25;
 }
@@ -1028,90 +914,8 @@
   margin: 0;
   color: var(--dh-muted-2, var(--ib-ink-muted));
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
-}
-
-.kpiCard::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--portfolio-chart-blue, var(--ib-accent));
-}
-
-.kpiCard::after {
-  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  inset: 10px 12px auto auto;
-  width: 28px;
-}
-
-.kpiCard[data-tone="ok"]::before {
-  background: var(--dh-green);
-}
-
-.kpiCard[data-tone="watch"]::before {
-  background: var(--portfolio-chart-amber, var(--ib-warn));
-}
-
-.kpiCard[data-tone="error"]::before {
-  background: var(--portfolio-chart-red, var(--ib-down));
-}
-
-.kpiValue {
-  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  color: var(--dh-blue);
-  font-weight: 800;
-}
-
-.kpiValue span {
-  flex-shrink: 0;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kpiValue small {
-  color: var(--dh-muted);
-  font-family: var(--dh-font-sans, "Microsoft YaHei UI", sans-serif);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.1;
-  white-space: nowrap;
-}
-
-.kpiCard:nth-child(-n + 2) .kpiValue {
-  color: var(--dh-ink);
-  margin-top: 12px;
-  font-size: 24px;
-}
-
-.kpiCard:nth-child(-n + 2) .kpiValue small {
-  font-size: 15px;
-}
-
-.kpiCard:nth-child(n + 3) {
-  grid-column: auto;
-}
-
-.kpiValue.toneOk {
-  color: var(--dh-blue);
-}
-
-.kpiValue.toneWatch {
-  color: var(--dh-amber);
-}
-
-.kpiValue.toneMuted {
-  color: var(--dh-muted);
-}
-
-.kpiDetail {
-  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  color: var(--dh-muted-2);
-  line-height: 1.35;
 }
 
 .statusStrip {
@@ -1132,27 +936,27 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-line-soft, var(--ib-hairline));
+  border-radius: 0;
+  background: transparent;
 }
 
 .statusCell {
   display: grid;
   gap: 4px;
   padding: 10px 12px;
-  background: var(--dh-card-soft, var(--ib-surface));
+  background: transparent;
 }
 
 .statusCell span {
   color: var(--dh-muted-2, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .statusCell b {
   color: var(--dh-ink, var(--ib-ink));
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1166,7 +970,7 @@
 
 .distPanel {
   --dist-accent: var(--moss-color-primary-700);
-  --dist-chart-height: 220px;
+  --dist-chart-height: 160px;
   padding: 0;
   overflow: hidden;
   border: 0;
@@ -1191,7 +995,7 @@
 .distViewAll {
   color: var(--dh-blue, var(--ib-accent));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.2;
   text-decoration: none;
   white-space: nowrap;
@@ -1237,7 +1041,7 @@
 .distTopLabel {
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1245,7 +1049,7 @@
   overflow: hidden;
   color: var(--dh-ink, var(--ib-ink));
   font-size: 14px;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1254,10 +1058,10 @@
 .distTopHighlight em {
   justify-self: end;
   color: var(--dist-accent);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 13px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1267,7 +1071,7 @@
   margin: 0;
   color: var(--dh-blue-deep, var(--ib-accent));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .distStateBadge {
@@ -1275,7 +1079,7 @@
   border-radius: var(--dh-api-radius);
   background: var(--dh-card-soft, var(--ib-paper));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .distBody {
@@ -1288,7 +1092,7 @@
 
 .distChartCol {
   position: relative;
-  min-height: var(--dist-chart-height, 206px);
+  min-height: var(--dist-chart-height, 160px);
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
   border-radius: var(--dh-api-radius, 6px);
@@ -1308,16 +1112,16 @@
 .distChartCenter span {
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
 .distChartCenter strong {
   color: var(--portfolio-chart-ink, var(--ib-ink));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 16px;
-  font-weight: 800;
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-size: 20px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
@@ -1391,7 +1195,7 @@
   overflow: hidden;
   color: var(--dh-ink, var(--ib-ink));
   font-size: 13.5px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1399,9 +1203,9 @@
 
 .distMetric {
   color: var(--dist-accent);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1410,9 +1214,9 @@
   grid-column: 2 / -1;
   margin-top: -2px;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1455,107 +1259,21 @@
   background: var(--portfolio-chart-blue, var(--ib-accent));
 }
 
+/* 空态收缩（DESIGN §5 / 结论 13）：一句说明 + 原因，不画 conic-gradient 假环与零值假柱。 */
 .distEmptyState {
   display: grid;
-  grid-template-columns: 152px minmax(0, 1fr);
-  gap: 14px;
   align-items: center;
-  min-height: 176px;
+  min-height: 96px;
   padding: 12px;
   border: 1px dashed var(--dh-line);
   border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft);
 }
 
-.distEmptyChart {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 132px;
-  aspect-ratio: 1;
-  justify-self: center;
-  border-radius: 50%;
-  background:
-    conic-gradient(
-      from 112deg,
-      var(--portfolio-chart-blue, var(--ib-accent)) 0 24%,
-      var(--portfolio-chart-info, var(--ib-accent)) 24% 43%,
-      var(--portfolio-chart-green, var(--ib-up)) 43% 64%,
-      var(--portfolio-chart-amber, var(--ib-warn)) 64% 82%,
-      var(--portfolio-chart-red, var(--ib-down)) 82% 100%
-    );
-  opacity: 0.58;
-  box-shadow: none;
-}
-
-.distEmptyChart::after {
-  content: "";
-  width: 62%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle, var(--ib-surface) 0 56%, color-mix(in srgb, var(--dh-api-blue) 10%, transparent) 57% 63%, var(--ib-surface) 64%);
-}
-
-.distEmptyChart span {
-  display: none;
-}
-
-.distEmptyBars {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
-.distEmptyBars span {
-  display: block;
-  height: 10px;
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--portfolio-chart-blue, var(--ib-accent));
-  opacity: 0.28;
-}
-
-.distEmptyBars span:nth-child(1) {
-  width: 92%;
-}
-
-.distEmptyBars span:nth-child(2) {
-  width: 78%;
-}
-
-.distEmptyBars span:nth-child(3) {
-  width: 66%;
-}
-
-.distEmptyBars span:nth-child(4) {
-  width: 54%;
-}
-
-.distEmptyBars span:nth-child(5) {
-  width: 42%;
-}
-
-.distEmptyBars span[data-color-index="1"] {
-  background: var(--portfolio-chart-info, var(--ib-accent));
-}
-
-.distEmptyBars span[data-color-index="2"] {
-  background: var(--portfolio-chart-green, var(--ib-up));
-}
-
-.distEmptyBars span[data-color-index="3"] {
-  background: var(--portfolio-chart-amber, var(--ib-warn));
-}
-
-.distEmptyBars span[data-color-index="4"] {
-  background: var(--portfolio-chart-red, var(--ib-down));
-}
-
 .distEmptyState .distMeta {
-  grid-column: 1 / -1;
   padding-top: 2px;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .structureSplit {
@@ -1577,9 +1295,9 @@
 .structureChartCol {
   min-height: 280px;
   padding: 10px 12px 8px;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card-soft);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .structureChartWrap {
@@ -1587,39 +1305,6 @@
   gap: 6px;
   min-width: 0;
   overflow: hidden;
-}
-
-.structureChartTitle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--portfolio-chart-ink, var(--ib-ink));
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.structureChartTitle::before {
-  content: "";
-  width: 3px;
-  height: 14px;
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--ib-surface);
-}
-
-.structureChartEmpty {
-  display: grid;
-  place-items: end stretch;
-  min-height: 240px;
-  padding: 16px;
-  border: 1px dashed color-mix(in srgb, var(--dh-api-blue) 26%, transparent);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
-  background-position: left 46px, left 86px, left 126px, left 166px, 0 0;
-  background-repeat: no-repeat;
-  background-size: 100% 12px, 100% 12px, 100% 12px, 100% 12px, 100% 100%;
-  color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 12px;
-  font-weight: 750;
 }
 
 .compactList {
@@ -1653,7 +1338,7 @@
 .compactLabel {
   color: var(--dh-ink, var(--ib-ink));
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 400;
 }
 
 .compactSource {
@@ -1664,9 +1349,9 @@
 
 .compactValue {
   color: var(--dh-blue, var(--ib-accent));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1.45;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1720,7 +1405,7 @@
 .detailTop[data-value-kind="prose"] .detailValue {
   font-family: var(--dh-font-sans, inherit);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.45;
   text-align: left;
   overflow-wrap: anywhere;
@@ -1734,9 +1419,9 @@
 
 .detailValue {
   color: var(--dh-blue, var(--ib-accent));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1763,7 +1448,7 @@
 .holdingsHeroHead strong {
   color: var(--dh-ink, var(--ib-ink));
   font-size: 14px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -1782,16 +1467,16 @@
   overflow: hidden;
   color: var(--dh-ink, var(--ib-ink));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .holdingsHeroBarTop strong {
   color: var(--dh-api-ink-soft);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1815,9 +1500,10 @@
 .holdingsHeroBarValue {
   overflow: hidden;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1854,9 +1540,9 @@
   width: auto;
   align-self: start;
   color: var(--portfolio-signal-info-strong);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1864,7 +1550,7 @@
   overflow: hidden;
   color: var(--dh-ink);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1875,7 +1561,7 @@
   color: var(--dh-muted-2);
   font-size: 12px;
   font-style: normal;
-  font-weight: 740;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1885,7 +1571,7 @@
   margin: 0;
   color: var(--dh-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -1969,8 +1655,8 @@
 
 .summaryLedgerCard .chartSnapshotGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--moss-space-4);
   padding: 0;
   border: 0;
   background: transparent;
@@ -1983,14 +1669,14 @@
   /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   padding: 7px 9px;
   border: 0;
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card-soft);
+  border-radius: 0;
+  background: transparent;
 }
 
 .summaryLedgerCard .chartSnapshotCard {
   gap: 6px;
   padding: 8px 9px;
-  border: 1px solid var(--dh-line-soft);
+  border: 0;
 }
 
 .summaryLedgerCard .chartMiniBars {
@@ -2029,9 +1715,9 @@
   padding: 0;
   gap: 1px;
   overflow: hidden;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-line-soft);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .summaryLedgerCard .briefGrid::before,
@@ -2042,9 +1728,10 @@
   min-height: 24px;
   padding: 5px 8px 4px;
   color: var(--dh-muted);
-  background: var(--dh-card-soft);
+  background: transparent;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 500;
+  border-bottom: 1px solid var(--dh-line-soft);
 }
 
 .summaryLedgerCard .briefGrid::before {
@@ -2058,15 +1745,12 @@
 .summaryLedgerCard .briefCard,
 .summaryLedgerCard .statusCell {
   border-radius: 0;
-  background: var(--dh-card);
-}
-
-.summaryLedgerCard .briefCard::before {
-  display: none;
+  background: transparent;
+  border-bottom: 1px solid var(--dh-line-soft);
 }
 
 .summaryLedgerCard .briefCardPrimary {
-  background: var(--dh-card);
+  background: transparent;
 }
 
 .holdingsPanoramaGrid {
@@ -2109,7 +1793,7 @@
   color: var(--dh-muted-2);
   font-size: 12px;
   font-style: normal;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .holdingsHeroSplit {
@@ -2170,12 +1854,12 @@
 .exposureWorkbenchHead span {
   color: var(--dh-muted-2);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .exposureWorkbenchHead h2 {
   /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .exposureWorkbenchHead p {
@@ -2185,7 +1869,7 @@
   margin: 0;
   color: var(--dh-muted);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1.45;
   text-align: right;
 }
@@ -2213,13 +1897,15 @@
 
 .exposureLedgerHeader span {
   color: var(--dh-muted);
-  font-weight: 850;
+  font-weight: 500;
 }
 
 .exposureLedgerRow em {
   color: var(--dh-muted);
   font-style: normal;
-  font-weight: 720;
+  font-weight: 400;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .closureWorkbenchGrid {
@@ -2242,7 +1928,7 @@
 .structureTableHead span {
   color: var(--dh-muted);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .structureTableWorkbench .structureStatusBar {
@@ -2282,76 +1968,9 @@
   grid-template-columns: minmax(240px, 1.5fr) minmax(160px, 0.8fr);
 }
 
-.quickAccessGrid,
-.drillGrid {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.quickAccessCard span,
-.drillCard span {
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border: 1px solid color-mix(in srgb, var(--dh-api-soft) 18%, transparent);
-  border-radius: var(--dh-api-radius, 6px);
-  background: color-mix(in srgb, var(--dh-api-panel-2) 72%, transparent);
-  color: var(--dh-api-ink-soft);
-  font-size: 12px;
-}
-
-.quickAccessCard b,
-.drillCard b {
-  overflow: hidden;
-  color: var(--dh-ink, var(--ib-ink));
-  font-weight: 850;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-  font-size: 12px;
-}
-
 /* 快捷入口为主级：保留说明文字、抬高对比，与明细索引区分层级。 */
-.quickAccessCard {
-  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  min-height: 46px;
-  padding: 9px 11px;
-}
-
-.quickAccessCard span {
-  width: 24px;
-  height: 24px;
-  border-color: color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
-  color: var(--dh-api-blue);
-  font-size: 12px;
-}
-
-.quickAccessCard b {
-  font-size: 12px;
-}
-
-.quickAccessCard em {
-  color: var(--dh-muted-2);
-  font-size: 12px;
-  font-weight: 720;
-}
 
 /* 明细入口为索引级：默认就绪不占版面，仅偏离默认时显示状态。 */
-.drillCard[data-readiness="default"] em {
-  display: none;
-}
-
-.drillCard[data-readiness="note"] em {
-  color: var(--dh-api-amber);
-  font-size: 12px;
-  font-weight: 750;
-}
-
-.drillCardCurrent[data-readiness="note"] em {
-  color: var(--dh-api-blue);
-}
 
 /* grid-template-columns 留在原位：需被更晚的 @media .decisionPanel 覆盖 */
 .decisionPanel {
@@ -2368,7 +1987,7 @@
 .decisionTitle {
   margin: 0;
   color: var(--dh-ink, var(--ib-ink));
-  font-weight: 880;
+  font-weight: 600;
   font-size: 24px;
   line-height: 1.16;
 }
@@ -2379,7 +1998,7 @@
   margin: 0;
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.42;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2399,41 +2018,14 @@
   overflow-wrap: normal;
   word-break: normal;
   color: var(--dh-ink, var(--ib-ink));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-weight: 850;
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-weight: 600;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
   font-size: 12.5px;
 }
 
 /* grid-template-columns 留在原位：需被更晚出现的 @media (max-width: 900px) .kpiGrid 覆盖 */
-.kpiGrid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.kpiCard[data-empty="true"] {
-  border-color: color-mix(in srgb, var(--dh-api-amber) 32%, transparent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-amber) 10%, transparent), color-mix(in srgb, var(--dh-api-amber) 1.8%, transparent)),
-    var(--dh-card);
-}
-
-.kpiValue {
-  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  font-size: 23px;
-}
-
-.kpiValue[data-empty="true"] {
-  color: var(--dh-amber);
-  font-family: var(--dh-font-sans, "Microsoft YaHei UI", sans-serif);
-  font-size: 16px;
-  font-weight: 900;
-  letter-spacing: 0;
-}
-
-.kpiValue[data-empty="true"] span {
-  white-space: nowrap;
-}
 
 .summaryLedgerCard {
   display: grid;
@@ -2454,12 +2046,6 @@
 .summaryLedgerCard .statusCell {
   /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   min-height: 34px;
-  border-left: 2px solid color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
-}
-
-.summaryLedgerCard .briefCardWatch,
-.summaryLedgerCard .statusCell:has(.toneWatch) {
-  border-left-color: color-mix(in srgb, var(--dh-api-amber) 58%, transparent);
 }
 
 .summaryLedgerCard .chartMiniSkeleton {
@@ -2483,7 +2069,7 @@
     linear-gradient(color-mix(in srgb, var(--dh-api-amber) 18%, transparent) 0 0) 14px 82px / 46% 8px no-repeat,
     var(--dh-card-soft);
   color: var(--dh-amber);
-  font-weight: 820;
+  font-weight: 600;
 }
 
 .exposureWorkbenchSection {
@@ -2501,8 +2087,8 @@
 
 .exposureLedgerRow strong {
   color: var(--dh-blue);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-weight: 850;
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
 }
@@ -2535,37 +2121,12 @@
   margin-bottom: 7px;
 }
 
-.quickAccessBlock,
-.drilldownBlock {
-  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
-  border-radius: var(--dh-api-radius, 6px);
-  background: color-mix(in srgb, var(--dh-api-panel-2) 48%, transparent);
-}
-
-.quickAccessCard,
-.drillCard {
-  border-color: color-mix(in srgb, var(--dh-api-soft) 20%, transparent);
-  background: color-mix(in srgb, var(--dh-api-panel-2) 46%, transparent);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-  color: var(--dh-ink, var(--ib-ink));
-  text-decoration: none;
-  box-shadow: none;
-  border-radius: var(--dh-api-radius, 6px);
-  min-height: 31px;
-  padding: 6px 8px;
-}
-
 @media (max-width: 1280px) {
   .holdingsHeroSplit {
     width: 100%;
     grid-template-columns: minmax(0, 1fr);
   }
 }
-
 
 .dataNote {
   grid-column: 1 / -1;
@@ -2615,14 +2176,14 @@
 
 .structureGapAction span {
   color: var(--dh-amber, var(--ib-warn));
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .structureGapAction strong {
   min-width: 0;
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .structureGapAction[data-tone="error"] span {
@@ -2639,7 +2200,7 @@
   padding: 2px 10px;
   border-radius: var(--dh-api-radius, 6px);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   border: 1px solid var(--dh-line, var(--ib-hairline));
   background: var(--ib-surface);
 }
@@ -2662,19 +2223,6 @@
   background: var(--dh-red-soft, var(--moss-color-danger-50));
 }
 
-@media (min-width: 1320px) {
-  .kpiGridTape {
-    overflow-x: visible;
-  }
-
-  .kpiGrid {
-    grid-auto-flow: row;
-    grid-auto-columns: unset;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    width: 100%;
-  }
-}
-
 @media (max-width: 760px) {
   .decisionPanel {
     grid-template-columns: minmax(0, 1fr);
@@ -2689,8 +2237,7 @@
 
   .holdingsPanoramaGrid,
 .exposureLedger,
-.closureWorkbenchGrid,
-.actionMatrixGrid {
+.closureWorkbenchGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2717,10 +2264,6 @@
 
   .distEmptyState {
     grid-template-columns: 126px minmax(0, 1fr);
-  }
-
-  .distEmptyChart {
-    width: 112px;
   }
 
   .structureSplit {
@@ -2767,23 +2310,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .kpiCard {
-    min-height: 98px;
-    padding: 11px 12px 10px;
-  }
-
-  .kpiGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .kpiValue {
-    font-size: 20px;
-  }
-
-  .kpiValue small {
-    font-size: 12px;
-  }
-
   .distBody {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
@@ -2798,10 +2324,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .distEmptyBars {
-    width: min(220px, 100%);
-    margin: 0 auto;
-  }
 }
 
 @media (max-width: 680px) {
@@ -2848,11 +2370,6 @@
   .summaryLedgerCard .briefGrid,
   .summaryLedgerCard .statusGrid {
     gap: 5px;
-  }
-
-  .quickAccessGrid,
-  .drillGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .exposureLedgerHeader,
@@ -2909,7 +2426,6 @@
 
 @media (min-width: 1101px) {
 
-
   .decisionReadinessBar {
     min-height: 28px;
     padding: 5px 7px;
@@ -2950,11 +2466,6 @@
 
   .sectionBlock {
     gap: 7px;
-  }
-
-  .kpiValue span {
-    overflow: visible;
-    text-overflow: clip;
   }
 
   .summaryLedgerCard .chartSnapshotCard,
@@ -3016,7 +2527,7 @@
   }
 
   .exposureWorkbenchHead h2 {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .exposureWorkbenchHead p {
@@ -3045,27 +2556,6 @@
     padding: 4px 6px;
   }
 
-  .quickAccessGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .drillGrid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .quickAccessCard,
-  .drillCard {
-    min-height: 28px;
-    padding: 6px 8px;
-  }
-
-  .quickAccessCard b,
-  .drillCard b {
-    font-size: 12px;
-  }
-
 }
 
 @media (min-width: 1101px) {
@@ -3080,7 +2570,7 @@
   .portfolioPage {
     gap: 16px;
     min-height: 0;
-    padding: 0;
+    padding: var(--moss-space-4) var(--moss-page-gutter);
     border: 0;
     background: transparent;
   }
@@ -3167,14 +2657,16 @@
     text-transform: none;
   }
 
+  /* 结论、证据与来源说明是完整句，单行省略只剩「债券组合 3,423…」；放开到最多 3 行，原文仍在 title。 */
   .summaryLedgerCard .briefConclusion,
-  .summaryLedgerCard .briefEvidence {
-    display: block;
-    -webkit-line-clamp: unset;
-  }
-
+  .summaryLedgerCard .briefEvidence,
   .summaryLedgerCard .statusCell em {
-    display: block;
+    display: -webkit-box;
+    overflow: hidden;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
   }
 
   .summaryLedgerCard .statusCell span,
@@ -3240,7 +2732,6 @@
     border: 0;
     background: transparent;
   }
-
   .holdingsHeroStackBar {
     height: 9px;
   }
@@ -3280,12 +2771,7 @@
 
   .holdingsHeroBarTrack,
   .holdingsHeroBarFill {
-    border-radius: 999px;
-  }
-
-  .quickAccessBlock,
-  .drilldownBlock {
-    min-height: 0;
+    border-radius: 0;
   }
 
   .structureTableWorkbench .compactList {
@@ -3306,7 +2792,7 @@
     color: var(--dh-muted);
     background: var(--dh-card-soft);
     font-size: 12px;
-    font-weight: 850;
+    font-weight: 600;
     letter-spacing: 0.01em;
   }
 
@@ -3315,11 +2801,11 @@
     gap: 10px;
     min-height: 24px;
     padding: 4px 8px;
-    border-bottom: 0;
+    border-bottom: 1px solid var(--dh-line-soft);
     background: var(--dh-card);
   }
 
-  .structureTableWorkbench .embeddedPanelHead,
+  .structureTableWorkbench .embeddedPanel:not([data-empty]) .embeddedPanelHead,
   .structureTableWorkbench .detailSource {
     display: none;
   }
@@ -3346,12 +2832,6 @@
 
   .structureTableWorkbench .compactValue {
     text-align: left;
-  }
-
-  .actionMatrixGrid {
-    grid-template-columns: minmax(0, 0.44fr) minmax(0, 0.56fr);
-    gap: 10px;
-    align-items: start;
   }
 
   .dataNote {
@@ -3416,7 +2896,7 @@
 
 .decisionKicker {
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--portfolio-signal-review);
 }
@@ -3445,29 +2925,10 @@
 .summaryLedgerCard,
 .exposureWorkbenchSection,
 .structureTableWorkbench,
-.closureReviewCard,
-.quickAccessBlock,
-.drilldownBlock {
+.closureReviewCard {
   border-color: color-mix(in srgb, var(--dh-api-soft) 16%, transparent);
 }
 
-.kpiCard:nth-child(-n + 2) {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-soft) 5.5%, transparent), color-mix(in srgb, var(--dh-api-soft) 1.2%, transparent)),
-    var(--dh-card);
-}
-
-.kpiCard:nth-child(5n + 1),
-.kpiCard:hover {
-  border-color: var(--portfolio-info-border);
-}
-
-.kpiValue,
-.kpiValue.toneOk {
-  color: var(--portfolio-signal-info-strong);
-}
-
-.kpiCard[data-empty="true"],
 .closureReviewCardRisk {
   border-color: var(--portfolio-review-border);
 }
@@ -3480,12 +2941,6 @@
 .structureTableWorkbench :global(.ant-tabs-tab:nth-child(2)) {
   border-color: var(--portfolio-review-border);
   background: var(--portfolio-review-soft);
-}
-
-.summaryLedgerCard .chartSnapshotCard,
-.summaryLedgerCard .briefCard,
-.summaryLedgerCard .statusCell {
-  border-left-color: var(--portfolio-info-border-strong);
 }
 
 .summaryLedgerCard .chartMiniSkeleton span {
@@ -3519,12 +2974,41 @@
   }
 }
 
-.structureTableHead,
-.structureGapActions,
-.structureTableWorkbench .embeddedPanelHead,
+/* 数据齐全时隐藏冗余的「4/4 就绪」表头、状态 pill 与来源行；
+   有缺口（data-gaps>0）或空态（data-empty）时状态摘要、补救深链与空态说明必须可见。 */
+.structureTableHead[data-gaps="0"],
+.structureTableWorkbench .embeddedPanel:not([data-empty]) .embeddedPanelHead,
 .structureTableWorkbench .detailSource,
 .structureTableWorkbench .compactList::before {
   display: none;
+}
+
+.structureTableHead {
+  margin: 0 0 8px;
+}
+
+.structureTableWorkbench .embeddedPanel[data-empty] .embeddedPanelHead {
+  justify-content: flex-start;
+}
+
+.structureEmptyState {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card-soft);
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.structureEmptyState.toneWatch {
+  color: var(--portfolio-status-idle-strong);
+}
+
+.structureEmptyState.toneError {
+  color: color-mix(in srgb, var(--portfolio-signal-danger) 84%, var(--dh-ink));
 }
 
 .structureTableWorkbench :global(.ant-tabs-nav) {
@@ -3560,9 +3044,12 @@
 }
 
 .structureTableWorkbench :global(.ant-tabs-tab-btn) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
   color: var(--dh-api-ink-soft);
-  font-size: 14px;
-  font-weight: 760;
+  font-size: 12px;
+  font-weight: 500;
   text-shadow: none;
 }
 
@@ -3608,6 +3095,15 @@
 }
 
 /* 组合级汇总读数（如加权到期收益率）不混入桶明细行。 */
+.coverageNote {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
 .structureTableWorkbench .structureSummaryLine {
   display: flex;
   justify-content: space-between;
@@ -3618,13 +3114,13 @@
   border-bottom: 1px solid var(--dh-line-soft, var(--ib-hairline));
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .structureTableWorkbench .structureSummaryLine strong {
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 13px;
-  font-weight: 860;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -3650,18 +3146,18 @@
 .structureTableWorkbench .compactCount,
 .structureTableWorkbench .compactValue {
   /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .structureTableWorkbench .compactLabel {
   color: var(--dh-ink);
-  font-weight: 860;
+  font-weight: 600;
 }
 
 .structureTableWorkbench .compactValue {
   font-size: 12px;
   color: var(--dh-ink);
-  font-weight: 860;
+  font-weight: 600;
   text-align: right;
 }
 
@@ -3755,7 +3251,7 @@
   margin: 0;
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 13px;
-  font-weight: 720;
+  font-weight: 600;
   line-height: 1.45;
   display: -webkit-box;
   overflow: hidden;
@@ -3853,8 +3349,9 @@
   border-radius: var(--dh-api-radius, 6px);
   color: var(--dh-blue);
   font-family: var(--dh-font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .dataNoteDisclosure[open] summary::after {
@@ -3864,7 +3361,7 @@
 .dataNoteDisclosure summary span {
   color: var(--dh-ink);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .dataNoteDisclosure summary strong {
@@ -3880,7 +3377,7 @@
   overflow: hidden;
   color: var(--dh-muted);
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 600;
   text-overflow: ellipsis;
 }
 
@@ -3893,20 +3390,7 @@
   scrollbar-width: thin;
 }
 
-.actionMatrixGrid {
-  align-items: start;
-  grid-template-columns: 1fr;
-  gap: 16px;
-}
-
-.quickAccessGrid {
-  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
-}
-
 /* 明细标签多为 6-12 个汉字；轨道过窄会挤到截断，按 §5「禁止压缩保列数」放宽。 */
-.drillGrid {
-  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-}
 
 .actionWorkbenchSection .dataNoteDisclosure {
   border: 0;
@@ -4025,7 +3509,7 @@
 
   .topbarSubtitle {
     max-width: 70ch;
-    font-size: 13px;
+    font-size: 12px;
     line-height: 1.35;
   }
 
@@ -4108,7 +3592,7 @@
 
   .evidenceConsole .decisionFact strong {
     line-height: 1.2;
-    font-size: 16px;
+    font-size: 14px;
   }
 
   .decisionActionQueue {
@@ -4158,90 +3642,15 @@
     gap: 10px;
   }
 
-  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] .sectionHead {
-    min-height: 26px;
-    padding: 0 1px 0 12px;
-    border-left: 3px solid var(--portfolio-signal-info-strong);
-    align-items: center;
-  }
-
-  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] .sectionHead span {
-    display: none;
-  }
-
-  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] .sectionHead strong {
-    color: var(--dh-ink);
-    font-size: 14px;
-  }
-
-  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] .kpiGridTape {
-    margin-top: 0;
-  }
-
-  .kpiGrid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .kpiCard {
-    min-height: 108px;
-    padding: 14px 15px 12px;
-    border-radius: var(--dh-api-radius, 6px);
-  }
-
-  .kpiCard::before {
-    width: 2px;
-  }
-
-  .kpiCard::after {
-    top: 12px;
-    right: 14px;
-    width: 20px;
-  }
-
-  .kpiLabel {
-    color: var(--dh-api-ink-soft);
-    font-size: 12px;
-    font-weight: 760;
-  }
-
-  .kpiValue,
-  .kpiCard:nth-child(-n + 2) .kpiValue {
-    margin-top: 12px;
-    font-size: 24px;
-    font-weight: 850;
-  }
-
-  .kpiValue small,
-  .kpiCard:nth-child(-n + 2) .kpiValue small {
-    font-size: 12px;
-  }
-
-  .kpiDetail {
-    line-height: 1.36;
-    margin-top: 9px;
-    font-size: 12px;
-    -webkit-line-clamp: 1;
-  }
+  /* 「核心指标」卡头此前在本断点用 `.sectionHead span { display: none }` 藏掉
+     分类眉标、并把蓝色标题改回墨色。迁到 SectionHead 原语后这三条选择器全部
+     失配：分类眉标改由 category 槽渲染（原语已是 11px muted，不再是大写宽字距
+     装饰），标题原语本来就是墨色，都不需要页面再压一次。 */
 }
 
 @media (min-width: 1101px) and (max-width: 1280px) {
   .decisionTitle {
     font-size: 18px;
-  }
-
-  .kpiGrid {
-    gap: 8px;
-  }
-
-  .kpiCard {
-    padding-right: 12px;
-    padding-left: 12px;
-  }
-
-  .kpiValue,
-  .kpiCard:nth-child(-n + 2) .kpiValue {
-    font-size: 21px;
   }
 }
 
@@ -4285,26 +3694,6 @@
 
 .embeddedPanelHead .statePill.stateOk {
   color: var(--dh-muted);
-}
-
-.kpiCard[data-empty="true"],
-.kpiCard[data-empty="true"]:hover {
-  border-color: var(--portfolio-status-idle-border);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-muted) 5.5%, transparent), color-mix(in srgb, var(--dh-api-muted) 1.2%, transparent)),
-    var(--dh-card);
-}
-
-.kpiCard[data-empty="true"]::before {
-  background: var(--portfolio-status-idle);
-}
-
-.kpiCard[data-empty="true"]::after {
-  background: color-mix(in srgb, var(--dh-api-muted) 14%, transparent);
-}
-
-.kpiCard[data-empty="true"] .kpiDetail {
-  color: color-mix(in srgb, var(--portfolio-status-idle) 78%, var(--dh-muted-2));
 }
 
 .decisionPanel:has(.decisionTitle.toneWatch) {
@@ -4357,7 +3746,7 @@
   border: 1px solid var(--dh-line-soft, var(--ib-hairline));
   border-radius: var(--dh-api-radius);
   font-size: 12px;
-  font-weight: 820;
+  font-weight: 600;
   min-height: 20px;
   padding: 2px 6px;
   border-color: var(--portfolio-status-idle-border);
@@ -4391,7 +3780,7 @@
 
 .structureGapAction {
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   display: inline-flex;
   gap: 6px;
   align-items: center;
@@ -4407,17 +3796,9 @@
   background: color-mix(in srgb, var(--dh-api-muted) 7%, transparent);
 }
 
-.summaryLedgerCard .statusCell:has(.toneWatch) {
-  border-left-color: var(--portfolio-status-idle-border);
-}
-
 .summaryLedgerCard .statusCell .toneOk,
 .summaryLedgerCard .statusCell:has(.toneOk) b {
   color: color-mix(in srgb, var(--portfolio-signal-ok) 74%, var(--portfolio-status-idle-strong));
-}
-
-.summaryLedgerCard .statusCell:has(.toneError) {
-  border-left-color: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
 }
 
 .summaryLedgerCard .statusCell:has(.toneError) b,
@@ -4429,7 +3810,7 @@
 @media (min-width: 1101px) {
   .terminalStatus.toneWatch,
   .stateWatch {
-    font-weight: 760;
+    font-weight: 600;
   }
 }
 
@@ -4450,62 +3831,12 @@
   background: transparent;
   color: var(--dh-muted-2, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 600;
 }
 
 .kpiScopeNote span:first-child {
   padding-left: 0;
   border-left: 0;
-}
-
-.kpiGrid + .kpiGridSecondary {
-  margin-top: 8px;
-}
-
-.kpiCard.kpiCardSecondary:nth-child(-n + 2) {
-  background: var(--dh-card);
-}
-
-.kpiCard.kpiCardSecondary .kpiValue {
-  margin-top: 7px;
-  font-size: 18px;
-}
-
-.kpiCard.kpiCardSecondary .kpiValue small {
-  font-size: 12px;
-}
-
-.kpiCard.kpiCardPrimary .kpiValue[data-empty="true"],
-.kpiCard.kpiCardSecondary .kpiValue[data-empty="true"] {
-  font-size: 16px;
-}
-
-@media (min-width: 1101px) {
-
-  .kpiCard.kpiCardPrimary .kpiValue {
-    font-size: 24px;
-  }
-
-  .kpiCard.kpiCardSecondary {
-    min-height: 84px;
-    padding: 10px 12px 9px;
-  }
-}
-
-@media (min-width: 1101px) and (max-width: 1280px) {
-  .kpiCard.kpiCardPrimary .kpiValue {
-    font-size: 24px;
-  }
-}
-
-@media (max-width: 900px) {
-  .kpiCard.kpiCardPrimary .kpiValue {
-    font-size: 22px;
-  }
-
-  .kpiCard.kpiCardSecondary .kpiValue {
-    font-size: 18px;
-  }
 }
 
 /* ── B-tier visual pass (2026-07-17): editorial section indices, empty-state glyphs,
@@ -4524,10 +3855,11 @@
 
 .decisionAction i[data-row-index] {
   color: var(--dh-api-soft, var(--dh-ink-2));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-style: normal;
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: 0.08em;
   opacity: 1;
 }
@@ -4565,8 +3897,6 @@
 }
 
 /* Hover micro-interactions on interactive cards and rows. */
-.quickAccessCard,
-.drillCard,
 .decisionAction,
 .workbenchNav a,
 .structureGapAction {
@@ -4576,8 +3906,6 @@
     background-color 0.16s ease;
 }
 
-.quickAccessCard:hover,
-.drillCard:hover,
 .decisionAction:hover {
   transform: translateY(-1px);
 }
@@ -4598,7 +3926,7 @@
 .decisionFact span {
   overflow: hidden;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-weight: 750;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
@@ -4606,8 +3934,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .quickAccessCard,
-  .drillCard,
   .decisionAction,
   .workbenchNav a,
   .structureGapAction,
@@ -4632,29 +3958,13 @@
   line-height: 1.2;
   white-space: nowrap;
   font-size: 13px;
-  font-family: var(--moss-font-mono);
-}
-
-.kpiValue,
-.kpiValue.toneOk,
-.kpiValue.toneWatch,
-.kpiValue.toneMuted {
-  color: var(--dh-api-ink);
-}
-
-.kpiValue.toneError {
-  color: color-mix(in srgb, var(--dh-api-red) 86%, var(--dh-api-ink));
-}
-
-.kpiCard[data-empty="true"] .kpiValue,
-.kpiCard[data-empty="true"] .kpiValue.toneWatch,
-.kpiCard[data-empty="true"] .kpiValue.toneMuted {
-  color: var(--portfolio-status-idle-strong);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
 }
 
 .terminalPanelHead span {
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--dh-api-muted);
 }
@@ -4671,33 +3981,10 @@
   color: var(--dh-api-soft);
 }
 
-.kpiCard:nth-child(-n + 2),
-.kpiCard[data-empty="true"],
-.kpiCard[data-empty="true"]:hover {
-  background: var(--dh-card);
-}
-
-.kpiCard::after {
-  position: absolute;
-  height: 2px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--dh-api-soft) 16%, transparent);
-  content: none;
-}
-
-.kpiCard:nth-child(5n + 1) {
-  border-color: var(--dh-line-soft);
-}
-
-.kpiCard:hover {
-  box-shadow: none;
-  border-color: var(--portfolio-info-border-strong);
-}
-
 .exposureWorkbenchHead h2 {
   grid-column: 1;
   margin: 0;
-  font-weight: 860;
+  font-weight: 600;
   line-height: 1.25;
   color: var(--dh-api-ink);
 }
@@ -4705,7 +3992,8 @@
 .exposureLedgerRow strong,
 .detailValue {
   color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── 审美打磨层（收敛回 DESIGN.md §2.2 / §5 Shape Lock / §8 Motion）：
@@ -4726,40 +4014,7 @@
   min-width: 0;
   width: 100%;
   gap: 20px;
-}
-
-.kpiGrid {
-  display: grid;
-  min-width: 0;
-  width: 100%;
-  gap: 12px;
-}
-
-.kpiCard {
-  position: relative;
-  align-content: start;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
-  box-shadow: none;
-  min-height: 118px;
-  padding: 16px 17px 14px;
-}
-
-.kpiValue {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: baseline;
-  min-width: 0;
-  width: 100%;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  font-family: var(--moss-font-mono);
-  letter-spacing: -0.01em;
-  margin-top: 13px;
+  padding: 0;
 }
 
 .holdingsHeroBand,
@@ -4787,33 +4042,25 @@
 .exposureLedgerRow strong,
 .exposureLedgerRow em {
   min-width: 0;
-  overflow: hidden;
   font-size: 12px;
   line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   padding-block: 9px;
   background: transparent;
 }
 
-.kpiCard.kpiCardSecondary,
-.kpiCard.kpiCardSecondary:nth-child(-n + 2),
-.kpiCard.kpiCardSecondary[data-empty="true"] {
-  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  border-right: 1px solid var(--dh-line-soft);
+.exposureLedgerHeader span,
+.exposureLedgerRow span,
+.exposureLedgerRow strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.kpiCard.kpiCardSecondary:last-child {
-  border-right: 0;
-}
-
-.kpiCard.kpiCardSecondary::before,
-.kpiCard.kpiCardSecondary::after {
-  content: none;
-}
-
-.kpiCard.kpiCardSecondary:hover {
-  background: color-mix(in srgb, var(--dh-api-blue) 4.5%, transparent);
+.exposureLedgerRow em {
+  overflow: visible;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .decisionActionDot {
@@ -4833,7 +4080,18 @@
 .decisionPanel[data-layout="banner"] {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 0.62fr);
   grid-template-rows: auto auto;
-  border: 1px solid var(--portfolio-review-border, color-mix(in srgb, var(--dh-api-amber) 34%, transparent));
+  border: 1px solid var(--dh-api-line);
+}
+
+.decisionPanel[data-layout="banner"][data-has-actions="false"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.decisionPanel[data-layout="banner"][data-has-actions="false"] .evidenceConsole {
+  grid-column: 1;
+  grid-row: 3;
+  border-left: 0;
+  border-top: 1px solid var(--dh-api-line-soft);
 }
 
 .decisionPanel[data-layout="banner"] .decisionMatrix {
@@ -4891,9 +4149,9 @@
 
 .decisionPanel[data-layout="banner"] .decisionTitle {
   margin: 0;
-  font-size: 16px;
-  font-weight: 820;
-  line-height: 1.3;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
 }
 
 .decisionPanel[data-layout="banner"] .decisionDetail {
@@ -4916,7 +4174,11 @@
 .decisionPanel[data-layout="banner"] .decisionReadinessBar strong {
   color: var(--dh-muted-2);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
+}
+
+.decisionPanel[data-layout="banner"] .decisionReadinessBar strong {
+  font-weight: 500;
 }
 
 .decisionPanel[data-layout="banner"] .evidenceConsole,
@@ -4967,17 +4229,20 @@
   background: transparent;
 }
 
+/* 标签列不参与收缩：长读数超宽时由值列换行，避免四字标签被压成「风险…」。 */
 .decisionPanel[data-layout="banner"] .decisionFact span {
+  flex: 0 0 auto;
   color: var(--dh-muted-2);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .decisionPanel[data-layout="banner"] .decisionFact strong {
   color: var(--dh-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 780;
+  font-weight: 500;
 }
 
 .decisionPanel[data-layout="banner"] .decisionActionQueue {
@@ -5035,21 +4300,6 @@
 }
 
 /* KPI 主带首屏化 */
-.kpiCard.kpiCardPrimary {
-  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
-}
-
-.kpiCard.kpiCardSecondary {
-  padding: 12px 14px 11px;
-  min-height: 72px;
-}
-
-@media (min-width: 1101px) {
-  .kpiCard.kpiCardPrimary {
-    min-height: 128px;
-  }
-}
 
 /* 驾驶舱导航轻量化；粘性态需要不透明背板 + top:0 无缝，避免滚动时叠压内容（B8）。 */
 .workbenchNav {
@@ -5074,13 +4324,15 @@
   white-space: normal;
   margin-right: 4px;
   font-size: 13px;
-  font-weight: 820;
+  font-weight: 600;
 }
 
 .workbenchNav a {
   grid-template-columns: auto minmax(0, 1fr);
   min-width: 0;
   color: var(--dh-muted);
+  font-size: 13px;
+  font-weight: 500;
   text-decoration: none;
   display: inline-flex;
   gap: 6px;
@@ -5094,21 +4346,20 @@
 
 .workbenchNav a span {
   color: var(--dh-api-blue, var(--dh-blue));
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 780;
+  font-weight: 600;
 }
 
 .workbenchNav a strong {
   color: var(--dh-muted);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .workbenchNav a:hover {
-  transform: translateX(2px);
-  border-color: var(--portfolio-info-border-strong, color-mix(in srgb, var(--dh-api-blue) 40%, transparent));
-  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+  color: var(--dh-api-ink);
 }
 
 .workbenchNav a em,
@@ -5118,12 +4369,13 @@
 
 .workbenchSectionHead h2 i[data-section-index] {
   color: var(--dh-api-blue, var(--dh-blue));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-variant-numeric: tabular-nums;
   font-style: normal;
   vertical-align: 1px;
   margin-right: 10px;
   font-size: 12px;
-  font-weight: 820;
+  font-weight: 600;
   letter-spacing: 0.1em;
   opacity: 1;
 }
@@ -5188,10 +4440,9 @@
   --moss-color-neutral-300: var(--dh-api-line);
   --moss-color-neutral-600: var(--dh-api-soft);
   --moss-color-neutral-700: var(--dh-api-ink);
-  --moss-color-neutral-900: var(--dh-api-ink);
   --moss-color-primary-900: var(--dh-api-ink);
   width: 100%;
-  border-radius: var(--dh-api-radius, 6px);
+  border-radius: 0;
   /* —— Portfolio cockpit color polish: amber carries review, blue carries structure. —— */
   --portfolio-signal-info: var(--dh-api-blue);
   --portfolio-signal-info-strong: color-mix(in srgb, var(--dh-api-blue) 72%, var(--dh-api-ink));
@@ -5255,10 +4506,10 @@
   --portfolio-status-review-border: color-mix(in srgb, var(--dh-api-amber) 26%, transparent);
   /* —— 统一纪律样张层：数字 tabular 等宽声部 —— */
   --dh-font-sans: var(--moss-font-sans);
-  --dh-font-mono: var(--moss-font-mono);
+  --dh-font-mono: var(--moss-font-tabular);
   /* —— 审美打磨层：圆角随 Nocturne scope 的 --dh-api-radius（8px），页级呼吸感 —— */
   gap: 20px;
-  padding: 20px;
+  padding: var(--moss-space-4) var(--moss-page-gutter);
   /* —— Nocturne 换肤：页内不再定义 --dh-api-* 钢蓝字面量，数值唯一来源是
      tokens.css 的 [data-moss-theme-scope="portfolio-home"] 块；legacy --dh-*
      消费变量改走 --dh-api-* 引用链，token 翻转后自动跟随。页底为 Nocturne 平铺底。 */
@@ -5272,84 +4523,36 @@
 }
 
 /* 卡片制度：对齐首页 Nocturne 平卡面（灰边 + panel 平底，无渐变无内阴影） */
-.portfolioPage .kpiCard,
 .portfolioPage .decisionPanel,
 .portfolioPage .closureGate,
 .portfolioPage .closureReviewCard,
 .portfolioPage .summaryLedgerCard,
 .portfolioPage .holdingsHeroBand,
 .portfolioPage .exposureWorkbenchSection,
-.portfolioPage .structureTableWorkbench,
-.portfolioPage .chartSnapshot {
+.portfolioPage .structureTableWorkbench {
   border: 1px solid var(--dh-api-line);
   background: var(--dh-api-panel);
   box-shadow: none;
 }
 
-.portfolioPage .kpiCard:hover,
 .portfolioPage .closureReviewCard:hover,
 .portfolioPage .summaryLedgerCard:hover {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  border-color: var(--dh-api-line);
 }
 
 /* ── KPI 带：紧凑驾驶舱密度（对齐基准图顶带）── */
-.kpiCard.kpiCardPrimary {
-  min-height: 96px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--dh-api-line);
-}
-
-.kpiCard.kpiCardPrimary .kpiValue {
-  font-size: 24px;
-  margin-top: 8px;
-}
-
-.kpiLabel {
-  letter-spacing: 0;
-  line-height: 1.2;
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  font-weight: 720;
-}
-
-.kpiDetail {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  min-height: 15px;
-  -webkit-line-clamp: 1;
-  margin-top: 6px;
-  font-size: 12.5px;
-  font-weight: 700;
-}
 
 /* 方向色按 data-change 提权（A1）：避免同特异性的灰色注行规则按注入顺序覆盖
    dhUpGreen/dhDownRed，保证 up=绿、down=红 可感知；flat 维持安静灰。 */
-.kpiDetail[data-change="up"],
 .portfolioRiskTickerChange[data-change="up"] {
   color: var(--dh-green);
 }
 
-.kpiDetail[data-change="down"],
 .portfolioRiskTickerChange[data-change="down"] {
   color: var(--dh-red);
 }
 
 /* 次级 KPI 行恢复分卡（基准图第二行也是卡片）；gap 随 .kpiGrid 统一 12px，两排列缝共线 */
-.kpiGridSecondary {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.kpiCard.kpiCardSecondary,
-.kpiCard.kpiCardSecondary:nth-child(-n + 2),
-.kpiCard.kpiCardSecondary[data-empty="true"] {
-  min-height: 70px;
-  padding: 10px 12px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-api-panel);
-}
 
 /* ── 决策横幅融入蓝系（语义琥珀仅保留在文字与状态点）── */
 .decisionPanel[data-layout="banner"] {
@@ -5361,11 +4564,9 @@
   padding: 0;
   overflow: hidden;
   border-radius: var(--dh-api-radius, 6px);
-  border-color: color-mix(in srgb, var(--dh-api-amber) 30%, transparent);
+  border-color: var(--dh-api-line);
   background: var(--dh-api-panel);
 }
-
-/* ── 分布条形（券种/评级/期限/行业）：标签左、蓝渐变细条、mono 数值右 ── */
 .holdingsHeroStackBar {
   display: flex;
   min-width: 0;
@@ -5375,26 +4576,28 @@
   border-radius: var(--dh-api-radius);
 }
 
+/* 分布条以纯色直角条表达占比，类别颜色沿用既有图表色。 */
+
 .holdingsHeroBarTrack,
 .chartMiniTrack {
   height: 6px;
-  border-radius: 999px;
+  border-radius: 0;
   background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
 }
 
 .holdingsHeroBarFill,
 .chartMiniFill {
-  border-radius: 999px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--dh-api-blue) 55%, transparent), var(--dh-api-blue));
+  border-radius: 0;
+  background: var(--dh-api-blue);
 }
 
 /* ── 表格：极淡行分隔 + 行 hover 蓝底 + mono 数值 ── */
 .structureTableWorkbench .compactListHeader {
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 500;
   min-height: 22px;
   padding: 0 10px 5px;
-  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  border-bottom: 1px solid var(--dh-line-soft);
   color: var(--dh-api-muted);
 }
 
@@ -5403,7 +4606,7 @@
   background: transparent;
   min-height: 30px;
   padding: 0 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 7%, transparent);
+  border-bottom: 1px solid var(--dh-line-soft);
 }
 
 .structureTableWorkbench .compactRow:hover {
@@ -5411,7 +4614,7 @@
 }
 
 .exposureLedgerHeader {
-  background: color-mix(in srgb, var(--dh-api-blue) 7%, transparent);
+  background: transparent;
 }
 
 .exposureLedgerHeader,
@@ -5420,7 +4623,7 @@
   align-items: center;
   min-width: 0;
   gap: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 9%, transparent);
+  border-bottom: 1px solid var(--dh-line-soft);
 }
 
 /* ── 状态徽标语言：完成=绿、分析口径=琥珀、蓝色信息（对齐基准图审计区）── */
@@ -5435,7 +4638,7 @@
   min-height: 22px;
   border-radius: var(--dh-api-radius, 6px);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
   border: 1px solid color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
   background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
@@ -5448,7 +4651,7 @@
   min-width: 0;
   border-bottom: 1px solid var(--dh-line-soft);
   padding-bottom: 8px;
-  border-bottom-color: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
+  border-bottom-color: var(--dh-line-soft);
 }
 
 .workbenchSectionHead span {
@@ -5456,8 +4659,9 @@
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--dh-api-blue) 38%, transparent);
   border-radius: var(--dh-api-radius);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-weight: 900;
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   width: 32px;
   height: 32px;
   border-width: 1px;
@@ -5468,33 +4672,6 @@
 }
 
 /* ── 工作入口：基准图快捷入口语言（圆角图标底 + 蓝光 hover）── */
-.quickAccessCard {
-  border-color: var(--dh-api-line);
-  border: 1px solid var(--dh-api-line);
-  background: var(--dh-api-panel);
-}
-
-.quickAccessCard:hover {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
-  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
-}
-
-.quickAccessCard > span {
-  border-radius: var(--dh-api-radius);
-  background: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
-  color: color-mix(in srgb, var(--dh-api-blue) 70%, var(--dh-api-ink));
-}
-
-.drillCard {
-  align-content: center;
-  border-color: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
-  background: color-mix(in srgb, var(--dh-api-panel-2) 55%, transparent);
-}
-
-.drillCard:hover {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
-  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
-}
 
 /* ── 02 区图表解除隐藏：表格全宽在上、图表全宽在下
    （左右分栏时表格四列 min 宽约 620px，会溢出盖住图表）── */
@@ -5512,9 +4689,9 @@
   min-height: 236px;
   padding: 8px 12px 6px;
   overflow: hidden;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-api-panel);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .portfolioPage .structureTableWorkbench .structureChartWrap {
@@ -5542,39 +4719,15 @@
   background: var(--dh-api-panel);
 }
 
-.attributionWaterfallHead {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.attributionWaterfallHead span {
-  color: var(--dh-blue, var(--ib-accent));
-  font-size: 14px;
-  font-weight: 850;
-}
-
-.attributionWaterfallHead em {
-  overflow: hidden;
-  color: var(--dh-muted-2);
-  font-family: var(--moss-font-mono);
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ── 02 结构 tabs：下划线式（基准图），替代药丸按钮 ── */
 .portfolioPage .structureTableWorkbench :global(.ant-tabs-tab),
 .portfolioPage .structureTableWorkbench :global(.ant-tabs-tab:nth-child(2)),
 .portfolioPage .structureTableWorkbench :global(.ant-tabs-tab:nth-child(2):not(.ant-tabs-tab-active)) {
   min-width: 0;
-  height: 34px;
+  height: 36px;
   padding: 0 3px;
   border: 0;
+  border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
 }
@@ -5585,8 +4738,9 @@
 
 .portfolioPage .structureTableWorkbench :global(.ant-tabs-tab-active) {
   border: 0;
+  border-bottom: 2px solid var(--dh-api-blue);
   background: transparent;
-  box-shadow: inset 0 -2px 0 var(--dh-api-blue);
+  box-shadow: none;
 }
 
 .portfolioPage .structureTableWorkbench :global(.ant-tabs-nav)::before {
@@ -5633,6 +4787,7 @@
   grid-template-columns: minmax(0, 1fr);
   gap: var(--portfolio-band-gap);
   align-content: start;
+  padding: 0;
 }
 
 .portfolioCockpit,
@@ -5667,15 +4822,11 @@
 /* 多列区拉平同排卡片边框：行高由最高卡决定，卡内内容仍以 align-content: start 顶对齐。
    行内高差 ≤60px 且卡片有边框，非 DESIGN.md 反模式所指的大面积空白拉伸。 */
 .holdingsPanoramaGrid,
-.closureWorkbenchGrid,
-.summaryLedgerGrid {
+.closureWorkbenchGrid {
   align-items: stretch;
 }
 
 /* 行动矩阵为单列纵向堆叠，保持顶对齐语义。 */
-.actionMatrixGrid {
-  align-items: start;
-}
 
 /* 复盘摘要三卡与其他区块共用同一套区块头 + 内容栅格结构。 */
 .summaryLedgerGrid {
@@ -5683,17 +4834,32 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   min-width: 0;
+  align-items: start;
 }
 
 /* 窄屏沿用原 auto-fit 语义（3/2/1 列自适应），仅宽屏固定 3 列消除 auto-fit 残留的 0px 幽灵轨道。 */
 @media (max-width: 1100px) {
   .summaryLedgerGrid {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    align-items: start;
   }
 }
 
 @media (min-width: 1101px) {
   .portfolioPageMain {
     --portfolio-band-gap: 18px;
+    padding: 0;
   }
+}
+
+.portfolioKpiBand {
+  grid-auto-rows: auto;
+}
+
+.portfolioKpiBand > [data-priority="secondary"] {
+  min-height: 0;
+}
+
+.portfolioKpiBand[data-size="compact"] > [data-has-detail="false"] {
+  min-height: 0;
 }

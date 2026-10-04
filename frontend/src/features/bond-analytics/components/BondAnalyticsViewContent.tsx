@@ -1,11 +1,13 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Select } from "antd";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 import type { ApiEnvelope } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
+import { PageStateSurface } from "../../../components/page/PagePrimitives";
+import { SystemReadInteractionContext } from "../../../router/systemReadInteractionContext";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
 import { isAgentFrontendEnabled } from "../../../app/navigation";
 import type {
@@ -52,8 +54,8 @@ function BondAnalyticsDateFallbackWorkbench({
   const title = kind === "error" ? "债券分析日期载入失败" : "债券分析暂无可用报告日";
   const body =
     kind === "error"
-      ? "无法确定可用报告日，当前不启动债券分析默认查询。请重试或通过地址栏 report_date 参数显式传入。"
-      : "后端尚未返回可消费的债券分析报告日，因此默认首屏保持等待状态，不在前端自行推导日期。";
+      ? "可用报告日加载失败，暂时无法展示债券分析。请重试。"
+      : "暂无可用报告日，债券分析暂不可用。";
 
   return (
     <section
@@ -88,8 +90,8 @@ function BondAnalyticsDateFallbackWorkbench({
       </div>
 
       <div className={styles.fallbackJudgment} data-testid="bond-analysis-daily-judgment">
-        <div className={styles.fallbackSectionTitle}>核心读面</div>
-        <p>报告日未解析前，仅保留利率、曲线、信用和资金读面状态，不展示方向性结论。</p>
+        <div className={styles.fallbackSectionTitle}>核心指标</div>
+        <p>报告日尚未确认，暂时无法形成债券分析结论。</p>
       </div>
 
       <div className={styles.fallbackGrid}>
@@ -99,11 +101,11 @@ function BondAnalyticsDateFallbackWorkbench({
         </div>
         <div className={styles.fallbackPanel} data-testid="bond-analysis-return-attribution-panel">
           <span>收益归因</span>
-          <strong>待动作归因读链路返回</strong>
+          <strong>暂无动作归因数据</strong>
         </div>
         <div className={styles.fallbackPanel} data-testid="bond-analysis-risk-monitor">
           <span>风险监控</span>
-          <strong>待 DV01 / 久期读面返回</strong>
+          <strong>暂无 DV01 和久期数据</strong>
         </div>
       </div>
     </section>
@@ -113,6 +115,7 @@ function BondAnalyticsDateFallbackWorkbench({
 export function BondAnalyticsViewContent() {
   const client = useApiClient();
   const queryClient = useQueryClient();
+  const systemReadInteraction = useContext(SystemReadInteractionContext);
 
   useEffect(() => {
     void import("./BondAnalyticsOverviewPanels");
@@ -154,6 +157,8 @@ export function BondAnalyticsViewContent() {
     useState<string | null>(null);
   const [lastBondAnalyticsRefreshRunId, setLastBondAnalyticsRefreshRunId] =
     useState<string | null>(null);
+  const [bondAnalyticsRefreshAwaitingPublication, setBondAnalyticsRefreshAwaitingPublication] =
+    useState(false);
   const [detailRemountKey, setDetailRemountKey] = useState(0);
   const [isDetailDrilldownOpen, setIsDetailDrilldownOpen] = useState(false);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
@@ -213,6 +218,7 @@ export function BondAnalyticsViewContent() {
     }
     setIsBondAnalyticsRefreshing(true);
     setBondAnalyticsRefreshError(null);
+    setBondAnalyticsRefreshAwaitingPublication(false);
     try {
       const payload = await runPollingTask({
         start: () => client.refreshBondAnalytics(effectiveReportDate),
@@ -230,6 +236,10 @@ export function BondAnalyticsViewContent() {
             : `债券分析刷新未完成：${payload.status}`;
         const rid = payload.run_id ? ` run_id: ${payload.run_id}` : "";
         throw new Error(`${hint}${rid}`);
+      }
+      if (systemReadInteraction?.generation) {
+        setBondAnalyticsRefreshAwaitingPublication(true);
+        return;
       }
       await queryClient.invalidateQueries({ queryKey: [...bondAnalyticsQueryKeyRoot] });
       setDetailRemountKey((key) => key + 1);
@@ -281,8 +291,6 @@ export function BondAnalyticsViewContent() {
     setIsDetailDrilldownOpen(true);
   }
 
-  const toolbarModeLabel = client.mode === "real" ? "管理视角" : "演示视角";
-
   const dateFallbackKind: BondAnalyticsDateFallbackKind | null = showDatesErrorState
     ? "error"
     : datesEmpty && !effectiveReportDate
@@ -299,20 +307,8 @@ export function BondAnalyticsViewContent() {
       <header data-testid="bond-analysis-toolbar" className="dashboard-home-toolbar">
         <div className="dashboard-home-toolbar__identity">
           <h1 className="dashboard-home-toolbar__title">债券分析</h1>
-          <span className="dashboard-home-toolbar__eyebrow">
-            组合读面先看结论，再核证据与下钻参数
-          </span>
         </div>
         <div className="dashboard-home-actions">
-          <span
-            className={
-              client.mode === "real"
-                ? "dashboard-home-view-pill dashboard-governance-tone-ok"
-                : "dashboard-home-view-pill dashboard-governance-tone-warning"
-            }
-          >
-            {toolbarModeLabel}
-          </span>
           <label className="dashboard-home-control">
             <span>报告日</span>
             <Select<string>
@@ -347,18 +343,6 @@ export function BondAnalyticsViewContent() {
             </select>
           </label>
           <span aria-hidden="true" className="dashboard-home-actions__divider" />
-          <Link
-            to="/reports"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            报表中心
-          </Link>
-          <Link
-            to="/platform-config"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            中台配置
-          </Link>
           {isAgentFrontendEnabled() ? (
             <button
               type="button"
@@ -384,6 +368,15 @@ export function BondAnalyticsViewContent() {
           </button>
         </div>
       </header>
+
+      {bondAnalyticsRefreshAwaitingPublication ? (
+        <PageStateSurface
+          variant="stale"
+          title="计算任务完成"
+          description="当前页面仍显示已发布的数据。请在数据中心完成发布后重新进入本页。"
+          testId="bond-analysis-refresh-awaiting-publication"
+        />
+      ) : null}
 
       {dateFallbackKind ? (
         <BondAnalyticsDateFallbackWorkbench
@@ -417,6 +410,7 @@ export function BondAnalyticsViewContent() {
               actionAttributionPending={
                 actionAttributionQuery.isPending && !actionAttributionQuery.isError
               }
+              actionAttributionError={actionAttributionErrorMessage}
               overviewModel={overviewModel}
               onOpenModuleDetail={openModuleDetail}
               onRefreshAnalytics={() => void handleBondAnalyticsRefresh()}
@@ -440,14 +434,21 @@ export function BondAnalyticsViewContent() {
         <summary className={`dashboard-detail-drilldown__header dashboard-progressive-disclosure__summary ${styles.detailDrilldownSummary}`}>
           <div className="dashboard-home-section-heading">
             {/* 上方参数条眉标已用「复核入口」：连续两条横带不重复同名眉标（§6 去重）。 */}
-            <span className="dashboard-home-section-eyebrow">明细下钻</span>
-            <h2 className="dashboard-detail-drilldown__title">下钻证据与参数</h2>
+            <span className="dashboard-home-section-eyebrow">进一步分析</span>
+            <h2 className="dashboard-detail-drilldown__title">分析明细</h2>
           </div>
           <span className={`dashboard-progressive-disclosure__description ${styles.detailDrilldownDescription}`}>
-            展开后核对动作归因、收益拆解、信用利差、重仓券和组合头条；不在底部生成新的方向性结论。
+            查看动作归因、收益拆解、信用利差和持仓明细。
           </span>
           <span className="dashboard-progressive-disclosure__cue">展开</span>
         </summary>
+
+        <details className={styles.detailDrilldownDescription} data-testid="bond-analysis-page-diagnostics">
+          <summary>技术诊断</summary>
+          <p data-testid="bond-analysis-page-evidence">
+            页面契约：<code>PAGE-BOND-ANALYSIS-001</code>；状态：<code>candidate</code>（待业主正式批准）。
+          </p>
+        </details>
 
         {canRenderAnalytics && isDetailDrilldownOpen ? (
           <Suspense

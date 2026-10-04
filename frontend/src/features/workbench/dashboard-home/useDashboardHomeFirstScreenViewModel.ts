@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { sanitizeMetricCopy } from "./lib/sanitizeMetricCopy";
 import { useDashboardSnapshotBoundary } from "../pages/useDashboardSnapshotBoundary";
@@ -6,19 +7,36 @@ import {
   mapToHomeFirstScreenView,
   type MapToHomeFirstScreenViewInput,
 } from "./dashboardHomeFirstScreenView";
+import { applyOperatingRevenueCandidate } from "./dashboardHomeSnapshotAdapter";
+import { useHomeOperatingRevenueCandidate } from "./useHomeOperatingRevenueCandidate";
 import { useMockHomeFirstScreenView } from "./useMockHomeFirstScreenView";
 
 export type DashboardHomeFirstScreenModel = ReturnType<typeof useDashboardHomeFirstScreenViewModel>;
 export type DashboardHomeSnapshotBoundary = DashboardHomeFirstScreenModel["snapshotBoundary"];
 
 export function useDashboardHomeFirstScreenViewModel() {
-  const [reportDate, setReportDate] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const reportDate = searchParams.get("report_date")?.trim() ?? "";
+  const setReportDate = useCallback(
+    (date: string) => {
+      const nextSearchParams = new URLSearchParams(searchParams);
+      const normalizedDate = date.trim();
+      if (normalizedDate) {
+        nextSearchParams.set("report_date", normalizedDate);
+      } else {
+        nextSearchParams.delete("report_date");
+      }
+      setSearchParams(nextSearchParams, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
   const [toolbarSearch, setToolbarSearch] = useState("");
   const [allowPartial, setAllowPartial] = useState(false);
 
   const snapshotBoundary = useDashboardSnapshotBoundary({
     reportDate,
-    allowPartial,
+    // Explicit dates show available same-date domains; latest still requires a complete snapshot.
+    allowPartial: allowPartial || Boolean(reportDate),
   });
 
   const {
@@ -53,6 +71,20 @@ export function useDashboardHomeFirstScreenViewModel() {
   // verdict are data-quality signals, not counted risk tasks.
   const alertCount = 0;
 
+  const operatingRevenueCandidate = useHomeOperatingRevenueCandidate(
+    dataClient,
+    effectiveReportDate,
+    { enabled: !useMockFallback && Boolean(effectiveReportDate) },
+  );
+  const productCategoryHeadline = useMemo(
+    () =>
+      applyOperatingRevenueCandidate(
+        adapterOutput.productCategoryHeadline,
+        operatingRevenueCandidate,
+      ),
+    [adapterOutput.productCategoryHeadline, operatingRevenueCandidate],
+  );
+
   const firstScreenInput = useMemo<MapToHomeFirstScreenViewInput>(
     () => ({
       reportDate: effectiveReportDate,
@@ -60,7 +92,7 @@ export function useDashboardHomeFirstScreenViewModel() {
       requestedReportDate,
       domainsEffectiveDate: adapterOutput.domainsEffectiveDate,
       domainsMissing: adapterOutput.domainsMissing,
-      productCategoryHeadline: adapterOutput.productCategoryHeadline,
+      productCategoryHeadline,
       snapshotMode: snapshotResult?.mode,
       verdict: adapterOutput.verdict,
       metrics: sanitizedMetrics,
@@ -83,7 +115,7 @@ export function useDashboardHomeFirstScreenViewModel() {
       adapterOutput.attribution.vm,
       adapterOutput.domainsEffectiveDate,
       adapterOutput.domainsMissing,
-      adapterOutput.productCategoryHeadline,
+      productCategoryHeadline,
       adapterOutput.verdict,
       effectiveReportDate,
       requestedReportDate,

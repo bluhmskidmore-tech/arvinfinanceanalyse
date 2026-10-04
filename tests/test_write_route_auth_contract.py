@@ -145,10 +145,19 @@ def _patch_bond_analytics_refresh(monkeypatch, calls: list[str]) -> str:
 
 def _patch_balance_analysis_refresh(monkeypatch, calls: list[str]) -> str:
     import backend.app.api.routes.balance_analysis as route_module
+    from backend.app.services import balance_analysis_service
 
     def fake_refresh(_settings, *, report_date: str, **_kwargs):
         calls.append("called")
-        return {"status": "queued", "run_id": "balance-analysis-refresh-test", "report_date": report_date}
+        return {
+            "status": "queued",
+            "run_id": "balance-analysis-refresh-test",
+            "job_name": balance_analysis_service.BALANCE_ANALYSIS_JOB_NAME,
+            "trigger_mode": "async",
+            "cache_key": balance_analysis_service.CACHE_KEY,
+            "report_date": report_date,
+            "idempotency_replay": False,
+        }
 
     monkeypatch.setattr(route_module, "refresh_balance_analysis", fake_refresh)
     return "balance-analysis-refresh-test"
@@ -597,16 +606,11 @@ def test_macro_choice_series_refresh_requires_explicit_refresh_grant(tmp_path, m
 
     calls: list[int] = []
 
-    def fake_choice_refresh(*, backfill_days: int):
+    def fake_choice_refresh(*, backfill_days: int, **_kwargs):
         calls.append(backfill_days)
-        return {"status": "completed", "warnings": []}
+        return {"status": "queued", "run_id": "choice-macro-refresh-test", "warnings": []}
 
-    monkeypatch.setattr(route_module.refresh_choice_macro_snapshot, "fn", fake_choice_refresh, raising=False)
-    monkeypatch.setattr(
-        route_module,
-        "refresh_public_cross_asset_headlines",
-        lambda: {"status": "completed", "warnings": []},
-    )
+    monkeypatch.setattr(route_module, "queue_choice_macro_refresh", fake_choice_refresh)
     client = TestClient(_load_app(), raise_server_exceptions=False)
 
     denied = client.post(
@@ -627,6 +631,8 @@ def test_macro_choice_series_refresh_requires_explicit_refresh_grant(tmp_path, m
         headers={"X-User-Id": "macro-user"},
     )
     assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["status"] == "queued"
+    assert allowed.json()["run_id"] == "choice-macro-refresh-test"
     assert calls == [2]
 
 
@@ -637,11 +643,11 @@ def test_macro_choice_series_refresh_returns_503_when_scope_store_unavailable(tm
 
     calls: list[int] = []
 
-    def fake_choice_refresh(*, backfill_days: int):
+    def fake_choice_refresh(*, backfill_days: int, **_kwargs):
         calls.append(backfill_days)
-        return {"status": "completed", "warnings": []}
+        return {"status": "queued", "run_id": "unexpected"}
 
-    monkeypatch.setattr(route_module.refresh_choice_macro_snapshot, "fn", fake_choice_refresh, raising=False)
+    monkeypatch.setattr(route_module, "queue_choice_macro_refresh", fake_choice_refresh)
 
     class BrokenScopeRepository:
         def __init__(self, *_args, **_kwargs):

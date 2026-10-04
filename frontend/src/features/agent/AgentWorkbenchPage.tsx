@@ -1,7 +1,8 @@
-import { useCallback, useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
-import { EditOutlined, PlusOutlined } from "@ant-design/icons";
-import { AgentDisabledError } from "../../api/agentClient";
+import { ArrowDownOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
+import { streamAgentLabRunEvents } from "../../api/agentLabRunStream";
+import { streamAgentRunEvents } from "../../api/agentRunStream";
 import { useApiClient } from "../../api/client";
 import type {
   AgentConversationContext,
@@ -10,6 +11,8 @@ import type {
   AgentSuggestedAction,
 } from "../../api/contracts";
 import { AgentQueryForm } from "./components/AgentQueryForm";
+import { AgentModelControls } from "./components/AgentModelControls";
+import { AgentAnswerPanel } from "./components/AgentAnswerPanel";
 import { AgentQueuedDraft } from "./components/AgentQueuedDraft";
 import { AgentRepoMemoryPanel } from "./components/AgentRepoMemoryPanel";
 import { AgentRunProgress } from "./components/AgentRunProgress";
@@ -19,11 +22,12 @@ import { AgentTurnErrorCallout } from "./components/AgentTurnErrorCallout";
 import { AgentTurnResultView } from "./components/AgentTurnResultView";
 import { isAbortError } from "./hooks/agentRunStatusOrchestrator";
 import { runManagedAgentPolling } from "./hooks/runManagedAgentPolling";
+import { useAgentTurnGate, type AgentTurnGate } from "./hooks/agentTurnGate";
 
 import "./AgentWorkbenchPage.css";
+import "./AgentModelComposer.css";
 
 import {
-  AGENT_STICKY_BOTTOM_THRESHOLD_PX,
   AgentDisabledQueryError,
   AgentRunCancelledError,
   GITNEXUS_QUICK_EXAMPLES,
@@ -49,26 +53,17 @@ import {
   formatConversationContextBadge,
   formatQueuedComposerHint,
   formatRuntimeLabel,
-  getAgentApiErrorPayload,
-  getAgentApiErrorStatus,
   getExecutableSuggestedIntent,
   getLocalAgentQueryIntent,
-  getSuggestedActionConfirmationErrorMessage,
   getSuggestedActionKey,
-  isAgentQueryResult,
-  isAgentRunPayload,
   isCompactProviderChatTurn,
   isLocalOpenChatQuestion,
-  normalizeAgentResult,
-  normalizeAgentRunPayload,
+  isPlainAnalysisConversationQuestion,
   shouldDisplayAgentRunId,
-  shouldScrollComposerInputIntoView,
   shouldUseLocalAnalysisConversation,
 } from "./lib/agentWorkbenchModel";
-import { getAgentScrollBehavior } from "./lib/agentMotion";
 import type {
   AgentConversationTurn,
-  AgentCopyFeedback,
   AgentNextDrill,
   AgentOrdinaryConversationMode,
   AgentQueryError,
@@ -80,8 +75,13 @@ import type {
   PendingSuggestedActionConfirmation,
   ResearchShortcut,
 } from "./lib/agentWorkbenchModel";
+import { useAgentComposerFocus } from "./hooks/useAgentComposerFocus";
+import { useGitNexusProcessPicker } from "./hooks/useGitNexusProcessPicker";
+import { useManagedAgentRun } from "./hooks/useManagedAgentRun";
 import { useAgentRunRestore } from "./hooks/useAgentRunRestore";
 import { useConversationPersistence } from "./hooks/useConversationPersistence";
+import { useAgentModelSelection } from "./hooks/useAgentModelSelection";
+import { getAgentScrollBehavior } from "./lib/agentMotion";
 
 export function EmbeddedAgentCopilot({
   pageContext,
@@ -92,8 +92,16 @@ export function EmbeddedAgentCopilot({
 }: EmbeddedAgentCopilotProps = {}) {
   const apiClient = useApiClient();
   const isEmbedded = variant === "embedded";
-  const shouldPersistConversation = variant === "workbench";
+  const isWorkbench = variant === "workbench";
+  const modelSelection = useAgentModelSelection(isWorkbench, apiClient);
+  const isContextlessWorkbench = isWorkbench && !pageContext;
+  const shouldPersistConversation = isWorkbench;
   const resolvedShowHeader = showHeader ?? !isEmbedded;
+  const quickExamples = pageContext
+    ? GITNEXUS_QUICK_EXAMPLES
+    : GITNEXUS_QUICK_EXAMPLES.filter(
+        (example) => example !== "解释当前页面的主要结论和风险点",
+      );
   const {
     recentRepoPaths,
     pinnedRepoPaths,
@@ -121,55 +129,68 @@ export function EmbeddedAgentCopilot({
   });
   const [ordinaryConversationMode, setOrdinaryConversationMode] =
     useState<AgentOrdinaryConversationMode>("unknown");
-  const [repoPath, setRepoPath] = useState(() => recentRepoPaths[0] ?? "");
-  const [availableProcesses, setAvailableProcesses] = useState<string[]>([]);
-  const [processSearch, setProcessSearch] = useState("");
-  const [selectedProcess, setSelectedProcess] = useState("");
+  const {
+    repoPath,
+    setRepoPath,
+    setAvailableProcesses,
+    processSearch,
+    setProcessSearch,
+    selectedProcess,
+    setSelectedProcess,
+    processLoading,
+    setProcessLoading,
+    filteredProcesses,
+    recentUnpinnedRepoPaths,
+    isCurrentRepoPinned,
+    beginProcessStateRequest,
+    invalidateActiveRequest,
+    canCommitProcessState,
+    beginProcessLoadSequence,
+    isLatestProcessLoad,
+  } = useGitNexusProcessPicker({ recentRepoPaths, pinnedRepoPaths });
   const [loading, setLoading] = useState(false);
+  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [agentWaitSeconds, setAgentWaitSeconds] = useState(0);
-  const [processLoading, setProcessLoading] = useState(false);
+  const [streamingAnswer, setStreamingAnswer] = useState({ turnId: "", text: "" });
   const [result, setResult] = useState<AgentQueryResult | null>(null);
   const [agentRun, setAgentRun] = useState<AgentRunPayload | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
   const [restoringRunId, setRestoringRunId] = useState(initialRestoringRunId);
   const [restoreErrorRunId, setRestoreErrorRunId] = useState("");
+  const [restoreErrorRetryable, setRestoreErrorRetryable] = useState(false);
   const [pageContextChangeNotice, setPageContextChangeNotice] = useState(false);
   const [composerAssistHint, setComposerAssistHint] = useState<string | null>(null);
   const [pendingSuggestedActionConfirmation, setPendingSuggestedActionConfirmation] =
     useState<PendingSuggestedActionConfirmation | null>(null);
-  const repoPathRef = useRef(repoPath);
-  const conversationRef = useRef<HTMLElement | null>(null);
-  const conversationBottomRef = useRef<HTMLDivElement | null>(null);
-  const composerDockRef = useRef<HTMLDivElement | null>(null);
-  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const pageContextSummaryRef = useRef(pageContext ? formatPageContextSummary(pageContext) : "");
   const lastAppliedDefaultQuestionRef = useRef(defaultQuestion.trim());
+  const lastObservedDefaultQuestionRef = useRef<string | null>(null);
   const shouldFocusRestoredDraftRef = useRef(
     shouldPersistConversation && !defaultQuestion.trim() && query.trim().length > 0,
   );
-  const shouldFocusComposerRef = useRef(false);
-  const processStateRequestVersionRef = useRef(0);
   const conversationSessionRef = useRef(0);
-  const copyFeedbackTimerRef = useRef<number | null>(null);
-  const shouldStickConversationToBottomRef = useRef(true);
+  const rerunTurnGateRef = useRef<AgentTurnGate | null>(null);
   const stopActiveAgentTurnRef = useRef<() => void>(() => undefined);
   const submitQueuedQueryRef = useRef<(question: string) => Promise<void>>(async () => undefined);
-  const activeManagedRunAbortRef = useRef<AbortController | null>(null);
-  const activeManagedRunIdRef = useRef("");
-  const [copyFeedback, setCopyFeedback] = useState<AgentCopyFeedback | null>(null);
-  const deferredProcessSearch = useDeferredValue(processSearch);
-  const filteredProcesses = availableProcesses.filter((processName) =>
-    processName.toLowerCase().includes(deferredProcessSearch.trim().toLowerCase()),
-  );
-  const recentUnpinnedRepoPaths = recentRepoPaths.filter((path) => !pinnedRepoPaths.includes(path));
-  const isCurrentRepoPinned = pinnedRepoPaths.includes(repoPath.trim());
+  const { beginAgentTurn, invalidateActiveAgentTurn, abortActiveAgentTurn } = useAgentTurnGate();
+  const {
+    requestBackendRunCancel,
+    fetchAgentRunStatus,
+    createAgentRun,
+    queryAgentResult,
+    trackActiveManagedRun,
+    clearActiveManagedRun,
+    takeActiveManagedRunId,
+    releaseActiveManagedRun,
+  } = useManagedAgentRun(apiClient);
   const latestConversationTurn = conversationTurns[conversationTurns.length - 1] ?? null;
+  const activeConversationTurn = conversationTurns.find((turn) => turn.id === activeTurnId) ?? null;
   const latestResultTurn = findLatestTurnWithResult(conversationTurns);
   const latestRunTurn = findLatestTurnWithRun(conversationTurns);
   const runtimeResult = loading ? null : latestResultTurn?.result ?? result;
   const runtimeRun = (
     loading
-      ? latestConversationTurn?.agentRun ?? agentRun ?? latestRunTurn?.agentRun
+      ? activeConversationTurn?.agentRun ?? agentRun
       : latestRunTurn?.agentRun ?? agentRun
   ) ?? null;
   const runtimeStatus = buildRuntimeStatus(
@@ -178,12 +199,30 @@ export function EmbeddedAgentCopilot({
     runtimeRun,
   );
   const hasConversation = conversationTurns.length > 0 || Boolean(result || error);
-  repoPathRef.current = repoPath;
 
-  function beginProcessStateRequest() {
-    processStateRequestVersionRef.current += 1;
-    return processStateRequestVersionRef.current;
-  }
+  const {
+    conversationRef,
+    conversationBottomRef,
+    composerDockRef,
+    composerInputRef,
+    shouldStickConversationToBottomRef,
+    shouldFocusComposerRef,
+    showJumpToLatest,
+    setShowJumpToLatest,
+    copyFeedback,
+    closeResultInteractionDetails,
+    closeResultInteractionDetailsExceptSuggestedActionMore,
+    focusComposerInput,
+    scrollConversationToBottom,
+    copyAgentAnswer,
+  } = useAgentComposerFocus({
+    isWorkbench,
+    hasConversation,
+    loading,
+    latestConversationTurn,
+    streamingAnswerText: streamingAnswer.text,
+    setComposerAssistHint,
+  });
 
   function currentConversationSession() {
     return conversationSessionRef.current;
@@ -195,17 +234,6 @@ export function EmbeddedAgentCopilot({
 
   function resetConversationSession() {
     conversationSessionRef.current += 1;
-  }
-
-  function invalidateActiveRequest() {
-    processStateRequestVersionRef.current += 1;
-  }
-
-  function canCommitProcessState(requestVersion: number, requestRepoPath: string) {
-    return (
-      processStateRequestVersionRef.current === requestVersion &&
-      requestRepoPath === repoPathRef.current.trim()
-    );
   }
 
   function movePinnedRepoPath(path: string, direction: "up" | "down") {
@@ -224,93 +252,15 @@ export function EmbeddedAgentCopilot({
     );
   }
 
-  const closeResultInteractionDetails = useCallback((sourceElement?: HTMLElement) => {
-    const detailsRoot = sourceElement?.closest(".agent-result-shell") ?? conversationRef.current;
-    detailsRoot
-      ?.querySelectorAll<HTMLDetailsElement>(
-        [
-          ".agent-follow-up-chips__details",
-          ".agent-suggested-actions__more",
-          ".agent-suggested-actions__details",
-          ".agent-side-panel__details",
-          ".agent-result-side-drawer",
-        ].join(", "),
-      )
-      .forEach((details) => {
-        details.open = false;
-      });
-  }, []);
-
-  const closeResultInteractionDetailsExceptSuggestedActionMore = useCallback((sourceElement?: HTMLElement) => {
-    const detailsRoot = sourceElement?.closest(".agent-result-shell") ?? conversationRef.current;
-    detailsRoot
-      ?.querySelectorAll<HTMLDetailsElement>(
-        [
-          ".agent-follow-up-chips__details",
-          ".agent-suggested-actions__details",
-          ".agent-side-panel__details",
-          ".agent-result-side-drawer",
-        ].join(", "),
-      )
-      .forEach((details) => {
-        details.open = false;
-      });
-  }, []);
-
-  const moveComposerCursorToEnd = useCallback((input: HTMLTextAreaElement) => {
-    const cursorPosition = input.value.length;
-    input.setSelectionRange(cursorPosition, cursorPosition);
-  }, []);
-
-  const focusComposerInput = useCallback(() => {
-    closeResultInteractionDetails();
-    const input = composerInputRef.current;
-    if (!input) {
+  function scrollToConversationTurn(turnId: string) {
+    const turnElement = Array.from(
+      conversationRef.current?.querySelectorAll<HTMLElement>("[data-agent-turn-id]") ?? [],
+    ).find((element) => element.dataset.agentTurnId === turnId);
+    if (typeof turnElement?.scrollIntoView !== "function") {
       return;
     }
-    input.focus();
-    moveComposerCursorToEnd(input);
-    window.requestAnimationFrame(() => {
-      if (composerInputRef.current === input && document.activeElement === input) {
-        moveComposerCursorToEnd(input);
-      }
-    });
-    const scrollIntoView = input.scrollIntoView;
-    if (typeof scrollIntoView === "function" && shouldScrollComposerInputIntoView(input)) {
-      scrollIntoView.call(input, { behavior: getAgentScrollBehavior(), block: "nearest" });
-    }
-  }, [closeResultInteractionDetails, moveComposerCursorToEnd]);
-
-  function scrollConversationToBottom() {
-    const bottom = conversationBottomRef.current;
-    const scrollIntoView = bottom?.scrollIntoView;
-    if (typeof scrollIntoView === "function") {
-      scrollIntoView.call(bottom, { behavior: getAgentScrollBehavior(), block: "end" });
-    }
-  }
-
-  function syncConversationStickiness() {
-    const conversationBottom = conversationBottomRef.current;
-    if (!conversationBottom) {
-      shouldStickConversationToBottomRef.current = true;
-      return;
-    }
-
-    const visualViewport = window.visualViewport;
-    const viewportTop = visualViewport?.offsetTop ?? 0;
-    const viewportHeight =
-      visualViewport?.height ?? window.innerHeight ?? document.documentElement.clientHeight;
-    const viewportBottom = viewportTop + viewportHeight;
-    const composerRect = composerDockRef.current?.getBoundingClientRect();
-    const composerIsVisible = Boolean(
-      composerRect && composerRect.bottom > viewportTop && composerRect.top < viewportBottom,
-    );
-    const readableBottom = composerIsVisible
-      ? Math.max(viewportTop, composerRect?.top ?? viewportBottom)
-      : viewportBottom;
-    const distanceFromBottom = conversationBottom.getBoundingClientRect().bottom - readableBottom;
-    shouldStickConversationToBottomRef.current =
-      Math.abs(distanceFromBottom) <= AGENT_STICKY_BOTTOM_THRESHOLD_PX;
+    shouldStickConversationToBottomRef.current = false;
+    turnElement.scrollIntoView({ behavior: getAgentScrollBehavior(), block: "start" });
   }
 
   function updateComposerQuery(nextQuery: string) {
@@ -363,6 +313,11 @@ export function EmbeddedAgentCopilot({
 
   useEffect(() => {
     const nextDefaultQuestion = defaultQuestion.trim();
+    if (lastObservedDefaultQuestionRef.current === nextDefaultQuestion) {
+      return;
+    }
+    // 同一次默认问题只处理一次，清空或发送草稿后不重新回填。
+    lastObservedDefaultQuestionRef.current = nextDefaultQuestion;
     if (shouldPersistConversation || !nextDefaultQuestion) {
       lastAppliedDefaultQuestionRef.current = nextDefaultQuestion;
       return;
@@ -393,16 +348,6 @@ export function EmbeddedAgentCopilot({
   }, [isEmbedded, pageContext]);
 
   useEffect(() => {
-    if (!filteredProcesses.length) {
-      setSelectedProcess("");
-      return;
-    }
-    if (!selectedProcess || !filteredProcesses.includes(selectedProcess)) {
-      setSelectedProcess(filteredProcesses[0] ?? "");
-    }
-  }, [filteredProcesses, selectedProcess]);
-
-  useEffect(() => {
     if (!loading) {
       return;
     }
@@ -413,78 +358,11 @@ export function EmbeddedAgentCopilot({
   }, [loading]);
 
   useEffect(() => {
-    if (!hasConversation) {
-      return;
-    }
-    if (!shouldStickConversationToBottomRef.current) {
-      return;
-    }
-    scrollConversationToBottom();
-  }, [
-    hasConversation,
-    latestConversationTurn?.id,
-    latestConversationTurn?.agentRun?.status,
-    latestConversationTurn?.result,
-    latestConversationTurn?.error,
-  ]);
-
-  useEffect(() => {
-    if (!conversationRef.current) {
-      shouldStickConversationToBottomRef.current = true;
-      return;
-    }
-    document.addEventListener("scroll", syncConversationStickiness, { capture: true, passive: true });
-    return () => document.removeEventListener("scroll", syncConversationStickiness, true);
-  }, [hasConversation]);
-
-  useEffect(() => {
-    if (!shouldFocusComposerRef.current) {
-      return;
-    }
-    shouldFocusComposerRef.current = false;
-    focusComposerInput();
-  }, [
-    focusComposerInput,
-    hasConversation,
-    loading,
-    latestConversationTurn?.id,
-    latestConversationTurn?.result,
-    latestConversationTurn?.error,
-  ]);
-
-  useEffect(() => {
     return () => {
-      if (copyFeedbackTimerRef.current !== null) {
-        window.clearTimeout(copyFeedbackTimerRef.current);
-      }
-      // 卸载时只中止前端等待（SSE/轮询），不取消后端 run：刷新或路由切换后仍可恢复。
-      activeManagedRunAbortRef.current?.abort();
+      // 卸载时只中止前端等待（SSE/轮询/同步查询），不取消后端 run：刷新或路由切换后仍可恢复。
+      abortActiveAgentTurn();
     };
-  }, []);
-
-  function requestBackendRunCancel(runId: string) {
-    if (!runId.trim()) {
-      return;
-    }
-    void apiClient.cancelAgentRun(runId).catch(() => undefined);
-  }
-
-  async function fetchAgentRunStatus(runId: string): Promise<AgentRunPayload> {
-    let payload: unknown;
-    try {
-      payload = await apiClient.getAgentRun(runId);
-    } catch (requestError) {
-      const status = getAgentApiErrorStatus(requestError);
-      if (status !== null) {
-        throw new Error(`智能体任务状态获取失败（${status}）`);
-      }
-      throw requestError;
-    }
-    if (!isAgentRunPayload(payload)) {
-      throw new Error("智能体返回结果格式无效。");
-    }
-    return normalizeAgentRunPayload(payload);
-  }
+  }, [abortActiveAgentTurn]);
 
   useAgentRunRestore({
     shouldPersistConversation,
@@ -492,7 +370,10 @@ export function EmbeddedAgentCopilot({
     isCurrentConversationSession,
     fetchAgentRunStatus,
     setRestoringRunId,
-    setRestoreErrorRunId,
+    setRestoreErrorRunId: (runId, retryable = false) => {
+      setRestoreErrorRunId(runId);
+      setRestoreErrorRetryable(retryable);
+    },
     setOrdinaryConversationMode,
     setAgentRun,
     setConversationTurns,
@@ -500,58 +381,12 @@ export function EmbeddedAgentCopilot({
     setError,
   });
 
-  async function createAgentRun(requestBody: AgentQueryRequest): Promise<AgentRunPayload> {
-    let payload: unknown;
-    try {
-      payload = await apiClient.createAgentRun(requestBody);
-    } catch (requestError) {
-      if (requestError instanceof AgentDisabledError) {
-        throw new AgentDisabledQueryError(requestError.message, requestError.phase);
-      }
-      const status = getAgentApiErrorStatus(requestError);
-      if (status !== null) {
-        throw new Error(`智能体查询失败（${status}）`);
-      }
-      throw requestError;
-    }
-
-    // 后端 POST /api/agent/runs 已收窄为仅返回排队回执（不再同步短路返回 AgentEnvelope）；
-    // demo 桩返回的终态 run payload（含 result）同样满足该守卫。
-    if (!isAgentRunPayload(payload)) {
-      throw new Error("智能体返回结果格式无效。");
-    }
-
-    return normalizeAgentRunPayload(payload);
-  }
-  async function queryAgentResult(requestBody: AgentQueryRequest): Promise<AgentQueryResult> {
-    try {
-      const payload = await apiClient.queryAgent(requestBody);
-      if (!isAgentQueryResult(payload)) {
-        throw new Error("智能体返回结果格式无效。");
-      }
-      return normalizeAgentResult(payload);
-    } catch (requestError) {
-      if (requestError instanceof AgentDisabledError) {
-        throw new AgentDisabledQueryError(requestError.message, requestError.phase);
-      }
-      const status = getAgentApiErrorStatus(requestError);
-      const confirmationErrorMessage = getSuggestedActionConfirmationErrorMessage(
-        status,
-        getAgentApiErrorPayload(requestError),
-      );
-      if (confirmationErrorMessage) {
-        throw new Error(confirmationErrorMessage);
-      }
-      if (status !== null) {
-        throw new Error(`智能体查询失败（${status}）`);
-      }
-      throw requestError;
-    }
-  }
   async function executeManagedAgentRun(
     question: string,
     turnId: string,
+    turnGate: AgentTurnGate,
     conversationContext?: AgentConversationContext,
+    existingRun?: AgentRunPayload,
   ) {
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
@@ -561,44 +396,70 @@ export function EmbeddedAgentCopilot({
       selectedProcess,
       conversationContext,
       pageContext,
+      undefined,
+      isWorkbench ? "standalone_workbench" : undefined,
     );
-    const abortController = new AbortController();
+    Object.assign(requestBody, modelSelection.requestOptions);
     // 回合提交门与 GitNexus 进程列表提交门解耦：run 进行中编辑仓库路径、点最近仓库、
     // 点"读取流程"只会使进程列表请求失效，不能丢弃本回合的终态结果/错误提交。
-    // 回合提交只看停止信号（abort）与会话版本（新对话/新提问会重置会话）。
+    // 回合提交只看回合版本/停止信号与会话版本（新对话/新提问会重置会话）。
     const conversationSession = currentConversationSession();
     const canCommitTurnState = () =>
-      !abortController.signal.aborted && isCurrentConversationSession(conversationSession);
-    activeManagedRunAbortRef.current = abortController;
-    activeManagedRunIdRef.current = "";
-    setAgentRun(null);
+      turnGate.isCurrent() && isCurrentConversationSession(conversationSession);
+    let acceptedManagedRunId = existingRun?.run_id ?? "";
+    clearActiveManagedRun();
+    if (existingRun) {
+      trackActiveManagedRun(existingRun.run_id);
+    }
+    setAgentRun(existingRun ?? null);
     setResult(null);
+    setStreamingAnswer({ turnId, text: "" });
+    let useAnswerDeltas = false;
+    let lastDeltaSeq = 0;
+    let partialAnswer = "";
     try {
       const finalPayload = await runManagedAgentPolling({
         requestBody,
+        existingRun,
         createAgentRun: async (body: AgentQueryRequest) => {
           const payload = await createAgentRun(body);
           if (payload.run_kind !== "sync") {
-            if (abortController.signal.aborted) {
+            if (turnGate.signal.aborted) {
               // 用户在 run 建立前就点了停止：拿到 run_id 后立即请求后端取消。
               requestBackendRunCancel(payload.run_id);
             } else {
-              activeManagedRunIdRef.current = payload.run_id;
+              acceptedManagedRunId = payload.run_id;
+              trackActiveManagedRun(payload.run_id);
             }
           }
           return payload;
         },
         fetchAgentRunStatus,
         canCommit: canCommitTurnState,
-        signal: abortController.signal,
+        signal: turnGate.signal,
+        streamAgentRunEvents: (runId, onRunUpdate, options) =>
+          useAnswerDeltas
+            ? streamAgentLabRunEvents(runId, {
+                onRunUpdate,
+                onRunDelta: (delta) => {
+                  if (!canCommitTurnState()) return;
+                  lastDeltaSeq = delta.seq;
+                  partialAnswer += delta.text;
+                  setStreamingAnswer({ turnId, text: partialAnswer });
+                },
+              }, { ...options, afterSeq: lastDeltaSeq })
+            : streamAgentRunEvents(runId, onRunUpdate, options),
         onRunAccepted: (payload, runRequestLatencyMs) => {
+          useAnswerDeltas = isWorkbench && payload.provider === "hermes";
           setOrdinaryConversationMode("managed");
           setAgentRun(payload);
           // 持久化交给 useConversationPersistence 的 write-through effect；
           // 不在 state 更新器内执行副作用（StrictMode/并发渲染下更新器可能重放）。
           setConversationTurns((currentTurns) =>
             currentTurns.map((turn) =>
-              turn.id === turnId ? { ...turn, agentRun: payload, runRequestLatencyMs } : turn,
+              turn.id === turnId
+                ? { ...turn, agentRun: payload, runRequestLatencyMs: runRequestLatencyMs ?? turn.runRequestLatencyMs }
+                : turn,
             ),
           );
           persistPersistedLatestRunId(payload.run_id);
@@ -681,9 +542,8 @@ export function EmbeddedAgentCopilot({
         window.setTimeout(focusComposerInput, 0);
       }
     } finally {
-      if (activeManagedRunAbortRef.current === abortController) {
-        activeManagedRunAbortRef.current = null;
-        activeManagedRunIdRef.current = "";
+      if (turnGate.isCurrent()) {
+        releaseActiveManagedRun(acceptedManagedRunId);
       }
     }
   }
@@ -694,9 +554,13 @@ export function EmbeddedAgentCopilot({
     turnId?: string,
     conversationContext?: AgentConversationContext,
     contextPatch?: Record<string, unknown>,
+    turnGate?: AgentTurnGate,
   ) {
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
+    // 同步查询提交门 = 进程状态版本门 ∧ 回合版本门：回合被停止/替换后不得再写页面状态。
+    const canCommitQueryState = () =>
+      canCommitProcessState(requestVersion, normalizedRepoPath) && (turnGate?.isCurrent() ?? true);
     try {
       const requestBody = buildAgentRequestBody(
         question,
@@ -707,27 +571,34 @@ export function EmbeddedAgentCopilot({
         contextPatch,
       );
 
-      const payload = await queryAgentResult(requestBody);
+      const payload = await queryAgentResult(requestBody, turnGate);
+      if (turnGate && !turnGate.isCurrent()) {
+        return undefined;
+      }
 
       const nextProcesses = extractProcessNames(payload.cards);
-      if (nextProcesses.length > 0 && canCommitProcessState(requestVersion, normalizedRepoPath)) {
+      if (nextProcesses.length > 0 && canCommitQueryState()) {
         setAvailableProcesses(nextProcesses);
         setSelectedProcess((current) => (current && nextProcesses.includes(current) ? current : nextProcesses[0] ?? ""));
-      } else if (mode === "processes" && canCommitProcessState(requestVersion, normalizedRepoPath)) {
+      } else if (mode === "processes" && canCommitQueryState()) {
         setAvailableProcesses([]);
         setSelectedProcess("");
       }
 
-      if (normalizedRepoPath.length > 0 && canCommitProcessState(requestVersion, normalizedRepoPath)) {
+      if (normalizedRepoPath.length > 0 && canCommitQueryState()) {
         rememberRepoPath(normalizedRepoPath);
       }
-      if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
+      if (canCommitQueryState()) {
         setResult(payload);
       }
       return payload;
     } catch (requestError) {
+      if (isAbortError(requestError)) {
+        // 停止等待 / 换新问题导致的中止：不写错误，也不让调用方补写 failed run。
+        return undefined;
+      }
       if (requestError instanceof AgentDisabledQueryError) {
-        if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
+        if (!canCommitQueryState()) {
           return undefined;
         }
         const disabledError: AgentQueryError = {
@@ -741,7 +612,7 @@ export function EmbeddedAgentCopilot({
         }
         return undefined;
       }
-      if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
+      if (canCommitQueryState()) {
         const nextError: AgentQueryError = {
           kind: "request",
           message: buildErrorMessage(requestError),
@@ -758,6 +629,7 @@ export function EmbeddedAgentCopilot({
   async function executeLocalSyncConversation(
     question: string,
     turnId: string,
+    turnGate: AgentTurnGate,
     conversationContext?: AgentConversationContext,
     contextPatch?: Record<string, unknown>,
   ) {
@@ -772,7 +644,18 @@ export function EmbeddedAgentCopilot({
       error: null,
     }));
 
-    const payload = await executeAgentQuery(question, "query", turnId, conversationContext, contextPatch);
+    const payload = await executeAgentQuery(
+      question,
+      "query",
+      turnId,
+      conversationContext,
+      contextPatch,
+      turnGate,
+    );
+    if (!turnGate.isCurrent()) {
+      // 回合已被停止/替换：既不写 failed run，也不写结果，交给新回合接管。
+      return;
+    }
     if (!payload) {
       const failedSyncRun = buildLocalSyncAgentRun(
         syncRunId,
@@ -814,6 +697,8 @@ export function EmbeddedAgentCopilot({
     const context = buildConversationContext(conversationTurns);
     const turn = createAgentConversationTurn(displayQuestion, context);
 
+    const turnGate = beginAgentTurn();
+    setActiveTurnId(turn.id);
     setAgentWaitSeconds(0);
     setConversationTurns((currentTurns) => [...currentTurns, turn]);
     shouldFocusComposerRef.current = true;
@@ -821,7 +706,7 @@ export function EmbeddedAgentCopilot({
     setError(null);
 
     try {
-      await executeLocalSyncConversation(actionLabel, turn.id, context, {
+      await executeLocalSyncConversation(actionLabel, turn.id, turnGate, context, {
         intent,
         suggested_action: action,
         suggested_action_requires_confirmation: action.requires_confirmation,
@@ -830,55 +715,88 @@ export function EmbeddedAgentCopilot({
           : {}),
       });
     } finally {
-      setLoading(false);
+      if (turnGate.isCurrent()) {
+        setLoading(false);
+        setActiveTurnId(null);
+      }
     }
   }
 
   async function executeOrdinaryConversation(
     question: string,
     turnId: string,
+    turnGate: AgentTurnGate,
     conversationContext?: AgentConversationContext,
   ) {
-    if (isLocalOpenChatQuestion(question)) {
-      await executeLocalSyncConversation(question, turnId, conversationContext);
+    setStreamingAnswer({ turnId, text: "" });
+    // 纯问候不需要消耗用户选中的模型或思考额度；模型选择只影响真正的开放问题。
+    if (isLocalOpenChatQuestion(question) && !conversationContext?.recent_turns.length) {
+      await executeLocalSyncConversation(question, turnId, turnGate, conversationContext);
       return;
     }
     const localQueryIntent = getLocalAgentQueryIntent(question);
     if (localQueryIntent) {
-      await executeLocalSyncConversation(question, turnId, conversationContext, {
+      await executeLocalSyncConversation(question, turnId, turnGate, conversationContext, {
         intent: localQueryIntent,
       });
       return;
     }
-    if (shouldUseLocalAnalysisConversation(question, conversationContext)) {
-      await executeLocalSyncConversation(question, turnId, conversationContext);
+    if (isWorkbench && isPlainAnalysisConversationQuestion(question)) {
+      await executeManagedAgentRun(question, turnId, turnGate, conversationContext);
       return;
     }
-    if (ordinaryConversationMode === "local_sync") {
-      await executeLocalSyncConversation(question, turnId, conversationContext);
+    if (shouldUseLocalAnalysisConversation(question, conversationContext)) {
+      await executeLocalSyncConversation(question, turnId, turnGate, conversationContext);
+      return;
+    }
+    if (!isWorkbench && ordinaryConversationMode === "local_sync") {
+      await executeLocalSyncConversation(question, turnId, turnGate, conversationContext);
       return;
     }
     if (ordinaryConversationMode === "managed") {
-      await executeManagedAgentRun(question, turnId, conversationContext);
+      await executeManagedAgentRun(question, turnId, turnGate, conversationContext);
       return;
     }
 
-    await executeManagedAgentRun(question, turnId, conversationContext);
+    await executeManagedAgentRun(question, turnId, turnGate, conversationContext);
   }
 
   function canRetryAgentTurn(turn: AgentConversationTurn) {
-    return turn.retryMode === "ordinary" && turn.question.trim().length > 0 && Boolean(turn.error);
+    return turn.retryMode === "ordinary" && turn.question.trim().length > 0 && Boolean(turn.error)
+      && turn.agentRun?.status !== "completed";
+  }
+
+  function canReconnectAgentTurn(turn: AgentConversationTurn) {
+    return turn.error?.kind === "request" && turn.agentRun?.run_kind !== "sync"
+      && (turn.agentRun?.status === "queued" || turn.agentRun?.status === "running");
   }
 
   function canRegenerateAgentTurn(turn: AgentConversationTurn) {
     return turn.retryMode === "ordinary" && turn.question.trim().length > 0 && Boolean(turn.result);
   }
 
-  async function rerunOrdinaryTurn(turn: AgentConversationTurn, rerunComposerHint = "正在重新发送 · 可继续输入下一句") {
-    if (loading) {
+  async function rerunOrdinaryTurn(
+    turn: AgentConversationTurn,
+    rerunComposerHint = "正在重新发送 · 可继续输入下一句",
+    existingRun?: AgentRunPayload,
+  ) {
+    if (loading || rerunTurnGateRef.current?.isCurrent()) {
       return;
     }
 
+    if (turn.id !== latestConversationTurn?.id) {
+      shouldStickConversationToBottomRef.current = false;
+      window.setTimeout(() => scrollToConversationTurn(turn.id), 0);
+    }
+
+    const turnGate = beginAgentTurn();
+    rerunTurnGateRef.current = turnGate;
+    if (existingRun) {
+      resetConversationSession();
+      setRestoringRunId("");
+      setRestoreErrorRunId("");
+    }
+    setActiveTurnId(turn.id);
     setAgentWaitSeconds(0);
     setLoading(true);
     setError(null);
@@ -891,7 +809,7 @@ export function EmbeddedAgentCopilot({
     shouldFocusComposerRef.current = true;
     updateConversationTurn(turn.id, (currentTurn) => ({
       ...currentTurn,
-      agentRun: null,
+      agentRun: existingRun ?? null,
       result: null,
       error: null,
       stopped: false,
@@ -899,17 +817,31 @@ export function EmbeddedAgentCopilot({
     }));
 
     try {
-      await executeOrdinaryConversation(turn.question, turn.id, turn.conversationContext);
+      if (existingRun) {
+        await executeManagedAgentRun(turn.question, turn.id, turnGate, turn.conversationContext, existingRun);
+      } else {
+        await executeOrdinaryConversation(turn.question, turn.id, turnGate, turn.conversationContext);
+      }
     } finally {
-      setComposerAssistHint((currentHint) => (currentHint === rerunComposerHint ? null : currentHint));
-      shouldFocusComposerRef.current = true;
-      window.setTimeout(focusComposerInput, 0);
-      setLoading(false);
+      if (rerunTurnGateRef.current === turnGate) {
+        rerunTurnGateRef.current = null;
+      }
+      if (turnGate.isCurrent()) {
+        setComposerAssistHint((currentHint) => (currentHint === rerunComposerHint ? null : currentHint));
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
+        setLoading(false);
+        setActiveTurnId(null);
+      }
     }
   }
 
   async function retryAgentTurn(turn: AgentConversationTurn) {
     if (!canRetryAgentTurn(turn)) {
+      return;
+    }
+    if (canReconnectAgentTurn(turn) && turn.agentRun) {
+      await rerunOrdinaryTurn(turn, "正在重新连接原任务 · 可继续输入下一句", turn.agentRun);
       return;
     }
     await rerunOrdinaryTurn(turn, "正在重试这一轮 · 可继续输入下一句");
@@ -923,21 +855,21 @@ export function EmbeddedAgentCopilot({
   }
 
   function stopActiveAgentTurn() {
-    if (!loading || !latestConversationTurn) {
+    if (!loading || !activeConversationTurn) {
       return;
     }
 
-    const activeAbortController = activeManagedRunAbortRef.current;
-    const activeManagedRunId = activeManagedRunIdRef.current;
-    activeManagedRunAbortRef.current = null;
-    activeManagedRunIdRef.current = "";
-    activeAbortController?.abort();
+    const activeManagedRunId = takeActiveManagedRunId();
+    // 回合作废 + 中止：托管 run 的 SSE/轮询与本地同步查询都不再写状态，
+    // 旧回合迟到的 finally 也不会把新提交的 loading 改回 false。
+    invalidateActiveAgentTurn();
     if (activeManagedRunId) {
       requestBackendRunCancel(activeManagedRunId);
     }
 
     invalidateActiveRequest();
     setLoading(false);
+    setActiveTurnId(null);
     setAgentWaitSeconds(0);
     setAgentRun(null);
     setResult(null);
@@ -948,7 +880,7 @@ export function EmbeddedAgentCopilot({
       clearQueuedQueries();
       restoredQueryToComposer = true;
     } else if (!query.trim()) {
-      updateComposerQuery(latestConversationTurn.question);
+      updateComposerQuery(activeConversationTurn.question);
       restoredQueryToComposer = true;
     }
     if (restoredQueryToComposer) {
@@ -960,7 +892,7 @@ export function EmbeddedAgentCopilot({
       clearPersistedLatestRunId();
     }
     shouldFocusComposerRef.current = true;
-    updateConversationTurn(latestConversationTurn.id, (turn) => ({
+    updateConversationTurn(activeConversationTurn.id, (turn) => ({
       ...turn,
       agentRun: null,
       result: null,
@@ -976,7 +908,7 @@ export function EmbeddedAgentCopilot({
       return;
     }
     function handleEscapeStop(event: KeyboardEvent) {
-      if (event.key !== "Escape" || event.isComposing) {
+      if (event.key !== "Escape" || event.isComposing || event.defaultPrevented) {
         return;
       }
       if (isEmbedded) {
@@ -1010,6 +942,8 @@ export function EmbeddedAgentCopilot({
 
     const context = buildConversationContext(conversationTurns);
     const turn = createAgentConversationTurn(question, context, "ordinary");
+    const turnGate = beginAgentTurn();
+    setActiveTurnId(turn.id);
     setAgentWaitSeconds(0);
     resetConversationSession();
     invalidateActiveRequest();
@@ -1030,9 +964,14 @@ export function EmbeddedAgentCopilot({
     setLoading(true);
     setError(null);
     try {
-      await executeOrdinaryConversation(question, turn.id, context);
+      await executeOrdinaryConversation(question, turn.id, turnGate, context);
     } finally {
-      setLoading(false);
+      // 只有最新回合才能改 loading：停止后立即提交新问题时，旧回合的 finally
+      // 不得把新回合的"分析中"提前显示为完成态。
+      if (turnGate.isCurrent()) {
+        setLoading(false);
+        setActiveTurnId(null);
+      }
     }
   }
 
@@ -1055,6 +994,8 @@ export function EmbeddedAgentCopilot({
   async function submitQueuedQuery(question: string) {
     const context = buildConversationContext(conversationTurns);
     const turn = createAgentConversationTurn(question, context, "ordinary");
+    const turnGate = beginAgentTurn();
+    setActiveTurnId(turn.id);
     setAgentWaitSeconds(0);
     setPendingSuggestedActionConfirmation(null);
     setConversationTurns((currentTurns) => [...currentTurns, turn]);
@@ -1063,14 +1004,17 @@ export function EmbeddedAgentCopilot({
     setError(null);
     setComposerAssistHint("正在发送排队问题 · 可继续输入下一句");
     try {
-      await executeOrdinaryConversation(question, turn.id, context);
+      await executeOrdinaryConversation(question, turn.id, turnGate, context);
     } finally {
-      setComposerAssistHint((currentHint) =>
-        currentHint === "正在发送排队问题 · 可继续输入下一句" ? null : currentHint,
-      );
-      setLoading(false);
-      shouldFocusComposerRef.current = true;
-      window.setTimeout(focusComposerInput, 0);
+      if (turnGate.isCurrent()) {
+        setComposerAssistHint((currentHint) =>
+          currentHint === "正在发送排队问题 · 可继续输入下一句" ? null : currentHint,
+        );
+        setLoading(false);
+        setActiveTurnId(null);
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
+      }
     }
   }
   submitQueuedQueryRef.current = submitQueuedQuery;
@@ -1095,6 +1039,8 @@ export function EmbeddedAgentCopilot({
       workflow.slashCommand,
       "workflow",
     );
+    const turnGate = beginAgentTurn();
+    setActiveTurnId(turn.id);
     setAgentWaitSeconds(0);
     setConversationTurns((currentTurns) => [
       ...currentTurns,
@@ -1112,7 +1058,13 @@ export function EmbeddedAgentCopilot({
     shouldFocusComposerRef.current = true;
 
     try {
-      const payload = await queryAgentResult(buildFinancialWorkflowRequestBody(workflow, pageContext));
+      const payload = await queryAgentResult(
+        buildFinancialWorkflowRequestBody(workflow, pageContext),
+        turnGate,
+      );
+      if (!turnGate.isCurrent()) {
+        return;
+      }
 
       const workflowRun: AgentRunPayload = {
         run_id: `agent_run:workflow:${workflow.id}`,
@@ -1138,6 +1090,9 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
+      if (isAbortError(requestError) || !turnGate.isCurrent()) {
+        return;
+      }
       if (requestError instanceof AgentDisabledQueryError) {
         const disabledError: AgentQueryError = {
           kind: "disabled",
@@ -1161,7 +1116,10 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } finally {
-      setLoading(false);
+      if (turnGate.isCurrent()) {
+        setLoading(false);
+        setActiveTurnId(null);
+      }
     }
   }
 
@@ -1176,6 +1134,8 @@ export function EmbeddedAgentCopilot({
       shortcut.question,
       "sync",
     );
+    const turnGate = beginAgentTurn();
+    setActiveTurnId(turn.id);
     setAgentWaitSeconds(0);
     setConversationTurns((currentTurns) => [
       ...currentTurns,
@@ -1193,7 +1153,13 @@ export function EmbeddedAgentCopilot({
     shouldFocusComposerRef.current = true;
 
     try {
-      const payload = await queryAgentResult(buildResearchRequestBody(shortcut, pageContext));
+      const payload = await queryAgentResult(
+        buildResearchRequestBody(shortcut, pageContext),
+        turnGate,
+      );
+      if (!turnGate.isCurrent()) {
+        return;
+      }
 
       const researchRun: AgentRunPayload = {
         run_id: `agent_run:research:${shortcut.id}`,
@@ -1220,6 +1186,9 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
+      if (isAbortError(requestError) || !turnGate.isCurrent()) {
+        return;
+      }
       if (requestError instanceof AgentDisabledQueryError) {
         const disabledError: AgentQueryError = {
           kind: "disabled",
@@ -1243,7 +1212,10 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } finally {
-      setLoading(false);
+      if (turnGate.isCurrent()) {
+        setLoading(false);
+        setActiveTurnId(null);
+      }
     }
   }
 
@@ -1261,6 +1233,9 @@ export function EmbeddedAgentCopilot({
       return;
     }
 
+    // 并发保护：多次点击"读取流程"时只有最后一次请求负责复位 processLoading，
+    // 先返回的请求不得把仍在读取中的按钮改回可用态。
+    const processLoadSequence = beginProcessLoadSequence();
     setProcessLoading(true);
     setComposerAssistHint("正在读取 GitNexus 流程 · 可继续输入");
     focusComposerInput();
@@ -1313,6 +1288,9 @@ export function EmbeddedAgentCopilot({
         ]);
       }
     } catch (requestError) {
+      if (isAbortError(requestError)) {
+        return;
+      }
       if (canCommitProcessState(activeRequestVersion, normalizedRepoPath)) {
         setError({
           kind: "request",
@@ -1323,9 +1301,12 @@ export function EmbeddedAgentCopilot({
         focusComposerInput();
       }
     } finally {
-      // 无条件复位：读取期间任何提问/新的进程请求都会 bump 版本号，
+      // 不看进程状态版本号复位：读取期间任何提问/新的进程请求都会 bump 版本号，
       // 若仅在版本未变时复位，"读取流程"按钮会永久卡在"读取中..."。
-      setProcessLoading(false);
+      // 但要看并发序号：只有最后发起的那次读取负责把按钮改回可用态。
+      if (isLatestProcessLoad(processLoadSequence)) {
+        setProcessLoading(false);
+      }
     }
   }
 
@@ -1347,6 +1328,8 @@ export function EmbeddedAgentCopilot({
       question,
       "sync",
     );
+    const turnGate = beginAgentTurn();
+    setActiveTurnId(turn.id);
     setConversationTurns((currentTurns) => [
       ...currentTurns,
       {
@@ -1362,7 +1345,10 @@ export function EmbeddedAgentCopilot({
     setComposerAssistHint("正在查看 GitNexus 流程 · 可继续输入");
     shouldFocusComposerRef.current = true;
     try {
-      const payload = await executeAgentQuery(question, "query", turn.id);
+      const payload = await executeAgentQuery(question, "query", turn.id, undefined, undefined, turnGate);
+      if (!turnGate.isCurrent()) {
+        return;
+      }
       if (!payload) {
         setComposerAssistHint("查看 GitNexus 流程失败 · 可重新选择流程后重试");
         shouldFocusComposerRef.current = true;
@@ -1390,10 +1376,13 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } finally {
-      setComposerAssistHint((currentHint) =>
-        currentHint === "正在查看 GitNexus 流程 · 可继续输入" ? null : currentHint,
-      );
-      setLoading(false);
+      if (turnGate.isCurrent()) {
+        setComposerAssistHint((currentHint) =>
+          currentHint === "正在查看 GitNexus 流程 · 可继续输入" ? null : currentHint,
+        );
+        setLoading(false);
+        setActiveTurnId(null);
+      }
     }
   }
 
@@ -1412,7 +1401,9 @@ export function EmbeddedAgentCopilot({
 
   function startFreshConversation() {
     setConversationTurns([]);
+    setActiveTurnId(null);
     resetConversationSession();
+    invalidateActiveAgentTurn();
     setOrdinaryConversationMode("unknown");
     setAgentWaitSeconds(0);
     setResult(null);
@@ -1513,40 +1504,6 @@ export function EmbeddedAgentCopilot({
     focusComposerInput();
   }
 
-  async function copyAgentAnswer(turn: AgentConversationTurn) {
-    const answer = turn.result?.answer.trim();
-    const writeText = typeof navigator === "undefined" ? undefined : navigator.clipboard?.writeText;
-    if (!answer) {
-      return;
-    }
-
-    let status: AgentCopyFeedback["status"] = "success";
-    if (typeof writeText !== "function") {
-      status = "error";
-    } else {
-      try {
-        await writeText.call(navigator.clipboard, answer);
-      } catch {
-        status = "error";
-      }
-    }
-
-    setCopyFeedback({ turnId: turn.id, status });
-    if (status === "success") {
-      setComposerAssistHint("已复制回答 · 可以继续追问");
-    } else {
-      setComposerAssistHint("复制失败 · 可手动选择回答文本");
-    }
-    focusComposerInput();
-    if (copyFeedbackTimerRef.current !== null) {
-      window.clearTimeout(copyFeedbackTimerRef.current);
-    }
-    copyFeedbackTimerRef.current = window.setTimeout(() => {
-      setCopyFeedback((currentFeedback) => (currentFeedback?.turnId === turn.id ? null : currentFeedback));
-      copyFeedbackTimerRef.current = null;
-    }, 1800);
-  }
-
   function closeFollowUpDetails(sourceElement?: HTMLElement) {
     closeResultInteractionDetails(sourceElement);
   }
@@ -1574,7 +1531,7 @@ export function EmbeddedAgentCopilot({
     }
 
     if (loading) {
-      if (latestConversationTurn?.id !== turn.id) {
+      if (activeConversationTurn?.id !== turn.id) {
         return;
       }
       stopActiveAgentTurn();
@@ -1621,6 +1578,7 @@ export function EmbeddedAgentCopilot({
     // 深色 owner 仍由 ThemedRouteBoundary 独占（页根不声明 data-moss-theme="dark"）。
     <section
       className={shellClassName}
+      data-chat-started={hasConversation ? "true" : "false"}
       data-testid={isEmbedded ? "agent-panel" : undefined}
       data-moss-theme-scope={isEmbedded ? undefined : "agent"}
     >
@@ -1637,12 +1595,14 @@ export function EmbeddedAgentCopilot({
       {!isEmbedded && resolvedShowHeader ? (
         <header className="agent-workbench-header">
           <div>
-            <div className="agent-workbench-header__eyebrow">MOSS Chat</div>
-            <h1>今天想看什么？</h1>
-            <p>先把问题丢给我。需要证据、运行细节或正式口径时，再展开查看。</p>
+            <h1>MOSS Chat</h1>
           </div>
-          {hasConversation ? (
-            <div className="agent-workbench-header__actions">
+          <div className="agent-workbench-header__actions">
+              <AgentShortcutDrawer
+                loading={loading}
+                onExecuteWorkflow={(workflow) => void executeFinancialWorkflow(workflow)}
+                onExecuteResearchShortcut={(shortcut) => void executeResearchShortcut(shortcut)}
+              />
               <button
                 type="button"
                 className="agent-workbench-header__new-chat"
@@ -1653,8 +1613,7 @@ export function EmbeddedAgentCopilot({
                 <PlusOutlined aria-hidden="true" />
                 <span>新对话</span>
               </button>
-            </div>
-          ) : null}
+          </div>
         </header>
       ) : null}
 
@@ -1663,6 +1622,16 @@ export function EmbeddedAgentCopilot({
         stateLabel={runtimeStateLabel}
         runtimeStatus={runtimeStatus}
       />
+
+      {isContextlessWorkbench ? (
+        <div
+          className="agent-context-status agent-context-status--missing"
+          role="status"
+          aria-label="业务页上下文状态"
+        >
+          <span>当前为独立对话。解释具体页面时，可从业务页的复核助手带入筛选和选中记录。</span>
+        </div>
+      ) : null}
 
       {!isEmbedded && restoringRunId ? (
         <div
@@ -1688,7 +1657,9 @@ export function EmbeddedAgentCopilot({
         >
           <div>
             <strong>上一轮 Agent 状态暂时无法恢复</strong>
-            <span>已清除过期运行标记；你可以继续在输入框里发起新的追问。</span>
+            <span>{restoreErrorRetryable
+              ? "已保留上次运行，连接恢复后刷新页面可继续接回回答。"
+              : "上次运行已不存在或当前无权访问；你可以发起新的提问。"}</span>
           </div>
           <code>{restoreErrorRunId}</code>
         </div>
@@ -1712,22 +1683,22 @@ export function EmbeddedAgentCopilot({
         </div>
       ) : null}
 
-      {!isEmbedded ? (
-        <AgentShortcutDrawer
-          loading={loading}
-          onExecuteWorkflow={(workflow) => void executeFinancialWorkflow(workflow)}
-          onExecuteResearchShortcut={(shortcut) => void executeResearchShortcut(shortcut)}
-        />
+      {isWorkbench && !hasConversation ? (
+        <div className="agent-chat-welcome">
+          <h2>今天想聊些什么？</h2>
+          <p>提一个问题，或把需要整理的内容发给我。</p>
+        </div>
       ) : null}
 
       {!hasConversation ? (
         <AgentQueryForm
+          modelControls={isWorkbench ? <AgentModelControls state={modelSelection} disabled={loading} /> : undefined}
           compact={isEmbedded}
           showAdvancedTools={!isEmbedded}
           pageContext={pageContext}
           repoPath={repoPath}
           onRepoPathChange={setRepoPath}
-          quickExamples={GITNEXUS_QUICK_EXAMPLES}
+          quickExamples={quickExamples}
           onQuickExample={applyQuickExample}
           isCurrentRepoPinned={isCurrentRepoPinned}
           onPinCurrentRepo={pinCurrentRepo}
@@ -1742,7 +1713,7 @@ export function EmbeddedAgentCopilot({
           onViewSelectedProcess={() => void viewSelectedProcess()}
           loading={loading}
           query={query}
-          activeQuestion={latestConversationTurn?.question}
+          activeQuestion={activeConversationTurn?.question}
           composerHint={composerAssistHint}
           onQueryChange={updateComposerQuery}
           onClearQuery={clearComposerQueryFromButton}
@@ -1753,11 +1724,26 @@ export function EmbeddedAgentCopilot({
         />
       ) : null}
 
+      {isWorkbench && !hasConversation ? (
+        <div className="agent-conversation-starters" aria-label="开始一个话题">
+          {[
+            { label: "解释一个概念", prompt: "帮我用简单的语言解释这个概念：" },
+            { label: "整理一段内容", prompt: "帮我整理下面这段内容，提炼重点：" },
+            { label: "比较两个方案", prompt: "帮我比较下面两个方案的区别和适用情况：" },
+          ].map((starter) => (
+            <button type="button" key={starter.label} onClick={() => applyQuickExample(starter.prompt)}>
+              {starter.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {hasConversation ? (
         <section className="agent-conversation" aria-label="Agent 对话记录" ref={conversationRef}>
           {conversationTurns.map((turn) => {
-            const isLatestLoadingTurn = turn === latestConversationTurn && loading;
-            const showThinkingPlaceholder = isLatestLoadingTurn && !turn.result && !turn.error;
+            const isLatestLoadingTurn = turn.id === activeTurnId && loading;
+            const partialAnswer = isLatestLoadingTurn && streamingAnswer.turnId === turn.id ? streamingAnswer.text : "";
+            const showThinkingPlaceholder = isLatestLoadingTurn && !turn.result && !turn.error && !partialAnswer;
             const shouldShowRunStatus = (isLatestLoadingTurn || turn.agentRun) && !isCompactProviderChatTurn(turn);
             const conversationContextBadge = formatConversationContextBadge(turn.conversationContext);
             const waitElapsedSeconds = formatAgentRunElapsed(
@@ -1768,7 +1754,7 @@ export function EmbeddedAgentCopilot({
             const thinkingText = formatAgentThinkingText(turn.agentRun, waitElapsedSeconds);
             const runConnectionElapsed = formatAgentConnectionElapsed(turn.runRequestLatencyMs);
             return (
-              <div key={turn.id} className="agent-turn">
+              <div key={turn.id} className="agent-turn" data-agent-turn-id={turn.id}>
                 <div className="agent-message agent-message--user">
                   <div className="agent-message__speaker">我</div>
                   <div className="agent-user-bubble">
@@ -1813,8 +1799,11 @@ export function EmbeddedAgentCopilot({
                               </span>
                             </div>
                           ) : null}
-                          <div className="agent-wait-status__title">{formatAgentTurnWaitTitle(turn.agentRun)}</div>
-                          <AgentRunProgress agentRun={turn.agentRun} question={turn.question} />
+                          <div className="agent-wait-status__title">
+                            {partialAnswer ? "正在生成回答" : formatAgentTurnWaitTitle(turn.agentRun)}
+                            {isLatestLoadingTurn ? <span> · {waitElapsedSeconds} 秒</span> : null}
+                          </div>
+                          {isEmbedded ? <AgentRunProgress agentRun={turn.agentRun} question={turn.question} /> : null}
                         </div>
                         <div className="agent-wait-status__detail">
                           <details className="agent-wait-status__details">
@@ -1914,9 +1903,16 @@ export function EmbeddedAgentCopilot({
                       turn={turn}
                       loading={loading}
                       canRetry={canRetryAgentTurn(turn)}
+                      canReconnect={canReconnectAgentTurn(turn)}
                       onEditQuestion={editAgentQuestion}
                       onRetry={(retryTurn) => void retryAgentTurn(retryTurn)}
                     />
+                    {partialAnswer ? (
+                      <div className="agent-streaming-answer" aria-label="正在生成的回答">
+                        <AgentAnswerPanel answer={partialAnswer} />
+                        <span className="agent-answer-notice">生成中，完整回答与依据将在完成后显示。</span>
+                      </div>
+                    ) : null}
                     <AgentTurnResultView
                       turn={turn}
                       isLatestResultTurn={turn.id === latestResultTurn?.id}
@@ -1976,18 +1972,45 @@ export function EmbeddedAgentCopilot({
 
       {hasConversation ? (
         <div className="agent-composer-dock" ref={composerDockRef}>
+          {isWorkbench && loading && activeConversationTurn && activeConversationTurn.id !== latestConversationTurn?.id ? (
+            <div className="agent-active-turn" role="status" aria-label="正在重新回答历史问题">
+              <div className="agent-active-turn__copy">
+                <strong>正在重新回答</strong>
+                <span title={activeConversationTurn.question}>{activeConversationTurn.question}</span>
+              </div>
+              <button
+                type="button"
+                className="agent-active-turn__locate"
+                aria-label="查看正在回答的问题"
+                onClick={() => scrollToConversationTurn(activeConversationTurn.id)}
+              >
+                查看这句
+              </button>
+            </div>
+          ) : null}
+          {isWorkbench && showJumpToLatest ? (
+            <button type="button" className="agent-jump-to-latest" aria-label="回到最新回答"
+              onClick={() => {
+                shouldStickConversationToBottomRef.current = true;
+                setShowJumpToLatest(false);
+                scrollConversationToBottom();
+              }}>
+              <ArrowDownOutlined aria-hidden="true" />回到最新
+            </button>
+          ) : null}
           <AgentQueuedDraft
             queuedQueries={queuedQueries}
             onRestoreToComposer={restoreQueuedQueryToComposer}
             onCancel={cancelQueuedQuery}
           />
           <AgentQueryForm
+            modelControls={isWorkbench ? <AgentModelControls state={modelSelection} disabled={loading} /> : undefined}
             compact
             showAdvancedTools={!isEmbedded}
             pageContext={pageContext}
             repoPath={repoPath}
             onRepoPathChange={setRepoPath}
-            quickExamples={GITNEXUS_QUICK_EXAMPLES}
+            quickExamples={quickExamples}
             onQuickExample={applyQuickExample}
             isCurrentRepoPinned={isCurrentRepoPinned}
             onPinCurrentRepo={pinCurrentRepo}
@@ -2002,7 +2025,7 @@ export function EmbeddedAgentCopilot({
             onViewSelectedProcess={() => void viewSelectedProcess()}
             loading={loading}
             query={query}
-            activeQuestion={latestConversationTurn?.question}
+            activeQuestion={activeConversationTurn?.question}
             composerHint={composerAssistHint}
             onQueryChange={updateComposerQuery}
             onClearQuery={clearComposerQueryFromButton}

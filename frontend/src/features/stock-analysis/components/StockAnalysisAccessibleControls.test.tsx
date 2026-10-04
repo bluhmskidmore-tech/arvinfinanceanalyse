@@ -75,6 +75,7 @@ function strategyItem(key: string, label: string): StockStrategyLensItem {
         metricLabel: "评分 0.81",
       },
     ],
+    verdict: null,
     scrollTarget: `${key}-section`,
     progress: 0.8,
   };

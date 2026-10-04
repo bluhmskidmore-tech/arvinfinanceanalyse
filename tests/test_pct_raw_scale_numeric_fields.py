@@ -11,6 +11,7 @@ helpers) and ``tests/test_pct_raw_scale_ratio_callers.py`` (ratio helpers).
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any, ClassVar
 
 import pytest
@@ -55,6 +56,24 @@ class TestNumericJsonRawScale:
         out = numeric_json(5, "yuan", True, "percent")
         assert out["raw"] == pytest.approx(5.0)
 
+    def test_decimal_preservation_is_opt_in_and_default_shape_is_unchanged(self) -> None:
+        raw = Decimal("9007199254740993.00000001")
+
+        legacy = numeric_json(raw, "yuan", False)
+        exact = numeric_json(raw, "yuan", False, preserve_decimal=True)
+
+        assert "raw_text" not in legacy
+        assert exact["raw"] == legacy["raw"]
+        assert exact["display"] == legacy["display"]
+        assert exact["raw_text"] == "9007199254740993.00000001"
+
+    @pytest.mark.parametrize("raw", [Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity")])
+    def test_decimal_preservation_fails_closed_for_non_finite_values(self, raw: Decimal) -> None:
+        out = numeric_json(raw, "yuan", True, preserve_decimal=True)
+
+        assert out["raw"] is None
+        assert "raw_text" not in out
+
 
 class _FieldSpecModel:
     """Minimal _NUMERIC_FIELDS carrier mixing 2-tuple and 3-tuple specs."""
@@ -68,6 +87,21 @@ class _FieldSpecModel:
 
 
 class TestPromoteFlatPayloadFieldSpec:
+    def test_decimal_preservation_is_opt_in_and_keeps_compat_fields(self) -> None:
+        raw = Decimal("9007199254740993.00000001")
+
+        legacy = promote_flat_payload({"amount": raw}, _FieldSpecModel)
+        exact = promote_flat_payload(
+            {"amount": raw},
+            _FieldSpecModel,
+            preserve_decimal=True,
+        )
+
+        assert "raw_text" not in legacy["amount"]
+        assert exact["amount"]["raw"] == legacy["amount"]["raw"]
+        assert exact["amount"]["display"] == legacy["amount"]["display"]
+        assert exact["amount"]["raw_text"] == "9007199254740993.00000001"
+
     def test_two_tuple_keeps_auto_heuristic(self) -> None:
         out = promote_flat_payload({"legacy_auto_pct": 2.38}, _FieldSpecModel)
         assert out["legacy_auto_pct"]["raw"] == pytest.approx(0.0238)

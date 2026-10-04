@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Alert, Select, Space } from "antd";
 import { type EChartsOption } from "../../../lib/echarts";
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { FilterBar } from "../../../components/FilterBar";
 import { useApiClient } from "../../../api/client";
@@ -18,7 +18,7 @@ import {
   formatDetailComputedAt,
 } from "./BondAnalyticsDetailPrimitives";
 import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
-import { SectionLead } from "./SectionLead";
+import { SectionHead } from "../../../components/layout";
 
 /* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌。正效应/正超额=绿、负效应/负超额=红；
    色值收敛到 Nocturne 去饱和语义常量（§2.2），常量同时喂 ECharts canvas 与 DOM style。 */
@@ -148,7 +148,7 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse): EChart
         return `${label}<br/>${displayStrings[idx] ?? EM_DASH}`;
       },
     },
-    grid: { left: 48, right: 24, top: 24, bottom: 32, containLabel: true },
+    grid: { left: 48, right: 24, top: 24 },
     xAxis: {
       type: "category",
       data: [...WATERFALL_CATEGORIES],
@@ -161,7 +161,6 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse): EChart
         formatter: (value: number) => `${value} bp`,
       },
     },
-    legend: { show: false },
     series: [
       {
         name: "辅助",
@@ -275,11 +274,12 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         }}
       >
         <Space direction="vertical" size={designTokens.space[1]}>
-          <SectionLead
-            eyebrow="基准"
+          <SectionHead
+            category="基准"
             title="基准超额收益"
-            description="按报告日、期间和基准指数读取后端归因结果；页面只展示基准超额读模型，不在前端重算超额收益。"
+            note="按报告日、期间和基准指数，比较组合超额收益及其来源。"
             testId="benchmark-excess-shell-lead"
+            numbered={false}
           />
           <span style={{ color: "var(--dh-api-soft)", fontSize: designTokens.fontSize[13] }}>
             {data.benchmark_name ? `基准：${data.benchmark_name}` : null}
@@ -301,11 +301,12 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         </FilterBar>
       </div>
 
-      <SectionLead
-        eyebrow="汇总"
+      <SectionHead
+        category="汇总"
         title="组合与基准摘要"
-        description="先阅读组合收益、基准收益、超额收益和久期差，再进入下方效果分解和来源明细。"
+        note="先阅读组合收益、基准收益、超额收益和久期差，再进入下方效果分解和来源明细。"
         testId="benchmark-excess-summary-lead"
+        numbered={false}
       />
       <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
         <Col xs={24} sm={12} md={8}>
@@ -348,7 +349,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
           data-testid="benchmark-excess-duration-gap-note"
           style={{ fontSize: designTokens.fontSize[12], color: "var(--dh-api-amber)" }}
         >
-          久期读数未返回：组合久期、基准久期与久期差按 — 展示（后端本次返回全 0 占位，不作真实久期）。
+          久期数据不可用：组合久期、基准久期和久期差以 — 展示，不能视为零久期。
         </div>
       ) : null}
 
@@ -371,11 +372,12 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         </Row>
       )}
 
-      <SectionLead
-        eyebrow="归因"
+      <SectionHead
+        category="归因"
         title="超额收益归因"
-        description="分解、对账和来源明细沿用后端返回字段，保留解释项与对账差异的边界。"
+        note="查看超额收益的分解、来源及对账差异。"
         testId="benchmark-excess-attribution-lead"
+        numbered={false}
       />
       {missingEffects.length > 0 ? (
         <div
@@ -406,15 +408,18 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
             );
           })}
         </div>
-        {waterfallOption ? (
-          <div className={detailStyles.chartStage}>
-            <BaseChart option={waterfallOption} height={280} />
-          </div>
-        ) : (
-          <DetailEmptyNote testId="benchmark-excess-chart-empty">
-            暂无超额收益归因序列
-          </DetailEmptyNote>
-        )}
+        <div className={detailStyles.chartStage}>
+          <ChartCard
+            flat
+            ariaLabel="超额收益分解"
+            unit="bp"
+            option={waterfallOption}
+            height={280}
+            legend="none"
+            emptyMessage="暂无超额收益归因序列"
+            testId="benchmark-excess-chart"
+          />
+        </div>
       </Card>
 
       <Card title="超额归因对账" size="small">

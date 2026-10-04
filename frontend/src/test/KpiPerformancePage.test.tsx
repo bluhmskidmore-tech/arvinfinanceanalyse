@@ -257,8 +257,11 @@ describe("KpiPerformancePage", () => {
 
     expect(emptyState).toHaveAttribute("data-state-variant", "definition-pending");
     expect(emptyState).toHaveTextContent("权威考核对象尚未就绪");
-    expect(emptyState).toHaveTextContent("治理状态：blocked");
-    expect(emptyState).toHaveTextContent("原因：no-active-owners");
+    // 机器码不进叙述位（DESIGN §7）：中文原因可见，原码作为证据留在 title。
+    expect(emptyState).toHaveTextContent("治理状态：已阻断");
+    expect(emptyState).toHaveTextContent("原因：本年度没有处于活跃状态的考核负责人");
+    expect(emptyState).not.toHaveTextContent("no-active-owners");
+    expect(within(emptyState).getByTitle(/reason=no-active-owners/)).toBeInTheDocument();
     expect(within(page).queryByText("无匹配结果")).not.toBeInTheDocument();
     expect(within(page).queryByTestId("kpi-owner-list-error-state")).not.toBeInTheDocument();
   });

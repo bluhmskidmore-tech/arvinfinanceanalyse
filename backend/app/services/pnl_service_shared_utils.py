@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Literal
 
 
 def _parse_created_at(value: str) -> datetime:
@@ -42,7 +43,7 @@ def _norm_text(value: object) -> str:
     return str(value or "").strip()
 
 
-def _coverage_quality_flag(coverage_days: int, expected_days: int) -> str | None:
+def _coverage_quality_flag(coverage_days: int, expected_days: int) -> Literal["warning"] | None:
     if expected_days > 0 and coverage_days < expected_days:
         return "warning"
     return None

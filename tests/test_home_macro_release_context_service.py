@@ -14,6 +14,11 @@ from backend.app.services.home_macro_release_context_service import (
     HomeMacroReleaseContextService,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_macro_data,
+]
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BINDINGS_PATH = ROOT / "config" / "home_macro_release_bindings.json"
@@ -148,6 +153,28 @@ def _ready_reads() -> dict[str, HomeMacroSeriesRead]:
             unit="pct",
             vendor_name="tushare",
         ),
+        "nbs.macro.cn_cpi.monthly": _series_read(
+            table="std_external_macro_daily",
+            series_id="nbs.macro.cn_cpi.monthly",
+            current_date=date(2026, 6, 1),
+            current_value=1.2,
+            previous_date=date(2026, 5, 1),
+            previous_value=1.2,
+            cadence="monthly",
+            unit="pct",
+            vendor_name="nbs",
+        ),
+        "nbs.macro.cn_ppi.monthly": _series_read(
+            table="std_external_macro_daily",
+            series_id="nbs.macro.cn_ppi.monthly",
+            current_date=date(2026, 6, 1),
+            current_value=3.9,
+            previous_date=date(2026, 5, 1),
+            previous_value=2.8,
+            cadence="monthly",
+            unit="pct",
+            vendor_name="nbs",
+        ),
         "nbs.macro.cn_gdp.quarterly": _series_read(
             table="std_external_macro_daily",
             series_id="nbs.macro.cn_gdp.quarterly",
@@ -198,7 +225,7 @@ def _item(envelope, indicator_key: str):
 def test_service_builds_automatic_metrics_and_explicit_source_pending_groups() -> None:
     envelope, repository = _build(_ready_reads())
 
-    assert len(repository.calls) == 5
+    assert len(repository.calls) == 7
     assert all(call[2] == date(2026, 7, 16) for call in repository.calls)
     pmi = _item(envelope, "cn_pmi")
     assert pmi.source_status == "ready"
@@ -262,15 +289,26 @@ def test_service_uses_stable_traceable_meta_across_mixed_sources() -> None:
 
 def test_previous_null_makes_group_partial_without_losing_actual_value() -> None:
     reads = _ready_reads()
-    reads["tushare.macro.cn_cpi.monthly"] = _series_read(
+    reads["nbs.macro.cn_cpi.monthly"] = _series_read(
         table="std_external_macro_daily",
-        series_id="tushare.macro.cn_cpi.monthly",
+        series_id="nbs.macro.cn_cpi.monthly",
         current_date=date(2026, 6, 1),
         current_value=1.2,
         previous_date=date(2026, 5, 1),
         previous_value=None,
         cadence="monthly",
         unit="pct",
+        vendor_name="nbs",
+    )
+    reads["tushare.macro.cn_cpi.monthly"] = _series_read(
+        table="std_external_macro_daily",
+        series_id="tushare.macro.cn_cpi.monthly",
+        current_date=date(2026, 6, 1),
+        current_value=1.2,
+        previous_date=date(2026, 5, 1),
+        previous_value=1.0,
+        cadence="monthly",
+        unit="index",
         vendor_name="tushare",
     )
 
@@ -286,6 +324,17 @@ def test_previous_null_makes_group_partial_without_losing_actual_value() -> None
 
 def test_unit_mismatch_fails_closed_without_misleading_values() -> None:
     reads = _ready_reads()
+    reads["nbs.macro.cn_cpi.monthly"] = _series_read(
+        table="std_external_macro_daily",
+        series_id="nbs.macro.cn_cpi.monthly",
+        current_date=date(2026, 6, 1),
+        current_value=1.2,
+        previous_date=date(2026, 5, 1),
+        previous_value=1.0,
+        cadence="monthly",
+        unit="index",
+        vendor_name="nbs",
+    )
     reads["tushare.macro.cn_cpi.monthly"] = _series_read(
         table="std_external_macro_daily",
         series_id="tushare.macro.cn_cpi.monthly",

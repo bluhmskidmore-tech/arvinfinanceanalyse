@@ -31,6 +31,8 @@ describe("buildStockAnalysisAgentPageContext", () => {
       sectorFilterSectorCode: "801001",
       sectorFilterLabel: "AI",
       sectorView: "score",
+      systemReadGeneration: "system-read-2026-04-30-0123456789abcdef0123",
+      pretradeQualificationStatus: "ready",
       detailSelection: {
         code: "000001.SZ",
         name: "Alpha Co",
@@ -45,6 +47,10 @@ describe("buildStockAnalysisAgentPageContext", () => {
     expect(ctx.current_filters.sector_filter).toBe("801001");
     expect(ctx.current_filters.sector_filter_label).toBe("AI");
     expect(ctx.current_filters.current_view).toBe("stock_detail");
+    expect(ctx.current_filters.system_read_generation).toBe(
+      "system-read-2026-04-30-0123456789abcdef0123",
+    );
+    expect(ctx.current_filters.pretrade_qualification_status).toBe("ready");
     expect(ctx.selected_rows).toEqual([
       {
         stock_code: "000001.SZ",

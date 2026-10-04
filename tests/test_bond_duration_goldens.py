@@ -7,13 +7,13 @@
 
 - 记 y = ytm/frequency（每期收益率）、c = coupon/frequency（每期票息）、
   T = 剩余年限 = (maturity - report).days / 365（ACT/365F）。
-  期数 N = ceil(T * frequency)；若 T*frequency 的小数部分 ∈ (0, 0.01]，则把这段
-  不足 1% 期的尾数并入上一期（N = floor，现金流末期落在 N/frequency），避免为
-  一个可忽略的残端凭空多算一期。
-- 末笔现金流恰好落在到期日，其余票息按 1/frequency 年间隔向前排；因此首期是一段
-  残期（odd first period）w = T*frequency - (N-1) ∈ (0, 1]。
+- 按 docs/calc_rules.md 的日期现金流规则：日期齐全且频率能够整除 12 时，按到期日
+  锚定真实票息日。非付息日报告日使用各票息日至报告日的 ACT/365 年数；报告日恰在
+  票息网格时才用 k/f 年。券5验证前者，不能再用等间隔年度网格作其正式期望。
+- 无日期调用保留等间隔兼容口径：N = ceil(T * frequency)，首期为碎期；仅当
+  T*frequency 在整期之后不超过 0.01 期时，向下归并这段小残期。
 - 第 k 笔现金流（k = 1..N）：
-      时间（年）  t_k = T - (N-k)/frequency
+      时间（年）  t_k 按上述日期或无日期规则独立确定
       贴现        PV_k = CF_k / (1 + y) ** (t_k * frequency)
       CF_k = c，末笔 CF_N = c + 1
       MacD(年) = Σ t_k·PV_k / Σ PV_k
@@ -26,11 +26,13 @@ W-fi-2026-08 口径修正（本文件期望值随之重算）：
   （"恰好剩 N 个完整付息期"）。而生产入口的剩余年限恒为"剩余天数/365"，几乎从不
   是整数，非整数年的债因此被系统性错误定价（1.4986 年的债按 1 年期算，差 −32%）。
   整期券（券1/券2/券4，T*frequency 恰为整数、w = 1）新旧口径**数值完全一致**，
-  故这三只的期望值未变；碎期券（券5）与新增的券6/券7 是本次真正重算的值。
+  故这三只的期望值未变；当时的券5及券6/券7采用等间隔碎期。
+  2026-09-05 正式规则增加日期现金流后，券5的有日期入口必须采用真实票息日；原来的
+  等间隔期望保留在无日期入口，分别验证两种已明确的口径。
 
 期望值来源与交叉验证（严禁把实现输出复制成期望值）：
 
-1. 全部期望值由一份不导入任何 MOSS 代码的教科书参考实现算出，该参考同时用四条
+1. 无日期等间隔期望由一份不导入任何 MOSS 代码的教科书参考实现算出，该参考同时用四条
    互相独立的路径求解并要求彼此一致：
      A 浮点逐笔现金流求和；
      B Decimal(prec=60) 逐笔求和（不同的算术库）；
@@ -40,18 +42,17 @@ W-fi-2026-08 口径修正（本文件期望值随之重算）：
 2. 整期券另与经典年金闭合式
    ``D = (1+y)/y − [(1+y) + N(c−y)] / [c((1+y)^N − 1) + y]`` 对照，一致到 1e-14。
    这同时说明新实现在整期情形下**退化为**教科书闭合式，是旧实现的严格推广。
-3. 碎期券（券5）另与**真实日历付息计划**对照：按 06-14 / 12-14 实际付息日、
-   结算日已入期 96/182 天（真实残期 0.4725 期）逐笔贴现得 2.5937548 年；
-   本实现按 ACT/365F 年度网格得残期 0.4794521 期、久期 2.5940453 年，
-   两者相差 +0.00029 年（约 0.1 天）。而旧黄金值 2.4025254 与真实日历答案
-   相差 −0.19123 年。新值不是"跟着代码走"，而是经济上正确。
+3. 券5有日期参考直接列出六个 06-14 / 12-14 票息日，以距报告日的天数除以 365
+   确定时点，再以 Decimal(prec=60) 逐笔贴现，得到 2.5937323813055 年。
+   等间隔时点得到 2.5940452867333 年。两者差异来自时间网格，不能通过放宽容差
+   混为同一预期；也不能用已入期天数/本期天数替代正式 ACT/365 口径。
 
 容差约定：实现已不再量化到 1e-4，故容差从旧口径的 5e-4 / 1e-3 收紧到 1e-9
-（约束强度提高 5~6 个数量级）。期望值本身写到小数点后 12 位，1e-9 只用于吸收
+（约束强度提高 5~6 个数量级）。期望值至少保留小数点后 12 位，1e-9 只用于吸收
 末位书写截断，禁止为让测试通过而放宽。
 """
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 from backend.app.core_finance.bond_duration import (
     compute_macaulay_duration,
@@ -59,7 +60,7 @@ from backend.app.core_finance.bond_duration import (
     modified_duration_from_macaulay,
 )
 
-# 实现返回 Decimal 全精度（28 位上下文），期望值写到 12 位小数，
+# 实现返回 Decimal 全精度（28 位上下文），期望值至少保留 12 位小数，
 # 容差只需覆盖期望值自身的书写截断。
 TOL = Decimal("1E-9")
 
@@ -161,28 +162,41 @@ class TestBondDurationGoldens:
         结算/报告日 2026-03-20 位于上一付息日 2025-12-14 与下一付息日 2026-06-14
         之间（已入期 96 天 / 本期 182 天），构成真实碎期。
 
-        实现口径下的现金流表（T = 1000/365 = 2.7397260274 年，frequency = 2）：
-          T×2 = 5.4794520548 ⇒ N = ceil = 6 期，首期残期 w = 5.4794520548 − 5
-              = 0.4794520548 期 = 0.2397260274 年
-          6 笔现金流（每 1 面值，c = 0.02/期）：
-            t(年) = 0.2397260, 0.7397260, 1.2397260, 1.7397260, 2.2397260, 2.7397260
-            CF    = 0.02 ×5，末笔 1.02
-            贴现指数（期）= t×2 = 0.4794521, 1.4794521, ..., 5.4794521，y = 0.025
-          MacD = Σt·PV / ΣPV = 2.594045286733（年）
-          修正久期 = 2.594045286733 / 1.025 = 2.530775889496
+        独立现金流表（每 1 面值，日期按券面约定显式列出）：
+          付息日 = 2026-06-14, 2026-12-14, 2027-06-14,
+                   2027-12-14, 2028-06-14, 2028-12-14
+          天数 d = 86, 269, 451, 634, 817, 1000（均距报告日）
+          CF     = 0.02, 0.02, 0.02, 0.02, 0.02, 1.02
+          t = d/365，PV = CF / 1.025^(2t)，不调用生产排期或贴现函数。
+          MacD = Σt·PV / ΣPV = 2.5937323813055001121004506456976577 年
+          修正久期 = MacD / 1.025 = 2.5304706159078049874150738006806417 年
 
-        交叉验证（关键——本值是本次修复真正重算的值）：
-          按**真实日历付息日**（2026-06-14 起每半年一笔，真实残期 96/182
-          → 0.4725275 期）独立逐笔贴现得 2.5937548 年。
-          本实现（ACT/365F 年度网格，残期 0.4794521 期）得 2.5940453 年，
-          相差 +0.00029 年（≈0.1 天），差异仅来自年度网格 vs 真实付息日。
-          旧黄金值 2.4025254（"恰好剩 5 个完整半年期"的整期近似）与真实日历答案
-          相差 −0.19123 年（−7.4%）——旧值 pin 的正是被修复的错误口径。
+        原期望 2.594045286733 来自 T−(N−k)/2 的等间隔网格，仍由下一用例验证
+        无日期兼容入口；其与本例的差额约 0.0003129054 年，不属于舍入误差。
         """
         maturity = date(2028, 12, 14)
         report = date(2026, 3, 20)
         # 锚定 ACT/365F 天数，防止日期 fixture 被无意改动
         assert (maturity - report).days == 1000
+        payment_dates = [
+            date(2026, 6, 14), date(2026, 12, 14), date(2027, 6, 14),
+            date(2027, 12, 14), date(2028, 6, 14), date(2028, 12, 14),
+        ]
+        payment_days = [(payment - report).days for payment in payment_dates]
+        assert payment_days == [86, 269, 451, 634, 817, 1000]
+        expected_mac = Decimal("2.5937323813055001121004506456976577")
+        expected_mod = Decimal("2.5304706159078049874150738006806417")
+        with localcontext() as context:
+            context.prec = 60
+            times = [Decimal(days) / Decimal(365) for days in payment_days]
+            cashflows = [Decimal("0.02")] * 5 + [Decimal("1.02")]
+            present_values = [
+                cf / Decimal("1.025") ** (2 * time)
+                for cf, time in zip(cashflows, times)
+            ]
+            reference = sum(t * pv for t, pv in zip(times, present_values)) / sum(present_values)
+            _assert_close(reference, expected_mac, "券5 独立日期现金流参考")
+            _assert_close(reference / Decimal("1.025"), expected_mod, "券5 独立修正久期参考")
 
         mac = estimate_duration(
             maturity_date=maturity,
@@ -192,10 +206,25 @@ class TestBondDurationGoldens:
             ytm=Decimal("0.05"),
             coupon_frequency=2,
         )
-        _assert_close(mac, Decimal("2.594045286733"), "券5 Macaulay")
+        _assert_close(mac, expected_mac, "券5 Macaulay")
 
         mod = modified_duration_from_macaulay(mac, Decimal("0.05"), coupon_frequency=2)
-        _assert_close(mod, Decimal("2.530775889496"), "券5 修正久期")
+        _assert_close(mod, expected_mod, "券5 修正久期")
+
+    def test_bond5_without_dates_retains_equal_spacing_reference(self):
+        """无日期兼容入口：T=1000/365，N=6，t_k=T−(6−k)/2。
+
+        六笔现金流为 0.02 ×5、1.02，以 1.025^(2t) 贴现。
+        独立参考的 MacD 为 2.5940452867332643535705831046253662 年，
+        修正久期为 2.5307758894958676620200810776832841 年。
+        保留原有数值，防止日期入口修正误改无日期兼容语义。
+        """
+        mac = compute_macaulay_duration(
+            Decimal(1000) / Decimal(365), Decimal("0.04"), Decimal("0.05"), frequency=2
+        )
+        _assert_close(mac, Decimal("2.594045286733"), "券5 无日期 Macaulay")
+        mod = modified_duration_from_macaulay(mac, Decimal("0.05"), coupon_frequency=2)
+        _assert_close(mod, Decimal("2.530775889496"), "券5 无日期修正久期")
 
     def test_bond6_547_days_annual_regression(self):
         """券6：547 天年付券（票息 3% = ytm 3%）——W-fi-2026-08 的标志性回归用例。

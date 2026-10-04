@@ -187,6 +187,101 @@ describe("AgentPanel", () => {
 
     expect(input).toHaveValue("my manual follow-up");
     expect(input).toHaveFocus();
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(input).toHaveValue("");
+
+    rerender(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="explain the new selection"
+      />,
+    );
+
+    expect(input).toHaveValue("explain the new selection");
+  });
+
+  it("keeps a cleared default question empty until the embedded default actually changes", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="explain current page"
+      />,
+    );
+
+    const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL);
+    expect(input).toHaveValue("explain current page");
+    await user.click(screen.getByRole("button", { name: /清空输入/ }));
+    expect(input).toHaveValue("");
+    expect(input).toHaveFocus();
+
+    rerender(
+      <AgentPanel
+        pageId="test-page"
+        reportDate="2026-04-30"
+        defaultQuestion="explain current page"
+      />,
+    );
+    expect(input).toHaveValue("");
+
+    rerender(
+      <AgentPanel
+        pageId="test-page"
+        reportDate="2026-04-30"
+        defaultQuestion="review selected row"
+      />,
+    );
+    expect(input).toHaveValue("review selected row");
+    expect(input).toHaveFocus();
+  });
+
+  it("keeps the embedded composer empty after submitting its default question", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
+    render(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="explain current page"
+      />,
+    );
+
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    expect(await screen.findByText("Embedded Agent answered.")).toBeInTheDocument();
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("");
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
+    expect(screen.getByTestId("agent-panel-submit")).toBeDisabled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String((options as RequestInit | undefined)?.body))).toMatchObject({
+      question: "explain current page",
+    });
+  });
+
+  it("accepts the same default question again after the host clears the default prop", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="explain current page"
+      />,
+    );
+
+    await user.clear(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL));
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("");
+
+    rerender(<AgentPanel pageId="test-page" defaultQuestion="" />);
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("");
+
+    rerender(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="explain current page"
+      />,
+    );
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("explain current page");
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
   });
 
   it("announces page context changes in the embedded panel", async () => {

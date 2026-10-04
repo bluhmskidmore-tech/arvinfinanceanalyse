@@ -1,6 +1,9 @@
 import { useMemo } from "react";
-import { Input, Spin, Table } from "antd";
+import { Input, Table } from "antd";
 import type { TableColumnsType } from "antd";
+
+import { StateSurface } from "../../../components/layout";
+import { TABLE_SKELETON_MIN_HEIGHT } from "./positionsTableState";
 
 import type {
   CounterpartyStatItem,
@@ -107,12 +110,10 @@ function InterbankSidePanel({
         </div>
       </div>
       {loading ? (
-        <div className="positions-view__table-state positions-view__table-state--loading">
-          <Spin />
-        </div>
+        <StateSurface status="loading" minHeight={TABLE_SKELETON_MIN_HEIGHT} />
       ) : isError ? (
         /* 读取失败是错误态不是空态：与分区头「读取失败」一致，不画空态框。 */
-        <p className="positions-view__table-state">读取失败，请稍后重试</p>
+        <StateSurface status="error" message="读取失败，请稍后重试" density="compact" />
       ) : rows.length > 0 ? (
         <Table
           size="small"
@@ -123,9 +124,7 @@ function InterbankSidePanel({
           columns={INTERBANK_COUNTERPARTY_RANK_COLUMNS}
         />
       ) : (
-        <p className="positions-view__table-state">
-          {sourceCount > 0 ? "无匹配对手方" : emptyLabel}
-        </p>
+        <StateSurface status="empty" message={sourceCount > 0 ? "本侧前 50 名中无匹配对手方" : emptyLabel} />
       )}
     </div>
   );
@@ -155,10 +154,11 @@ export default function PositionsInterbankSplitSection({
     <div className="positions-view__workspace">
       <div className="positions-view__workspace-toolbar">
         <label className="positions-view__field positions-view__field--wide">
-          <span className="positions-view__field-label">对手方搜索</span>
+          <span className="positions-view__field-label">筛选两侧前 50 名对手方</span>
           <Input
             className="positions-view__search-input"
-            placeholder="输入对手方名称…"
+            aria-label="筛选两侧前 50 名对手方"
+            placeholder="在两侧前 50 名中输入对手方名称"
             value={searchText}
             onChange={(e) => onSearchTextChange(e.target.value)}
           />

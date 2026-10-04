@@ -10,11 +10,13 @@ from backend.app.core_finance.hybrid_fusion_config import (
 )
 from backend.app.core_finance.strategy_policy import POLICY
 
+# v6: 事件数口径断代（VCOV/BURST 及 BURST 的中位数基准统一取
+# max(movement_event_count, theme_movement_event_count)；theme 聚合本就含个股自身
+# 事件，原先 BURST 侧相加等于把自身事件计两遍并抬高绝对量）；权重与公式结构未变，
+# bump 用于按 formula_version 聚合的回测/复盘不把两代口径混在同一版本标签下。
 # v5: 输入面断代（theme_breakout v5→v6 从单一半导体篮子扩为七题材篮子，
-# theme 输入覆盖面约 33 只 → 1500+ 只，theme-only 候选与 consensus/burst/
-# vcov 评分的输入分布换代）；融合公式本身未变，bump 用于按 formula_version
-# 聚合的回测/复盘不把两代输入混在同一版本标签下。
-FORMULA_VERSION = "rv_hybrid_fusion_candidates_v5"
+# theme 输入覆盖面约 33 只 → 1500+ 只）。
+FORMULA_VERSION = "rv_hybrid_fusion_candidates_v6"
 ACTIVE_MARKET_STATES = POLICY.hybrid_fusion_active_states
 MAX_CANDIDATES = 10
 MACRO_PENDING_BLOCK_REASON = "macro_score_missing"
@@ -435,14 +437,28 @@ def _attention_score(row: dict[str, object] | None) -> float:
     return _vcov_score(row)
 
 
+def _movement_event_basis(row: dict[str, object]) -> int:
+    # theme_movement_event_count is the theme-wide aggregate summed over the theme's
+    # breakout members and already includes this stock's own movement_event_count, so
+    # take max (not sum) to avoid double counting the stock's own events. Shared by
+    # VCOV, the BURST numerator and the BURST median basis so the three cannot drift
+    # apart. On the production path (_theme_stock_rows) the theme aggregate is always
+    # >= the member's own count, so this basis equals the theme aggregate and BURST is
+    # a theme-level signal: same-theme members share one basis and are not spread apart
+    # by their own event counts (that separation is owned by PCONF/CROWD/HYGIENE/CONS).
+    # The stock-count fallback below is defensive only and unreachable today.
+    return max(
+        _safe_int(row.get("movement_event_count")) or 0,
+        _safe_int(row.get("theme_movement_event_count")) or 0,
+    )
+
+
 def _vcov_score(row: dict[str, object] | None) -> float:
     if not row:
         return 0.0
     theme_rank = _safe_int(row.get("theme_rank")) or 99
     rank_component = _clamp((11 - min(theme_rank, 10)) / 10)
-    event_count = (_safe_int(row.get("movement_event_count")) or 0) + (
-        _safe_int(row.get("theme_movement_event_count")) or 0
-    )
+    event_count = _movement_event_basis(row)
     event_component = _clamp(event_count / 5)
     strong_component = 0.25 if bool(row.get("closed_up_limit")) or (_safe_float(row.get("pctchange")) or 0) >= 5 else 0
     return _clamp(0.55 * rank_component + 0.3 * event_component + strong_component)
@@ -459,21 +475,13 @@ def _consensus_score(source_kinds: list[str]) -> float:
 
 
 def _movement_event_counts(theme_rows: dict[str, dict[str, object]]) -> list[int]:
-    counts: list[int] = []
-    for row in theme_rows.values():
-        event_count = (_safe_int(row.get("movement_event_count")) or 0) + (
-            _safe_int(row.get("theme_movement_event_count")) or 0
-        )
-        counts.append(event_count)
-    return counts
+    return [_movement_event_basis(row) for row in theme_rows.values()]
 
 
 def _burst_score(row: dict[str, object] | None, *, movement_event_counts: list[int]) -> float:
     if not row:
         return 0.0
-    event_count = (_safe_int(row.get("movement_event_count")) or 0) + (
-        _safe_int(row.get("theme_movement_event_count")) or 0
-    )
+    event_count = _movement_event_basis(row)
     if not movement_event_counts:
         return _clamp(event_count / 5)
     median = sorted(movement_event_counts)[len(movement_event_counts) // 2]

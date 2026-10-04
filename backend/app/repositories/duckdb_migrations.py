@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 import duckdb
+
 from backend.app.repositories.duckdb_schema_registry import (
     DuckDBSchemaRegistry,
     main_database_file_path,
+)
+from backend.app.repositories.pnl_precompute_state import (
+    invalidate_pnl_by_business_precompute_on_connection,
 )
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 
@@ -125,6 +130,23 @@ def ensure_balance_zqtz_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
         conn.execute(statement)
 
 
+def ensure_bond_analytics_input_quality_columns(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """Add row-level input-quality provenance without changing the frozen v45 ledger."""
+    if not _main_table_exists(conn, "fact_formal_bond_analytics_daily"):
+        return
+    for statement in (
+        "alter table fact_formal_bond_analytics_daily "
+        "add column if not exists coupon_rate_input_status varchar",
+        "alter table fact_formal_bond_analytics_daily "
+        "add column if not exists ytm_input_status varchar",
+        "alter table fact_formal_bond_analytics_daily "
+        "add column if not exists duration_quality_flag varchar",
+    ):
+        conn.execute(statement)
+
+
 def ensure_risk_tensor_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
     """Align risk tensor tables whose v4 migration was recorded before later additive columns."""
     if not _main_table_exists(conn, "fact_formal_risk_tensor_daily"):
@@ -146,6 +168,16 @@ def ensure_risk_tensor_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
         "alter table fact_formal_risk_tensor_daily add column if not exists upstream_cache_version varchar",
         "alter table fact_formal_risk_tensor_daily add column if not exists missing_maturity_market_value decimal(24, 8)",
         "alter table fact_formal_risk_tensor_daily add column if not exists missing_maturity_count integer",
+        "alter table fact_formal_risk_tensor_daily add column if not exists fund_no_maturity_market_value decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists fund_no_maturity_count integer",
+        "alter table fact_formal_risk_tensor_daily add column if not exists unknown_maturity_market_value decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists unknown_maturity_count integer",
+        "alter table fact_formal_risk_tensor_daily add column if not exists matured_outstanding_market_value decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists matured_outstanding_count integer",
+        "alter table fact_formal_risk_tensor_daily add column if not exists nonpositive_duration_market_value decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists nonpositive_duration_count integer",
+        "alter table fact_formal_risk_tensor_daily add column if not exists missing_liability_maturity_principal_amount decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists missing_liability_maturity_count integer",
         "alter table fact_formal_risk_tensor_daily add column if not exists floating_rate_proxy_market_value decimal(24, 8)",
         "alter table fact_formal_risk_tensor_daily add column if not exists floating_rate_proxy_count integer",
         "alter table fact_formal_risk_tensor_daily add column if not exists payment_frequency_fallback_market_value decimal(24, 8)",
@@ -202,12 +234,49 @@ def _v24_zqtz_accounting_sub_type(conn: duckdb.DuckDBPyConnection) -> None:
         )
     if _main_table_exists(conn, "fact_formal_zqtz_balance_daily"):
         conn.execute("alter table fact_formal_zqtz_balance_daily add column if not exists sub_type varchar")
+        changed_report_dates = tuple(
+            str(row[0])
+            for row in conn.execute(
+                """
+                select distinct report_date
+                from fact_formal_zqtz_balance_daily
+                where sub_type is null or trim(coalesce(sub_type, '')) = ''
+                """
+            ).fetchall()
+            if row[0]
+        )
+        from backend.app.repositories.balance_analysis_publication_state import (
+            invalidate_balance_analysis_publications_before_fact_change,
+        )
+
+        current_database_row = conn.execute("select current_database()").fetchone()
+        if current_database_row is None:
+            raise RuntimeError("DuckDB current database is unavailable during migration.")
+        current_database = str(current_database_row[0])
+        source_duckdb_path = next(
+            (
+                str(row[2])
+                for row in conn.execute("pragma database_list").fetchall()
+                if str(row[1]) == current_database and str(row[2] or "").strip()
+            ),
+            "",
+        )
+        invalidate_balance_analysis_publications_before_fact_change(
+            source_duckdb_path=source_duckdb_path,
+            report_dates=changed_report_dates,
+            reason="migration_v24_formal_balance_sub_type_backfill",
+        )
         conn.execute(
             """
             update fact_formal_zqtz_balance_daily
             set sub_type = business_type_primary
             where sub_type is null or trim(coalesce(sub_type, '')) = ''
             """
+        )
+        invalidate_pnl_by_business_precompute_on_connection(
+            conn,
+            changed_report_dates=changed_report_dates,
+            reason="migration_v24_fact_formal_zqtz_balance_daily_sub_type_backfill",
         )
 
 
@@ -665,6 +734,190 @@ def _v45_zqtz_interest_receivable_payable(conn: duckdb.DuckDBPyConnection) -> No
         )
 
 
+_CONTROLLED_V46_VERSION = 46
+_CONTROLLED_V46_DESCRIPTION = "Controlled stock-analysis current-rule cohort storage"
+_CONTROLLED_V46_RELATIVE_PATH = (
+    "controlled/45_stock_analysis_current_rule_cohort.sql"
+)
+_CONTROLLED_V46_REQUIRED_NOT_NULL_COLUMNS = {
+    "stock_analysis_current_rule_cohort_manifest": {
+        "cohort_id",
+        "page_id",
+        "cohort_mode",
+        "cohort_status",
+        "run_id",
+        "idempotency_key",
+    },
+    "stock_analysis_current_rule_replay_fact": {
+        "cohort_id",
+        "signal_date",
+        "stock_code",
+        "signal_kind",
+    },
+    "stock_analysis_current_rule_date_certificate": {
+        "cohort_id",
+        "trade_date",
+        "certificate_status",
+    },
+}
+_CONTROLLED_V46_REQUIRED_UNIQUE_INDEXES = {
+    "uq_sa_cr_manifest_cohort_id": (
+        "stock_analysis_current_rule_cohort_manifest",
+        "[cohort_id]",
+    ),
+    "uq_sa_cr_manifest_page_mode_idempotency": (
+        "stock_analysis_current_rule_cohort_manifest",
+        "[page_id, cohort_mode, idempotency_key]",
+    ),
+    "uq_sa_cr_fact_logical_key": (
+        "stock_analysis_current_rule_replay_fact",
+        "[cohort_id, signal_date, stock_code, signal_kind]",
+    ),
+    "uq_sa_cr_cert_logical_key": (
+        "stock_analysis_current_rule_date_certificate",
+        "[cohort_id, trade_date]",
+    ),
+}
+
+
+@lru_cache(maxsize=1)
+def _controlled_v46_expected_columns() -> dict[str, dict[str, str]]:
+    """Read the complete table-column contract from the governed SQL slice."""
+    expected_conn = duckdb.connect(":memory:")
+    try:
+        _run_sql_slice(expected_conn, _CONTROLLED_V46_RELATIVE_PATH)
+        return {
+            table_name: {
+                str(column_name): str(data_type)
+                for column_name, data_type in expected_conn.execute(
+                    """
+                    select column_name, data_type
+                    from information_schema.columns
+                    where table_schema = 'main' and table_name = ?
+                    """,
+                    [table_name],
+                ).fetchall()
+            }
+            for table_name in _CONTROLLED_V46_REQUIRED_NOT_NULL_COLUMNS
+        }
+    finally:
+        expected_conn.close()
+
+
+def _assert_controlled_v46_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    expected_columns_by_table = _controlled_v46_expected_columns()
+    missing_tables = [
+        table_name
+        for table_name in expected_columns_by_table
+        if not _main_table_exists(conn, table_name)
+    ]
+    if missing_tables:
+        raise RuntimeError(
+            "controlled v46 schema is incomplete; missing tables: "
+            + ", ".join(sorted(missing_tables))
+        )
+
+    nullable_key_columns: list[str] = []
+    for table_name, expected_columns in expected_columns_by_table.items():
+        column_rows = conn.execute(
+            """
+            select column_name, data_type, is_nullable
+            from information_schema.columns
+            where table_schema = 'main' and table_name = ?
+            """,
+            [table_name],
+        ).fetchall()
+        columns = {
+            str(column): (str(data_type), str(is_nullable))
+            for column, data_type, is_nullable in column_rows
+        }
+        missing_columns = expected_columns.keys() - columns.keys()
+        if missing_columns:
+            raise RuntimeError(
+                f"controlled v46 schema table {table_name} is missing columns: "
+                + ", ".join(sorted(missing_columns))
+            )
+        mismatched_types = [
+            f"{table_name}.{column} (expected {expected_type}, got {columns[column][0]})"
+            for column, expected_type in expected_columns.items()
+            if columns[column][0] != expected_type
+        ]
+        if mismatched_types:
+            raise RuntimeError(
+                "controlled v46 schema has incompatible column types: "
+                + ", ".join(sorted(mismatched_types))
+            )
+        required_not_null_columns = _CONTROLLED_V46_REQUIRED_NOT_NULL_COLUMNS[
+            table_name
+        ]
+        nullable_key_columns.extend(
+            f"{table_name}.{column}"
+            for column in required_not_null_columns
+            if columns[column][1] != "NO"
+        )
+    if nullable_key_columns:
+        raise RuntimeError(
+            "controlled v46 schema has nullable natural-key columns: "
+            + ", ".join(sorted(nullable_key_columns))
+        )
+
+    actual_unique_indexes = {
+        str(index_name): (
+            str(table_name),
+            "".join(str(expressions).lower().split()),
+        )
+        for index_name, table_name, is_unique, expressions in conn.execute(
+            """
+            select index_name, table_name, is_unique, expressions
+            from duckdb_indexes()
+            where schema_name = 'main'
+              and table_name like 'stock_analysis_current_rule_%'
+            """
+        ).fetchall()
+        if bool(is_unique)
+    }
+    mismatched_indexes = [
+        index_name
+        for index_name, (expected_table, expected_expressions) in (
+            _CONTROLLED_V46_REQUIRED_UNIQUE_INDEXES.items()
+        )
+        if actual_unique_indexes.get(index_name)
+        != (
+            expected_table,
+            "".join(expected_expressions.lower().split()),
+        )
+    ]
+    if mismatched_indexes:
+        raise RuntimeError(
+            "controlled v46 schema has missing or mismatched unique natural-key indexes: "
+            + ", ".join(sorted(mismatched_indexes))
+        )
+
+
+def _assert_controlled_v46_preexisting_schema_is_safe(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    expected_tables = set(_CONTROLLED_V46_REQUIRED_NOT_NULL_COLUMNS)
+    existing_tables = {
+        table_name for table_name in expected_tables if _main_table_exists(conn, table_name)
+    }
+    if not existing_tables:
+        return
+    if existing_tables != expected_tables:
+        raise RuntimeError(
+            "controlled v46 preflight found a partial preexisting schema; present tables: "
+            + ", ".join(sorted(existing_tables))
+            + "; missing tables: "
+            + ", ".join(sorted(expected_tables - existing_tables))
+        )
+    _assert_controlled_v46_schema(conn)
+
+
+def _v46_stock_analysis_current_rule_cohort(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, _CONTROLLED_V46_RELATIVE_PATH)
+    _assert_controlled_v46_schema(conn)
+
+
 def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
     text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
@@ -825,3 +1078,73 @@ def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> N
     registry = DuckDBSchemaRegistry(db_path=main_database_file_path(conn) or ":memory:")
     register_all(registry)
     registry.apply_pending(conn=conn)
+    # Ordinary migration versions intentionally stop at v45 because v46 is a
+    # controlled-only migration. Keep this additive head patch ledger-neutral.
+    ensure_bond_analytics_input_quality_columns(conn)
+
+
+def apply_stock_analysis_current_rule_cohort_schema_on_connection(
+    conn: duckdb.DuckDBPyConnection,
+) -> bool:
+    """Explicitly apply controlled v46, never the ordinary v1-v45 startup chain.
+
+    The caller must first prove that the open connection already carries the
+    complete ordinary migration ledger through v45. This entry point will not
+    create the ledger or repair/backfill any earlier version. It returns True
+    when v46 is applied in this call and False when the same valid v46 schema
+    was already present.
+    """
+    if not _main_table_exists(conn, "_schema_migrations"):
+        raise RuntimeError(
+            "controlled v46 requires an existing _schema_migrations ledger complete through v45"
+        )
+
+    ledger_rows = conn.execute(
+        "select version, description from _schema_migrations order by version"
+    ).fetchall()
+    descriptions = {int(version): str(description) for version, description in ledger_rows}
+    versions = set(descriptions)
+    required_predecessors = set(range(1, _CONTROLLED_V46_VERSION))
+    allowed_versions = required_predecessors | {_CONTROLLED_V46_VERSION}
+    missing_predecessors = required_predecessors - versions
+    unexpected_versions = versions - allowed_versions
+    if missing_predecessors or unexpected_versions:
+        details: list[str] = []
+        if missing_predecessors:
+            details.append(
+                "missing predecessor versions "
+                + ", ".join(str(version) for version in sorted(missing_predecessors))
+            )
+        if unexpected_versions:
+            details.append(
+                "unexpected versions "
+                + ", ".join(str(version) for version in sorted(unexpected_versions))
+            )
+        raise RuntimeError("controlled v46 preflight failed: " + "; ".join(details))
+
+    if _CONTROLLED_V46_VERSION in versions:
+        recorded_description = descriptions[_CONTROLLED_V46_VERSION]
+        if recorded_description != _CONTROLLED_V46_DESCRIPTION:
+            raise RuntimeError(
+                "controlled v46 ledger description mismatch: "
+                f"expected {_CONTROLLED_V46_DESCRIPTION!r}, got {recorded_description!r}"
+            )
+        _assert_controlled_v46_schema(conn)
+        return False
+
+    _assert_controlled_v46_preexisting_schema_is_safe(conn)
+    controlled = DuckDBSchemaRegistry(db_path=main_database_file_path(conn) or ":memory:")
+    controlled.register(
+        _CONTROLLED_V46_VERSION,
+        _CONTROLLED_V46_DESCRIPTION,
+        _v46_stock_analysis_current_rule_cohort,
+    )
+    applied = controlled.apply_pending(conn=conn)
+    expected_result = [
+        f"v{_CONTROLLED_V46_VERSION}: {_CONTROLLED_V46_DESCRIPTION}"
+    ]
+    if applied != expected_result:
+        raise RuntimeError(
+            f"controlled v46 registry returned an unexpected result: {applied!r}"
+        )
+    return True

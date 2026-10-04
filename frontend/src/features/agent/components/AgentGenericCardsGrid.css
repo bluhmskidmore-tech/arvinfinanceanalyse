@@ -103,3 +103,212 @@
   font-size: 12px;
   letter-spacing: 0.02em;
 }
+
+/* 工作流卡：560px 抽屉内的只读审计视图，状态与技术标识分层呈现。 */
+.agent-generic-cards__card--workflow {
+  grid-column: 1 / -1;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.agent-generic-cards__workflow-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+.agent-generic-cards__workflow-header .agent-generic-cards__title {
+  margin: 0;
+  font-size: 14px;
+}
+
+.agent-generic-cards__workflow-name {
+  margin-top: 4px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.agent-generic-cards__workflow-state,
+.agent-generic-cards__workflow-count,
+.agent-generic-cards__governance-state,
+.agent-generic-cards__intent-state {
+  flex: none;
+  border-radius: var(--ib-radius, 2px);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.agent-generic-cards__workflow-state,
+.agent-generic-cards__workflow-count {
+  border: 1px solid color-mix(in srgb, var(--ib-accent) 36%, var(--ib-hairline));
+  background: color-mix(in srgb, var(--ib-accent) 10%, var(--ib-surface));
+  color: var(--ib-accent);
+  padding: 5px 7px;
+}
+
+.agent-generic-cards__workflow-description {
+  margin: 10px 0 0;
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.agent-generic-cards__workflow-id {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+}
+
+.agent-generic-cards__workflow-id code,
+.agent-generic-cards__intent-main code {
+  color: var(--ib-ink-secondary);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.agent-generic-cards__workflow-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+  margin: 10px 0 0;
+  border-top: 1px solid var(--ib-hairline);
+}
+
+.agent-generic-cards__workflow-meta-item {
+  min-width: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+.agent-generic-cards__workflow-meta-item dt {
+  margin: 0 0 3px;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+}
+
+.agent-generic-cards__workflow-meta-item dd {
+  margin: 0;
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.agent-generic-cards__intent-list,
+.agent-generic-cards__governance-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-generic-cards__intent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-generic-cards__intent-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted, var(--ib-surface));
+}
+
+.agent-generic-cards__intent-order {
+  color: var(--ib-accent);
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-generic-cards__intent-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-generic-cards__intent-main strong {
+  color: var(--ib-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.agent-generic-cards__intent-state,
+.agent-generic-cards__governance-state {
+  border: 1px solid
+    color-mix(in srgb, var(--dh-api-amber, var(--ib-warn)) 38%, var(--ib-hairline));
+  background: color-mix(
+    in srgb,
+    var(--dh-api-amber, var(--ib-warn)) 9%,
+    var(--ib-surface)
+  );
+  color: var(--dh-api-amber, var(--ib-warn));
+  padding: 5px 7px;
+}
+
+.agent-generic-cards__workflow-boundary {
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--ib-hairline);
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.agent-generic-cards__governance-list {
+  display: grid;
+}
+
+.agent-generic-cards__governance-list li {
+  position: relative;
+  padding: 9px 0 9px 16px;
+  border-bottom: 1px solid var(--ib-hairline);
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.agent-generic-cards__governance-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.agent-generic-cards__governance-list li::before {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dh-api-amber, var(--ib-warn));
+}
+
+@media (max-width: 540px) {
+  .agent-generic-cards__workflow-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-generic-cards__intent-item {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+
+  .agent-generic-cards__intent-state {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

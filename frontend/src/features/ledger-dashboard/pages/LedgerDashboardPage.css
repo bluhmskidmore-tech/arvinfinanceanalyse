@@ -14,7 +14,7 @@
   margin: 0 0 var(--moss-space-2);
   color: var(--dh-api-muted);
   font-size: var(--ib-kicker-font-size, 11px);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
   text-transform: uppercase;
 }
@@ -27,12 +27,12 @@
 
 .ledger-dashboard h1 {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ledger-dashboard h2 {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ledger-dashboard__subtitle {
@@ -49,7 +49,7 @@
   background: color-mix(in srgb, var(--dh-api-amber) 8%, var(--dh-api-panel));
   color: var(--dh-api-amber);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -107,7 +107,7 @@
   min-width: 180px;
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ledger-dashboard__field select {
@@ -116,7 +116,7 @@
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel);
   color: var(--dh-api-ink);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 /* 四个方向筛选（全部/资产/发行负债/未分类）必须同排，三列会把末位挤到被 overflow 裁掉的第二行。 */
@@ -140,7 +140,7 @@
   background: transparent;
   color: var(--dh-api-soft);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ledger-dashboard__segmented button + button {
@@ -188,7 +188,7 @@
   gap: var(--moss-space-2);
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* 原生 file input 视觉隐藏（保留语义、焦点与 label 触发），按钮自绘中文。 */
@@ -247,7 +247,7 @@
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-blue);
   color: var(--dh-api-panel);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ledger-dashboard__import-submit:disabled {
@@ -318,7 +318,7 @@
   background: var(--dh-api-panel-2);
   color: var(--dh-api-soft);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .ledger-dashboard__status span {
@@ -409,7 +409,7 @@
   display: block;
   margin: var(--moss-space-3) 0 var(--moss-space-3);
   color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 24px;
   font-variant-numeric: tabular-nums;
 }
@@ -434,20 +434,11 @@
 }
 
 .ledger-dashboard__panel-head {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--moss-space-3);
-  padding: var(--moss-space-4);
-  border-bottom: 1px solid var(--dh-api-line);
-}
-
-.ledger-dashboard__panel-head p {
-  margin: var(--moss-space-2) 0 0;
-  color: var(--dh-api-soft);
-  font-size: 13px;
+  padding: var(--moss-space-4) var(--moss-space-4) 0;
 }
 
 .ledger-dashboard__table-wrap {
+  padding: 0 var(--moss-space-4) var(--moss-space-4);
   overflow-x: auto;
 }
 
@@ -459,7 +450,7 @@
   background: var(--dh-api-panel-2);
   color: var(--dh-api-soft);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .ledger-dashboard__panel-status span {
@@ -485,38 +476,6 @@
   border-color: color-mix(in srgb, var(--dh-api-blue) 24%, var(--dh-api-line));
   background: var(--dh-api-blue-soft);
   color: var(--dh-api-blue);
-}
-
-.ledger-dashboard table {
-  width: 100%;
-  min-width: 900px;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.ledger-dashboard th,
-.ledger-dashboard td {
-  padding: 11px 12px;
-  border-top: 1px solid var(--dh-api-line);
-  text-align: left;
-  white-space: nowrap;
-}
-
-.ledger-dashboard th {
-  background: var(--dh-api-panel-2);
-  color: var(--dh-api-soft);
-  font-size: 12px;
-}
-
-.ledger-dashboard__num {
-  font-family: var(--moss-font-mono);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.ledger-dashboard__empty {
-  color: var(--dh-api-muted);
-  text-align: center;
 }
 
 .ledger-dashboard__evidence {

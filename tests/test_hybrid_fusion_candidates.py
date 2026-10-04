@@ -527,10 +527,160 @@ def test_hybrid_fusion_uses_name_from_factor_source_when_trend_source_lacks_it()
     assert item["stock_name"] == "Alpha Semi"
 
 
-def test_hybrid_fusion_formula_version_is_v5_after_theme_v6_input_break() -> None:
-    # v5 断代原因：theme_breakout v5→v6 七篮子使 theme 输入面从约 33 只扩到
-    # 1500+ 只，同版本号不得跨输入代际聚合。
-    assert FORMULA_VERSION == "rv_hybrid_fusion_candidates_v5"
+def test_hybrid_fusion_formula_version_is_v6_after_event_basis_unification() -> None:
+    # v6 断代原因：VCOV/BURST 事件数口径统一为 max(个股, 题材聚合)，BURST 侧原先
+    # 相加会双计个股自身事件，同版本号不得跨口径代际聚合。
+    assert FORMULA_VERSION == "rv_hybrid_fusion_candidates_v6"
+
+
+def test_hybrid_fusion_vcov_does_not_double_count_own_movement_events() -> None:
+    """Regression (P0-3): theme_movement_event_count is the theme-wide aggregate
+    and already includes the stock's own movement_event_count, so the vcov event
+    basis must be max(own, theme_total) = 3, never own + theme_total = 4."""
+    from backend.app.core_finance.hybrid_fusion_candidates import _vcov_score
+
+    theme_member_row = {
+        "theme_rank": 1,
+        "movement_event_count": 1,
+        "theme_movement_event_count": 3,
+    }
+    # rank_component 1.0 -> 0.55; event_count max(1, 3) = 3 -> 0.3 * (3 / 5) = 0.18.
+    assert math.isclose(_vcov_score(theme_member_row), 0.73, rel_tol=1e-9)
+    # The old additive basis produced 0.55 + 0.3 * (4 / 5) = 0.79.
+    assert _vcov_score(theme_member_row) < 0.79
+
+    # Rows without a theme aggregate degrade to the stock's own event count.
+    stock_only_row = {"theme_rank": 1, "movement_event_count": 2}
+    assert math.isclose(_vcov_score(stock_only_row), 0.55 + 0.3 * (2 / 5), rel_tol=1e-9)
+
+    # End to end: one stock with 1 own event inside a theme whose aggregate is 3.
+    result = compute_hybrid_fusion_candidates(
+        as_of_date="2026-05-08",
+        market_state="HOT",
+        sector_rank_payload={"items": [{"sector_code": "801080", "rank": 1}]},
+        stock_candidates_payload=None,
+        factor_screen_payload=None,
+        theme_breakout_payload={
+            "items": [
+                {
+                    "rank": 1,
+                    "theme_key": "concept:C001",
+                    "theme_name": "Chiplet",
+                    "movement_event_count": 3,
+                    "items": [
+                        {
+                            "stock_code": "688001.SH",
+                            "stock_name": "Alpha Semi",
+                            "sector_code": "801080",
+                            "sector_name": "Electronic",
+                            "sector_rank": 1,
+                            "pctchange": 2.0,
+                            "turn": 3.0,
+                            "close_strength": 0.6,
+                            "closed_up_limit": False,
+                            "movement_event_count": 1,
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+    item = cast(list[dict[str, Any]], result.payload["items"])[0]
+    assert math.isclose(item["vcov_score"], 0.73, rel_tol=1e-9)
+
+
+def test_hybrid_fusion_burst_shares_the_vcov_non_double_counted_event_basis() -> None:
+    """Regression (M3): the BURST numerator and its median basis added
+    movement_event_count to theme_movement_event_count while VCOV took the max, so the
+    module carried two contradictory event bases and BURST double counted the stock's
+    own events."""
+    from backend.app.core_finance.hybrid_fusion_candidates import (
+        _burst_score,
+        _movement_event_basis,
+        _movement_event_counts,
+    )
+
+    theme_rows: dict[str, dict[str, object]] = {
+        "688001.SH": {"movement_event_count": 3, "theme_movement_event_count": 10},
+        "688002.SH": {"movement_event_count": 2, "theme_movement_event_count": 8},
+        "688003.SH": {"movement_event_count": 1, "theme_movement_event_count": 7},
+    }
+    # theme_movement_event_count sums the theme's breakout members, so for a member row
+    # max(own, theme_total) == theme_total. The additive basis was [13, 10, 8] and
+    # inflated every row by its own event count.
+    counts = _movement_event_counts(theme_rows)
+    assert counts == [10, 8, 7]
+    assert _movement_event_basis(theme_rows["688001.SH"]) == 10
+
+    # median = sorted([10, 8, 7])[3 // 2] = 8 -> (10 - 8) / 8 = 0.25.
+    # The additive basis gave median 10 and (13 - 10) / 10 = 0.30.
+    assert math.isclose(_burst_score(theme_rows["688001.SH"], movement_event_counts=counts), 0.25, rel_tol=1e-9)
+    assert _burst_score(theme_rows["688002.SH"], movement_event_counts=counts) == 0.0
+    assert _burst_score(None, movement_event_counts=counts) == 0.0
+
+
+def test_hybrid_fusion_burst_does_not_spread_same_theme_peers_by_own_event_count() -> None:
+    """Members of one theme share that theme's event basis, so BURST can no longer rank
+    them apart on events the theme aggregate has already counted."""
+
+    def member(code: str, own_events: int) -> dict[str, Any]:
+        return {
+            "stock_code": code,
+            "stock_name": code,
+            "sector_code": "801080",
+            "sector_name": "Electronic",
+            "sector_rank": 1,
+            "pctchange": 3.0,
+            "turn": 4.0,
+            "close_strength": 0.7,
+            "closed_up_limit": False,
+            "movement_event_count": own_events,
+        }
+
+    result = compute_hybrid_fusion_candidates(
+        as_of_date="2026-05-08",
+        market_state="HOT",
+        sector_rank_payload={"items": [{"sector_code": "801080", "rank": 1}]},
+        stock_candidates_payload=None,
+        factor_screen_payload=None,
+        theme_breakout_payload={
+            "items": [
+                {
+                    "rank": 1,
+                    "theme_key": "concept:T1",
+                    "movement_event_count": 7,
+                    "items": [member("688001.SH", 3), member("688002.SH", 1)],
+                },
+                {
+                    "rank": 2,
+                    "theme_key": "concept:T2",
+                    "movement_event_count": 5,
+                    "items": [member("688003.SH", 2)],
+                },
+                {
+                    "rank": 3,
+                    "theme_key": "concept:T3",
+                    "movement_event_count": 4,
+                    "items": [member("688004.SH", 1)],
+                },
+                {
+                    "rank": 4,
+                    "theme_key": "concept:T4",
+                    "movement_event_count": 3,
+                    "items": [member("688005.SH", 1)],
+                },
+            ]
+        },
+        macro_score=0.5,
+    )
+
+    by_code = {item["stock_code"]: item for item in cast(list[dict[str, Any]], result.payload["items"])}
+    # basis [7, 7, 5, 4, 3] -> median 5 -> (7 - 5) / 5 = 0.4 for both T1 members.
+    # The additive basis gave [10, 8, 7, 5, 4] -> median 7 -> 0.428571 vs 0.142857,
+    # a spread produced purely by double counting each member's own events.
+    assert math.isclose(by_code["688001.SH"]["burst_score"], 0.4, rel_tol=1e-9)
+    assert by_code["688002.SH"]["burst_score"] == by_code["688001.SH"]["burst_score"]
+    assert by_code["688003.SH"]["burst_score"] == 0.0
 
 
 def test_hybrid_fusion_lifecourt_score_is_normalized_to_unit_scale() -> None:

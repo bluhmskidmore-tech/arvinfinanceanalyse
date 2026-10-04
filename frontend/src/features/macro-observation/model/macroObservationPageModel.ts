@@ -592,6 +592,13 @@ function crisisResultRegime(result: MacroToolkitCapabilityResult): string | null
 export type MacroObservationCrisisHistoryPoint = {
   date: string;
   value: number;
+  /**
+   * 该点可计算分项数与分项总数；载荷未携带时为 null。
+   * 用于把「部分分项可用的降级段」与「全分项读数」区分开——两者不等价，
+   * 不能在同一条曲线上被当作同一口径读取。
+   */
+  availableComponentCount: number | null;
+  componentCount: number | null;
 };
 
 export type MacroObservationCrisisEvidenceView =
@@ -679,6 +686,8 @@ export function buildCrisisEvidenceView(
     history: crisisScoreHistoryFromResult(result).map((point) => ({
       date: point.date,
       value: point.crisis_score,
+      availableComponentCount: point.available_component_count,
+      componentCount: point.component_count,
     })),
   };
 }

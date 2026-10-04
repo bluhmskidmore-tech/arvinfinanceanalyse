@@ -53,7 +53,7 @@ describe("PageAsyncSection", () => {
     expect(screen.queryByTestId("inner")).not.toBeInTheDocument();
   });
 
-  it("renders error state with legacy copy and retry action", async () => {
+  it("renders a recovery message and retry action", async () => {
     const user = userEvent.setup();
     const { onRetry } = renderSection({ isError: true });
 
@@ -62,7 +62,7 @@ describe("PageAsyncSection", () => {
     expect(error).toHaveAttribute("data-state-variant", "error");
     expect(screen.getByText("数据载入失败。")).toBeInTheDocument();
     expect(
-      screen.getByText("当前页面保留重试入口，不在浏览器端自行拼接正式口径。"),
+      screen.getByText("暂时无法获取数据，请重试。"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("inner")).not.toBeInTheDocument();
 

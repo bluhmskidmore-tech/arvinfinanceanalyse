@@ -4,9 +4,9 @@ import observationKeysConfig from "../../../config/macro_decision_observation_ke
 import {
   buildMockDecisionSummaryCard,
   DECISION_SUMMARY_OBSERVATION_KEYS,
-} from "../api/macroDecisionSummaryMock";
+} from "../mocks/macroDecisionSummaryMock";
 import type { MacroToolkitCapabilityResult } from "../api/macroToolkitClient";
-import { createMockMacroToolkitClient } from "../api/macroToolkitMockClient";
+import { createMockMacroToolkitClient } from "../mocks/macroToolkitMockClient";
 
 function card(
   key: string,

@@ -3,7 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 import json
 
-from backend.app.agent.runtime.toolset_policy import normalize_read_only_toolsets
+from backend.app.agent.runtime.toolset_policy import (
+    normalize_hermes_read_only_toolsets,
+    normalize_read_only_toolsets,
+)
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.services import dexter_agent_service, hermes_agent_service
 
@@ -29,6 +32,12 @@ def test_agent_toolset_policy_keeps_only_read_only_toolsets() -> None:
     assert normalize_read_only_toolsets("Evidence,query,query") == "evidence,query"
 
 
+def test_hermes_toolset_policy_uses_only_provider_runtime_names() -> None:
+    assert normalize_hermes_read_only_toolsets("") == "web"
+    assert normalize_hermes_read_only_toolsets("file,terminal,evidence") == "web"
+    assert normalize_hermes_read_only_toolsets("WEB,web,file") == "web"
+
+
 def test_hermes_cli_invocation_does_not_forward_mutating_toolsets(monkeypatch) -> None:
     captured: dict[str, list[str]] = {}
 
@@ -51,8 +60,8 @@ def test_hermes_cli_invocation_does_not_forward_mutating_toolsets(monkeypatch) -
         timeout_seconds=1,
     )
 
-    assert result["toolsets"] == "query"
-    assert _toolsets_arg(captured["args"]) == "query"
+    assert result["toolsets"] == "web"
+    assert _toolsets_arg(captured["args"]) == "web"
 
 
 def test_dexter_cli_invocation_does_not_forward_mutating_toolsets(monkeypatch) -> None:
@@ -128,7 +137,7 @@ def test_external_provider_bridge_requests_do_not_forward_mutating_toolsets(monk
         timeout_seconds=1,
     )
 
-    assert captured["http://127.0.0.1:7891/query"]["toolsets"] == "query"
+    assert captured["http://127.0.0.1:7891/query"]["toolsets"] == "web"
     assert captured["http://127.0.0.1:7892/query"]["toolsets"] == "research"
-    assert hermes["toolsets"] == "query"
+    assert hermes["toolsets"] == "web"
     assert dexter["toolsets"] == "research"

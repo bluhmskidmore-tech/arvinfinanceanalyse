@@ -9,8 +9,10 @@ import type {
   PnlByBusinessYtdItem,
   PnlByBusinessYtdSummary,
 } from "../../api/contracts";
+import type { PnlByBusinessSummary } from "../../api/pnlByBusinessContracts";
 
 import { buildPnlByBusinessSheets } from "./pnlByBusinessExport";
+import { buildNegativeFtpList } from "./pnlByBusinessPageModel";
 
 const minimalYtdRow = (patch: Partial<PnlByBusinessYtdItem> = {}): PnlByBusinessYtdItem => ({
   row_key: "rk_test",
@@ -71,6 +73,20 @@ const minimalFormalRow = (patch: Partial<PnlByBusinessRow> = {}): PnlByBusinessR
   ...patch,
 });
 
+const minimalFormalSummary = (patch: Partial<PnlByBusinessSummary> = {}): PnlByBusinessSummary => ({
+  business_count: 1,
+  total_pnl: "50000",
+  total_scale_amount: "1000000000",
+  interest_income_514: "50000",
+  fair_value_change_516: "0",
+  capital_gain_517: "0",
+  manual_adjustment: "0",
+  pnl_row_count: 10,
+  traced_pnl_row_count: 10,
+  untraced_pnl_row_count: 0,
+  ...patch,
+});
+
 const minimalAdjustment = (
   patch: Partial<PnlByBusinessManualAdjustmentPayload> = {},
 ): PnlByBusinessManualAdjustmentPayload => ({
@@ -85,6 +101,8 @@ const minimalAdjustment = (
   approval_status: "approved",
   manual_adjustment: "2500",
   reason: "复核后补录",
+  created_by: "reviewer_test",
+  approved_by: "approver_test",
   ...patch,
 });
 
@@ -222,6 +240,79 @@ const minimalUnallocatedItems = [
 ];
 
 describe("buildPnlByBusinessSheets", () => {
+  it.each(["monthly", "bond_bucket_monthly"] as const)("uses each month's evidence for %s analysis rows", (dimension) => {
+    const month = minimalMonthlyBucket();
+    const rows = ["2026-07", "2026-08", "2026-09", "2026-10"].map((key) => minimalAnalysisRow({
+      dimension_key: dimension === "monthly" ? `${key}-31` : `${key}::rate_bond`,
+      dimension_label: `${key} 利率债`,
+    }));
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "ytd", reportDate: "2026-10-31", year: 2026,
+      ytdRows: [], adbAvgByBusinessType: new Map(), formalRows: [],
+      months: [
+        { ...month, month_key: "2026-07", coverage_days: 31, expected_days: 31, sample_filled: false },
+        { ...month, month_key: "2026-08", coverage_days: 30, expected_days: 31, sample_filled: true },
+        { ...month, month_key: "2026-10", coverage_days: 31, expected_days: 31, balance_quality_issues: [{
+          issue_id: "oct-source", report_date: "2026-10-02", status: "pending", reason: "十月来源待核实",
+          source_file: "source.xls", source_version: "v1",
+        }] },
+      ],
+      adjustments: [], adjustmentEvents: [], bondBucketRows: [],
+      bondBucketMonthlyRows: rows, bondBucketMonthlyQuality: { coverage_days: 242, expected_days: 243 },
+      negativeFtpRows: [], analysisRows: rows, analysisDimension: dimension,
+      analysisQuality: { coverage_days: 242, expected_days: 243 },
+    });
+    for (const name of ["投资资产四类月度", "多维下钻"]) {
+      const sheet = sheets.find((item) => item.sheet === name)!;
+      const notes = sheet.data.slice(3).map((row) => String(row.at(-1)));
+      expect(notes[0]).toContain("31/31 天");
+      expect(notes[0]).not.toMatch(/待核对|样本填充|十月来源/);
+      expect(notes[1]).toContain("30/31 天");
+      expect(notes[1]).toContain("待核对");
+      expect(notes[1]).toContain("样本填充");
+      expect(notes[2]).toContain("2026-09 本月覆盖未返回");
+      expect(notes[3]).toContain("2026-10-02 十月来源待核实");
+      expect(notes.every((note) => !note.includes("242/243"))).toBe(true);
+    }
+  });
+
+  it("retains endpoint coverage beside exported values even without source issues", () => {
+    const month = { ...minimalMonthlyBucket(), coverage_days: 30, expected_days: 31, sample_filled: false };
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "ytd", reportDate: "2025-12-31", year: 2025,
+      ytdRows: [minimalYtdRow(), minimalYtdRow({ row_key: "asset_detail_test", business_type: "其中：测试" })],
+      ytdSummary: minimalYtdSummary(), ytdQuality: { coverage_days: 364, expected_days: 365 },
+      adbAvgByBusinessType: new Map(), formalRows: [], months: [month],
+      adjustments: [], adjustmentEvents: [], bondBucketRows: [minimalAnalysisRow()],
+      bondBucketQuality: { coverage_days: 365, expected_days: 365, sample_filled: true },
+      bondBucketMonthlyRows: [minimalAnalysisRow({ dimension_key: `${month.month_key}::rate_bond` })],
+      bondBucketMonthlyQuality: { coverage_days: 364, expected_days: 365 },
+      negativeFtpRows: [minimalAnalysisRow({ ftp_net_pnl: "-1000" })],
+      negativeFtpQuality: { coverage_days: 364, expected_days: 365 },
+      analysisRows: [minimalAnalysisRow()], analysisDimension: "portfolio",
+      analysisQuality: { coverage_days: 364, expected_days: 365 }, balanceQualityIssues: [],
+    });
+    for (const name of ["月度业务种类", "月度其中项明细"]) {
+      const sheet = sheets.find((item) => item.sheet === name)!;
+      expect(sheet.data.at(-1)?.at(-1)).toContain("30/31 天");
+      expect(sheet.data.at(-1)?.at(-1)).toContain("观测日均");
+      expect(sheet.data.at(-1)?.at(-1)).toContain("待核对");
+    }
+    expect(sheets.find((item) => item.sheet === "投资资产四类月度")?.data.at(-1)?.at(-1)).toContain("30/31 天");
+    for (const name of ["YTD年累计明细", "YTD其中项明细", "负FTP资产清单", "多维下钻"]) {
+      const sheet = sheets.find((item) => item.sheet === name)!;
+      expect(sheet.data.at(-1)?.at(-1)).toContain("364/365 天");
+      expect(sheet.data.at(-1)?.at(-1)).toContain("待核对");
+    }
+    const complete = sheets.find((item) => item.sheet === "投资资产四类")!;
+    expect(complete.data.at(-1)?.at(-1)).toContain("365/365 天；样本填充");
+    expect(complete.data.at(-1)?.at(-1)).not.toContain("观测日均");
+    const ytd = sheets.find((item) => item.sheet === "YTD年累计明细")!;
+    expect(ytd.data[1]?.[7]).toBe(9.876543);
+    expect(JSON.stringify(sheets[0]?.data)).toContain("30/31 天");
+    expect(JSON.stringify(sheets[0]?.data)).toContain("364/365 天");
+  });
+
   it("uses the backend YTD summary for the parent total instead of summing child rows", () => {
     const sheets = buildPnlByBusinessSheets({
       viewMode: "ytd",
@@ -230,6 +321,10 @@ describe("buildPnlByBusinessSheets", () => {
       periodStart: "2025-01-01",
       periodEnd: "2025-12-31",
       periodLabel: "2025 YTD",
+      balanceQualityIssues: [{
+        issue_id: "source-date", report_date: "2025-11-20", status: "pending",
+        reason: "源表日期与文件名不一致。", source_file: "source.xls", source_version: "sv_test",
+      }],
       ytdRows: [minimalYtdRow()],
       ytdSummary: minimalYtdSummary(),
       adbAvgByBusinessType: new Map(),
@@ -244,7 +339,11 @@ describe("buildPnlByBusinessSheets", () => {
     });
 
     const totalRow = sheets[1]?.data.at(-1);
-    expect(totalRow?.slice(1)).toEqual([
+    expect(sheets[0]?.data).toContainEqual([
+      "余额来源待核实", "2025-11-20", "源表日期与文件名不一致。",
+      "受影响期间的日均、年化收益率和 FTP 为暂列值，取得正确源表后重算。",
+    ]);
+    expect(totalRow?.slice(1, 12)).toEqual([
       46,
       91,
       82,
@@ -323,6 +422,32 @@ describe("buildPnlByBusinessSheets", () => {
     expect(monthlyDetailFirstRow?.some((cell) => typeof cell === "string" && cell.includes("重叠"))).toBe(true);
   });
 
+  it("preserves uncomputed FTP assets separately from the ten largest calculated losses", () => {
+    const rows = [
+      ...Array.from({ length: 12 }, (_, i) => minimalAnalysisRow({ dimension_key: `loss-${i}`, ftp_net_pnl: String(-i - 1) })),
+      minimalAnalysisRow({ dimension_key: "zero", ftp_net_pnl: "0" }),
+      minimalAnalysisRow({ dimension_key: "unknown", dimension_label: "未计算资产", total_pnl: "-12345.67", ftp_net_pnl: null }),
+    ];
+    const list = buildNegativeFtpList(rows);
+    expect(list.calculatedCount).toBe(13);
+    expect(list.negativeCount).toBe(12);
+    expect(list.topRows).toHaveLength(10);
+    expect(list.topRows[0].dimension_key).toBe("loss-11");
+    expect(list.topRows[9].dimension_key).toBe("loss-2");
+    expect(list.unavailableRows.map((row) => row.dimension_key)).toEqual(["unknown"]);
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "ytd", reportDate: "2025-12-31", year: 2025, ytdRows: [], adbAvgByBusinessType: new Map(),
+      formalRows: [], months: [], adjustments: [], adjustmentEvents: [], bondBucketRows: [], bondBucketMonthlyRows: [],
+      negativeFtpRows: rows, analysisRows: [],
+    });
+    const unknown = sheets.find((sheet) => sheet.sheet === "FTP未计算资产")!;
+    expect(unknown.data).toEqual(expect.arrayContaining([expect.arrayContaining(["未计算资产"])]));
+    expect(JSON.stringify(unknown.data)).toContain("未计算 1 笔");
+    const negative = sheets.find((sheet) => sheet.sheet === "负FTP资产清单")!;
+    expect(JSON.stringify(negative.data)).not.toContain("未计算资产");
+    expect(JSON.stringify(negative.data)).toContain("负收益 12 笔");
+  });
+
   it("builds writer-compatible YTD sheets with stable names and localized values", async () => {
     const sheets = buildPnlByBusinessSheets({
       viewMode: "ytd",
@@ -366,8 +491,8 @@ describe("buildPnlByBusinessSheets", () => {
       "月度其中项明细",
       "手工调整当前",
       "手工调整事件",
-      "债券四类",
-      "四类债券月度",
+      "投资资产四类",
+      "投资资产四类月度",
       "负FTP资产清单",
       "多维下钻",
     ]);
@@ -529,6 +654,7 @@ describe("buildPnlByBusinessSheets", () => {
       ytdRows: [],
       adbAvgByBusinessType: new Map(),
       formalRows: [minimalFormalRow()],
+      formalSummary: minimalFormalSummary(),
       months: [],
       adjustments: [],
       adjustmentEvents: [],
@@ -543,5 +669,74 @@ describe("buildPnlByBusinessSheets", () => {
     expect(sheets[1]?.data).toEqual(
       expect.arrayContaining([expect.arrayContaining(["政策性金融债"])]),
     );
+  });
+
+  it("uses the backend formal summary for the total row instead of summing rows with a bad value", () => {
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "formal",
+      reportDate: "2025-12-31",
+      year: 2025,
+      ytdRows: [],
+      adbAvgByBusinessType: new Map(),
+      formalRows: [
+        minimalFormalRow(),
+        // 解析失败行：interest_income_514 非数值，若前端逐行累加会被 ?? 0 静默吞掉。
+        minimalFormalRow({
+          business_type_primary: "非标债权",
+          interest_income_514: "not-a-number",
+          total_pnl: "not-a-number",
+          scale_amount: "not-a-number",
+        }),
+      ],
+      formalSummary: minimalFormalSummary({
+        total_pnl: "999999",
+        total_scale_amount: "2000000000",
+        interest_income_514: "888888",
+        pnl_row_count: 20,
+      }),
+      months: [],
+      adjustments: [],
+      adjustmentEvents: [],
+      bondBucketRows: [],
+      bondBucketMonthlyRows: [],
+      negativeFtpRows: [],
+      analysisDimension: undefined,
+      analysisRows: [],
+    });
+
+    const formalSheet = sheets.find((sheet) => sheet.sheet === "Primary对账明细");
+    const totalRow = formalSheet?.data.at(-1);
+
+    expect(totalRow?.[0]).toBe("全表合计");
+    expect(totalRow?.[2]).toBe(20); // total_scale_amount 2,000,000,000 元 -> 20 亿元
+    expect(totalRow?.[3]).toBe(88.8888); // interest_income_514 888,888 元 -> 万元
+    expect(totalRow?.[7]).toBe(99.9999); // total_pnl 999,999 元 -> 万元
+    expect(totalRow?.[9]).toBe(20); // pnl_row_count 直读 summary，不受解析失败行影响
+  });
+
+  it("annotates the formal total row as unavailable instead of silently omitting it when the backend summary is missing", () => {
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "formal",
+      reportDate: "2025-12-31",
+      year: 2025,
+      ytdRows: [],
+      adbAvgByBusinessType: new Map(),
+      formalRows: [minimalFormalRow()],
+      formalSummary: undefined,
+      months: [],
+      adjustments: [],
+      adjustmentEvents: [],
+      bondBucketRows: [],
+      bondBucketMonthlyRows: [],
+      negativeFtpRows: [],
+      analysisDimension: undefined,
+      analysisRows: [],
+    });
+
+    const formalSheet = sheets.find((sheet) => sheet.sheet === "Primary对账明细");
+    const totalRow = formalSheet?.data.at(-1);
+
+    expect(totalRow?.[0]).toContain("不可用");
+    expect(totalRow?.slice(1)).toEqual([null, null, null, null, null, null, null, null, null]);
   });
 });

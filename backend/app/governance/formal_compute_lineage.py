@@ -239,6 +239,7 @@ def resolve_formal_facts_lineage(
             str(latest_manifest.get("vendor_version") or "").strip(),
             default_vendor_version,
         ),
+        finished_at=latest_build.get("finished_at"),
         default_source_version=default_source_version,
         default_rule_version=default_rule_version,
         default_cache_version=default_cache_version,
@@ -333,14 +334,21 @@ def _build_lineage_values(
     rule_version: object | None = None,
     cache_version: object | None = None,
     vendor_version: object | None = None,
+    finished_at: object | None = None,
     default_source_version: str,
     default_rule_version: str,
     default_cache_version: str,
     default_vendor_version: str,
 ) -> dict[str, str]:
-    return {
+    values = {
         "source_version": _first_non_empty(str(source_version or "").strip(), default_source_version),
         "rule_version": _first_non_empty(str(rule_version or "").strip(), default_rule_version),
         "cache_version": _first_non_empty(str(cache_version or "").strip(), default_cache_version),
         "vendor_version": _first_non_empty(str(vendor_version or "").strip(), default_vendor_version),
     }
+    # Versions carry defaults; a build terminal may legitimately be absent, so
+    # the key stays out of the mapping rather than defaulting to a fake time.
+    resolved_finished_at = str(finished_at or "").strip()
+    if resolved_finished_at:
+        values["finished_at"] = resolved_finished_at
+    return values

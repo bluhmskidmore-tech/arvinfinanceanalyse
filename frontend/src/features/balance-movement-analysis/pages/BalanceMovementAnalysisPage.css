@@ -120,7 +120,7 @@
 .balance-movement-conclusion__status {
   color: var(--ib-up);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-conclusion__headline {
@@ -219,7 +219,7 @@
 .balance-movement-freshness-strip__summary span {
   color: var(--ib-ink);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .balance-movement-freshness-strip--warn .balance-movement-freshness-strip__summary span {
@@ -249,8 +249,8 @@
 
 .balance-movement-freshness-strip__facts dt {
   color: var(--ib-ink-secondary);
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .balance-movement-freshness-strip__facts dd {
@@ -258,7 +258,7 @@
   overflow: hidden;
   color: var(--ib-ink);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -285,7 +285,7 @@
   margin-bottom: 4px;
   color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
@@ -294,7 +294,7 @@
   overflow: hidden;
   color: var(--ib-ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -349,7 +349,7 @@
 .balance-movement-dimension-card span {
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-dimension-card strong {
@@ -401,7 +401,7 @@
 .balance-movement-anomaly-card > span {
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .balance-movement-anomaly-card > p {
@@ -434,7 +434,7 @@
 .balance-movement-anomaly-list span {
   color: var(--ib-warn);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .balance-movement-anomaly-list p {
@@ -572,7 +572,7 @@
   background: var(--ib-accent-surface);
   color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -618,7 +618,7 @@
   background: var(--ib-surface);
   color: var(--ib-ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
   cursor: pointer;
 }
@@ -656,7 +656,7 @@
   margin-bottom: 4px;
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-evidence-drawer__header h2 {
@@ -672,7 +672,7 @@
   background: var(--ib-surface);
   color: var(--ib-ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -697,7 +697,7 @@
 .balance-movement-evidence-drawer__list dt {
   color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
@@ -733,7 +733,7 @@
 .balance-movement-business-summary__headline span {
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-business-summary__headline strong {
@@ -767,14 +767,14 @@
 .balance-movement-business-summary__facts span {
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-business-summary__facts p {
   margin: 0;
   color: var(--ib-ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-business-summary__body {
@@ -810,7 +810,7 @@
 .balance-movement-zqtz-calibration__diagnosis span {
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-zqtz-calibration__header strong {
@@ -884,7 +884,7 @@
   padding: var(--moss-space-1) var(--moss-space-2);
   border-radius: var(--ib-radius, 2px);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-zqtz-calibration__status--matched {
@@ -932,7 +932,7 @@
 .balance-movement-zqtz-detail-page__header span {
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-zqtz-detail-page__header strong {
@@ -978,7 +978,7 @@
   background: var(--ib-surface-muted);
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-zqtz-detail-page__table th:first-child {
@@ -989,7 +989,7 @@
   background: var(--ib-surface-muted);
   color: var(--ib-ink);
   text-align: left;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .balance-movement-zqtz-detail-page__table th:not(:first-child),
@@ -1012,7 +1012,7 @@
 .balance-movement-zqtz-detail-page__row--summary td {
   border-top: 1px solid var(--ib-hairline);
   background: var(--ib-surface-muted);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .balance-movement-zqtz-detail-page__row--summary th:first-child {
@@ -1064,7 +1064,7 @@
   background: var(--ib-accent-surface);
   color: var(--ib-ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-driver-ranking__row strong {
@@ -1105,7 +1105,7 @@
 .balance-movement-structure-shift__row em {
   color: var(--ib-ink);
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
   text-align: right;
 }
 
@@ -1168,7 +1168,7 @@
   border-left: 3px solid var(--ib-ink);
   color: var(--ib-ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -1197,7 +1197,7 @@
 }
 
 .balance-movement-trend-table td:first-child {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-report-matrix {
@@ -1221,7 +1221,7 @@
   background: var(--ib-surface);
   color: var(--ib-ink);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
   letter-spacing: 0;
   line-height: 1.2;
@@ -1261,7 +1261,7 @@
 .balance-movement-report-matrix tbody tr[data-side="total"] th[scope="row"] {
   border-left: 3px solid var(--moss-color-primary-600);
   background: var(--ib-accent-surface);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-report-matrix td {
@@ -1271,7 +1271,7 @@
   border-right: 1px solid var(--moss-color-neutral-100);
   border-bottom: 1px solid var(--moss-color-neutral-100);
   color: var(--ib-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -1292,7 +1292,7 @@
   background: var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-700);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
   text-align: left;
 }
@@ -1336,7 +1336,7 @@
 
 .balance-movement-report-matrix--monthly tr.balance-movement-report-matrix__row--emphasis th,
 .balance-movement-report-matrix--monthly tr.balance-movement-report-matrix__row--emphasis td {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* Detail table cells moved out of TSX inline styles. */
@@ -1372,7 +1372,7 @@
 
 .balance-movement-detail-table__label-cell,
 .balance-movement-detail-table__status {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-detail-table__label-cell {
@@ -1509,7 +1509,7 @@
   margin-bottom: 4px;
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-derived-panel__header h2 {
@@ -1556,7 +1556,7 @@
 .balance-movement-derived-card span {
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-derived-card strong {
@@ -1596,7 +1596,7 @@
 .balance-movement-derived-empty span {
   color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
@@ -1666,7 +1666,7 @@
 .balance-movement-derived-table thead th {
   color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-concentration-grid {
@@ -1694,7 +1694,7 @@
 .balance-movement-concentration-card__header span {
   color: var(--ib-up);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-concentration-card > p {
@@ -1741,7 +1741,7 @@
 .balance-movement-waterfall span {
   color: var(--ib-ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-waterfall p {
@@ -1779,7 +1779,7 @@
 .balance-movement-residual-card span {
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-residual-card strong {
@@ -1841,7 +1841,7 @@
   margin-bottom: 4px;
   color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
@@ -1851,7 +1851,7 @@
   border-radius: var(--ib-radius, 2px);
   color: var(--ib-ink-secondary);
   background: var(--ib-surface-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
 }
@@ -1889,7 +1889,7 @@
 .balance-movement-top-moves-panel__title span {
   color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
@@ -1908,8 +1908,8 @@
 .balance-movement-top-moves-table thead th {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   color: var(--ib-ink-secondary);
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .balance-movement-top-moves-table th:nth-child(1),
@@ -1933,7 +1933,7 @@
 
 .balance-movement-top-moves-table tbody th {
   color: var(--ib-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-top-moves-table tbody th > span,
@@ -1947,9 +1947,9 @@
   display: inline-flex;
   margin-left: 6px;
   color: var(--ib-ink-secondary);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-top-moves-table__source {
@@ -1971,8 +1971,8 @@
   border-radius: var(--ib-radius, 2px);
   color: var(--ib-ink-secondary);
   background: var(--ib-surface-muted);
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .balance-movement-top-moves-table__source span {
@@ -2140,9 +2140,9 @@
   --ib-shadow: none;
   --ib-radius: var(--dh-api-radius, 6px);
   /* 共享 DataQualityBanner 的浅色 warning/danger 阶在页根拉回 --dh-api-*
-     链（cashflow-projection / risk-tensor 同款）。 */
+     链（cashflow-projection / risk-tensor 同款）。moss-color-warning-200 的
+     统一深色映射已收敛到 tokens.css 共享层，页根不再需要单独重声明。 */
   --moss-color-warning-50: var(--dh-api-amber-soft);
-  --moss-color-warning-200: var(--dh-api-line);
   --moss-color-warning-900: var(--dh-api-amber);
   --moss-color-danger-50: var(--dh-api-red-soft);
   --moss-color-danger-200: var(--dh-api-line);
@@ -2191,9 +2191,10 @@
 .balance-movement-driver-chart__header span,
 .balance-movement-structure-shift__header span {
   color: var(--ib-accent);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
-  font-weight: 800;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.13em;
 }
 
@@ -2214,8 +2215,9 @@
 .balance-movement-derived-panel--decision .balance-movement-derived-panel__header > strong {
   border: 1px solid color-mix(in srgb, var(--dh-api-green) 30%, transparent);
   background: color-mix(in srgb, var(--dh-api-green) 9%, transparent);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   letter-spacing: 0.08em;
 }
 
@@ -2235,7 +2237,7 @@
 }
 
 .balance-movement-signal-rail > div:last-child { border-right: 0; }
-.balance-movement-signal-rail span { display: block; margin-bottom: 6px; color: var(--ib-ink-muted); font-size: 10px; }
+.balance-movement-signal-rail span { display: block; margin-bottom: 6px; color: var(--ib-ink-muted); font-size: 11px; }
 .balance-movement-signal-rail strong { color: var(--ib-ink); font-size: 16px; font-variant-numeric: tabular-nums; }
 .balance-movement-signal-rail__warn strong { color: var(--ib-warn); }
 
@@ -2255,7 +2257,7 @@
   gap: 16px;
 }
 
-.balance-movement-maturity-ladder__heading span { display: block; color: var(--ib-ink-muted); font-size: 10px; }
+.balance-movement-maturity-ladder__heading span { display: block; color: var(--ib-ink-muted); font-size: 11px; }
 .balance-movement-maturity-ladder__heading strong { display: block; margin-top: 3px; color: var(--ib-ink); font-size: 13px; }
 .balance-movement-maturity-ladder__heading p { margin: 0; color: var(--ib-ink-muted); font-size: 11px; }
 
@@ -2278,7 +2280,7 @@
   min-width: 0;
   text-align: center;
 }
-.balance-movement-maturity-ladder__value { color: var(--ib-ink-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+.balance-movement-maturity-ladder__value { color: var(--ib-ink-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
 .balance-movement-maturity-ladder__bar-track { display: flex; align-items: flex-end; justify-content: center; min-height: 0; border-bottom: 1px solid var(--dh-api-line, rgba(103,119,142,.34)); }
 .balance-movement-maturity-ladder__bar {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
@@ -2287,8 +2289,8 @@
   background: var(--ib-accent);
 }
 .balance-movement-maturity-ladder__bar--unknown { background: var(--ib-warn); }
-.balance-movement-maturity-ladder__bucket strong { align-self: end; overflow: hidden; color: var(--ib-ink); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.balance-movement-maturity-ladder__bucket small { color: var(--ib-ink-muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.balance-movement-maturity-ladder__bucket strong { align-self: end; overflow: hidden; color: var(--ib-ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.balance-movement-maturity-ladder__bucket small { color: var(--ib-ink-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 .balance-movement-derived-panel__caveat--governed {
   display: flex;
@@ -2298,7 +2300,7 @@
   border-left: 2px solid var(--ib-accent);
   background: color-mix(in srgb, var(--dh-api-blue) 6%, transparent);
 }
-.balance-movement-derived-panel__caveat--governed > span { flex: 0 0 auto; color: var(--ib-accent); font-weight: 800; }
+.balance-movement-derived-panel__caveat--governed > span { flex: 0 0 auto; color: var(--ib-accent); font-weight: 600; }
 
 .balance-movement-derived-table--decision { min-width: 720px; }
 .balance-movement-derived-table--decision thead th { border-bottom-color: var(--dh-api-line, rgba(103,119,142,.34)); color: var(--ib-ink-muted); letter-spacing: 0.04em; }
@@ -2313,40 +2315,40 @@
 }
 .balance-movement-concentration-layout__secondary { display: grid; gap: 12px; }
 .balance-movement-concentration-card { padding: 14px; border-color: var(--ib-hairline); background: color-mix(in srgb, var(--dh-api-bg) 42%, transparent); }
-.balance-movement-concentration-card__header > div span { color: var(--ib-accent); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
+.balance-movement-concentration-card__header > div span { color: var(--ib-accent); font-size: 11px; font-weight: 600; letter-spacing: .12em; }
 .balance-movement-concentration-card__header h3 {
   margin: 0;
   color: var(--ib-ink); margin-top: 4px; font-size: 15px; }
-.balance-movement-concentration-card__header > strong { color: var(--ib-up); font-size: 10px; }
+.balance-movement-concentration-card__header > strong { color: var(--ib-up); font-size: 11px; }
 .balance-movement-concentration-card__metrics { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 8px; padding-bottom: 9px; border-bottom: 1px solid var(--ib-hairline); }
-.balance-movement-concentration-card__metrics span { color: var(--ib-ink-muted); font-size: 10px; }
+.balance-movement-concentration-card__metrics span { color: var(--ib-ink-muted); font-size: 11px; }
 .balance-movement-concentration-card__metrics strong { color: var(--ib-ink-secondary); font-variant-numeric: tabular-nums; }
 .balance-movement-concentration-list { display: grid; }
 .balance-movement-concentration-list__row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(80px, .7fr) 112px; gap: 10px; align-items: center; min-height: 39px; border-bottom: 1px solid var(--ib-hairline); }
 .balance-movement-concentration-list__label { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px; align-items: center; min-width: 0; }
-.balance-movement-concentration-list__label > span { color: var(--ib-ink-muted); font-family: var(--dh-api-mono, monospace); font-size: 9px; }
+.balance-movement-concentration-list__label > span { color: var(--ib-ink-muted); font-family: var(--moss-font-tabular); font-variant-numeric: tabular-nums; font-size: 11px; }
 .balance-movement-concentration-list__label strong { overflow: hidden; color: var(--ib-ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.balance-movement-concentration-list__label em { color: var(--ib-ink-muted); font-size: 9px; font-style: normal; font-variant-numeric: tabular-nums; }
+.balance-movement-concentration-list__label em { color: var(--ib-ink-muted); font-size: 11px; font-style: normal; font-variant-numeric: tabular-nums; }
 .balance-movement-concentration-list__bar-track { height: 4px; background: color-mix(in srgb, var(--dh-api-muted) 12%, transparent); }
 .balance-movement-concentration-list__bar-track > span { display: block; height: 100%; background: var(--ib-accent); }
 .balance-movement-concentration-list__row--unknown .balance-movement-concentration-list__bar-track > span { background: var(--ib-warn); }
 .balance-movement-concentration-list__row--other .balance-movement-concentration-list__bar-track > span { background: var(--ib-ink-muted); }
 .balance-movement-concentration-list__value { display: grid; grid-template-columns: 1fr auto; gap: 8px; text-align: right; }
-.balance-movement-concentration-list__value strong { color: var(--ib-ink-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
-.balance-movement-concentration-list__value span { color: var(--ib-ink); font-size: 10px; font-variant-numeric: tabular-nums; }
+.balance-movement-concentration-list__value strong { color: var(--ib-ink-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.balance-movement-concentration-list__value span { color: var(--ib-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
 .balance-movement-concentration-list__empty { padding: 20px; color: var(--ib-ink-muted); font-size: 12px; text-align: center; }
 .balance-movement-concentration-card > .balance-movement-derived-panel__caveat { margin: 10px 0 0; }
 
 .balance-movement-business-summary__lead-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(310px, .7fr); gap: 18px; align-items: stretch; }
 .balance-movement-business-summary--decision .balance-movement-business-summary__headline strong { display: block; max-width: 760px; margin-top: 6px; font-size: 25px; line-height: 1.25; letter-spacing: -0.03em; }
 .balance-movement-business-summary--decision .balance-movement-business-summary__headline p { margin-top: 8px; color: var(--ib-ink-secondary); font-size: 12px; }
-.balance-movement-business-summary__driver-fact { color: var(--ib-accent) !important; font-weight: 700; }
+.balance-movement-business-summary__driver-fact { color: var(--ib-accent) !important; font-weight: 600; }
 .balance-movement-business-summary__lead-rail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--ib-hairline); border-radius: var(--ib-radius); background: color-mix(in srgb, var(--dh-api-bg) 45%, transparent); }
 .balance-movement-business-summary__lead-rail > div { display: grid; align-content: center; gap: 5px; padding: 14px; border-right: 1px solid var(--ib-hairline); }
 .balance-movement-business-summary__lead-rail > div:last-child { border-right: 0; }
-.balance-movement-business-summary__lead-rail span { color: var(--ib-ink-muted); font-size: 10px; }
+.balance-movement-business-summary__lead-rail span { color: var(--ib-ink-muted); font-size: 11px; }
 .balance-movement-business-summary__lead-rail strong { margin: 0 !important; color: var(--ib-ink) !important; font-size: 19px !important; }
-.balance-movement-business-summary__lead-rail small { color: var(--ib-ink-secondary); font-size: 10px; }
+.balance-movement-business-summary__lead-rail small { color: var(--ib-ink-secondary); font-size: 11px; }
 .balance-movement-business-summary--decision .balance-movement-business-summary__facts div { border-color: var(--ib-hairline); background: color-mix(in srgb, var(--dh-api-bg) 42%, transparent); }
 .balance-movement-business-summary--decision .balance-movement-business-summary__facts p { color: var(--ib-ink-secondary); font-size: 12px; }
 
@@ -2355,13 +2357,13 @@
 .balance-movement-business-summary__top-moves-header h2 {
   margin: 0;
   color: var(--ib-ink); margin-top: 3px; font-size: 16px; }
-.balance-movement-business-summary__top-moves-header p { margin: 5px 0 0; color: var(--ib-ink-muted); font-size: 10px; }
+.balance-movement-business-summary__top-moves-header p { margin: 5px 0 0; color: var(--ib-ink-muted); font-size: 11px; }
 .balance-movement-top-moves-panel { border-color: var(--ib-hairline); background: color-mix(in srgb, var(--dh-api-bg) 42%, transparent); }
 .balance-movement-top-moves-panel__title { padding: 10px 12px; background: color-mix(in srgb, var(--dh-api-panel-2) 72%, transparent); }
-.balance-movement-top-moves-panel__title > div > span { color: var(--ib-ink-muted); font-size: 9px; letter-spacing: .08em; }
+.balance-movement-top-moves-panel__title > div > span { color: var(--ib-ink-muted); font-size: 11px; letter-spacing: .08em; }
 .balance-movement-top-moves-panel__title h3 {
   color: var(--ib-ink); margin-top: 3px; font-size: 13px; }
-.balance-movement-top-moves-panel__title > strong { color: var(--ib-accent); font-family: var(--dh-api-mono, monospace); font-size: 9px; }
+.balance-movement-top-moves-panel__title > strong { color: var(--ib-accent); font-family: var(--moss-font-tabular); font-variant-numeric: tabular-nums; font-size: 11px; }
 .balance-movement-top-moves-table {
   table-layout: fixed;
   border-collapse: collapse; min-width: 650px; background: transparent; }
@@ -2392,18 +2394,18 @@
 .balance-movement-driver-chart__header h2,
 .balance-movement-structure-shift__header h2 { margin: 3px 0 0; color: var(--ib-ink); font-size: 15px; }
 .balance-movement-driver-chart__header p,
-.balance-movement-structure-shift__header p { margin: 0; color: var(--ib-ink-muted); font-size: 9px; }
+.balance-movement-structure-shift__header p { margin: 0; color: var(--ib-ink-muted); font-size: 11px; }
 .balance-movement-contribution-band { display: flex; min-height: 70px; margin: 14px 0 10px; border-radius: var(--ib-radius); overflow: hidden; }
 .balance-movement-contribution-band__segment { display: grid; align-content: center; min-width: 54px; padding: 10px; color: var(--dh-api-bg); }
 .balance-movement-contribution-band__segment strong { font-size: 13px; }
-.balance-movement-contribution-band__segment em { font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
+.balance-movement-contribution-band__segment em { font-size: 11px; font-style: normal; font-variant-numeric: tabular-nums; }
 .balance-movement-contribution-band__segment--ac { background: var(--ib-accent); }
 .balance-movement-contribution-band__segment--oci { background: color-mix(in srgb, var(--ib-accent) 72%, var(--ib-surface-muted)); }
 .balance-movement-contribution-band__segment--tpl { background: var(--ib-warn); }
 .balance-movement-driver-ranking--inline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .balance-movement-driver-ranking--inline .balance-movement-driver-ranking__row { padding: 6px 8px; border: 0; background: color-mix(in srgb, var(--dh-api-panel-2) 70%, transparent); }
-.balance-movement-driver-ranking--inline .balance-movement-driver-ranking__row > span { color: var(--ib-ink-muted); font-family: var(--dh-api-mono, monospace); font-size: 9px; }
-.balance-movement-driver-ranking--inline .balance-movement-driver-ranking__row strong { color: var(--ib-ink-secondary); font-size: 10px; }
+.balance-movement-driver-ranking--inline .balance-movement-driver-ranking__row > span { color: var(--ib-ink-muted); font-family: var(--moss-font-tabular); font-variant-numeric: tabular-nums; font-size: 11px; }
+.balance-movement-driver-ranking--inline .balance-movement-driver-ranking__row strong { color: var(--ib-ink-secondary); font-size: 11px; }
 .balance-movement-structure-shift--decision .balance-movement-structure-shift__row { grid-template-columns: minmax(125px, .8fr) minmax(120px, 1fr) auto; padding: 11px 0; border-bottom: 1px solid var(--ib-hairline); }
 .balance-movement-structure-shift--decision .balance-movement-structure-shift__row:last-child { border-bottom: 0; }
 
@@ -2483,7 +2485,7 @@
   width: 100%;
   min-width: 0;
   table-layout: fixed;
-  font-size: 10px;
+  font-size: 11px;
 }
 .balance-movement-business-summary--decision .balance-movement-top-moves-table th,
 .balance-movement-business-summary--decision .balance-movement-top-moves-table td { padding: 7px 6px; }
@@ -2515,4 +2517,4 @@
 .balance-movement-business-summary--decision .balance-movement-top-moves-table th:nth-child(5),
 .balance-movement-business-summary--decision .balance-movement-top-moves-table td:nth-child(5) { width: 13%; }
 .balance-movement-business-summary--decision .balance-movement-top-moves-table th:nth-child(6),
-.balance-movement-business-summary--decision .balance-movement-top-moves-table td:nth-child(6) { width: 16%; padding-inline: 3px; font-size: 9px; }
+.balance-movement-business-summary--decision .balance-movement-top-moves-table td:nth-child(6) { width: 16%; padding-inline: 3px; font-size: 11px; }

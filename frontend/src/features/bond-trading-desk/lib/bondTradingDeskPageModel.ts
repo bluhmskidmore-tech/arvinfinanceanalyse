@@ -10,6 +10,7 @@ import type {
 import { EM_DASH } from "../../../utils/format";
 import type { LabeledValue } from "../../../pageModel";
 import { formatPct, formatYi } from "../../bond-analytics/utils/formatters";
+import { formatPercentValue, formatRatePercent } from "../../positions/utils/format";
 
 export type BondTradingDeskCoverageSource =
   | "top_holdings"
@@ -114,11 +115,21 @@ function formatOptionalYi(value: Numeric | string | null | undefined): string {
 function formatOptionalPct(value: Numeric | string | null | undefined): string {
   if (value == null || value === "") return EM_DASH;
   if (typeof value === "string") {
-    const parsed = Number.parseFloat(value);
-    if (!Number.isFinite(parsed)) return value;
-    return `${parsed.toFixed(2)}%`;
+    return formatPercentValue(value);
   }
   return formatPct(value);
+}
+
+/**
+ * 持仓 `yield_rate` 与信用利差 `weight` 均为 0–1 小数字符串。
+ * 按来源归一为百分点字符串（"0.0310" → "3.10"），供 formatOptionalPct 使用。
+ * 禁止按数值大小猜测单位。
+ */
+function ratioStringToPctPoints(value: string | null | undefined): string | null {
+  if (value == null || value === "") return null;
+  const display = formatRatePercent(value);
+  if (display === EM_DASH) return null;
+  return display.endsWith("%") ? display.slice(0, -1) : display;
 }
 
 function formatOptionalDisplay(value: Numeric | string | null | undefined): string {
@@ -147,7 +158,7 @@ function mergeTopHolding(
     benchmarkYield: null,
     spreadDuration: null,
     coverageSource: "top_holdings",
-    coverageNote: "来源：债券分析重仓券列表",
+    coverageNote: "来源：债券分析重仓资产列表",
   };
 }
 
@@ -160,7 +171,7 @@ function mergePositionRow(bondCode: string, row: BondPositionItem): BondTradingD
     assetClass: row.asset_class ?? row.sub_type,
     marketValue: row.market_value,
     faceValue: row.face_value,
-    ytm: row.yield_rate,
+    ytm: ratioStringToPctPoints(row.yield_rate),
     modifiedDuration: null,
     weight: null,
     valuationNetPrice: row.valuation_net_price,
@@ -182,7 +193,7 @@ function mergeCreditSpreadRow(
     rating: base.rating ?? row.rating,
     ytm: base.ytm ?? row.ytm,
     marketValue: base.marketValue ?? row.market_value,
-    weight: base.weight ?? row.weight,
+    weight: base.weight ?? ratioStringToPctPoints(row.weight),
     creditSpread: row.credit_spread,
     benchmarkYield: row.benchmark_yield,
     spreadDuration: row.spread_duration,
@@ -223,7 +234,7 @@ export function resolveBondSnapshot(input: {
       faceValue: null,
       ytm: spreadRow.ytm,
       modifiedDuration: null,
-      weight: spreadRow.weight,
+      weight: ratioStringToPctPoints(spreadRow.weight),
       valuationNetPrice: null,
       creditSpread: spreadRow.credit_spread,
       benchmarkYield: spreadRow.benchmark_yield,
@@ -321,7 +332,7 @@ export function buildBondTradingDeskMetricTiles(
       key: "duration",
       label: "修正久期",
       value: formatOptionalDisplay(snapshot.modifiedDuration),
-      caption: snapshot.modifiedDuration ? "重仓券字段" : "待返回",
+      caption: snapshot.modifiedDuration ? "重仓资产字段" : "未计算或未覆盖",
     },
     {
       key: "credit_spread",

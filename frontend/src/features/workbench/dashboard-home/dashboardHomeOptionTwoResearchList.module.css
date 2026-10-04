@@ -34,11 +34,13 @@
   color: var(--option-two-red);
 }
 
+/* §5 空态收缩：消息框只占自身高度并在面板内居中，不再 flex:1 撑满等高格。 */
 .emptyState {
   display: grid;
-  min-height: 84px;
+  min-height: 72px;
+  margin: auto 0;
   padding: 12px;
-  flex: 1;
+  flex: 0 0 auto;
   place-items: center;
   color: var(--option-two-muted);
   font-size: 13px;
@@ -65,8 +67,8 @@
 
 .table th,
 .table td {
-  height: 23px;
-  padding: 2px 7px;
+  height: var(--option-two-row-height);
+  padding: 2px var(--moss-space-2);
   overflow: hidden;
   border-bottom: 1px solid var(--option-two-line);
   box-sizing: border-box;
@@ -117,9 +119,14 @@
 
 .table a:hover,
 .table a:focus-visible {
-  color: var(--option-two-ink);
+  color: var(--nct-accent-300);
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
+}
+
+.table tbody tr:hover,
+.table tbody tr:focus-within {
+  background: var(--dh-api-blue-soft);
 }
 
 .titleColumn {

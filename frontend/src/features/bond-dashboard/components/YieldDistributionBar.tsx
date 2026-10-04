@@ -3,10 +3,12 @@ import { Segmented } from "antd";
 import { type EChartsOption } from "../../../lib/echarts";
 
 import type { AssetStructurePayload, YieldDistributionPayload } from "../../../api/contracts";
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { EM_DASH } from "../../../pageModel";
-import { nativeToNumber } from "../utils/format";
+import type { BondSectionDataState } from "../sectionStatus";
+import { exactDecimalOrNull, formatRatioPercent, formatYi, nativeToNumber } from "../utils/format";
 
 type YieldViewMode = "yield" | "tenor";
 
@@ -15,21 +17,24 @@ const MODE_OPTIONS: { value: YieldViewMode; label: string }[] = [
   { value: "tenor", label: "期限" },
 ];
 
+/** 2026-09-02 迁入 ChartCard：高度取阶梯 hero 档，载入骨架与画布同高由铬件保证。 */
+const CHART_HEIGHT = CHART_CARD_HEIGHTS.hero;
+
 export function YieldDistributionBar({
   yieldData,
   tenorData,
-  loadingYield,
-  loadingTenor,
+  yieldState,
+  tenorState,
 }: {
   yieldData: YieldDistributionPayload | undefined;
   tenorData: AssetStructurePayload | undefined;
-  loadingYield: boolean;
-  loadingTenor: boolean;
+  yieldState: BondSectionDataState;
+  tenorState: BondSectionDataState;
 }) {
   const [mode, setMode] = useState<YieldViewMode>("yield");
 
-  const loading = mode === "yield" ? loadingYield : loadingTenor;
-  const payload = mode === "yield" ? yieldData : tenorData;
+  /* 两个模式各自读一个 bundle 分区，状态也各归各的：收益率分区失败不该让期限模式变红。 */
+  const state = mode === "yield" ? yieldState : tenorState;
 
   const categories =
     mode === "yield"
@@ -38,37 +43,40 @@ export function YieldDistributionBar({
   const valuesYi =
     mode === "yield"
       ? (yieldData?.items ?? []).map((i) => {
+          const exact = exactDecimalOrNull(i.total_market_value);
+          if (exact !== null) return exact.dividedBy("1e8").toNumber();
           const raw = nativeToNumber(i.total_market_value);
           return raw === null ? null : raw / 1e8;
         })
       : (tenorData?.items ?? []).map((i) => {
+          const exact = exactDecimalOrNull(i.total_market_value);
+          if (exact !== null) return exact.dividedBy("1e8").toNumber();
           const raw = nativeToNumber(i.total_market_value);
           return raw === null ? null : raw / 1e8;
         });
+  const valueTexts =
+    mode === "yield"
+      ? (yieldData?.items ?? []).map((i) => formatYi(i.total_market_value))
+      : (tenorData?.items ?? []).map((i) => formatYi(i.total_market_value));
   /* 后端两种 items 均带 bond_count（此前未消费），随 tooltip 披露。 */
   const bondCounts =
     mode === "yield"
       ? (yieldData?.items ?? []).map((i) => i.bond_count)
       : (tenorData?.items ?? []).map((i) => i.bond_count);
   /* 期限分段由后端同时给出占比；收益率分段没有该字段，不在前端补算。 */
-  const tenorPercentages = (tenorData?.items ?? []).map((i) => nativeToNumber(i.percentage));
+  const tenorPercentages = (tenorData?.items ?? []).map((i) => formatRatioPercent(i.percentage));
 
+  /* 单系列无图例：铬件 legend="none"；网格底边由铬件按图例行数预留。 */
   const option: EChartsOption = nocturneChartTheme.createBarChartOption({
-    grid: { left: 48, right: 24, top: 40, bottom: 32 },
+    grid: { left: 48, right: 24, top: 24 },
     tooltip: {
       /* 只覆盖 formatter，深色底/边/字由主题基座深合并保留。 */
       formatter: (params: unknown) => {
         const list = Array.isArray(params) ? params : [params];
         const first = list[0] as { name?: string; dataIndex?: number; value?: number | null } | undefined;
         if (!first) return "";
-        const value = first.value;
         const valueText =
-          value === null || value === undefined
-            ? EM_DASH
-            : Number(value).toLocaleString("zh-CN", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              });
+          first.dataIndex === undefined ? EM_DASH : (valueTexts[first.dataIndex] ?? EM_DASH);
         const count = first.dataIndex === undefined ? undefined : bondCounts[first.dataIndex];
         const countText = count === undefined ? "" : `<br/>${count} 只`;
         const tenorPercentage =
@@ -80,10 +88,11 @@ export function YieldDistributionBar({
             ? `<br/>占比：${
                 tenorPercentage === null || tenorPercentage === undefined
                   ? EM_DASH
-                  : `${(tenorPercentage * 100).toFixed(2)}%`
+                  : `${tenorPercentage}%`
               }`
             : "";
-        return `${first.name ?? ""}<br/>${valueText} 亿元${percentageText}${countText}`;
+        const valueLine = valueText === EM_DASH ? EM_DASH : `${valueText} 亿元`;
+        return `${first.name ?? ""}<br/>${valueLine}${percentageText}${countText}`;
       },
     },
     xAxis: {
@@ -107,12 +116,19 @@ export function YieldDistributionBar({
     ],
   });
 
+  /* 加权 YTM 读数只保留 KPI 带一处；question 只说明本图口径。真空收缩为空态（DESIGN.md §12 第 13 条）。 */
   return (
-    <div className="bond-dashboard-page__panel bond-dashboard-charts__panel">
-      <div className="bond-dashboard-charts__head">
-        <h3 className="bond-dashboard-charts__head-title">
-          {mode === "yield" ? "收益率分布" : "剩余期限分布（规模）"}
-        </h3>
+    <ChartCard
+      testId="bond-dashboard-yield-distribution-chart"
+      title={mode === "yield" ? "收益率分布" : "剩余期限分布（规模）"}
+      question={mode === "yield" ? "本图为市值加权口径" : "按期限桶汇总市值（亿元）"}
+      unit="亿元"
+      height={CHART_HEIGHT}
+      legend="none"
+      option={categories.length === 0 ? null : option}
+      state={state.status === "ready" ? undefined : state.status}
+      errorMessage={state.message ?? undefined}
+      actions={
         <Segmented
           size="small"
           value={mode}
@@ -121,31 +137,7 @@ export function YieldDistributionBar({
           options={MODE_OPTIONS}
           className="bond-dashboard-charts__segmented"
         />
-      </div>
-      {loading ? (
-        <p className="bond-dashboard-page__surface bond-dashboard-page__surface--loading">
-          载入中…
-        </p>
-      ) : (
-        <>
-          {/* 加权 YTM 读数只保留 KPI 带一处；此处 hint 只说明本图口径。 */}
-          {mode === "yield" ? (
-            <p className="bond-dashboard-charts__hint">本图为市值加权口径</p>
-          ) : (
-            <p className="bond-dashboard-charts__hint">按期限桶汇总市值（亿元）</p>
-          )}
-          {/* 仅真实空 payload 收敛为暂无数据；envelope 未到达时维持图表骨架防高度跳变。 */}
-          {payload && categories.length === 0 ? (
-            <p className="bond-dashboard-page__surface bond-dashboard-page__surface--empty">
-              暂无数据
-            </p>
-          ) : (
-            <div className="bond-dashboard-charts__fill">
-              <BaseChart option={option} height={280} />
-            </div>
-          )}
-        </>
-      )}
-    </div>
+      }
+    />
   );
 }

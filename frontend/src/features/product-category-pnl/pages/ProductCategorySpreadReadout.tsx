@@ -6,7 +6,6 @@ const HEADLINE_METRIC_KEYS = new Set([
 ]);
 
 type ProductCategorySpreadReadoutProps = {
-  reportDate: string;
   surface: ProductCategorySpreadReadoutSurface;
 };
 
@@ -36,7 +35,6 @@ export function ProductCategorySpreadReadout(
           </p>
         </div>
         <div className="product-category-formal-readiness__headline-meta">
-          <span>{props.reportDate || "待选报告日"}</span>
           <strong data-testid="product-category-spread-readout-view">
             {surface.viewLabel}
           </strong>

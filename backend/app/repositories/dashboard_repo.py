@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+from backend.app.core_finance.rate_units import NEGATIVE_YIELD_DIRTY_FLOOR
 from backend.app.repositories.bond_analytics_repo import FACT_TABLE
 from backend.app.repositories.duckdb_repo import DuckDBRepository
 
@@ -16,12 +17,17 @@ _BOND_YTM_NORM = (
     "(case when ytm is null then null "
     "when ytm > 1 and ytm <= 100 then ytm / 100.0 else ytm end)"
 )
-# zqtz 余额事实的 ytm_value 为百分数口径：无条件 /100；负值与 >20%（年利率 20%）
-# 视为脏数据置 NULL。对齐 core_finance.rate_units.normalize_percent_rate_to_decimal
-# 的权威口径（旧 `>1 and <=100` 启发式会把 ≤1% 低票息券当小数直通放大百倍）。
+# 合法负收益率的脏值下界（百分数口径，含端点），单一来源是
+# core_finance.rate_units.NEGATIVE_YIELD_DIRTY_FLOOR（小数 −0.20 → 百分数 −20）。
+_ZQTZ_YTM_NEGATIVE_FLOOR_PERCENT = Decimal(str(NEGATIVE_YIELD_DIRTY_FLOOR)) * 100
+# zqtz 余额事实的 ytm_value 为百分数口径：无条件 /100；[−20, 20] 之外（年利率低于 −20%
+# 或高于 20%）视为脏数据置 NULL，区间内的负值是合法负收益率、按观测值参与加权。对齐
+# core_finance.rate_units.normalize_percent_rate_to_decimal(negative_floor=
+# NEGATIVE_YIELD_DIRTY_FLOOR) 的权威口径（旧 `>1 and <=100` 启发式会把 ≤1% 低票息券
+# 当小数直通放大百倍）。
 _ZQTZ_YTM_NORM = (
     "(case when ytm_value is null then null "
-    "when ytm_value < 0 or ytm_value > 20 then null "
+    f"when ytm_value < {_ZQTZ_YTM_NEGATIVE_FLOOR_PERCENT} or ytm_value > 20 then null "
     "else ytm_value / 100.0 end)"
 )
 # 加权 YTM 分母只计入「归一后利率非 NULL」的行：缺失≠0，缺失/脏值市值不得稀释
@@ -481,7 +487,7 @@ class DashboardRepository(DuckDBRepository):
                 """,
                 fallback_dates,
             ).fetchall()
-            tops: dict[str, list[tuple[str, Decimal, Decimal | None]]] = {}
+            tops = {}
             for row in rows3:
                 tops.setdefault(str(row[0]), []).append(
                     (

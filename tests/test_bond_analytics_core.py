@@ -112,6 +112,12 @@ def test_classify_asset_class_recognizes_real_world_credit_bond_labels() -> None
     assert common.classify_asset_class("资产支持证券") == "credit"
 
 
+@pytest.mark.parametrize("label", ("PPN", "ppn", "PpN", "ABS", "abs", "aBs"))
+def test_classify_asset_class_normalizes_english_credit_labels(label: str) -> None:
+    """英文信用债标签按同一小写词表匹配，不能因来源大小写漂移漏分为 other。"""
+    assert common.classify_asset_class(label) == "credit"
+
+
 def test_map_accounting_class_patterns() -> None:
     assert common.map_accounting_class("持有至到期") == "AC"
     assert common.map_accounting_class("交易性") == "TPL"
@@ -187,24 +193,24 @@ _PAR_10Y_3PCT_MACAULAY = Decimal("8.786108921879104")
 _PAR_10Y_3PCT_MODIFIED = Decimal("8.530202836775829")
 _GOLDEN_TOL = Decimal("0.000001")
 _PAR_CASE_REPORT_DATE = date(2026, 1, 1)
-_PAR_CASE_MATURITY_DATE = date(2035, 12, 30)
+_PAR_CASE_MATURITY_DATE = date(2036, 1, 1)
 
 
 def test_estimate_duration_coupon_bond_missing_ytm_uses_par_assumption() -> None:
-    """有票息但 ytm 缺失/非正：按 par 假设（ytm=coupon）走 Macaulay，不再返回剩余年限。"""
-    assert (_PAR_CASE_MATURITY_DATE - _PAR_CASE_REPORT_DATE).days == 3650
+    """有票息但 ytm 缺失（None）：按 par 假设（ytm=coupon）走 Macaulay。"""
+    # The closed form describes a true ten-coupon anniversary, including two leap days.
+    assert (_PAR_CASE_MATURITY_DATE - _PAR_CASE_REPORT_DATE).days == 3652
 
-    for missing_ytm in (Decimal("0"), Decimal("-0.01")):
-        dur = common.estimate_duration(
-            _PAR_CASE_MATURITY_DATE,
-            _PAR_CASE_REPORT_DATE,
-            coupon_rate=Decimal("0.03"),
-            ytm=missing_ytm,
-            coupon_frequency=1,
-        )
-        assert abs(dur - _PAR_10Y_3PCT_MACAULAY) < _GOLDEN_TOL
-        # 旧缺陷（零息假设）返回 10 年整；par 口径 ≈8.79 年。
-        assert dur < Decimal("10")
+    dur = common.estimate_duration(
+        _PAR_CASE_MATURITY_DATE,
+        _PAR_CASE_REPORT_DATE,
+        coupon_rate=Decimal("0.03"),
+        ytm=None,
+        coupon_frequency=1,
+    )
+    assert abs(dur - _PAR_10Y_3PCT_MACAULAY) < _GOLDEN_TOL
+    # 旧缺陷（零息假设）返回 10 年整；par 口径 ≈8.79 年。
+    assert dur < Decimal("10")
 
     # par 回退结果 ≡ 显式传 ytm=coupon 的正常路径结果（口径自洽）。
     explicit = common.estimate_duration(
@@ -223,20 +229,95 @@ def test_estimate_duration_coupon_bond_missing_ytm_uses_par_assumption() -> None
     assert fallback == explicit
 
 
+def test_estimate_duration_coupon_bond_negative_ytm_is_discounted_not_par_fallback() -> None:
+    """合法负收益率是观测值：按 y=-1% 逐期贴现，而不是落入 par 回退。
+
+    期望值由平价/非平价通用闭式独立推导（未经被测函数）：
+      D = (1+y)/y − [(1+y) + n(c−y)] / [c((1+y)^n − 1) + y]
+        = 0.99/(−0.01) − [0.99 + 10×0.04] / [0.03×(0.99^10 − 1) − 0.01]
+        = 9.015380382167399...
+    逐笔现金流求和（v = 1/0.99）交叉验证一致；折现基数 0.99 > 0，标准公式成立。
+    """
+    dur = common.estimate_duration(
+        _PAR_CASE_MATURITY_DATE,
+        _PAR_CASE_REPORT_DATE,
+        coupon_rate=Decimal("0.03"),
+        ytm=Decimal("-0.01"),
+        coupon_frequency=1,
+    )
+    assert abs(dur - Decimal("9.015380382167399")) < _GOLDEN_TOL
+    # 负收益率下久期高于 par 口径（8.79）但仍低于剩余年限。
+    assert _PAR_10Y_3PCT_MACAULAY < dur < Decimal("10")
+
+
+def _whole_period_closed_form_macaulay(coupon: Decimal, ytm: Decimal, periods: int) -> Decimal:
+    """整期付息债的 Macaulay 闭式（独立推导，未经被测函数）：
+    D = (1+y)/y − [(1+y) + n(c−y)] / [c((1+y)^n − 1) + y]。"""
+    one_plus = Decimal("1") + ytm
+    return one_plus / ytm - (one_plus + periods * (coupon - ytm)) / (coupon * (one_plus**periods - Decimal("1")) + ytm)
+
+
+@pytest.mark.parametrize("whole_years", [1, 2, 10, 22, 28, 29, 30, 40, 50])
+def test_whole_period_anniversary_bond_merges_to_exact_period_grid(whole_years: int) -> None:
+    """周年到期的整期券在 ACT/365 下带闰日尾差（≈N/4 天：28Y=7 天、30Y=8 天、50Y=13 天），
+    必须吸附到 N 个整期，而不是被 ROUND_CEILING 多算一笔几天后的幻影票息。
+
+    通过真实日期确认周年网格，不能再用随期限增长的容差推测；本用例覆盖 1Y～50Y。
+    """
+    report_date = date(2026, 3, 31)
+    maturity = date(report_date.year + whole_years, 3, 31)
+    years = Decimal((maturity - report_date).days) / Decimal("365")
+    coupon, ytm = Decimal("0.03"), Decimal("0.032")
+
+    macaulay = common.compute_macaulay_duration(
+        coupon, ytm, years, coupon_frequency=1, report_date=report_date, maturity_date=maturity,
+    )
+
+    expected = _whole_period_closed_form_macaulay(coupon, ytm, whole_years)
+    assert abs(macaulay - expected) < Decimal("1e-9"), (whole_years, macaulay, expected)
+
+
+def test_whole_period_merge_tolerance_scales_with_tenor_and_caps_below_half_period() -> None:
+    # The retired growing window must not return: date-less compatibility is 0.01 period.
+    tolerance = common.whole_period_calendar_merge_tolerance_days
+    for years in ("0", "22", "30", "50"):
+        assert tolerance(Decimal(years), 1) == Decimal("3.65")
+    assert tolerance(Decimal("5"), 2) == Decimal("1.825")
+    assert tolerance(Decimal("50"), 12) == Decimal("3.65") / Decimal("12")
+
+
+def test_genuinely_fractional_bond_with_coupon_seven_days_out_is_not_merged() -> None:
+    """无日期 5Y 半年付券、首期 7 天后：超过历史 0.01 期小残期阈值，必须保留 ROUND_CEILING
+    的 11 笔现金流（首期 7/365 年），不能被吸附成 10 个整期。期望值由逐笔现金流独立求和。"""
+    coupon, ytm, frequency = Decimal("0.04"), Decimal("0.05"), 2
+    years = Decimal("5") + Decimal("7") / Decimal("365")
+    assert common.whole_period_calendar_merge_applies(years, 10, frequency) is False
+
+    macaulay = common.compute_macaulay_duration(coupon, ytm, years, coupon_frequency=frequency)
+
+    c = coupon / frequency
+    first_period_years = years - Decimal("10") / Decimal(frequency)
+    times = [first_period_years + Decimal(k) / Decimal(frequency) for k in range(11)]
+    discount = lambda t: (Decimal("1") + ytm / frequency) ** (t * frequency)  # noqa: E731
+    pv = [(c if index < 10 else c + Decimal("1")) / discount(t) for index, t in enumerate(times)]
+    expected = sum(t * v for t, v in zip(times, pv)) / sum(pv)
+    assert abs(macaulay - expected) < Decimal("1e-12")
+
+
 def test_estimate_duration_zero_coupon_missing_ytm_keeps_years_fallback() -> None:
     """零票息 + ytm 缺失：维持剩余年限（零息债 Macaulay=剩余年限本就正确）。"""
     assert (
         common.estimate_duration(_PAR_CASE_MATURITY_DATE, _PAR_CASE_REPORT_DATE)
-        == Decimal("10")
+        == Decimal("3652") / Decimal("365")
     )
     assert (
         common.estimate_duration(
             _PAR_CASE_MATURITY_DATE,
             _PAR_CASE_REPORT_DATE,
             coupon_rate=Decimal("0"),
-            ytm=Decimal("0"),
+            ytm=None,
         )
-        == Decimal("10")
+        == Decimal("3652") / Decimal("365")
     )
 
 
@@ -263,14 +344,25 @@ def test_resolve_ytm_with_par_fallback_paths() -> None:
         Decimal("0.035"),
         False,
     )
-    # 有票息缺/非正 ytm：par 假设，标记回退。
-    assert common.resolve_ytm_with_par_fallback(Decimal("0.03"), Decimal("0")) == (
+    # 有票息缺 ytm（None）：par 假设，标记回退。
+    assert common.resolve_ytm_with_par_fallback(Decimal("0.03"), None) == (
         Decimal("0.03"),
         True,
     )
+    # 真实观测 0 保留，非有限脏值按缺失走 par。
+    assert common.resolve_ytm_with_par_fallback(Decimal("0.03"), Decimal("0")) == (
+        Decimal("0"), False
+    )
+    assert common.resolve_ytm_with_par_fallback(Decimal("0.03"), Decimal("NaN")) == (
+        Decimal("0.03"), True
+    )
+    assert common.resolve_ytm_with_par_fallback(Decimal("0.03"), Decimal("Infinity")) == (
+        Decimal("0.03"), True
+    )
+    # 合法负收益率是观测值：原样返回，不标记回退（脏值下界由 engine 入口把关）。
     assert common.resolve_ytm_with_par_fallback(Decimal("0.03"), Decimal("-0.01")) == (
-        Decimal("0.03"),
-        True,
+        Decimal("-0.01"),
+        False,
     )
     # 零票息：不适用 par 假设。
     assert common.resolve_ytm_with_par_fallback(Decimal("0"), Decimal("0")) == (
@@ -284,9 +376,9 @@ def test_resolve_ytm_with_par_fallback_paths() -> None:
 
 
 def test_estimate_modified_duration_par_assumption_and_legacy_semantics() -> None:
-    """par 假设行的修正久期以生效 ytm(=coupon) 折算；ytm<=0 直传保持原语义。"""
+    """par 假设行的修正久期以生效 ytm(=coupon) 折算。"""
     effective_ytm, used = common.resolve_ytm_with_par_fallback(
-        Decimal("0.03"), Decimal("0")
+        Decimal("0.03"), None
     )
     assert used is True
     modified = common.estimate_modified_duration(

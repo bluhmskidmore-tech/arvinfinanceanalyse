@@ -122,17 +122,11 @@ describe("buildMarketDataTermStructureChartOption", () => {
     ]);
   });
 
-  it("renders nocturne curves without point labels and with a plain single-row legend", () => {
+  it("renders nocturne curves without point labels and leaves card chrome to ChartCard", () => {
     const option = buildMarketDataTermStructureChartOption(curves);
 
     expect(option).not.toBeNull();
-    expect(option?.grid).toMatchObject({ containLabel: true });
-    expect(option?.legend).toMatchObject({
-      show: true,
-      type: "plain",
-      itemWidth: 14,
-      textStyle: { color: nocturneTokens.color.inkSoft },
-    });
+    expect(option?.grid).toMatchObject({ left: 16, right: 16, top: 24 });
     expect((option?.tooltip as { axisPointer?: { type?: string } }).axisPointer?.type).toBe("line");
 
     const series = seriesOf(option);
@@ -211,12 +205,11 @@ describe("buildMarketDataTermStructureChartOption", () => {
     expect(axes?.[1]?.splitLine).toMatchObject({ show: false });
   });
 
-  it("renders a quieter sheet variant without delta bars, legend or point labels", () => {
+  it("renders a quieter sheet variant without delta bars or point labels", () => {
     const option = buildMarketDataTermStructureChartOption(curves, { variant: "sheet" });
 
     expect(option).not.toBeNull();
-    expect(option?.grid).toMatchObject({ left: 34, right: 16, top: 12, bottom: 28 });
-    expect(option?.legend).toMatchObject({ show: false });
+    expect(option?.grid).toMatchObject({ left: 34, right: 16, top: 12 });
 
     const series = seriesOf(option);
     expect(series).toHaveLength(2);

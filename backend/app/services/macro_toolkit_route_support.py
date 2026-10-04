@@ -1,20 +1,18 @@
-"""Macro toolkit route support layer.
+"""Read collaborators and HTTP support for the macro toolkit.
 
-Mechanically moved out of ``backend/app/api/routes/macro_toolkit.py`` so the
-route module stays thin. The route module re-imports every public/private name
-defined here into its own namespace, and endpoints keep calling unqualified
-globals, so tests that monkeypatch attributes on the route module keep
-working. This module must never import the route module (no import cycles).
+Owns data reads and analytical orchestration shared by the read service and
+routes. This module must never import the route module.
 """
 from __future__ import annotations
 
+import calendar
 import json
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypedDict, cast
 
 import pandas as pd
 from backend.app.core_finance.data_freshness import (
@@ -91,18 +89,28 @@ from backend.app.services import (
     macro_toolkit_refresh_receipt_service,
     macro_toolkit_service,
 )
-from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.formal_result_runtime import (
+    FallbackMode,
+    QualityFlag,
+    VendorStatus,
+    build_result_envelope,
+)
 from backend.app.services.macro_toolkit_analysis_service import (
     _a_share_stampede_risk_card,
+    _capability_result_card,
     _credit_card,
+    _crisis_commodity_candidate_admission,
+    _crisis_commodity_candidate_approval_pack,
     _crisis_commodity_candidate_decision,
     _crisis_commodity_candidate_summary,
+    _crisis_commodity_shadow_impact,
     _crisis_score_card,
     _float_or_none,
     _liquidity_card,
     _metric,
     _risk_appetite_card,
     _script_output_card,
+    _unavailable_capability_result,
     _unique_sorted_texts,
     _unique_texts,
 )
@@ -116,6 +124,7 @@ from backend.app.services.macro_toolkit_presentation import (
     _factor_snapshot_provenance,
     _parse_report_date,
 )
+from backend.app.services.macro_toolkit_read_service import MacroToolkitResultMetaOverrides
 
 _SOURCE_CHECK_ALIASES = (
     "sh000300",
@@ -359,6 +368,27 @@ def _gate_analysis_conclusion_on_refresh_receipt(
     }
 
 
+def _gate_primary_signal_on_refresh_receipt(
+    primary_signal: Mapping[str, object] | None,
+    refresh_receipt_health: (
+        macro_toolkit_refresh_receipt_service.MacroToolkitRefreshReceiptHealth
+    ),
+) -> dict[str, object]:
+    normalized = dict(primary_signal or {})
+    if refresh_receipt_health.ready:
+        return normalized
+    reason_code = {
+        "missing": "refresh_receipt_missing",
+        "invalid": "refresh_receipt_invalid",
+        "blocked": "refresh_receipt_blocked",
+    }.get(refresh_receipt_health.status, "refresh_receipt_unverified")
+    normalized["key"] = None
+    normalized["selection_status"] = "blocked"
+    normalized["reason_code"] = reason_code
+    normalized["refresh_receipt_status"] = refresh_receipt_health.status
+    return normalized
+
+
 def _macro_etf_strategy_snapshot_for_toolkit(
     *,
     duckdb_path: str | Path,
@@ -424,6 +454,13 @@ def _model_chain_artifacts_all_ok(chain_result: dict[str, object]) -> bool:
         for model in step.get("models") or []:
             if not isinstance(model, dict) or model.get("artifact_status") != "ok":
                 return False
+            if model.get("id") == "backtest":
+                backtest_context = model.get("backtest_context")
+                if (
+                    not isinstance(backtest_context, dict)
+                    or backtest_context.get("quality_flag") != "ok"
+                ):
+                    return False
     return True
 
 
@@ -592,8 +629,13 @@ def _choice_stock_refresh_status(
     governance_path: str | Path,
     *,
     run_id: str = "",
+    expected_user_id: str | None = None,
 ) -> dict[str, object]:
-    return macro_toolkit_service.choice_stock_refresh_status(governance_path, run_id=run_id)
+    return macro_toolkit_service.choice_stock_refresh_status(
+        governance_path,
+        run_id=run_id,
+        expected_user_id=expected_user_id,
+    )
 
 
 def _latest_choice_stock_inflight_refresh(
@@ -693,12 +735,14 @@ def _choice_stock_refresh_overview(
     *,
     permission: dict[str, object] | None = None,
     reference_date: str | None = None,
+    expected_user_id: str | None = None,
 ) -> dict[str, object]:
     return macro_toolkit_service.choice_stock_refresh_overview(
         duckdb_path,
         governance_path,
         permission=permission,
         reference_date=reference_date,
+        expected_user_id=expected_user_id,
     )
 
 
@@ -1423,7 +1467,7 @@ def _crisis_score_history(series_data: dict[str, list[tuple[date, float]]], repo
     score_frame = score_frame[score_frame.index.date <= report_date]
     if score_frame.empty:
         return pd.DataFrame(columns=["crisis_score"])
-    return score_frame[["crisis_score"]].dropna()
+    return score_frame.dropna(subset=["crisis_score"])
 
 
 def _latest_crisis_input_date(duckdb_path: str | Path) -> date | None:
@@ -1471,6 +1515,40 @@ def _stale_warning_from_missing(missing_warning: str) -> str:
     return f"{missing_warning}_STALE"
 
 
+def _capability_freshness_reference(
+    latest_date: object,
+    report_date: date,
+    *,
+    cadence: str,
+) -> tuple[object, str | None, str | None]:
+    """Return the date that truthfully represents freshness for this input."""
+    if cadence.strip().lower() != "monthly":
+        return latest_date, None, None
+
+    observation_date = _coerce_frame_date(latest_date)
+    if observation_date is None:
+        return latest_date, None, "unknown"
+
+    # Only a first-of-month key is known to encode a statistical period.
+    # Some legacy/vendor rows carry an actual release or observation day;
+    # moving those dates to month-end would manufacture look-ahead evidence.
+    if observation_date.day != 1:
+        return observation_date, observation_date.isoformat(), "observation_date"
+
+    # A later observation month is genuine look-ahead evidence. Keep its
+    # original date so the freshness assessor reports the real negative age.
+    if (observation_date.year, observation_date.month) > (
+        report_date.year,
+        report_date.month,
+    ):
+        return observation_date, observation_date.isoformat(), "observation_date"
+
+    period_end = observation_date.replace(
+        day=calendar.monthrange(observation_date.year, observation_date.month)[1]
+    )
+    return period_end, period_end.isoformat(), "observation_period_end"
+
+
 def _capability_input_evidence_item(
     requirement: dict[str, object],
     *,
@@ -1503,7 +1581,14 @@ def _capability_input_evidence_item(
         available = latest is not None
         latest_date = latest.get("date") if isinstance(latest, dict) else None
     cadence = str(requirement.get("cadence") or _input_cadence_for_field(field))
-    freshness = assess_freshness(latest_date, report_date, cadence=cadence)
+    freshness_date, freshness_reference_date, freshness_basis = (
+        _capability_freshness_reference(
+            latest_date,
+            report_date,
+            cadence=cadence,
+        )
+    )
+    freshness = assess_freshness(freshness_date, report_date, cadence=cadence)
     stale = bool(
         available
         and freshness.tier in {FRESHNESS_TIER_STALE, FRESHNESS_TIER_EXPIRED}
@@ -1546,6 +1631,9 @@ def _capability_input_evidence_item(
         "source": source,
         "value": value,
     }
+    if cadence.strip().lower() == "monthly":
+        item["freshness_reference_date"] = freshness_reference_date
+        item["freshness_basis"] = freshness_basis
     if derived and provenance:
         if provenance.get("unit") is not None:
             item["unit"] = provenance["unit"]
@@ -1749,14 +1837,16 @@ def _risk_tensor_to_liquidity_inputs(
 
     total_assets = _float_or_none(row.get("total_market_value"))
     proxy_rows: list[dict[str, object]] = []
-    top_share = _float_or_none(row.get("issuer_top5_weight"))
     dv01 = _float_or_none(row.get("portfolio_dv01"))
     bond_count = _float_or_none(row.get("bond_count"))
-    if top_share is not None or dv01 is not None:
+    if dv01 is not None:
         proxy_rows.append(
             {
                 "book_id": "portfolio",
-                "share_of_abs_dv01": top_share,
+                # risk_tensor 的 issuer_top5_weight 是发行人市值 Top5 集中度（利率债组合
+                # 常态 0.6-1.0），不是单账簿 DV01 份额，填入会恒触发 CRITICAL 集中度告警。
+                # fail-closed 置 None：集中度腿不参与压力评分，待真实账簿级 DV01 数据接入后再启用。
+                "share_of_abs_dv01": None,
                 "dv01_sum": dv01,
                 "row_count": int(bond_count or 0),
             }
@@ -1803,16 +1893,87 @@ def _risk_tensor_to_liquidity_inputs(
     return proxy_rows, bucket_rows, total_assets
 
 
+_M15_REQUIRED_GOV_CURVE_TENORS = ("1Y", "3Y", "5Y", "7Y", "10Y")
+
+
+def _current_gov_curve_snapshot(
+    curve_rows: list[dict[str, object]],
+    report_date: date,
+) -> tuple[dict[str, float], dict[str, object]]:
+    """Select one atomic CN_GOVT snapshot for the M15 scenario engine."""
+    curves_by_date = build_curve_history(curve_rows, report_date=report_date)
+    government_dates = [
+        sample_date
+        for sample_date in sorted(curves_by_date.keys(), reverse=True)
+        if curves_by_date.get(sample_date, {}).get("CN_GOVT")
+    ]
+    base_evidence: dict[str, object] = {
+        "requested_report_date": report_date.isoformat(),
+        "curve_date": None,
+        "fallback_mode": "none_available",
+        "stale_days": None,
+        "missing_tenors": list(_M15_REQUIRED_GOV_CURVE_TENORS),
+    }
+    if not government_dates:
+        return {}, base_evidence
+
+    latest_curve_date = government_dates[0]
+    complete_dates = [
+        sample_date
+        for sample_date in government_dates
+        if all(
+            tenor in curves_by_date[sample_date]["CN_GOVT"]
+            for tenor in _M15_REQUIRED_GOV_CURVE_TENORS
+        )
+    ]
+    curve_date = complete_dates[0] if complete_dates else latest_curve_date
+    government_curve = curves_by_date[curve_date]["CN_GOVT"]
+    selected_curve = {tenor: float(rate) for tenor, rate in government_curve.items()}
+    missing_tenors = [
+        tenor
+        for tenor in _M15_REQUIRED_GOV_CURVE_TENORS
+        if tenor not in government_curve
+    ]
+    fallback_mode = "none"
+    if not complete_dates:
+        fallback_mode = "none_available"
+    elif curve_date != latest_curve_date:
+        fallback_mode = "latest_complete_snapshot"
+    return selected_curve, {
+        **base_evidence,
+        "curve_date": curve_date.isoformat(),
+        "fallback_mode": fallback_mode,
+        "stale_days": (report_date - curve_date).days,
+        "missing_tenors": missing_tenors,
+    }
+
+
 def _current_gov_curve(
     curve_rows: list[dict[str, object]],
     report_date: date,
 ) -> dict[str, float]:
-    curves_by_date = build_curve_history(curve_rows, report_date=report_date)
-    for sample_date in sorted(curves_by_date.keys(), reverse=True):
-        government_curve = curves_by_date.get(sample_date, {}).get("CN_GOVT", {})
-        if government_curve:
-            return {tenor: float(rate) for tenor, rate in government_curve.items()}
-    return {}
+    """Compatibility view for callers that only need the selected curve."""
+    selected_curve, _ = _current_gov_curve_snapshot(curve_rows, report_date)
+    return selected_curve
+
+
+def _with_macro_portfolio_curve_snapshot_evidence(
+    result: dict[str, object],
+    evidence: Mapping[str, object],
+) -> dict[str, object]:
+    warnings = [str(item) for item in cast(Iterable[object], result.get("warnings", [])) if item]
+    data_status = str(result.get("data_status") or "unavailable")
+    if evidence.get("fallback_mode") == "latest_complete_snapshot":
+        if "CURVE_DATE_FALLBACK" not in warnings:
+            warnings.append("CURVE_DATE_FALLBACK")
+        if data_status == "complete":
+            data_status = "degraded"
+    return {
+        **result,
+        **evidence,
+        "data_status": data_status,
+        "warnings": warnings,
+    }
 
 
 _OBSERVATION_KEYS_CONFIG_PATH = _REPO_ROOT / "config" / "macro_decision_observation_keys.json"
@@ -1966,7 +2127,7 @@ def _indicator_payload(config: dict[str, str], frame: pd.DataFrame) -> dict[str,
     return {
         "key": config["key"],
         "alias": config["alias"],
-        "label": config["label"],
+        "label": "SHIBOR 3M（期限报价参考）" if str(latest["series_id"]) == "NCD.SHIBOR.3M" else config["label"],
         "group": config["group"],
         "unit": config["unit"],
         "row_count": int(len(ordered)),
@@ -2226,10 +2387,36 @@ def _hason_source_trace(
     return traced
 
 
+_ANALYSIS_DIRECTIONAL_SIGNAL_KEYS = frozenset(
+    {
+        "liquidity",
+        "risk_appetite",
+        "credit",
+    }
+)
+
+
 def _analysis_conclusion(
     signal_cards: list[dict[str, object]],
     coverage: dict[str, object],
 ) -> dict[str, object]:
+    directional_cards = {
+        str(card["key"]): {"key": str(card["key"]), "tone": str(card["tone"])}
+        for card in signal_cards
+        if card.get("key") in _ANALYSIS_DIRECTIONAL_SIGNAL_KEYS
+        and card.get("tone") in {"positive", "negative", "neutral"}
+    }
+    missing_keys = sorted(_ANALYSIS_DIRECTIONAL_SIGNAL_KEYS - directional_cards.keys())
+    basis = {
+        "source": "core_signal_cards",
+        "signal_cards": list(directional_cards.values()),
+        "directional_coverage": {
+            "expected_count": len(_ANALYSIS_DIRECTIONAL_SIGNAL_KEYS),
+            "valid_count": len(directional_cards),
+            "missing_keys": missing_keys,
+            "status": "insufficient" if missing_keys else "complete",
+        },
+    }
     hit_rate = float(coverage["hit_rate"])
     if hit_rate < 0.6:
         return {
@@ -2237,9 +2424,23 @@ def _analysis_conclusion(
             "tone": "missing",
             "summary": "核心指标命中不足，当前页面只展示可用证据，不形成完整方向判断。",
             "recommended_action": "先补齐缺失的 Choice/Tushare 序列，再运行信号脚本。",
+            "basis": basis,
         }
 
-    tones = [str(card["tone"]) for card in signal_cards if card["tone"] != "missing"]
+    # Indicator hit rate does not prove that all directional inputs are available.
+    if missing_keys:
+        return {
+            "stance": "暂不判断",
+            "tone": "missing",
+            "summary": (
+                f"方向信号有效 {len(directional_cards)}/{len(_ANALYSIS_DIRECTIONAL_SIGNAL_KEYS)} 项，"
+                "流动性、风险偏好或信用利差证据尚未齐备，当前只展示可用证据，暂不形成方向判断。"
+            ),
+            "recommended_action": "先补齐缺失方向信号的输入，再复核市场方向。",
+            "basis": basis,
+        }
+
+    tones = [card["tone"] for card in directional_cards.values()]
     positive = tones.count("positive")
     negative = tones.count("negative")
     if positive > negative:
@@ -2254,7 +2455,13 @@ def _analysis_conclusion(
         stance, tone = "中性观察", "neutral"
         summary = "多空证据接近，当前更适合观察数据延续性，而不是给出单边结论。"
         action = "关注下一批 Choice/Tushare 更新，并运行信号聚合脚本确认。"
-    return {"stance": stance, "tone": tone, "summary": summary, "recommended_action": action}
+    return {
+        "stance": stance,
+        "tone": tone,
+        "summary": summary,
+        "recommended_action": action,
+        "basis": basis,
+    }
 
 
 def _analysis_warnings(coverage: dict[str, object]) -> list[str]:
@@ -2317,16 +2524,195 @@ def _latest_strategy_as_of_date(strategies: list[dict[str, object]]) -> str | No
     return max(dates) if dates else None
 
 
+_HEALTHY_META_STATES = frozenset(
+    {
+        "ok",
+        "ready",
+        "complete",
+        "completed",
+        "queued",
+        "dry_run",
+        "visible",
+        "wired",
+        "library_ready",
+        "integrated",
+        "current",
+        "present",
+        "aligned",
+    }
+)
+_DEGRADED_META_STATES = frozenset(
+    {
+        "warning",
+        "degraded",
+        "partial",
+        "stale",
+        "vendor_stale",
+        "lagging",
+        "future",
+        "mixed",
+        "invalid_date",
+        "unknown",
+    }
+)
+_UNAVAILABLE_META_STATES = frozenset(
+    {
+        "error",
+        "failed",
+        "failure",
+        "invalid",
+        "missing",
+        "unavailable",
+        "vendor_unavailable",
+        "missing_database",
+        "unreadable_database",
+        "missing_table",
+        "empty_table",
+        "query_failed",
+        "no_data",
+        "not_ready",
+        "not_configured",
+    }
+)
+_IGNORED_META_STATES = frozenset({"", "deferred", "none", "not_evaluated", "off"})
+
+
+class _MacroResultMetaFlags(TypedDict):
+    has_quality_warning: bool
+    has_degraded: bool
+    has_unavailable: bool
+    has_vendor_stale: bool
+    has_vendor_unavailable: bool
+    has_latest_snapshot: bool
+    tables_used: list[str]
+
+
+def _aggregate_macro_result_meta_overrides(result: Mapping[str, object]) -> MacroToolkitResultMetaOverrides:
+    flags: _MacroResultMetaFlags = {
+        "has_quality_warning": False,
+        "has_degraded": False,
+        "has_unavailable": False,
+        "has_vendor_stale": False,
+        "has_vendor_unavailable": False,
+        "has_latest_snapshot": False,
+        "tables_used": [],
+    }
+    _collect_macro_result_meta_flags(result, flags)
+    quality_flag: QualityFlag = (
+        "warning"
+        if flags["has_quality_warning"] or flags["has_degraded"] or flags["has_unavailable"]
+        else "ok"
+    )
+    vendor_status: VendorStatus = (
+        "vendor_unavailable"
+        if flags["has_vendor_unavailable"]
+        else "vendor_stale"
+        if flags["has_vendor_stale"]
+        else "ok"
+    )
+    return {
+        "quality_flag": quality_flag,
+        "vendor_status": vendor_status,
+        "fallback_mode": "latest_snapshot" if flags["has_latest_snapshot"] else "none",
+        "tables_used": _unique_texts(flags["tables_used"]),
+    }
+
+
+def _collect_macro_result_meta_flags(value: object, flags: _MacroResultMetaFlags) -> None:
+    if isinstance(value, Mapping):
+        _append_tables_used(flags["tables_used"], value.get("tables_used"))
+        provenance = value.get("provenance")
+        if isinstance(provenance, Mapping):
+            _append_tables_used(flags["tables_used"], provenance.get("tables_used"))
+
+        _record_macro_meta_state(value.get("quality_flag"), flags, quality_only=True)
+        _record_macro_vendor_state(value.get("vendor_status"), flags)
+        _record_macro_fallback_mode(value.get("fallback_mode"), flags)
+        _record_macro_meta_state(value.get("status"), flags)
+        _record_macro_meta_state(value.get("quality"), flags)
+
+        data_status = value.get("data_status")
+        if isinstance(data_status, Mapping):
+            _record_macro_meta_state(data_status.get("status"), flags)
+            for nested_key in (
+                "dual_frequency_status",
+                "market_history_status",
+                "slow_cap_status",
+                "fast_status",
+                "survival_status",
+            ):
+                _record_macro_meta_state(data_status.get(nested_key), flags)
+        else:
+            _record_macro_meta_state(data_status, flags)
+        _record_macro_meta_state(value.get("freshness_status"), flags)
+
+        if "warnings" in value and isinstance(value.get("warnings"), list) and value.get("warnings"):
+            flags["has_quality_warning"] = True
+
+        for nested in value.values():
+            _collect_macro_result_meta_flags(nested, flags)
+        return
+
+    if isinstance(value, list):
+        for item in value:
+            _collect_macro_result_meta_flags(item, flags)
+
+
+def _append_tables_used(target: list[str], value: object) -> None:
+    if isinstance(value, (list, tuple, set)):
+        for table in value:
+            table_name = str(table or "").strip()
+            if table_name:
+                target.append(table_name)
+
+
+def _record_macro_vendor_state(value: object, flags: _MacroResultMetaFlags) -> None:
+    normalized = str(value or "").strip()
+    if normalized == "vendor_unavailable":
+        flags["has_vendor_unavailable"] = True
+    elif normalized == "vendor_stale":
+        flags["has_vendor_stale"] = True
+
+
+def _record_macro_fallback_mode(value: object, flags: _MacroResultMetaFlags) -> None:
+    if str(value or "").strip() == "latest_snapshot":
+        flags["has_latest_snapshot"] = True
+
+
+def _record_macro_meta_state(
+    value: object,
+    flags: _MacroResultMetaFlags,
+    *,
+    quality_only: bool = False,
+) -> None:
+    normalized = str(value or "").strip()
+    if normalized in _IGNORED_META_STATES or normalized in _HEALTHY_META_STATES:
+        return
+    if normalized in _UNAVAILABLE_META_STATES:
+        flags["has_unavailable"] = True
+        return
+    if normalized in _DEGRADED_META_STATES:
+        if quality_only:
+            flags["has_quality_warning"] = True
+        else:
+            flags["has_degraded"] = True
+        return
+    if quality_only:
+        flags["has_quality_warning"] = True
+
+
 def _envelope(
     result_kind: str,
     result: dict[str, object],
     *,
     quality_flag: str | None = None,
+    vendor_status: str | None = None,
     fallback_mode: str | None = None,
+    tables_used: list[str] | None = None,
     as_of_date: str | None = None,
 ) -> dict[str, object]:
     generated_at = datetime.now(UTC).isoformat()
-    tables_used = [
+    resolved_tables_used = list(tables_used) if tables_used is not None else [
         "fact_choice_macro_daily",
         "choice_market_snapshot",
         "fx_daily_mid",
@@ -2336,29 +2722,30 @@ def _envelope(
         "fact_cffex_member_rank_daily",
         "vw_cffex_member_rank_daily",
     ]
-    if "capability_results" in result:
-        tables_used.extend(
-            [
-                "fact_formal_risk_tensor_daily",
-                "fact_formal_bond_analytics_daily",
-            ]
-        )
-    if _strategy_summaries_use_choice_stock(result):
-        tables_used.append("choice_stock_daily_observation")
-    if _strategy_summaries_use_stock_factor_snapshot(result):
-        tables_used.append("choice_stock_factor_snapshot")
-    shadow_report = result.get("shadow_portfolio_report")
-    if isinstance(shadow_report, dict):
-        report_tables = shadow_report.get("tables_used")
-        if isinstance(report_tables, list):
-            tables_used.extend(str(table) for table in report_tables)
-    if "choice_stock_refresh" in result:
-        tables_used.extend(["choice_stock_daily_observation", "choice_stock_factor_snapshot"])
-    a_share_risk = result.get("a_share_risk")
-    if isinstance(a_share_risk, dict):
-        risk_tables = a_share_risk.get("tables_used")
-        if isinstance(risk_tables, list):
-            tables_used.extend(str(table) for table in risk_tables)
+    if tables_used is None:
+        if "capability_results" in result:
+            resolved_tables_used.extend(
+                [
+                    "fact_formal_risk_tensor_daily",
+                    "fact_formal_bond_analytics_daily",
+                ]
+            )
+        if _strategy_summaries_use_choice_stock(result):
+            resolved_tables_used.append("choice_stock_daily_observation")
+        if _strategy_summaries_use_stock_factor_snapshot(result):
+            resolved_tables_used.append("choice_stock_factor_snapshot")
+        shadow_report = result.get("shadow_portfolio_report")
+        if isinstance(shadow_report, dict):
+            report_tables = shadow_report.get("tables_used")
+            if isinstance(report_tables, list):
+                resolved_tables_used.extend(str(table) for table in report_tables)
+        if "choice_stock_refresh" in result:
+            resolved_tables_used.extend(["choice_stock_daily_observation", "choice_stock_factor_snapshot"])
+        a_share_risk = result.get("a_share_risk")
+        if isinstance(a_share_risk, dict):
+            risk_tables = a_share_risk.get("tables_used")
+            if isinstance(risk_tables, list):
+                resolved_tables_used.extend(str(table) for table in risk_tables)
     return build_result_envelope(
         basis="analytical",
         trace_id=f"macro-toolkit-{uuid.uuid4().hex[:12]}",
@@ -2367,11 +2754,11 @@ def _envelope(
         source_version="macro_toolkit_registry",
         rule_version="rv_macro_toolkit_ui_v1",
         result_payload=result,
-        quality_flag=quality_flag or "ok",
+        quality_flag=cast(QualityFlag, quality_flag or "ok"),
         vendor_version="choice+tushare",
-        vendor_status="ok",
-        fallback_mode=fallback_mode or "none",
-        tables_used=_unique_texts(tables_used),
+        vendor_status=cast(VendorStatus, vendor_status or "ok"),
+        fallback_mode=cast(FallbackMode, fallback_mode or "none"),
+        tables_used=_unique_texts(resolved_tables_used),
         evidence_rows=_evidence_rows(result),
         as_of_date=as_of_date,
         generated_at=generated_at,
@@ -2410,3 +2797,645 @@ def _strategy_summaries_use_stock_factor_snapshot(result: dict[str, object]) -> 
         if isinstance(detail, dict) and detail.get("factor_source") == "choice_stock_factor_snapshot":
             return True
     return False
+
+def _output_files() -> list[dict[str, object]]:
+    return macro_toolkit_service.output_files(OUTPUT_DIR)
+
+def _source_checks(
+    duckdb_path: str | Path,
+    *,
+    source_check_cache: dict[str, dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    return _source_checks_for_aliases(
+        _SOURCE_CHECK_ALIASES,
+        duckdb_path,
+        source_check_cache=source_check_cache,
+    )
+
+def _source_checks_for_aliases(
+    aliases: Iterable[str],
+    duckdb_path: str | Path,
+    *,
+    source_check_cache: dict[str, dict[str, object]] | None = None,
+    end: str | None = None,
+    frames_by_alias: dict[str, pd.DataFrame] | None = None,
+) -> list[dict[str, object]]:
+    cache = source_check_cache if source_check_cache is not None else {}
+    requested_aliases = tuple(dict.fromkeys(str(alias) for alias in aliases))
+    missing_aliases = tuple(alias for alias in requested_aliases if alias not in cache)
+    if missing_aliases:
+        loaded_frames_by_alias = frames_by_alias or {}
+        aliases_to_load = tuple(alias for alias in missing_aliases if alias not in loaded_frames_by_alias)
+        if aliases_to_load:
+            loaded_frames_by_alias = {
+                **loaded_frames_by_alias,
+                **load_series_by_aliases(aliases_to_load, end=end, duckdb_path=duckdb_path),
+            }
+        for alias in missing_aliases:
+            cache[alias] = _source_check_payload(alias, loaded_frames_by_alias[alias])
+    return [cache[alias] for alias in requested_aliases]
+
+def _commodity_futures_status(duckdb_path: str | Path) -> dict[str, object]:
+    return macro_toolkit_service.commodity_futures_status(duckdb_path)
+
+def _capability_plan(
+    duckdb_path: str | Path,
+    *,
+    source_check_cache: dict[str, dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    cache = source_check_cache if source_check_cache is not None else {}
+    _source_checks_for_aliases(
+        (
+            str(alias)
+            for definition in _CAPABILITY_DEFINITIONS
+            for alias in definition["data_aliases"]
+        ),
+        duckdb_path,
+        source_check_cache=cache,
+    )
+    return [_capability_payload(item, duckdb_path, source_check_cache=cache) for item in _CAPABILITY_DEFINITIONS]
+
+def _capability_payload(
+    definition: Mapping[str, object],
+    duckdb_path: str | Path,
+    *,
+    source_check_cache: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    aliases = tuple(str(alias) for alias in cast(Sequence[str], definition["data_aliases"]))
+    checks: list[dict[str, object]] = []
+    for alias in aliases:
+        if alias not in source_check_cache:
+            source_check_cache[alias] = _source_check(alias, duckdb_path)
+        checks.append(source_check_cache[alias])
+    hit_count = sum(1 for check in checks if check["latest"])
+    required_count = len(checks)
+    if required_count == 0:
+        data_status = "not_required"
+    elif hit_count == required_count:
+        data_status = "ready"
+    elif hit_count > 0:
+        data_status = "partial"
+    else:
+        data_status = "missing"
+    return {
+        "key": definition["key"],
+        "legacy_module": definition["legacy_module"],
+        "label": definition["label"],
+        "group": definition["group"],
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        "data_status": data_status,
+        "data_hit_count": hit_count,
+        "data_required_count": required_count,
+        "data_tables": [str(table) for table in cast(Sequence[str], definition.get("data_tables", ()))],
+        "evidence": [
+            {
+                "alias": check["alias"],
+                "row_count": check["row_count"],
+                "latest_date": cast(dict[str, object], check["latest"])["date"] if check["latest"] else None,
+                "series_id": cast(dict[str, object], check["latest"])["series_id"] if check["latest"] else None,
+            }
+            for check in checks
+        ],
+        "next_step": "已在本页输出结构化结果；下一步沉淀为正式宏观端点和页面契约。",
+    }
+
+def _macro_capability_results(
+    duckdb_path: str | Path,
+    *,
+    report_date: str | None,
+    history_limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
+) -> list[dict[str, object]]:
+    parsed_report_date = _parse_report_date(report_date)
+    if parsed_report_date is None:
+        crisis_report_date = _latest_crisis_input_date(duckdb_path)
+        return [
+            _crisis_score_card_without_analysis_date(cast(dict[str, object], item), duckdb_path, crisis_report_date)
+            if item["key"] == "crisis_score_cn"
+            else _unavailable_capability_result(cast(dict[str, object], item), "缺少可用分析日期")
+            for item in _CAPABILITY_DEFINITIONS
+        ]
+
+    curve_rows, risk_tensor, positions = _load_macro_capability_context(
+        duckdb_path,
+        parsed_report_date,
+    )
+    report_date_frames_by_alias = load_series_by_aliases(
+        tuple(
+            dict.fromkeys(
+                [
+                    *(alias for _, alias in _WIDE_SERIES_ALIASES),
+                    *(
+                        str(alias)
+                        for requirements in _CAPABILITY_INPUT_REQUIREMENTS.values()
+                        for requirement in requirements
+                        for alias in cast(Sequence[str], requirement.get("aliases", ()))
+                    ),
+                ]
+            )
+        ),
+        end=parsed_report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
+    wide_rows = _load_macro_wide_rows(
+        duckdb_path,
+        parsed_report_date,
+        curve_rows,
+        frames_by_alias=report_date_frames_by_alias,
+    )
+    proxy_rows, bucket_rows, total_assets = _risk_tensor_to_liquidity_inputs(risk_tensor)
+    portfolio_profile = build_bond_portfolio_profile(positions, parsed_report_date)
+    current_curve, current_curve_snapshot_evidence = _current_gov_curve_snapshot(
+        curve_rows,
+        parsed_report_date,
+    )
+
+    merrill_raw = _run_capability(
+        "merrill_clock_cn",
+        lambda: compute_merrill_clock_payload(wide_rows, report_date=parsed_report_date),
+    )
+    risk_parity_clock_phase = _merrill_regime_from_payload(merrill_raw)
+    multi_asset_series_cache: dict[str, list[tuple[date, float]]] | None = None
+
+    def _shared_multi_asset_series() -> dict[str, list[tuple[date, float]]]:
+        nonlocal multi_asset_series_cache
+        if multi_asset_series_cache is None:
+            multi_asset_series_cache = _load_multi_asset_price_series(
+                duckdb_path,
+                parsed_report_date,
+            )
+        return multi_asset_series_cache
+
+    raw_results: dict[str, dict[str, object]] = {
+        "monetary_policy_stance": _run_capability(
+            "monetary_policy_stance",
+            lambda: compute_monetary_policy_stance(curve_rows, report_date=parsed_report_date),
+        ),
+        "yield_curve_shape": _run_capability(
+            "yield_curve_shape",
+            lambda: compute_yield_curve_shape(curve_rows, report_date=parsed_report_date),
+        ),
+        "credit_spread_risk": _run_capability(
+            "credit_spread_risk",
+            lambda: compute_credit_spread_risk(curve_rows, report_date=parsed_report_date),
+        ),
+        "leading_indicator": _run_capability(
+            "leading_indicator",
+            lambda: compute_leading_indicator(wide_rows, parsed_report_date),
+        ),
+        "liquidity_stress": _run_capability(
+            "liquidity_stress",
+            lambda: compute_liquidity_stress_test(
+                proxy_rows,
+                bucket_rows,
+                report_date=parsed_report_date,
+                total_assets=total_assets,
+            ),
+        ),
+        "crisis_score_cn": _run_capability(
+            "crisis_score_cn",
+            lambda: _compute_crisis_score_capability(
+                duckdb_path,
+                parsed_report_date,
+                history_limit=history_limit,
+            ),
+        ),
+        "cross_market_linkage": _run_capability(
+            "cross_market_linkage",
+            lambda: analyze_cross_market_linkage(wide_rows, parsed_report_date),
+        ),
+        "rate_turning_point": _run_capability(
+            "rate_turning_point",
+            lambda: compute_rate_turning_point(curve_rows, report_date=parsed_report_date),
+        ),
+        "economic_cycle": _run_capability(
+            "economic_cycle",
+            lambda: compute_economic_cycle(wide_rows, parsed_report_date),
+        ),
+        "merrill_clock_cn": merrill_raw,
+        "cta_trend_cn": _run_capability(
+            "cta_trend_cn",
+            lambda: _compute_multi_asset_observation_capability(
+                "cta_trend_cn",
+                duckdb_path,
+                parsed_report_date,
+                series_data=_shared_multi_asset_series(),
+            ),
+        ),
+        "dcc_garch_cn": _run_capability(
+            "dcc_garch_cn",
+            lambda: _compute_multi_asset_observation_capability(
+                "dcc_garch_cn",
+                duckdb_path,
+                parsed_report_date,
+                series_data=_shared_multi_asset_series(),
+            ),
+        ),
+        "risk_parity_cn": _run_capability(
+            "risk_parity_cn",
+            lambda: _compute_multi_asset_observation_capability(
+                "risk_parity_cn",
+                duckdb_path,
+                parsed_report_date,
+                clock_phase=risk_parity_clock_phase,
+                series_data=_shared_multi_asset_series(),
+            ),
+        ),
+        "macro_portfolio_impact": _run_capability(
+            "macro_portfolio_impact",
+            lambda: _with_macro_portfolio_curve_snapshot_evidence(
+                compute_macro_portfolio_impact(
+                    portfolio_profile,
+                    current_curve,
+                    parsed_report_date,
+                ),
+                current_curve_snapshot_evidence,
+            ),
+        ),
+    }
+    input_evidence_source_check_cache: dict[str, dict[str, object]] = {}
+    _source_checks_for_aliases(
+        (
+            str(alias)
+            for requirements in _CAPABILITY_INPUT_REQUIREMENTS.values()
+            for requirement in requirements
+            for alias in cast(Sequence[str], requirement.get("aliases", ()))
+        ),
+        duckdb_path,
+        source_check_cache=input_evidence_source_check_cache,
+        end=parsed_report_date.isoformat(),
+        frames_by_alias=report_date_frames_by_alias,
+    )
+    for key in ("monetary_policy_stance", "leading_indicator", "economic_cycle", "merrill_clock_cn"):
+        raw_results[key] = _with_capability_input_evidence(
+            key,
+            raw_results[key],
+            duckdb_path=duckdb_path,
+            report_date=parsed_report_date,
+            wide_rows=wide_rows,
+            source_check_cache=input_evidence_source_check_cache,
+            source_frames_by_alias=report_date_frames_by_alias,
+        )
+
+    return _assemble_capability_cards(raw_results, parsed_report_date)
+
+def _assemble_capability_cards(
+    raw_results: dict[str, dict[str, object]],
+    report_date: date,
+) -> list[dict[str, object]]:
+    """Build capability cards; the decision summary always aggregates every
+    non-decision card regardless of its position in the definition tuple."""
+    non_decision_cards = {
+        str(definition["key"]): _capability_result_card(cast(dict[str, object], definition), raw_results.get(str(definition["key"])))
+        for definition in _CAPABILITY_DEFINITIONS
+        if definition["key"] != "decision_summary"
+    }
+    cards: list[dict[str, object]] = []
+    for definition in _CAPABILITY_DEFINITIONS:
+        if definition["key"] == "decision_summary":
+            cards.append(
+                _decision_summary_card(cast(dict[str, object], definition), list(non_decision_cards.values()), report_date)
+            )
+            continue
+        cards.append(non_decision_cards[str(definition["key"])])
+    return cards
+
+def _equity_strategy_summaries_with_context(
+    duckdb_path: str | Path | None = None,
+) -> tuple[list[dict[str, object]], dict[str, object] | None]:
+    try:
+        price_context = _load_equity_strategy_price_context(duckdb_path)
+        return _equity_strategy_summaries(duckdb_path, price_context=price_context), price_context
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
+        return [_unavailable_equity_strategy_summary(exc)], None
+
+def _equity_strategy_summaries(
+    duckdb_path: str | Path | None = None,
+    *,
+    price_context: object = _EQUITY_STRATEGY_PRICE_CONTEXT_UNSET,
+) -> list[dict[str, object]]:
+    try:
+        if price_context is _EQUITY_STRATEGY_PRICE_CONTEXT_UNSET:
+            price_context = _load_equity_strategy_price_context(duckdb_path)
+        if price_context is None:
+            return []
+        return _real_equity_strategy_summaries(cast(dict[str, object], price_context))
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
+        return [_unavailable_equity_strategy_summary(exc)]
+
+def _a_share_stampede_risk(duckdb_path: str | Path | None) -> dict[str, object]:
+    config = load_a_share_stampede_risk_config()
+    context = _load_a_share_stampede_risk_context(duckdb_path)
+    if context is None:
+        return compute_a_share_stampede_risk(pd.DataFrame(), config=config)
+    payload = compute_a_share_stampede_risk(
+        context["observations"],
+        config=config,
+        theme_frame=context.get("theme_frame") if isinstance(context.get("theme_frame"), pd.DataFrame) else None,
+    )
+    tables_used = [str(item) for item in cast(Iterable[object], context.get("tables_used", []))]
+    payload["tables_used"] = _unique_texts([*payload.get("tables_used", []), *tables_used])
+    if context.get("warnings"):
+        payload["warnings"] = _unique_texts([*payload.get("warnings", []), *cast(Iterable[object], context["warnings"])])
+        if payload.get("status") == "complete":
+            payload["status"] = "degraded"
+    return payload
+
+def _load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[str, object] | None:
+    return macro_toolkit_service.load_a_share_stampede_risk_context(duckdb_path)
+
+def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[str, object] | None:
+    return macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)
+
+def _load_multi_asset_price_series(
+    duckdb_path: str | Path,
+    report_date: date,
+    *,
+    lookback_days: int = 800,
+) -> dict[str, list[tuple[date, float]]]:
+    start = report_date - timedelta(days=lookback_days)
+    aliases = tuple(str(item["alias"]) for item in _MULTI_ASSET_PRICE_INPUTS)
+    frames_by_alias = load_series_by_aliases(
+        aliases,
+        start=start.isoformat(),
+        end=report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
+    # 缺数据的腿保留为空列表：库层 _normalize_prices 会据此产出
+    # {FIELD}_MISSING 警告并把状态降级，而不是静默丢腿。
+    return {
+        str(item["field"]): _frame_to_crisis_points(frames_by_alias[str(item["alias"])])
+        for item in _MULTI_ASSET_PRICE_INPUTS
+    }
+
+def _compute_multi_asset_observation_capability(
+    key: str,
+    duckdb_path: str | Path,
+    report_date: date,
+    *,
+    clock_phase: str | None = None,
+    series_data: dict[str, list[tuple[date, float]]] | None = None,
+) -> dict[str, object]:
+    resolved_series = (
+        series_data
+        if series_data is not None
+        else _load_multi_asset_price_series(duckdb_path, report_date)
+    )
+    if key == "cta_trend_cn":
+        return compute_cta_trend_payload(resolved_series, report_date=report_date)
+    if key == "dcc_garch_cn":
+        return compute_dcc_garch_payload(resolved_series, report_date=report_date)
+    if key == "risk_parity_cn":
+        return compute_risk_parity_payload(
+            resolved_series,
+            report_date=report_date,
+            clock_phase=clock_phase,
+        )
+    raise ValueError(f"unsupported multi-asset observation capability: {key}")
+
+def _compute_crisis_score_capability(
+    duckdb_path: str | Path,
+    report_date: date,
+    *,
+    history_limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
+) -> dict[str, object]:
+    start = report_date - timedelta(days=420)
+    crisis_aliases = tuple(str(config["alias"]) for config in _CRISIS_SCORE_INPUTS)
+    commodity_aliases = tuple(
+        str(alias)
+        for config in _CRISIS_COMMODITY_COVERAGE_INPUTS
+        for alias in config["aliases"]
+    )
+    frames_by_alias = load_series_by_aliases(
+        (*crisis_aliases, *commodity_aliases),
+        start=start.isoformat(),
+        end=report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
+    series_data: dict[str, list[tuple[date, float]]] = {}
+    inputs: list[dict[str, object]] = []
+    for config in _CRISIS_SCORE_INPUTS:
+        alias = str(config["alias"])
+        frame = frames_by_alias[alias]
+        points = _frame_to_crisis_points(frame)
+        field = str(config["field"])
+        series_data[field] = points
+        latest = frame.sort_values("date").iloc[-1] if not frame.empty else None
+        latest_date = str(latest["date"])[:10] if latest is not None else None
+        latest_value = _float_or_none(latest["value"]) if latest is not None else None
+        inputs.append(
+            {
+                "field": field,
+                "label": str(config["label"]),
+                "aliases": [alias],
+                "warning": str(config["warning"]),
+                "required": True,
+                "available": bool(points),
+                "row_count": int(len(frame)),
+                "latest_date": latest_date,
+                "series_id": str(latest["series_id"]) if latest is not None else None,
+                "source": str(latest["vendor_name"]) if latest is not None else None,
+                "value": latest_value,
+            }
+        )
+
+    result = compute_crisis_score_payload(
+        cast(dict[str, Sequence[tuple[date, float]]], series_data),
+        report_date=report_date,
+    )
+    crisis_history = _crisis_score_history(series_data, report_date)
+    missing_inputs = [
+        str(item["warning"])
+        for item in inputs
+        if item["required"] and not item["available"]
+    ]
+    warnings = [str(item) for item in result.get("warnings", []) if item]
+    for warning in missing_inputs:
+        if warning not in warnings:
+            warnings.append(warning)
+    enriched = dict(result)
+    enriched["warnings"] = warnings
+    if missing_inputs and str(enriched.get("data_status") or "").lower() == "complete":
+        enriched["data_status"] = "degraded"
+    enriched["input_evidence"] = {
+        "inputs": inputs,
+        "missing_inputs": missing_inputs,
+        "sources": _unique_sorted_texts(item.get("source") for item in inputs),
+        "latest_dates": _unique_sorted_texts(item.get("latest_date") for item in inputs),
+    }
+    commodity_coverage = _crisis_commodity_coverage(
+        duckdb_path,
+        report_date=report_date,
+        start=start,
+        crisis_history=crisis_history,
+        frames_by_alias=frames_by_alias,
+    )
+    enriched["commodity_coverage"] = commodity_coverage
+    enriched["shadow_impact"] = _crisis_commodity_shadow_impact(
+        current_score=_float_or_none(enriched.get("crisis_score")),
+        coverage=commodity_coverage,
+    )
+    commodity_admission = _crisis_commodity_candidate_admission(
+        coverage=commodity_coverage,
+    )
+    enriched["commodity_candidate_admission"] = commodity_admission
+    enriched["commodity_candidate_approval_pack"] = _crisis_commodity_candidate_approval_pack(
+        admission=commodity_admission,
+        shadow_impact=enriched["shadow_impact"],
+    )
+    enriched["score_history"] = build_crisis_score_history_payload(crisis_history, limit=history_limit)
+    return enriched
+
+def _crisis_score_card_without_analysis_date(
+    definition: dict[str, object],
+    duckdb_path: str | Path,
+    report_date: date | None,
+) -> dict[str, object]:
+    if report_date is None:
+        return _unavailable_capability_result(definition, "缺少可用分析日期")
+    raw_result = _run_capability(
+        "crisis_score_cn",
+        lambda: _compute_crisis_score_capability(duckdb_path, report_date),
+    )
+    warnings = [str(item) for item in cast(Iterable[object], raw_result.get("warnings", [])) if item]
+    reason = "缺少全局分析日期，Crisis Score 使用自身输入最新日期补充证据"
+    if reason not in warnings:
+        warnings.insert(0, reason)
+    enriched = dict(raw_result)
+    if str(enriched.get("data_status") or "").lower() == "complete":
+        enriched["data_status"] = "degraded"
+    enriched["warnings"] = warnings
+    return _capability_result_card(definition, enriched)
+
+def _with_capability_input_evidence(
+    key: str,
+    result: dict[str, object],
+    *,
+    duckdb_path: str | Path,
+    report_date: date,
+    wide_rows: list[dict[str, object]],
+    source_check_cache: dict[str, dict[str, object]] | None = None,
+    source_frames_by_alias: dict[str, pd.DataFrame] | None = None,
+) -> dict[str, object]:
+    requirements = _CAPABILITY_INPUT_REQUIREMENTS.get(key)
+    if not requirements:
+        return result
+
+    resolved_source_check_cache = source_check_cache if source_check_cache is not None else {}
+    _source_checks_for_aliases(
+        (
+            str(alias)
+            for requirement in requirements
+            for alias in cast(Sequence[str], requirement.get("aliases", ()))
+        ),
+        duckdb_path,
+        source_check_cache=resolved_source_check_cache,
+        end=report_date.isoformat(),
+        frames_by_alias=source_frames_by_alias,
+    )
+    inputs = [
+        _capability_input_evidence_item(
+            requirement,
+            duckdb_path=duckdb_path,
+            report_date=report_date,
+            wide_rows=wide_rows,
+            source_check_cache=resolved_source_check_cache,
+        )
+        for requirement in requirements
+    ]
+    missing_inputs = [
+        str(item["warning"])
+        for item in inputs
+        if item["required"] and not item["available"]
+    ]
+    stale_inputs = [
+        _stale_warning_from_missing(str(item["warning"]))
+        for item in inputs
+        if item["required"] and item["available"] and item.get("stale")
+    ]
+    warnings = [str(item) for item in cast(Iterable[object], result.get("warnings", [])) if item]
+    for warning in [*missing_inputs, *stale_inputs]:
+        if warning not in warnings:
+            warnings.append(warning)
+
+    enriched = dict(result)
+    if (missing_inputs or stale_inputs) and str(enriched.get("data_status") or "").lower() == "complete":
+        enriched["data_status"] = "degraded"
+    enriched["warnings"] = warnings
+    enriched["input_evidence"] = {
+        "inputs": inputs,
+        "missing_inputs": missing_inputs,
+        "stale_inputs": stale_inputs,
+        "sources": _unique_sorted_texts(item.get("source") for item in inputs),
+        "latest_dates": _unique_sorted_texts(item.get("latest_date") for item in inputs),
+    }
+    return enriched
+
+def _hason_macro_strategy_summary(
+    output_files: list[dict[str, object]],
+    *,
+    analysis_date: str | None = None,
+) -> dict[str, object]:
+    scripts_by_name = {script.name: script for script in iter_toolkit_scripts()}
+    runtime_outputs = _hason_runtime_outputs(output_files, analysis_date=analysis_date)
+    missing_outputs = [
+        str(item["name"])
+        for item in runtime_outputs
+        if item["freshness_status"] == "missing"
+    ]
+    stale_outputs = [
+        str(item["name"])
+        for item in runtime_outputs
+        if item["freshness_status"] == "stale"
+    ]
+    runtime_output_gaps = [
+        str(item["name"])
+        for item in runtime_outputs
+        if item["freshness_status"] != "current"
+    ]
+    runtime_output_status = _hason_runtime_output_status(runtime_outputs)
+    modules = [_hason_module_payload(module, scripts_by_name) for module in _HASON_MODULES]
+    ready_modules = sum(1 for module in modules if module["status"] == "integrated")
+    partial_modules = sum(1 for module in modules if module["status"] == "partial")
+    missing_modules = sum(1 for module in modules if module["status"] == "missing")
+    missing_script_count = len(
+        {
+            str(script_name)
+            for module in modules
+            for script_name in cast(Iterable[str], module["missing_scripts"])
+        }
+    )
+    readiness_ratio = round(ready_modules / len(modules), 4) if modules else 0
+    status = (
+        "observation_ready"
+        if runtime_output_status == "current" and ready_modules == len(modules)
+        else "degraded"
+    )
+    return {
+        "key": "hason_macro_strategy",
+        "framework_name": "Hason macro hedge due-diligence framework",
+        "basis": "analytical",
+        "observation_only": True,
+        "formal_use_allowed": False,
+        "formal_metric_id": None,
+        "status": status,
+        "display_status": "visible",
+        "readiness": {
+            "ready_modules": ready_modules,
+            "partial_modules": partial_modules,
+            "missing_modules": missing_modules,
+            "missing_script_count": missing_script_count,
+            "total_modules": len(modules),
+            "ratio": readiness_ratio,
+        },
+        "modules": modules,
+        "runtime_output_status": runtime_output_status,
+        "runtime_outputs": runtime_outputs,
+        "required_runtime_outputs": list(_HASON_REQUIRED_OUTPUTS),
+        "runtime_output_gaps": runtime_output_gaps,
+        "missing_runtime_outputs": missing_outputs,
+        "stale_runtime_outputs": stale_outputs,
+        "boundary": "Analytical macro toolkit display only; not a formal MTR metric, trade order, or portfolio execution engine.",
+        "source_trace": _hason_source_trace(modules, scripts_by_name),
+    }

@@ -59,7 +59,7 @@ def test_dev_api_script_bootstraps_native_environment():
     assert "netstat -ano" in script
     assert "Port $port already has a listener" in script
     assert "MOSS_HOME_SNAPSHOT_PREWARM_ENABLED" in script
-    assert "uvicorn backend.app.main:app" in script
+    assert 'Invoke-DevRuntimeProcess -Command (@($python, "-m", "uvicorn", "backend.app.main:app")' in script
 
 
 def test_dev_api_enables_home_snapshot_prewarm_by_default():
@@ -150,11 +150,17 @@ def test_dev_worker_heartbeat_actor_writes_file_without_result_payload():
     assert "return None" in script
 
 
-def test_dev_python_prefers_repo_virtualenv_before_system_python():
+def test_dev_python_validates_explicit_selection_then_project_python_311():
     script = (ROOT / "scripts" / "dev-python.ps1").read_text(encoding="utf-8")
-    assert ".venv\\Scripts\\python.exe" in script
-    assert "Get-Command python -ErrorAction SilentlyContinue" in script
-    assert script.index("$candidates += $venvPython") < script.index("$candidates += $systemPythonCommand.Source")
+    assert script.index("if ($env:MOSS_PYTHON)") < script.index("elseif ($env:VIRTUAL_ENV)")
+    assert '$candidates = @($env:MOSS_PYTHON)' in script
+    assert 'Join-Path $env:VIRTUAL_ENV "Scripts\\python.exe"' in script
+    assert script.index('Join-Path $root "backend\\.venv\\Scripts\\python.exe"') < script.index('Join-Path $root ".venv\\Scripts\\python.exe"')
+    assert "assert sys.version_info[:2] == (3, 11)" in script
+    assert "importlib.import_module(name) for name in sys.argv[1:]" in script
+    assert "@RequiredModules" in script
+    assert "Explicit Python selection is unusable" in script
+    assert "Get-Command python" not in script
 
 
 def test_dev_env_script_sets_repo_relative_data_paths():
@@ -274,9 +280,11 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     assert "/api/risk/tensor/dates" in script
     assert "/api/risk/tensor?report_date=$riskReportDate" in script
     assert "risk tensor detail concurrent smoke" in script
-    assert "/src/api/clientContext.ts" in script
+    assert "Get-DevFrontendPlan" in script
+    assert "$frontendPlan.probes[1].path" in script
     assert "/src/api/client.ts" not in script
-    assert "frontend Vite API client context module" in script
+    assert "selected frontend asset" in script
+    assert "frontend-probe" in script
     assert "audit_governance_lineage.py" in script
     assert "Governance lineage audit failed" in script
     assert "exit 0" in script
@@ -316,7 +324,10 @@ def test_dev_frontend_repairs_missing_wsl_rolldown_binding():
 def test_dev_keepalive_checks_vite_source_module_not_only_frontend_root():
     script = (ROOT / "scripts" / "dev-keepalive.ps1").read_text(encoding="utf-8")
     assert "Test-FrontendReady" in script
-    assert "/src/api/clientContext.ts" in script
+    assert "frontend-probe" in script
+    controller = (ROOT / "scripts" / "dev_runtime_control.py").read_text(encoding="utf-8")
+    assert 'src/api/clientContext.ts' in controller
+    assert 'response does not match the selected build' in controller
     assert "/src/api/client.ts" not in script
     assert "http://127.0.0.1:5888" in script
     assert "WScript.Shell" not in script
@@ -529,10 +540,20 @@ def test_codex_verify_page_script_plans_product_category_checks():
     assert "tests/test_project_mcp_servers.py" in script
     assert "tests/test_home_snapshot_endpoint.py" in script
     assert "tests/test_dashboard_api_contract.py" in script
-    assert "DashboardPage.test.tsx" in script
-    assert "useDashboardSnapshotBoundary.test.tsx" in script
-    assert "dashboardHomeModel.test.ts" in script
-    assert "dashboardCockpitHomeModel.test.ts" in script
+    dashboard_checks = script.split('} elseif ($PageSlug -eq "dashboard-home") {', 1)[1].split(
+        '} elseif ($PageSlug -eq "product-category-pnl") {', 1
+    )[0]
+    for test_path in (
+        "src/test/DashboardHomePage.test.tsx",
+        "src/features/workbench/pages/useDashboardSnapshotBoundary.test.tsx",
+        "src/features/workbench/dashboard-home/dashboardHomeSnapshotAdapter.test.ts",
+        "src/features/workbench/dashboard-home/dashboardHomeFirstScreenView.test.ts",
+        "src/features/workbench/dashboard-home/useDashboardHomeFirstScreenViewModel.test.tsx",
+        "src/test/DeferredTerminalHomeContent.test.tsx",
+        "src/features/workbench/dashboard-home/useDashboardHomeMockFallbackGuard.test.tsx",
+    ):
+        assert test_path in dashboard_checks
+        assert (ROOT / "frontend" / test_path).is_file()
     assert "tests/test_product_category_pnl_flow.py" in script
     assert "tests/test_product_category_mapping_contract.py" in script
     assert "ProductCategoryPnlPage.test.tsx" in script

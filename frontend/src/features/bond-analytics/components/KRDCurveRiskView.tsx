@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert } from "antd";
 import { type EChartsOption } from "../../../lib/echarts";
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { useApiClient } from "../../../api/client";
 import type { KRDScenarioResult, Numeric } from "../../../api/contracts";
@@ -17,7 +17,7 @@ import {
   withNumericColumns,
 } from "./BondAnalyticsDetailPrimitives";
 import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
-import { SectionLead } from "./SectionLead";
+import { SectionHead } from "../../../components/layout";
 
 function formatScenarioShocks(shocks: Record<string, number>): string {
   const entries = Object.entries(shocks ?? {});
@@ -202,7 +202,6 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]): EChartsOpt
   }));
 
   return nocturneChartTheme.createBaseChartOption({
-    legend: { show: false },
     tooltip: {
       trigger: "item" as const,
       formatter: (params: unknown) => {
@@ -281,7 +280,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
     const bucketAvgMd = (b: (typeof buckets)[number]) =>
       b.avg_modified_duration ?? b.krd;
     return nocturneChartTheme.createBarChartOption({
-      grid: { left: 52, right: 16, top: 36, bottom: 28, containLabel: false },
+      grid: { left: 52, right: 16, top: 36 },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
@@ -348,7 +347,6 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           }),
         },
       ],
-      legend: { show: false },
     });
   }, [data]);
 
@@ -363,11 +361,12 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
 
   return (
     <div className={detailStyles.view}>
-      <SectionLead
-        eyebrow="KRD 曲线风险"
+      <SectionHead
+        category="KRD 曲线风险"
         title="曲线风险概览"
-        description="按报告日读取后端曲线风险读模型；页面只展示久期、修正久期、DV01 和凸性，不在前端补算正式风险指标。期限桶柱状图为桶内平均修正久期，不是 key-rate duration 贡献。"
+        note="查看久期、修正久期、DV01 和凸性。期限桶柱状图展示桶内平均修正久期，不代表 KRD 贡献。"
         testId="krd-curve-risk-shell-lead"
+        numbered={false}
       />
       {data.computed_at ? (
         <div style={{ fontSize: 12, color: "var(--dh-api-muted)" }} data-testid="krd-computed-at">
@@ -397,15 +396,22 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
         </Col>
       </Row>
 
-      <SectionLead
-        eyebrow="分桶"
+      <SectionHead
+        category="分桶"
         title="期限桶久期与情景冲击"
-        description="期限桶展示桶内平均修正久期与 DV01；情景冲击沿用后端返回数据，前端仅做图表和表格展示。"
+        note="比较不同期限的平均修正久期、DV01 及利率冲击影响。"
         testId="krd-curve-risk-buckets-lead"
+        numbered={false}
       />
       {data.krd_buckets.length > 0 && krdChartOption ? (
         <Card title="期限桶平均修正久期" size="small" data-testid="krd-avg-md-distribution">
-          <BaseChart option={krdChartOption} height={240} />
+          <ChartCard
+            flat
+            ariaLabel="期限桶平均修正久期"
+            option={krdChartOption}
+            height={220}
+            legend="none"
+          />
         </Card>
       ) : (
         <DetailEmptyNote testId="krd-buckets-empty">
@@ -430,15 +436,23 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
         <DetailEmptyNote testId="krd-scenarios-empty">暂无情景冲击明细</DetailEmptyNote>
       )}
 
-      <SectionLead
-        eyebrow="资产类别"
+      <SectionHead
+        category="资产类别"
         title="资产类别风险拆分"
-        description="资产结构饼图和按资产类别表格保留后端语义，不调整市值、久期、DV01 或权重。"
+        note="按资产类别查看市值、久期、DV01 和组合权重。"
         testId="krd-curve-risk-asset-lead"
+        numbered={false}
       />
       {data.by_asset_class.length > 0 ? (
         <Card title="按资产类别拆分" size="small">
-          <BaseChart option={assetStructurePieOption} height={220} />
+          <ChartCard
+            flat
+            ariaLabel="资产类别风险拆分"
+            unit="亿元"
+            option={assetStructurePieOption}
+            height={220}
+            legend="none"
+          />
           <Table
             dataSource={data.by_asset_class}
             columns={assetClassColumns}

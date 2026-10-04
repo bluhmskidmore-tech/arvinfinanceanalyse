@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,6 +14,7 @@ import type {
   ChoiceNewsEventsPayload,
   ResultMeta,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import {
   MarketBackendDataWorkbench,
   MarketPayloadNode,
@@ -62,7 +64,29 @@ function renderWithProviders(children: ReactNode, client: ApiClient) {
 }
 
 describe("MarketBackendDataWorkbench", () => {
-  it("shows six source tabs plus dynamic fields and result metadata", () => {
+  it("preserves quote precision, per-row dates, zero and missing values while retaining exact raw evidence", async () => {
+    const series = [
+      { series_id: "rate", series_name: "original", display_name: "10年国债", value_numeric: 1.6804, latest_change: 0.0005999999999999339, unit: "%", trade_date: "2026-09-04", quality_flag: "stale" },
+      { series_id: "zero", series_name: "真实零", value_numeric: 0, latest_change: 0, unit: "bp", trade_date: "2026-09-01", quality_flag: "ok" },
+      { series_id: "missing", series_name: "缺失值", value_numeric: null, latest_change: null, unit: "%", trade_date: null, quality_flag: "missing" },
+    ];
+    const queries = {
+      choiceLatest: query({ result: { series }, result_meta: meta("precise") }),
+    } as unknown as ModuleHomeSourceQueries;
+    renderWithProviders(<MarketBackendDataWorkbench queries={queries} />, createApiClient({ mode: "mock" }));
+    const table = screen.getByRole("table", { name: "最新行情" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows[0]).toHaveTextContent("10年国债1.6804%+0.00062026-09-04数据过期");
+    expect(rows[1]).toHaveTextContent("真实零0bp02026-09-01质量正常");
+    expect(rows[2]).toHaveTextContent(`缺失值${EM_DASH}%${EM_DASH}${EM_DASH}数据缺失`);
+    await userEvent.click(within(rows[0]!).getByRole("button", { name: "核验 10年国债" }));
+    const detail = screen.getByRole("dialog");
+    expect(detail).toHaveTextContent("0.0005999999999999339");
+    expect(detail).toHaveTextContent("original");
+    expect(detail).toHaveTextContent("1.6804");
+  });
+
+  it("shows business columns first and keeps every source field accessible in record details", async () => {
     const base = createApiClient({ mode: "mock" });
     const queries = {
       choiceLatest: query({
@@ -144,11 +168,42 @@ describe("MarketBackendDataWorkbench", () => {
         screen.getByTestId(`module-home-market-backend-source-status-${key}`),
       ).toBeInTheDocument();
     }
-    expect(workbench).toHaveTextContent("series.alpha");
-    expect(workbench).toHaveTextContent("policy_note");
-    expect(workbench).toHaveTextContent("choice-source-v1");
+    const table = screen.getByRole("table", { name: "最新行情" });
+    expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "指标", "最新值", "单位", "较前值变化", "数据日期", "质量", "详情",
+    ]);
+    expect(table).not.toHaveTextContent("series.alpha");
+    expect(table).not.toHaveTextContent("policy_note");
+    await userEvent.click(screen.getByRole("button", { name: "核验 测试序列" }));
+    const detail = await screen.findByRole("dialog");
+    expect(detail).toHaveTextContent("series.alpha");
+    expect(detail).toHaveTextContent("policy_note");
+    expect(detail).toHaveTextContent("choice-source-v1");
+    await userEvent.click(within(detail).getByRole("button", { name: /close/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(workbench).toHaveTextContent("choice-meta-v1");
-    expect(workbench).toHaveTextContent("filters_applied");
+    expect(workbench).not.toHaveTextContent("filters_applied");
+    await userEvent.click(screen.getByText("结果口径与来源"));
+    await userEvent.click(screen.getByText("其余来源与口径字段"));
+    await waitFor(() => expect(workbench).toHaveTextContent("filters_applied"));
+  });
+
+  it("renders an em dash instead of a date-missing sentence in the 04 header", () => {
+    const base = createApiClient({ mode: "mock" });
+    const queries = {
+      choiceLatest: query({
+        result: { read_target: "duckdb", series: [] },
+        result_meta: { ...meta("choice-meta-v1"), as_of_date: null },
+      }),
+    } as unknown as ModuleHomeSourceQueries;
+
+    renderWithProviders(<MarketBackendDataWorkbench queries={queries} />, base);
+
+    const workbench = screen.getByTestId("module-home-market-backend-data");
+    const header = workbench.querySelector("header")!;
+
+    expect(header).toHaveTextContent(`数据日期${EM_DASH}`);
+    expect(workbench).not.toHaveTextContent("日期未返回");
   });
 
   it("does not downgrade a quality error when the vendor is stale", () => {
@@ -235,7 +290,7 @@ describe("MarketBackendDataWorkbench", () => {
     expect(screen.getByText("news-meta-v1")).toBeInTheDocument();
   });
 
-  it("keeps unknown nested backend fields visible instead of dropping them", () => {
+  it("mounts unknown nested fields on expansion and releases them on collapse", async () => {
     render(
       <MarketPayloadNode
         path="custom"
@@ -251,8 +306,49 @@ describe("MarketBackendDataWorkbench", () => {
     expect(screen.getByText("custom_backend_block")).toBeInTheDocument();
     expect(screen.getByText("unknown_metric")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
-    expect(screen.getByText("raw_field")).toBeInTheDocument();
+    expect(screen.queryByText("raw_field")).not.toBeInTheDocument();
+    const nestedSummary = screen.getByText("nested_records");
+    await userEvent.click(nestedSummary);
+    await screen.findByText("raw_field");
     expect(screen.getByText("kept")).toBeInTheDocument();
+    await userEvent.click(nestedSummary);
+    await waitFor(() => expect(screen.queryByText("raw_field")).not.toBeInTheDocument());
+    await userEvent.click(nestedSummary);
+    expect(await screen.findByText("kept")).toBeInTheDocument();
+  });
+
+  it("keeps cached rows compact and mounts history only for the expanded row", async () => {
+    const series = Array.from({ length: 25 }, (_, row) => ({
+      series_id: `series-${row}`,
+      series_name: `报价 ${row}`,
+      trade_date: "2026-09-04",
+      value_numeric: 1.25,
+      unit: "%",
+      recent_points: Array.from({ length: 20 }, (_, point) => ({
+        trade_date: "2026-09-03",
+        value_numeric: point,
+        quality_flag: "ok",
+        source_version: `history-source-${row}-${point}`,
+        vendor_version: `history-vendor-${row}-${point}`,
+      })),
+    }));
+    const queries = {
+      choiceLatest: query({ result: { read_target: "duckdb", series }, result_meta: meta("history-meta") }),
+    } as unknown as ModuleHomeSourceQueries;
+    renderWithProviders(<MarketBackendDataWorkbench queries={queries} />, createApiClient({ mode: "mock" }));
+    const workbench = screen.getByTestId("module-home-market-backend-data");
+    const initialNodeCount = workbench.querySelectorAll("*").length;
+    expect(initialNodeCount).toBeLessThan(1000);
+    expect(screen.queryByText("history-source-0-0")).not.toBeInTheDocument();
+    const historyButton = screen.getByRole("button", { name: "核验 报价 0" });
+    await userEvent.click(historyButton);
+    expect(await screen.findByText("history-source-0-0")).toBeInTheDocument();
+    expect(screen.queryByText("history-source-1-0")).not.toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /close/i }));
+    await waitFor(() => expect(screen.queryByText("history-source-0-0")).not.toBeInTheDocument());
+    expect(workbench.querySelectorAll("*").length).toBe(initialNodeCount);
+    await userEvent.click(historyButton);
+    expect(await screen.findByText("history-source-0-0")).toBeInTheDocument();
   });
 
   it("keeps long lineage values compact while allowing expand and copy", async () => {
@@ -307,12 +403,12 @@ describe("MarketBackendDataWorkbench", () => {
 
     renderWithProviders(<MarketBackendDataWorkbench queries={queries} />, base);
     fireEvent.change(
-      screen.getByPlaceholderText(/series_id/i),
+      screen.getByPlaceholderText("指标名称、代码或来源"),
       { target: { value: "beta" } },
     );
 
-    expect(screen.getByText("series.beta")).toBeInTheDocument();
-    expect(screen.queryByText("series.alpha")).not.toBeInTheDocument();
+    expect(screen.getByText("Beta 商品")).toBeInTheDocument();
+    expect(screen.queryByText("Alpha 利率")).not.toBeInTheDocument();
     expect(screen.getByText(/1\s*\/\s*2/)).toBeInTheDocument();
   });
 });

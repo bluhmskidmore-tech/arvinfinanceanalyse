@@ -6,35 +6,6 @@
   min-width: 0;
 }
 
-.sectionLead {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.sectionEyebrow {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 16px;
-}
-
-.sectionTitle {
-  margin: 0;
-  color: var(--dh-api-ink);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 20px;
-}
-
-.sectionDescription {
-  max-width: 900px;
-  margin: 0;
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
 .view :global(.ant-card) {
   min-width: 0;
   border-color: var(--dh-api-line-soft);
@@ -74,7 +45,7 @@
 
 .view :global(.ant-statistic-content) {
   color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 20px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -177,7 +148,7 @@
 }
 
 .effectValue {
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;

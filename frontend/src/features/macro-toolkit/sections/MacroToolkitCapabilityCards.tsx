@@ -1,8 +1,8 @@
 import { LineChartOutlined } from "@ant-design/icons";
-import { Alert, Button, Tag } from "antd";
+import { Alert, Button } from "antd";
 
 import type { MacroToolkitCapabilityResult } from "../../../api/macroToolkitClient";
-import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { SectionHead } from "../../../components/layout";
 import { EM_DASH } from "../../../utils/format";
 import { formatCrisisTopContributorSummary } from "../lib/crisisScoreDisplay";
 import { isCrisisComponent, normalizeInputEvidence } from "../lib/macroToolkitCrisisSupport";
@@ -10,7 +10,7 @@ import {
   formatCapabilityEvidenceList,
   formatCapabilityMetricValue,
 } from "../lib/macroToolkitDisplayFormat";
-import { statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
+import { statusLabel } from "../lib/macroToolkitPanelShared";
 import { ScoreTrack } from "./MacroToolkitPrimitives";
 
 /**
@@ -40,27 +40,39 @@ function isDecisionSummaryCapabilityResult(result: MacroToolkitCapabilityResult)
 
 const INSUFFICIENT_DATA_MARK = "数据不足";
 
+/** C：状态徽标统一为语义圆点 + 文字（沿用信号横带 tone 语言）。 */
+function capabilityStateTone(tone: MacroToolkitCapabilityResult["tone"], dependencyBlocked: boolean) {
+  const resolved = dependencyBlocked ? "missing" : tone;
+  return resolved === "positive" || resolved === "negative" || resolved === "missing"
+    ? ` macro-toolkit-signal-state--${resolved}`
+    : "";
+}
+
 export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult }) {
+  const dependencyBlocked = result.dependency_gate?.status === "blocked";
   const metric = result.primary_metric;
   const inputEvidence = normalizeInputEvidence(result);
   const rawResult = result.result;
   const crisisComponents =
-    result.key === "crisis_score_cn" && Array.isArray(rawResult.components)
+    !dependencyBlocked && result.key === "crisis_score_cn" && Array.isArray(rawResult.components)
       ? rawResult.components.filter(isCrisisComponent)
       : [];
   const componentSummary =
     result.key === "crisis_score_cn" ? formatCrisisTopContributorSummary(crisisComponents) : null;
-  const headline = result.headline ?? "";
+  const headline = dependencyBlocked ? "依赖未通过" : (result.headline ?? "");
   const headlineHasInsufficiency = headline.includes(INSUFFICIENT_DATA_MARK);
   // #6 ③：headline 已声明「数据不足」时，结果行与证据行不再复读同一状态（M14 三连去重）。
   const resultText = metric ? formatMetricDisplay(metric) : result.score ?? EM_DASH;
   const suppressInsufficiencyRepeat =
     typeof resultText === "string" && headlineHasInsufficiency && resultText.includes(INSUFFICIENT_DATA_MARK);
-  const resultLine = suppressInsufficiencyRepeat ? EM_DASH : resultText;
+  const resultLine = dependencyBlocked
+    ? "不可用于方向判断"
+    : suppressInsufficiencyRepeat
+      ? EM_DASH
+      : resultText;
   // 主值英文枚举（如「联动风险 MEDIUM」）译中文；原值收 title。
-  const resultLineDisplay = suppressInsufficiencyRepeat
-    ? EM_DASH
-    : metric
+  const resultLineDisplay =
+    metric && !dependencyBlocked && !suppressInsufficiencyRepeat
       ? formatMetricDisplayLocalized(metric)
       : resultLine;
   const evidencePool = result.evidence.length ? result.evidence : result.warnings;
@@ -77,15 +89,18 @@ export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilit
       : undefined;
   return (
     <div
-      className={`macro-toolkit-capability-result macro-toolkit-capability-result--${result.tone}`}
+      className={`macro-toolkit-capability-result macro-toolkit-capability-result--${dependencyBlocked ? "missing" : result.tone}`}
       title={result.legacy_module}
     >
       <div className="macro-toolkit-capability-result-head">
         <span>{result.label}</span>
-        <Tag color={statusColor(result.status)}>{statusLabel(result.status)}</Tag>
+        <em className={`macro-toolkit-signal-state${capabilityStateTone(result.tone, dependencyBlocked)}`}>
+          <i aria-hidden="true" />
+          {dependencyBlocked ? "依赖阻断" : statusLabel(result.status)}
+        </em>
       </div>
       <strong title={resultLineTitle}>{resultLineDisplay}</strong>
-      <ScoreTrack score={result.score} />
+      <ScoreTrack score={dependencyBlocked ? null : result.score} />
       <p>{headline}</p>
       {componentSummary ? (
         <small className="macro-toolkit-crisis-component-summary" data-testid="macro-toolkit-crisis-capability-component-summary">
@@ -145,10 +160,12 @@ export function MacroToolkitCapabilityResultsSection({
   );
   return (
     <section className="macro-toolkit-section">
-      <PageSectionLead
-        eyebrow="结果"
+      <SectionHead
+        category="结果"
         title="功能结果"
-        description="已接入的宏观功能输出结果；缺口按数据降级提示展示。模型类结果统一见模型链视图。"
+        note="已接入的宏观功能输出结果；缺口按数据降级提示展示。模型类结果统一见模型链视图。"
+        numbered={{ counter: "mt-section" }}
+        contentGap="flush"
       />
       {visibleResults.length ? (
         <div className="macro-toolkit-capability-result-grid">

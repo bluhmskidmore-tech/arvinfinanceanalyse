@@ -52,7 +52,7 @@ DEFAULT_OUT_ROOT = Path(".codex-tmp") / "agent-eval" / "pr-replay"
 REUSABLE_PR_CHECKS = frozenset({
     "npm --prefix frontend run typecheck",
 })
-SHARED_FRONTEND_SCOPES = ("frontend/src/api/", "frontend/src/test/")
+SHARED_FRONTEND_SCOPES = ("frontend/src/api/", "frontend/src/mocks/", "frontend/src/test/")
 # These existing tests exercise Agent-only surfaces. Their production API and
 # embedded page boundary files are mapped separately in the task triggers.
 # Keep this list exact so a newly added shared test still fails open.

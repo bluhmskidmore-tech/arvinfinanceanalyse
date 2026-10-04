@@ -612,12 +612,14 @@ function liabilityAmountDisplayNumber(input: {
   if (!input.row) {
     return null;
   }
-  const label =
-    input.amountField === "foreign_scale"
-      ? input.formatForeignDisplayValue(input.row, input.row[input.amountField])
-      : input.formatRowDisplayValue(input.row, input.row[input.amountField]);
-  const parsed = Number(label);
-  return Number.isFinite(parsed) ? parsed : null;
+  const value = decimalNumberInternal(input.row[input.amountField]);
+  if (value === null) {
+    return null;
+  }
+  const displayValue = input.row.side !== "liability"
+    ? value
+    : input.amountField === "foreign_scale" ? -value : Math.abs(value);
+  return displayValue / 100_000_000;
 }
 
 function liabilityDetailMetricLabels(input: {

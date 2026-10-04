@@ -89,6 +89,7 @@ export type MacroToolkitChoiceStockRefreshRun = {
   trigger_mode?: "idle" | "async" | "terminal" | string;
   report_date?: string;
   failure_category?: string | null;
+  error_message?: string | null;
   history_row_count?: number | null;
   factor_row_count?: number | null;
   source_version?: string;
@@ -98,6 +99,11 @@ export type MacroToolkitChoiceStockRefreshRun = {
   refresh_history?: boolean;
   refresh_factors?: boolean;
   factor_max_stock_count?: number | null;
+  choice_completion_status?: string | null;
+  livermore_closure_status?: string | null;
+  livermore_closure_reason?: string | null;
+  theme_overlay_status?: string | null;
+  theme_overlay_message?: string | null;
   permission?: MacroToolkitChoiceStockRefreshPermission;
 };
 
@@ -158,6 +164,15 @@ export type MacroToolkitCommodityFuturesHealthStatus = {
     vendor_version?: string | null;
     rule_version?: string | null;
   };
+};
+
+export type MacroToolkitCommodityFuturesSnapshotStatus = Omit<
+  MacroToolkitCommodityFuturesHealthStatus,
+  "materialized" | "coverage" | "nanhua_input"
+> & {
+  materialized: boolean | null;
+  coverage: Partial<MacroToolkitCommodityFuturesHealthStatus["coverage"]>;
+  nanhua_input: Partial<MacroToolkitCommodityFuturesHealthStatus["nanhua_input"]>;
 };
 
 export type MacroToolkitCommodityFuturesRefreshStatus = {
@@ -261,6 +276,36 @@ export type MacroToolkitInputEvidence = {
   latest_dates?: string[];
 };
 
+export type MacroToolkitDependencyGate = {
+  status: "blocked" | "ready";
+  blocked_by: string[];
+  reason_code: string;
+};
+
+export type MacroToolkitCrisisScoreTrend = {
+  requested_window_points: number;
+  window_points: number;
+  start_date: string | null;
+  end_date: string | null;
+  start_score: number | null;
+  end_score: number | null;
+  score_change: number | null;
+  start_percentile: number | null;
+  end_percentile: number | null;
+  percentile_change: number | null;
+  direction: "rising" | "falling" | "flat" | "insufficient";
+};
+
+export type MacroToolkitCrisisRiskGate = {
+  eligible: boolean;
+  triggered: boolean;
+  threshold: number;
+  reason_code:
+    | "crisis_score_at_or_above_threshold"
+    | "crisis_score_below_threshold"
+    | "crisis_score_data_not_complete";
+};
+
 export type MacroToolkitCapabilityResult = {
   key: string;
   legacy_module: string;
@@ -275,6 +320,7 @@ export type MacroToolkitCapabilityResult = {
     value: string | number;
     unit: string;
   } | null;
+  dependency_gate?: MacroToolkitDependencyGate | null;
   input_evidence?: MacroToolkitInputEvidence | null;
   evidence: string[];
   warnings: string[];
@@ -284,6 +330,10 @@ export type MacroToolkitCapabilityResult = {
     available_component_count?: number;
     /** 权重表分项总数，是覆盖率分母的权威来源，不能用 components.length 代替。 */
     component_count?: number;
+    /** Crisis Score 最近固定数量有效观测点的后端趋势摘要；前端不得重算。 */
+    score_trend?: MacroToolkitCrisisScoreTrend;
+    /** Crisis Score 风险优先闸门；阈值与可用性由后端统一裁决。 */
+    risk_gate?: MacroToolkitCrisisRiskGate;
   };
 };
 
@@ -315,10 +365,10 @@ export type MacroToolkitShadowPortfolioHolding = {
 
 export type MacroToolkitShadowPortfolioCostResult = {
   cost_bps: number;
-  total_return: number;
-  excess_return: number;
-  max_drawdown: number;
-  win_rate?: number;
+  total_return: number | null;
+  excess_return: number | null;
+  max_drawdown: number | null;
+  win_rate?: number | null;
 };
 
 export type MacroToolkitShadowPortfolioAdmissionCriterion = {
@@ -338,18 +388,19 @@ export type MacroToolkitShadowPortfolioAdmission = {
 
 export type MacroToolkitShadowPortfolioPeriodCostResult = {
   cost_bps: number;
-  net_return: number;
-  cost: number;
+  net_return: number | null;
+  cost: number | null;
 };
 
 export type MacroToolkitShadowPortfolioPeriodReturn = {
   portfolio_key: string;
   start_date: string;
   end_date: string;
-  gross_return: number;
-  benchmark_return: number;
-  excess_return: number;
+  gross_return: number | null;
+  benchmark_return: number | null;
+  excess_return: number | null;
   selected_count: number;
+  observed_return_count?: number;
   name_turnover: number | null;
   traded_notional: number | null;
   cost_results: MacroToolkitShadowPortfolioPeriodCostResult[];
@@ -359,10 +410,10 @@ export type MacroToolkitShadowPortfolio = {
   key: string;
   label: string;
   role: "production_reference" | "shadow_candidate" | string;
-  total_return: number;
-  excess_return: number;
-  max_drawdown: number;
-  win_rate: number;
+  total_return: number | null;
+  excess_return: number | null;
+  max_drawdown: number | null;
+  win_rate: number | null;
   average_turnover: number | null;
   average_traded_notional?: number | null;
   average_count: number;
@@ -401,8 +452,8 @@ export type MacroToolkitShadowPortfolioReport = {
   benchmark: {
     key: string;
     label: string;
-    total_return: number;
-    max_drawdown: number;
+    total_return: number | null;
+    max_drawdown: number | null;
   } | null;
   portfolios: MacroToolkitShadowPortfolio[];
   period_returns: MacroToolkitShadowPortfolioPeriodReturn[];
@@ -613,6 +664,44 @@ export type MacroToolkitModelChainTrend = {
   series: MacroToolkitModelChainTrendSeries[];
 };
 
+export type MacroToolkitBacktestContext = {
+  status: "not_admitted";
+  quality_flag: "warning";
+  admission_status: null;
+  observation_only: true;
+  formal_use_allowed: false;
+  sample: {
+    price_start_date: string | null;
+    price_end_date: string | null;
+    price_observation_days: number | null;
+    return_start_date: string | null;
+    return_end_date: string | null;
+    return_trading_days: number | null;
+    declared_window_years: number | null;
+  };
+  asset_coverage: {
+    configured_asset_count: number | null;
+    used_asset_count: number | null;
+    used_assets: string[];
+    missing_assets: string[];
+    complete: boolean | null;
+  };
+  pit_gate: {
+    status: "blocked";
+    reason_code:
+      | "pit_metadata_unavailable"
+      | "pit_evidence_unverified"
+      | "backtest_manifest_missing"
+      | "backtest_manifest_invalid";
+    required_fields: string[];
+    available_fields: string[];
+    missing_fields: string[];
+    completeness_pct: number | null;
+    decision_rule: string;
+  };
+  warnings: string[];
+};
+
 export type MacroToolkitModelChainModel = {
   id: string;
   label: string;
@@ -620,10 +709,12 @@ export type MacroToolkitModelChainModel = {
   artifact: string;
   artifact_status: "ok" | "missing";
   as_of: string | null;
+  generated_at?: string | null;
   headline: string;
   columns: string[];
   rows: string[][];
   trend: MacroToolkitModelChainTrend | null;
+  backtest_context?: MacroToolkitBacktestContext | null;
 };
 
 export type MacroToolkitModelChainStep = {
@@ -634,6 +725,9 @@ export type MacroToolkitModelChainStep = {
 };
 
 export type MacroToolkitSchedulerReceiptSummary = {
+  /** 缺失回执继续由父级 null 表达；存在但损坏时为 invalid。 */
+  read_status?: "ready" | "invalid";
+  reason_code?: "receipt_unreadable" | "receipt_invalid" | null;
   task_name: string;
   status: string;
   exit_code: number | null;
@@ -647,11 +741,31 @@ export type MacroToolkitModelChainScheduler = {
   freshness: MacroToolkitSchedulerReceiptSummary | null;
 };
 
+export type MacroToolkitModelChainArtifactSnapshot = {
+  schema_version: "macro_toolkit_allocation_snapshot_read.v1" | string;
+  /** 兼容既有消费者的 reader 状态字段。 */
+  status: "ready" | "partial" | "invalid" | "missing" | string;
+  /** reader 的显式状态；旧后端缺失时回退到 status。 */
+  read_status?: "ready" | "partial" | "invalid" | "missing" | string;
+  mode: "snapshot" | "snapshot_fail_closed" | "live_unverified" | string;
+  run_id: string | null;
+  /** 兼容既有消费者的 writer 状态字段。 */
+  snapshot_status: "captured" | "partial" | null | string;
+  /** writer run manifest 的受控状态；旧后端缺失时回退到 snapshot_status。 */
+  writer_status?: "captured" | "partial" | null | string;
+  manifest_sha256: string | null;
+  target_artifact_count: number;
+  verified_artifact_count: number;
+  warnings: string[];
+};
+
 export type MacroToolkitModelChainResults = {
   as_of_date: string | null;
   observation_only: boolean;
   formal_use_allowed: boolean;
   steps: MacroToolkitModelChainStep[];
+  /** 旧后端可能尚未返回快照读取状态；新后端始终返回。 */
+  artifact_snapshot?: MacroToolkitModelChainArtifactSnapshot;
   /** 旧后端可能尚未返回 scheduler 字段，缺失时前端不渲染调度行。 */
   scheduler?: MacroToolkitModelChainScheduler;
 };
@@ -694,7 +808,7 @@ export type MacroToolkitReportBundle = {
  */
 export type MacroToolkitPrimarySignal = {
   key: string | null;
-  selection_status: "selected" | "deferred" | "unavailable";
+  selection_status: "selected" | "deferred" | "unavailable" | "blocked";
   reason_code: string;
   rule_version: string;
 };
@@ -1027,23 +1141,42 @@ export type MacroToolkitSourceBackfillRefreshResponse = ApiEnvelope<{
   refresh: MacroToolkitSourceBackfillRefreshRun;
 }>;
 
-export type MacroToolkitCommodityFuturesRefreshRun = {
-  status: string;
+type MacroToolkitCommodityFuturesRefreshRunBase = MacroToolkitAsyncRefreshRun<
+  | "queued"
+  | "running"
+  | "retrying"
+  | "completed"
+  | "partial"
+  | "no_rows"
+  | "blocked"
+  | "failed"
+  | "dry_run"
+  | string
+> & {
+  failure_message?: string | null;
   dry_run?: boolean;
   start_date?: string | null;
   end_date?: string | null;
   product_count?: number;
-  row_count?: number;
+  row_count?: number | null;
   estimated_total_rows?: number;
   estimated_trading_days?: number;
   products?: Array<Record<string, unknown> | string>;
   table?: string;
-  rule_version?: string;
   permission?: MacroToolkitCommodityFuturesRefreshPermission;
   before_status?: MacroToolkitCommodityFuturesHealthStatus;
-  after_status?: MacroToolkitCommodityFuturesHealthStatus;
   summary?: MacroToolkitCommodityFuturesRefreshSummary;
 };
+
+export type MacroToolkitCommodityFuturesRefreshRun =
+  | (MacroToolkitCommodityFuturesRefreshRunBase & {
+      terminal_snapshot_status?: "captured" | "missing" | null;
+      after_status?: MacroToolkitCommodityFuturesHealthStatus;
+    })
+  | (MacroToolkitCommodityFuturesRefreshRunBase & {
+      terminal_snapshot_status: "unavailable";
+      after_status?: MacroToolkitCommodityFuturesSnapshotStatus;
+    });
 
 export type MacroToolkitCommodityFuturesRefreshResponse = ApiEnvelope<{
   refresh: MacroToolkitCommodityFuturesRefreshRun;
@@ -1058,6 +1191,17 @@ export type MacroToolkitAnalysisRequest = {
 export type MacroToolkitRequestOptions = {
   signal?: AbortSignal;
 };
+
+function actionRequestHeaders(idempotencyKey?: string | null): Record<string, string> {
+  return idempotencyKey
+    ? {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      }
+    : {
+        "Content-Type": "application/json",
+      };
+}
 
 export type MacroToolkitClientMethods = {
   getMacroToolkitAnalysis: (
@@ -1082,6 +1226,7 @@ export type MacroToolkitClientMethods = {
     tradeDate?: string;
     contracts?: string[];
     sources?: string[];
+    idempotencyKey?: string;
   }) => Promise<MacroToolkitCffexRefreshResponse>;
   getCffexMemberRankRefreshStatus: (runId: string) => Promise<MacroToolkitCffexRefreshResponse>;
   refreshMacroSourceBackfill: (options: {
@@ -1089,6 +1234,7 @@ export type MacroToolkitClientMethods = {
     startDate?: string | null;
     endDate?: string | null;
     sources?: string[];
+    idempotencyKey?: string;
   }) => Promise<MacroToolkitSourceBackfillRefreshResponse>;
   getMacroSourceBackfillRefreshStatus: (
     runId: string,
@@ -1099,11 +1245,15 @@ export type MacroToolkitClientMethods = {
     products?: string[];
     dryRun?: boolean;
   }) => Promise<MacroToolkitCommodityFuturesRefreshResponse>;
+  getCommodityFuturesRefreshStatus: (
+    runId: string,
+  ) => Promise<MacroToolkitCommodityFuturesRefreshResponse>;
   refreshChoiceStock: (options?: {
     asOfDate?: string;
     refreshHistory?: boolean;
     refreshFactors?: boolean;
     factorMaxStockCount?: number | null;
+    idempotencyKey?: string;
   }) => Promise<MacroToolkitChoiceStockRefreshResponse>;
   getChoiceStockRefreshStatus: (runId: string) => Promise<MacroToolkitChoiceStockRefreshResponse>;
 };
@@ -1176,7 +1326,7 @@ export function createRealMacroToolkitClient({
         "/ui/macro/toolkit/cffex-member-rank/refresh",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: actionRequestHeaders(options?.idempotencyKey),
           body: JSON.stringify({
             trade_date: options?.tradeDate ?? null,
             contracts: options?.contracts ?? ["TS.CFE", "TF.CFE", "T.CFE", "TL.CFE"],
@@ -1197,7 +1347,7 @@ export function createRealMacroToolkitClient({
         "/ui/macro/toolkit/source-backfill/refresh",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: actionRequestHeaders(options.idempotencyKey),
           body: JSON.stringify({
             alias: options.alias,
             start_date: options.startDate ?? null,
@@ -1228,6 +1378,12 @@ export function createRealMacroToolkitClient({
           }),
         },
       ),
+    getCommodityFuturesRefreshStatus: (runId) =>
+      requestJson<MacroToolkitCommodityFuturesRefreshResponse["result"]>(
+        fetchImpl,
+        baseUrl,
+        `/ui/macro/toolkit/commodity-futures/refresh-status?run_id=${encodeURIComponent(runId)}`,
+      ),
     refreshChoiceStock: (options) =>
       requestActionJson<MacroToolkitChoiceStockRefreshResponse>(
         fetchImpl,
@@ -1235,7 +1391,7 @@ export function createRealMacroToolkitClient({
         "/ui/macro/toolkit/choice-stock/refresh",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: actionRequestHeaders(options?.idempotencyKey),
           body: JSON.stringify({
             as_of_date: options?.asOfDate ?? null,
             refresh_history: options?.refreshHistory ?? true,

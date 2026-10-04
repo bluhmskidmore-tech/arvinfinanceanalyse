@@ -1,29 +1,34 @@
+/*
+ * 全站默认深色终端（DESIGN.md §2.2），共享溯源面板不再以 IB 浅色为默认再让各页覆盖：
+ * 2026-09-02 走查 /average-balance 漏覆盖，深色页里长出一块近白卡片。
+ * 所有值先取 --dh-api-* 语义链，第二参数是原浅色字面量，仅供未登记 scope 的兼容回退。
+ */
 .formal-result-meta-panel {
-  --formal-result-meta-border-soft: var(--ib-hairline);
+  --formal-result-meta-border-soft: var(--dh-api-line-soft, var(--ib-hairline));
 
   margin-top: 24px;
   padding: 16px;
   border: 1px solid var(--formal-result-meta-border-soft);
-  border-radius: 16px;
-  background: var(--moss-color-card-bg);
+  border-radius: var(--dh-api-radius, 8px);
+  background: var(--dh-api-panel, var(--moss-color-card-bg));
 }
 
 .formal-result-meta-panel__title {
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink, var(--moss-color-neutral-900));
   font-size: 14px;
   font-weight: 600;
 }
 
 .formal-result-meta-panel__subtitle {
   margin-top: 6px;
-  color: var(--moss-color-neutral-500);
+  color: var(--dh-api-muted, var(--moss-color-neutral-500));
   font-size: 12px;
   line-height: 1.6;
 }
 
 .formal-result-meta-panel__empty {
   margin-top: 14px;
-  color: var(--moss-color-neutral-500);
+  color: var(--dh-api-muted, var(--moss-color-neutral-500));
   font-size: 13px;
 }
 
@@ -37,14 +42,14 @@
 .formal-result-meta-panel__card {
   padding: 14px;
   border: 1px solid var(--formal-result-meta-border-soft);
-  border-radius: 14px;
-  background: var(--moss-color-neutral-50);
+  border-radius: var(--dh-api-radius, 8px);
+  background: var(--dh-api-panel-2, var(--moss-color-neutral-50));
 }
 
 .formal-result-meta-panel__label {
-  color: var(--moss-color-neutral-500);
+  color: var(--dh-api-muted, var(--moss-color-neutral-500));
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -58,7 +63,7 @@
 }
 
 .formal-result-meta-panel__heading {
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink, var(--moss-color-neutral-900));
   font-size: 14px;
   font-weight: 600;
 }
@@ -75,7 +80,7 @@
   align-items: center;
   padding: 2px 8px;
   border: 1px solid var(--formal-result-meta-border-soft);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-size: 11px;
   font-weight: 600;
 }
@@ -85,7 +90,7 @@
   grid-template-columns: minmax(120px, 150px) minmax(0, 1fr);
   gap: 8px 12px;
   margin: 12px 0 0;
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft, var(--moss-color-neutral-600));
   font-size: 13px;
   line-height: 1.6;
 }
@@ -93,5 +98,49 @@
 .formal-result-meta-panel__value {
   margin: 0;
   /* trace/version 等长标识无断字点，不折行会溢出卡片边界。 */
+  overflow-wrap: anywhere;
+}
+
+.formal-result-meta-panel__diagnostics {
+  margin-top: var(--moss-space-4);
+  padding-top: var(--moss-space-3);
+  border-top: 1px solid var(--formal-result-meta-border-soft);
+}
+
+.formal-result-meta-panel__diagnostics > summary {
+  cursor: pointer;
+  color: var(--dh-api-muted, var(--moss-color-neutral-500));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.formal-result-meta-panel__diagnostics > summary:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+/* 超长复合标识：默认只露首段 + 计数，全文折叠且限高滚动，不再把哈希墙铺进版面。 */
+.formal-result-meta-panel__long-value {
+  min-width: 0;
+}
+
+.formal-result-meta-panel__long-value-summary {
+  cursor: pointer;
+  color: var(--dh-api-soft, var(--moss-color-neutral-600));
+}
+
+.formal-result-meta-panel__long-value-body {
+  display: block;
+  max-height: 160px;
+  margin-top: 6px;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--formal-result-meta-border-soft);
+  border-radius: var(--dh-api-radius, 8px);
+  background: var(--dh-api-panel, var(--moss-color-card-bg));
+  color: var(--dh-api-muted, var(--moss-color-neutral-500));
+  font-family: var(--moss-font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }

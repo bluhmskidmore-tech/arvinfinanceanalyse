@@ -77,6 +77,9 @@ def compute_macaulay_duration(
     coupon_rate: Decimal,
     ytm: Decimal,
     frequency: int = 1,
+    *,
+    report_date: date | None = None,
+    maturity_date: date | None = None,
 ) -> Decimal:
     """Macaulay 久期（年）。委托 ``bond_analytics.common`` 的逐期贴现实现。
 
@@ -88,9 +91,9 @@ def compute_macaulay_duration(
     误差 > 0.05 年、36.5% > 0.25 年。后果是 engine 路径与 Campisi 归因路径对同
     一批持仓给出不同久期（组合加权修正久期差 −9%）。
 
-    共享实现按 ROUND_CEILING 取期数、首期按残期定位、逐期贴现，并把 ≤0.01 期的
-    尾数残差并入上一期避免多算一期；已用独立教科书参考实现（浮点直算 / 高精度
-    Decimal 直算 / 几何级数闭合式 / dP·dy⁻¹ 数值导数四路交叉）验证全样本一致。
+    日期齐全时共享实现按到期日锚定的日历确定票息笔数；只有报告日严格落在票息网格才
+    用 k/f 年保留整期结果，其余日期采用票息日的 ACT/365 时点。无日期调用保留历史
+    0.01 期小碎期归并，不再用随期限增长的闰日预算推断票息日期。
 
     边界口径统一到共享实现，仅保留一处本地归一化：``frequency <= 0 → 1``。共享
     实现对 ``freq <= 0`` 直接返回剩余年限，而本函数的既有契约是退化为年付。
@@ -106,6 +109,8 @@ def compute_macaulay_duration(
             ytm=ytm,
             years_to_maturity=years_to_maturity,
             coupon_frequency=frequency,
+            report_date=report_date,
+            maturity_date=maturity_date,
         )
     except (OverflowError, ZeroDivisionError, ValueError, InvalidOperation):
         # 保留既有 fail-closed 契约（本函数从不向 Campisi 归因链抛异常），但改为
@@ -136,11 +141,14 @@ def _estimate_macaulay_duration_years(
     # 有票息缺 ytm 时按 par 假设（ytm=coupon）；与 common.estimate_duration 同源，
     # 避免两条路径各自维护一份 par 回退逻辑。
     effective_ytm, _par_fallback_used = resolve_ytm_with_par_fallback(
-        coupon_rate, ytm if ytm is not None else Decimal("0")
+        coupon_rate, ytm
     )
-    if coupon_rate > Decimal("0") and effective_ytm > Decimal("0"):
+    # 本路径唯一的本地归一化（见 compute_macaulay_duration 文档）：frequency <= 0 → 年付。
+    frequency = coupon_frequency if coupon_frequency > 0 else 1
+    if coupon_rate > Decimal("0") and Decimal("1") + effective_ytm / Decimal(str(frequency)) > 0:
         return compute_macaulay_duration(
-            years_to_maturity, coupon_rate, effective_ytm, frequency=coupon_frequency
+            years_to_maturity, coupon_rate, effective_ytm, frequency=frequency,
+            report_date=report_date, maturity_date=maturity_date,
         )
 
     return years_to_maturity
@@ -243,17 +251,17 @@ def modified_duration_from_macaulay(
     coupon_frequency: int = 1,
     wind_mod_dur: Decimal | None = None,
 ) -> Decimal:
-    """Macaulay → 修正久期；与旧 common.estimate_modified_duration(duration, ytm, ...) 一致。"""
+    """Macaulay → 修正久期；``ytm`` 应传久期估计实际使用的生效 ytm。
+
+    本路径的本地归一化与 Macaulay / 凸性一致：``coupon_frequency <= 0 → 年付``，
+    这样三项指标在无效频率下仍共用同一套 ``(1 + y/f)``，而不是修正久期单独退回
+    未折算的 Macaulay。折现基数非正时保守返回 Macaulay。
+    """
     if wind_mod_dur is not None and wind_mod_dur > Decimal("0"):
         return wind_mod_dur
 
-    if ytm <= Decimal("-0.99"):
-        return duration
-    if ytm <= 0:
-        return duration
-    if coupon_frequency <= 0:
-        return duration
-    divisor = Decimal("1") + ytm / Decimal(str(coupon_frequency))
+    frequency = coupon_frequency if coupon_frequency > 0 else 1
+    divisor = Decimal("1") + ytm / Decimal(str(frequency))
     if divisor <= 0:
         return duration
     return duration / divisor
@@ -267,6 +275,8 @@ def estimate_convexity_bond(
     *,
     coupon_rate: Decimal | None = None,
     years_to_maturity: Decimal | None = None,
+    report_date: date | None = None,
+    maturity_date: date | None = None,
 ) -> Decimal:
     """凸性；委托 ``bond_analytics.common.estimate_convexity`` 的薄封装。
 
@@ -293,4 +303,6 @@ def estimate_convexity_bond(
         coupon_frequency=frequency,
         coupon_rate=coupon_rate,
         years_to_maturity=years_to_maturity,
+        report_date=report_date,
+        maturity_date=maturity_date,
     )

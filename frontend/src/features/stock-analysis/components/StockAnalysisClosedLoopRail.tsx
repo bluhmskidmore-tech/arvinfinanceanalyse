@@ -182,7 +182,9 @@ export function StockAnalysisClosedLoopSummaryRail({
               </span>
               <strong className={toneTextClass(item.tone)}>{item.statusLabel}</strong>
             </div>
-            {(item.key === "replay" || (item.key === "adversarial_gate" && item.tone !== "positive")) &&
+            {(item.key === "entry_gate" ||
+              item.key === "replay" ||
+              (item.key === "adversarial_gate" && item.tone !== "positive")) &&
             item.detail ? (
               <Accordion className="stock-analysis-page__candidate-collapse stock-analysis-page__rail-collapse">
                 <AccordionItem

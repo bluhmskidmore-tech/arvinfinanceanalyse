@@ -19,6 +19,9 @@
   "allowed_scope": [
     "frontend/src/features/product-category-pnl/",
     "frontend/src/api/",
+    "frontend/src/mocks/mockApiClient.ts",
+    "frontend/src/mocks/productCategoryMockClient.ts",
+    "frontend/src/mocks/qdbGlMonthlyAnalysisMockClient.ts",
     "frontend/src/test/"
   ],
   "pr_trigger_scope": [
@@ -28,14 +31,16 @@
     "frontend/src/api/clientFactoryOptions.ts",
     "frontend/src/api/transport.ts",
     "frontend/src/api/httpResponseError.ts",
-    "frontend/src/api/mockApiClient.ts",
+    "frontend/src/mocks/mockApiClient.ts",
     "frontend/src/api/contracts.ts",
     "frontend/src/api/contracts/core.ts",
     "frontend/src/api/contracts/pnl.ts",
     "frontend/src/api/contracts/balanceLedger.ts",
     "frontend/src/api/contracts/cubeAdb.ts",
     "frontend/src/api/productCategoryClient.ts",
+    "frontend/src/mocks/productCategoryMockClient.ts",
     "frontend/src/api/qdbGlMonthlyAnalysisClient.ts",
+    "frontend/src/mocks/qdbGlMonthlyAnalysisMockClient.ts",
     "frontend/src/test/ProductCategoryPnl*",
     "frontend/src/test/renderWorkbenchApp.tsx",
     "frontend/src/test/preloadWorkbenchRouteModules.ts",

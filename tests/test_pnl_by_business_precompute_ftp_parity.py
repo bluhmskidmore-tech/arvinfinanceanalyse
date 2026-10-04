@@ -27,7 +27,7 @@ pnl_service_module = load_module(
 
 def test_precompute_rule_version_tracks_current_analysis_contract() -> None:
     assert pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION == (
-        "rv_pnl_by_business_precompute_v8"
+        "rv_pnl_by_business_precompute_v18"
     )
 
 
@@ -164,7 +164,7 @@ def test_precompute_fetch_and_metadata_reject_changed_effective_ftp_rate(tmp_pat
     assert stale_metadata["is_current"] is False
 
 
-def test_precompute_read_helper_forwards_effective_ftp_rate() -> None:
+def test_precompute_read_helper_forwards_effective_ftp_rate(tmp_path) -> None:
     received: list[dict[str, object]] = []
 
     class FakeRepository:
@@ -174,7 +174,7 @@ def test_precompute_read_helper_forwards_effective_ftp_rate() -> None:
 
     pnl_service_module._fetch_pnl_by_business_precompute(
         FakeRepository(),
-        governance_dir="missing-governance-dir",
+        governance_dir=str(tmp_path / "missing-governance-dir"),
         year=2027,
         as_of_date="2027-12-31",
         result_kind="monthly",
@@ -184,6 +184,89 @@ def test_precompute_read_helper_forwards_effective_ftp_rate() -> None:
     )
 
     assert received[0]["effective_ftp_rate_pct"] == Decimal("1.6000")
+
+
+def test_precompute_source_version_cache_is_exact_and_request_supplied(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import duckdb
+
+    duckdb_path = tmp_path / "precompute-source-version-cache.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_pnl_by_business_precompute (
+                year integer, as_of_date varchar, result_kind varchar,
+                dimension varchar, business_key varchar,
+                payload_json varchar, source_version varchar, rule_version varchar,
+                generated_at timestamp
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_pnl_by_business_precompute values (
+                ?, ?, ?, '', '', '{"current": true}', 'sv-exact', ?, current_timestamp
+            )
+            """,
+            [
+                [2026, "2026-08-31", "ytd", pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION],
+                [2026, "2026-08-31", "monthly", pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION],
+                [2026, "2026-07-31", "monthly", pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION],
+                [2025, "2025-08-31", "ytd", pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION],
+            ],
+        )
+    finally:
+        conn.close()
+
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+    source_calls: list[dict[str, object]] = []
+
+    def fake_source_version(**kwargs) -> str:
+        source_calls.append(kwargs)
+        return "sv-exact"
+
+    monkeypatch.setattr(repo, "pnl_by_business_precompute_source_version", fake_source_version)
+    source_version_cache: dict[tuple[str, int, str, str, str], str] = {}
+
+    def fetch(
+        *,
+        year: int = 2026,
+        as_of_date: str = "2026-08-31",
+        result_kind: str = "monthly",
+        ftp: str = "1.60",
+        supplemental: str = "adj-a",
+    ) -> dict[str, object] | None:
+        return repo.fetch_pnl_by_business_precompute(
+            year=year,
+            as_of_date=as_of_date,
+            result_kind=result_kind,
+            dimension="",
+            business_key="",
+            effective_ftp_rate_pct=Decimal(ftp),
+            supplemental_source_version=supplemental,
+            source_version_cache=source_version_cache,
+        )
+
+    assert fetch(result_kind="ytd") == {"current": True}
+    assert fetch(result_kind="monthly", ftp="1.6000") == {"current": True}
+    assert len(source_calls) == 1
+
+    assert fetch(ftp="1.61") == {"current": True}
+    assert fetch(supplemental="adj-b") == {"current": True}
+    assert fetch(as_of_date="2026-07-31") == {"current": True}
+    assert fetch(year=2025, as_of_date="2025-08-31", result_kind="ytd") == {"current": True}
+    assert len(source_calls) == 5
+    assert {key[1:] for key in source_version_cache} == {
+        (2026, "2026-08-31", "1.6", "adj-a"),
+        (2026, "2026-08-31", "1.61", "adj-a"),
+        (2026, "2026-08-31", "1.6", "adj-b"),
+        (2026, "2026-07-31", "1.6", "adj-a"),
+        (2025, "2025-08-31", "1.6", "adj-a"),
+    }
+    assert {key[0] for key in source_version_cache} == {str(duckdb_path)}
 
 
 def test_precompute_classification_matches_live_when_only_formal_metadata_is_available() -> None:
@@ -449,8 +532,81 @@ def test_formal_fact_rule_gate_rejects_stale_2026_h1_rows(tmp_path) -> None:
         repo.require_formal_pnl_rule_version(
             start_date="2026-01-01",
             end_date="2026-06-30",
-            expected_rule_version="rv_pnl_phase2_materialize_v3",
+            expected_rule_version="rv_pnl_phase2_materialize_v7",
         )
+
+
+@pytest.mark.parametrize("report_date", ["2000-01-31", "2024-12-31", "2025-01-31", "2025-12-31", "2026-07-31", "2100-12-31"])
+def test_current_formal_fact_gate_rejects_stale_rules_for_all_dates(tmp_path, report_date) -> None:
+    import duckdb
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    with duckdb.connect(str(duckdb_path)) as conn:
+        conn.execute("create table fact_formal_pnl_fi (report_date varchar, rule_version varchar)")
+        conn.execute("insert into fact_formal_pnl_fi values (?, ?)", [report_date, "rv_pnl_phase2_materialize_v4"])
+
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+    with pytest.raises(RuntimeError, match="stale rule versions"):
+        repo.require_current_formal_pnl_rule_version(year=int(report_date[:4]), as_of_date=report_date)
+
+    with duckdb.connect(str(duckdb_path)) as conn:
+        conn.execute("update fact_formal_pnl_fi set rule_version = ?", [pnl_repo_module.PNL_FORMAL_FACT_RULE_VERSION])
+    repo.require_current_formal_pnl_rule_version(year=int(report_date[:4]), as_of_date=report_date)
+
+
+@pytest.mark.parametrize("report_date", ["2000-01-31", "2024-12-31", "2025-01-31", "2025-12-31", "2026-07-31", "2100-12-31"])
+def test_current_fact_gate_rejects_legacy_nonstd_even_when_fi_is_current(tmp_path, report_date) -> None:
+    import duckdb
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    with duckdb.connect(str(duckdb_path)) as conn:
+        conn.execute("create table fact_formal_pnl_fi (report_date varchar, rule_version varchar)")
+        conn.execute("create table fact_nonstd_pnl_bridge (report_date varchar, rule_version varchar)")
+        conn.execute("insert into fact_formal_pnl_fi values (?, ?)", [report_date, pnl_repo_module.PNL_FORMAL_FACT_RULE_VERSION])
+        conn.execute("insert into fact_nonstd_pnl_bridge values (?, 'rv_pnl_phase2_materialize_v1')", [report_date])
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+    with pytest.raises(RuntimeError, match="fact_nonstd_pnl_bridge=rv_pnl_phase2_materialize_v1"):
+        repo.require_current_formal_pnl_rule_version(year=int(report_date[:4]), as_of_date=report_date)
+
+    with duckdb.connect(str(duckdb_path)) as conn:
+        conn.execute("update fact_nonstd_pnl_bridge set rule_version = ?", [pnl_repo_module.PNL_FORMAL_FACT_RULE_VERSION])
+    repo.require_current_formal_pnl_rule_version(year=int(report_date[:4]), as_of_date=report_date)
+
+
+@pytest.mark.parametrize("unallocated_amount", [Decimal("60"), Decimal("-140")])
+def test_monthly_live_and_precompute_classify_legacy_assets_and_use_source_total_share(unallocated_amount) -> None:
+    common = {
+        "report_date": "2025-01-31", "portfolio_name": "FI Desk", "cost_center": "CC100",
+        "currency_basis": "CNY", "accounting_basis": "FVTPL", "invest_type_std": "T",
+        "interest_income_514": Decimal("0"), "fair_value_change_516": Decimal("0"),
+        "manual_adjustment": Decimal("0"),
+    }
+    pnl_rows = (
+        {**common, "source_kind": "nonstd_bridge", "instrument_code": "G2-TRUST",
+         "capital_gain_517": Decimal("100"), "total_pnl": Decimal("100")},
+        {**common, "source_kind": "formal_fi", "instrument_code": "112-TEST",
+         "asset_class": "大额存单", "instrument_name": "测试银行CD001",
+         "capital_gain_517": Decimal("40"), "total_pnl": Decimal("40")},
+        {**common, "source_kind": "nonstd_bridge", "instrument_code": "ZZ-UNALLOCATED",
+         "capital_gain_517": unallocated_amount, "total_pnl": unallocated_amount},
+    )
+    kwargs = {
+        "pnl_rows": pnl_rows, "balance_rows": (), "loaded_dates": ["2025-01-31"],
+        "ftp_rate_pct": Decimal("1.75"),
+    }
+    live = pnl_service_module._build_pnl_by_business_monthly_buckets(**kwargs)[0]
+    precomputed = precompute_module._build_pnl_by_business_monthly_buckets(**kwargs)[0]
+    assert precomputed.model_dump() == live.model_dump()
+    assert live.classified_parent_total_pnl == Decimal("140")
+    assert live.source_total_pnl == Decimal("140") + unallocated_amount
+    assert live.unallocated_pnl == unallocated_amount
+    assert live.unallocated_row_count == 1
+    assert live.reconciliation_delta == Decimal("0")
+    items = {item.row_key: item for item in live.items}
+    assert items["asset_zqtz_detail_trust_plan"].total_pnl == Decimal("100")
+    for key, expected in [("asset_zqtz_non_bottom_investment", Decimal("0.5")),
+                          ("asset_zqtz_interbank_cd", Decimal("0.2"))]:
+        assert items[key].proportion == (expected if live.source_total_pnl else None)
 
 
 def test_precompute_source_fingerprint_includes_fact_rule_version(tmp_path) -> None:
@@ -492,7 +648,7 @@ def test_precompute_source_fingerprint_includes_fact_rule_version(tmp_path) -> N
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
-            "update fact_formal_pnl_fi set rule_version = 'rv_pnl_phase2_materialize_v3'"
+            "update fact_formal_pnl_fi set rule_version = 'rv_pnl_phase2_materialize_v7'"
         )
     finally:
         conn.close()
@@ -515,7 +671,7 @@ def test_precompute_source_fingerprint_includes_fact_rule_version(tmp_path) -> N
     assert current_source_version != adjusted_source_version
     assert "sv_pnl_by_business_adjustments_v1:test-change" in adjusted_source_version
     assert "rv_pnl_phase2_materialize_v1" in stale_source_version
-    assert "rv_pnl_phase2_materialize_v3" in current_source_version
+    assert "rv_pnl_phase2_materialize_v7" in current_source_version
 
 
 def test_precompute_source_fingerprint_changes_when_balance_currency_changes(tmp_path) -> None:
@@ -664,9 +820,9 @@ def test_precompute_source_fingerprint_changes_when_pnl_is_redistributed_between
             """
             insert into fact_formal_pnl_fi values
                 ('2026-06-30', '250001.IB', 'CNY', 'CNY', 100, 0, 0, 0, 100,
-                 'rv_pnl_phase2_materialize_v3'),
+                 'rv_pnl_phase2_materialize_v7'),
                 ('2026-06-30', 'XS2707583121', 'CNY', 'USD', 200, 0, 0, 0, 200,
-                 'rv_pnl_phase2_materialize_v3')
+                 'rv_pnl_phase2_materialize_v7')
             """
         )
     finally:

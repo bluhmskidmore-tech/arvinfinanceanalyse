@@ -1,7 +1,8 @@
 import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 
-import ReactECharts from "../../../lib/echarts";
+import DeferredChart from "../../../lib/echarts";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import { EM_DASH } from "../../../utils/format";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
 import {
@@ -13,7 +14,6 @@ import { useDeferredChartMount } from "./useDeferredChartMount";
 import styles from "./portfolioHome.module.css";
 
 const CHART_COLORS = PORTFOLIO_DIST_CHART_COLORS;
-const EMPTY_BAR_COUNT = 5;
 
 function toneClass(tone: ModuleHomeTone) {
   if (tone === "ok") return styles.toneOk;
@@ -83,20 +83,31 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
       {hasData ? (
         <div className={styles.distBody}>
           <div className={styles.distChartCol} ref={containerRef}>
-            {ready ? (
-              <ReactECharts
-                option={buildPortfolioPieOption(rows)}
-                opts={{ renderer: "canvas" }}
-                notMerge
-                lazyUpdate
-                style={{ height: "var(--dist-chart-height, 188px)", width: "100%" }}
-                onChartReady={onChartReady}
-              />
-            ) : null}
-            <div className={styles.distChartCenter} aria-hidden="true">
-              <span>{panel.totalDisplay ? "合计" : "Top1"}</span>
-              <strong>{panel.totalDisplay ?? (leader ? leader.share : EM_DASH)}</strong>
-            </div>
+            <ChartCard
+              flat
+              ariaLabel={panel.title}
+              option={buildPortfolioPieOption(rows)}
+              height={160}
+              legend="none"
+              canvasOverlay={
+                <div className={styles.distChartCenter}>
+                  <span>{panel.totalDisplay ? "合计" : "Top1"}</span>
+                  <strong>{panel.totalDisplay ?? (leader ? leader.share : EM_DASH)}</strong>
+                </div>
+              }
+              chartRenderer={({ option, height }) =>
+                ready ? (
+                  <DeferredChart
+                    option={option}
+                    opts={{ renderer: "canvas" }}
+                    notMerge
+                    lazyUpdate
+                    style={{ height, width: "100%" }}
+                    onChartReady={onChartReady}
+                  />
+                ) : null
+              }
+            />
           </div>
 
           <ul className={styles.distList}>
@@ -134,16 +145,7 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
           data-tone={panel.tone}
           data-testid={`module-home-distribution-empty-${panel.key}`}
         >
-          <div className={styles.distEmptyChart} aria-hidden="true">
-            {Array.from({ length: EMPTY_BAR_COUNT }, (_, index) => (
-              <span data-color-index={index % CHART_COLORS.length} key={index} />
-            ))}
-          </div>
-          <div className={styles.distEmptyBars} aria-hidden="true">
-            {Array.from({ length: EMPTY_BAR_COUNT }, (_, index) => (
-              <span data-color-index={index % CHART_COLORS.length} key={index} />
-            ))}
-          </div>
+          {/* 空态收缩为一句说明（DESIGN §5 / 结论 13）：不再画 conic-gradient 假环与零值假柱。 */}
           <p className={`${styles.distMeta} ${toneClass(panel.tone)}`}>{panel.stateDetail}</p>
         </div>
       )}

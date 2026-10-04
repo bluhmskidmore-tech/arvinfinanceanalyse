@@ -1,10 +1,16 @@
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
+import type { ApiEnvelope } from "../api/contracts";
+import type {
+  MacroToolkitCommodityFuturesRefreshRun,
+  MacroToolkitModelChainResults,
+} from "../api/macroToolkitClient";
+import { CommodityRefreshResultPanel } from "../features/macro-toolkit/panels/MacroToolkitCrisisPanels";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -280,6 +286,30 @@ function withCrisisScoreInputEvidence(
   };
 }
 
+function withModelChainHeadline(
+  envelope: ApiEnvelope<MacroToolkitModelChainResults>,
+  modelId: string,
+  headline: string,
+) {
+  return {
+    ...envelope,
+    result: {
+      ...envelope.result,
+      steps: envelope.result.steps.map((step) => ({
+        ...step,
+        models: step.models.map((model) =>
+          model.id === modelId
+            ? {
+                ...model,
+                headline,
+              }
+            : model,
+        ),
+      })),
+    },
+  };
+}
+
 describe("MacroToolkitPage", () => {
   it("imports the page stylesheet", () => {
     const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
@@ -287,15 +317,17 @@ describe("MacroToolkitPage", () => {
     expect(source).toContain('import "./MacroToolkitPage.css";');
   });
 
-  it("uses HeroUI card variants with Tailwind visual tokens for the toolkit cockpit", () => {
+  it("uses the page-local cockpit surface tokens for the toolkit cockpit", () => {
     const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
 
-    expect(source).toContain('import { cardVariants } from "@heroui/styles";');
-    expect(source).toContain("MACRO_TOOLKIT_HERO_CARD_SLOTS");
-    expect(source).toContain("macro-toolkit-tailwind-cockpit");
+    expect(source).toContain('data-testid="macro-toolkit-cockpit"');
+    expect(source).toContain("macro-toolkit-cockpit macro-toolkit-cockpit--toolkit");
     expect(source).toContain('data-slot="card"');
     expect(source).toContain('data-slot="card-content"');
-    expect(source).toContain("border border-default-200 bg-background/95 text-foreground shadow-sm");
+    expect(extractCssBlock(css, ".macro-toolkit-cockpit")).toContain(
+      "box-shadow: var(--moss-shadow-card);",
+    );
   });
 
   it("defines the page-local macro toolkit surface tokens", () => {
@@ -346,8 +378,11 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     renderWorkbenchApp(["/macro-toolkit"]);
 
-    await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+    await screen.findByTestId("macro-toolkit-cockpit");
     await screen.findByTestId("macro-toolkit-house-view");
+    // Stage 0 has no loading placeholder heading; wait for the real analysis
+    // before stage 1 can mount a transient heading with the same accessible name.
+    await screen.findByRole("heading", { level: 2, name: "核心信号" });
 
     expect(observer.observe).toHaveBeenCalledTimes(observeCallCount);
     expect(screen.queryByTestId("macro-toolkit-operations-console")).not.toBeInTheDocument();
@@ -381,23 +416,27 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
         expect(screen.queryByTestId("macro-toolkit-operations-console")).not.toBeInTheDocument();
       }
 
+      // 信息分层后业务段（01…07）在 stage 3 收尾，运维与证据层从同一 stage 起挂：
+      // 策略展示是业务段最后一块，模型就绪度是运维段第一块。
       if (stage === 3) {
+        expect(await screen.findByTestId("macro-toolkit-strategy-detail")).toBeInTheDocument();
+        expect(await screen.findByTestId("macro-toolkit-ops-layer")).toBeInTheDocument();
         expect(await screen.findByTestId("macro-toolkit-model-readiness-detail")).toHaveAttribute(
           "id",
           "macro-toolkit-model-readiness-detail",
         );
-        expect(screen.queryByTestId("macro-toolkit-strategy-detail")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-analysis-detail")).not.toBeInTheDocument();
       }
 
       if (stage === 4) {
         expect(await screen.findByText("策略展示")).toBeInTheDocument();
-        expect(await screen.findByTestId("macro-toolkit-strategy-detail")).toBeInTheDocument();
-        expect(screen.queryByTestId("macro-toolkit-analysis-detail")).not.toBeInTheDocument();
+        expect(await screen.findByTestId("macro-toolkit-analysis-detail")).toBeInTheDocument();
+        expect(await screen.findByTestId("macro-toolkit-data-health-detail")).toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-ops-block-crisis-evidence")).not.toBeInTheDocument();
       }
 
       if (stage === 5) {
-        expect(await screen.findByTestId("macro-toolkit-analysis-detail")).toBeInTheDocument();
-        expect(await screen.findByTestId("macro-toolkit-data-health-detail")).toBeInTheDocument();
+        expect(await screen.findByTestId("macro-toolkit-ops-block-crisis-evidence")).toBeInTheDocument();
         expect(screen.queryByTestId("macro-toolkit-operations-console")).not.toBeInTheDocument();
       }
 
@@ -464,7 +503,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     try {
       renderWorkbenchApp(["/macro-toolkit"]);
 
-      await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+      await screen.findByTestId("macro-toolkit-cockpit");
       expect(observer.observe).toHaveBeenCalled();
       expect(screen.queryByTestId("macro-toolkit-analysis-detail")).not.toBeInTheDocument();
 
@@ -492,7 +531,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     renderWorkbenchApp(["/macro-toolkit"]);
 
-    await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+    await screen.findByTestId("macro-toolkit-cockpit");
     expect(observer.observe).toHaveBeenCalled();
     expect(screen.queryByTestId("macro-toolkit-tool-execution-detail")).not.toBeInTheDocument();
     expect(screen.queryByTestId("macro-toolkit-script-artifact-detail")).not.toBeInTheDocument();
@@ -506,12 +545,85 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(expandAll).toHaveTextContent("已展开全部");
   });
 
+  it("splits the toolkit page into a business layer and a collapsed operations layer", async () => {
+    const observer = stubIntersectionObserver();
+    let observeCallCount = 1;
+
+    renderWorkbenchApp(["/macro-toolkit"]);
+
+    await screen.findByTestId("macro-toolkit-cockpit");
+
+    for (let stage = 1; stage <= 7; stage += 1) {
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+      if (stage < 7) {
+        observeCallCount += 1;
+        await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(observeCallCount));
+      }
+    }
+
+    const opsLayer = await screen.findByTestId("macro-toolkit-ops-layer");
+    expect(within(opsLayer).getByText("运维与证据层")).toBeInTheDocument();
+    expect(
+      within(opsLayer).getByText("以下为数据健康、脚本执行与产物证据，不参与业务方向判断。"),
+    ).toBeInTheDocument();
+
+    // 业务段（含策略展示这块业务段末尾）整体排在运维与证据层之前。
+    const strategySection = screen.getByTestId("macro-toolkit-strategy-detail");
+    expect(strategySection.compareDocumentPosition(opsLayer)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    // 常态运维状态（待补项、报告清单）默认折叠，但计数留在折叠标题上。
+    const dataHealthBlock = within(opsLayer).getByTestId("macro-toolkit-ops-block-data-health");
+    expect(dataHealthBlock).not.toHaveAttribute("open");
+    expect(dataHealthBlock).toHaveTextContent(/\d+ 项待处理/);
+    expect(dataHealthBlock).toHaveTextContent(/指标覆盖 \d+\/\d+/);
+    expect(within(dataHealthBlock).getByTestId("macro-toolkit-data-health-detail")).toBeInTheDocument();
+
+    // 折叠只影响可见性：报告材料包与执行回执的 DOM 常驻，深链与页内搜索仍可命中。
+    const reportBundleBlock = within(opsLayer).getByTestId("macro-toolkit-ops-block-report-bundle");
+    expect(reportBundleBlock).not.toHaveAttribute("open");
+    expect(within(reportBundleBlock).getByTestId("macro-toolkit-report-bundle")).toBeInTheDocument();
+    expect(
+      within(opsLayer).getByTestId("macro-toolkit-ops-block-execution-receipt"),
+    ).not.toHaveAttribute("open");
+    expect(screen.getByTestId("macro-toolkit-tool-execution-detail")).toBeInTheDocument();
+  });
+
+  it("forces every operations layer block open for the full-document mode", async () => {
+    const observer = stubIntersectionObserver();
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"]);
+
+    await screen.findByTestId("macro-toolkit-cockpit");
+    expect(observer.observe).toHaveBeenCalled();
+
+    await user.click(screen.getByTestId("macro-toolkit-expand-all-content"));
+
+    const opsLayer = await screen.findByTestId("macro-toolkit-ops-layer");
+    for (const blockKey of [
+      "model-readiness",
+      "data-health",
+      "crisis-evidence",
+      "operations-console",
+      "report-bundle",
+      "execution-receipt",
+    ]) {
+      expect(within(opsLayer).getByTestId(`macro-toolkit-ops-block-${blockKey}`)).toHaveAttribute(
+        "open",
+      );
+    }
+  });
+
   it("materializes the full document before printing", async () => {
     const observer = stubIntersectionObserver();
 
     renderWorkbenchApp(["/macro-toolkit"]);
 
-    await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+    await screen.findByTestId("macro-toolkit-cockpit");
     expect(observer.observe).toHaveBeenCalled();
     expect(screen.queryByTestId("macro-toolkit-tool-execution-detail")).not.toBeInTheDocument();
 
@@ -933,7 +1045,14 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     const backfillButton = await within(dataHealthDetail).findByRole("button", { name: "需要补齐来源数据" });
     await user.click(backfillButton);
 
-    await waitFor(() => expect(sourceBackfillCalls).toEqual([expect.objectContaining({ alias: "M0041813" })]));
+    await waitFor(() =>
+      expect(sourceBackfillCalls).toEqual([
+        expect.objectContaining({
+          alias: "M0041813",
+          idempotencyKey: expect.any(String),
+        }),
+      ]),
+    );
     await waitFor(() =>
       expect(within(laneOverview).getByRole("link", { name: /数据健康.*/s })).toHaveTextContent("待确认"),
     );
@@ -1164,11 +1283,25 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(
       await screen.findByRole("heading", { level: 1, name: "宏观工具" }),
     ).toBeInTheDocument();
-    const cockpit = await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+    const cockpit = await screen.findByTestId("macro-toolkit-cockpit");
     expect(cockpit).toHaveClass("macro-toolkit-cockpit--toolkit");
     const houseView = await screen.findByLabelText("宏观工具 House View");
     expect(houseView).toHaveTextContent("投研结论");
+    expect(houseView).toHaveTextContent("观察结论，须经复核后使用");
     expect(houseView).toHaveTextContent("投研观点");
+    expect(houseView).not.toHaveTextContent("可执行宏观判断");
+    const houseViewBoundary = within(houseView).getByTestId(
+      "macro-toolkit-house-view-contract-boundary",
+    );
+    expect(houseViewBoundary).toHaveTextContent("非正式口径");
+    // 结论性披露留在正文；端点 kind 与规则版本是系统标识，收进 title 留痕。
+    expect(houseViewBoundary).not.toHaveTextContent("macro_toolkit.analysis");
+    expect(houseViewBoundary).not.toHaveTextContent("rv_macro_toolkit_ui_v1");
+    expect(houseViewBoundary).toHaveAttribute(
+      "title",
+      "结果口径 macro_toolkit.analysis · 规则版本 rv_macro_toolkit_ui_v1",
+    );
+    expect(houseView).toHaveTextContent("禁止正式使用");
     const governanceGate = await screen.findByTestId("macro-toolkit-governance-gate");
     expect(governanceGate).toHaveTextContent("治理闸门");
     expect(governanceGate).toHaveTextContent("口径与数据闸门");
@@ -1226,6 +1359,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(within(operationsConsole).queryByRole("button", { name: /刷新股票数据/ })).not.toBeInTheDocument();
     expect(within(operationsConsole).queryByRole("button", { name: /^reload 刷新席位$/ })).not.toBeInTheDocument();
     expect(within(operationsConsole).queryByRole("button", { name: /预估商品期货/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/已接线能力/)).toBeInTheDocument();
     const metaRail = await screen.findByTestId("macro-toolkit-meta-rail");
     const evidenceLinks = within(metaRail).getByLabelText("深度证据入口");
     expect(evidenceLinks).toHaveTextContent("策略证据");
@@ -1329,6 +1463,9 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(within(indicatorSection).getAllByText("近期走势").length).toBeGreaterThan(0);
     const dr007Sparkline = within(indicatorSection).getByRole("img", { name: "DR007 近 8 期走势" });
     expect(dr007Sparkline.querySelector("polyline")).not.toBeNull();
+    // 来源列保留供应商名（业务信息）；供应商内部序列代码收进单元格 title。
+    expect(within(indicatorSection).getByTitle("choice · CA.DR007")).toHaveTextContent("choice");
+    expect(indicatorSection).not.toHaveTextContent("CA.DR007");
     expect(within(indicatorSection).getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.queryByRole("heading", { level: 2, name: "功能补齐方案" })).not.toBeInTheDocument();
     expect(
@@ -1365,6 +1502,19 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(
       await screen.findByRole("heading", { level: 2, name: "策略展示" }),
     ).toBeInTheDocument();
+    for (const title of ["核心信号", "市场踩踏风险", "指标矩阵", "功能结果", "策略展示"]) {
+      const heading = screen.getByRole("heading", { level: 2, name: title });
+      const sectionHead = requireClosestElement(
+        heading.closest("header"),
+        `${title} shared section head`,
+      );
+      expect(sectionHead).toHaveAttribute("data-numbered", "external");
+      expect(sectionHead).not.toHaveAttribute("data-counter-increment");
+      expect(sectionHead).toHaveAttribute("data-content-gap", "flush");
+      expect(sectionHead.style.getPropertyValue("--layout-section-head-counter")).toBe(
+        "mt-section",
+      );
+    }
     const strategySupply = await screen.findByLabelText("策略供数闭环");
     expect(strategySupply).toHaveTextContent("完整链路 0/4");
     expect(strategySupply).toHaveTextContent("部分链路 0");
@@ -1420,6 +1570,73 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
         "风险平价 + 风险预算",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("keeps directional judgment visibly closed when backend gates the primary signal", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          conclusion: {
+            stance: "数据不足",
+            tone: "missing" as const,
+            summary: "最近一次定时宏观刷新未通过完整性校验，当前指标仅作未验证观察证据。",
+            recommended_action: "先完成宏观数据刷新并通过回执校验，再形成方向性判断。",
+          },
+          primary_signal: {
+            key: null,
+            selection_status: "blocked" as const,
+            reason_code: "refresh_receipt_blocked",
+            rule_version: "rv_macro_primary_signal_risk_first_v1",
+          },
+          warnings: ["方向性结论已关闭；请先完成回执校验。"],
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const houseView = await screen.findByTestId("macro-toolkit-house-view");
+    await within(houseView).findByText("数据不足");
+    await within(houseView).findByText("方向性判断已关闭");
+    await within(houseView).findByText("1 项输入受限，方向性判断已关闭");
+    expect(houseView).toHaveTextContent("先完成宏观数据刷新并通过回执校验，再形成方向性判断。");
+    expect(houseView).not.toHaveTextContent("不影响已展示结论");
+  });
+
+  it("follows the backend primary-signal gate even when the conclusion tone is not missing", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          conclusion: {
+            ...analysisEnvelope.result.conclusion,
+            tone: "neutral" as const,
+          },
+          primary_signal: {
+            key: null,
+            selection_status: "blocked" as const,
+            reason_code: "refresh_receipt_blocked",
+            rule_version: "rv_macro_primary_signal_risk_first_v1",
+          },
+          warnings: [],
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const houseView = await screen.findByTestId("macro-toolkit-house-view");
+    await within(houseView).findByText("方向性判断已关闭");
+    expect(houseView).not.toHaveTextContent("尚无可排序信号");
   });
 
   it("keeps toolkit data-health deferred tickets in committee language", async () => {
@@ -1830,7 +2047,13 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     await user.click(within(operationsConsole).getByRole("button", { name: /刷新席位明细/ }));
 
-    await waitFor(() => expect(cffexCalls).toHaveLength(1));
+    await waitFor(() =>
+      expect(cffexCalls).toEqual([
+        expect.objectContaining({
+          idempotencyKey: expect.any(String),
+        }),
+      ]),
+    );
     await waitFor(() => {
       expect(within(operationsConsole).getByTestId("macro-toolkit-action-receipt")).toHaveTextContent("已完成");
     });
@@ -1852,7 +2075,13 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     await user.click(within(operationsConsole).getByRole("button", { name: /刷新股票策略明细/ }));
 
-    await waitFor(() => expect(choiceStockCalls).toHaveLength(1));
+    await waitFor(() =>
+      expect(choiceStockCalls).toEqual([
+        expect.objectContaining({
+          idempotencyKey: expect.any(String),
+        }),
+      ]),
+    );
     await waitFor(() => {
       expect(within(operationsConsole).getByTestId("macro-toolkit-action-receipt")).toHaveTextContent("刷新股票策略");
     });
@@ -2333,12 +2562,12 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(fullDataHealth).toHaveTextContent("PMI_MISSING");
     await user.click(within(fullDataHealth).getByRole("button", { name: /需要补齐来源数据/ }));
     expect(sourceBackfillCalls).toEqual([
-      {
+      expect.objectContaining({
         alias: "M0041813",
-        startDate: undefined,
         endDate: "2026-04-30",
         sources: undefined,
-      },
+        idempotencyKey: expect.any(String),
+      }),
     ]);
     const operationsConsoleAfterBackfill = await screen.findByTestId("macro-toolkit-operations-console");
     const sourceBackfillReceipt = within(operationsConsoleAfterBackfill).getByTestId("macro-toolkit-action-receipt");
@@ -2363,8 +2592,8 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     expect(crisisEvidence).toHaveTextContent("分数组件覆盖");
     expect(crisisEvidence).toHaveTextContent("5/5");
-    const crisisHistory = within(crisisEvidence).getByLabelText("Crisis Score 走势");
-    expect(crisisHistory).toHaveTextContent("Crisis Score 走势");
+    const crisisHistory = within(crisisEvidence).getByRole("figure", { name: "危机分走势" });
+    expect(crisisHistory).toHaveTextContent("危机分走势");
     expect(crisisHistory).toHaveTextContent("近 4 期");
     expect(crisisHistory).toHaveTextContent("历史分位 36.2%");
     expect(within(crisisHistory).getByTestId("macro-toolkit-echarts-stub")).toBeInTheDocument();
@@ -2482,12 +2711,15 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(promotionRulePack).toHaveTextContent("规则只用于审批前复核，不改变 Crisis Score 公式");
     expect(promotionRulePack).toHaveTextContent("待人工判断 2");
     expect(promotionRulePack).toHaveTextContent("不建议进入公式 4");
-    expect(promotionRulePack).toHaveTextContent("规则版本 shadow_rule_v1");
-    expect(promotionRulePack).toHaveTextContent("样本阈值 >=20 个重叠样本");
+    // 阈值文案来自后端 admission envelope 的 minimum_crisis_sample_count / correlation_threshold
+    // 全局透传字段，不再是前端本地 shadow_rule_v1 常量，也不再借用某个品种的 minimum_sample_count
+    // 当全局"样本阈值"（该字段逐品种取值，展示在下方每条候选明细里）。
+    expect(promotionRulePack).toHaveTextContent("规则版本 rv_macro_crisis_commodity_admission_v1");
     expect(promotionRulePack).toHaveTextContent("危机样本阈值 >=5 个高 Crisis Score 样本");
     expect(promotionRulePack).toHaveTextContent("相关性阈值 |corr|>=0.20 才可直接通过");
-    const auditNote = within(promotionRulePack).getByLabelText("shadow_rule_v1 审计注记");
-    expect(auditNote).toHaveTextContent("shadow_rule_v1 审计注记");
+    expect(promotionRulePack).not.toHaveTextContent("个重叠样本");
+    const auditNote = within(promotionRulePack).getByLabelText("rv_macro_crisis_commodity_admission_v1 审计注记");
+    expect(auditNote).toHaveTextContent("rv_macro_crisis_commodity_admission_v1 审计注记");
     expect(auditNote).toHaveTextContent("用途：商品候选进入公式前的影子复核");
     expect(auditNote).toHaveTextContent("边界：不写入 Crisis Score，不改变权重");
     expect(auditNote).toHaveTextContent("审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交");
@@ -2498,21 +2730,18 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(formulaBoundary).toHaveTextContent("影子候选");
     expect(formulaBoundary).toHaveTextContent("Copper futures / Crude oil futures");
     expect(formulaBoundary).toHaveTextContent("当前未计入 Crisis Score");
-    expect(promotionRulePack).toHaveTextContent("Copper futures");
-    expect(promotionRulePack).toHaveTextContent("待人工判断");
-    expect(promotionRulePack).toHaveTextContent("相关性偏弱，需人工复核");
-    expect(promotionRulePack).toHaveTextContent("Crude oil futures");
-    expect(promotionRulePack).toHaveTextContent("Rebar futures");
-    expect(promotionRulePack).toHaveTextContent("不建议进入公式");
-    expect(promotionRulePack).toHaveTextContent("样本不足，先补齐历史数据");
-    expect(promotionRulePack).toHaveTextContent("Copper futures · 样本检查 通过 41/20");
-    expect(promotionRulePack).toHaveTextContent("Copper futures · 危机样本检查 通过 11/5");
-    expect(promotionRulePack).toHaveTextContent("Copper futures · 相关性检查 待人工判断 0.00");
-    expect(promotionRulePack).toHaveTextContent("Copper futures · 命中率检查 通过 55.0%");
-    expect(promotionRulePack).toHaveTextContent("Rebar futures · 样本检查 未通过 17/20");
-    expect(promotionRulePack).toHaveTextContent("Rebar futures · 危机样本检查 未通过 缺失/5");
-    expect(promotionRulePack).toHaveTextContent("Rebar futures · 相关性检查 未通过 缺失");
-    expect(promotionRulePack).toHaveTextContent("Rebar futures · 命中率检查 未通过 缺失");
+    // 转正规则包的每一条候选结论直接消费后端 commodity_candidate_admission.items（decision /
+    // decision_label / reason / 指标），不再由前端重新计算 ready_for_review/manual_review/
+    // not_recommended 或样本/危机样本/相关性/命中率四项本地 checks。
+    expect(promotionRulePack).toHaveTextContent("Copper futures · 继续观察");
+    expect(promotionRulePack).toHaveTextContent("相关性偏弱，需人工复核。");
+    expect(promotionRulePack).toHaveTextContent("Crude oil futures · 继续观察");
+    expect(promotionRulePack).toHaveTextContent("Rebar futures · 暂不纳入");
+    expect(promotionRulePack).toHaveTextContent("样本不足，先补齐历史数据。");
+    expect(promotionRulePack).toHaveTextContent("样本 41 · 危机样本 11 · 命中率 55.0% · 最大相关 0.00");
+    expect(promotionRulePack).toHaveTextContent("样本 17/20 · 危机样本 缺失 · 命中率 缺失 · 最大相关 缺失");
+    expect(promotionRulePack).toHaveTextContent("下一步：复核相关性与危机期命中率");
+    expect(promotionRulePack).toHaveTextContent("下一步：先补齐历史样本和危机期样本，再重新生成准入评估。");
     expect(crisisEvidence).toHaveTextContent("先补齐样本不足品种的历史数据");
     expect(crisisEvidence).toHaveTextContent("样本不足：Rebar futures 17/20，还差 3");
     expect(crisisEvidence).toHaveTextContent("建议刷新品种：RB / I / AL / AU");
@@ -2566,7 +2795,9 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("vendor_version choice+tushare"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("rule_version rv_macro_toolkit_ui_v1"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("cache_version none"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("规则版本 shadow_rule_v1"));
+      // 审计包规则版本、阈值文案与逐条候选结论均来自后端 commodity_candidate_admission，
+      // 不再是前端 shadow_rule_v1 常量或本地重算的 checks。
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("规则版本 rv_macro_crisis_commodity_admission_v1"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("用途：商品候选进入公式前的影子复核"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("边界：不写入 Crisis Score，不改变权重"));
       expect(writeText).toHaveBeenCalledWith(
@@ -2594,11 +2825,20 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
           "候选来源 Rebar futures · COMMODITY.RB · aliases RB0 / RB0.SHF · matched RB0 · tushare · 最新值日期 2026-04-10 · 报告日 2026-04-10 · 同日 · rows 120 · 当前未计入 Crisis Score",
         ),
       );
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Copper futures · 待人工判断 · 相关性偏弱，需人工复核"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Copper futures · 样本检查 通过 41/20"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Copper futures · 相关性检查 待人工判断 0.00"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Rebar futures · 不建议进入公式 · 样本不足，先补齐历史数据"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Rebar futures · 危机样本检查 未通过 缺失/5"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("Copper futures · 继续观察 · 相关性偏弱，需人工复核。"),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Copper futures · 样本 41 · 危机样本 11 · 命中率 55.0% · 最大相关 0.00",
+        ),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("Rebar futures · 暂不纳入 · 样本不足，先补齐历史数据。"),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("Rebar futures · 样本 17/20 · 危机样本 缺失 · 命中率 缺失 · 最大相关 缺失"),
+      );
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("不建议进入公式 4"));
       await waitFor(() => expect(promotionRulePack).toHaveTextContent("审计包已复制"));
     } finally {
@@ -2741,12 +2981,12 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     const fullDataHealth = await screen.findByLabelText("数据健康总览");
     await user.click(within(fullDataHealth).getByRole("button", { name: /需要补齐来源数据/ }));
     expect(sourceBackfillCalls).toEqual([
-      {
+      expect.objectContaining({
         alias: "M0041813",
-        startDate: undefined,
         endDate: "2026-04-30",
         sources: undefined,
-      },
+        idempotencyKey: expect.any(String),
+      }),
     ]);
     await waitFor(() => expect(calls.filter((item) => item?.detail === "full")).toHaveLength(2));
   });
@@ -3124,12 +3364,12 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     await user.click(within(gapList).getByRole("button", { name: "需要补齐来源数据" }));
     await waitFor(() =>
       expect(sourceBackfillCalls).toEqual([
-        {
+        expect.objectContaining({
           alias: "M0041813",
-          startDate: undefined,
           endDate: "2026-04-30",
           sources: undefined,
-        },
+          idempotencyKey: expect.any(String),
+        }),
       ]),
     );
     await waitFor(() => expect(gapList).not.toHaveTextContent("NCD_3M_MISSING"));
@@ -3272,10 +3512,11 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(repairFeedback).toHaveTextContent("commodity preview unavailable");
   });
 
-  it("previews Crisis Score suggested commodity futures and queues refresh from the evidence panel", async () => {
+  it("polls queued Crisis Score commodity refresh to completion before reloading evidence", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
     const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
+    const statusCalls: string[] = [];
     let completedRefreshCount = 0;
     const refreshedAnalysisEnvelope = {
       ...analysisEnvelope,
@@ -3359,6 +3600,20 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
         }
         return baseClient.refreshCommodityFutures(options);
       },
+      getCommodityFuturesRefreshStatus: async (runId) => {
+        statusCalls.push(runId);
+        const response = await baseClient.getCommodityFuturesRefreshStatus(runId);
+        return {
+          ...response,
+          result: {
+            ...response.result,
+            refresh: {
+              ...response.result.refresh,
+              terminal_snapshot_status: "captured",
+            },
+          },
+        };
+      },
     } as ApiClient;
     const user = userEvent.setup();
 
@@ -3405,17 +3660,15 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       products: ["RB", "I", "AL", "AU"],
       dryRun: false,
     });
-    await waitFor(() =>
-      expect(commodityPanel).toHaveTextContent("商品期货刷新已排队，4 个品种，等待后台任务完成"),
-    );
-    expect(commodityPanel).toHaveTextContent("商品期货刷新已排队，等待后台任务完成。");
-    expect(commodityPanel).not.toHaveTextContent("完整分析证据已重新读取");
-    expect(commodityPanel).not.toHaveTextContent("Crisis Score 样本缺口变化");
+    await waitFor(() => expect(statusCalls).toEqual(["commodity_futures_refresh:mock"]));
+    await waitFor(() => expect(commodityPanel).toHaveTextContent("商品期货刷新完成：4 个品种，88 行"));
+    expect(commodityPanel).toHaveTextContent("完整分析证据已重新读取");
+    expect(commodityPanel).toHaveTextContent("Crisis Score 样本缺口变化");
     const reloadedCrisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     const operationsConsoleAfterCommodity = await screen.findByTestId("macro-toolkit-operations-console");
     const commodityReceipt = within(operationsConsoleAfterCommodity).getByTestId("macro-toolkit-action-receipt");
     expect(commodityReceipt).toHaveTextContent("刷新商品期货");
-    expect(within(reloadedCrisisEvidence).queryByLabelText("Crisis Score 样本刷新闭环")).not.toBeInTheDocument();
+    expect(within(reloadedCrisisEvidence).getByLabelText("Crisis Score 样本刷新闭环")).toBeInTheDocument();
   });
 
   it("shows remaining Crisis Score sample gaps when the commodity preview is still short", async () => {
@@ -3481,10 +3734,14 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     ).toBeEnabled();
   });
 
-  it("keeps Crisis Score sample gaps pending while queued commodity refresh waits for the worker", async () => {
+  it("reports a failed terminal commodity refresh without reloading evidence", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const analysisCalls: Array<Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]> = [];
     const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
+    const statusCalls: string[] = [];
+    let scriptsCallCount = 0;
+    let strategyCallCount = 0;
     let completedRefreshCount = 0;
     const partiallyRefreshedEnvelope = {
       ...analysisEnvelope,
@@ -3542,10 +3799,19 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     const client = {
       ...baseClient,
       getMacroToolkitAnalysis: async (options) => {
+        analysisCalls.push(options);
         if (options?.detail === "full" && completedRefreshCount > 0) {
           return partiallyRefreshedEnvelope;
         }
         return analysisEnvelope;
+      },
+      getMacroToolkitScripts: async () => {
+        scriptsCallCount += 1;
+        return baseClient.getMacroToolkitScripts();
+      },
+      getMacroToolkitStrategySummaries: async (options) => {
+        strategyCallCount += 1;
+        return baseClient.getMacroToolkitStrategySummaries(options);
       },
       refreshCommodityFutures: async (options) => {
         refreshCalls.push(options);
@@ -3553,6 +3819,23 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
           completedRefreshCount += 1;
         }
         return baseClient.refreshCommodityFutures(options);
+      },
+      getCommodityFuturesRefreshStatus: async (runId) => {
+        statusCalls.push(runId);
+        const response = await baseClient.getCommodityFuturesRefreshStatus(runId);
+        return {
+          ...response,
+          result: {
+            ...response.result,
+            refresh: {
+              ...response.result.refresh,
+              status: "failed",
+              trigger_mode: "terminal",
+              failure_category: "worker_failed",
+              failure_message: "商品刷新任务失败，请稍后重试。",
+            },
+          },
+        };
       },
     } as ApiClient;
     const user = userEvent.setup();
@@ -3562,6 +3845,9 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
     await user.click(within(gapList).getAllByRole("button", { name: "按建议预估" })[0]!);
+    const analysisCallCountBeforeRefresh = analysisCalls.length;
+    const scriptsCallCountBeforeRefresh = scriptsCallCount;
+    const strategyCallCountBeforeRefresh = strategyCallCount;
     await user.click(within(gapList).getByRole("button", { name: "按建议刷新并重读" }));
 
     expect(refreshCalls[1]).toEqual({
@@ -3571,17 +3857,278 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       dryRun: false,
     });
     const commodityPanel = await screen.findByLabelText("商品期货刷新");
-    await waitFor(() =>
-      expect(commodityPanel).toHaveTextContent("商品期货刷新已排队，4 个品种，等待后台任务完成"),
-    );
+    await waitFor(() => expect(statusCalls).toEqual(["commodity_futures_refresh:mock"]));
+    expect(commodityPanel).toHaveTextContent("商品刷新任务失败，请稍后重试。");
+    const terminalEvidence = within(commodityPanel).getByLabelText("商品期货刷新结果");
+    expect(terminalEvidence).toHaveTextContent("commodity_futures_refresh:mock");
+    expect(terminalEvidence).toHaveTextContent("商品期货刷新失败");
+    expect(terminalEvidence).toHaveTextContent("商品刷新任务失败，请稍后重试。");
+    expect(terminalEvidence).not.toHaveTextContent("commodity worker failed");
+    expect(terminalEvidence).not.toHaveTextContent("C:\\internal\\vendor-token.txt");
+    expect(within(terminalEvidence).getByLabelText("商品期货刷新后闭环")).toBeInTheDocument();
     const repairFeedback = await screen.findByTestId("crisis-gap-repair-feedback");
-    expect(repairFeedback).toHaveTextContent("商品期货刷新已排队。");
-    expect(repairFeedback).toHaveTextContent("等待后台任务完成");
+    expect(repairFeedback).toHaveTextContent("刷新失败，缺口仍需处理");
+    expect(repairFeedback).not.toHaveTextContent("commodity worker failed");
+    expect(repairFeedback).not.toHaveTextContent("C:\\internal\\vendor-token.txt");
     const reloadedCrisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     expect(within(reloadedCrisisEvidence).queryByLabelText("Crisis Score 样本刷新闭环")).not.toBeInTheDocument();
     expect(reloadedCrisisEvidence).not.toHaveTextContent("完整分析已重读，仍有缺口");
     expect(reloadedCrisisEvidence).toHaveTextContent("COMMODITY_SAMPLE_SHORT");
+    expect(analysisCalls).toHaveLength(analysisCallCountBeforeRefresh);
+    expect(scriptsCallCount).toBe(scriptsCallCountBeforeRefresh);
+    expect(strategyCallCount).toBe(strategyCallCountBeforeRefresh);
   });
+
+  it.each([
+    { status: "completed" as const },
+    { status: "partial" as const },
+  ])(
+    "fails closed when a $status commodity refresh returns without a captured terminal snapshot",
+    async ({ status }) => {
+      const baseClient = createApiClient({ mode: "mock" });
+      const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+      const analysisCalls: Array<Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]> = [];
+      const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
+      const statusCalls: string[] = [];
+      let scriptsCallCount = 0;
+      let strategyCallCount = 0;
+      const client = {
+        ...baseClient,
+        getMacroToolkitAnalysis: async (options) => {
+          analysisCalls.push(options);
+          return analysisEnvelope;
+        },
+        getMacroToolkitScripts: async () => {
+          scriptsCallCount += 1;
+          return baseClient.getMacroToolkitScripts();
+        },
+        getMacroToolkitStrategySummaries: async (options) => {
+          strategyCallCount += 1;
+          return baseClient.getMacroToolkitStrategySummaries(options);
+        },
+        refreshCommodityFutures: async (options) => {
+          refreshCalls.push(options);
+          return baseClient.refreshCommodityFutures(options);
+        },
+        getCommodityFuturesRefreshStatus: async (runId) => {
+          statusCalls.push(runId);
+          const response = await baseClient.getCommodityFuturesRefreshStatus(runId);
+          return {
+            ...response,
+            result: {
+              ...response.result,
+              refresh: {
+                ...response.result.refresh,
+                status,
+                trigger_mode: "terminal",
+                terminal_snapshot_status: "unavailable",
+                after_status: {
+                  materialized: null,
+                  status: "snapshot_unavailable",
+                  table: "fact_commodity_futures_daily",
+                  row_count: null,
+                  latest_trade_date: null,
+                  source_vendors: [],
+                  coverage: {},
+                  nanhua_input: {},
+                },
+              },
+            },
+          };
+        },
+      } as ApiClient;
+      const user = userEvent.setup();
+
+      renderWorkbenchApp(["/macro-toolkit"], { client });
+
+      const commodityPanel = await screen.findByLabelText("商品期货刷新");
+      await waitFor(() => expect(strategyCallCount).toBeGreaterThan(0));
+      const refreshButton = within(commodityPanel).getByRole("button", { name: /刷新商品期货/ });
+      await waitFor(() => expect(refreshButton).toBeEnabled());
+      const analysisCallCountBeforeRefresh = analysisCalls.length;
+      const scriptsCallCountBeforeRefresh = scriptsCallCount;
+      const strategyCallCountBeforeRefresh = strategyCallCount;
+
+      await user.click(refreshButton);
+
+      expect(refreshCalls).toHaveLength(1);
+      await waitFor(() => expect(statusCalls).toEqual(["commodity_futures_refresh:mock"]));
+      expect(analysisCalls).toHaveLength(analysisCallCountBeforeRefresh);
+      expect(scriptsCallCount).toBe(scriptsCallCountBeforeRefresh);
+      expect(strategyCallCount).toBe(strategyCallCountBeforeRefresh);
+      expect(commodityPanel).toHaveTextContent("刷新已结束但终态快照捕获失败，完整分析保持原状态");
+      expect(commodityPanel).toHaveTextContent("终态快照未捕获，完整分析保持原状态");
+      expect(commodityPanel).not.toHaveTextContent("商品期货刷新完成：");
+      expect(commodityPanel).not.toHaveTextContent("完整分析证据已重新读取");
+      const terminalEvidence = within(commodityPanel).getByLabelText("商品期货刷新结果");
+      expect(terminalEvidence).toHaveTextContent("run commodity_futures_refresh:mock");
+      expect(terminalEvidence).toHaveTextContent("刷新前基线：");
+      expect(terminalEvidence).toHaveTextContent("刷新前状态 ok");
+      expect(terminalEvidence).toHaveTextContent("终态快照失败");
+      const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
+      const actionReceipt = within(operationsConsole).getByTestId("macro-toolkit-action-receipt");
+      expect(actionReceipt).toHaveClass("macro-toolkit-action-receipt--warning");
+      expect(actionReceipt).not.toHaveClass("macro-toolkit-action-receipt--completed");
+      expect(actionReceipt).toHaveTextContent("刷新已结束但终态快照捕获失败，不能据此判断刷新结果");
+    },
+  );
+
+  it("warns when a completed commodity refresh lacks a captured terminal snapshot", () => {
+    const refresh: MacroToolkitCommodityFuturesRefreshRun = {
+      run_id: "commodity_futures_refresh:completed-snapshot-missing",
+      status: "completed",
+      trigger_mode: "terminal",
+      product_count: 2,
+      row_count: 88,
+      products: ["RB", "I"],
+      terminal_snapshot_status: "unavailable",
+      before_status: {
+        materialized: true,
+        status: "ok",
+        table: "fact_commodity_futures_daily",
+        row_count: 154,
+        latest_trade_date: "2026-04-30",
+        source_vendors: ["tushare"],
+        coverage: {
+          target_product_count: 7,
+          available_product_count: 5,
+          available_products: ["CU", "AL", "SC", "AU", "NHCI"],
+          missing_products: ["RB", "I"],
+        },
+        nanhua_input: {
+          status: "hit",
+          product_code: "NHCI",
+          series_id: "NH0100.NHF",
+          system_series_id: "NHCI.NH",
+          latest_trade_date: "2026-04-30",
+          latest_value: 3187.42,
+          row_count: 22,
+          source_version: "sv_tushare_index_daily_nhci",
+          vendor_version: "vv_tushare_index_daily_NHCI_20260430",
+          rule_version: "rv_commodity_daily_v1",
+        },
+      },
+      after_status: {
+        materialized: null,
+        status: "snapshot_unavailable",
+        table: "fact_commodity_futures_daily",
+        row_count: null,
+        latest_trade_date: null,
+        source_vendors: [],
+        coverage: {
+          target_product_count: 7,
+          available_product_count: 0,
+          available_products: [],
+          missing_products: ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"],
+        },
+        nanhua_input: {
+          status: "missing_table",
+          product_code: "NHCI",
+          series_id: "NH0100.NHF",
+          system_series_id: "NHCI.NH",
+          latest_trade_date: null,
+          latest_value: null,
+          row_count: 0,
+          source_version: null,
+          vendor_version: null,
+          rule_version: "rv_commodity_daily_v1",
+        },
+      },
+      summary: {
+        table: "fact_commodity_futures_daily",
+        row_count_before: 154,
+        row_count_after: null,
+        row_count_delta: null,
+        latest_trade_date_before: "2026-04-30",
+        latest_trade_date_after: null,
+        available_product_count_before: 5,
+        available_product_count_after: 0,
+        target_product_count: 7,
+        newly_available_products: [],
+        missing_products_after: ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"],
+        nanhua_status_before: "hit",
+        nanhua_status_after: "missing_table",
+        nanhua_latest_date_before: "2026-04-30",
+        nanhua_latest_date_after: null,
+        nanhua_latest_value_after: null,
+        source_vendors_after: [],
+        dry_run: false,
+      },
+    };
+    render(
+      <CommodityRefreshResultPanel
+        refresh={refresh}
+      />,
+    );
+
+    const terminalEvidence = screen.getByLabelText("商品期货刷新结果");
+    expect(terminalEvidence).toHaveTextContent("刷新已结束但终态快照捕获失败，不能据此判断刷新结果");
+    expect(terminalEvidence).toHaveTextContent("run commodity_futures_refresh:completed-snapshot-missing");
+    expect(terminalEvidence).toHaveTextContent("刷新前基线：刷新前状态 ok · 最新日期 2026-04-30 · 行数 154");
+    expect(terminalEvidence).toHaveTextContent("终态快照失败");
+    expect(terminalEvidence).not.toHaveTextContent("商品期货刷新完成：2 个品种，88 行");
+  });
+
+  it.each([
+    { status: "no_rows", expectedText: "商品期货刷新未新增数据" },
+    { status: "blocked", expectedText: "商品期货刷新受阻" },
+  ] as const)(
+    "keeps analysis evidence unchanged when queued commodity refresh ends as $status",
+    async ({ status, expectedText }) => {
+      const baseClient = createApiClient({ mode: "mock" });
+      const analysisCalls: Array<Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]> = [];
+      let strategyCallCount = 0;
+      const statusCalls: string[] = [];
+      const client = {
+        ...baseClient,
+        getMacroToolkitAnalysis: async (options) => {
+          analysisCalls.push(options);
+          return baseClient.getMacroToolkitAnalysis(options);
+        },
+        getMacroToolkitStrategySummaries: async (options) => {
+          strategyCallCount += 1;
+          return baseClient.getMacroToolkitStrategySummaries(options);
+        },
+        getCommodityFuturesRefreshStatus: async (runId) => {
+          statusCalls.push(runId);
+          const response = await baseClient.getCommodityFuturesRefreshStatus(runId);
+          return {
+            ...response,
+            result: {
+              ...response.result,
+              refresh: {
+                ...response.result.refresh,
+                status,
+                trigger_mode: "terminal",
+                row_count: 0,
+              },
+            },
+          };
+        },
+      } as ApiClient;
+      const user = userEvent.setup();
+
+      renderWorkbenchApp(["/macro-toolkit"], { client });
+
+      const commodityPanel = await screen.findByLabelText("商品期货刷新");
+      await waitFor(() => expect(strategyCallCount).toBeGreaterThan(0));
+      const refreshButton = within(commodityPanel).getByRole("button", {
+        name: /刷新商品期货/,
+      });
+      await waitFor(() => expect(refreshButton).toBeEnabled());
+      const analysisCallCountBeforeRefresh = analysisCalls.length;
+      const strategyCallCountBeforeRefresh = strategyCallCount;
+
+      await user.click(refreshButton);
+
+      await waitFor(() => expect(statusCalls).toEqual(["commodity_futures_refresh:mock"]));
+      await waitFor(() => expect(commodityPanel).toHaveTextContent(expectedText));
+      expect(analysisCalls).toHaveLength(analysisCallCountBeforeRefresh);
+      expect(strategyCallCount).toBe(strategyCallCountBeforeRefresh);
+      expect(analysisCalls.filter((options) => options?.detail === "full")).toHaveLength(0);
+      expect(commodityPanel).toHaveTextContent("完整分析保持原状态");
+    },
+  );
 
   it("previews selected commodity futures before refreshing full evidence", async () => {
     const baseClient = createApiClient({ mode: "mock" });
@@ -3612,6 +4159,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
           result: {
             refresh: {
               status: isDryRun ? "dry_run" : "completed",
+              terminal_snapshot_status: isDryRun ? undefined : "captured",
               dry_run: isDryRun,
               start_date: "2026-04-01",
               end_date: "2026-04-30",
@@ -3975,6 +4523,61 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(refreshButton).toBeDisabled();
     await user.click(dryRunButton);
     expect(refreshCalls).toHaveLength(0);
+  });
+
+  it("labels redacted commodity refresh identity without anonymous or unknown fallbacks", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const scriptsEnvelope = await baseClient.getMacroToolkitScripts();
+    const statusCalls: string[] = [];
+    const client = {
+      ...baseClient,
+      getMacroToolkitScripts: async () => ({
+        ...scriptsEnvelope,
+        result: {
+          ...scriptsEnvelope.result,
+          commodity_futures_refresh: {
+            ...scriptsEnvelope.result.commodity_futures_refresh!,
+            permission: {
+              mode: "scoped_refresh",
+              allowed: true,
+              user_id: "commodity-user",
+              role: "writer",
+              identity_source: "header",
+              resource: "macro_toolkit.commodity_futures",
+              actions: ["dry_run", "refresh"],
+            },
+          },
+        },
+      }),
+      getCommodityFuturesRefreshStatus: async (runId) => {
+        statusCalls.push(runId);
+        return baseClient.getCommodityFuturesRefreshStatus(runId);
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const commodityPanel = await screen.findByLabelText("商品期货刷新");
+    const permissionTile = await waitFor(() => {
+      const tile = within(commodityPanel).getByText("商品权限").closest(".macro-toolkit-metric");
+      expect(tile?.querySelector("small")).toHaveAttribute(
+        "title",
+        expect.stringContaining("user commodity-user"),
+      );
+      return tile;
+    });
+
+    await user.click(within(commodityPanel).getByRole("button", { name: /刷新商品期货/ }));
+    await waitFor(() => expect(statusCalls).toEqual(["commodity_futures_refresh:mock"]));
+    await waitFor(() =>
+      expect(permissionTile?.querySelector("small")).toHaveAttribute(
+        "title",
+        expect.stringContaining("user 身份已脱敏"),
+      ),
+    );
+    expect(permissionTile).not.toHaveTextContent("anonymous");
+    expect(permissionTile).not.toHaveTextContent("unknown");
   });
 
   it("shows pending commodity futures permission before scoped refresh is confirmed", async () => {
@@ -4868,10 +5471,11 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     expect(readinessDetail).toHaveTextContent("模型就绪度");
     expect(readinessDetail).toHaveTextContent("仅观察");
-    expect(readinessDetail).toHaveTextContent("DCC-GARCH 缺产物");
-    // 就绪度行迁入摘要带后 headline 采用矩阵中文名映射。
-    expect(readinessDetail).toHaveTextContent("CTA 趋势 缺产物");
-    expect(readinessDetail).toHaveTextContent("风险监控 缺产物");
+    // 同状态徽标收敛为组头一次（缺产物 N 项），行内只留矩阵中文名。
+    expect(readinessDetail).toHaveTextContent(/缺产物 \d+ 项/);
+    expect(readinessDetail).toHaveTextContent("DCC-GARCH");
+    expect(readinessDetail).toHaveTextContent("CTA 趋势");
+    expect(readinessDetail).toHaveTextContent("风险监控");
     expect(readinessDetail).toHaveTextContent("个模型待复核");
     const readinessDetailTooltip = readinessDetail.querySelector("small");
     expect(readinessDetailTooltip).toHaveAttribute("title", expect.stringContaining("dcc_latest.csv"));
@@ -4981,13 +5585,19 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       expect(detail).toHaveTextContent("/ui/macro/toolkit/scripts/run-chain");
       expect(detail).toHaveTextContent("产物验收");
     }
-  });
+    // 十个模型详情抽屉顺序打开约 9s（单跑），全量并发时会越过 15s 默认超时。
+  }, 45_000);
 
   it("runs the model chain from model evidence and surfaces the selected script receipt", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const chainCalls: Array<{ dryRun?: boolean; timeoutSeconds?: number }> = [];
+    let modelChainCallCount = 0;
     const client = {
       ...baseClient,
+      fetchMacroToolkitModelChainResults: async (options) => {
+        modelChainCallCount += 1;
+        return baseClient.fetchMacroToolkitModelChainResults(options);
+      },
       runMacroToolkitScriptChain: async (options) => {
         chainCalls.push(options ?? {});
         return baseClient.runMacroToolkitScriptChain(options);
@@ -5002,6 +5612,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     await user.click(screen.getByTestId("macro-toolkit-model-signal-chain-preflight"));
 
     await waitFor(() => expect(chainCalls).toEqual([{ dryRun: true }]));
+    await waitFor(() => expect(modelChainCallCount).toBe(1));
     const detail = await openModelSignalDetail(user, "DCC-GARCH");
 
     await waitFor(() => expect(detail).toHaveTextContent("最近脚本运行回执"));
@@ -5011,6 +5622,80 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(detail).toHaveTextContent("dcc_latest.csv");
     expect(detail).toHaveTextContent("dcc_results.csv");
     expect(detail).toHaveTextContent("dry_run_not_executed");
+  });
+
+  it("refetches model-chain results after running the selected script", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const initialModelChain = await baseClient.fetchMacroToolkitModelChainResults();
+    const scriptCalls: string[] = [];
+    let modelChainCallCount = 0;
+    const client = {
+      ...baseClient,
+      fetchMacroToolkitModelChainResults: async (_options) => {
+        modelChainCallCount += 1;
+        if (modelChainCallCount === 1) {
+          return initialModelChain;
+        }
+        return withModelChainHeadline(initialModelChain, "merrill_clock", "脚本刷新后：模型链已更新");
+      },
+      runMacroToolkitScript: async (name, options) => {
+        scriptCalls.push(name);
+        return baseClient.runMacroToolkitScript(name, options);
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const modelChain = await screen.findByTestId("macro-toolkit-model-chain");
+    expect(modelChain).not.toHaveTextContent("脚本刷新后：模型链已更新");
+
+    const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
+    await user.click(within(operationsConsole).getByRole("button", { name: /运行选中脚本/ }));
+
+    await waitFor(() => expect(scriptCalls).toEqual(["signal_aggregator"]));
+    await waitFor(() => expect(modelChainCallCount).toBe(2));
+    await waitFor(() => expect(modelChain).toHaveTextContent("脚本刷新后：模型链已更新"));
+  });
+
+  it("refetches model-chain results after a terminal Choice stock refresh", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const initialModelChain = await baseClient.fetchMacroToolkitModelChainResults();
+    const choiceStockCalls: Array<Parameters<ApiClient["refreshChoiceStock"]>[0]> = [];
+    let modelChainCallCount = 0;
+    const client = {
+      ...baseClient,
+      fetchMacroToolkitModelChainResults: async (_options) => {
+        modelChainCallCount += 1;
+        if (modelChainCallCount === 1) {
+          return initialModelChain;
+        }
+        return withModelChainHeadline(initialModelChain, "final_signal", "选股刷新后：模型链已更新");
+      },
+      refreshChoiceStock: async (options) => {
+        choiceStockCalls.push(options);
+        return baseClient.refreshChoiceStock(options);
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const modelChain = await screen.findByTestId("macro-toolkit-model-chain");
+    expect(modelChain).not.toHaveTextContent("选股刷新后：模型链已更新");
+
+    const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
+    await user.click(within(operationsConsole).getByRole("button", { name: /刷新股票策略明细/ }));
+
+    await waitFor(() =>
+      expect(choiceStockCalls).toEqual([
+        expect.objectContaining({
+          idempotencyKey: expect.any(String),
+        }),
+      ]),
+    );
+    await waitFor(() => expect(modelChainCallCount).toBe(2));
+    await waitFor(() => expect(modelChain).toHaveTextContent("选股刷新后：模型链已更新"));
   });
 
   it("surfaces model-chain execution blockers inside the selected model evidence", async () => {
@@ -5157,7 +5842,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
-    expect(await screen.findByTestId("macro-toolkit-tailwind-cockpit")).toBeInTheDocument();
+    expect(await screen.findByTestId("macro-toolkit-cockpit")).toBeInTheDocument();
     const boundary = await screen.findByTestId("macro-toolkit-contract-boundary");
     expect(boundary).toHaveTextContent("非正式口径");
     expect(await screen.findByTestId("macro-toolkit-initial-analysis-loading")).toHaveTextContent(

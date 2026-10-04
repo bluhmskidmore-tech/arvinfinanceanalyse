@@ -9,6 +9,9 @@ export type BuildStockAnalysisAgentPageContextInput = {
   asOfDate?: string | null;
   /** 用户请求的日期；仅用于说明 fallback，不作为实际数据日。 */
   requestedAsOfDate?: string | null;
+  /** 当前只读交互锁定的发布代际；Agent POST 需用它显式重建同一读取上下文。 */
+  systemReadGeneration?: string | null;
+  pretradeQualificationStatus?: "ready" | "ready_empty" | "unavailable" | null;
   sectorFilterSectorCode: string | null;
   sectorFilterLabel?: string | null;
   sectorView: StockSectorViewKind;
@@ -52,6 +55,12 @@ export function buildStockAnalysisAgentPageContext(
     input.requestedAsOfDate !== input.asOfDate
   ) {
     current_filters.requested_as_of_date = input.requestedAsOfDate;
+  }
+  if (input.systemReadGeneration != null && String(input.systemReadGeneration).trim() !== "") {
+    current_filters.system_read_generation = input.systemReadGeneration;
+  }
+  if (input.pretradeQualificationStatus) {
+    current_filters.pretrade_qualification_status = input.pretradeQualificationStatus;
   }
 
   const selected_rows: Array<Record<string, unknown>> = [];

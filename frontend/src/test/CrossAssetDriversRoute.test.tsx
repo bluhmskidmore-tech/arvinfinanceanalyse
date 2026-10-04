@@ -10,8 +10,9 @@ import {
   renderWorkbenchApp,
 } from "./renderWorkbenchApp";
 
-vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="cross-asset-echarts-stub" />,
+vi.mock("../features/cross-asset/components/CrossAssetECharts", () => ({
+  LazyCrossAssetECharts: () => <div data-testid="cross-asset-echarts-stub" />,
+  preloadCrossAssetECharts: vi.fn(),
 }));
 
 describe("CrossAssetDriversRoute", () => {
@@ -56,7 +57,12 @@ describe("CrossAssetDriversRoute", () => {
     expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
   });
 
-  it("refreshes a warmed shell snapshot when entering the decision page", async () => {
+  it("reuses a warmed shell snapshot when entering the decision page within the stale window", async () => {
+    // 2026-09-02 market-overview page audit S5: the page shares the shell ticker's
+    // ["workbench-shell", "choice-macro-latest"] key and used to force a second
+    // request on mount (refetchOnMount: "always"). It now trusts a snapshot that is
+    // younger than its 60s staleTime, so entering the page right after the shell
+    // warmed the key must not issue another request.
     const client = createApiClient({ mode: "mock" });
     const getChoiceMacroLatest = vi.spyOn(client, "getChoiceMacroLatest");
     const router = createWorkbenchMemoryRouter(["/news-events"]);
@@ -81,8 +87,7 @@ describe("CrossAssetDriversRoute", () => {
     expect(
       await screen.findByTestId("cross-asset-drivers-page"),
     ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(getChoiceMacroLatest).toHaveBeenCalledTimes(2);
-    });
+    expect(screen.getByTestId("cross-asset-hero-panel")).toBeInTheDocument();
+    expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
   });
 });

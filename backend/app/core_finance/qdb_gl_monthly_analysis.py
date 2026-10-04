@@ -247,17 +247,23 @@ def parse_general_ledger(filepath: str | Path) -> dict[str, list[dict[str, Any]]
             worksheet = workbook[sheet_name]
             _validate_ledger_header(worksheet, sheet_name)
             rows: list[dict[str, Any]] = []
-            for row in worksheet.iter_rows(min_row=7, values_only=True):
+            for row_index, row in enumerate(worksheet.iter_rows(min_row=7, values_only=True), start=7):
                 code = _normalize_account_code(row[0] if len(row) > 0 else None)
                 if not code:
                     continue
                 currency = str(row[2] or "").strip()
                 if not currency:
                     continue
-                opening = _to_decimal(row[3] if len(row) > 3 else None) or ZERO
-                debit = _to_decimal(row[4] if len(row) > 4 else None) or ZERO
-                credit = _to_decimal(row[5] if len(row) > 5 else None) or ZERO
-                closing = _to_decimal(row[6] if len(row) > 6 else None) or ZERO
+                amounts: list[Decimal] = []
+                for column_index, column_letter in enumerate("DEFG", start=3):
+                    amount = _to_decimal(row[column_index] if len(row) > column_index else None)
+                    if amount is None:
+                        raise ValueError(
+                            f"总账对账工作表[{sheet_name}]单元格{column_letter}{row_index}金额无效："
+                            "必须提供可解析的有限数值，不能以零替代缺失或损坏金额。"
+                        )
+                    amounts.append(amount)
+                opening, debit, credit, closing = amounts
                 rows.append(
                     {
                         "科目代码": code,
@@ -371,6 +377,7 @@ def build_qdb_gl_monthly_analysis_workbook(
                 ledger_rows_3d=m3,
             )
         ),
+        *_ledger_row_balance_check_alerts(merged_data.get("11位", [])),
     ]
     foreign_rows = build_foreign_currency_rows(merged_data.get("外币分析", []))
 
@@ -395,11 +402,11 @@ def build_qdb_gl_monthly_analysis_workbook(
         ),
         _sheet("summary_3d", "3位科目总览", ["科目代码", "名称", "期初余额", "期末余额", "变动额", "月日均", "年日均", "偏离额", "偏离%", "趋势额", "趋势%"], [_normalize_amount_row(row, include_trend=True) for row in _sort_rows(m3, "期末余额")]),
         _sheet("asset_structure", "资产结构", ["科目代码", "名称", "期末余额", "月日均", "偏离%", "趋势%"], [
-            {"科目代码": row["科目代码"], "名称": row["名称"], "期末余额": _display_number(_to_yi(row["期末余额"])), "月日均": _display_number(_to_yi(row.get("月日均"))), "偏离%": _display_number(row.get("偏离%")), "趋势%": _display_number(row.get("趋势%"))}
+            {"科目代码": row["科目代码"], "名称": row["名称"], "期末余额": _display_number(_to_yi(row["期末余额"])), "月日均": _display_yi(_as_decimal(row.get("月日均"))), "偏离%": _display_number(row.get("偏离%")), "趋势%": _display_number(row.get("趋势%"))}
             for row in _sort_rows([row for row in m3 if str(row["科目代码"]).startswith("1")], "期末余额")
         ]),
         _sheet("liability_structure", "负债结构", ["科目代码", "名称", "期末余额", "月日均", "偏离%", "趋势%"], [
-            {"科目代码": row["科目代码"], "名称": row["名称"], "期末余额": _display_number(_to_yi(row["期末余额"])), "月日均": _display_number(_to_yi(row.get("月日均"))), "偏离%": _display_number(row.get("偏离%")), "趋势%": _display_number(row.get("趋势%"))}
+            {"科目代码": row["科目代码"], "名称": row["名称"], "期末余额": _display_number(_to_yi(row["期末余额"])), "月日均": _display_yi(_as_decimal(row.get("月日均"))), "偏离%": _display_number(row.get("偏离%")), "趋势%": _display_number(row.get("趋势%"))}
             for row in _sort_rows([row for row in m3 if str(row["科目代码"]).startswith("2")], "期末余额")
         ]),
         _industry_sheet("loan_industry", "贷款行业", compute_deviation(merged_data.get("5位_公司贷款", []))),
@@ -688,6 +695,67 @@ def _ledger_self_check_alerts(checks: list[dict[str, Any]]) -> list[dict[str, An
     return alerts
 
 
+# 行级闭合校验容差：沿用本模块既有对账先例（_qdb_gl_ledger_self_check_placeholder
+# 调 position_vs_ledger_diff 时 threshold_yuan=Decimal("0.01")）的元级量级。
+_LEDGER_ROW_BALANCE_TOLERANCE_YUAN = Decimal("0.01")
+
+
+def _ledger_row_balance_check_alerts(rows_11d: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """科目行级"期初 + 发生额 = 期末"闭合校验（检测型，不阻断解析）。
+
+    方向语义实证（tests/test_qdb_gl_monthly_analysis_core.py 的
+    _balanced_ledger_row fixture，以及 data_input 真实总账 202603/202607 三个
+    账套全量抽查：有发生额行 100% 满足主公式、0 行需要反向公式）：QDB 总账
+    导出对全部科目采用有符号余额约定——借方余额为正、贷方余额为负、借/贷
+    发生额分列为非负——因此"期末 - 期初 = 借 - 贷"对资产与负债/权益/损益
+    科目统一成立，无需按科目代码判定借贷方向。
+
+    fail-safe 取舍（防误报优先）：
+    - 缺失必要金额的行不参与此数值校验，来源验证和解析负责拒绝缺失值；
+      借/贷发生额均为真实 0 时仍要求期初与期末余额相等；
+    - 除主公式外仍接受反向闭合"期末 - 期初 = 贷 - 借"：若未来导出改用
+      贷方余额记正的无符号约定，贷方余额科目自动落入该分支而不误报；代价
+      是有符号约定下"净发生额恰为变动额相反数"的真实差错会漏检，作为保守
+      取舍显式接受；
+    - 校验失败只产出 alerts 行，不抛错、不过滤数据行。
+
+    与 _qdb_gl_ledger_self_check_placeholder 互补：占位自检核对的是聚合公式
+    两条求和路径（同源自比），本校验核对的是源文件行级数值自洽（期初/发生
+    额/期末不闭合的导出截断、篡改、账套错位在此暴露）。
+    """
+    alerts: list[dict[str, Any]] = []
+    for row in rows_11d:
+        opening = _as_decimal(row.get("期初余额"))
+        debit = _as_decimal(row.get("本期借方"))
+        credit = _as_decimal(row.get("本期贷方"))
+        closing = _as_decimal(row.get("期末余额"))
+        if opening is None or debit is None or credit is None or closing is None:
+            continue
+        change = closing - opening
+        net = debit - credit
+        gap = change - net
+        if abs(gap) <= _LEDGER_ROW_BALANCE_TOLERANCE_YUAN:
+            continue
+        if abs(change + net) <= _LEDGER_ROW_BALANCE_TOLERANCE_YUAN:
+            continue
+        alerts.append(
+            {
+                "科目代码": row.get("科目代码"),
+                "科目名称": (
+                    f"{row.get('科目名称', '')}｜总账行闭合不符："
+                    f"期初{opening:f}元 借{debit:f}元 贷{credit:f}元 期末{closing:f}元 差额{gap:f}元"
+                ),
+                "预警级别": "严重",
+                "期末余额(亿)": _display_number(_to_yi(closing)),
+                "月日均(亿)": None,
+                "偏离额(亿)": _display_number(_to_yi(gap)),
+                "偏离%": None,
+                "异动类型": "ledger_row_balance_check",
+            }
+        )
+    return alerts
+
+
 def compute_industry_gap(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
     loans = merged_data.get("5位_公司贷款", [])
     demand = {row["行业代码"]: row for row in merged_data.get("5位_活期存款", [])}
@@ -695,14 +763,29 @@ def compute_industry_gap(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for row in loans:
         industry_code = row["行业代码"]
-        # BAL-P1-02：有贷款无存款的行业按显式空映射参与，存款缺失按 0 计，不再触发 None.get 崩溃。
+        # 无该类总账业务时按零参与；已有业务但日均缺失时，合计与差额保留缺失。
         demand_row = demand.get(industry_code) or {}
         term_row = term.get(industry_code) or {}
         deposit_end = abs(_as_decimal(demand_row.get("期末余额")) or ZERO) + abs(_as_decimal(term_row.get("期末余额")) or ZERO)
-        deposit_avg = abs(_as_decimal(demand_row.get("月日均")) or ZERO) + abs(_as_decimal(term_row.get("月日均")) or ZERO)
+        demand_avg = _as_decimal(demand_row.get("月日均")) if demand_row else ZERO
+        term_avg = _as_decimal(term_row.get("月日均")) if term_row else ZERO
+        deposit_avg = (
+            abs(demand_avg) + abs(term_avg)
+            if demand_avg is not None and term_avg is not None
+            else None
+        )
         loan_end = _as_decimal(row.get("期末余额")) or ZERO
-        loan_avg = _as_decimal(row.get("月日均")) or ZERO
-        rows.append({"行业": row.get("行业名称", ""), "贷款期末": _display_number(_to_yi(loan_end)), "存款期末": _display_number(_to_yi(deposit_end)), "存贷差_时点": _display_number(_to_yi(loan_end - deposit_end)), "贷款月日均": _display_number(_to_yi(loan_avg)), "存款月日均": _display_number(_to_yi(deposit_avg)), "存贷差_日均": _display_number(_to_yi(loan_avg - deposit_avg))})
+        loan_avg = _as_decimal(row.get("月日均"))
+        average_gap = loan_avg - deposit_avg if loan_avg is not None and deposit_avg is not None else None
+        rows.append({
+            "行业": row.get("行业名称", ""),
+            "贷款期末": _display_number(_to_yi(loan_end)),
+            "存款期末": _display_number(_to_yi(deposit_end)),
+            "存贷差_时点": _display_number(_to_yi(loan_end - deposit_end)),
+            "贷款月日均": _display_yi(loan_avg),
+            "存款月日均": _display_yi(deposit_avg),
+            "存贷差_日均": _display_yi(average_gap),
+        })
     return rows
 
 
@@ -1749,6 +1832,9 @@ def _build_income_rate_attribution_sheet(
                 current_rate * Decimal(current_days) / Decimal(365)
                 - prior_rate * Decimal(prior_days) / Decimal(365)
             )
+        # 此处的 check_gap = delta - volume_effect - rate_effect 代数恒为 0：volume_effect 按本期利率
+        # （current_rate）计价，隐式吸收了 cross-term Δ规模×Δ利率；rate_effect 以对比期规模计价，是纯利率效应。
+        # 因此不具独立校验能力。对外展示为"恒等式自检（非独立对账）"。
         check_gap = None if delta is None or volume_effect is None or rate_effect is None else delta - volume_effect - rate_effect
         rows.append(
             {
@@ -1759,7 +1845,7 @@ def _build_income_rate_attribution_sheet(
                 "增减额": _display_yi(delta),
                 "规模贡献": _display_yi(volume_effect),
                 "利率贡献": _display_yi(rate_effect),
-                "校验差异": _display_yi(check_gap),
+                "恒等式自检（非独立对账）": _display_yi(check_gap),
                 "口径来源": source,
             }
         )
@@ -1768,7 +1854,7 @@ def _build_income_rate_attribution_sheet(
     return _sheet(
         "income_rate_attribution",
         "收益量价归因（年累计同比）",
-        ["指标", "板块", "本期收益/支出", "对比期收益/支出", "增减额", "规模贡献", "利率贡献", "校验差异", "口径来源"],
+        ["指标", "板块", "本期收益/支出", "对比期收益/支出", "增减额", "规模贡献", "利率贡献", "恒等式自检（非独立对账）", "口径来源"],
         rows,
     )
 
@@ -2175,7 +2261,7 @@ def _annualized_rate_pct(amount: Decimal | None, average_scale: Decimal | None, 
 def _industry_sheet(key: str, title: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     ordered = sorted(rows, key=lambda row: abs(_as_decimal(row.get("期末余额")) or ZERO), reverse=True)
     return _sheet(key, title, ["行业名称", "期初余额", "期末余额", "变动额", "月日均", "年日均", "偏离额", "偏离%", "趋势%"], [
-        {"行业名称": row.get("行业名称", ""), "期初余额": _display_number(_to_yi(_as_decimal(row.get("期初余额")) or ZERO)), "期末余额": _display_number(_to_yi(_as_decimal(row.get("期末余额")) or ZERO)), "变动额": _display_number(_to_yi(_as_decimal(row.get("变动额")) or ZERO)), "月日均": _display_number(_to_yi(_as_decimal(row.get("月日均")) or ZERO)), "年日均": _display_number(_to_yi(_as_decimal(row.get("年日均")) or ZERO)), "偏离额": _display_number(_to_yi(_as_decimal(row.get("偏离额")) or ZERO)), "偏离%": _display_number(_as_decimal(row.get("偏离%"))), "趋势%": _display_number(_as_decimal(row.get("趋势%")))}
+        {"行业名称": row.get("行业名称", ""), "期初余额": _display_number(_to_yi(_as_decimal(row.get("期初余额")) or ZERO)), "期末余额": _display_number(_to_yi(_as_decimal(row.get("期末余额")) or ZERO)), "变动额": _display_number(_to_yi(_as_decimal(row.get("变动额")) or ZERO)), "月日均": _display_yi(_as_decimal(row.get("月日均"))), "年日均": _display_yi(_as_decimal(row.get("年日均"))), "偏离额": _display_yi(_as_decimal(row.get("偏离额"))), "偏离%": _display_number(_as_decimal(row.get("偏离%"))), "趋势%": _display_number(_as_decimal(row.get("趋势%")))}
         for row in ordered
     ])
 
@@ -2187,13 +2273,13 @@ def _normalize_amount_row(row: dict[str, Any], *, include_trend: bool) -> dict[s
         "期初余额": _display_number(_to_yi(_as_decimal(row.get("期初余额")) or ZERO)),
         "期末余额": _display_number(_to_yi(_as_decimal(row.get("期末余额")) or ZERO)),
         "变动额": _display_number(_to_yi(_as_decimal(row.get("变动额")) or ZERO)),
-        "月日均": _display_number(_to_yi(_as_decimal(row.get("月日均")) or ZERO)),
-        "年日均": _display_number(_to_yi(_as_decimal(row.get("年日均")) or ZERO)),
-        "偏离额": _display_number(_to_yi(_as_decimal(row.get("偏离额")) or ZERO)),
+        "月日均": _display_yi(_as_decimal(row.get("月日均"))),
+        "年日均": _display_yi(_as_decimal(row.get("年日均"))),
+        "偏离额": _display_yi(_as_decimal(row.get("偏离额"))),
         "偏离%": _display_number(_as_decimal(row.get("偏离%"))),
     }
     if include_trend:
-        normalized["趋势额"] = _display_number(_to_yi(_as_decimal(row.get("趋势额")) or ZERO))
+        normalized["趋势额"] = _display_yi(_as_decimal(row.get("趋势额")))
         normalized["趋势%"] = _display_number(_as_decimal(row.get("趋势%")))
     return normalized
 

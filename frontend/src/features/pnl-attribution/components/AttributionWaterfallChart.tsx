@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import type { EChartsOption } from "../../../lib/echarts";
 import type { Numeric, VolumeRateAttributionPayload } from "../../../api/contracts";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
@@ -10,6 +11,7 @@ import {
   type AttributionBridgeTone,
   buildAttributionBridge,
   formatYi,
+  hasDirectPnlAttribution,
 } from "./pnlAttributionViewModel";
 import "./AttributionWaterfallChart.css";
 
@@ -41,13 +43,6 @@ const BRIDGE_TONE_COLOR: Record<AttributionBridgeTone, string> = {
   neutral: nocturneTokens.color.inkMuted,
 };
 
-const BAR_TOP_RADIUS = [
-  designTokens.radius.sm,
-  designTokens.radius.sm,
-  0,
-  0,
-];
-
 type Props = {
   data: VolumeRateAttributionPayload | null;
   state: DataSectionState;
@@ -55,8 +50,8 @@ type Props = {
 };
 
 /**
- * 损益变动归因桥（标准瀑布）：上期总值起步 → 规模/利率/交叉效应从累计位
- * 起画（透明垫柱定位）→ 当期总值收尾；柱间虚线标累计位，柱顶标带符号数值。
+ * 损益变动归因桥逐项展示利息量价、非利息直接变动和未解释差额。
+ * 柱间虚线标累计位，柱顶标带符号数值。
  * 任一总值/效应缺失时回退为独立柱形态（缺口保持断点，不补 0 参与累计定位）。
  */
 export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
@@ -69,11 +64,17 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
     const rate = yiOrNull(data.total_rate_effect);
     // 交叉效应恒列示（含小值与缺失断点），不做阈值静默省略。
     const interaction = yiOrNull(data.total_interaction_effect);
+    const includesDirectPnl = hasDirectPnlAttribution(data);
+    const fairValue = yiOrNull(data.total_fair_value_effect);
+    const capitalGain = yiOrNull(data.total_capital_gain_effect);
+    const manualAdjustment = yiOrNull(data.total_manual_adjustment_effect);
+    const unexplained = yiOrNull(data.total_recon_error);
     const current = yiOrNull(data.total_current_pnl);
 
     const axisLabelStyle = {
       fontSize: designTokens.fontSize[11],
       color: nocturneTokens.color.inkMuted,
+      ...(includesDirectPnl ? { interval: 0, rotate: 20 } : {}),
     };
     const valueAxis = {
       type: "value" as const,
@@ -89,7 +90,6 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
       left: 48,
       right: designTokens.space[6],
       top: designTokens.space[7],
-      bottom: designTokens.space[7],
     };
 
     const bridge = buildAttributionBridge({
@@ -97,6 +97,8 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
       volume,
       rate,
       interaction,
+      ...(includesDirectPnl ? { fairValue, capitalGain, manualAdjustment } : {}),
+      unexplained,
       current,
     });
 
@@ -158,7 +160,6 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
               value: bar.size,
               itemStyle: {
                 color: BRIDGE_TONE_COLOR[bar.tone],
-                borderRadius: BAR_TOP_RADIUS,
               },
               label: {
                 show: true,
@@ -199,7 +200,7 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
         color: BRIDGE_TONE_COLOR["total-prev"],
       },
       {
-        category: "规模效应",
+        category: includesDirectPnl ? "利息规模效应" : "规模效应",
         value: volume,
         color:
           volume === null
@@ -207,7 +208,7 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
             : BRIDGE_TONE_COLOR[volume >= 0 ? "positive" : "negative"],
       },
       {
-        category: "利率效应",
+        category: includesDirectPnl ? "利息收益率效应" : "利率效应",
         value: rate,
         color:
           rate === null
@@ -217,6 +218,21 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
       {
         category: "交叉效应",
         value: interaction,
+        color: BRIDGE_TONE_COLOR.neutral,
+      },
+      ...(includesDirectPnl ? [
+        { category: "公允价值变动", value: fairValue },
+        { category: "投资收益变动", value: capitalGain },
+        { category: "手工调整变动", value: manualAdjustment },
+      ].map(({ category, value }) => ({
+        category,
+        value,
+        color: value === null ? BRIDGE_TONE_COLOR.neutral :
+          BRIDGE_TONE_COLOR[value >= 0 ? "positive" : "negative"],
+      })) : []),
+      {
+        category: "未解释差额",
+        value: unexplained,
         color: BRIDGE_TONE_COLOR.neutral,
       },
       {
@@ -243,7 +259,7 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
           type: "bar",
           data: fallbackBars.map((bar) => ({
             value: bar.value,
-            itemStyle: { color: bar.color, borderRadius: BAR_TOP_RADIUS },
+            itemStyle: { color: bar.color },
             label: {
               show: bar.value !== null,
               position: "top" as const,
@@ -257,53 +273,60 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
       ],
     };
   }, [data]);
-  const unexplainedEffect =
-    data?.has_previous_data && data.total_recon_error?.raw != null
-      ? data.total_recon_error.raw
-      : undefined;
+  const includesDirectPnl = data !== null && hasDirectPnlAttribution(data);
 
   return (
     <PageDataSection title="损益变动归因分解" state={state} onRetry={onRetry}>
-      {!data ? null : !data.has_previous_data || !option ? (
-        <div className="attribution-waterfall-chart__card attribution-waterfall-chart__empty">
-          {!data.has_previous_data
-            ? "无上期对比数据，无法展示归因瀑布图。"
-            : "暂无数据"}
-        </div>
-      ) : (
-        <div className="attribution-waterfall-chart__card">
+      {data ? (
+        <>
           <p className="attribution-waterfall-chart__copy">
-            规模一阶效应近似为
-            Δ规模×上期收益率；利率一阶效应近似为上期规模×Δ收益率；交叉效应为规模与收益率同时变化的二阶联动项；
-            未解释差额为损益变动扣除三项效应后的归因残差。与 Campisi
-            框架中的收入、国债、利差、选择等解释维度互补。
+            {includesDirectPnl
+              ? "利息量价以期末市值和当月利息收益率拆分，收益率为当月利息收入除以期末市值，非年化；公允价值损益、投资收益和手工调整按两期变动单列。未解释差额为损益变动扣除六项已知效应后的归因残差，缺失字段保留断点。"
+              : "规模一阶效应近似为 Δ规模×上期收益率；利率一阶效应近似为上期规模×Δ收益率；交叉效应为规模与收益率同时变化的二阶联动项；未解释差额为损益变动扣除三项效应后的归因残差，缺失字段保留断点。"}
           </p>
-          <ReactECharts
+          <ChartCard
+            flat
+            ariaLabel="损益变动归因分解"
+            unit="亿元"
+            height={280}
             option={option}
-            className="attribution-waterfall-chart__chart"
-            notMerge
-            lazyUpdate
-          />
-          <div className="attribution-waterfall-chart__legend">
-            <span>
-              当期损益 {formatYi(data.total_current_pnl.raw ?? undefined)}
-            </span>
-            <span>
-              规模效应 {formatYi(data.total_volume_effect?.raw ?? undefined)}
-            </span>
-            <span>
-              利率效应 {formatYi(data.total_rate_effect?.raw ?? undefined)}
-            </span>
-            <span>
-              交叉效应{" "}
-              {formatYi(data.total_interaction_effect?.raw ?? undefined)}
-            </span>
-            {unexplainedEffect != null ? (
-              <span>未解释差额 {formatYi(unexplainedEffect)}</span>
+            legend="none"
+            emptyMessage={
+              !data.has_previous_data
+                ? "无上期对比数据，无法展示归因瀑布图。"
+                : "暂无数据"
+            }
+          >
+            {data.has_previous_data && option ? (
+              <div className="attribution-waterfall-chart__legend">
+                <span>
+                  当期损益 {formatYi(data.total_current_pnl.raw ?? undefined)}
+                </span>
+                <span>
+                  {includesDirectPnl ? "利息规模效应" : "规模效应"}{" "}
+                  {formatYi(data.total_volume_effect?.raw ?? undefined)}
+                </span>
+                <span>
+                  {includesDirectPnl ? "利息收益率效应" : "利率效应"}{" "}
+                  {formatYi(data.total_rate_effect?.raw ?? undefined)}
+                </span>
+                <span>
+                  交叉效应{" "}
+                  {formatYi(data.total_interaction_effect?.raw ?? undefined)}
+                </span>
+                {includesDirectPnl ? (
+                  <>
+                    <span>公允价值变动 {formatYi(data.total_fair_value_effect?.raw ?? undefined)}</span>
+                    <span>投资收益变动 {formatYi(data.total_capital_gain_effect?.raw ?? undefined)}</span>
+                    <span>手工调整变动 {formatYi(data.total_manual_adjustment_effect?.raw ?? undefined)}</span>
+                  </>
+                ) : null}
+                <span>未解释差额 {formatYi(data.total_recon_error?.raw ?? undefined)}</span>
+              </div>
             ) : null}
-          </div>
-        </div>
-      )}
+          </ChartCard>
+        </>
+      ) : null}
     </PageDataSection>
   );
 }

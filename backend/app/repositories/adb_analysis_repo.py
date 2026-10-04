@@ -7,8 +7,7 @@ from typing import Any
 
 import duckdb
 import pandas as pd
-from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
-from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
+from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate, validate_formal_fx_observation
 from backend.app.repositories.currency_codes import normalize_currency_code
 from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
 
@@ -51,7 +50,7 @@ class AdbAnalysisRepository(DuckDBRepository):
         """Resolve one governed CNY mid-rate for ADB snapshot fallback.
 
         Business-day observations must be direct. Carry-forward is accepted only on
-        a confirmed CFETS non-business day and must point to an earlier trade date.
+        a confirmed CFETS non-publication day and must point to its previous fixing.
         """
         base = normalize_currency_code(base_currency)
         if base in {"", "CNY", "CNX", "RMB"}:
@@ -90,39 +89,14 @@ class AdbAnalysisRepository(DuckDBRepository):
                 "mid_rate must be finite and greater than zero."
             )
 
-        business_day = bool(row[1])
-        carry_forward = bool(row[2])
         observed_trade_date = str(row[3]) if row[3] is not None else None
-        if business_day:
-            if carry_forward:
-                raise ValueError(
-                    f"Invalid formal fx metadata for base_currency={base} report_date={report_date}: "
-                    "business-day row cannot be carry-forward."
-                )
-            return rate
-
-        if not carry_forward or observed_trade_date is None:
-            raise ValueError(
-                f"Invalid formal fx carry-forward metadata for base_currency={base} "
-                f"report_date={report_date}: non-business-day row must carry forward an "
-                "observed prior trade date."
-            )
-        if date.fromisoformat(observed_trade_date) >= date.fromisoformat(report_date):
-            raise ValueError(
-                f"Invalid formal fx carry-forward metadata for base_currency={base} "
-                f"report_date={report_date}: observed_trade_date={observed_trade_date} "
-                "must be before report_date."
-            )
-        if not is_cfets_fx_non_business_day(
-            report_date,
+        validate_formal_fx_observation(
+            target_date=report_date,
+            observed_date=observed_trade_date,
             base_currency=base,
-            quote_currency="CNY",
-        ):
-            raise ValueError(
-                f"Invalid formal fx carry-forward metadata for base_currency={base} "
-                f"report_date={report_date}: carry-forward is only allowed for confirmed "
-                "non-business-day rows."
-            )
+            is_business_day=row[1],
+            is_carry_forward=row[2],
+        )
         return rate
 
     @staticmethod

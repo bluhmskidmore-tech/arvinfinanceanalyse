@@ -53,6 +53,110 @@ def _make_bond(
     return bond
 
 
+@pytest.mark.parametrize("compute", [compute_bond_four_effects, compute_bond_six_effects])
+def test_explicit_zero_ytm_differs_from_missing_and_absent(compute):
+    def run(bond):
+        return compute(bond, 30, Decimal("0.001"), Decimal("0"), date(2026, 1, 1))
+
+    zero = run(_make_bond(coupon_rate=0.03, ytm=0))
+    missing = run(_make_bond(coupon_rate=0.03, ytm=None))
+    absent_bond = _make_bond(coupon_rate=0.03)
+    del absent_bond["yield_to_maturity_start"]
+    absent = run(absent_bond)
+    par = run(_make_bond(coupon_rate=0.03, ytm=0.03))
+
+    assert zero["mod_duration"] != par["mod_duration"]
+    assert missing["mod_duration"] == par["mod_duration"]
+    assert absent["mod_duration"] == par["mod_duration"]
+
+
+@pytest.mark.parametrize("compute", [compute_bond_four_effects, compute_bond_six_effects])
+@pytest.mark.parametrize("end_face", [500, 2000])
+def test_quantity_change_does_not_attribute_principal_as_price_return(compute, end_face):
+    bond = _make_bond(coupon_rate=0, face_value=1000, market_value_start=1000,
+                      market_value_end=end_face, accrued_interest_start=0, accrued_interest_end=0)
+    bond.update(face_value_end=end_face, start_present=True, end_present=True)
+    result = compute(bond, 30, Decimal("0.001"), Decimal("0.0002"), date(2026, 1, 1))
+    for key in ("income_return", "treasury_effect", "spread_effect", "selection_effect", "total_return"):
+        assert result[key] == 0
+    for key in ("convexity_effect", "cross_effect", "reinvestment_effect"):
+        assert result.get(key, 0) == 0
+    assert "position_principal_changed" in result["diagnostics"]
+
+
+@pytest.mark.parametrize("end_accrued", [None, 5])
+def test_single_sided_accrued_warning_does_not_claim_selection_attribution(caplog, end_accrued):
+    bond = _make_bond(
+        face_value=1000,
+        market_value_start=1000,
+        market_value_end=0,
+        accrued_interest_start=None,
+        accrued_interest_end=end_accrued,
+    )
+    bond.update(start_present=False, end_present=True)
+
+    with caplog.at_level("WARNING", logger=bond_four_effects_module.__name__):
+        result = compute_bond_four_effects(
+            bond, 30, Decimal("0"), Decimal("0"), date(2026, 1, 1)
+        )
+
+    assert result["selection_effect"] == 0
+    assert result["total_return"] == 0
+    assert "excluded from attribution" in caplog.text
+    assert "selection_effect absorbs" not in caplog.text
+
+
+def test_retained_partial_accrued_warning_keeps_clean_price_disclosure(caplog):
+    bond = _make_bond(
+        face_value=1000,
+        market_value_start=1000,
+        market_value_end=1010,
+        accrued_interest_start=5,
+        accrued_interest_end=None,
+    )
+    bond.update(face_value_end=1000, start_present=True, end_present=True)
+
+    with caplog.at_level("WARNING", logger=bond_four_effects_module.__name__):
+        result = compute_bond_four_effects(
+            bond, 30, Decimal("0"), Decimal("0"), date(2026, 1, 1)
+        )
+
+    assert result["selection_effect"] != 0
+    assert "falling back to clean-price basis" in caplog.text
+    assert "selection_effect absorbs" in caplog.text
+
+
+def test_retained_ac_with_partial_accrued_does_not_claim_selection_attribution(caplog):
+    bond = _make_bond(
+        face_value=1000,
+        market_value_start=1000,
+        market_value_end=1010,
+        accrued_interest_start=5,
+        accrued_interest_end=None,
+    )
+    bond.update(face_value_end=1000, start_present=True, end_present=True, accounting_class="AC")
+
+    with caplog.at_level("WARNING", logger=bond_four_effects_module.__name__):
+        result = compute_bond_four_effects(
+            bond, 30, Decimal("0"), Decimal("0"), date(2026, 1, 1)
+        )
+
+    assert result["selection_effect"] == 0
+    assert result["total_return"] == result["income_return"]
+    assert "AC attribution uses modeled coupon only" in caplog.text
+    assert "selection_effect absorbs" not in caplog.text
+
+
+@pytest.mark.parametrize("accounting_class", ["FVOCI", "AC"])
+def test_unchanged_quantity_keeps_existing_price_and_ac_income_rules(accounting_class):
+    bond = _make_bond(coupon_rate=0.03, face_value=1000, market_value_start=1000, market_value_end=1010)
+    bond.update(face_value_end=1000, accounting_class=accounting_class)
+    result = compute_bond_four_effects(bond, 30, Decimal("0"), Decimal("0"), date(2026, 1, 1))
+    income = Decimal("0.03") * Decimal("1000") * Decimal("30") / Decimal("365")
+    assert result["total_return"] == income + (Decimal("0") if accounting_class == "AC" else Decimal("10"))
+    assert "position_principal_changed" not in result["diagnostics"]
+
+
 # ---------------------------------------------------------------------------
 # Coupon-frequency contract
 # ---------------------------------------------------------------------------
@@ -497,7 +601,13 @@ class TestEdgeCases:
         assert float(result["mod_duration"]) > 0
 
     def test_negative_yield(self):
-        """Negative YTM should not crash; duration falls back gracefully."""
+        """合法负收益率（-0.5%）与 bond_analytics 引擎同口径：按观测值贴现，不走 par 回退。
+
+        修正久期必须等于同一生效 ytm 下的 Macaulay/(1 + y/f)，且严格大于 Macaulay
+        （负收益率下 1 + y/f < 1）。
+        """
+        from backend.app.core_finance.bond_duration import estimate_duration
+
         bond = _make_bond(
             coupon_rate=0.01,
             ytm=-0.005,
@@ -506,11 +616,36 @@ class TestEdgeCases:
             maturity_date=date(2028, 6, 30),
         )
         result = compute_bond_four_effects(
-            bond, 30, Decimal("-0.001"), Decimal("0"), date(2026, 1, 1)
+            bond, 30, Decimal("-0.001"), Decimal("0"), date(2026, 1, 1), coupon_frequency=2
         )
-        # Should complete without exception
-        assert "income_return" in result
-        assert "total_return" in result
+        macaulay = estimate_duration(
+            maturity_date=date(2028, 6, 30),
+            report_date=date(2026, 1, 1),
+            coupon_rate=Decimal("0.01"),
+            ytm=Decimal("-0.005"),
+            coupon_frequency=2,
+        )
+        assert result["mod_duration"] == macaulay / (Decimal("1") + Decimal("-0.005") / Decimal("2"))
+        assert result["mod_duration"] > macaulay
+
+    def test_negative_yield_below_dirty_floor_falls_back_to_par(self):
+        """-95% 这类负向脏值按缺失处理：与 ytm 缺失的同一只券得到相同的 par 回退久期。"""
+        dirty = compute_bond_four_effects(
+            _make_bond(coupon_rate=0.03, ytm=-0.95, maturity_date=date(2030, 12, 31)),
+            30,
+            Decimal("0.001"),
+            Decimal("0"),
+            date(2026, 1, 1),
+        )
+        missing = compute_bond_four_effects(
+            _make_bond(coupon_rate=0.03, ytm=None, maturity_date=date(2030, 12, 31)),
+            30,
+            Decimal("0.001"),
+            Decimal("0"),
+            date(2026, 1, 1),
+        )
+        assert dirty["mod_duration"] == missing["mod_duration"]
+        assert dirty["mod_duration"] > 0
 
     def test_missing_maturity_date(self):
         """Missing maturity short-circuits to mod_duration=0 inside bond_four_effects itself.

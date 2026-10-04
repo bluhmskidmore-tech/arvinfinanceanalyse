@@ -35,16 +35,17 @@ export type PortfolioEvidenceState = {
 };
 
 export function pnlDriverLabel(driver: PnlAttributionAnalysisSummary["primary_driver"]) {
-  if (driver === "volume") {
-    return "规模";
-  }
-  if (driver === "rate") {
-    return "利率";
-  }
-  if (driver === "market") {
-    return "市场";
-  }
-  return "待确认";
+  return {
+    volume: "利息规模",
+    rate: "利息收益率",
+    interaction: "交叉效应",
+    fair_value: "公允价值变动",
+    capital_gain: "投资收益变动",
+    manual_adjustment: "手工调整变动",
+    unexplained: "未解释差额",
+    market: "市场",
+    unknown: "待确认",
+  }[driver] ?? "待确认";
 }
 
 function buildPortfolioActionQueue(args: {
@@ -313,7 +314,9 @@ export function buildPortfolioDecision(args: {
         value: args.readiness.sourceDates,
         tone: args.readiness.blockingReasons.some((reason) => reason.includes("日期不一致"))
           ? "error"
-          : "ok",
+          : args.readiness.sourceDates === EM_DASH
+            ? "muted"
+            : "ok",
       },
       {
         label: "风险闭合",

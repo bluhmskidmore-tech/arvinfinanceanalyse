@@ -1,14 +1,27 @@
 import { chromium } from "playwright";
+import {
+  collectHomeFullPage, createHomeRuntimeLog, runtimeReceipt,
+  safeRequestUrl, servedFrontendProbes, writeRuntimeReceipt,
+} from "./homeRuntimeAcceptance.mjs";
 
 const baseUrl = process.env.MOSS_HOME_STARTUP_BASE_URL ?? "http://localhost:5888/";
 const apiReadyUrl = process.env.MOSS_HOME_STARTUP_READY_URL ?? "http://127.0.0.1:7888/health/ready";
 const firstScreenObservationMs = 400;
 const postFirstScreenMaxWaitMs = 18_000;
-const requestPollIntervalMs = 250;
-// Request budgets: the home page issues 18 /ui+/api requests after the news
-// batching work (baseline 2026-08-12). News collapses to a macro batch, a bond
-// batch, and a data-dependent macro fallback batch.
-const MAX_UI_REQUESTS = 18;
+// Request budget: the 2026-08-12 batched-news baseline was 18 reads. The governed
+// macro-release context and parent-bank operating-revenue candidate added one
+// bounded read each, while first-screen hydration now reuses the bundled home
+// summary instead of a separate headline-kpis read: 18 + 2 - 1 = 19 business reads.
+// The mandatory publication handshake is checked separately (exactly once),
+// so it cannot conceal a repeated business read or a repeated handshake.
+const MAX_UI_REQUESTS = 19;
+// The risk section now reads its own balance-date basis and, when dates exist,
+// decision items. Keep the established 19-read budget for the original modules
+// and bound these two explicit additions separately instead of raising it.
+const BALANCE_RISK_REQUEST_PATHS = ["/ui/balance-analysis/dates", "/ui/balance-analysis/decision-items"];
+const MAX_CANDIDATE_FINANCIAL_INDICATOR_REQUESTS = 1;
+const MAX_MACRO_RELEASE_CONTEXT_REQUESTS = 1;
+const MAX_SEPARATE_HEADLINE_KPI_REQUESTS = 0;
 const MIN_CHOICE_NEWS_BATCH_REQUESTS = 2;
 const MAX_CHOICE_NEWS_BATCH_REQUESTS = 3;
 
@@ -30,77 +43,22 @@ function normalizeUrl(url) {
   return url.replace(/^https?:\/\/[^/]+/, "");
 }
 
-function trackUrl(url) {
-  return url.includes("/ui/") || url.includes("/api/") || url.includes("/assets/") || url.includes("/src/");
-}
-
-function firstRequestAt(requestLog, needles) {
-  const match = requestLog.find((entry) => needles.some((needle) => entry.url.includes(needle)));
-  return match?.t ?? null;
-}
-
-async function waitForTrackedRequests(page, requestLog, needleGroups, timeoutMs) {
-  const startedAt = Date.now();
-  const allRequestsStarted = () =>
-    needleGroups.every((needles) => firstRequestAt(requestLog, needles) != null);
-
-  while (Date.now() - startedAt < timeoutMs) {
-    if (allRequestsStarted()) {
-      return true;
-    }
-    await page.waitForTimeout(requestPollIntervalMs);
-  }
-  return allRequestsStarted();
-}
-
-function createRuntimeLog(page) {
-  const startedAt = Date.now();
-  const requestLog = [];
-  const responseLog = [];
-
-  page.on("request", (request) => {
-    const url = request.url();
-    if (!trackUrl(url)) {
-      return;
-    }
-    requestLog.push({
-      t: Date.now() - startedAt,
-      method: request.method(),
-      type: request.resourceType(),
-      url,
-    });
-  });
-
-  page.on("response", (response) => {
-    const url = response.url();
-    if (!trackUrl(url)) {
-      return;
-    }
-    responseLog.push({
-      t: Date.now() - startedAt,
-      status: response.status(),
-      url,
-    });
-  });
-
-  return { requestLog, responseLog };
-}
-
 async function fetchReadyStatus() {
-  const response = await fetch(apiReadyUrl);
+  const response = await fetch(apiReadyUrl, { signal: AbortSignal.timeout(30_000) });
   const payload = await response.json();
   const homePrewarm = payload?.checks?.home_snapshot_prewarm ?? null;
+  if (!response.ok) addFailure(`API readiness returned HTTP ${response.status}.`);
   if (!homePrewarm) {
     addFailure("API readiness is missing checks.home_snapshot_prewarm; restart the API before live startup sampling.");
   } else if (homePrewarm.status !== "ready") {
     addFailure(
-      `home snapshot prewarm is not ready before live sample: status=${homePrewarm.status} error=${homePrewarm.error ?? ""}`,
+      `home snapshot prewarm is not ready before live sample: status=${homePrewarm.status} error_present=${Boolean(homePrewarm.error)}`,
     );
   }
   return {
     statusCode: response.status,
     status: payload?.status,
-    homePrewarm,
+    homePrewarm: homePrewarm ? { status: homePrewarm.status, error_present: Boolean(homePrewarm.error) } : null,
   };
 }
 
@@ -109,7 +67,8 @@ async function sampleHome() {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.route("**/*", (route) => route.continue());
   const page = await context.newPage();
-  const { requestLog, responseLog } = createRuntimeLog(page);
+  const log = createHomeRuntimeLog(page);
+  const { requestLog, responseLog } = log;
 
   try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -119,7 +78,7 @@ async function sampleHome() {
 
     const initialUrls = requestLog.map((entry) => entry.url);
     const marketTickerMockNeedles = [
-      "/src/api/homeMarketTickerMockClient.ts",
+      "/src/mocks/homeMarketTickerMockClient.ts",
       "/src/mocks/mockApiEnvelope.ts",
       "/assets/homeMarketTickerMockClient-",
       "/assets/mockApiEnvelope-",
@@ -128,27 +87,10 @@ async function sampleHome() {
       "/src/features/workbench/dashboard-home/dashboardHomeFirstScreenMockView.ts",
       "/assets/dashboardHomeFirstScreenMockView-",
     ];
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    const trackedRequestsArrived = await waitForTrackedRequests(
-      page,
-      requestLog,
-      [
-        ["/ui/market-data/rates"],
-        ["/ui/calendar/supply-auctions"],
-        ["/ui/news/choice-events/latest"],
-        // The bond-news batch sits one idle tier later than the macro batch;
-        // without waiting for it the batch-count assertion below races.
-        ["/ui/news/choice-events/latest-batch?groups"],
-        ["/ui/home/income-trend"],
-        ["/ui/bond-dashboard/home-summary", "/api/bond-dashboard/home-summary"],
-      ],
-      postFirstScreenMaxWaitMs,
-    );
-    if (!trackedRequestsArrived) {
-      addFailure(
-        `tracked home data requests did not all arrive within ${postFirstScreenMaxWaitMs}ms.`,
-      );
-    }
+    const fullPage = await collectHomeFullPage(page, log, { timeoutMs: postFirstScreenMaxWaitMs });
+    failures.push(...fullPage.failures);
+    try { frontendProbes = await servedFrontendProbes(page, log, baseUrl); }
+    catch { addFailure("home served frontend document and entry hashes could not be bound"); }
 
     const allUrls = requestLog.map((entry) => entry.url);
     const ready = {
@@ -180,6 +122,9 @@ async function sampleHome() {
       const path = normalizeUrl(requestUrl);
       return path.startsWith("/ui/") || path.startsWith("/api/");
     });
+    const publicationHandshakes = uiRequestUrls.filter(
+      (url) => normalizeUrl(url).split("?")[0] === "/api/system-read-publication",
+    ).length;
     const allCounts = {
       snapshot: count(allUrls, "/ui/home/snapshot"),
       marketRates: count(allUrls, "/ui/market-data/rates"),
@@ -187,11 +132,20 @@ async function sampleHome() {
       choiceNews: count(allUrls, "/ui/news/choice-events/latest"),
       choiceNewsBatch: count(allUrls, "/ui/news/choice-events/latest-batch"),
       incomeTrend: count(allUrls, "/ui/home/income-trend"),
+      candidateFinancialIndicators: count(
+        allUrls,
+        "/api/ledger-pnl/candidate-financial-indicators",
+      ),
+      macroReleaseContext: count(allUrls, "/ui/home/macro-release-context"),
       homeSummary: countAny(allUrls, [
         "/ui/bond-dashboard/home-summary",
         "/api/bond-dashboard/home-summary",
       ]),
+      separateHeadlineKpis: count(allUrls, "/api/bond-dashboard/headline-kpis"),
       uiRequestTotal: uiRequestUrls.length,
+      publicationHandshakes,
+      businessRequestTotal: uiRequestUrls.length - publicationHandshakes,
+      balanceRiskRequests: uiRequestUrls.filter((url) => BALANCE_RISK_REQUEST_PATHS.includes(new URL(url).pathname)).length,
       marketTickerMock: countAny(allUrls, marketTickerMockNeedles),
       firstScreenMock: countAny(allUrls, firstScreenMockNeedles),
       failedResponses: responseLog.filter((entry) => entry.status >= 400).length,
@@ -253,14 +207,39 @@ async function sampleHome() {
         `home must not fan out single news latest requests, got ${allCounts.choiceNews - allCounts.choiceNewsBatch}`,
       );
     }
+    if (
+      allCounts.candidateFinancialIndicators >
+      MAX_CANDIDATE_FINANCIAL_INDICATOR_REQUESTS
+    ) {
+      addFailure(
+        `candidate financial indicators issued ${allCounts.candidateFinancialIndicators} requests; expected at most ${MAX_CANDIDATE_FINANCIAL_INDICATOR_REQUESTS}.`,
+      );
+    }
+    if (allCounts.macroReleaseContext > MAX_MACRO_RELEASE_CONTEXT_REQUESTS) {
+      addFailure(
+        `macro release context issued ${allCounts.macroReleaseContext} requests; expected at most ${MAX_MACRO_RELEASE_CONTEXT_REQUESTS}.`,
+      );
+    }
+    if (allCounts.separateHeadlineKpis > MAX_SEPARATE_HEADLINE_KPI_REQUESTS) {
+      addFailure(
+        `home issued ${allCounts.separateHeadlineKpis} separate headline-kpis requests; the bundled home summary must supply that payload.`,
+      );
+    }
     if (allCounts.calendar < 1 || allCounts.incomeTrend < 1 || allCounts.homeSummary < 1) {
       addFailure(
         `expected calendar/income-trend/home-summary to load, got calendar=${allCounts.calendar}, incomeTrend=${allCounts.incomeTrend}, homeSummary=${allCounts.homeSummary}`,
       );
     }
-    if (allCounts.uiRequestTotal > MAX_UI_REQUESTS) {
+    if (allCounts.publicationHandshakes !== 1) {
+      addFailure(`expected one publication handshake, got ${allCounts.publicationHandshakes}.`);
+    }
+    for (const path of BALANCE_RISK_REQUEST_PATHS) {
+      const requests = uiRequestUrls.filter((url) => new URL(url).pathname === path).length;
+      if (requests > 1) addFailure(`home risk section issued ${requests} ${path} requests; expected at most one.`);
+    }
+    if (allCounts.businessRequestTotal - allCounts.balanceRiskRequests > MAX_UI_REQUESTS) {
       addFailure(
-        `home issued ${allCounts.uiRequestTotal} /ui+/api requests, over the ${MAX_UI_REQUESTS} budget (baseline 2026-08-12: 18).`,
+        `home issued ${allCounts.businessRequestTotal - allCounts.balanceRiskRequests} legacy business requests, over the ${MAX_UI_REQUESTS} budget (excluding publication and the two bounded balance-risk reads).`,
       );
     }
 
@@ -268,16 +247,17 @@ async function sampleHome() {
       ready,
       initialCounts,
       allCounts,
+      fullPage,
       firstTwentyRequests: requestLog.slice(0, 20).map((entry) => ({
         t: entry.t,
         type: entry.type,
-        url: normalizeUrl(entry.url),
+        url: safeRequestUrl(entry.url),
       })),
       uiRequests: requestLog
         .filter((entry) => entry.url.includes("/ui/") || entry.url.includes("/api/"))
         .map((entry) => ({
           t: entry.t,
-          url: normalizeUrl(entry.url),
+          url: safeRequestUrl(entry.url),
         })),
     };
   } finally {
@@ -286,26 +266,17 @@ async function sampleHome() {
   }
 }
 
-const ready = await fetchReadyStatus();
-const home = ready.homePrewarm?.status === "ready" ? await sampleHome() : null;
-const summary = {
-  baseUrl,
-  apiReadyUrl,
-  mode: "live-dev",
-  thresholds: {
-    firstScreenObservationMs,
-    postFirstScreenMaxWaitMs,
-  },
-  ready,
-  home,
-  failures,
-};
-
-if (failures.length > 0) {
-  console.error("[home-startup-live] Live startup sample failed.");
-  console.error(JSON.stringify(summary, null, 2));
-  process.exitCode = 1;
-} else {
-  console.log("[home-startup-live] Live startup sample passed.");
-  console.log(JSON.stringify(summary, null, 2));
+const startedAt = new Date().toISOString();
+let ready = null;
+let home = null;
+let frontendProbes = [];
+try {
+  ready = await fetchReadyStatus();
+  if (ready.homePrewarm?.status === "ready") home = await sampleHome();
+} catch (error) {
+  addFailure(`home runtime sampling could not complete: ${error instanceof Error ? error.name : "Error"}`);
 }
+const summary = runtimeReceipt({ baseUrl, startedAt, apiReadyUrl, mode: "live-dev", ready, home, failures, frontendProbes,
+  thresholds: { firstScreenObservationMs, postFirstScreenMaxWaitMs } });
+await writeRuntimeReceipt(summary);
+if (failures.length) process.exitCode = 1;

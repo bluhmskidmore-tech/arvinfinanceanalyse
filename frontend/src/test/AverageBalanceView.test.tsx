@@ -436,8 +436,12 @@ describe("AverageBalanceView", () => {
     expect(screen.getByTestId("adb-top-n-select")).toBeInTheDocument();
     expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(3);
 
-    expect(screen.getByText(/期末时点与日均偏离对比 · 资产/)).toBeInTheDocument();
-    expect(screen.getByText(/期末时点与日均偏离对比 · 负债/)).toBeInTheDocument();
+    expect(screen.getByRole("figure", { name: "资产端偏离对比" })).toHaveTextContent(
+      "期末时点与区间日均",
+    );
+    expect(screen.getByRole("figure", { name: "负债端偏离对比" })).toHaveTextContent(
+      "期末时点与区间日均",
+    );
     expect(screen.getByText("资产端分类明细")).toBeInTheDocument();
     expect(screen.getByText("负债端分类明细")).toBeInTheDocument();
     expect(screen.getAllByText("期末时点（亿元）").length).toBeGreaterThan(0);
@@ -552,7 +556,7 @@ describe("AverageBalanceView", () => {
       },
     });
 
-    const deviationCard = (await screen.findByText("偏离度（资产）")).closest(".adb-kpi");
+    const deviationCard = (await screen.findByText("偏离度（资产）")).closest('[data-kpi-cell="true"]');
     expect(deviationCard).toHaveTextContent("-9.45%");
     expect(deviationCard?.querySelector(".adb-kpi-warn-icon")).toBeInTheDocument();
     expect(await screen.findByText(/偏离度绝对值 > 5%/)).toBeInTheDocument();
@@ -628,10 +632,10 @@ describe("AverageBalanceView", () => {
     });
 
     const assetDeviationLabel = await screen.findByText("偏离度（资产）");
-    expect(assetDeviationLabel.closest(".adb-kpi")).toHaveTextContent("—");
-    expect(assetDeviationLabel.closest(".adb-kpi")).not.toHaveTextContent("%");
+    expect(assetDeviationLabel.closest('[data-kpi-cell="true"]')).toHaveTextContent("—");
+    expect(assetDeviationLabel.closest('[data-kpi-cell="true"]')).not.toHaveTextContent("%");
     const liabilityDeviationLabel = screen.getByText("偏离度（负债）");
-    expect(liabilityDeviationLabel.closest(".adb-kpi")).toHaveTextContent("—");
+    expect(liabilityDeviationLabel.closest('[data-kpi-cell="true"]')).toHaveTextContent("—");
     expect(screen.queryByText(/窗口粉饰/)).not.toBeInTheDocument();
   });
 
@@ -687,11 +691,11 @@ describe("AverageBalanceView", () => {
       },
     });
 
-    const avgAssetsCard = (await screen.findByText("日均总资产")).closest(".adb-kpi");
+    const avgAssetsCard = (await screen.findByText("日均总资产")).closest('[data-kpi-cell="true"]');
     expect(avgAssetsCard).toHaveTextContent("—");
     expect(avgAssetsCard).toHaveTextContent("观测窗口不足，日均不可用");
 
-    const deviationCard = screen.getByText("偏离度（资产）").closest(".adb-kpi");
+    const deviationCard = screen.getByText("偏离度（资产）").closest('[data-kpi-cell="true"]');
     expect(deviationCard).toHaveTextContent("—");
     expect(deviationCard?.querySelector(".adb-kpi-warn-icon")).not.toBeInTheDocument();
 
@@ -797,8 +801,8 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("月度汇总表")).toBeInTheDocument();
     expect(screen.getAllByText("2026年3月").length).toBeGreaterThan(0);
     expect(screen.getByText("按月度日均分析 - 深度分析")).toBeInTheDocument();
-    expect(screen.getByText("资产端分类明细")).toBeInTheDocument();
-    expect(screen.getByText("负债端分类明细")).toBeInTheDocument();
+    expect(screen.getByRole("figure", { name: "2026年3月 资产端" })).toHaveTextContent("亿元");
+    expect(screen.getByRole("figure", { name: "2026年3月 负债端" })).toHaveTextContent("亿元");
     expect(screen.getByText("月份")).toBeInTheDocument();
     expect(screen.getByText("天数")).toBeInTheDocument();
     expect(screen.getByText(/额\s*\+\s*0\.18\s*亿元/)).toBeInTheDocument();
@@ -867,8 +871,8 @@ describe("AverageBalanceView", () => {
 
     await user.click(await screen.findByRole("tab", { name: "月度统计" }));
 
-    const ytdAssetCard = (await screen.findByText("年初至今日均资产")).closest(".adb-kpi");
-    const ytdLiabilityCard = screen.getByText("年初至今日均负债").closest(".adb-kpi");
+    const ytdAssetCard = (await screen.findByText("年初至今日均资产")).closest('[data-kpi-cell="true"]');
+    const ytdLiabilityCard = screen.getByText("年初至今日均负债").closest('[data-kpi-cell="true"]');
     expect(ytdAssetCard).toHaveTextContent("—");
     expect(ytdLiabilityCard).toHaveTextContent("—");
 

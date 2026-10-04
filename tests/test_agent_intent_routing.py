@@ -15,6 +15,107 @@ pytestmark = [
 ]
 
 
+def _balance_overview_upstream(
+    *,
+    overview: dict[str, object],
+    report_date: str,
+    position_scope: str,
+    currency_basis: str,
+) -> dict[str, object]:
+    return {
+        "result": {
+            "report_date": report_date,
+            "position_scope": position_scope,
+            "currency_basis": currency_basis,
+            "detail_row_count": overview.get("detail_row_count", 0),
+            "summary_row_count": overview.get("summary_row_count", 1),
+            "total_market_value_amount": overview.get("total_market_value_amount"),
+            "total_amortized_cost_amount": overview.get("total_amortized_cost_amount"),
+            "total_accrued_interest_amount": overview.get("total_accrued_interest_amount"),
+        },
+        "result_meta": {
+            "basis": "formal",
+            "formal_use_allowed": True,
+            "scenario_flag": False,
+            "source_version": overview.get("source_version") or "sv_balance_upstream",
+            "vendor_version": "vv_none",
+            "rule_version": overview.get("rule_version") or "rv_balance_upstream",
+            "cache_version": "cv_balance_upstream",
+            "quality_flag": "ok",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "requested_report_date": report_date,
+            "resolved_report_date": report_date,
+            "as_of_date": report_date,
+            "date_basis": "balance_analysis_report_date",
+            "fallback_date": None,
+            "source_surface": "formal_balance",
+            "amount_currency_basis": currency_basis,
+        },
+    }
+
+
+def _patch_balance_overview_envelope(monkeypatch, overview: dict[str, object]) -> None:
+    balance_service_module = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+
+    def fake_balance_overview_envelope(**kwargs: object) -> dict[str, object]:
+        return _balance_overview_upstream(
+            overview=overview,
+            report_date=str(kwargs["report_date"]),
+            position_scope=str(kwargs["position_scope"]),
+            currency_basis=str(kwargs["currency_basis"]),
+        )
+
+    monkeypatch.setattr(
+        balance_service_module,
+        "balance_analysis_overview_envelope",
+        fake_balance_overview_envelope,
+    )
+
+
+def _product_pnl_upstream(
+    *,
+    rows: list[dict[str, object]],
+    report_date: str,
+    view: str,
+) -> dict[str, object]:
+    asset_total = next((row for row in rows if row.get("category_id") == "asset_total"), {})
+    liability_total = next((row for row in rows if row.get("category_id") == "liability_total"), {})
+    grand_total = next((row for row in rows if row.get("category_id") == "grand_total"), {})
+    return {
+        "result": {
+            "report_date": report_date,
+            "view": view,
+            "available_views": [view],
+            "rows": rows,
+            "asset_total": asset_total,
+            "liability_total": liability_total,
+            "grand_total": grand_total,
+        },
+        "result_meta": {
+            "basis": "formal",
+            "formal_use_allowed": bool(grand_total),
+            "scenario_flag": False,
+            "source_version": "sv_product_test",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_product_test",
+            "cache_version": "cv_product_test",
+            "quality_flag": "ok" if grand_total else "warning",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "requested_report_date": report_date,
+            "resolved_report_date": report_date,
+            "as_of_date": report_date,
+            "date_basis": "product_category_report_date",
+            "fallback_date": None,
+            "source_surface": "formal_pnl",
+        },
+    }
+
+
 def test_portfolio_overview_intent_routes_to_balance_analysis_repo(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",
@@ -31,6 +132,15 @@ def test_portfolio_overview_intent_routes_to_balance_analysis_repo(tmp_path, mon
 
     calls: list[tuple[str, str, str]] = []
 
+    overview = {
+        "detail_row_count": 3,
+        "total_market_value_amount": 1000,
+        "total_amortized_cost_amount": 950,
+        "total_accrued_interest_amount": 12,
+        "source_version": "sv_balance_1",
+        "rule_version": "rv_balance_1",
+    }
+
     class StubBalanceAnalysisRepository:
         def __init__(self, path: str):
             assert path == "test.duckdb"
@@ -46,16 +156,10 @@ def test_portfolio_overview_intent_routes_to_balance_analysis_repo(tmp_path, mon
             currency_basis: str,
         ) -> dict[str, object]:
             calls.append((report_date, position_scope, currency_basis))
-            return {
-                "detail_row_count": 3,
-                "total_market_value_amount": 1000,
-                "total_amortized_cost_amount": 950,
-                "total_accrued_interest_amount": 12,
-                "source_version": "sv_balance_1",
-                "rule_version": "rv_balance_1",
-            }
+            return overview
 
     monkeypatch.setattr(service_module, "BalanceAnalysisRepository", StubBalanceAnalysisRepository)
+    _patch_balance_overview_envelope(monkeypatch, overview)
 
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
@@ -68,6 +172,7 @@ def test_portfolio_overview_intent_routes_to_balance_analysis_repo(tmp_path, mon
             filters={"report_date": "2026-03-31"},
             position_scope="asset",
             currency_basis="CNY",
+            context={"user_id": "user_a"},
         )
     )
 
@@ -117,6 +222,15 @@ def test_portfolio_overview_empty_scope_does_not_synthesize_financial_zeroes(tmp
         "backend/app/agent/schemas/agent_request.py",
     )
 
+    overview = {
+        "detail_row_count": 0,
+        "total_market_value_amount": 0,
+        "total_amortized_cost_amount": 0,
+        "total_accrued_interest_amount": 0,
+        "source_version": None,
+        "rule_version": None,
+    }
+
     class EmptyBalanceAnalysisRepository:
         def __init__(self, path: str):
             assert path == "test.duckdb"
@@ -131,16 +245,10 @@ def test_portfolio_overview_empty_scope_does_not_synthesize_financial_zeroes(tmp
             position_scope: str,
             currency_basis: str,
         ) -> dict[str, object]:
-            return {
-                "detail_row_count": 0,
-                "total_market_value_amount": 0,
-                "total_amortized_cost_amount": 0,
-                "total_accrued_interest_amount": 0,
-                "source_version": None,
-                "rule_version": None,
-            }
+            return overview
 
     monkeypatch.setattr(service_module, "BalanceAnalysisRepository", EmptyBalanceAnalysisRepository)
+    _patch_balance_overview_envelope(monkeypatch, overview)
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
         str(tmp_path),
@@ -152,6 +260,7 @@ def test_portfolio_overview_empty_scope_does_not_synthesize_financial_zeroes(tmp
             question="portfolio overview",
             position_scope="liability",
             currency_basis="CNY",
+            context={"user_id": "user_a"},
         )
     )
 
@@ -178,6 +287,15 @@ def test_portfolio_overview_native_currency_does_not_claim_yuan_unit(tmp_path, m
         "backend/app/agent/schemas/agent_request.py",
     )
 
+    overview = {
+        "detail_row_count": 2,
+        "total_market_value_amount": 1000,
+        "total_amortized_cost_amount": 950,
+        "total_accrued_interest_amount": 12,
+        "source_version": "sv_native_1",
+        "rule_version": "rv_native_1",
+    }
+
     class NativeBalanceAnalysisRepository:
         def __init__(self, path: str):
             assert path == "test.duckdb"
@@ -193,16 +311,10 @@ def test_portfolio_overview_native_currency_does_not_claim_yuan_unit(tmp_path, m
             currency_basis: str,
         ) -> dict[str, object]:
             assert currency_basis == "native"
-            return {
-                "detail_row_count": 2,
-                "total_market_value_amount": 1000,
-                "total_amortized_cost_amount": 950,
-                "total_accrued_interest_amount": 12,
-                "source_version": "sv_native_1",
-                "rule_version": "rv_native_1",
-            }
+            return overview
 
     monkeypatch.setattr(service_module, "BalanceAnalysisRepository", NativeBalanceAnalysisRepository)
+    _patch_balance_overview_envelope(monkeypatch, overview)
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
         str(tmp_path),
@@ -213,6 +325,7 @@ def test_portfolio_overview_native_currency_does_not_claim_yuan_unit(tmp_path, m
         request_module.AgentQueryRequest(
             question="portfolio overview",
             currency_basis="native",
+            context={"user_id": "user_a"},
         )
     )
 
@@ -250,6 +363,18 @@ def test_portfolio_overview_formal_use_requires_complete_cny_lineage(
         "backend/app/agent/schemas/agent_request.py",
     )
 
+    overview = {
+        "detail_row_count": 2,
+        "lineage_row_count": 2,
+        "source_version_missing_count": source_version_missing_count,
+        "rule_version_missing_count": rule_version_missing_count,
+        "total_market_value_amount": 1000,
+        "total_amortized_cost_amount": 950,
+        "total_accrued_interest_amount": 12,
+        "source_version": "sv_balance_1",
+        "rule_version": "rv_balance_1",
+    }
+
     class IncompleteLineageBalanceAnalysisRepository:
         def __init__(self, path: str):
             assert path == "test.duckdb"
@@ -264,23 +389,14 @@ def test_portfolio_overview_formal_use_requires_complete_cny_lineage(
             position_scope: str,
             currency_basis: str,
         ) -> dict[str, object]:
-            return {
-                "detail_row_count": 2,
-                "lineage_row_count": 2,
-                "source_version_missing_count": source_version_missing_count,
-                "rule_version_missing_count": rule_version_missing_count,
-                "total_market_value_amount": 1000,
-                "total_amortized_cost_amount": 950,
-                "total_accrued_interest_amount": 12,
-                "source_version": "sv_balance_1",
-                "rule_version": "rv_balance_1",
-            }
+            return overview
 
     monkeypatch.setattr(
         service_module,
         "BalanceAnalysisRepository",
         IncompleteLineageBalanceAnalysisRepository,
     )
+    _patch_balance_overview_envelope(monkeypatch, overview)
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
         str(tmp_path),
@@ -291,6 +407,7 @@ def test_portfolio_overview_formal_use_requires_complete_cny_lineage(
         request_module.AgentQueryRequest(
             question="portfolio overview",
             currency_basis="CNY",
+            context={"user_id": "user_a"},
         )
     )
 
@@ -322,6 +439,18 @@ def test_portfolio_overview_complete_lineage_preserves_valid_zero_amounts(tmp_pa
         "backend/app/agent/schemas/agent_request.py",
     )
 
+    overview = {
+        "detail_row_count": 2,
+        "lineage_row_count": 2,
+        "source_version_missing_count": 0,
+        "rule_version_missing_count": 0,
+        "total_market_value_amount": 0,
+        "total_amortized_cost_amount": 0,
+        "total_accrued_interest_amount": 0,
+        "source_version": "sv_balance_1",
+        "rule_version": "rv_balance_1",
+    }
+
     class ZeroAmountBalanceAnalysisRepository:
         def __init__(self, path: str):
             assert path == "test.duckdb"
@@ -336,23 +465,14 @@ def test_portfolio_overview_complete_lineage_preserves_valid_zero_amounts(tmp_pa
             position_scope: str,
             currency_basis: str,
         ) -> dict[str, object]:
-            return {
-                "detail_row_count": 2,
-                "lineage_row_count": 2,
-                "source_version_missing_count": 0,
-                "rule_version_missing_count": 0,
-                "total_market_value_amount": 0,
-                "total_amortized_cost_amount": 0,
-                "total_accrued_interest_amount": 0,
-                "source_version": "sv_balance_1",
-                "rule_version": "rv_balance_1",
-            }
+            return overview
 
     monkeypatch.setattr(
         service_module,
         "BalanceAnalysisRepository",
         ZeroAmountBalanceAnalysisRepository,
     )
+    _patch_balance_overview_envelope(monkeypatch, overview)
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
         str(tmp_path),
@@ -363,6 +483,7 @@ def test_portfolio_overview_complete_lineage_preserves_valid_zero_amounts(tmp_pa
         request_module.AgentQueryRequest(
             question="portfolio overview",
             currency_basis="CNY",
+            context={"user_id": "user_a"},
         )
     )
 
@@ -412,6 +533,15 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
 
     calls: list[tuple[str, str, str]] = []
 
+    overview = {
+        "detail_row_count": 1,
+        "total_market_value_amount": 800,
+        "total_amortized_cost_amount": 790,
+        "total_accrued_interest_amount": 6,
+        "source_version": "sv_balance_2",
+        "rule_version": "rv_balance_2",
+    }
+
     class StubBalanceAnalysisRepository:
         def __init__(self, path: str):
             assert path == "test.duckdb"
@@ -421,16 +551,10 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
 
         def fetch_formal_overview(self, *, report_date: str, position_scope: str, currency_basis: str) -> dict[str, object]:
             calls.append((report_date, position_scope, currency_basis))
-            return {
-                "detail_row_count": 1,
-                "total_market_value_amount": 800,
-                "total_amortized_cost_amount": 790,
-                "total_accrued_interest_amount": 6,
-                "source_version": "sv_balance_2",
-                "rule_version": "rv_balance_2",
-            }
+            return overview
 
     monkeypatch.setattr(service_module, "BalanceAnalysisRepository", StubBalanceAnalysisRepository)
+    _patch_balance_overview_envelope(monkeypatch, overview)
 
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
@@ -438,7 +562,10 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="portfolio market value")
+        request_module.AgentQueryRequest(
+            question="portfolio market value",
+            context={"user_id": "user_a"},
+        )
     )
 
     assert calls == [("2026-03-31", "all", "CNY")]
@@ -572,7 +699,8 @@ def test_real_chinese_business_keywords_route_to_governed_intents(tmp_path):
 
     cases = [
         ("\u8bf7\u770b\u7ec4\u5408\u6982\u89c8", "agent.portfolio_overview"),
-        ("\u8bf7\u6c47\u603b\u4eca\u65e5\u635f\u76ca", "agent.pnl_summary"),
+        # 不带「今日」等相对日词：报告日绑定型意图才允许沿用 latest 兜底。
+        ("\u8bf7\u6c47\u603b\u635f\u76ca", "agent.pnl_summary"),
         ("\u4fe1\u7528\u98ce\u9669\u548c\u96c6\u4e2d\u5ea6\u600e\u4e48\u6837", "agent.credit_exposure"),
         ("\u6700\u65b0\u5b8f\u89c2\u5e02\u573a\u6570\u636e", "agent.market_data"),
     ]
@@ -759,7 +887,7 @@ def test_follow_up_question_reuses_last_local_agent_intent(tmp_path):
                         {
                             "question": "当前久期风险在哪里？",
                             "answer": "口径边界：basis=formal；可正式使用；result_kind=agent.duration_risk；report_date=2026-03-31。",
-                            "trace_id": "tr_agent_duration_risk_abc",
+                            "trace_id": "tr_agent_duration_risk_0123456789ab",
                         }
                     ]
                 }
@@ -818,6 +946,38 @@ def test_follow_up_question_uses_structured_result_kind_when_answer_has_no_marke
 
     assert envelope.result_meta.result_kind == "agent.duration_risk"
     assert "Portfolio DV01=12" in envelope.answer
+
+
+def test_follow_up_does_not_reuse_agent_marker_quoted_in_free_text_answer():
+    resolution_module = load_module(
+        "backend.app.agent.runtime.local_request_resolution",
+        "backend/app/agent/runtime/local_request_resolution.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    resolution = resolution_module.resolve_local_request(
+        request_module.AgentQueryRequest(
+            question="继续",
+            context={
+                "conversation": {
+                    "recent_turns": [
+                        {
+                            "answer": (
+                                "新闻摘录提到某系统返回了 agent.pnl_bridge 标记，"
+                                "这里只是在长文本中引用该字面量，并非本轮结果元数据。"
+                            ),
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    assert resolution.reason == "analysis_chat"
+    assert resolution.intent == "analysis_chat"
 
 
 def test_unrelated_question_with_conversation_context_does_not_reuse_previous_intent(tmp_path):
@@ -910,6 +1070,7 @@ def test_agent_answers_use_business_analysis_sections(tmp_path):
             question="组合概览",
             position_scope="asset",
             currency_basis="CNY",
+            context={"user_id": "user_a"},
         )
     )
 
@@ -951,6 +1112,7 @@ def test_next_drill_suggested_actions_include_page_context_payload(tmp_path):
     envelope = tool.execute(
         request_module.AgentQueryRequest(
             question="portfolio overview",
+            context={"user_id": "user_a"},
             page_context=request_module.AgentPageContext(
                 page_id="recon-exceptions",
                 current_filters={"report_date": "2026-03-31", "status": "unmatched"},
@@ -973,6 +1135,7 @@ def test_next_drill_suggested_actions_include_page_context_payload(tmp_path):
             "selected_rows": [{"book_id": "B001", "instrument_id": "IB123"}],
             "context_note": "user selected one exception row",
         },
+        "confirmation_scope": {"user_id": "user_a"},
     }
     assert agent_action_confirmation_token_matches(
         token=action.confirmation_token,
@@ -1011,6 +1174,7 @@ def test_next_drill_inspect_labels_include_first_selected_row_summary(tmp_path):
     envelope = tool.execute(
         request_module.AgentQueryRequest(
             question="portfolio overview",
+            context={"user_id": "user_a"},
             page_context=request_module.AgentPageContext(
                 page_id="recon-exceptions",
                 selected_rows=[
@@ -1113,17 +1277,19 @@ def test_pnl_summary_intent_routes_to_pnl_repo(tmp_path, monkeypatch):
         def list_union_report_dates(self) -> list[str]:
             return ["2026-03-31"]
 
-        def overview_totals(self, report_date: str) -> dict[str, object]:
-            calls.append(report_date)
-            return {
-                "formal_fi_row_count": 2,
-                "nonstd_bridge_row_count": 1,
-                "interest_income_514": 10,
-                "fair_value_change_516": 20,
-                "capital_gain_517": 30,
-                "manual_adjustment": 0,
-                "total_pnl": 60,
-            }
+    def fake_pnl_overview_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        calls.append(report_date)
+        return _formal_pnl_overview_upstream(report_date)
+
+    pnl_service_module = load_module(
+        "backend.app.services.pnl_service",
+        "backend/app/services/pnl_service.py",
+    )
+    monkeypatch.setattr(
+        pnl_service_module,
+        "pnl_overview_envelope",
+        fake_pnl_overview_envelope,
+    )
 
     monkeypatch.setattr(service_module, "PnlRepository", StubPnlRepository)
 
@@ -1133,19 +1299,70 @@ def test_pnl_summary_intent_routes_to_pnl_repo(tmp_path, monkeypatch):
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="请给我看一下损益概览")
+        request_module.AgentQueryRequest(
+            question="请给我看一下损益概览",
+            context={"user_id": "user_a"},
+        )
     )
 
     assert calls == ["2026-03-31"]
     assert envelope.result_meta.result_kind == "agent.pnl_summary"
     assert envelope.result_meta.basis == "formal"
     assert envelope.result_meta.filters_applied["report_date"] == "2026-03-31"
+    assert envelope.result_meta.filters_applied["position_scope"] == "all"
+    assert envelope.result_meta.filters_applied["currency_basis"] == "CNX"
+    assert "requested_position_scope" not in envelope.result_meta.filters_applied
+    assert "requested_currency_basis" not in envelope.result_meta.filters_applied
     assert envelope.evidence.tables_used == ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"]
     assert envelope.evidence.sql_executed
     assert all(sql.lower().startswith("select") for sql in envelope.evidence.sql_executed)
     assert any("from fact_formal_pnl_fi" in sql for sql in envelope.evidence.sql_executed)
     assert envelope.result_meta.sql_executed == envelope.evidence.sql_executed
     assert any(card.title == "Total PnL" for card in envelope.cards)
+
+
+def _formal_pnl_overview_upstream(
+    report_date: str,
+    *,
+    formal_fi_row_count: int = 2,
+    nonstd_bridge_row_count: int = 1,
+    formal_use_allowed: bool = True,
+) -> dict[str, object]:
+    return {
+        "result": {
+            "report_date": report_date,
+            "formal_fi_row_count": formal_fi_row_count,
+            "nonstd_bridge_row_count": nonstd_bridge_row_count,
+            "interest_income_514": "10.00",
+            "fair_value_change_516": "20.00",
+            "capital_gain_517": "30.00",
+            "manual_adjustment": "0.00",
+            "total_pnl": "60.00",
+            "reconciliation_checks": {},
+        },
+        "result_meta": {
+            "trace_id": f"tr_pnl_overview_{report_date}",
+            "basis": "formal",
+            "result_kind": "pnl.overview",
+            "formal_use_allowed": formal_use_allowed,
+            "source_version": "sv_pnl_formal",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_pnl_formal",
+            "cache_version": "cv_pnl_formal",
+            "cache_key": "pnl_materialized",
+            "quality_flag": "ok" if formal_use_allowed else "warning",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "requested_report_date": report_date,
+            "resolved_report_date": report_date,
+            "as_of_date": report_date,
+            "source_surface": "formal_pnl",
+            "amount_currency_basis": "CNX",
+            "amount_currency_basis_note": "Test fixture uses the requested CNX basis.",
+            "generated_at": "2026-04-01T00:00:00Z",
+            "data_built_at": "2026-03-31T23:00:00Z",
+        },
+    }
 
 
 def _duration_risk_upstream(
@@ -1230,7 +1447,10 @@ def test_duration_risk_intent_routes_to_formal_risk_tensor(tmp_path, monkeypatch
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+        request_module.AgentQueryRequest(
+            question="组合久期和DV01风险怎么样",
+            context={"user_id": "user_a"},
+        )
     )
 
     assert calls == ["2026-03-31"]
@@ -1327,7 +1547,10 @@ def test_duration_risk_empty_tensor_does_not_synthesize_formal_metrics(tmp_path,
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+        request_module.AgentQueryRequest(
+            question="组合久期和DV01风险怎么样",
+            context={"user_id": "user_a"},
+        )
     )
 
     assert envelope.result_meta.result_kind == "agent.duration_risk"
@@ -1385,7 +1608,10 @@ def test_duration_risk_preserves_valid_zero_dv01(tmp_path, monkeypatch):
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+        request_module.AgentQueryRequest(
+            question="组合久期和DV01风险怎么样",
+            context={"user_id": "user_a"},
+        )
     )
 
     dv01_card = next(card for card in envelope.cards if card.title == "Portfolio DV01")
@@ -1451,7 +1677,10 @@ def test_duration_risk_missing_required_numeric_raw_fails_closed(
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+        request_module.AgentQueryRequest(
+            question="组合久期和DV01风险怎么样",
+            context={"user_id": "user_a"},
+        )
     )
 
     assert envelope.result_meta.formal_use_allowed is False
@@ -1505,7 +1734,10 @@ def test_duration_risk_missing_required_numeric_display_fails_closed(tmp_path, m
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+        request_module.AgentQueryRequest(
+            question="组合久期和DV01风险怎么样",
+            context={"user_id": "user_a"},
+        )
     )
 
     assert envelope.result_meta.formal_use_allowed is False
@@ -1557,7 +1789,10 @@ def test_duration_risk_wrong_required_numeric_unit_fails_closed(tmp_path, monkey
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+        request_module.AgentQueryRequest(
+            question="组合久期和DV01风险怎么样",
+            context={"user_id": "user_a"},
+        )
     )
 
     assert envelope.result_meta.formal_use_allowed is False
@@ -1606,6 +1841,7 @@ def test_duration_risk_native_currency_request_fails_closed(tmp_path, monkeypatc
         request_module.AgentQueryRequest(
             question="组合久期和DV01风险怎么样",
             currency_basis="native",
+            context={"user_id": "user_a"},
         )
     )
 
@@ -1665,6 +1901,7 @@ def test_duration_risk_uses_explicit_historical_report_date_when_governed(
         request_module.AgentQueryRequest(
             question="组合久期和DV01风险怎么样",
             filters={"report_date": historical_date},
+            context={"user_id": "user_a"},
         )
     )
 
@@ -1717,6 +1954,7 @@ def test_duration_risk_returns_error_envelope_when_explicit_date_not_governed(tm
         request_module.AgentQueryRequest(
             question="组合久期和DV01风险怎么样",
             filters={"report_date": "2025-11-20"},
+            context={"user_id": "user_a"},
         )
     )
 
@@ -1786,6 +2024,7 @@ def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path, 
     envelope = tool.execute(
         request_module.AgentQueryRequest(
             question=rf"{repo_path}\.gitnexus 请给我看 GitNexus 仓库图谱状态",
+            context={"user_id": "user_a"},
         )
     )
 
@@ -1982,6 +2221,7 @@ def test_gitnexus_intent_expands_mcp_context_and_processes_into_structured_cards
         request_module.AgentQueryRequest(
             question="请给我看 GitNexus context 和 processes",
             filters={"repo_path": str(repo_path)},
+            context={"user_id": "user_a"},
         )
     )
 
@@ -2088,6 +2328,7 @@ def test_gitnexus_intent_reads_specific_process_trace_from_mcp(tmp_path, monkeyp
         request_module.AgentQueryRequest(
             question="请给我看 GitNexus process",
             filters={"repo_path": str(repo_path), "process_name": "CheckoutFlow"},
+            context={"user_id": "user_a"},
         )
     )
 
@@ -2165,6 +2406,7 @@ def test_gitnexus_intent_parses_process_name_from_question(tmp_path, monkeypatch
         request_module.AgentQueryRequest(
             question="请给我看 GitNexus process/CheckoutFlow",
             filters={"repo_path": str(repo_path)},
+            context={"user_id": "user_a"},
         )
     )
 
@@ -2210,6 +2452,7 @@ def test_ordinary_analysis_question_returns_local_conversation_envelope(tmp_path
     envelope = tool.execute(
         request_module.AgentQueryRequest(
             question="please analyze the main risk and explain what it means",
+            context={"user_id": "user_a"},
             page_context={
                 "page_id": "dashboard",
                 "current_filters": {"report_date": "2026-03-31"},
@@ -2251,6 +2494,7 @@ def test_chinese_ordinary_analysis_question_gets_chinese_local_answer(tmp_path):
         request_module.AgentQueryRequest(
             question="\u5e2e\u6211\u5224\u65ad\u4eca\u5929\u7684\u4e3b\u8981\u98ce\u9669",
             context={
+                "user_id": "user_a",
                 "conversation": {
                     "recent_turns": [
                         {
@@ -2289,7 +2533,7 @@ def test_financial_workflow_context_returns_plan_envelope(tmp_path):
         request_module.AgentQueryRequest(
             question="Prepare a risk memo plan",
             basis="scenario",
-            context={"workflow_id": "risk_memo"},
+            context={"workflow_id": "risk_memo", "user_id": "user_a"},
         )
     )
 
@@ -2334,7 +2578,10 @@ def test_financial_workflow_slash_command_returns_plan_envelope(tmp_path):
 
     tool = module.AnalysisViewTool("test.duckdb", str(tmp_path))
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="/pnl-review for March close")
+        request_module.AgentQueryRequest(
+            question="/pnl-review for March close",
+            context={"user_id": "user_a"},
+        )
     )
 
     assert envelope.result_meta.result_kind == "agent.workflow.pnl_review"
@@ -2555,18 +2802,20 @@ def test_manual_intent_result_meta_stays_formal_for_scenario_request(tmp_path, m
         def list_union_report_dates(self) -> list[str]:
             return ["2026-03-31"]
 
-        def overview_totals(self, report_date: str) -> dict[str, object]:
-            return {
-                "formal_fi_row_count": 1,
-                "nonstd_bridge_row_count": 0,
-                "interest_income_514": 10,
-                "fair_value_change_516": 0,
-                "capital_gain_517": 0,
-                "manual_adjustment": 0,
-                "total_pnl": 10,
-            }
-
     monkeypatch.setattr(service_module, "PnlRepository", StubPnlRepository)
+    pnl_service_module = load_module(
+        "backend.app.services.pnl_service",
+        "backend/app/services/pnl_service.py",
+    )
+    monkeypatch.setattr(
+        pnl_service_module,
+        "pnl_overview_envelope",
+        lambda *, report_date, **_: _formal_pnl_overview_upstream(
+            report_date,
+            formal_fi_row_count=1,
+            nonstd_bridge_row_count=0,
+        ),
+    )
 
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
@@ -2577,6 +2826,7 @@ def test_manual_intent_result_meta_stays_formal_for_scenario_request(tmp_path, m
         request_module.AgentQueryRequest(
             question="PnL summary",
             basis="scenario",
+            context={"user_id": "user_a"},
         )
     )
 
@@ -2661,7 +2911,7 @@ def test_audit_log_is_appended(tmp_path, monkeypatch):
         # 「利率风险」是利率风险语义，不得因包含「利率」误入 market_data。
         ("利率风险敞口有多大", "local", "duration_risk"),
         # 非「收益率」的「收益」仍保持 pnl_summary 既有优先级。
-        ("请汇总今日收益", "local", "pnl_summary"),
+        ("请汇总收益", "local", "pnl_summary"),
         ("投资收益怎么样", "local", "pnl_summary"),
         # 普通利率问法仍归 market_data。
         ("今天的利率怎么样", "local", "market_data"),
@@ -2727,7 +2977,12 @@ def test_risk_tensor_missing_formal_marker_fails_closed(tmp_path, monkeypatch):
         str(tmp_path),
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
-    envelope = tool.execute(request_module.AgentQueryRequest(question="风险张量怎么样"))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="风险张量怎么样",
+            context={"user_id": "user_a"},
+        )
+    )
 
     assert envelope.result_meta.result_kind == "agent.risk_tensor"
     assert envelope.result_meta.formal_use_allowed is False
@@ -2779,7 +3034,12 @@ def test_pnl_bridge_missing_formal_marker_fails_closed(tmp_path, monkeypatch):
         str(tmp_path),
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
-    envelope = tool.execute(request_module.AgentQueryRequest(question="请做归因拆解"))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="请做归因拆解",
+            context={"user_id": "user_a"},
+        )
+    )
 
     assert envelope.result_meta.result_kind == "agent.pnl_bridge"
     assert envelope.result_meta.formal_use_allowed is False
@@ -2809,25 +3069,32 @@ def test_pnl_summary_without_formal_fi_rows_fails_closed(tmp_path, monkeypatch):
         def list_union_report_dates(self) -> list[str]:
             return ["2026-03-31"]
 
-        def overview_totals(self, report_date: str) -> dict[str, object]:
-            return {
-                "formal_fi_row_count": 0,
-                "nonstd_bridge_row_count": 3,
-                "interest_income_514": 10,
-                "fair_value_change_516": 20,
-                "capital_gain_517": 30,
-                "manual_adjustment": 0,
-                "total_pnl": 60,
-            }
-
     monkeypatch.setattr(service_module, "PnlRepository", StubPnlRepository)
+    pnl_service_module = load_module(
+        "backend.app.services.pnl_service",
+        "backend/app/services/pnl_service.py",
+    )
+    monkeypatch.setattr(
+        pnl_service_module,
+        "pnl_overview_envelope",
+        lambda *, report_date, **_: _formal_pnl_overview_upstream(
+            report_date,
+            formal_fi_row_count=0,
+            nonstd_bridge_row_count=3,
+        ),
+    )
 
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
         str(tmp_path),
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
-    envelope = tool.execute(request_module.AgentQueryRequest(question="请汇总今日损益"))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="请汇总损益",
+            context={"user_id": "user_a"},
+        )
+    )
 
     assert envelope.result_meta.result_kind == "agent.pnl_summary"
     assert envelope.result_meta.formal_use_allowed is False
@@ -2865,13 +3132,38 @@ def test_credit_exposure_without_credit_rows_fails_closed(tmp_path, monkeypatch)
             }
 
     monkeypatch.setattr(service_module, "BondAnalyticsRepository", StubBondAnalyticsRepository)
+    bond_service_module = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    monkeypatch.setattr(
+        bond_service_module,
+        "bond_analytics_credit_exposure_governance_meta",
+        lambda **_: {
+            "basis": "formal",
+            "formal_use_allowed": True,
+            "scenario_flag": False,
+            "source_version": "sv_bond_test",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_bond_test",
+            "cache_version": "cv_bond_test",
+            "quality_flag": "ok",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+        },
+    )
 
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
         str(tmp_path),
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
-    envelope = tool.execute(request_module.AgentQueryRequest(question="信用暴露情况如何"))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="信用暴露情况如何",
+            context={"user_id": "user_a"},
+        )
+    )
 
     assert envelope.result_meta.result_kind == "agent.credit_exposure"
     assert envelope.result_meta.formal_use_allowed is False
@@ -2893,6 +3185,15 @@ def test_product_pnl_missing_grand_total_row_fails_closed(tmp_path, monkeypatch)
         "backend/app/agent/schemas/agent_request.py",
     )
 
+    rows = [
+        {
+            "category_id": "asset_total",
+            "business_net_income": "120.5",
+            "source_version": "sv_product_test",
+            "rule_version": "rv_product_test",
+        }
+    ]
+
     class StubProductCategoryPnlRepository:
         def __init__(self, path: str):
             assert path == "test.duckdb"
@@ -2900,23 +3201,23 @@ def test_product_pnl_missing_grand_total_row_fails_closed(tmp_path, monkeypatch)
         def list_report_dates(self) -> list[str]:
             return ["2026-03-31"]
 
-        def fetch_rows(self, report_date: str, view: str) -> list[dict[str, object]]:
-            return [
-                {
-                    "category_id": "asset_total",
-                    "business_net_income": "120.5",
-                    "source_version": "sv_product_test",
-                    "rule_version": "rv_product_test",
-                }
-            ]
-
-        def latest_source_version(self) -> str:
-            return "sv_product_test"
-
     monkeypatch.setattr(
         service_module,
         "ProductCategoryPnlRepository",
         StubProductCategoryPnlRepository,
+    )
+    product_service_module = load_module(
+        "backend.app.services.product_category_pnl_service",
+        "backend/app/services/product_category_pnl_service.py",
+    )
+    monkeypatch.setattr(
+        product_service_module,
+        "product_category_pnl_envelope",
+        lambda duckdb_path, *, report_date, view, scenario_rate_pct=None: _product_pnl_upstream(
+            rows=rows,
+            report_date=report_date,
+            view=view,
+        ),
     )
 
     tool = tool_module.AnalysisViewTool(
@@ -2924,7 +3225,12 @@ def test_product_pnl_missing_grand_total_row_fails_closed(tmp_path, monkeypatch)
         str(tmp_path),
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
-    envelope = tool.execute(request_module.AgentQueryRequest(question="产品损益视图"))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="产品损益视图",
+            context={"user_id": "user_a"},
+        )
+    )
 
     assert envelope.result_meta.result_kind == "agent.product_pnl"
     assert envelope.result_meta.formal_use_allowed is False
@@ -2970,12 +3276,12 @@ def test_confirmation_token_issuance_binds_user_and_run_scope(tmp_path):
     )
     envelope = tool.execute(
         request_module.AgentQueryRequest(
-            question="请汇总今日损益",
+            question="请汇总损益",
             context={"user_id": "user_a", "run_id": "run_001"},
         )
     )
 
-    assert calls == ["请汇总今日损益"]
+    assert calls == ["请汇总损益"]
     assert envelope.suggested_actions
     action = envelope.suggested_actions[0]
     assert action.payload["confirmation_scope"] == {
@@ -2992,7 +3298,11 @@ def test_confirmation_token_issuance_binds_user_and_run_scope(tmp_path):
     )
 
 
-def test_confirmation_token_issuance_without_user_context_stays_scope_less(tmp_path):
+def test_confirmation_token_issuance_without_user_context_fails_closed(tmp_path):
+    """请求上下文缺 user_id 时拒绝签发确认 token（fail-closed），不产出未绑定动作。
+
+    生产路径路由层总会注入 user_id；本用例锁定绕过路由直接调用时的安全底线。
+    """
     tool_module = load_module(
         "backend.app.agent.tools.analysis_view_tool",
         "backend/app/agent/tools/analysis_view_tool.py",
@@ -3009,17 +3319,13 @@ def test_confirmation_token_issuance_without_user_context_stays_scope_less(tmp_p
         intent_handlers={"pnl_summary": _scope_test_handler(calls)},
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="请汇总今日损益")
+        request_module.AgentQueryRequest(question="请汇总损益")
     )
 
-    action = envelope.suggested_actions[0]
-    assert "confirmation_scope" not in action.payload
-    assert agent_action_confirmation_token_matches(
-        token=action.confirmation_token,
-        action_type=action.type,
-        label=action.label,
-        payload=action.payload,
-    )
+    # 签发失败在意图分支内被兜底为 error envelope：无 suggested action 泄出。
+    assert envelope.result_meta.quality_flag == "error"
+    assert envelope.suggested_actions == []
+    assert "confirmation_scope.user_id" in envelope.answer
 
 
 def test_scope_bound_action_is_rejected_for_other_user(tmp_path):
@@ -3167,6 +3473,39 @@ def test_page_context_question_with_history_prefers_page_default_over_follow_up(
     assert fallback.intent == "duration_risk"
 
 
+def test_standalone_workbench_plain_analysis_routes_to_provider_after_page_defaults():
+    """独立工作台的普通解释问答应交给受管 provider；嵌入页默认意图仍优先。"""
+    resolution_module = load_module(
+        "backend.app.agent.runtime.local_request_resolution",
+        "backend/app/agent/runtime/local_request_resolution.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    standalone = resolution_module.resolve_local_request(
+        request_module.AgentQueryRequest(
+            question="解释当前页面的主要结论和风险点",
+            routing_surface="standalone_workbench",
+        )
+    )
+    assert standalone.route == "provider"
+    assert standalone.reason == "standalone_workbench_chat"
+    assert standalone.intent is None
+
+    embedded = resolution_module.resolve_local_request(
+        request_module.AgentQueryRequest(
+            question="解释当前页面的主要结论和风险点",
+            routing_surface="standalone_workbench",
+            page_context=request_module.AgentPageContext(page_id="dashboard"),
+        )
+    )
+    assert embedded.route == "local"
+    assert embedded.reason == "page_default"
+    assert embedded.intent == "portfolio_overview"
+
+
 def _risk_tensor_upstream_with_cs01(report_date: str) -> dict[str, object]:
     upstream = _duration_risk_upstream(report_date, quality_flag="ok")
     upstream["result"]["cs01"] = {
@@ -3232,7 +3571,12 @@ def test_risk_tensor_latest_date_uses_risk_tensor_fact_not_bond_analytics(tmp_pa
         str(tmp_path),
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
-    envelope = tool.execute(request_module.AgentQueryRequest(question="风险张量怎么样"))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="风险张量怎么样",
+            context={"user_id": "user_a"},
+        )
+    )
 
     assert envelope.result_meta.result_kind == "agent.risk_tensor"
     assert envelope.result_meta.quality_flag != "error"
@@ -3278,7 +3622,12 @@ def test_risk_tensor_metric_cards_render_numeric_display_not_raw_dict(tmp_path, 
         str(tmp_path),
         intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
     )
-    envelope = tool.execute(request_module.AgentQueryRequest(question="风险张量怎么样"))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="风险张量怎么样",
+            context={"user_id": "user_a"},
+        )
+    )
 
     cards = {card.title: card for card in envelope.cards}
     assert cards["Portfolio DV01"].value == "12.34 dv01"
@@ -3297,26 +3646,19 @@ def test_risk_tensor_metric_cards_render_numeric_display_not_raw_dict(tmp_path, 
     assert "Portfolio DV01=12.34 dv01" in envelope.answer
 
 
-def test_intent_from_text_resolves_multi_marker_text_in_declared_order():
-    """回归（B15-5）：多标记文本按 _INTENT_PATTERNS 声明顺序解析，
-    不依赖 frozenset 的 PYTHONHASHSEED 迭代顺序。"""
+def test_intent_from_text_requires_exact_registered_result_kind():
+    """结构化 result_kind 仅接受单一、精确且已注册的 agent 标记。"""
     resolution_module = load_module(
         "backend.app.agent.runtime.local_request_resolution",
         "backend/app/agent/runtime/local_request_resolution.py",
     )
 
-    declared_order = [intent for intent, _ in resolution_module._INTENT_PATTERNS]
-    assert declared_order.index("pnl_bridge") < declared_order.index("news")
-    assert declared_order.index("market_data") < declared_order.index("news")
-
-    assert (
-        resolution_module._intent_from_text("agent.news 之后又出现 agent.pnl_bridge")
-        == "pnl_bridge"
-    )
-    assert (
-        resolution_module._intent_from_text("agent.news and agent.market_data markers")
-        == "market_data"
-    )
+    assert resolution_module._intent_from_text("agent.pnl_bridge") == "pnl_bridge"
+    assert resolution_module._intent_from_text("agent.market_data") == "market_data"
+    assert resolution_module._intent_from_text(
+        "agent.news 之后又出现 agent.pnl_bridge"
+    ) is None
+    assert resolution_module._intent_from_text("agent.unregistered") is None
 
 
 def test_cube_query_evidence_discloses_report_date_and_parameterized_sql(tmp_path):
@@ -3362,6 +3704,7 @@ def test_cube_query_evidence_discloses_report_date_and_parameterized_sql(tmp_pat
         request_module.AgentQueryRequest(
             question="cube query",
             context={
+                "user_id": "user_a",
                 "cube_query": {
                     "report_date": "2026-03-31",
                     "fact_table": "bond_analytics",
@@ -3480,3 +3823,225 @@ def test_evidence_tool_normalizes_quality_flag_outside_contract(caplog):
         ).quality_flag
         == "ok"
     )
+
+
+def _resolve(question: str, **kwargs):
+    resolution_module = load_module(
+        "backend.app.agent.runtime.local_request_resolution",
+        "backend/app/agent/runtime/local_request_resolution.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+    return resolution_module.resolve_local_request(
+        request_module.AgentQueryRequest(question=question, **kwargs)
+    )
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_intent"),
+    [
+        # 短 ASCII 词只在词边界成立时命中，不再被更长的 token 吃掉。
+        ("ftp", "product_pnl"),
+        ("krd", "risk_tensor"),
+        ("pnl summary", "pnl_summary"),
+    ],
+)
+def test_short_ascii_keywords_match_on_word_boundaries(question, expected_intent):
+    assert _resolve(question).intent == expected_intent
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # total_pnl / sftp / krda 里的子串不再触发本地意图。
+        "please explain total_pnl_reconciliation_flag",
+        "sftp upload failed",
+    ],
+)
+def test_longer_tokens_containing_short_keywords_no_longer_route_locally(question):
+    resolution = _resolve(question)
+    assert resolution.intent not in {"product_pnl", "pnl_summary", "risk_tensor"}
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_intent"),
+    [
+        # 特化表：更具体的意图直接压制必然被一起命中的泛化意图，不澄清。
+        ("产品损益视图", "product_pnl"),
+        ("损益归因拆解", "pnl_bridge"),
+        ("利率风险敞口有多大", "duration_risk"),
+        ("信用利差怎么样", "credit_exposure"),
+        ("风险张量里的久期贡献", "risk_tensor"),
+        ("盘前损益怎么看", "pretrade_checklist"),
+        ("策略样本外收益怎么样", "walk_forward_verdict"),
+    ],
+)
+def test_specialized_intent_wins_over_its_generalization_without_clarification(
+    question,
+    expected_intent,
+):
+    resolution = _resolve(question)
+
+    assert resolution.reason == "governed_keyword"
+    assert resolution.intent == expected_intent
+    assert resolution.semantic_status is None
+
+
+def test_cross_family_multi_intent_question_asks_for_clarification():
+    resolution = _resolve("请看损益和新闻")
+
+    assert resolution.route == "local"
+    assert resolution.semantic_status == "clarification_required"
+    assert resolution.semantic_reason_code == "multiple_intents"
+    assert set(resolution.intent_candidates) == {"pnl_summary", "news"}
+
+
+def test_page_default_intent_disambiguates_cross_family_multi_intent():
+    # pnl-overview 不在 _PAGE_DEFAULT_INTENTS 里，无法消歧，仍需澄清。
+    resolution = _resolve("请看损益和新闻", page_context={"page_id": "pnl-overview"})
+    assert resolution.semantic_status == "clarification_required"
+
+    disambiguated = _resolve(
+        "组合概览和新闻都看一下",
+        page_context={"page_id": "dashboard"},
+    )
+    assert disambiguated.reason == "governed_keyword"
+    assert disambiguated.intent == "portfolio_overview"
+
+
+def test_negated_base_intent_is_removed_from_candidates():
+    routed = _resolve("不要看损益，看新闻")
+
+    assert routed.reason == "governed_keyword"
+    assert routed.intent == "news"
+
+
+def test_all_candidates_negated_asks_for_clarification():
+    resolution = _resolve("不要看损益")
+
+    assert resolution.semantic_status == "clarification_required"
+    assert resolution.semantic_reason_code == "negated_intent_reference"
+    assert resolution.intent_candidates == ("pnl_summary",)
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["请汇总今日损益", "昨天的组合概览", "前天的信用利差", "show yesterday duration risk"],
+)
+def test_relative_day_without_explicit_report_date_asks_for_clarification(question):
+    resolution = _resolve(question)
+
+    assert resolution.route == "local"
+    assert resolution.semantic_status == "clarification_required"
+    assert resolution.semantic_reason_code == "relative_date_requires_explicit_report_date"
+
+
+@pytest.mark.parametrize(
+    ("question", "kwargs", "expected_intent"),
+    [
+        # 显式 ISO 报告日（问题里 / filters 里）仍直接路由。
+        ("请汇总 2026-03-31 的损益", {}, "pnl_summary"),
+        ("请汇总今日损益", {"filters": {"report_date": "2026-03-31"}}, "pnl_summary"),
+        # 模糊时间词保持既有 latest 语义。
+        ("最近的损益怎么样", {}, "pnl_summary"),
+        ("当前组合概览", {}, "portfolio_overview"),
+        # 非报告日绑定型意图的「今天」就是最新可用，不受影响。
+        ("今天的利率怎么样", {}, "market_data"),
+        ("今天盘前该做什么", {}, "pretrade_checklist"),
+        ("今天有什么新闻", {}, "news"),
+    ],
+)
+def test_relative_date_guard_does_not_widen_beyond_report_date_bound_intents(
+    question,
+    kwargs,
+    expected_intent,
+):
+    resolution = _resolve(question, **kwargs)
+
+    assert resolution.reason == "governed_keyword"
+    assert resolution.intent == expected_intent
+
+
+def test_intent_clarification_envelope_explains_the_blocking_reason(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={"pnl_summary": _scope_test_handler(calls)},
+    )
+
+    for question, marker in (
+        ("请看损益和新闻", "多个不同业务口径"),
+        ("请汇总今日损益", "YYYY-MM-DD"),
+    ):
+        envelope = tool.execute(request_module.AgentQueryRequest(question=question))
+        assert envelope.result_meta.result_kind == "agent.ontology_clarification"
+        assert envelope.semantic_context is not None
+        assert envelope.semantic_context.status == "clarification_required"
+        assert envelope.semantic_context.result_check == "blocked"
+        assert marker in envelope.answer
+    assert calls == []
+
+
+@pytest.mark.parametrize("mode", ["intent", "workflow", "research"])
+@pytest.mark.parametrize("failure_type", [ValueError, TypeError])
+def test_analysis_failure_api_omits_private_payload(tmp_path, monkeypatch, mode, failure_type):
+    import sys
+    from tests.test_agent_api import _confirmation_client
+    tool_module = load_module("backend.app.agent.tools.analysis_view_tool", "backend/app/agent/tools/analysis_view_tool.py")
+    calls = []
+    marker = "synthetic-agent-handler-private-token"
+    def fail(request):
+        calls.append("failed")
+        raise failure_type(marker)
+    def ok(request):
+        calls.append("continued")
+        return {"answer": "synthetic analysis", "basis": "analytical", "formal_use_allowed": False,
+                "source_version": "sv_test", "quality_flag": "warning", "row_count": 0, "cards": []}
+    tool = tool_module.AnalysisViewTool("unused.duckdb", str(tmp_path), intent_handlers={
+        "duration_risk": fail, "credit_exposure": ok, "risk_tensor": ok, "research_radar_brief": fail,
+    })
+    client, _ = _confirmation_client(monkeypatch, tmp_path)
+    route = sys.modules["backend.app.api.routes.agent"]
+    monkeypatch.setattr(route, "execute_agent_query", lambda request, **kwargs: tool.execute(request))
+    payload = {"question": "synthetic", "context": {"intent": "duration_risk"}}
+    if mode == "workflow":
+        payload = {"question": "/risk-memo", "context": {"workflow_mode": "execute"}}
+    elif mode == "research":
+        payload = {"question": "synthetic", "context": {"intent": "research_radar_brief", "workflow_mode": "execute"}}
+    response = client.post("/api/agent/query", json=payload)
+    assert response.status_code == 200
+    result = response.json()
+    assert result["result_meta"]["formal_use_allowed"] is False
+    assert result["result_meta"]["quality_flag"] == ("warning" if mode == "workflow" else "error")
+    assert calls == (["failed", "continued", "continued"] if mode == "workflow" else ["failed"])
+    assert marker not in response.text
+    assert failure_type.__name__ in response.text
+
+
+@pytest.mark.parametrize("message", [
+    "GitNexus repo_path is outside allowed roots: synthetic-whitelist-private-token",
+    "Requested report_date=2025-11-20 is not in available governed dates ['synthetic-whitelist-private-token'].",
+    "Formal pnl storage is unavailable. synthetic-whitelist-private-token",
+])
+def test_analysis_safe_error_categories_never_copy_private_suffix(tmp_path, message):
+    module = load_module("backend.app.agent.tools.analysis_view_tool", "backend/app/agent/tools/analysis_view_tool.py")
+    request_module = load_module("backend.app.agent.schemas.agent_request", "backend/app/agent/schemas/agent_request.py")
+    def fail(request):
+        raise ValueError(message)
+    tool = module.AnalysisViewTool("unused.duckdb", str(tmp_path), intent_handlers={"duration_risk": fail})
+    result = tool.execute(request_module.AgentQueryRequest(question="synthetic", context={"intent": "duration_risk"}))
+    assert result.result_meta.formal_use_allowed is False
+    assert result.result_meta.quality_flag == "error"
+    assert "synthetic-whitelist-private-token" not in result.model_dump_json()

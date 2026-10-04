@@ -7,6 +7,7 @@ import type {
   CubeQueryRequest,
   CubeQueryResult,
 } from "./contracts";
+import { ActionRequestError } from "./transport";
 
 export type CubeClientMethods = {
   getCubeDimensions: (factTable: string) => Promise<CubeDimensionsPayload>;
@@ -17,6 +18,11 @@ type CubeClientFactoryOptions = {
   fetchImpl: typeof fetch;
   baseUrl: string;
 };
+
+/** RBAC 拒绝（viewer 角色默认拿不到 cube 读权限）要能被页面识别，不能和网络故障混成同一句「稍后重试」。 */
+export function isForbiddenCubeError(error: unknown): boolean {
+  return error instanceof ActionRequestError && error.status === 403;
+}
 
 export function createRealCubeClient({
   fetchImpl,
@@ -31,7 +37,10 @@ export function createRealCubeClient({
         },
       );
       if (!response.ok) {
-        throw new Error(`Request failed: /api/cube/dimensions/${factTable} (${response.status})`);
+        throw new ActionRequestError(
+          `Request failed: /api/cube/dimensions/${factTable} (${response.status})`,
+          { status: response.status },
+        );
       }
       return response.json() as Promise<CubeDimensionsPayload>;
     },
@@ -43,7 +52,16 @@ export function createRealCubeClient({
       });
       if (!response.ok) {
         const text = await response.text().catch(() => "");
-        throw new Error(text || `Cube query failed (${response.status})`);
+        let detail = text;
+        try {
+          const body = JSON.parse(text) as { detail?: unknown };
+          if (typeof body.detail === "string") detail = body.detail;
+        } catch {
+          // Non-JSON transport failures still retain their original message.
+        }
+        throw new ActionRequestError(detail || `Cube query failed (${response.status})`, {
+          status: response.status,
+        });
       }
       return response.json() as Promise<CubeQueryResult>;
     },

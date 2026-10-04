@@ -1,30 +1,17 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
 
-import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
+import { SectionHead } from "../../../components/layout";
 import type {
-  DecimalLike,
   ProductCategoryAttributionPayload,
   ProductCategoryManualAdjustmentRequest,
   ProductCategoryPnlPayload,
-  ProductCategoryPnlRow,
   ResultMeta,
 } from "../../../api/contracts";
-import { LazyReactECharts } from "./LazyReactECharts";
-import {
-  loadReactECharts,
-  prefetchReactEChartsWhenIdle,
-} from "./lazyReactEChartsLoader";
+import { prefetchReactEChartsWhenIdle } from "./lazyReactEChartsLoader";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import {
   DataStatusStrip,
@@ -33,39 +20,18 @@ import {
 } from "../../../components/page/PagePrimitives";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
+import { ProductCategoryPublicationHeader } from "./ProductCategoryPublicationHeader";
 import "./ProductCategoryPnlPage.css";
 import { ProductCategoryFormalReadinessBand } from "./ProductCategoryFormalReadinessBand";
 import { ProductCategoryGovernanceStrip } from "./ProductCategoryGovernanceStrip";
-import {
-  ProductCategoryLiabilityViewToggle,
-  type ProductCategoryLiabilityView,
-} from "./ProductCategoryLiabilityViewToggle";
+import type { ProductCategoryLiabilityView } from "./ProductCategoryLiabilityViewToggle";
 import { ProductCategorySpreadReadout } from "./ProductCategorySpreadReadout";
 import { selectProductCategorySpreadReadoutSurface } from "./model/productCategoryPnlSpreadReadoutModel";
-import {
-  buildDualAxisChartOption,
-  buildIncomeYearComparisonChartOption,
-  buildInterestEarningAssetLiabilityScaleChartOption,
-  buildInterestSpreadChartOption,
-  buildInterestSpreadYearComparisonChartOption,
-  buildLiabilitySideTrendChartOption,
-  buildProductCategoryComparisonReadout,
-  buildSingleAxisChartOption,
-  countProductCategoryComparableReportMonths,
-  PRODUCT_CATEGORY_DARK_CHART_THEME,
-} from "./ProductCategoryComparisonCharts";
-import {
-  DerivedChartPanel,
-  ProductCategoryComparisonChartReadout,
-  ProductCategoryInterestSpreadAttributionPanel,
-} from "./ProductCategoryComparisonChartPanels";
+import { countProductCategoryComparableReportMonths } from "./ProductCategoryComparisonCharts";
 import {
   type ProductCategoryAttributionCompare,
   ProductCategoryAttributionBridge,
   ProductCategoryAttributionPanel,
-  ProductCategoryLiabilityCurrencyMatrixMobileReadout,
-  ProductCategoryLiabilityDetailMatrixMobileReadout,
-  ProductCategoryLiabilityFallbackMobileReadout,
 } from "./ProductCategoryAttributionPanels";
 import { isProductCategoryAttributionDetailRow } from "./productCategoryPnlPageModel";
 import {
@@ -73,12 +39,7 @@ import {
   ProductCategoryOperatingActionBacktestPanel,
   ProductCategoryOperatingAnalysisPanel,
 } from "./ProductCategoryOperatingPanels";
-import {
-  ProductCategoryFinancialAnalysisPanel,
-  type ScenarioActionClosureStatus,
-  type ScenarioReviewActionStatus,
-  type ScenarioReviewIssueReason,
-} from "./ProductCategoryScenarioPanels";
+import { ProductCategoryFinancialAnalysisPanel } from "./ProductCategoryScenarioPanels";
 import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
   PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS,
@@ -93,36 +54,41 @@ import {
   collectProductCategoryGovernanceNotices,
   defaultProductCategoryScenarioRateForReportDate,
   formatProductCategoryDualMetaDistinctLine,
-  formatProductCategoryForeignDisplayValue,
   formatProductCategoryReportMonthLabel,
-  formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
-  formatProductCategoryYieldValue,
   nextDefaultReportDateIfUnset,
+  productCategoryReadRetryDelay,
   selectProductCategoryAttributionWaterfallSurface,
-  selectProductCategoryCurrencyNetIncomeChart,
   selectProductCategoryDecisionFocusSurface,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
-  selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
-  selectProductCategoryInterestEarningAssetLiabilityScaleChart,
-  selectProductCategoryInterestEarningIncomeScaleChart,
-  selectProductCategoryInterestEarningSpreadChart,
-  selectProductCategoryInterestEarningSpreadYearComparisonChart,
   selectProductCategoryOperatingAnalysisSurface,
   selectProductCategoryOperatingActionBacktestSurface,
-  selectProductCategoryInterestSpreadAttributionSurface,
-  selectProductCategoryInterestSpreadChart,
-  selectProductCategoryInterestSpreadYearComparisonChart,
-  selectProductCategoryManagementMonitoringSurface,
   selectProductCategoryRootCauseSurface,
   selectProductCategoryScenarioExplanation,
   selectProductCategoryScenarioSensitivitySurface,
-  selectProductCategoryTplScaleYieldChart,
   selectProductCategoryTwoYearInterestSpreadReportPoints,
   selectProductCategoryTrendReportPoints,
+  shouldRetryProductCategoryRead,
 } from "./productCategoryPnlPageModel";
-import { EM_DASH } from "../../../utils/format";
+import { useProductCategoryBacktestHistory } from "./useProductCategoryBacktestHistory";
+import { useProductCategoryManagementMonitoring } from "./useProductCategoryManagementMonitoring";
+import { useProductCategoryRefresh } from "./useProductCategoryRefresh";
+import { useProductCategoryScenarioReview } from "./useProductCategoryScenarioReview";
+import { ProductCategoryManualAdjustmentForm } from "./ProductCategoryManualAdjustmentForm";
+import { ProductCategoryGovernanceEvidence } from "./ProductCategoryGovernanceEvidence";
+import {
+  ProductCategoryApiContractLedger,
+  type ProductCategoryApiLedgerRow,
+} from "./ProductCategoryApiContractLedger";
+import { ProductCategoryDiagnosticsPanel } from "./ProductCategoryDiagnosticsPanel";
+import { ProductCategoryLiabilityTrendPanel } from "./ProductCategoryLiabilityTrendPanel";
+import { ProductCategoryTrendWorkspace } from "./ProductCategoryTrendWorkspace";
+import { useProductCategoryTrendCharts } from "./useProductCategoryTrendCharts";
+import {
+  ProductCategoryFormalReportTable,
+  type ProductCategoryFormalTableDisplayMode,
+} from "./ProductCategoryFormalReportTable";
 
 function ProductCategoryCandidateMetricNotice(props: {
   testId: string;
@@ -178,15 +144,14 @@ function SectionLead(props: {
   testId?: string;
 }) {
   return (
-    <div data-testid={props.testId} className="product-category-section-lead">
-      <span className="product-category-section-lead__eyebrow">
-        {props.eyebrow}
-      </span>
-      <h2 className="product-category-section-lead__title">{props.title}</h2>
-      <p className="product-category-section-lead__description">
-        {props.description}
-      </p>
-    </div>
+    <SectionHead
+      title={props.title}
+      category={props.eyebrow}
+      note={props.description}
+      numbered={false}
+      contentGap="tight"
+      testId={props.testId}
+    />
   );
 }
 
@@ -217,342 +182,6 @@ function ProductCategorySectionNav() {
   );
 }
 
-type ProductCategoryGovernanceEvidenceProps = {
-  reportDate: string;
-  selectedView: string;
-  scenarioApplied: boolean;
-  resultMeta?: ResultMeta;
-};
-
-function ProductCategoryGovernanceEvidence(
-  props: ProductCategoryGovernanceEvidenceProps,
-) {
-  const scenarioStateLabel = props.scenarioApplied
-    ? "已应用情景预览"
-    : "正式基线";
-  const basisLabel = props.resultMeta?.basis ?? "pending";
-  const qualityLabel = props.resultMeta?.quality_flag ?? "pending";
-  const vendorLabel = props.resultMeta?.vendor_status ?? "pending";
-  const fallbackLabel = props.resultMeta?.fallback_mode ?? "pending";
-  const generatedAtLabel = props.resultMeta?.generated_at ?? "pending";
-  const traceIdLabel = props.resultMeta?.trace_id ?? "pending";
-  const needsDataStateReview =
-    props.resultMeta !== undefined &&
-    (props.resultMeta.quality_flag !== "ok" ||
-      props.resultMeta.vendor_status === "vendor_stale" ||
-      props.resultMeta.vendor_status === "vendor_unavailable" ||
-      props.resultMeta.fallback_mode !== "none");
-
-  return (
-    <div
-      data-testid="product-category-certification-blockers"
-      className="product-category-governance-evidence"
-      aria-label="产品分类损益认证阻断状态"
-    >
-      <section
-        data-testid="product-category-governance-signing-blockers"
-        className="product-category-governance-evidence__layer"
-      >
-        <h3>签署阻断</h3>
-        <ProductCategoryOwnerSignableStatus />
-      </section>
-      <section
-        data-testid="product-category-governance-source-version"
-        className="product-category-governance-evidence__layer"
-      >
-        <h3>来源与版本</h3>
-        <div
-          data-testid="product-category-formal-readiness-status"
-          className="product-category-formal-readiness__status-grid"
-        >
-          <span>report_date={props.reportDate || "pending"}</span>
-          <span>view={props.selectedView}</span>
-          <span>{scenarioStateLabel}</span>
-          <span>basis={basisLabel}</span>
-          <span>quality={qualityLabel}</span>
-          <span>vendor={vendorLabel}</span>
-          <span>fallback={fallbackLabel}</span>
-          <span>generated_at={generatedAtLabel}</span>
-          <span>trace_id={traceIdLabel}</span>
-          {needsDataStateReview ? (
-            <span>数据状态待复核</span>
-          ) : null}
-        </div>
-      </section>
-      <section
-        data-testid="product-category-governance-audit-evidence"
-        className="product-category-governance-evidence__layer"
-      >
-        <h3>审计证据</h3>
-        <div className="product-category-formal-readiness__certification-strip">
-          <span>签署前需重新运行核算</span>
-          <span>单位：亿元</span>
-          <span>日期基准：report_date</span>
-          <span>数据来源：正式只读模型</span>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ProductCategoryOwnerSignableStatus() {
-  return (
-    <section
-      data-testid="product-category-owner-signable-status"
-      className="product-category-owner-signable-status"
-      aria-label="产品分类损益签署状态"
-    >
-      <div className="product-category-owner-signable-status__heading">
-        <span>签署状态</span>
-        <strong>待认证</strong>
-        <small>3项待完成</small>
-      </div>
-      <div className="product-category-owner-signable-status__fields">
-        <span>可签署：否</span>
-        <span>已认证：否</span>
-        <span>待业主审批</span>
-        <span>黄金样本待审批</span>
-        <span>人工抽核未完成：已核 10 个单元</span>
-      </div>
-    </section>
-  );
-}
-
-type FormalTableDisplayMode = "key" | "full";
-
-type ProductCategoryFormalTableMobileReadoutProps = {
-  reportDate: string;
-  selectedView: string;
-  selectedCategoryId: string | null;
-  grandTotal?: ProductCategoryPnlRow | null;
-  rows: ProductCategoryPnlRow[];
-  onOpenAttributionEvidence?: (categoryId: string) => void;
-};
-
-function ProductCategoryFormalTableReadoutField(props: {
-  label: string;
-  value: string;
-  detail?: string;
-}) {
-  return (
-    <div className="product-category-formal-table-mobile-readout__field">
-      <span className="product-category-formal-table-mobile-readout__label">
-        {props.label}
-      </span>
-      <strong className="product-category-formal-table-mobile-readout__value">
-        {props.value}
-      </strong>
-      {props.detail ? (
-        <small className="product-category-formal-table-mobile-readout__detail">
-          {props.detail}
-        </small>
-      ) : null}
-    </div>
-  );
-}
-
-function ProductCategoryFormalTableMobileReadout(
-  props: ProductCategoryFormalTableMobileReadoutProps,
-) {
-  const focusedBusinessRow =
-    props.rows.find(
-      (row) => !row.is_total && row.category_id === props.selectedCategoryId,
-    ) ??
-    props.rows.find((row) => !row.is_total) ??
-    props.rows[0] ??
-    null;
-  const selectedViewLabel = props.selectedView === "monthly" ? "月度" : "汇总";
-  const focusedBusinessSideLabel = focusedBusinessRow
-    ? focusedBusinessRow.side === "asset"
-      ? "资产"
-      : focusedBusinessRow.side === "liability"
-        ? "负债"
-        : focusedBusinessRow.side
-    : "详表暂无业务行";
-
-  return (
-    <section
-      id="product-category-formal-mobile-focus"
-      data-testid="product-category-formal-table-mobile-readout"
-      className="product-category-formal-table-mobile-readout"
-      aria-label="产品分类正式表移动读数"
-    >
-      <div className="product-category-formal-table-mobile-readout__header">
-        <span className="product-category-formal-table-mobile-readout__eyebrow">
-          当前核查
-        </span>
-        <h3 className="product-category-formal-table-mobile-readout__title">
-          {focusedBusinessRow?.category_name ?? "正式报表"}
-        </h3>
-      </div>
-      <div className="product-category-formal-table-mobile-readout__meta">
-        <span>
-          {props.reportDate
-            ? formatProductCategoryReportMonthLabel(props.reportDate)
-            : "报告月待选"}
-        </span>
-        <span>视图：{selectedViewLabel}</span>
-        <span>{focusedBusinessSideLabel}</span>
-      </div>
-      <div className="product-category-formal-table-mobile-readout__fields">
-        <ProductCategoryFormalTableReadoutField
-          label="规模日均"
-          value={
-            focusedBusinessRow
-              ? formatProductCategoryRowDisplayValue(
-                  focusedBusinessRow,
-                  focusedBusinessRow.cnx_scale,
-                )
-              : EM_DASH
-          }
-          detail="综本规模"
-        />
-        <ProductCategoryFormalTableReadoutField
-          label="人民币净收入"
-          value={
-            focusedBusinessRow
-              ? formatProductCategoryRowDisplayValue(
-                  focusedBusinessRow,
-                  focusedBusinessRow.cny_net,
-                )
-              : EM_DASH
-          }
-          detail="正式表返回值"
-        />
-        <ProductCategoryFormalTableReadoutField
-          label="外币净收入"
-          value={
-            focusedBusinessRow
-              ? formatProductCategoryForeignDisplayValue(
-                  focusedBusinessRow,
-                  focusedBusinessRow.foreign_net,
-                )
-              : EM_DASH
-          }
-          detail="外币原值"
-        />
-        <ProductCategoryFormalTableReadoutField
-          label="营业净收入"
-          value={
-            focusedBusinessRow
-              ? formatProductCategoryRowDisplayValue(
-                  focusedBusinessRow,
-                  focusedBusinessRow.business_net_income,
-                )
-              : EM_DASH
-          }
-          detail="当前产品"
-        />
-        <ProductCategoryFormalTableReadoutField
-          label="加权收益率"
-          value={
-            focusedBusinessRow
-              ? formatProductCategoryYieldValue(
-                  focusedBusinessRow.weighted_yield,
-                )
-              : EM_DASH
-          }
-          detail="正式表返回值"
-        />
-        <ProductCategoryFormalTableReadoutField
-          label="合计经营净收入"
-          value={formatProductCategoryValue(
-            props.grandTotal?.business_net_income,
-          )}
-          detail="总表参照"
-        />
-      </div>
-      {focusedBusinessRow && props.onOpenAttributionEvidence ? (
-        <button
-          aria-label={`打开 ${focusedBusinessRow.category_name} 归因证据`}
-          className="product-category-formal-table-mobile-readout__action"
-          onClick={() =>
-            props.onOpenAttributionEvidence?.(focusedBusinessRow.category_id)
-          }
-          type="button"
-        >
-          查看当前产品归因证据
-        </button>
-      ) : null}
-    </section>
-  );
-}
-
-function ProductCategoryFormalSelectionContext(props: {
-  reportDate: string;
-  selectedView: string;
-  sourceLabel: string;
-  row: ProductCategoryPnlRow;
-  onOpenAttributionEvidence?: (categoryId: string) => void;
-}) {
-  return (
-    <section
-      id="product-category-formal-selection-context"
-      data-testid="product-category-formal-selection-context"
-      className="product-category-formal-selection-context"
-      aria-label={`${props.row.category_name} 正式表核查上下文`}
-    >
-      <div className="product-category-formal-selection-context__identity">
-        <span>当前核查</span>
-        <h3>{props.row.category_name}</h3>
-        <p>
-          {formatProductCategoryReportMonthLabel(props.reportDate)} ·{" "}
-          {props.selectedView === "monthly" ? "月度" : "汇总"} |{" "}
-          {props.sourceLabel}
-        </p>
-      </div>
-      <dl className="product-category-formal-selection-context__metrics">
-        <div>
-          <dt>规模日均</dt>
-          <dd>
-            {formatProductCategoryRowDisplayValue(
-              props.row,
-              props.row.cnx_scale,
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>人民币净收入</dt>
-          <dd>
-            {formatProductCategoryRowDisplayValue(props.row, props.row.cny_net)}
-          </dd>
-        </div>
-        <div>
-          <dt>外币净收入</dt>
-          <dd>
-            {formatProductCategoryForeignDisplayValue(
-              props.row,
-              props.row.foreign_net,
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>营业净收入</dt>
-          <dd>
-            {formatProductCategoryRowDisplayValue(
-              props.row,
-              props.row.business_net_income,
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>加权收益率</dt>
-          <dd>{formatProductCategoryYieldValue(props.row.weighted_yield)}</dd>
-        </div>
-      </dl>
-      {props.onOpenAttributionEvidence ? (
-        <button
-          type="button"
-          onClick={() =>
-            props.onOpenAttributionEvidence?.(props.row.category_id)
-          }
-        >
-          查看归因证据
-        </button>
-      ) : null}
-    </section>
-  );
-}
 
 function reportDateYearMonth(
   reportDate: string,
@@ -647,201 +276,11 @@ function monthAnchoredInterestSpreadSelection(
   return { ...current, month: parsed.month };
 }
 
-function diagnosticsToneClassName(
-  tone: "neutral" | "positive" | "negative",
-): string {
-  if (tone === "positive") {
-    return "product-category-diagnostics__value--positive";
-  }
-  if (tone === "negative") {
-    return "product-category-diagnostics__value--negative";
-  }
-  return "";
-}
 
-function formalValueToneClassName(
-  value: DecimalLike | null | undefined,
-): string {
-  if (value === null || value === undefined) {
-    return "product-category-formal-table__cell--neutral";
-  }
-  const parsed = Number(value);
-  if (Number.isNaN(parsed)) {
-    return "product-category-formal-table__cell--neutral";
-  }
-  if (parsed > 0) {
-    return "product-category-formal-table__cell--positive";
-  }
-  if (parsed < 0) {
-    return "product-category-formal-table__cell--negative";
-  }
-  return "product-category-formal-table__cell--neutral";
-}
-
-function formalForeignValueToneClassName(
-  row: Pick<ProductCategoryPnlRow, "side">,
-  value: DecimalLike | null | undefined,
-): string {
-  if (value === null || value === undefined) {
-    return formalValueToneClassName(value);
-  }
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return formalValueToneClassName(value);
-  }
-  return formalValueToneClassName(row.side === "liability" ? -parsed : parsed);
-}
-
-function formalCategoryIndentClassName(level: number): string {
-  const clampedLevel = Math.min(Math.max(Math.trunc(level), 0), 8);
-  return `product-category-formal-table__category-indent product-category-formal-table__category-indent--level-${clampedLevel}`;
-}
-
-type ProductCategoryApiLedgerRow = {
-  method: "GET" | "POST";
-  path: string;
-  status: string;
-  tone: "live" | "loading" | "error" | "contracted";
-};
 
 type ProductCategoryAdjustmentMutationKind =
   "create" | "edit" | "revoke" | "restore";
 
-type ProductCategoryApiContractLedgerProps = {
-  readRows: ProductCategoryApiLedgerRow[];
-  writeRows: ProductCategoryApiLedgerRow[];
-  adjustmentCount: number;
-  eventCount: number;
-  canExport: boolean;
-  isExporting: boolean;
-  exportError: string | null;
-  exportedFilename: string | null;
-  onCreateAdjustment: () => void;
-  onExport: () => void;
-};
-
-function ProductCategoryApiContractLedger(
-  props: ProductCategoryApiContractLedgerProps,
-) {
-  const readErrorCount = props.readRows.filter(
-    (row) => row.tone === "error",
-  ).length;
-  const readLoadingCount = props.readRows.filter(
-    (row) => row.tone === "loading",
-  ).length;
-
-  return (
-    <section
-      className="product-category-api-ledger"
-      data-testid="product-category-api-contract-ledger"
-      aria-label="产品分类损益后端端点衔接状态"
-    >
-      <header className="product-category-api-ledger__header">
-        <div>
-          <p className="product-category-api-ledger__eyebrow">
-            后端端点与治理闭环
-          </p>
-          <h2>11 个前端衔接动作</h2>
-          <p>
-            本清单展示前端集成与本会话调用状态，不是服务健康检查；写操作已衔接且受权限控制，
-            不代表本次会话已执行或已完成治理签署。
-          </p>
-        </div>
-        <span
-          className={`product-category-api-ledger__runtime ${
-            readErrorCount > 0
-              ? "is-error"
-              : readLoadingCount > 0
-                ? "is-loading"
-                : "is-live"
-          }`}
-          data-testid="product-category-api-contract-runtime"
-        >
-          读接口已联调 {props.readRows.length}/{props.readRows.length} ·
-          写接口已联调 {props.writeRows.length}/{props.writeRows.length}
-        </span>
-      </header>
-
-      <div className="product-category-api-ledger__columns">
-        <section data-testid="product-category-api-read-surfaces">
-          <h3>只读接口</h3>
-          <div className="product-category-api-ledger__rows">
-            {props.readRows.map((row) => (
-              <div
-                className={`product-category-api-ledger__row is-${row.tone}`}
-                data-endpoint-state={row.tone}
-                data-testid={`product-category-api-endpoint-${row.path
-                  .replace(/[^a-z0-9]+/gi, "-")
-                  .replace(/^-|-$/g, "")
-                  .toLowerCase()}`}
-                key={`${row.method}:${row.path}`}
-              >
-                <span className="product-category-api-ledger__method">
-                  {row.method}
-                </span>
-                <code>{row.path}</code>
-                <strong>{row.status}</strong>
-              </div>
-            ))}
-          </div>
-        </section>
-        <section data-testid="product-category-api-write-surfaces">
-          <h3>写入与轮询接口</h3>
-          <div className="product-category-api-ledger__rows">
-            {props.writeRows.map((row) => (
-              <div
-                className={`product-category-api-ledger__row is-${row.tone}`}
-                data-endpoint-state={row.tone}
-                key={`${row.method}:${row.path}`}
-              >
-                <span className="product-category-api-ledger__method">
-                  {row.method}
-                </span>
-                <code>{row.path}</code>
-                <strong>{row.status}</strong>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <footer className="product-category-api-ledger__workflow">
-        <div>
-          <h3>手工调整与审计流</h3>
-          <strong>
-            {props.adjustmentCount} 项生效 · {props.eventCount} 项事件
-          </strong>
-          <p>
-            {props.exportedFilename
-              ? `已导出 ${props.exportedFilename}；`
-              : "可导出 CSV；"}
-            新增 → 编辑 → 撤销 → 恢复；所有动作写入事件流，刷新状态通过 run_id
-            轮询。
-          </p>
-          {props.exportError ? (
-            <p className="product-category-api-ledger__error" role="alert">
-              {props.exportError}
-            </p>
-          ) : null}
-        </div>
-        <div className="product-category-api-ledger__actions">
-          <button type="button" onClick={props.onCreateAdjustment}>
-            新增调整
-          </button>
-          <button
-            type="button"
-            data-testid="product-category-export-adjustments"
-            disabled={!props.canExport || props.isExporting}
-            onClick={props.onExport}
-          >
-            {props.isExporting ? "导出中..." : "导出 CSV"}
-          </button>
-          <Link to="/product-category-pnl/audit">打开审计账本</Link>
-        </div>
-      </footer>
-    </section>
-  );
-}
 
 function downloadProductCategoryAdjustmentsCsv(
   filename: string,
@@ -858,26 +297,22 @@ function downloadProductCategoryAdjustmentsCsv(
   URL.revokeObjectURL(url);
 }
 
-function formatProductCategoryTrendMetric(
-  value: number | null | undefined,
-  unit: string,
-): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return EM_DASH;
-  }
-  return `${value.toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}${unit}`;
-}
 
 export default function ProductCategoryPnlPage() {
   const client = useApiClient();
+  const location = useLocation();
+  const publicationParams = new URLSearchParams(location.search);
+  const isPublicationCapture =
+    client.mode === "mock" && publicationParams.get("presentation") === "paper";
+  const publicationFocus =
+    publicationParams.get("focus") === "attribution"
+      ? "attribution"
+      : "overview";
   const [selectedBranch, setSelectedBranch] = useState<
     "product_category_pnl" | "monthly_operating_analysis"
   >("product_category_pnl");
   const [formalTableDisplayMode, setFormalTableDisplayMode] =
-    useState<FormalTableDisplayMode>("key");
+    useState<ProductCategoryFormalTableDisplayMode>("key");
   const [liabilityMatrixViewOverride, setLiabilityMatrixViewOverride] =
     useState<ProductCategoryLiabilityView | null>(null);
   const [selectedDate, setSelectedDate] = useState("");
@@ -893,13 +328,14 @@ export default function ProductCategoryPnlPage() {
     categoryId: string;
   } | null>(null);
   const attributionDetailsRef = useRef<HTMLDetailsElement>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshPollSnapshot, setRefreshPollSnapshot] = useState<{
-    status: string;
-    run_id?: string;
-  } | null>(null);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [lastRefreshRunId, setLastRefreshRunId] = useState<string | null>(null);
+  const {
+    isRefreshing,
+    refreshPollSnapshot,
+    refreshError,
+    lastRefreshRunId,
+    handleRefresh,
+    runRefreshWorkflow,
+  } = useProductCategoryRefresh(client);
   const [showManualForm, setShowManualForm] = useState(false);
   const [diagnosticsWorkspaceOpen, setDiagnosticsWorkspaceOpen] =
     useState(false);
@@ -909,21 +345,20 @@ export default function ProductCategoryPnlPage() {
   const [backtestWorkspaceOpen, setBacktestWorkspaceOpen] = useState(false);
   const [scenarioSensitivityRequested, setScenarioSensitivityRequested] =
     useState(false);
-  const [
+  const {
     selectedScenarioReviewCategoryId,
     setSelectedScenarioReviewCategoryId,
-  ] = useState<string | null>(null);
-  const [scenarioReviewActionStatuses, setScenarioReviewActionStatuses] =
-    useState<Record<string, ScenarioReviewActionStatus>>({});
-  const [scenarioReviewIssueReasons, setScenarioReviewIssueReasons] = useState<
-    Record<string, ScenarioReviewIssueReason>
-  >({});
-  const [scenarioActionClosureStatuses, setScenarioActionClosureStatuses] =
-    useState<Record<string, ScenarioActionClosureStatus>>({});
-  const [
+    scenarioReviewActionStatuses,
+    scenarioReviewIssueReasons,
+    scenarioActionClosureStatuses,
     scenarioActionClosureMemoCategoryId,
     setScenarioActionClosureMemoCategoryId,
-  ] = useState<string | null>(null);
+    handleScenarioReviewActionStatus,
+    handleScenarioReviewIssueReason,
+    handleBulkScenarioReviewActionStatus,
+    handleResetScenarioReviewActions,
+    handleScenarioActionClosureStatus,
+  } = useProductCategoryScenarioReview();
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(
     null,
   );
@@ -952,7 +387,8 @@ export default function ProductCategoryPnlPage() {
   const datesQuery = useQuery({
     queryKey: ["product-category-pnl", "dates", client.mode],
     queryFn: () => client.getProductCategoryDates(),
-    retry: false,
+    retry: shouldRetryProductCategoryRead,
+    retryDelay: productCategoryReadRetryDelay,
   });
 
   useEffect(() => {
@@ -1015,7 +451,8 @@ export default function ProductCategoryPnlPage() {
         view: selectedView,
       }),
     enabled: Boolean(selectedDate),
-    retry: false,
+    retry: shouldRetryProductCategoryRead,
+    retryDelay: productCategoryReadRetryDelay,
   });
 
   const scenarioQuery = useQuery({
@@ -1108,6 +545,10 @@ export default function ProductCategoryPnlPage() {
   });
 
   const baseline = baselineQuery.data?.result;
+  const formalMomAttribution =
+    selectedView === "monthly"
+      ? managementMomAttributionQuery.data?.result
+      : undefined;
   const dataHealth = buildProductCategoryDataHealth({
     datesLoading: datesQuery.isLoading,
     datesError: datesQuery.isError,
@@ -1151,20 +592,19 @@ export default function ProductCategoryPnlPage() {
     () => reportDateYearMonth(selectedDate),
     [selectedDate],
   );
-  // 经营修复监控面板常显在所有折叠区之外，但仅在月度视图、未应用 FTP 场景、
-  // 且选中 6 月末报告期时才会消费 1—6 月连续历史快照（见 selectProductCategoryManagementMonitoringSurface）。
+  // 经营修复监控常显，使用年初至所选月的正式月度历史，不受趋势图最近八期限制。
   // 该面板本身不是折叠区消费方，须显式纳入门控，否则历史数据永远不会为它触发加载。
   const managementMonitoringConsumesHistory =
     selectedView === "monthly" &&
     !managementScenarioDistinct &&
-    selectedYearMonth?.month === 6 &&
+    Boolean(selectedYearMonth) &&
     canRenderBaselineDerivedAnalysis;
-  // 趋势历史快照被趋势、诊断（负债结构核查）、动作回测三个折叠区，以及经营修复监控面板共同消费：
-  // 任一折叠区展开，或经营修复监控处于会消费历史数据的状态，都必须触发历史加载。
+  // 无场景时，动作回测复用趋势历史；应用场景后，回测单独读取正式月度历史。
+  // 趋势、诊断和经营修复监控继续消费各自选定口径的历史。
   const trendHistoryConsumerOpen =
     trendWorkspaceOpen ||
     diagnosticsWorkspaceOpen ||
-    backtestWorkspaceOpen ||
+    (backtestWorkspaceOpen && !appliedScenarioRate) ||
     managementMonitoringConsumesHistory;
   const attributionHistoryConsumerOpen =
     trendWorkspaceOpen || backtestWorkspaceOpen;
@@ -1176,11 +616,15 @@ export default function ProductCategoryPnlPage() {
   const operatingAnalysisSurface = useMemo(
     () =>
       selectProductCategoryOperatingAnalysisSurface({
-        rows: rowsToRender,
-        grandTotal: displayedGrandTotal,
-        attribution: attributionQuery.data?.result,
+        rows: baseline?.rows ?? [],
+        grandTotal: baseline?.grand_total,
+        attribution: formalMomAttribution,
       }),
-    [attributionQuery.data?.result, displayedGrandTotal, rowsToRender],
+    [
+      baseline?.rows,
+      baseline?.grand_total,
+      formalMomAttribution,
+    ],
   );
   const scenarioSensitivityPayloads = useMemo(
     () =>
@@ -1211,108 +655,16 @@ export default function ProductCategoryPnlPage() {
         categoryId: selectedScenarioExplanationCategoryId,
         baseline,
         scenarios: scenarioSensitivityPayloads,
-        attribution: attributionQuery.data?.result,
+        attribution:
+          selectedView === "monthly" ? attributionQuery.data?.result : undefined,
       }),
     [
       attributionQuery.data?.result,
       baseline,
       scenarioSensitivityPayloads,
       selectedScenarioExplanationCategoryId,
+      selectedView,
     ],
-  );
-  const handleScenarioReviewActionStatus = useCallback(
-    (
-      categoryId: string,
-      actionIndex: number,
-      status: ScenarioReviewActionStatus,
-    ) => {
-      const actionStatusKey = `${categoryId}:${actionIndex}`;
-      setScenarioReviewActionStatuses((current) => ({
-        ...current,
-        [actionStatusKey]: status,
-      }));
-      if (status !== "issue") {
-        setScenarioReviewIssueReasons((current) => {
-          if (!(actionStatusKey in current)) {
-            return current;
-          }
-          const next = { ...current };
-          delete next[actionStatusKey];
-          return next;
-        });
-      }
-    },
-    [],
-  );
-  const handleScenarioReviewIssueReason = useCallback(
-    (
-      categoryId: string,
-      actionIndex: number,
-      reason: ScenarioReviewIssueReason,
-    ) => {
-      setScenarioReviewIssueReasons((current) => ({
-        ...current,
-        [`${categoryId}:${actionIndex}`]: reason,
-      }));
-      setScenarioReviewActionStatuses((current) => ({
-        ...current,
-        [`${categoryId}:${actionIndex}`]: "issue",
-      }));
-    },
-    [],
-  );
-  const handleBulkScenarioReviewActionStatus = useCallback(
-    (
-      categoryId: string,
-      actionCount: number,
-      status: ScenarioReviewActionStatus,
-    ) => {
-      setScenarioReviewActionStatuses((current) => {
-        const next = { ...current };
-        for (let index = 0; index < actionCount; index += 1) {
-          next[`${categoryId}:${index}`] = status;
-        }
-        return next;
-      });
-      if (status !== "issue") {
-        setScenarioReviewIssueReasons((current) => {
-          const next = { ...current };
-          for (let index = 0; index < actionCount; index += 1) {
-            delete next[`${categoryId}:${index}`];
-          }
-          return next;
-        });
-      }
-    },
-    [],
-  );
-  const handleResetScenarioReviewActions = useCallback(
-    (categoryId: string, actionCount: number) => {
-      setScenarioReviewActionStatuses((current) => {
-        const next = { ...current };
-        for (let index = 0; index < actionCount; index += 1) {
-          delete next[`${categoryId}:${index}`];
-        }
-        return next;
-      });
-      setScenarioReviewIssueReasons((current) => {
-        const next = { ...current };
-        for (let index = 0; index < actionCount; index += 1) {
-          delete next[`${categoryId}:${index}`];
-        }
-        return next;
-      });
-    },
-    [],
-  );
-  const handleScenarioActionClosureStatus = useCallback(
-    (categoryId: string, status: ScenarioActionClosureStatus) => {
-      setScenarioActionClosureStatuses((current) => ({
-        ...current,
-        [categoryId]: status,
-      }));
-    },
-    [],
   );
   const attributionWaterfallSurface = useMemo(
     () =>
@@ -1359,12 +711,6 @@ export default function ProductCategoryPnlPage() {
       : attributionDetailSelection?.contextKey === attributionDetailContextKey
         ? attributionDetailSelection.categoryId
         : (rootCauseSurface.headline?.categoryId ?? null);
-  const selectedFormalRow =
-    rowsToRender.find(
-      (row) =>
-        !row.is_total &&
-        row.category_id === selectedAttributionDetailCategoryId,
-    ) ?? null;
   const attributionDetailCategoryIds = useMemo(() => {
     const attribution = attributionQuery.data?.result;
     if (
@@ -1447,11 +793,11 @@ export default function ProductCategoryPnlPage() {
   const decisionFocusSurface = useMemo(
     () =>
       selectProductCategoryDecisionFocusSurface({
-        rows: rowsToRender,
-        grandTotal: displayedGrandTotal,
-        attribution: attributionQuery.data?.result,
+        rows: baseline?.rows ?? [],
+        grandTotal: baseline?.grand_total,
+        attribution: formalMomAttribution,
       }),
-    [attributionQuery.data?.result, displayedGrandTotal, rowsToRender],
+    [baseline?.rows, baseline?.grand_total, formalMomAttribution],
   );
   const trendReportPoints = useMemo(
     () =>
@@ -1542,6 +888,20 @@ export default function ProductCategoryPnlPage() {
       enabled: Boolean(trendHistoryConsumerOpen && trendDiagnosticsLoaded),
       retry: false,
     })),
+  });
+  const {
+    historyQueries: operatingActionBacktestHistoryQueries,
+    payloads: operatingActionBacktestPayloads,
+    isError: operatingActionBacktestHistoryErrored,
+  } = useProductCategoryBacktestHistory({
+    client,
+    baseline: baselineQuery.data,
+    reportDateBatches: trendHistoryBatches,
+    trendHistoryQueries,
+    backtestWorkspaceOpen,
+    historyReady: trendDiagnosticsLoaded,
+    selectedView,
+    appliedScenarioRate,
   });
   const trendHistoryAttributionQueries = useQueries({
     queries: trendHistoryBatches.map((batchReportDates) => ({
@@ -1645,12 +1005,6 @@ export default function ProductCategoryPnlPage() {
     );
     return byReportDate;
   }, [interestSpreadHistoryQueries, trendHistoryQueries]);
-  const trendHistoryLoading =
-    trendHistoryQueries.some((query) => query.isLoading) ||
-    interestSpreadHistoryQueries.some((query) => query.isLoading);
-  const trendHistoryErrored =
-    trendHistoryQueries.some((query) => query.isError) ||
-    interestSpreadHistoryQueries.some((query) => query.isError);
   const trendSnapshots = useMemo(
     () =>
       trendDiagnosticsLoaded
@@ -1702,26 +1056,6 @@ export default function ProductCategoryPnlPage() {
       ) ?? [],
     [liabilityMatrixAlternateQuery.data?.result.items],
   );
-  const operatingActionBacktestPayloads = useMemo(
-    () =>
-      trendDiagnosticsLoaded
-        ? [
-            ...(baseline ? [baseline] : []),
-            ...trendHistoryPoints.flatMap((point) => {
-              const entry = historyPayloadByReportDate.get(point.reportDate);
-              return entry ? [entry.payload] : [];
-            }),
-          ]
-        : baseline
-          ? [baseline]
-          : [],
-    [
-      baseline,
-      historyPayloadByReportDate,
-      trendDiagnosticsLoaded,
-      trendHistoryPoints,
-    ],
-  );
   const operatingActionBacktestAttributions = useMemo(() => {
     const byReportDate = new Map<
       string,
@@ -1754,21 +1088,17 @@ export default function ProductCategoryPnlPage() {
       }),
     [operatingActionBacktestAttributions, operatingActionBacktestPayloads],
   );
-  const managementMonitoringSurface = useMemo(
-    () =>
-      selectProductCategoryManagementMonitoringSurface({
-        reportDate: selectedDate,
-        snapshots: trendSnapshots,
-        currentAttribution: managementMomAttributionQuery.data?.result,
-        scenarioDistinct: managementScenarioDistinct,
-      }),
-    [
-      managementMomAttributionQuery.data?.result,
-      managementScenarioDistinct,
-      selectedDate,
-      trendSnapshots,
-    ],
-  );
+  const managementMonitoring = useProductCategoryManagementMonitoring({
+    client,
+    reportDate: selectedDate,
+    reportDates: datesQuery.data?.result.report_dates,
+    baseline: baselineQuery.data,
+    trendHistoryReportDates,
+    trendHistoryQueries,
+    attributionQuery: managementMomAttributionQuery,
+    enabled: managementMonitoringConsumesHistory,
+    scenarioDistinct: managementScenarioDistinct,
+  });
   const interestSpreadComparisonSnapshots = useMemo(
     () =>
       trendDiagnosticsLoaded
@@ -1848,85 +1178,14 @@ export default function ProductCategoryPnlPage() {
     () => buildProductCategoryLiabilitySideTrendSurface(liabilityMatrixSnapshots),
     [liabilityMatrixSnapshots],
   );
-  const tplScaleYieldChart = useMemo(
-    () => selectProductCategoryTplScaleYieldChart(trendSnapshots),
-    [trendSnapshots],
-  );
-  const currencyNetIncomeChart = useMemo(
-    () => selectProductCategoryCurrencyNetIncomeChart(trendSnapshots),
-    [trendSnapshots],
-  );
-  const interestEarningIncomeScaleChart = useMemo(
-    () => selectProductCategoryInterestEarningIncomeScaleChart(trendSnapshots),
-    [trendSnapshots],
-  );
-  const interestEarningAssetLiabilityScaleChart = useMemo(
-    () =>
-      selectProductCategoryInterestEarningAssetLiabilityScaleChart(
-        trendSnapshots,
-      ),
-    [trendSnapshots],
-  );
-  const interestSpreadChart = useMemo(
-    () => selectProductCategoryInterestSpreadChart(trendSnapshots),
-    [trendSnapshots],
-  );
-  const interestEarningSpreadChart = useMemo(
-    () => selectProductCategoryInterestEarningSpreadChart(trendSnapshots),
-    [trendSnapshots],
-  );
-  const interestSpreadYearComparisonChart = useMemo(
-    () =>
-      selectProductCategoryInterestSpreadYearComparisonChart(
-        interestSpreadComparisonSnapshots,
-      ),
-    [interestSpreadComparisonSnapshots],
-  );
-  const cnyInterestSpreadYearComparisonChart = useMemo(
-    () =>
-      selectProductCategoryInterestSpreadYearComparisonChart(
-        interestSpreadComparisonSnapshots,
-        "cny",
-      ),
-    [interestSpreadComparisonSnapshots],
-  );
-  const interestEarningSpreadYearComparisonChart = useMemo(
-    () =>
-      selectProductCategoryInterestEarningSpreadYearComparisonChart(
-        interestSpreadComparisonSnapshots,
-      ),
-    [interestSpreadComparisonSnapshots],
-  );
-  const cnyInterestEarningSpreadYearComparisonChart = useMemo(
-    () =>
-      selectProductCategoryInterestEarningSpreadYearComparisonChart(
-        interestSpreadComparisonSnapshots,
-        "cny",
-      ),
-    [interestSpreadComparisonSnapshots],
-  );
-  const intermediateBusinessIncomeYearComparisonChart = useMemo(
-    () =>
-      selectProductCategoryIntermediateBusinessIncomeYearComparisonChart(
-        interestSpreadComparisonSnapshots,
-      ),
-    [interestSpreadComparisonSnapshots],
-  );
-  const interestSpreadAttributionSurface = useMemo(
-    () =>
-      selectedYearMonth
-        ? selectProductCategoryInterestSpreadAttributionSurface(
-            interestSpreadComparisonSnapshots,
-            interestSpreadAttributionSelection,
-            selectedYearMonth.year,
-          )
-        : null,
-    [
-      interestSpreadAttributionSelection,
-      interestSpreadComparisonSnapshots,
-      selectedYearMonth,
-    ],
-  );
+  const trendCharts = useProductCategoryTrendCharts({
+    trendSnapshots,
+    interestSpreadComparisonSnapshots,
+    liabilitySideTrendSurface,
+    liabilityMatrixTrendSurface,
+    selectedYearMonth,
+    interestSpreadAttributionSelection,
+  });
   const handleInterestSpreadAttributionPointClick = useCallback(
     (
       basis: ProductCategoryInterestSpreadBasis,
@@ -1944,337 +1203,6 @@ export default function ProductCategoryPnlPage() {
     },
     [],
   );
-  const tplScaleYieldOption = useMemo(
-    () =>
-      tplScaleYieldChart
-        ? buildDualAxisChartOption({
-            labels: tplScaleYieldChart.labels,
-            leftAxisName: "亿元",
-            rightAxisName: "%",
-            series: [
-              {
-                name: "人民币规模（亿元）",
-                type: "bar",
-                data: tplScaleYieldChart.cnyScale,
-                yAxisIndex: 0,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.blue,
-              },
-              {
-                name: "外币规模（亿元）",
-                type: "bar",
-                data: tplScaleYieldChart.foreignScale,
-                yAxisIndex: 0,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.amber,
-              },
-              {
-                name: "收益率（%）",
-                type: "line",
-                data: tplScaleYieldChart.weightedYield,
-                yAxisIndex: 1,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.green,
-              },
-            ],
-          })
-        : null,
-    [tplScaleYieldChart],
-  );
-  const currencyNetIncomeOption = useMemo(
-    () =>
-      currencyNetIncomeChart
-        ? buildSingleAxisChartOption({
-            labels: currencyNetIncomeChart.labels,
-            axisName: "亿元",
-            series: [
-              {
-                name: "人民币净收入（亿元）",
-                type: "bar",
-                data: currencyNetIncomeChart.cnyNet,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.blue,
-              },
-              {
-                name: "外币净收入（亿元）",
-                type: "bar",
-                data: currencyNetIncomeChart.foreignNet,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.amber,
-              },
-            ],
-          })
-        : null,
-    [currencyNetIncomeChart],
-  );
-  const interestEarningIncomeScaleOption = useMemo(
-    () =>
-      interestEarningIncomeScaleChart
-        ? buildDualAxisChartOption({
-            labels: interestEarningIncomeScaleChart.labels,
-            leftAxisName: "亿元",
-            rightAxisName: "亿元",
-            series: [
-              {
-                name: "生息资产规模（亿元）",
-                type: "bar",
-                data: interestEarningIncomeScaleChart.scale,
-                yAxisIndex: 0,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.blue,
-              },
-              {
-                name: "生息资产收入（亿元）",
-                type: "line",
-                data: interestEarningIncomeScaleChart.income,
-                yAxisIndex: 1,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.green,
-              },
-            ],
-          })
-        : null,
-    [interestEarningIncomeScaleChart],
-  );
-  const interestEarningAssetLiabilityScaleOption = useMemo(
-    () =>
-      interestEarningAssetLiabilityScaleChart
-        ? buildInterestEarningAssetLiabilityScaleChartOption({
-            labels: interestEarningAssetLiabilityScaleChart.labels,
-            series: [
-              {
-                name: "生息资产日均额（亿元）",
-                data: interestEarningAssetLiabilityScaleChart.interestEarningAssetScale,
-                /* nocturne accent 半透明（原 dh-api 钢蓝 rgba，canvas 不消费 CSS 变量）。 */
-                color: "rgba(145,132,217,0.72)",
-                borderColor: "rgba(145,132,217,0.4)",
-              },
-              {
-                name: "附息负债日均额（亿元）",
-                data: interestEarningAssetLiabilityScaleChart.interestBearingLiabilityScale,
-                /* nocturne warn 半透明（原 dh-api 金琥珀 rgba）。 */
-                color: "rgba(213,178,110,0.72)",
-                borderColor: "rgba(213,178,110,0.4)",
-              },
-            ],
-          })
-        : null,
-    [interestEarningAssetLiabilityScaleChart],
-  );
-  const interestSpreadOption = useMemo(
-    () =>
-      interestSpreadChart
-        ? buildInterestSpreadChartOption({
-            labels: interestSpreadChart.labels,
-            series: [
-              {
-                name: "资产端收益率（含TPL）（%）",
-                data: interestSpreadChart.assetYield,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.green,
-              },
-              {
-                name: "负债端成本率（%）",
-                data: interestSpreadChart.liabilityYield,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-              },
-              {
-                name: "资产负债利差（含TPL）（%）",
-                data: interestSpreadChart.spread,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.red,
-              },
-            ],
-          })
-        : null,
-    [interestSpreadChart],
-  );
-  const interestEarningSpreadOption = useMemo(
-    () =>
-      interestEarningSpreadChart
-        ? buildInterestSpreadChartOption({
-            labels: interestEarningSpreadChart.labels,
-            series: [
-              {
-                name: "生息资产收益率（%）",
-                data: interestEarningSpreadChart.assetYield,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.green,
-              },
-              {
-                name: "负债端成本率（%）",
-                data: interestEarningSpreadChart.liabilityYield,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-              },
-              {
-                name: "生息资产负债利差（%）",
-                data: interestEarningSpreadChart.spread,
-                color: PRODUCT_CATEGORY_DARK_CHART_THEME.red,
-              },
-            ],
-          })
-        : null,
-    [interestEarningSpreadChart],
-  );
-  const comparisonCurrentSeriesName = selectedYearMonth
-    ? `${selectedYearMonth.year}年`
-    : null;
-  const interestSpreadYearComparisonOption = useMemo(
-    () =>
-      interestSpreadYearComparisonChart
-        ? buildInterestSpreadYearComparisonChartOption({
-            labels: interestSpreadYearComparisonChart.labels,
-            currentSeriesName: comparisonCurrentSeriesName,
-            series: interestSpreadYearComparisonChart.series.map((series) => ({
-              name: series.year,
-              data: series.spread,
-              color:
-                series.year === comparisonCurrentSeriesName
-                  ? PRODUCT_CATEGORY_DARK_CHART_THEME.green
-                  : PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-            })),
-          })
-        : null,
-    [comparisonCurrentSeriesName, interestSpreadYearComparisonChart],
-  );
-  const cnyInterestSpreadYearComparisonOption = useMemo(
-    () =>
-      cnyInterestSpreadYearComparisonChart
-        ? buildInterestSpreadYearComparisonChartOption({
-            labels: cnyInterestSpreadYearComparisonChart.labels,
-            currentSeriesName: comparisonCurrentSeriesName,
-            series: cnyInterestSpreadYearComparisonChart.series.map(
-              (series) => ({
-                name: series.year,
-                data: series.spread,
-                color:
-                  series.year === comparisonCurrentSeriesName
-                    ? PRODUCT_CATEGORY_DARK_CHART_THEME.green
-                    : PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-              }),
-            ),
-          })
-        : null,
-    [cnyInterestSpreadYearComparisonChart, comparisonCurrentSeriesName],
-  );
-  const interestEarningSpreadYearComparisonOption = useMemo(
-    () =>
-      interestEarningSpreadYearComparisonChart
-        ? buildInterestSpreadYearComparisonChartOption({
-            labels: interestEarningSpreadYearComparisonChart.labels,
-            currentSeriesName: comparisonCurrentSeriesName,
-            series: interestEarningSpreadYearComparisonChart.series.map(
-              (series) => ({
-                name: series.year,
-                data: series.spread,
-                color:
-                  series.year === comparisonCurrentSeriesName
-                    ? PRODUCT_CATEGORY_DARK_CHART_THEME.green
-                    : PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-              }),
-            ),
-          })
-        : null,
-    [comparisonCurrentSeriesName, interestEarningSpreadYearComparisonChart],
-  );
-  const cnyInterestEarningSpreadYearComparisonOption = useMemo(
-    () =>
-      cnyInterestEarningSpreadYearComparisonChart
-        ? buildInterestSpreadYearComparisonChartOption({
-            labels: cnyInterestEarningSpreadYearComparisonChart.labels,
-            currentSeriesName: comparisonCurrentSeriesName,
-            series: cnyInterestEarningSpreadYearComparisonChart.series.map(
-              (series) => ({
-                name: series.year,
-                data: series.spread,
-                color:
-                  series.year === comparisonCurrentSeriesName
-                    ? PRODUCT_CATEGORY_DARK_CHART_THEME.green
-                    : PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-              }),
-            ),
-          })
-        : null,
-    [cnyInterestEarningSpreadYearComparisonChart, comparisonCurrentSeriesName],
-  );
-  const intermediateBusinessIncomeYearComparisonOption = useMemo(
-    () =>
-      intermediateBusinessIncomeYearComparisonChart
-        ? buildIncomeYearComparisonChartOption({
-            labels: intermediateBusinessIncomeYearComparisonChart.labels,
-            currentSeriesName: comparisonCurrentSeriesName,
-            series: intermediateBusinessIncomeYearComparisonChart.series.map(
-              (series) => ({
-                name: series.year,
-                data: series.income,
-                color:
-                  series.year === comparisonCurrentSeriesName
-                    ? PRODUCT_CATEGORY_DARK_CHART_THEME.green
-                    : PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-              }),
-            ),
-          })
-        : null,
-    [
-      comparisonCurrentSeriesName,
-      intermediateBusinessIncomeYearComparisonChart,
-    ],
-  );
-  const liabilitySideTrendOption = useMemo(
-    () =>
-      liabilityMatrixTrendSurface.chart
-        ? buildLiabilitySideTrendChartOption({
-            labels: liabilityMatrixTrendSurface.chart.labels,
-            averageDaily:
-              liabilityMatrixTrendSurface.chart.totalAverageDaily,
-            rate: liabilityMatrixTrendSurface.chart.totalRate,
-          })
-        : null,
-    [liabilityMatrixTrendSurface.chart],
-  );
-  const interestEarningSpreadComparisonReadout =
-    buildProductCategoryComparisonReadout({
-      labels: interestEarningSpreadYearComparisonChart?.labels,
-      series: interestEarningSpreadYearComparisonChart?.series.map(
-        (series) => ({ year: series.year, data: series.spread }),
-      ),
-      valueUnit: "%",
-      deltaUnit: "bp",
-      deltaScale: 100,
-    });
-  const cnyInterestEarningSpreadComparisonReadout =
-    buildProductCategoryComparisonReadout({
-      labels: cnyInterestEarningSpreadYearComparisonChart?.labels,
-      series: cnyInterestEarningSpreadYearComparisonChart?.series.map(
-        (series) => ({ year: series.year, data: series.spread }),
-      ),
-      valueUnit: "%",
-      deltaUnit: "bp",
-      deltaScale: 100,
-    });
-  const interestSpreadComparisonReadout = buildProductCategoryComparisonReadout(
-    {
-      labels: interestSpreadYearComparisonChart?.labels,
-      series: interestSpreadYearComparisonChart?.series.map((series) => ({
-        year: series.year,
-        data: series.spread,
-      })),
-      valueUnit: "%",
-      deltaUnit: "bp",
-      deltaScale: 100,
-    },
-  );
-  const cnyInterestSpreadComparisonReadout =
-    buildProductCategoryComparisonReadout({
-      labels: cnyInterestSpreadYearComparisonChart?.labels,
-      series: cnyInterestSpreadYearComparisonChart?.series.map((series) => ({
-        year: series.year,
-        data: series.spread,
-      })),
-      valueUnit: "%",
-      deltaUnit: "bp",
-      deltaScale: 100,
-    });
-  const intermediateBusinessIncomeComparisonReadout =
-    buildProductCategoryComparisonReadout({
-      labels: intermediateBusinessIncomeYearComparisonChart?.labels,
-      series: intermediateBusinessIncomeYearComparisonChart?.series.map(
-        (series) => ({ year: series.year, data: series.income }),
-      ),
-      valueUnit: "亿元",
-      deltaUnit: "亿元",
-      deltaScale: 1,
-    });
   // Per-period load state is still reported one comparison month at a time; each month
   // resolves against whichever batch carries it, and an unrequested batch counts as neither
   // loaded nor failed (same as the previously disabled per-period query).
@@ -2382,33 +1310,6 @@ export default function ProductCategoryPnlPage() {
   const comparisonCurrentPeriodLabel = selectedYearMonth
     ? `${selectedYearMonth.year}年截至${selectedYearMonth.month}月`
     : "当前年截止月待选";
-  const trendLatestIndex = Math.max(
-    (interestEarningIncomeScaleChart?.labels.length ?? 1) - 1,
-    0,
-  );
-  const spreadLatestIndex = Math.max(
-    (interestSpreadChart?.labels.length ?? 1) - 1,
-    0,
-  );
-  const liabilityLatestIndex = Math.max(
-    (liabilitySideTrendSurface.chart?.labels.length ?? 1) - 1,
-    0,
-  );
-  const trendHeaderMetrics = {
-    earningScale: formatProductCategoryTrendMetric(
-      interestEarningIncomeScaleChart?.scale[trendLatestIndex],
-      " 亿",
-    ),
-    liabilityAverage: formatProductCategoryTrendMetric(
-      liabilitySideTrendSurface.chart?.totalAverageDaily[liabilityLatestIndex],
-      " 亿",
-    ),
-    netSpread: formatProductCategoryTrendMetric(
-      interestSpreadChart?.spread[spreadLatestIndex],
-      "%",
-    ),
-  };
-  const liabilityTrendReadout = liabilityMatrixTrendSurface.totalReadout;
   const adjustmentCount =
     adjustmentsQuery.data?.adjustment_count ??
     adjustmentsQuery.data?.adjustments.length ??
@@ -2590,60 +1491,6 @@ export default function ProductCategoryPnlPage() {
       tone: adjustmentMutationKind === "restore" ? "loading" : "contracted",
     },
   ];
-
-  async function runRefreshWorkflow() {
-    const payload = await runPollingTask({
-      start: () => client.refreshProductCategoryPnl(),
-      getStatus: (runId) => client.getProductCategoryRefreshStatus(runId),
-      onUpdate: (pollPayload) => {
-        setRefreshPollSnapshot({
-          status: pollPayload.status,
-          run_id: pollPayload.run_id,
-        });
-      },
-    });
-    setLastRefreshRunId(payload.run_id);
-    if (payload.status !== "completed") {
-      throw new Error(payload.detail ?? `刷新任务未完成：${payload.status}`);
-    }
-    await Promise.all([
-      datesQuery.refetch(),
-      baselineQuery.refetch(),
-      adjustmentsQuery.refetch(),
-      ...(selectedView === "monthly"
-        ? [attributionQuery.refetch(), managementMomAttributionQuery.refetch()]
-        : []),
-      ...(trendHistoryConsumerOpen
-        ? trendHistoryQueries.map((query) => query.refetch())
-        : []),
-      ...(attributionHistoryConsumerOpen && selectedView === "monthly"
-        ? trendHistoryAttributionQueries.map((query) => query.refetch())
-        : []),
-      ...(trendWorkspaceOpen
-        ? interestSpreadHistoryQueries.map((query) => query.refetch())
-        : []),
-      ...(scenarioSensitivityRequested
-        ? scenarioSensitivityQueries.map((query) => query.refetch())
-        : []),
-      ...(appliedScenarioRate ? [scenarioQuery.refetch()] : []),
-    ]);
-  }
-
-  async function handleRefresh() {
-    setIsRefreshing(true);
-    setRefreshError(null);
-    setRefreshPollSnapshot(null);
-    try {
-      await runRefreshWorkflow();
-    } catch (error) {
-      setRefreshError(
-        error instanceof Error ? error.message : "刷新损益数据失败",
-      );
-    } finally {
-      setIsRefreshing(false);
-      setRefreshPollSnapshot(null);
-    }
-  }
 
   function updateAdjustmentField<
     K extends keyof ProductCategoryManualAdjustmentRequest,
@@ -2847,8 +1694,19 @@ export default function ProductCategoryPnlPage() {
       id="product-category-overview"
       data-testid="product-category-page"
       data-moss-theme-scope="product-category-pnl"
-      className="product-category-page-shell theme-dh-api"
+      data-publication-capture={isPublicationCapture ? "paper" : undefined}
+      data-publication-focus={
+        isPublicationCapture ? publicationFocus : undefined
+      }
+      className={`product-category-page-shell theme-dh-api${
+        isPublicationCapture
+          ? " product-category-page-shell--publication"
+          : ""
+      }`}
     >
+      {isPublicationCapture ? (
+        <ProductCategoryPublicationHeader focus={publicationFocus} />
+      ) : null}
       <header
         data-testid="product-category-report-masthead"
         className="product-category-report-masthead"
@@ -2878,19 +1736,15 @@ export default function ProductCategoryPnlPage() {
           questionTestId="product-category-page-subtitle"
           eyebrow=""
           title="产品分类损益"
-          businessQuestion={`报告月 ${
-            selectedDate
-              ? formatProductCategoryReportMonthLabel(selectedDate)
-              : "待选"
-          }`}
+          businessQuestion="产品类别损益与场景分析"
           reportDateSlot={
-            <span data-testid="product-category-report-date-slot">
-              {selectedDate || "报告日待选"}
-              {` · ${
-                baselineQuery.data?.result_meta?.basis === "formal"
-                  ? "正式口径"
-                  : "口径待确认"
-              }`}
+            <span
+              data-testid="product-category-report-date-slot"
+              title={selectedDate ? `报告日期 ${selectedDate}` : "报告日待选"}
+            >
+              {baselineQuery.data?.result_meta?.basis === "formal"
+                ? "正式口径"
+                : "口径待确认"}
               {` | ${selectedView === "monthly" ? "月度视图" : "汇总视图"}`}
             </span>
           }
@@ -2984,10 +1838,7 @@ export default function ProductCategoryPnlPage() {
       ) : null}
 
       {canRenderBaselineDerivedAnalysis ? (
-        <ProductCategorySpreadReadout
-          reportDate={selectedDate}
-          surface={spreadReadoutSurface}
-        />
+        <ProductCategorySpreadReadout surface={spreadReadoutSurface} />
       ) : null}
 
       <section
@@ -3150,158 +2001,19 @@ export default function ProductCategoryPnlPage() {
       </a>
 
       {showManualForm ? (
-        <div
-          id="product-category-manual-adjustment-form"
-          data-testid="product-category-manual-form"
-          className="product-category-manual-form"
-        >
-          <div className="product-category-manual-form__title">
-            {editingAdjustmentId ? "编辑手工录入" : "手工录入"}
-          </div>
-          <div className="product-category-manual-form__grid">
-            <label className="product-category-manual-form__field">
-              报表日期
-              <input
-                aria-label="手工录入-报表日期"
-                value={adjustmentDraft.report_date}
-                readOnly
-              />
-            </label>
-            <label className="product-category-manual-form__field">
-              操作方式
-              <select
-                aria-label="手工录入-操作方式"
-                value={adjustmentDraft.operator}
-                onChange={(event) =>
-                  updateAdjustmentField(
-                    "operator",
-                    event.target.value as "ADD" | "DELTA" | "OVERRIDE",
-                  )
-                }
-              >
-                <option value="ADD">新增</option>
-                <option value="DELTA">差额调整</option>
-                <option value="OVERRIDE">覆盖</option>
-              </select>
-            </label>
-            <label className="product-category-manual-form__field">
-              币种
-              <select
-                aria-label="手工录入-币种"
-                value={adjustmentDraft.currency}
-                onChange={(event) =>
-                  updateAdjustmentField(
-                    "currency",
-                    event.target.value as "CNX" | "CNY",
-                  )
-                }
-              >
-                <option value="CNX">CNX</option>
-                <option value="CNY">CNY</option>
-              </select>
-            </label>
-            <label className="product-category-manual-form__field">
-              科目代码
-              <input
-                aria-label="手工录入-科目代码"
-                value={adjustmentDraft.account_code}
-                onChange={(event) =>
-                  updateAdjustmentField("account_code", event.target.value)
-                }
-              />
-            </label>
-            <label className="product-category-manual-form__field">
-              科目名称
-              <input
-                aria-label="手工录入-科目名称"
-                value={adjustmentDraft.account_name ?? ""}
-                onChange={(event) =>
-                  updateAdjustmentField("account_name", event.target.value)
-                }
-              />
-            </label>
-            <label className="product-category-manual-form__field">
-              审批状态
-              <select
-                aria-label="手工录入-审批状态"
-                value={adjustmentDraft.approval_status}
-                onChange={(event) =>
-                  updateAdjustmentField(
-                    "approval_status",
-                    event.target.value as "approved" | "pending" | "rejected",
-                  )
-                }
-              >
-                <option value="approved">已通过</option>
-                <option value="pending">待审批</option>
-                <option value="rejected">已拒绝</option>
-              </select>
-            </label>
-            {[
-              ["beginning_balance", "期初余额"],
-              ["ending_balance", "期末余额"],
-              ["monthly_pnl", "月度损益"],
-              ["daily_avg_balance", "月日均"],
-              ["annual_avg_balance", "年日均"],
-            ].map(([field, label]) => (
-              <label
-                key={field}
-                className="product-category-manual-form__field"
-              >
-                {label}
-                <input
-                  aria-label={`手工录入-${label}`}
-                  value={
-                    (
-                      adjustmentDraft as Record<
-                        string,
-                        string | null | undefined
-                      >
-                    )[field] ?? ""
-                  }
-                  onChange={(event) =>
-                    updateAdjustmentField(
-                      field as keyof ProductCategoryManualAdjustmentRequest,
-                      event.target.value || null,
-                    )
-                  }
-                />
-              </label>
-            ))}
-          </div>
-          {adjustmentError ? (
-            <div
-              data-testid="product-category-manual-error"
-              className="product-category-manual-form__error"
-            >
-              {adjustmentError}
-            </div>
-          ) : null}
-          <div className="product-category-manual-form__actions">
-            <button
-              type="button"
-              data-testid="product-category-manual-submit"
-              onClick={() => void handleManualAdjustmentSubmit()}
-              disabled={isSubmittingAdjustment}
-            >
-              {isSubmittingAdjustment
-                ? "提交中..."
-                : editingAdjustmentId
-                  ? "保存并刷新"
-                  : "提交并刷新"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowManualForm(false);
-                setEditingAdjustmentId(null);
-                setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
-              }}
-            >
-              取消
-            </button>
-          </div>
-        </div>
+        <ProductCategoryManualAdjustmentForm
+          draft={adjustmentDraft}
+          editing={Boolean(editingAdjustmentId)}
+          isSubmitting={isSubmittingAdjustment}
+          error={adjustmentError}
+          onFieldChange={updateAdjustmentField}
+          onSubmit={() => void handleManualAdjustmentSubmit()}
+          onCancel={() => {
+            setShowManualForm(false);
+            setEditingAdjustmentId(null);
+            setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
+          }}
+        />
       ) : null}
 
       <section
@@ -3353,403 +2065,35 @@ export default function ProductCategoryPnlPage() {
       </section>
 
       {canRenderBaselineDerivedAnalysis && selectedView === "monthly" ? (
-        <ProductCategoryManagementMonitoring
-          surface={managementMonitoringSurface}
-          isLoading={
-            !managementScenarioDistinct &&
-            (managementMomAttributionQuery.isLoading || trendHistoryLoading)
-          }
-          isError={
-            !managementScenarioDistinct &&
-            (managementMomAttributionQuery.isError || trendHistoryErrored)
-          }
-          onRetry={() => {
-            void Promise.all([
-              managementMomAttributionQuery.refetch(),
-              ...trendHistoryQueries.map((query) => query.refetch()),
-            ]);
-          }}
-        />
+        <ProductCategoryManagementMonitoring {...managementMonitoring} />
       ) : null}
 
       {canRenderBaselineDerivedAnalysis ? (
-        <details
-          className="product-category-trend-terminal"
-          data-testid="product-category-trend-workspace"
+        <ProductCategoryTrendWorkspace
           open={trendWorkspaceOpen}
-          onToggle={(event) => {
-            const isOpen = event.currentTarget.open;
+          onOpenChange={(isOpen) => {
             setTrendWorkspaceOpen(isOpen);
             persistProductCategoryTrendWorkspacePreference(isOpen);
           }}
-        >
-          <summary onPointerEnter={() => void loadReactECharts()}>
-            <div className="product-category-trend-terminal__header">
-              <div className="product-category-trend-terminal__copy">
-                <span>趋势与利差</span>
-                <strong>趋势与利差候选图表</strong>
-                <small>
-                  最近 {trendSnapshots.length || 8} 个报告期 · 正式接口历史
-                </small>
-              </div>
-              <div
-                className="product-category-trend-terminal__metrics"
-                aria-label="最新趋势读数"
-              >
-                <span>
-                  <small>生息规模</small>
-                  <strong>{trendHeaderMetrics.earningScale}</strong>
-                </span>
-                <span>
-                  <small>负债均额</small>
-                  <strong>{trendHeaderMetrics.liabilityAverage}</strong>
-                </span>
-                <span>
-                  <small>利差（含TPL）</small>
-                  <strong>{trendHeaderMetrics.netSpread}</strong>
-                </span>
-              </div>
-              <span
-                className="product-category-trend-terminal__toggle"
-                aria-hidden="true"
-              >
-                {trendWorkspaceOpen ? "收起趋势 ↑" : "展开趋势 ↓"}
-              </span>
-            </div>
-          </summary>
-
-          {trendWorkspaceOpen ? (
-            <div className="product-category-trend-terminal__body">
-              <section
-                className="product-category-trend-terminal__core"
-                data-testid="product-category-trend-core-charts"
-              >
-                <div
-                  className="product-category-derived-charts product-category-trend-terminal__grid"
-                  data-testid="product-category-derived-chart-grid"
-                >
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-tpl-scale-yield"
-                    title="TPL资产规模收益率走势图"
-                    description="跟踪TPL资产人民币规模、外币规模与综合收益率变化。"
-                    option={tplScaleYieldOption}
-                  />
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-currency-net-income"
-                    title="人民币/外币净收入走势分析图"
-                    description="按全市场净收入拆分人民币与外币贡献，观察币种结构变化。"
-                    option={currencyNetIncomeOption}
-                  />
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-interest-earning-income-scale"
-                    title="生息资产收入规模趋势图"
-                    description="跟踪近8个报告期生息资产收入规模的变化趋势。"
-                    option={interestEarningIncomeScaleOption}
-                  />
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-interest-spread"
-                    title="资产负债利差趋势图"
-                    description="资产端为含TPL 口径：跟踪近8个报告期资产端收益率（含TPL）、负债端成本率与资产负债利差（含TPL）的变化趋势。"
-                    option={interestSpreadOption}
-                  />
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-interest-earning-spread"
-                    title="生息资产负债利差趋势图"
-                    description="对比生息资产收益率、负债端成本率与生息资产负债利差的变化。"
-                    option={interestEarningSpreadOption}
-                  />
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-interest-earning-asset-liability-scale"
-                    title="生息资产和附息负债走势图"
-                    description="跟踪近8个报告期生息资产与附息负债日均余额的变化趋势。"
-                    option={interestEarningAssetLiabilityScaleOption}
-                  />
-                </div>
-              </section>
-
-              <section
-                className="product-category-trend-terminal__analysis product-category-trend-terminal__grid"
-                data-testid="product-category-trend-analysis"
-              >
-                <article
-                  className="product-category-diagnostics__card product-category-trend-terminal__analysis-card"
-                  data-testid="product-category-trend-spread-attribution"
-                >
-                  <div className="product-category-diagnostics__intro">
-                    <h3 className="product-category-diagnostics__title">
-                      利差变动归因
-                    </h3>
-                    <p className="product-category-diagnostics__description">
-                      资产端收益率（含TPL）− 负债端成本率
-                    </p>
-                  </div>
-                  <div className="product-category-diagnostics__spread-grid">
-                    <div className="product-category-diagnostics__spread-card">
-                      <span className="product-category-diagnostics__spread-caption">
-                        {diagnosticsSurface.spreadAttribution.currentLabel}
-                      </span>
-                      <span className="product-category-diagnostics__spread-value">
-                        {
-                          diagnosticsSurface.spreadAttribution
-                            .currentSpreadLabel
-                        }
-                      </span>
-                      <span className="product-category-diagnostics__spread-detail">
-                        资产{" "}
-                        {
-                          diagnosticsSurface.spreadAttribution
-                            .currentAssetYieldLabel
-                        }{" "}
-                        / 负债{" "}
-                        {
-                          diagnosticsSurface.spreadAttribution
-                            .currentLiabilityYieldLabel
-                        }
-                      </span>
-                    </div>
-                    <div className="product-category-diagnostics__spread-card">
-                      <span className="product-category-diagnostics__spread-caption">
-                        {diagnosticsSurface.spreadAttribution.priorLabel}
-                      </span>
-                      <span className="product-category-diagnostics__spread-value">
-                        {diagnosticsSurface.spreadAttribution.priorSpreadLabel}
-                      </span>
-                      <span className="product-category-diagnostics__spread-detail">
-                        资产变动{" "}
-                        {
-                          diagnosticsSurface.spreadAttribution
-                            .assetYieldDeltaLabel
-                        }{" "}
-                        / 负债变动{" "}
-                        {
-                          diagnosticsSurface.spreadAttribution
-                            .liabilityYieldDeltaLabel
-                        }
-                      </span>
-                    </div>
-                    <div className="product-category-diagnostics__spread-card">
-                      <span className="product-category-diagnostics__spread-caption">
-                        归因结论
-                      </span>
-                      <span className="product-category-diagnostics__spread-value">
-                        {diagnosticsSurface.spreadAttribution.spreadDeltaLabel}
-                      </span>
-                      <span className="product-category-diagnostics__spread-detail">
-                        {diagnosticsSurface.spreadAttribution.driverHint}
-                      </span>
-                    </div>
-                  </div>
-                  {diagnosticsSurface.spreadAttribution.state ===
-                  "incomplete" ? (
-                    <div className="product-category-diagnostics__empty">
-                      {diagnosticsSurface.spreadAttribution.reason}
-                    </div>
-                  ) : (
-                    <p className="product-category-trend-terminal__driver-note">
-                      本期利差变动{" "}
-                      {diagnosticsSurface.spreadAttribution.spreadDeltaLabel}：
-                      {diagnosticsSurface.spreadAttribution.driverHint}。
-                    </p>
-                  )}
-                </article>
-
-                <article
-                  className="product-category-diagnostics__card product-category-trend-terminal__analysis-card product-category-trend-terminal__liability"
-                  data-testid="product-category-trend-liability-card"
-                >
-                  <div className="product-category-diagnostics__header">
-                    <div className="product-category-diagnostics__intro">
-                      <h3 className="product-category-diagnostics__title">
-                        负债端趋势分析
-                      </h3>
-                      <p className="product-category-diagnostics__description">
-                        负债总额的正式接口历史走势
-                      </p>
-                    </div>
-                    <a href="#product-category-liabilities">负债侧口径 →</a>
-                  </div>
-                  <ProductCategoryLiabilityViewToggle
-                    ariaLabel="负债趋势展示口径"
-                    testId="product-category-trend-liability-view-mode"
-                    value={liabilityMatrixView}
-                    onChange={handleLiabilityMatrixViewChange}
-                  />
-                  {liabilitySideTrendOption ? (
-                    <LazyReactECharts
-                      option={liabilitySideTrendOption}
-                      className="product-category-derived-chart__canvas"
-                      data-testid="product-category-trend-liability-chart"
-                      notMerge
-                      lazyUpdate
-                    />
-                  ) : (
-                    <div className="product-category-diagnostics__empty">
-                      {liabilitySideTrendSurface.emptyCopy ??
-                        "负债端趋势数据不完整。"}
-                    </div>
-                  )}
-                  <div className="product-category-trend-terminal__liability-metrics">
-                    <span>
-                      <small>最新日均额</small>
-                      <strong>
-                        {liabilityTrendReadout?.latestAmountLabel ?? EM_DASH}
-                      </strong>
-                    </span>
-                    <span>
-                      <small>最新收益率</small>
-                      <strong>
-                        {liabilityTrendReadout?.latestRateLabel ?? EM_DASH}
-                      </strong>
-                    </span>
-                    <span>
-                      <small>日均额变动</small>
-                      <strong>
-                        {liabilityTrendReadout?.amountDeltaLabel ?? EM_DASH}
-                      </strong>
-                    </span>
-                    <span>
-                      <small>收益率变动</small>
-                      <strong>
-                        {liabilityTrendReadout?.rateDeltaLabel ?? EM_DASH}
-                      </strong>
-                    </span>
-                  </div>
-                </article>
-              </section>
-
-              <section
-                className="product-category-trend-terminal__supporting"
-                data-testid="product-category-trend-supporting"
-              >
-                <header>
-                  <span>同比趋势与后端字段归因</span>
-                  <small>
-                    {comparisonPriorPeriodLabel} →{" "}
-                    {comparisonCurrentPeriodLabel}
-                    {" · "}日期覆盖 {comparisonComparableMonthCount}/12
-                  </small>
-                </header>
-                <div
-                  className="product-category-trend-comparison__statusbar"
-                  data-testid="product-category-trend-comparison-status"
-                >
-                  <div className="product-category-trend-comparison__periods">
-                    <span className="product-category-trend-comparison__period">
-                      上年参考：{comparisonPriorPeriodLabel}
-                    </span>
-                    <span className="product-category-trend-comparison__period">
-                      当前观察：{comparisonCurrentPeriodLabel}
-                    </span>
-                    <span className="product-category-trend-comparison__period">
-                      日期覆盖 {comparisonComparableMonthCount}/12
-                    </span>
-                  </div>
-                  <span
-                    className={`product-category-trend-comparison__load-state is-${comparisonLoadState}`}
-                  >
-                    {comparisonLoadLabel}
-                  </span>
-                </div>
-                <div
-                  className="product-category-derived-charts product-category-trend-terminal__grid"
-                  data-testid="product-category-trend-comparison-charts"
-                >
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-interest-earning-spread-yoy"
-                    title="生息资产利差：今年与上年同月"
-                    description="上图对齐两年利差水平，下图直接显示同月同比差（bp）；未进入当前观察期的月份仅保留上年弱参考。"
-                    option={interestEarningSpreadYearComparisonOption}
-                    comparisonStatus={
-                      interestEarningSpreadYearComparisonChart?.comparisonStatus
-                    }
-                    readout={
-                      <ProductCategoryComparisonChartReadout
-                        readout={interestEarningSpreadComparisonReadout}
-                      />
-                    }
-                  />
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-interest-earning-spread-yoy-cny"
-                    title="人民币生息资产利差：今年与上年同月"
-                    description="上图对齐人民币利差水平，下图直接显示同月同比差（bp）；未进入当前观察期的月份仅保留上年弱参考。"
-                    option={cnyInterestEarningSpreadYearComparisonOption}
-                    comparisonStatus={
-                      cnyInterestEarningSpreadYearComparisonChart?.comparisonStatus
-                    }
-                    readout={
-                      <ProductCategoryComparisonChartReadout
-                        readout={cnyInterestEarningSpreadComparisonReadout}
-                      />
-                    }
-                  />
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-interest-spread-yoy"
-                    title="资产负债利差：今年与上年同月"
-                    description="上图看全口径利差水平，下图看同月同比差（bp）；点击月份联动后端利差字段归因。"
-                    option={interestSpreadYearComparisonOption}
-                    comparisonStatus={
-                      interestSpreadYearComparisonChart?.comparisonStatus
-                    }
-                    readout={
-                      <ProductCategoryComparisonChartReadout
-                        readout={interestSpreadComparisonReadout}
-                      />
-                    }
-                    onEvents={{
-                      click: (params: unknown) =>
-                        handleInterestSpreadAttributionPointClick(
-                          "weighted",
-                          interestSpreadYearComparisonChart?.monthKeys,
-                          params as { dataIndex?: number },
-                        ),
-                    }}
-                  />
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-interest-spread-yoy-cny"
-                    title="人民币资产负债利差：今年与上年同月"
-                    description="上图看人民币利差水平，下图看同月同比差（bp）；点击月份联动后端利差字段归因。"
-                    option={cnyInterestSpreadYearComparisonOption}
-                    comparisonStatus={
-                      cnyInterestSpreadYearComparisonChart?.comparisonStatus
-                    }
-                    readout={
-                      <ProductCategoryComparisonChartReadout
-                        readout={cnyInterestSpreadComparisonReadout}
-                      />
-                    }
-                    onEvents={{
-                      click: (params: unknown) =>
-                        handleInterestSpreadAttributionPointClick(
-                          "cny",
-                          cnyInterestSpreadYearComparisonChart?.monthKeys,
-                          params as { dataIndex?: number },
-                        ),
-                    }}
-                  />
-                  <DerivedChartPanel
-                    testId="product-category-derived-chart-intermediate-business-income-yoy"
-                    title="中间业务收入：今年与上年同月"
-                    description="并列柱比较同月收入，保留零基线与负值；金额及同比差单位均为亿元。"
-                    option={intermediateBusinessIncomeYearComparisonOption}
-                    comparisonStatus={
-                      intermediateBusinessIncomeYearComparisonChart?.comparisonStatus
-                    }
-                    readout={
-                      <ProductCategoryComparisonChartReadout
-                        readout={intermediateBusinessIncomeComparisonReadout}
-                      />
-                    }
-                    wide
-                  />
-                </div>
-                <ProductCategoryInterestSpreadAttributionPanel
-                  surface={interestSpreadAttributionSurface}
-                  resultMeta={baselineQuery.data?.result_meta}
-                />
-              </section>
-            </div>
-          ) : null}
-        </details>
+          reportPeriodCount={trendSnapshots.length}
+          charts={trendCharts}
+          spreadViewLabel={spreadReadoutSurface.viewLabel}
+          diagnosticsSurface={diagnosticsSurface}
+          liabilityTrendSurface={liabilitySideTrendSurface}
+          liabilityMatrixView={liabilityMatrixView}
+          onLiabilityMatrixViewChange={handleLiabilityMatrixViewChange}
+          comparisonCoverage={{
+            priorPeriodLabel: comparisonPriorPeriodLabel,
+            currentPeriodLabel: comparisonCurrentPeriodLabel,
+            comparableMonthCount: comparisonComparableMonthCount,
+            loadState: comparisonLoadState,
+            loadLabel: comparisonLoadLabel,
+          }}
+          resultMeta={baselineQuery.data?.result_meta}
+          onInterestSpreadAttributionPointClick={
+            handleInterestSpreadAttributionPointClick
+          }
+        />
       ) : null}
 
       <details
@@ -3954,6 +2298,7 @@ export default function ProductCategoryPnlPage() {
           </summary>
           <ProductCategoryOperatingAnalysisPanel
             surface={operatingAnalysisSurface}
+            view={selectedView === "monthly" ? "monthly" : "ytd"}
             candidateNotice={
               <ProductCategoryCandidateMetricNotice
                 testId="product-category-operating-analysis-candidate-notice"
@@ -3968,6 +2313,7 @@ export default function ProductCategoryPnlPage() {
         <details
           className="product-category-secondary-workspace"
           data-testid="product-category-backtest-workspace"
+          open={backtestWorkspaceOpen}
           onToggle={(event) =>
             setBacktestWorkspaceOpen(event.currentTarget.open)
           }
@@ -3976,21 +2322,45 @@ export default function ProductCategoryPnlPage() {
             <span>动作回测候选分析</span>
             <small>历史命中率、校准与复核任务</small>
           </summary>
-          <ProductCategoryOperatingActionBacktestPanel
-            surface={operatingActionBacktestSurface}
-            isHistoryLoaded={trendDiagnosticsLoaded}
-            historyLoading={
-              trendHistoryLoading ||
-              trendHistoryAttributionQueries.some((query) => query.isLoading)
-            }
-            candidateNotice={
-              <ProductCategoryCandidateMetricNotice
-                testId="product-category-operating-action-backtest-candidate-notice"
-                title="动作回测为候选复核"
-                status={operatingActionBacktestSurface.metricStatus}
-              />
-            }
-          />
+          {operatingActionBacktestHistoryErrored ? (
+            <PageStateSurface
+              variant="error"
+              testId="product-category-backtest-history-error"
+              title="正式月度历史读取失败"
+              description="回测暂未展示，请重试读取正式历史。"
+              actions={
+                <button
+                  type="button"
+                  onClick={() => {
+                    operatingActionBacktestHistoryQueries
+                      .filter((query) => query.isError)
+                      .forEach((query) => void query.refetch());
+                  }}
+                >
+                  重试正式历史
+                </button>
+              }
+            />
+          ) : (
+            <ProductCategoryOperatingActionBacktestPanel
+              surface={operatingActionBacktestSurface}
+              isHistoryLoaded={trendDiagnosticsLoaded}
+              historyLoading={
+                selectedView === "monthly" &&
+                (operatingActionBacktestHistoryQueries.some(
+                  (query) => query.isLoading,
+                ) ||
+                  trendHistoryAttributionQueries.some((query) => query.isLoading))
+              }
+              candidateNotice={
+                <ProductCategoryCandidateMetricNotice
+                  testId="product-category-operating-action-backtest-candidate-notice"
+                  title="动作回测为候选复核"
+                  status={operatingActionBacktestSurface.metricStatus}
+                />
+              }
+            />
+          )}
         </details>
       ) : null}
 
@@ -4018,357 +2388,21 @@ export default function ProductCategoryPnlPage() {
         onRetry={() => void baselineQuery.refetch()}
         extra={reportExtra}
       >
-        {selectedFormalRow ? (
-          <ProductCategoryFormalSelectionContext
-            reportDate={selectedDate}
-            selectedView={selectedView}
-            sourceLabel={
-              scenario?.scenario_rate_pct == null
-                ? "正式基线归因定位"
-                : `FTP ${String(scenario.scenario_rate_pct)}% 场景（正式基线归因定位）`
-            }
-            row={selectedFormalRow}
-            onOpenAttributionEvidence={
-              attributionDetailContextKey
-                ? handleAttributionDetailDrilldown
-                : undefined
-            }
-          />
-        ) : null}
-        <ProductCategoryFormalTableMobileReadout
+        <ProductCategoryFormalReportTable
           reportDate={selectedDate}
           selectedView={selectedView}
-          selectedCategoryId={selectedAttributionDetailCategoryId}
-          grandTotal={displayedGrandTotal}
+          scenarioRatePct={scenario?.scenario_rate_pct}
           rows={rowsToRender}
-          onOpenAttributionEvidence={
-            attributionDetailContextKey
-              ? handleAttributionDetailDrilldown
-              : undefined
-          }
+          grandTotal={displayedGrandTotal}
+          displayMode={formalTableDisplayMode}
+          onDisplayModeChange={setFormalTableDisplayMode}
+          attribution={{
+            contextAvailable: Boolean(attributionDetailContextKey),
+            selectedCategoryId: selectedAttributionDetailCategoryId,
+            categoryIds: attributionDetailCategoryIds,
+            onOpenEvidence: handleAttributionDetailDrilldown,
+          }}
         />
-        <div
-          className="product-category-formal-table-controls"
-          data-testid="product-category-formal-table-display-mode"
-          role="group"
-          aria-label="报表列展示"
-        >
-          <button
-            type="button"
-            aria-pressed={formalTableDisplayMode === "key"}
-            className={`product-category-formal-table-controls__button ${
-              formalTableDisplayMode === "key"
-                ? "product-category-formal-table-controls__button--active"
-                : ""
-            }`}
-            onClick={() => setFormalTableDisplayMode("key")}
-          >
-            关键读数
-          </button>
-          <button
-            type="button"
-            aria-pressed={formalTableDisplayMode === "full"}
-            className={`product-category-formal-table-controls__button ${
-              formalTableDisplayMode === "full"
-                ? "product-category-formal-table-controls__button--active"
-                : ""
-            }`}
-            onClick={() => setFormalTableDisplayMode("full")}
-          >
-            完整口径
-          </button>
-        </div>
-        {formalTableDisplayMode === "full" ? (
-          <p className="product-category-formal-table-scroll-hint">
-            横向滚动查看完整字段，产品类别列保持可见。
-          </p>
-        ) : null}
-        <div
-          data-testid="product-category-formal-table-raw-grid"
-          className="product-category-formal-table-wrap"
-        >
-          <table
-            data-testid="product-category-table"
-            className={`product-category-formal-table product-category-formal-table--${formalTableDisplayMode}`}
-          >
-            <colgroup>
-              <col className="product-category-formal-table__col--category" />
-              <col className="product-category-formal-table__col--scale" />
-              {formalTableDisplayMode === "full" ? (
-                <>
-                  <col className="product-category-formal-table__col--scale" />
-                  <col className="product-category-formal-table__col--scale-foreign" />
-                  <col className="product-category-formal-table__col--pnl" />
-                  <col className="product-category-formal-table__col--pnl" />
-                  <col className="product-category-formal-table__col--pnl-ftp" />
-                </>
-              ) : null}
-              <col className="product-category-formal-table__col--pnl-net" />
-              {formalTableDisplayMode === "full" ? (
-                <>
-                  <col className="product-category-formal-table__col--pnl-foreign" />
-                  <col className="product-category-formal-table__col--pnl-ftp" />
-                </>
-              ) : null}
-              <col className="product-category-formal-table__col--pnl-net" />
-              <col className="product-category-formal-table__col--business-net" />
-              <col className="product-category-formal-table__col--yield" />
-            </colgroup>
-            <thead>
-              {formalTableDisplayMode === "key" ? (
-                <>
-                  <tr className="product-category-formal-table__header-row">
-                    <th
-                      rowSpan={2}
-                      className="product-category-formal-table__head product-category-formal-table__head--category"
-                    >
-                      产品类别
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--group">
-                      规模日均
-                    </th>
-                    <th
-                      colSpan={3}
-                      className="product-category-formal-table__head product-category-formal-table__head--group"
-                    >
-                      净收入
-                    </th>
-                    <th
-                      rowSpan={2}
-                      className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--yield"
-                    >
-                      加权收益率
-                    </th>
-                  </tr>
-                  <tr className="product-category-formal-table__header-row product-category-formal-table__header-row--metrics">
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      综本规模
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--group-start">
-                      人民币净收入
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      外币净收入
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--highlight">
-                      营业净收入
-                    </th>
-                  </tr>
-                </>
-              ) : (
-                <>
-                  <tr className="product-category-formal-table__header-row">
-                    <th
-                      rowSpan={2}
-                      className="product-category-formal-table__head product-category-formal-table__head--category"
-                    >
-                      产品类别
-                    </th>
-                    <th
-                      colSpan={3}
-                      className="product-category-formal-table__head product-category-formal-table__head--group"
-                    >
-                      规模日均
-                    </th>
-                    <th
-                      colSpan={8}
-                      className="product-category-formal-table__head product-category-formal-table__head--group"
-                    >
-                      损益
-                    </th>
-                    <th
-                      rowSpan={2}
-                      className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--yield"
-                    >
-                      加权收益率
-                    </th>
-                  </tr>
-                  <tr className="product-category-formal-table__header-row product-category-formal-table__header-row--metrics">
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      综本
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      人民币
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      外币
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--group-start">
-                      综本
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      人民币
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      人民币FTP
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      人民币净收入
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      外币
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      外币FTP
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number">
-                      外币净收入
-                    </th>
-                    <th className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--highlight">
-                      营业净收入
-                    </th>
-                  </tr>
-                </>
-              )}
-            </thead>
-            <tbody>
-              {rowsToRender.map((row) => {
-                const isSelectedFormalRow =
-                  !row.is_total &&
-                  row.category_id === selectedAttributionDetailCategoryId;
-                const canOpenAttributionEvidence =
-                  !row.is_total &&
-                  attributionDetailCategoryIds.has(row.category_id);
-                return (
-                  <tr
-                    data-selected={isSelectedFormalRow ? "true" : undefined}
-                    data-row-level={row.level}
-                    data-testid={`product-category-formal-row-${row.category_id}`}
-                    id={`product-category-formal-row-${row.category_id}`}
-                    key={row.category_id}
-                    className={[
-                      "product-category-formal-table__row",
-                      row.is_total
-                        ? "product-category-formal-table__row--total"
-                        : "",
-                      !row.is_total && row.level === 0
-                        ? "product-category-formal-table__row--parent"
-                        : "",
-                      !row.is_total && row.level > 0
-                        ? "product-category-formal-table__row--child"
-                        : "",
-                      isSelectedFormalRow
-                        ? "product-category-formal-table__row--selected"
-                        : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  >
-                    <td className="product-category-formal-table__cell product-category-formal-table__cell--category">
-                      <div className={formalCategoryIndentClassName(row.level)}>
-                        {canOpenAttributionEvidence ? (
-                          <button
-                            aria-label={`查看 ${row.category_name} 归因证据`}
-                            aria-pressed={isSelectedFormalRow}
-                            className="product-category-formal-table__category-button"
-                            data-product-category-formal-row-action
-                            onClick={() =>
-                              handleAttributionDetailDrilldown(row.category_id)
-                            }
-                            type="button"
-                          >
-                            {row.category_name}
-                          </button>
-                        ) : (
-                          <div>{row.category_name}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                      {formatProductCategoryRowDisplayValue(row, row.cnx_scale)}
-                    </td>
-                    {formalTableDisplayMode === "full" ? (
-                      <>
-                        <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                          {formatProductCategoryRowDisplayValue(
-                            row,
-                            row.cny_scale,
-                          )}
-                        </td>
-                        <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                          {formatProductCategoryForeignDisplayValue(
-                            row,
-                            row.foreign_scale,
-                          )}
-                        </td>
-                        <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--group-start">
-                          {formatProductCategoryRowDisplayValue(
-                            row,
-                            row.cnx_cash,
-                          )}
-                        </td>
-                        <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                          {formatProductCategoryRowDisplayValue(
-                            row,
-                            row.cny_cash,
-                          )}
-                        </td>
-                        <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--ftp">
-                          {formatProductCategoryRowDisplayValue(
-                            row,
-                            row.cny_ftp,
-                          )}
-                        </td>
-                      </>
-                    ) : null}
-                    <td
-                      className={[
-                        "product-category-formal-table__cell product-category-formal-table__cell--number",
-                        formalTableDisplayMode === "key"
-                          ? "product-category-formal-table__cell--group-start"
-                          : "",
-                        formalValueToneClassName(row.cny_net),
-                      ].join(" ")}
-                    >
-                      {formatProductCategoryRowDisplayValue(row, row.cny_net)}
-                    </td>
-                    {formalTableDisplayMode === "full" ? (
-                      <>
-                        <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                          {formatProductCategoryForeignDisplayValue(
-                            row,
-                            row.foreign_cash,
-                          )}
-                        </td>
-                        <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--ftp">
-                          {formatProductCategoryForeignDisplayValue(
-                            row,
-                            row.foreign_ftp,
-                          )}
-                        </td>
-                      </>
-                    ) : null}
-                    <td
-                      className={[
-                        "product-category-formal-table__cell product-category-formal-table__cell--number",
-                        formalForeignValueToneClassName(row, row.foreign_net),
-                      ].join(" ")}
-                    >
-                      {formatProductCategoryForeignDisplayValue(
-                        row,
-                        row.foreign_net,
-                      )}
-                    </td>
-                    <td
-                      className={[
-                        "product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--highlight",
-                        formalValueToneClassName(row.business_net_income),
-                      ].join(" ")}
-                    >
-                      {formatProductCategoryRowDisplayValue(
-                        row,
-                        row.business_net_income,
-                      )}
-                    </td>
-                    <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--yield">
-                      {formatProductCategoryYieldValue(row.weighted_yield)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
       </PageAsyncSection>
 
       <details
@@ -4421,6 +2455,7 @@ export default function ProductCategoryPnlPage() {
         <details
           className="product-category-secondary-workspace product-category-secondary-workspace--diagnostics"
           data-testid="product-category-diagnostics-workspace"
+          open={diagnosticsWorkspaceOpen}
           onToggle={(event) =>
             setDiagnosticsWorkspaceOpen(event.currentTarget.open)
           }
@@ -4444,657 +2479,20 @@ export default function ProductCategoryPnlPage() {
                 title="诊断与趋势为候选分析"
                 status={diagnosticsSurface.metricStatus}
               />
-              <div
-                className="product-category-diagnostics"
-                data-testid="product-category-diagnostics-surface"
-              >
-                <article
-                  className="product-category-diagnostics__card"
-                  data-testid="product-category-diagnostics-matrix"
-                >
-                  <div className="product-category-diagnostics__header">
-                    <div className="product-category-diagnostics__intro">
-                      <h3 className="product-category-diagnostics__title">
-                        产品经营诊断矩阵
-                      </h3>
-                      <p className="product-category-diagnostics__description">
-                        逐行回看规模、营业净收入、收益率和双币净收入拆分，行身份仅取自
-                        `category_id/category_name/side`。
-                      </p>
-                    </div>
-                    {diagnosticsSurface.headlineTotalLabel ? (
-                      <span
-                        className="product-category-diagnostics__summary"
-                        data-testid="product-category-diagnostics-summary"
-                      >
-                        当前FTP后经营净收入 {diagnosticsSurface.headlineTotalLabel}
-                      </span>
-                    ) : null}
-                  </div>
-                  {diagnosticsSurface.matrixEmptyCopy ? (
-                    <div
-                      data-testid="product-category-diagnostics-matrix-empty"
-                      className="product-category-diagnostics__empty"
-                    >
-                      {diagnosticsSurface.matrixEmptyCopy}
-                    </div>
-                  ) : (
-                    <div className="product-category-diagnostics__table-wrap">
-                      <table className="product-category-diagnostics__table">
-                        <thead>
-                          <tr>
-                            <th className="product-category-diagnostics__table-head">
-                              产品行
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              端别
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              规模
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              营业净收入
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              收益率
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              人民币净收入
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              外币净收入
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              驱动提示
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {diagnosticsSurface.matrixRows.map((item) => (
-                            <tr key={item.categoryId}>
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.categoryLabel}
-                              </td>
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.sideLabel}
-                              </td>
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.scaleLabel}
-                              </td>
-                              <td
-                                className={`product-category-diagnostics__table-cell ${diagnosticsToneClassName(item.businessNetIncomeTone)}`}
-                              >
-                                {item.businessNetIncomeLabel}
-                              </td>
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.yieldLabel}
-                              </td>
-                              <td
-                                className={`product-category-diagnostics__table-cell ${diagnosticsToneClassName(item.cnyNetTone)}`}
-                              >
-                                {item.cnyNetLabel}
-                              </td>
-                              <td
-                                className={`product-category-diagnostics__table-cell ${diagnosticsToneClassName(item.foreignNetTone)}`}
-                              >
-                                {item.foreignNetLabel}
-                              </td>
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.driverHint}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </article>
-
-                <article
-                  className="product-category-diagnostics__card"
-                  data-testid="product-category-diagnostics-watchlist"
-                >
-                  <div className="product-category-diagnostics__intro">
-                    <h3 className="product-category-diagnostics__title">
-                      负贡献观察名单
-                    </h3>
-                    <p className="product-category-diagnostics__description">
-                      仅列出 `business_net_income &lt; 0`
-                      的行，并按亏损幅度排序；缺失规模或收益率会显式标注。
-                    </p>
-                  </div>
-                  {diagnosticsSurface.negativeWatchlistEmptyCopy ? (
-                    <div
-                      data-testid="product-category-diagnostics-watchlist-empty"
-                      className="product-category-diagnostics__empty"
-                    >
-                      {diagnosticsSurface.negativeWatchlistEmptyCopy}
-                    </div>
-                  ) : (
-                    <div className="product-category-diagnostics__watchlist">
-                      {diagnosticsSurface.negativeWatchlistRows.map((item) => (
-                        <div
-                          key={item.categoryId}
-                          className="product-category-diagnostics__watchlist-row"
-                          data-testid={`product-category-diagnostics-watchlist-row-${item.categoryId}`}
-                        >
-                          <div className="product-category-diagnostics__watchlist-primary">
-                            <div className="product-category-diagnostics__metric-value product-category-diagnostics__metric-value--primary">
-                              {item.categoryLabel}
-                            </div>
-                            <div className="product-category-diagnostics__metric-detail">
-                              {item.sideLabel}
-                            </div>
-                          </div>
-                          <div className="product-category-diagnostics__metric">
-                            <span className="product-category-diagnostics__metric-label">
-                              亏损
-                            </span>
-                            <span className="product-category-diagnostics__metric-value product-category-diagnostics__value--negative">
-                              {item.lossLabel}
-                            </span>
-                          </div>
-                          <div className="product-category-diagnostics__metric">
-                            <span className="product-category-diagnostics__metric-label">
-                              规模
-                            </span>
-                            <span className="product-category-diagnostics__metric-value">
-                              {item.scaleLabel}
-                            </span>
-                          </div>
-                          <div className="product-category-diagnostics__metric">
-                            <span className="product-category-diagnostics__metric-label">
-                              收益率
-                            </span>
-                            <span className="product-category-diagnostics__metric-value">
-                              {item.yieldLabel}
-                            </span>
-                          </div>
-                          <div className="product-category-diagnostics__metric">
-                            <span className="product-category-diagnostics__metric-label">
-                              缺口提示
-                            </span>
-                            <span className="product-category-diagnostics__metric-value">
-                              {[
-                                item.scaleMissing ? "规模缺失" : null,
-                                item.yieldMissing ? "收益率缺失" : null,
-                              ]
-                                .filter(Boolean)
-                                .join(" / ") || "字段齐全"}
-                            </span>
-                          </div>
-                          <div className="product-category-diagnostics__metric">
-                            <span className="product-category-diagnostics__metric-label">
-                              驱动提示
-                            </span>
-                            <span className="product-category-diagnostics__metric-detail">
-                              {item.driverHint}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </article>
-
-                <article
-                  className="product-category-diagnostics__card"
-                  data-testid="product-category-diagnostics-spread"
-                >
-                  <div className="product-category-diagnostics__intro">
-                    <h3 className="product-category-diagnostics__title">
-                      利差变动归因
-                    </h3>
-                    <p className="product-category-diagnostics__description">
-                      使用后端返回的资产收益率、负债收益率和利差字段；字段缺失时保留缺口提示。
-                    </p>
-                  </div>
-                  <div className="product-category-diagnostics__spread-grid">
-                    <div className="product-category-diagnostics__spread-card">
-                      <span className="product-category-diagnostics__spread-caption">
-                        {diagnosticsSurface.spreadAttribution.currentLabel}
-                      </span>
-                      <span className="product-category-diagnostics__spread-value">
-                        {
-                          diagnosticsSurface.spreadAttribution
-                            .currentSpreadLabel
-                        }
-                      </span>
-                      <span className="product-category-diagnostics__spread-detail">
-                        资产{" "}
-                        {
-                          diagnosticsSurface.spreadAttribution
-                            .currentAssetYieldLabel
-                        }{" "}
-                        / 负债{" "}
-                        {
-                          diagnosticsSurface.spreadAttribution
-                            .currentLiabilityYieldLabel
-                        }
-                      </span>
-                    </div>
-                    <div className="product-category-diagnostics__spread-card">
-                      <span className="product-category-diagnostics__spread-caption">
-                        {diagnosticsSurface.spreadAttribution.priorLabel}
-                      </span>
-                      <span className="product-category-diagnostics__spread-value">
-                        {diagnosticsSurface.spreadAttribution.priorSpreadLabel}
-                      </span>
-                      <span className="product-category-diagnostics__spread-detail">
-                        资产变动{" "}
-                        {
-                          diagnosticsSurface.spreadAttribution
-                            .assetYieldDeltaLabel
-                        }{" "}
-                        / 负债变动{" "}
-                        {
-                          diagnosticsSurface.spreadAttribution
-                            .liabilityYieldDeltaLabel
-                        }
-                      </span>
-                    </div>
-                    <div className="product-category-diagnostics__spread-card">
-                      <span className="product-category-diagnostics__spread-caption">
-                        归因结论
-                      </span>
-                      <span className="product-category-diagnostics__spread-value">
-                        {diagnosticsSurface.spreadAttribution.spreadDeltaLabel}
-                      </span>
-                      <span className="product-category-diagnostics__spread-detail">
-                        {diagnosticsSurface.spreadAttribution.driverHint}
-                      </span>
-                    </div>
-                  </div>
-                  {diagnosticsSurface.spreadAttribution.state ===
-                  "incomplete" ? (
-                    <div
-                      data-testid="product-category-diagnostics-spread-incomplete"
-                      className="product-category-diagnostics__empty"
-                    >
-                      {diagnosticsSurface.spreadAttribution.reason}
-                    </div>
-                  ) : null}
-                </article>
-              </div>
-              <article
-                className="product-category-diagnostics__card product-category-liability-side-trend"
-                data-testid="product-category-liability-side-trend"
-              >
-                <div className="product-category-diagnostics__header">
-                  <div className="product-category-diagnostics__intro">
-                    <h3 className="product-category-diagnostics__title">
-                      负债端趋势分析
-                    </h3>
-                    <p className="product-category-diagnostics__description">
-                      负债侧产品类别口径：使用当前产品分类 payload
-                      的负债明细行和后端 liability_total，展示日均额与利率走势。
-                    </p>
-                  </div>
-                  <span className="product-category-diagnostics__summary">
-                    负债侧产品类别口径
-                  </span>
-                </div>
-                {liabilitySideTrendOption ? (
-                  <LazyReactECharts
-                    option={liabilitySideTrendOption}
-                    className="product-category-derived-chart__canvas"
-                    data-testid="product-category-liability-side-trend-chart"
-                    notMerge
-                    lazyUpdate
-                  />
-                ) : (
-                  <div
-                    className="product-category-diagnostics__empty"
-                    data-testid="product-category-liability-side-trend-empty"
-                  >
-                    {liabilitySideTrendSurface.emptyCopy ??
-                      "负债端趋势数据不完整，无法绘制完整走势。"}
-                  </div>
-                )}
-                {liabilitySideTrendSurface.incompleteReasons.length > 0 ? (
-                  <div
-                    className="product-category-diagnostics__empty"
-                    data-testid="product-category-liability-side-trend-incomplete"
-                  >
-                    {liabilitySideTrendSurface.incompleteReasons.join("；")}
-                  </div>
-                ) : null}
-                {liabilitySideTrendSurface.detailMatrix.rows.length > 0 ? (
-                  <>
-                    <ProductCategoryLiabilityViewToggle
-                      ariaLabel="负债明细矩阵展示口径"
-                      className="product-category-liability-matrix__controls"
-                      testId="product-category-liability-matrix-display-mode"
-                      value={liabilityMatrixView}
-                      onChange={handleLiabilityMatrixViewChange}
-                    />
-                    <p
-                      className="product-category-liability-matrix__mode-note"
-                      data-testid="product-category-liability-matrix-caliber-note"
-                      role={
-                        liabilityMatrixUsesAlternateView &&
-                        liabilityMatrixAlternateQuery.isFetching
-                          ? "status"
-                          : undefined
-                      }
-                    >
-                      {liabilityMatrixUsesAlternateView &&
-                      liabilityMatrixAlternateQuery.isFetching
-                        ? `正在载入后端原始${liabilityMatrixView === "ytd" ? "年初至今累计" : "单月"}口径…`
-                        : liabilityMatrixUsesAlternateView &&
-                            (liabilityMatrixAlternateQuery.isError ||
-                              !liabilityMatrixHasAlternateData)
-                          ? `后端原始${liabilityMatrixView === "ytd" ? "年初至今累计" : "单月"}口径暂不可用，当前保留原口径。`
-                          : `当前显示后端原始${liabilityMatrixView === "ytd" ? "年初至今累计" : "单月"}口径。`}
-                    </p>
-                    <ProductCategoryLiabilityDetailMatrixMobileReadout
-                      matrix={liabilityMatrixTrendSurface.detailMatrix}
-                    />
-                    <details
-                      className="product-category-liability-matrix__disclosure"
-                      data-testid="product-category-liability-side-detail-disclosure"
-                    >
-                      <summary>
-                        <span>全币种明细矩阵</span>
-                        <small>
-                          {
-                            liabilityMatrixTrendSurface.detailMatrix.periods
-                              .length
-                          }
-                          期 ·{" "}
-                          {liabilityMatrixTrendSurface.detailMatrix.rows.length}
-                          行
-                        </small>
-                      </summary>
-                      <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
-                        <table
-                          className="product-category-diagnostics__table product-category-liability-matrix"
-                          data-testid="product-category-liability-side-detail-matrix"
-                          aria-label="负债端明细趋势矩阵"
-                        >
-                          <thead>
-                            <tr>
-                              <th
-                                className="product-category-diagnostics__table-head product-category-liability-matrix__item-head"
-                                rowSpan={2}
-                                scope="col"
-                              >
-                                负债明细
-                              </th>
-                              {liabilityMatrixTrendSurface.detailMatrix.periods.map(
-                                (period) => (
-                                  <th
-                                    key={period.key}
-                                    className="product-category-diagnostics__table-head product-category-liability-matrix__group-head"
-                                    colSpan={2}
-                                    scope="colgroup"
-                                    data-testid={`product-category-liability-side-period-${period.key}`}
-                                  >
-                                    {period.label}
-                                  </th>
-                                ),
-                              )}
-                              <th
-                                className="product-category-diagnostics__table-head product-category-liability-matrix__group-head"
-                                colSpan={2}
-                                scope="colgroup"
-                              >
-                                {
-                                  liabilityMatrixTrendSurface.detailMatrix
-                                    .movementGroupLabel
-                                }
-                              </th>
-                            </tr>
-                            <tr>
-                              {liabilityMatrixTrendSurface.detailMatrix.periods.map(
-                                (period) => (
-                                  <Fragment key={period.key}>
-                                    <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
-                                      日均额
-                                    </th>
-                                    <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
-                                      收益率
-                                    </th>
-                                  </Fragment>
-                                ),
-                              )}
-                              <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
-                                日均额
-                              </th>
-                              <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
-                                收益率
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {liabilityMatrixTrendSurface.detailMatrix.rows.map(
-                              (item) => (
-                                <tr
-                                  key={item.categoryId}
-                                  className={
-                                    item.isSummary
-                                      ? "product-category-liability-matrix__summary-row"
-                                      : undefined
-                                  }
-                                  data-testid={`product-category-liability-side-detail-${item.categoryId}`}
-                                >
-                                  <td className="product-category-diagnostics__table-cell product-category-liability-matrix__item-cell">
-                                    {item.categoryLabel}
-                                  </td>
-                                  {item.cells.map((cell) => (
-                                    <Fragment key={cell.periodKey}>
-                                      <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
-                                        {cell.amountLabel}
-                                      </td>
-                                      <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
-                                        {cell.rateLabel}
-                                      </td>
-                                    </Fragment>
-                                  ))}
-                                  <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
-                                    {item.movement.amountLabel}
-                                  </td>
-                                  <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
-                                    {item.movement.rateLabel}
-                                  </td>
-                                </tr>
-                              ),
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </details>
-                    <div className="product-category-liability-matrix__currency-grid">
-                      {liabilityMatrixTrendSurface.detailMatrix.currencyMatrices.map(
-                        (currencyMatrix) => (
-                          <section
-                            key={currencyMatrix.currencyKey}
-                            className="product-category-liability-matrix__currency-section"
-                          >
-                            <h3 className="product-category-liability-matrix__currency-title">
-                              {currencyMatrix.currencyLabel}
-                            </h3>
-                            <ProductCategoryLiabilityCurrencyMatrixMobileReadout
-                              matrix={currencyMatrix}
-                              periods={
-                                liabilityMatrixTrendSurface.detailMatrix.periods
-                              }
-                            />
-                            <details
-                              className="product-category-liability-matrix__disclosure"
-                              data-testid={`product-category-liability-side-currency-disclosure-${currencyMatrix.currencyKey}`}
-                            >
-                              <summary>
-                                <span>完整明细矩阵</span>
-                                <small>
-                                  {
-                                    liabilityMatrixTrendSurface.detailMatrix
-                                      .periods.length
-                                  }
-                                  期 · {currencyMatrix.rows.length}行
-                                </small>
-                              </summary>
-                              <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
-                                <table
-                                  className="product-category-diagnostics__table product-category-liability-matrix product-category-liability-matrix--currency"
-                                  data-testid={`product-category-liability-side-currency-matrix-${currencyMatrix.currencyKey}`}
-                                  aria-label={`${currencyMatrix.currencyLabel}负债结构`}
-                                >
-                                  <thead>
-                                    <tr>
-                                      <th
-                                        className="product-category-diagnostics__table-head product-category-liability-matrix__item-head"
-                                        rowSpan={2}
-                                        scope="col"
-                                      >
-                                        负债明细
-                                      </th>
-                                      {liabilityMatrixTrendSurface.detailMatrix.periods.map(
-                                        (period) => (
-                                          <th
-                                            key={period.key}
-                                            className="product-category-diagnostics__table-head product-category-liability-matrix__group-head"
-                                            colSpan={2}
-                                            scope="colgroup"
-                                          >
-                                            {period.label}
-                                          </th>
-                                        ),
-                                      )}
-                                      <th
-                                        className="product-category-diagnostics__table-head product-category-liability-matrix__group-head"
-                                        colSpan={2}
-                                        scope="colgroup"
-                                      >
-                                        {currencyMatrix.movementGroupLabel}
-                                      </th>
-                                    </tr>
-                                    <tr>
-                                      {liabilityMatrixTrendSurface.detailMatrix.periods.map(
-                                        (period) => (
-                                          <Fragment key={period.key}>
-                                            <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
-                                              日均额
-                                            </th>
-                                            <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
-                                              收益率
-                                            </th>
-                                          </Fragment>
-                                        ),
-                                      )}
-                                      <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
-                                        日均额
-                                      </th>
-                                      <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
-                                        收益率
-                                      </th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {currencyMatrix.rows.map((item) => (
-                                      <tr
-                                        key={item.categoryId}
-                                        className={
-                                          item.isSummary
-                                            ? "product-category-liability-matrix__summary-row"
-                                            : undefined
-                                        }
-                                        data-testid={`product-category-liability-side-currency-detail-${currencyMatrix.currencyKey}-${item.categoryId}`}
-                                      >
-                                        <td className="product-category-diagnostics__table-cell product-category-liability-matrix__item-cell">
-                                          {item.categoryLabel}
-                                        </td>
-                                        {item.cells.map((cell) => (
-                                          <Fragment key={cell.periodKey}>
-                                            <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
-                                              {cell.amountLabel}
-                                            </td>
-                                            <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
-                                              {cell.rateLabel}
-                                            </td>
-                                          </Fragment>
-                                        ))}
-                                        <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
-                                          {item.movement.amountLabel}
-                                        </td>
-                                        <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
-                                          {item.movement.rateLabel}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </details>
-                          </section>
-                        ),
-                      )}
-                    </div>
-                  </>
-                ) : liabilitySideTrendSurface.detailRows.length > 0 ? (
-                  <>
-                    <ProductCategoryLiabilityFallbackMobileReadout
-                      rows={liabilitySideTrendSurface.detailRows}
-                    />
-                    <div className="product-category-diagnostics__table-wrap">
-                      <table
-                        className="product-category-diagnostics__table"
-                        data-testid="product-category-liability-side-detail-table"
-                      >
-                        <thead>
-                          <tr>
-                            <th className="product-category-diagnostics__table-head">
-                              负债明细
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              最新日均额
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              日均额变动
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              最新利率
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              利率变动
-                            </th>
-                            <th className="product-category-diagnostics__table-head">
-                              对比期
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {liabilitySideTrendSurface.detailRows.map((item) => (
-                            <tr
-                              key={item.categoryId}
-                              data-testid={`product-category-liability-side-detail-${item.categoryId}`}
-                            >
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.categoryLabel}
-                              </td>
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.latestAmountLabel}
-                              </td>
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.amountDeltaLabel}
-                              </td>
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.latestRateLabel}
-                              </td>
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.rateDeltaLabel}
-                              </td>
-                              <td className="product-category-diagnostics__table-cell">
-                                {item.comparisonLabel}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                ) : null}
-              </article>
+              <ProductCategoryDiagnosticsPanel surface={diagnosticsSurface} />
+              <ProductCategoryLiabilityTrendPanel
+                trendSurface={liabilitySideTrendSurface}
+                matrixSurface={liabilityMatrixTrendSurface}
+                chartOption={trendCharts.options.liabilitySideTrend}
+                matrixView={liabilityMatrixView}
+                onMatrixViewChange={handleLiabilityMatrixViewChange}
+                alternateView={{
+                  active: liabilityMatrixUsesAlternateView,
+                  hasData: liabilityMatrixHasAlternateData,
+                  isFetching: liabilityMatrixAlternateQuery.isFetching,
+                  isError: liabilityMatrixAlternateQuery.isError,
+                }}
+              />
             </div>
           ) : null}
         </details>

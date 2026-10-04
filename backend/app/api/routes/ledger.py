@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import re
@@ -88,6 +89,16 @@ async def import_ledger(
 
     run_id = f"ledger_import:{uuid4().hex}"
     request_id = f"req_ledger_{uuid4().hex[:12]}"
+    # Keep queued, dispatch and failure receipt in one worker. Cancellation of
+    # the awaiting request cannot interrupt a dispatch that has already started.
+    return await asyncio.to_thread(
+        _dispatch_ledger_import, settings, file_name, content, run_id, request_id
+    )
+
+
+def _dispatch_ledger_import(
+    settings, file_name: str, content: bytes, run_id: str, request_id: str
+) -> JSONResponse:
     run_service = _run_svc()
     transition_args = {
         "governance_dir": settings.governance_path,

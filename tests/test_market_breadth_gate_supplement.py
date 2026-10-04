@@ -293,6 +293,286 @@ def _make_legacy_numeric_highlimit(duckdb_path: Path) -> None:
         conn.close()
 
 
+def _seed_verified_numeric_limit_scenario(duckdb_path: Path) -> None:
+    """Small landed-source regression fixture; all prices are yuan, no vendor I/O."""
+    _seed_daily_observation(duckdb_path, [_DAY_SPECS[0]])
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("delete from choice_stock_daily_observation")
+        conn.execute(
+            """
+            create table stock_limit_price_daily (
+              trade_date varchar not null, stock_code varchar not null,
+              up_limit double, down_limit double, pre_close double,
+              source_version varchar, vendor_version varchar,
+              rule_version varchar, run_id varchar,
+              primary key (trade_date, stock_code)
+            )
+            """
+        )
+        for trade_date in ["2026-09-02", "2026-09-03", "2026-09-04", "2026-09-07", "2026-09-08"]:
+            compact_date = trade_date.replace("-", "")
+            for stock_code, high, close, pctchange in [
+                ("600001.SH", 11.0, 11.0, 10.0),
+                ("600002.SH", 11.0, 10.6, 6.0),
+                ("600003.SH", 10.8, 10.4, 4.0),
+            ]:
+                conn.execute(
+                    "insert into choice_stock_daily_observation values "
+                    "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        trade_date, stock_code, close, high, close, close,
+                        1000.0, 10000.0, pctchange, 1.0, 2.0, "Trading",
+                        "11.00", "9.00", "[]", "sv_test",
+                        f"vv_choice_tushare_stock_{compact_date}_012345abcdef",
+                        "rv_test", "run_test",
+                    ],
+                )
+                conn.execute(
+                    "insert into stock_limit_price_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        trade_date, stock_code, 11.0, 9.0, 10.0, "sv_test",
+                        f"vv_tushare_stk_limit_{compact_date}_012345abcdef", "rv_test", "run_test",
+                    ],
+                )
+    finally:
+        conn.close()
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_livermore
+def test_verified_numeric_highlimit_classifies_sealed_broken_and_no_touch(tmp_path: Path) -> None:
+    db = tmp_path / "moss.duckdb"
+    _seed_verified_numeric_limit_scenario(db)
+
+    result = materialize_market_breadth_daily(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 9, 8),
+        lookback_days=30,
+        min_observations_per_day=1,
+    )
+
+    assert result["limit_up_sealed_count"] == 1
+    assert result["limit_up_broken_count"] == 1
+    assert result["limit_up_no_touch_count"] == 1
+    assert result["limit_up_unclassified_count"] == 0
+    assert result["limit_up_quality_available"] is True
+    assert result["limit_up_basis"] == "tushare_stk_limit_price"
+    assert result["limit_up_numeric_required_count"] == 3
+    assert result["limit_up_numeric_price_available_count"] == 3
+    assert result["limit_up_numeric_unclassified_count"] == 0
+    assert result["limit_up_numeric_unavailable_reason_counts"] == {}
+    assert result["limit_up_choice_flag_count"] == 0
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        supplement = conn.execute(
+            "select limit_up_quality_ok from fact_livermore_gate_supplement_daily "
+            "where trade_date = '2026-09-08'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert supplement == (False,)
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_livermore
+class TestNumericLimitMaterializeRegression:
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "drop table stock_limit_price_daily",
+            "delete from stock_limit_price_daily where trade_date = '2026-09-08'",
+            "update stock_limit_price_daily set trade_date = '2026-09-09' "
+            "where trade_date = '2026-09-08'",
+            "update stock_limit_price_daily set stock_code = 'wrong_' || stock_code "
+            "where trade_date = '2026-09-08'",
+            "update stock_limit_price_daily set vendor_version = 'unknown_vendor' "
+            "where trade_date = '2026-09-08'",
+            "update stock_limit_price_daily set up_limit = 10.99 "
+            "where trade_date = '2026-09-08'",
+            "update stock_limit_price_daily set up_limit = NULL "
+            "where trade_date = '2026-09-08'",
+            "update stock_limit_price_daily set up_limit = 0 "
+            "where trade_date = '2026-09-08'",
+            "update stock_limit_price_daily set up_limit = 'NaN'::double "
+            "where trade_date = '2026-09-08'",
+            "update choice_stock_daily_observation set vendor_version = 'unknown_vendor' "
+            "where trade_date = '2026-09-08'",
+            "update choice_stock_daily_observation "
+            "set vendor_version = 'vv_choice_tushare_stock_20260908_not_hex_hash' "
+            "where trade_date = '2026-09-08'",
+            "update choice_stock_daily_observation set highlimit = NULL "
+            "where trade_date = '2026-09-08'",
+            "update choice_stock_daily_observation "
+            "set vendor_version = 'vv_choice_tushare_stock_20260907_012345abcdef' "
+            "where trade_date = '2026-09-08'",
+            "update stock_limit_price_daily "
+            "set vendor_version = 'vv_tushare_stk_limit_20260907_012345abcdef' "
+            "where trade_date = '2026-09-08'",
+            "update choice_stock_daily_observation set highlimit = NULL, "
+            "vendor_version = 'vv_choice_tushare_stock_20260908_not_hex_hash' "
+            "where trade_date = '2026-09-08'",
+        ],
+        ids=[
+            "table_missing", "same_day_price_missing", "wrong_trade_date", "wrong_stock_code",
+            "untrusted_price_vendor", "price_conflict", "null_price", "zero_price", "nan_price",
+            "untrusted_observation_vendor", "malformed_observation_vendor", "raw_price_missing",
+            "observation_vendor_date_mismatch", "price_vendor_date_mismatch",
+            "malformed_observation_vendor_and_missing_raw_price",
+        ],
+    )
+    def test_missing_or_untrusted_numeric_price_remains_unclassified(
+        self, tmp_path: Path, mutation: str
+    ) -> None:
+        db = tmp_path / "moss.duckdb"
+        _seed_verified_numeric_limit_scenario(db)
+        conn = duckdb.connect(str(db), read_only=False)
+        try:
+            conn.execute(mutation)
+        finally:
+            conn.close()
+
+        result = materialize_market_breadth_daily(
+            duckdb_path=str(db),
+            as_of_date=date(2026, 9, 8),
+            lookback_days=30,
+            min_observations_per_day=1,
+        )
+
+        assert result["limit_up_unclassified_count"] == 3
+        assert result["limit_up_sealed_count"] == 0
+        assert result["limit_up_broken_count"] == 0
+        assert result["limit_up_quality_available"] is False
+        assert result["limit_up_basis"] == "numeric_limit_basis_unavailable"
+        assert result["limit_up_numeric_required_count"] == 3
+        assert result["limit_up_numeric_price_available_count"] == 0
+        assert result["limit_up_numeric_unclassified_count"] == 3
+        assert sum(result["limit_up_numeric_unavailable_reason_counts"].values()) == 3
+        conn = duckdb.connect(str(db), read_only=True)
+        try:
+            supplement = conn.execute(
+                "select limit_up_quality_ok from fact_livermore_gate_supplement_daily "
+                "where trade_date = '2026-09-08'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert supplement == (None,)
+
+    def test_supplement_vendor_and_choice_flags_share_a_day_without_losing_lineage(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "moss.duckdb"
+        _seed_verified_numeric_limit_scenario(db)
+        conn = duckdb.connect(str(db), read_only=False)
+        try:
+            conn.execute(
+                "update choice_stock_daily_observation "
+                "set vendor_version = 'vv_livermore_supplement_tushare_sina_20260908_012345abcdef' "
+                "where trade_date = '2026-09-08'"
+            )
+            conn.execute(
+                "update choice_stock_daily_observation set highlimit = '否', vendor_version = 'vv_test' "
+                "where trade_date = '2026-09-08' and stock_code = '600003.SH'"
+            )
+            conn.execute(
+                "delete from stock_limit_price_daily "
+                "where trade_date = '2026-09-08' and stock_code = '600003.SH'"
+            )
+        finally:
+            conn.close()
+
+        result = materialize_market_breadth_daily(
+            duckdb_path=str(db), as_of_date=date(2026, 9, 8),
+            lookback_days=30, min_observations_per_day=1,
+        )
+
+        assert result["limit_up_basis"] == "choice_flags_and_tushare_stk_limit_price"
+        assert result["limit_up_numeric_required_count"] == 2
+        assert result["limit_up_numeric_price_available_count"] == 2
+        assert result["limit_up_choice_flag_count"] == 1
+        assert result["limit_up_no_touch_count"] == 1
+        assert (result["limit_up_sealed_count"], result["limit_up_broken_count"]) == (1, 1)
+        conn = duckdb.connect(str(db), read_only=True)
+        try:
+            vendor = conn.execute(
+                "select vendor_version from fact_market_breadth_daily where trade_date = '2026-09-08'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert "tushare_stk_limit" in vendor
+        assert "choice_highlimit_flag" in vendor
+
+    def test_verified_numeric_prices_keep_out_of_band_rows_visible(self, tmp_path: Path) -> None:
+        db = tmp_path / "moss.duckdb"
+        _seed_verified_numeric_limit_scenario(db)
+        conn = duckdb.connect(str(db), read_only=False)
+        try:
+            conn.execute(
+                "update choice_stock_daily_observation set high_value = 11.02 "
+                "where trade_date = '2026-09-08' and stock_code = '600001.SH'"
+            )
+        finally:
+            conn.close()
+
+        result = materialize_market_breadth_daily(
+            duckdb_path=str(db), as_of_date=date(2026, 9, 8),
+            lookback_days=30, min_observations_per_day=1,
+        )
+
+        assert result["limit_up_numeric_out_of_band_count"] == 1
+        assert result["limit_up_out_of_band_count"] == 1
+        assert result["limit_up_sealed_count"] == 0
+        assert result["limit_up_broken_count"] == 1
+
+    def test_explicit_recompute_repairs_only_requested_dates_and_is_idempotent(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "moss.duckdb"
+        _seed_verified_numeric_limit_scenario(db)
+        conn = duckdb.connect(str(db), read_only=False)
+        try:
+            conn.execute("update choice_stock_daily_observation set vendor_version = 'unknown_vendor'")
+        finally:
+            conn.close()
+        materialize_market_breadth_daily(
+            duckdb_path=str(db), as_of_date=date(2026, 9, 8),
+            lookback_days=30, min_observations_per_day=1,
+        )
+        conn = duckdb.connect(str(db), read_only=False)
+        try:
+            preserved = conn.execute(
+                "select * from fact_market_breadth_daily where trade_date < '2026-09-07' "
+                "order by trade_date"
+            ).fetchall()
+            conn.execute(
+                "update choice_stock_daily_observation set vendor_version = "
+                "'vv_choice_tushare_stock_' || replace(trade_date, '-', '') || '_012345abcdef'"
+            )
+        finally:
+            conn.close()
+
+        for _ in range(2):
+            repaired = materialize_market_breadth_daily(
+                duckdb_path=str(db), as_of_date=date(2026, 9, 8),
+                lookback_days=30, min_observations_per_day=1,
+                recompute_trade_dates=frozenset({date(2026, 9, 7), date(2026, 9, 8)}),
+            )
+            assert repaired["daily_written_row_count"] == 2
+        conn = duckdb.connect(str(db), read_only=True)
+        try:
+            assert conn.execute(
+                "select * from fact_market_breadth_daily where trade_date < '2026-09-07' "
+                "order by trade_date"
+            ).fetchall() == preserved
+            assert conn.execute(
+                "select trade_date, limit_up_sealed_count, limit_up_broken_count "
+                "from fact_market_breadth_daily where trade_date >= '2026-09-07' order by trade_date"
+            ).fetchall() == [("2026-09-07", 1, 1), ("2026-09-08", 1, 1)]
+            assert conn.execute("select count(*) from fact_market_breadth_daily").fetchone() == (5,)
+        finally:
+            conn.close()
+
+
 def test_limit_up_leg_lands_from_flags_without_any_price_source(tmp_path: Path) -> None:
     """The limit-up leg must not depend on an external price vendor."""
     db = tmp_path / "moss.duckdb"
@@ -334,7 +614,7 @@ def test_limit_up_leg_lands_from_flags_without_any_price_source(tmp_path: Path) 
     assert breadth is not None
     assert breadth[:2] == (1, 4)
     assert "choice_highlimit_flag_20260608" in str(breadth[2])
-    assert breadth[3] == "rv_market_breadth_daily_v3"
+    assert breadth[3] == "rv_market_breadth_daily_v4"
     # nets: -2 + 4 + 0 + 8 + 0 ; sealed 1 < broken 4
     assert supplement == (10.0, False)
 
@@ -912,6 +1192,29 @@ def test_service_does_not_proxy_fallback_when_limit_prices_are_incomplete(
     assert payload["computed_rows"] == 0
 
 
+def test_market_breadth_service_bridge_preserves_task_default_threshold(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import livermore_gate_supplement_compute_service as service
+    from backend.app.tasks import market_breadth_materialize as task
+
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        task,
+        "materialize_market_breadth_daily",
+        lambda **kwargs: calls.append(dict(kwargs)) or {"status": "completed"},
+    )
+
+    service.materialize_market_breadth_daily(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        as_of_date=date(2026, 8, 18),
+        lookback_days=30,
+    )
+
+    assert "min_observations_per_day" not in calls[0]
+
+
 def _proxy_daily_returns(start: date, pct_changes: list[float | None]) -> list[dict]:
     return [
         {
@@ -927,7 +1230,8 @@ def test_proxy_breadth_one_up_day_in_window_fails_gate_condition() -> None:
     """Golden sample: with only 1 up-day in the 5-day window ending at as_of,
     the proxy breadth must be negative (net up-days) and the gate breadth
     condition must fail — not pass as it did under the old ratio basis
-    (1/5 = 0.2 > 0)."""
+    (1/5 = 0.2 > 0). The proxy limit-up leg is fail-closed None, so the
+    fourth condition reads missing."""
     from backend.app.core_finance.livermore_strategy import (
         BroadIndexObservation,
         MarketGateSupplement,
@@ -946,6 +1250,7 @@ def test_proxy_breadth_one_up_day_in_window_fails_gate_condition() -> None:
     last = rows[-1]
     assert last["trade_date"] == "2026-06-06"
     assert last["breadth_5d"] == -3.0
+    assert last["limit_up_quality_ok"] is None
 
     history = [
         BroadIndexObservation(trade_date=start + timedelta(days=offset), close=3000.0 + offset * 10)
@@ -956,13 +1261,65 @@ def test_proxy_breadth_one_up_day_in_window_fails_gate_condition() -> None:
         supplement=MarketGateSupplement(
             trade_date=history[-1].trade_date,
             breadth_5d=float(last["breadth_5d"]),
-            limit_up_quality_ok=True,
+            limit_up_quality_ok=last["limit_up_quality_ok"],
         ),
     )
     condition_by_key = {row["key"]: row for row in gate["conditions"]}
     assert condition_by_key["breadth_5d_positive"]["status"] == "fail"
+    assert condition_by_key["limit_up_quality_positive"]["status"] == "missing"
+    assert gate["passed_conditions"] == 2
+    assert gate["available_conditions"] == 3
+    assert gate["exposure"] == 0.5
+    assert gate["state"] == "WARM"
+
+
+def test_proxy_limit_up_quality_is_fail_closed_missing() -> None:
+    """Regression (P0-4): the CSI300 proxy must not emit a computed boolean for
+    limit_up_quality_ok — index momentum is not the formal "sealed > broken"
+    basis (:mod:`backend.app.core_finance.market_breadth`). Proxy rows carry
+    None, the fourth gate leg reads missing and can never pass, and the market
+    state is capped at WARM even on a fully bullish proxy window where the old
+    momentum rule (avg return > 0, no day < -3%) produced True and OVERHEAT."""
+    from backend.app.core_finance.livermore_strategy import (
+        BroadIndexObservation,
+        MarketGateSupplement,
+        evaluate_market_gate,
+    )
+    from backend.app.services.livermore_gate_supplement_compute_service import (
+        _compute_supplement_rows,
+    )
+
+    start = date(2026, 6, 1)
+    rows = _compute_supplement_rows(
+        _proxy_daily_returns(start, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    )
+    assert rows
+    assert all(row["limit_up_quality_ok"] is None for row in rows)
+    last = rows[-1]
+    # All-up window: breadth leg itself passes (net +5); only the limit-up leg
+    # is withheld.
+    assert last["breadth_5d"] == 5.0
+
+    history = [
+        BroadIndexObservation(trade_date=start + timedelta(days=offset), close=3000.0 + offset * 10)
+        for offset in range(65)
+    ]
+    gate = evaluate_market_gate(
+        history,
+        supplement=MarketGateSupplement(
+            trade_date=history[-1].trade_date,
+            breadth_5d=float(last["breadth_5d"]),
+            limit_up_quality_ok=last["limit_up_quality_ok"],
+        ),
+    )
+    condition_by_key = {row["key"]: row for row in gate["conditions"]}
+    assert condition_by_key["limit_up_quality_positive"]["status"] == "missing"
+    assert condition_by_key["limit_up_quality_positive"]["status"] != "pass"
+    # trend 2/2 + breadth 1/1 all pass, yet the missing fourth leg caps the
+    # state at WARM (available_conditions < 4), never HOT/OVERHEAT.
     assert gate["passed_conditions"] == 3
-    assert gate["exposure"] == 0.75
+    assert gate["available_conditions"] == 3
+    assert gate["state"] == "WARM"
 
 
 def test_proxy_breadth_window_includes_as_of_day() -> None:
@@ -1003,6 +1360,19 @@ def test_service_falls_back_to_csi300_proxy_when_breadth_source_missing(
     assert payload["status"] == "completed"
     assert payload["basis"] == "csi300_proxy"
     assert int(payload["computed_rows"]) > 0
+
+    conn = _connect_read_only_with_retry(db)
+    try:
+        total, non_null_lim = conn.execute(
+            "select count(*), count(limit_up_quality_ok) "
+            "from fact_livermore_gate_supplement_daily"
+        ).fetchone()
+    finally:
+        conn.close()
+    # Proxy rows land with limit_up_quality_ok NULL (fail-closed missing);
+    # count(col) only counts non-NULL values.
+    assert int(total) > 0
+    assert int(non_null_lim) == 0
 
 
 # ---------------------------------------------------------------------------

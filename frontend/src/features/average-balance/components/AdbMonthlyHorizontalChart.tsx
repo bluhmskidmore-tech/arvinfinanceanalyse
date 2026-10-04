@@ -1,6 +1,9 @@
+import { ChartCard } from "../../../components/charts/ChartCard";
+import {
+  CHART_CARD_HEIGHTS,
+  type ChartCardHeight,
+} from "../../../components/charts/chartCardScale";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
-import ReactECharts from "../../../lib/echarts";
-import type { CSSProperties } from "react";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 
@@ -28,17 +31,8 @@ function formatPct(value: number | null | undefined): string {
   return `${value.toFixed(2)}%`;
 }
 
-function buildHorizontalOption(rows: AdbMonthlyHorizontalChartRow[], title: string, color: string) {
+function buildHorizontalOption(rows: AdbMonthlyHorizontalChartRow[], color: string) {
   return nocturneChartTheme.createBarChartOption({
-    title: {
-      text: title,
-      left: 0,
-      textStyle: {
-        fontSize: 13,
-        fontWeight: 600,
-        color: nocturneChartTheme.axisLabel.color,
-      },
-    },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
@@ -53,8 +47,7 @@ function buildHorizontalOption(rows: AdbMonthlyHorizontalChartRow[], title: stri
         ].join("<br/>");
       },
     },
-    legend: { show: false },
-    grid: { left: 120, right: 24, top: 44, bottom: 24 },
+    grid: { left: 120, right: 24, top: 44 },
     xAxis: {
       type: "value",
       axisLabel: { formatter: (value: number) => `${value.toFixed(0)}亿` },
@@ -85,9 +78,8 @@ type AdbMonthlyHorizontalChartProps = {
   /** 显式 color 优先于 variant；两者都缺省时回退 Nocturne 主题主色。 */
   color?: string;
   variant?: AdbMonthlyHorizontalChartVariant;
-  height?: number;
-  style?: CSSProperties;
-  className?: string;
+  height?: ChartCardHeight;
+  flat?: boolean;
 };
 
 export default function AdbMonthlyHorizontalChart({
@@ -95,18 +87,18 @@ export default function AdbMonthlyHorizontalChart({
   title,
   color,
   variant,
-  height = 320,
-  style,
-  className,
+  height = CHART_CARD_HEIGHTS.hero,
+  flat = false,
 }: AdbMonthlyHorizontalChartProps) {
   const barColor = color ?? (variant ? VARIANT_BAR_COLOR[variant] : nocturneChartTheme.palette[0]);
   return (
-    <ReactECharts
-      className={className}
-      option={buildHorizontalOption(rows, title, barColor)}
-      style={{ height, ...style }}
-      notMerge
-      lazyUpdate
+    <ChartCard
+      flat={flat}
+      title={title}
+      unit="亿元"
+      height={height}
+      legend="none"
+      option={rows.length ? buildHorizontalOption(rows, barColor) : null}
     />
   );
 }

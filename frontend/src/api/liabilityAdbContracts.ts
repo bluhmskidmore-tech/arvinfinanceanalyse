@@ -115,12 +115,15 @@ export type LiabilityMonthlyBreakdownRow = {
 export type LiabilitiesMonthlyItem = {
   month: string;
   month_label: string;
+  counterparty_total?: Numeric | null;
   avg_total_liabilities: Numeric | null;
   avg_interbank_liabilities: Numeric | null;
   avg_issued_liabilities: Numeric | null;
   avg_liability_cost: Numeric | null;
   mom_change: Numeric | null;
   mom_change_pct: Numeric | null;
+  yoy_change: Numeric | null;
+  yoy_change_pct: Numeric | null;
   top10_share: Numeric | null;
   hhi: Numeric | null;
   population_count: number;
@@ -137,9 +140,58 @@ export type LiabilitiesMonthlyItem = {
   num_days: number;
 };
 
+export type LiabilitiesMonthlySummaryItem = Pick<
+  LiabilitiesMonthlyItem,
+  | "month"
+  | "month_label"
+  | "avg_total_liabilities"
+  | "avg_interbank_liabilities"
+  | "avg_issued_liabilities"
+  | "avg_liability_cost"
+  | "mom_change"
+  | "mom_change_pct"
+  | "yoy_change"
+  | "yoy_change_pct"
+  | "num_days"
+>;
+
+export type LiabilitiesMonthlyDetailItem = Pick<
+  LiabilitiesMonthlyItem,
+  | "month"
+  | "month_label"
+  | "counterparty_total"
+  | "top10_share"
+  | "hhi"
+  | "population_count"
+  | "is_truncated"
+  | "counterparty_top10"
+  | "by_institution_type"
+  | "structure_overview"
+  | "term_buckets"
+  | "interbank_by_type"
+  | "interbank_term_buckets"
+  | "issued_by_type"
+  | "issued_term_buckets"
+  | "counterparty_details"
+  | "num_days"
+>;
+
 export type LiabilitiesMonthlyPayload = {
   year: number;
   months: LiabilitiesMonthlyItem[];
   ytd_avg_total_liabilities: Numeric | null;
   ytd_avg_liability_cost: Numeric | null;
+};
+
+export type LiabilitiesMonthlySummaryPayload = {
+  year: number;
+  months: LiabilitiesMonthlySummaryItem[];
+  ytd_avg_total_liabilities: Numeric | null;
+  ytd_avg_liability_cost: Numeric | null;
+};
+
+export type LiabilitiesMonthlyDetailPayload = {
+  year: number;
+  selected_month: string;
+  detail: LiabilitiesMonthlyDetailItem | null;
 };

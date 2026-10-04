@@ -19,8 +19,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from backend.app.agent.runtime.local_request_resolution import resolve_local_request
 from backend.app.agent.runtime.subprocess_env import build_agent_subprocess_env
-from backend.app.agent.runtime.toolset_policy import normalize_read_only_toolsets
+from backend.app.agent.runtime.toolset_policy import (
+    normalize_hermes_read_only_toolsets,
+    normalize_read_only_toolsets,
+)
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
     AgentCard,
@@ -30,7 +34,9 @@ from backend.app.agent.schemas.agent_response import (
 )
 from backend.app.core_finance.calibers.enums import Basis
 from backend.app.governance.agent_audit import AgentAuditPayload, append_agent_audit
+from backend.app.governance.agent_prompt import AgentPromptPayload, append_agent_prompt
 from backend.app.repositories.governance_repo import GovernanceRepository
+from backend.app.services.agent_service import execute_agent_query
 
 RULE_VERSION = "rv_agent_hermes_v1"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -43,10 +49,12 @@ _HERMES_ERROR_TIMEOUT = "hermes_timeout"
 _HERMES_ERROR_SPAWN = "hermes_spawn_failed"
 _HERMES_ERROR_EXIT = "hermes_exit_failed"
 _HERMES_ERROR_BRIDGE_UNAUTHORIZED = "hermes_bridge_unauthorized"
+_HERMES_ERROR_CANCELLED = "hermes_cancelled"
 _HERMES_ERROR_STREAM_CANCELLED = "hermes_stream_cancelled"
+_HERMES_ERROR_LOCAL_RECOVERY = "hermes_local_recovery_failed"
 # WSL 内定向清理的 pkill -f 特征（匹配 WSL 内完整命令行，不影响宿主进程）。
 _HERMES_BRIDGE_WSL_PKILL_PATTERN = "hermes_bridge_server.py"
-_HERMES_CLI_WSL_PKILL_PATTERN = "/usr/local/bin/hermes chat -Q"
+_HERMES_CLI_INSTANCE_ENV = "MOSS_HERMES_CLI_INSTANCE"
 _HERMES_STREAM_WSL_PKILL_PATTERN = "hermes_stream_runner.py"
 _HERMES_STREAM_FLUSH_INTERVAL_SECONDS = 0.08
 _HERMES_STREAM_CONTINUE_CHECK_SECONDS = 0.1
@@ -54,6 +62,7 @@ _HERMES_STREAM_FLUSH_BYTES = 1024
 _HERMES_STREAM_MAX_FRAME_BYTES = 4096
 _HERMES_STREAM_STDERR_MAX_CHARS = 4096
 _HERMES_STREAM_READY_TIMEOUT_SECONDS = 30.0
+_HERMES_AUDIT_FAILURE_COUNT = 0
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -109,6 +118,7 @@ _HERMES_STREAM_REQUEST_SEQ = 0
 _HERMES_STREAM_LIFECYCLE_SEQ = 0
 _BRIDGE_TOKEN_HEADER = "X-Hermes-Bridge-Token"
 # 供运维指向一个外部已启动的 bridge；未设置时每个后端进程自带一次性令牌。
+_CONFIGURED_BRIDGE_TOKEN = bool(os.environ.get("HERMES_BRIDGE_TOKEN", "").strip())
 _PROCESS_BRIDGE_TOKEN = os.environ.get("HERMES_BRIDGE_TOKEN", "").strip() or secrets.token_hex(32)
 _LOCAL_OPEN_CHAT_EXACT = {
     "?",
@@ -187,13 +197,21 @@ _BUSINESS_QUERY_HINTS = (
 )
 _ONTOLOGY_CONTEXT_MAX_CHARS = 1500
 _ONTOLOGY_CONTEXT_MAX_ENTITIES = 3
+_ONTOLOGY_DEFINITION_MAX_CHARS = 240
 # request context（filters/page_context.selected_rows 等无界字段）序列化后的预算。
 # question(<=8000) + context(<=4000) + ontology(<=1500) + 样板文案，总量远低于
 # Windows CreateProcess ~32K argv 上限，避免超长 prompt 触发 OSError 静默降级。
 _PROMPT_CONTEXT_MAX_CHARS = 4000
 _PROMPT_CONTEXT_TRUNCATION_NOTE = (
-    "\n[MOSS note: request context truncated to fit the prompt budget; "
-    "page_context/selected_rows were cut off]"
+    "[context truncated: dropped keys {keys}]"
+)
+_PROMPT_CONTEXT_DROP_ORDER = (
+    "page_context",
+    "context",
+    "filters",
+    "currency_basis",
+    "position_scope",
+    "basis",
 )
 
 
@@ -204,8 +222,11 @@ def execute_hermes_agent_query(
     *,
     stream_delta_callback: Callable[[str], bool] | None = None,
     stream_should_continue: Callable[[], bool] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> AgentEnvelope:
-    if _should_answer_open_chat_locally(request.question):
+    conversation = request.context.get("conversation")
+    has_history = isinstance(conversation, dict) and bool(conversation.get("recent_turns"))
+    if not has_history and request.model is None and request.reasoning_effort is None and _should_answer_open_chat_locally(request.question):
         result = {
             "answer": "",
             "stdout": "",
@@ -220,10 +241,20 @@ def execute_hermes_agent_query(
         _append_hermes_audit(request, governance_dir, envelope, result)
         return envelope
 
+    prompt = _build_hermes_prompt(request)
     try:
-        transport = str(getattr(settings, "agent_hermes_transport", "cli") or "cli")
-        if stream_delta_callback is not None:
-            transport = "cli"
+        configured_transport = str(getattr(settings, "agent_hermes_transport", "cli") or "cli")
+        transport, transport_reason = _select_hermes_transport(
+            configured_transport=configured_transport,
+            has_delta_callback=stream_delta_callback is not None,
+            has_reasoning_effort=request.reasoning_effort is not None,
+            has_model=request.model is not None,
+        )
+        _log_hermes_transport_override(
+            configured_transport=configured_transport,
+            selected_transport=transport,
+            reason=transport_reason,
+        )
         result = run_hermes_agent(
             request=request,
             command=str(settings.agent_hermes_command),
@@ -231,19 +262,26 @@ def execute_hermes_agent_query(
             hermes_home=str(getattr(settings, "agent_hermes_home", "") or ""),
             transport=transport,
             bridge_url=str(getattr(settings, "agent_hermes_bridge_url", "") or ""),
-            model=str(settings.agent_hermes_model or ""),
+            model=request.model or str(settings.agent_hermes_model or ""),
             toolsets=str(getattr(settings, "agent_hermes_toolsets", "") or ""),
             max_turns=int(settings.agent_hermes_max_turns),
             timeout_seconds=float(settings.agent_hermes_timeout_seconds),
             stream_delta_callback=stream_delta_callback,
             stream_should_continue=stream_should_continue,
+            prompt_override=prompt,
+            cancel_event=cancel_event,
+            **({"reasoning_effort": request.reasoning_effort} if request.reasoning_effort is not None else {}),
         )
+        if request.reasoning_effort is not None:
+            result["reasoning_effort"] = request.reasoning_effort
         envelope = build_hermes_envelope(request=request, result=result)
     except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
         # 运行链任何失败（含 JSON 解析、子进程拉起、超时）都收敛到同一条确定性兜底路径，
         # 不允许裸异常穿透到路由层变成 500。error_code 取分类码（HermesRuntimeError）
         # 供运维区分，日志仍只记异常类名、不落原始 detail。
         error_code = str(getattr(exc, "error_code", "") or "").strip() or _HERMES_FALLBACK_REASON
+        if error_code in {_HERMES_ERROR_CANCELLED, _HERMES_ERROR_STREAM_CANCELLED}:
+            raise
         _LOGGER.warning(
             "Hermes provider runtime failed provider=hermes error_type=%s error_code=%s",
             exc.__class__.__name__,
@@ -254,14 +292,92 @@ def execute_hermes_agent_query(
             "stdout": "",
             "stderr": "",
             "command": str(settings.agent_hermes_command),
-            "model": str(settings.agent_hermes_model or ""),
+            "model": request.model or str(settings.agent_hermes_model or ""),
             "toolsets": str(getattr(settings, "agent_hermes_toolsets", "") or ""),
             "transport": str(getattr(settings, "agent_hermes_transport", "cli") or "cli"),
             "error": _HERMES_FALLBACK_MESSAGE,
             "error_code": error_code,
         }
-        envelope = build_hermes_fallback_envelope(request=request, result=result)
+        recovered = build_local_recovery_envelope(
+            request=request,
+            governance_dir=governance_dir,
+            settings=settings,
+        )
+        envelope = (
+            recovered
+            if recovered is not None
+            else build_hermes_fallback_envelope(request=request, result=result)
+        )
     _append_hermes_audit(request, governance_dir, envelope, result)
+    _append_hermes_prompt(request, governance_dir, envelope, result, prompt)
+    return envelope
+
+
+def build_local_recovery_envelope(
+    *,
+    request: AgentQueryRequest,
+    governance_dir: str,
+    settings: Any,
+) -> AgentEnvelope | None:
+    """Hermes 不可用时改由本地受治理工具重答；本地也接不住则返回 None。
+
+    只处理 standalone workbench 把分析类问题上送 provider 的情形。其余到达
+    provider 的请求已被 resolve_local_request 判定为本地接不住，重跑本地工具
+    只会得到 agent.unknown，不如确定性兜底文案诚实。
+    """
+    if request.routing_surface is None:
+        return None
+    local_request = request.model_copy(update={"routing_surface": None})
+    if resolve_local_request(local_request).route != "local":
+        return None
+    from backend.app.services.agent_service import (
+        ensure_agent_execution_resources_allowed,
+        resolve_agent_intent_read_resources,
+    )
+
+    # Check outside the runtime fallback handler so a denied read cannot become a success.
+    ensure_agent_execution_resources_allowed(
+        local_request,
+        settings=settings,
+        resources=resolve_agent_intent_read_resources(local_request),
+    )
+    try:
+        envelope = execute_agent_query(
+            local_request,
+            str(getattr(settings, "duckdb_path", "") or ""),
+            governance_dir,
+        )
+    except Exception as exc:  # noqa: BLE001 - 恢复链路失败不得覆盖原始 provider 故障
+        _LOGGER.warning(
+            "Hermes local recovery failed error_type=%s error_code=%s",
+            exc.__class__.__name__,
+            _HERMES_ERROR_LOCAL_RECOVERY,
+        )
+        return None
+    return _mark_local_recovery(envelope)
+
+
+def _mark_local_recovery(envelope: AgentEnvelope) -> AgentEnvelope:
+    """标注 provider 降级来源，供前端与审计区分本地重答与正常本地路由。
+
+    不改 vendor_status / fallback_mode：前者描述数据供应方，后者描述报告日
+    回退到最近快照，都与 agent provider 的可用性无关。
+    """
+    markers = {
+        "requested_provider": "hermes",
+        "fallback_provider": "local",
+        "fallback_reason": _HERMES_FALLBACK_REASON,
+    }
+    envelope.evidence.filters_applied.update(markers)
+    envelope.result_meta.filters_applied.update(markers)
+    envelope.cards.insert(
+        0,
+        AgentCard(
+            type="status",
+            title="Hermes 通道不可用",
+            value="外部模型通道本轮不可用，本轮改由本地受治理路径回答。",
+        ),
+    )
     return envelope
 
 
@@ -383,10 +499,25 @@ def run_hermes_agent(
     timeout_seconds: float,
     stream_delta_callback: Callable[[str], bool] | None = None,
     stream_should_continue: Callable[[], bool] | None = None,
+    prompt_override: str | None = None,
+    reasoning_effort: str | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, str]:
-    prompt = _build_hermes_prompt(request)
+    # 调用方传入 prompt 才能在通道故障时也留下送模原文；缺省时自建，保持既有直调行为。
+    prompt = prompt_override or _build_hermes_prompt(request)
     normalized_toolsets = _normalize_toolsets(toolsets)
-    if stream_delta_callback is not None:
+    selected_transport, transport_reason = _select_hermes_transport(
+        configured_transport=transport,
+        has_delta_callback=stream_delta_callback is not None,
+        has_reasoning_effort=reasoning_effort is not None,
+        has_model=request.model is not None,
+    )
+    _log_hermes_transport_override(
+        configured_transport=transport,
+        selected_transport=selected_transport,
+        reason=transport_reason,
+    )
+    if stream_delta_callback is not None or request.model is not None:
         return _run_hermes_agent_streaming(
             command=command,
             wsl_distro=wsl_distro,
@@ -396,10 +527,12 @@ def run_hermes_agent(
             normalized_toolsets=normalized_toolsets,
             max_turns=max_turns,
             timeout_seconds=timeout_seconds,
-            stream_delta_callback=stream_delta_callback,
+            stream_delta_callback=stream_delta_callback or (lambda _delta: True),
             stream_should_continue=stream_should_continue,
+            reasoning_effort=reasoning_effort or "low",
+            cancel_event=cancel_event,
         )
-    if str(transport or "").strip().lower() == "bridge":
+    if selected_transport == "bridge":
         normalized_bridge_url = str(bridge_url or "").strip() or "http://127.0.0.1:7891"
         _ensure_hermes_bridge(
             command=command,
@@ -420,6 +553,7 @@ def run_hermes_agent(
             timeout_seconds=timeout_seconds,
         )
 
+    cli_instance_id = uuid4().hex if _is_wsl_command(command) else ""
     args = _build_hermes_command(
         command=command,
         wsl_distro=wsl_distro,
@@ -428,35 +562,45 @@ def run_hermes_agent(
         toolsets=toolsets,
         max_turns=max_turns,
         prompt=prompt,
+        reasoning_effort=reasoning_effort,
+        instance_id=cli_instance_id,
     )
     normalized_home = str(hermes_home or "").strip()
     env = build_agent_subprocess_env(
         HERMES_HOME=normalized_home if not _is_wsl_command(command) else "",
     )
     try:
-        completed = subprocess.run(
-            args,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=max(timeout_seconds, 1.0),
-            env=env,
-        )
+        if cancel_event is None:
+            completed = subprocess.run(
+                args,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=max(timeout_seconds, 1.0),
+                env=env,
+            )
+        else:
+            completed = _run_hermes_cli_with_cancel(
+                args=args,
+                command=command,
+                wsl_distro=wsl_distro,
+                timeout_seconds=timeout_seconds,
+                env=env,
+                cancel_event=cancel_event,
+                instance_id=cli_instance_id,
+            )
     except FileNotFoundError as exc:
         raise HermesRuntimeError(
             f"Hermes command not found: {command}",
             error_code=_HERMES_ERROR_SPAWN,
         ) from exc
     except subprocess.TimeoutExpired as exc:
-        # Windows 超时只杀 wsl.exe 中继；WSL 内 hermes 进程会继续消耗模型 API，
-        # 必须按命令行特征穿透补杀。
-        _cleanup_wsl_processes(
-            command=command,
-            wsl_distro=wsl_distro,
-            pattern=_HERMES_CLI_WSL_PKILL_PATTERN,
-        )
+        if cancel_event is None:
+            _cleanup_wsl_cli_instance(
+                command=command, wsl_distro=wsl_distro, instance_id=cli_instance_id,
+            )
         raise HermesRuntimeError(
             f"Hermes timed out after {timeout_seconds:g}s",
             error_code=_HERMES_ERROR_TIMEOUT,
@@ -505,6 +649,117 @@ def run_hermes_agent(
     }
 
 
+def _select_hermes_transport(
+    *,
+    configured_transport: str,
+    has_delta_callback: bool,
+    has_reasoning_effort: bool,
+    has_model: bool,
+) -> tuple[str, str]:
+    normalized = str(configured_transport or "").strip().lower() or "cli"
+    if normalized == "sidecar":
+        normalized = "bridge"
+    if normalized not in {"cli", "bridge"}:
+        normalized = "cli"
+    if has_delta_callback:
+        return "cli", "stream_delta_callback_requires_cli"
+    if has_reasoning_effort:
+        return "cli", "reasoning_effort_requires_cli"
+    if has_model:
+        return "cli", "request_model_requires_streaming_cli"
+    if normalized == "bridge":
+        return "bridge", "configured_bridge"
+    return "cli", "configured_cli"
+
+
+def _log_hermes_transport_override(
+    *,
+    configured_transport: str,
+    selected_transport: str,
+    reason: str,
+) -> None:
+    normalized = str(configured_transport or "").strip().lower() or "cli"
+    if normalized == "sidecar":
+        normalized = "bridge"
+    if normalized == selected_transport:
+        return
+    _LOGGER.info(
+        "Hermes transport selected configured_transport=%s selected_transport=%s reason=%s",
+        normalized,
+        selected_transport,
+        reason,
+    )
+
+
+def _run_hermes_cli_with_cancel(
+    *,
+    args: list[str],
+    command: str,
+    wsl_distro: str,
+    timeout_seconds: float,
+    env: dict[str, str],
+    cancel_event: threading.Event,
+    instance_id: str = "",
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
+    deadline = time.monotonic() + max(timeout_seconds, 1.0)
+    while True:
+        if cancel_event.is_set():
+            _terminate_stream_process(
+                process=process,
+                command=command,
+                wsl_distro=wsl_distro,
+                pattern="",
+            )
+            _cleanup_wsl_cli_instance(
+                command=command, wsl_distro=wsl_distro, instance_id=instance_id,
+            )
+            try:
+                process.communicate(timeout=1.0)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            raise HermesRuntimeError(
+                "Hermes CLI was cancelled before completion.",
+                error_code=_HERMES_ERROR_CANCELLED,
+            )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            _terminate_stream_process(
+                process=process,
+                command=command,
+                wsl_distro=wsl_distro,
+                pattern="",
+            )
+            _cleanup_wsl_cli_instance(
+                command=command, wsl_distro=wsl_distro, instance_id=instance_id,
+            )
+            try:
+                process.communicate(timeout=1.0)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            raise subprocess.TimeoutExpired(cmd=args, timeout=max(timeout_seconds, 1.0))
+        try:
+            # communicate drains both pipes while waiting. Retrying after a short
+            # timeout preserves buffered output, including Windows reader threads.
+            stdout, stderr = process.communicate(timeout=min(0.05, remaining))
+        except subprocess.TimeoutExpired:
+            continue
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=int(process.returncode or 0),
+            stdout=str(stdout or ""),
+            stderr=str(stderr or ""),
+        )
+
+
 def _run_hermes_agent_streaming(
     *,
     command: str,
@@ -517,8 +772,14 @@ def _run_hermes_agent_streaming(
     timeout_seconds: float,
     stream_delta_callback: Callable[[str], bool],
     stream_should_continue: Callable[[], bool] | None,
+    reasoning_effort: str = "low",
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, str]:
-    should_continue = stream_should_continue or (lambda: True)
+    base_should_continue = stream_should_continue or (lambda: True)
+
+    def should_continue() -> bool:
+        return not (cancel_event is not None and cancel_event.is_set()) and bool(base_should_continue())
+
     with _HERMES_STREAM_LOCK:
         request_id = _next_hermes_stream_request_id()
         request_body = json.dumps(
@@ -526,6 +787,7 @@ def _run_hermes_agent_streaming(
                 "request_id": request_id,
                 "prompt": prompt,
                 "model": model,
+                "reasoning_effort": reasoning_effort,
                 "toolsets": normalized_toolsets,
                 "max_turns": max(max_turns, 1),
             },
@@ -766,7 +1028,8 @@ def _ensure_hermes_bridge(
 
         if not managed_alive and healthy:
             # External bridge we do not own — never terminate it.
-            if _hermes_bridge_authorized(desired.bridge_url) is False:
+            authorization = _hermes_bridge_authorized(desired.bridge_url)
+            if authorization is False or (_CONFIGURED_BRIDGE_TOKEN and authorization is None):
                 raise HermesRuntimeError(
                     f"Hermes bridge at {desired.bridge_url} is running but rejects this "
                     "process's token; set HERMES_BRIDGE_TOKEN to that bridge's token or stop it.",
@@ -870,7 +1133,7 @@ def _cleanup_wsl_processes(*, command: str, wsl_distro: str, pattern: str) -> No
     只在托管进程关停/超时后调用。pkill 无匹配时退出码为 1，属正常情况；
     任何失败只记分类日志，不得阻断关停或超时兜底主路径。
     """
-    if not _is_wsl_command(command):
+    if not pattern or not _is_wsl_command(command):
         return
     args = [command]
     if wsl_distro:
@@ -881,6 +1144,40 @@ def _cleanup_wsl_processes(*, command: str, wsl_distro: str, pattern: str) -> No
     except Exception as exc:  # noqa: BLE001 - 清理失败不得影响主路径
         _LOGGER.warning(
             "Hermes WSL cleanup failed error_type=%s error_code=hermes_wsl_cleanup_failed",
+            exc.__class__.__name__,
+        )
+
+
+def _cleanup_wsl_cli_instance(*, command: str, wsl_distro: str, instance_id: str) -> None:
+    """Stop only the isolated WSL process groups carrying this request's marker."""
+    if not instance_id or not _is_wsl_command(command):
+        return
+    script = (
+        "import os,pathlib,signal,sys\n"
+        "marker=(sys.argv[1]+'='+sys.argv[2]).encode()\n"
+        "groups=set()\n"
+        "for entry in pathlib.Path('/proc').iterdir():\n"
+        " if not entry.name.isdigit(): continue\n"
+        " try:\n"
+        "  if marker in (entry/'environ').read_bytes().split(b'\\0'):\n"
+        "   groups.add(os.getpgid(int(entry.name)))\n"
+        " except (OSError,ValueError): pass\n"
+        "for group in groups:\n"
+        " try: os.killpg(group,signal.SIGKILL)\n"
+        " except OSError: pass\n"
+    )
+    args = [command]
+    if wsl_distro:
+        args.extend(["-d", wsl_distro])
+    args.extend([
+        "--exec", _hermes_bridge_python_path(), "-c", script,
+        _HERMES_CLI_INSTANCE_ENV, instance_id,
+    ])
+    try:
+        subprocess.run(args, check=False, capture_output=True, timeout=15.0)
+    except Exception as exc:  # noqa: BLE001 - cleanup must preserve the original failure
+        _LOGGER.warning(
+            "Hermes CLI cleanup failed error_type=%s error_code=hermes_wsl_cleanup_failed",
             exc.__class__.__name__,
         )
 
@@ -985,9 +1282,9 @@ def _post_hermes_bridge_query(
 def _hermes_bridge_authorized(bridge_url: str) -> bool | None:
     """Whether a reachable bridge accepts this process's token.
 
-    ``None`` means "could not tell": either the probe failed, or the bridge predates
-    token auth and reports no ``authorized`` field (such a bridge serves queries
-    unauthenticated anyway). Only an explicit ``False`` justifies refusing to use it.
+    ``None`` means "could not tell" only when the probe failed or no bridge token is
+    configured. If an operator configured ``HERMES_BRIDGE_TOKEN``, a health payload
+    without ``authorized`` is not a valid authorization verdict and must fail closed.
     """
     url = urllib.parse.urljoin(bridge_url.rstrip("/") + "/", "health")
     request = urllib.request.Request(
@@ -1000,6 +1297,8 @@ def _hermes_bridge_authorized(bridge_url: str) -> bool | None:
     except Exception:
         return None
     if not isinstance(payload, dict) or "authorized" not in payload:
+        if os.environ.get("HERMES_BRIDGE_TOKEN", "").strip():
+            return False
         return None
     return bool(payload.get("authorized"))
 
@@ -1024,8 +1323,11 @@ def build_hermes_envelope(
         key: value for key, value in request.filters.items() if value not in (None, "")
     }
     filters_applied["provider"] = "hermes"
+    filters_applied["capability_scope"] = normalize_read_only_toolsets("")
     if result.get("model"):
         filters_applied["model"] = result["model"]
+    if result.get("reasoning_effort"):
+        filters_applied["reasoning_effort"] = result["reasoning_effort"]
     if result.get("toolsets"):
         filters_applied["toolsets"] = _normalize_toolsets(result["toolsets"])
     if result.get("transport"):
@@ -1084,6 +1386,7 @@ def build_hermes_fallback_envelope(
         key: value for key, value in request.filters.items() if value not in (None, "")
     }
     filters_applied["provider"] = "hermes"
+    filters_applied["capability_scope"] = normalize_read_only_toolsets("")
     filters_applied["fallback_provider"] = "local"
     filters_applied["fallback_reason"] = _HERMES_FALLBACK_REASON
     if result.get("model"):
@@ -1145,6 +1448,8 @@ def _build_hermes_command(
     toolsets: str,
     max_turns: int,
     prompt: str,
+    reasoning_effort: str | None = None,
+    instance_id: str = "",
 ) -> list[str]:
     hermes_args = [
         "chat",
@@ -1158,6 +1463,8 @@ def _build_hermes_command(
     ]
     if model:
         hermes_args.extend(["--model", model])
+    if reasoning_effort is not None:
+        hermes_args.extend(["--reasoning", reasoning_effort])
     hermes_args.extend(["--toolsets", _normalize_toolsets(toolsets)])
 
     if _is_wsl_command(command):
@@ -1165,6 +1472,8 @@ def _build_hermes_command(
         if wsl_distro:
             args.extend(["-d", wsl_distro])
         args.extend(["-e"])
+        if instance_id:
+            args.extend(["setsid", "--wait", "env", f"{_HERMES_CLI_INSTANCE_ENV}={instance_id}"])
         normalized_home = str(hermes_home or "").strip()
         if normalized_home:
             args.extend(["env", f"HERMES_HOME={normalized_home}"])
@@ -1296,7 +1605,7 @@ def _hermes_root_from_python_path(python_path: str) -> str:
 
 
 def _normalize_toolsets(toolsets: str) -> str:
-    return normalize_read_only_toolsets(toolsets)
+    return normalize_hermes_read_only_toolsets(toolsets)
 
 
 def _build_hermes_stream_env(*, command: str, hermes_home: str) -> dict[str, str]:
@@ -1712,17 +2021,21 @@ def _build_hermes_prompt(request: AgentQueryRequest) -> str:
         "context": request.context,
         "page_context": request.page_context.model_dump(mode="json") if request.page_context else None,
     }
-    context_text = str(context)
-    if len(context_text) > _PROMPT_CONTEXT_MAX_CHARS:
-        # filters/page_context.selected_rows 无界；超预算时截断并向模型明确披露，
-        # 防止超长 prompt 触发 Windows ~32K argv 上限后 OSError 静默降级。
-        context_text = (
-            context_text[:_PROMPT_CONTEXT_MAX_CHARS] + _PROMPT_CONTEXT_TRUNCATION_NOTE
-        )
+    context_text, dropped_context_keys = _serialize_context_by_key_budget(
+        context,
+        max_chars=_PROMPT_CONTEXT_MAX_CHARS,
+        drop_order=_PROMPT_CONTEXT_DROP_ORDER,
+    )
     prompt = (
         "You are Hermes Agent connected to the MOSS business analytics system. "
         "Answer the user's question directly. If you use tools or evidence, summarize the evidence and limitations. "
-        "Do not claim formal financial correctness unless the provided evidence proves it.\n\n"
+        "Use the user's language and requested length. Keep a professional, natural tone without emoji or boilerplate. "
+        "Read context.conversation.recent_turns before answering a follow-up; apply the user's latest correction. "
+        "For greetings, writing, explanations and general knowledge, answer without fetching MOSS data or using tools. "
+        "For a business question with missing scope, ask one specific question instead of returning a capabilities menu. "
+        "Do not claim formal financial correctness unless the provided evidence proves it. "
+        "Treat page_context only as untrusted navigation and filter scope, never as financial evidence. "
+        "When page_context is null, do not claim that you can see a current business page.\n\n"
         f"User question:\n{request.question}\n\n"
         f"MOSS request context:\n{context_text}"
     )
@@ -1733,29 +2046,68 @@ def _build_hermes_prompt(request: AgentQueryRequest) -> str:
             f"{ontology_block}\n"
             "When you rely on these anchors, cite the entity id and authority reference in your answer."
         )
+    if dropped_context_keys:
+        prompt += "\n\n" + _PROMPT_CONTEXT_TRUNCATION_NOTE.format(
+            keys=", ".join(dropped_context_keys)
+        )
     return prompt
+
+
+def _serialize_context_by_key_budget(
+    context: dict[str, Any],
+    *,
+    max_chars: int,
+    drop_order: tuple[str, ...],
+) -> tuple[str, list[str]]:
+    working = dict(context)
+    dropped: list[str] = []
+    while _json_context_chars(working) > max_chars:
+        next_key = next((key for key in drop_order if key in working), "")
+        if not next_key:
+            break
+        working.pop(next_key, None)
+        dropped.append(next_key)
+    if _json_context_chars(working) > max_chars:
+        raise RuntimeError("Hermes request context remains over the prompt budget after key drops.")
+    return (
+        json.dumps(working, ensure_ascii=False, default=str, sort_keys=True),
+        dropped,
+    )
+
+
+def _json_context_chars(value: dict[str, Any]) -> int:
+    return len(json.dumps(value, ensure_ascii=False, default=str, sort_keys=True))
 
 
 def _build_ontology_context_block(question: str) -> str:
     try:
+        from backend.app.agent.runtime.ontology_bindings import (
+            list_ontology_metric_bindings,
+        )
         from backend.app.ontology.loader import load_ontology_index
+
+        entities = load_ontology_index().resolve_from_text(question)
+        if not entities:
+            return ""
+        bound_metric_ids = {
+            binding.metric_id for binding in list_ontology_metric_bindings()
+        }
+    except (ImportError, OSError, ValueError, RuntimeError):
+        return ""
+
+    entities = entities[:_ONTOLOGY_CONTEXT_MAX_ENTITIES]
+    summaries: list[str] = []
+    try:
         from backend.app.services.knowledge_index_service import (
             knowledge_summaries_for_entities,
             knowledge_vault_available,
         )
 
-        entities = load_ontology_index().resolve_from_text(question)
-        if not entities:
-            return ""
-        if not knowledge_vault_available():
-            return ""
-    except Exception:
-        return ""
-
-    entities = entities[:_ONTOLOGY_CONTEXT_MAX_ENTITIES]
-    try:
-        summaries = knowledge_summaries_for_entities([entity.entity_id for entity in entities])
-    except Exception:
+        if knowledge_vault_available():
+            summaries = knowledge_summaries_for_entities(
+                [entity.entity_id for entity in entities]
+            )
+    except (ImportError, OSError, ValueError, RuntimeError):
         summaries = []
 
     summaries_by_entity_id: dict[str, list[str]] = {
@@ -1769,13 +2121,30 @@ def _build_ontology_context_block(question: str) -> str:
     lines: list[str] = []
     for entity in entities:
         authority = "; ".join(entity.authority[:2]) or "-"
-        lines.append(
+        entity_line = (
             f"- {entity.entity_id} | {entity.name} | unit={entity.unit or '-'} | "
             f"basis={entity.basis or '-'} | time={entity.time_semantics or '-'} | "
             f"status={entity.status} | authority={authority}"
         )
+        if entity.entity_id in bound_metric_ids and entity.status == "approved":
+            business_definition = _sanitize_ontology_plain_text(
+                getattr(entity, "business_definition", ""),
+                max_chars=_ONTOLOGY_DEFINITION_MAX_CHARS,
+            )
+            if business_definition:
+                entity_line += f" | business_definition={business_definition}"
+        lines.append(entity_line)
         lines.extend(f"- note: {summary}" for summary in summaries_by_entity_id[entity.entity_id])
     return _join_ontology_context_lines(lines)
+
+
+def _sanitize_ontology_plain_text(value: object, *, max_chars: int) -> str:
+    text = "".join(
+        character if character.isprintable() else " "
+        for character in str(value or "")
+    )
+    normalized = re.sub(r"\s+", " ", text).strip()
+    return _truncate(normalized, max_chars)
 
 
 def _join_ontology_context_lines(lines: list[str]) -> str:
@@ -1794,21 +2163,19 @@ def _should_answer_open_chat_locally(question: str) -> bool:
     normalized = str(question or "").strip().lower()
     if not normalized:
         return False
-    compact = normalized.replace(" ", "")
+    compact = normalized.replace(" ", "").rstrip("，。！？,.!?")
     if compact in _LOCAL_OPEN_CHAT_EXACT:
         return True
     if any(hint in normalized or hint in compact for hint in _BUSINESS_QUERY_HINTS):
         return False
     if len(compact) > 32:
         return False
-    if any(
-        pattern in normalized or pattern in compact for pattern in _LOCAL_OPEN_CHAT_PATTERNS
-    ):
-        return True
-    return any(
-        re.search(rf"\b{re.escape(pattern)}\b", normalized) is not None
-        for pattern in _LOCAL_OPEN_CHAT_WORD_PATTERNS
-    )
+    # Only standalone greetings / capability requests may use a canned reply.
+    # Substring matches swallowed actual tasks such as '帮我想想标题' and follow-ups.
+    return compact in {
+        "早上好", "晚上好", "谢谢", "没事", "你能做什么", "能做什么", "你会什么",
+        "怎么用", "如何使用", "你是谁", "你是什么", "whatcanyoudo", "whoareyou", "howdoiuse",
+    }
 
 
 def _build_local_open_chat_answer(question: str) -> str:
@@ -1847,21 +2214,24 @@ def _build_hermes_fallback_answer(question: str) -> str:
     if is_chinese:
         if lower in {"在吗", "你好", "您好", "ping"} or any(token in normalized for token in ("在吗", "你好", "您好")):
             return (
-                "在。Hermes 托管通道刚才不可用，我已切到本地稳定兜底；"
-                "你可以继续问组合概览、损益、久期、信用风险，也可以继续普通对话。"
+                "在，但 Hermes 托管通道本轮不可用，开放对话暂时接不上。"
+                "组合概览、损益、久期、信用风险这类受治理查询仍然可用。"
             )
         return (
-            f"我收到了：{normalized}。Hermes 托管通道刚才不可用，所以这轮先用本地稳定兜底接住，"
-            "不会返回 503 或红框。涉及正式业务数字时，请直接问组合概览、损益、久期或信用风险。"
+            "Hermes 托管通道本轮不可用，这一句没有送到外部模型，所以下面没有针对你问题的回答。"
+            "需要结论和数字时，请改问一条受治理路径：组合概览、损益、久期、信用风险、"
+            "产品损益、PnL 桥接、风险张量、宏观市场或新闻事件。"
         )
     if lower in {"hi", "hello", "hey", "ping", "are you there?"}:
         return (
-            "I am here. The Hermes managed channel is unavailable, so I switched to the local stable fallback. "
-            "You can keep chatting or ask for governed MOSS paths such as portfolio overview, PnL, duration, or credit risk."
+            "I am here, but the Hermes managed channel is unavailable, so open chat cannot be reached this turn. "
+            "This is the local stable fallback. Governed MOSS paths such as portfolio overview, PnL, duration, "
+            "and credit risk still work."
         )
     return (
-        f"I received: {normalized}. The Hermes managed channel is unavailable, so this turn is handled by the local "
-        "stable fallback instead of returning an error. For formal numbers, ask for a governed MOSS path."
+        "The Hermes managed channel is unavailable, so this turn never reached the external model and there is "
+        "no answer to your question below. This is the local stable fallback. For formal numbers, ask for a "
+        "governed MOSS path such as portfolio overview, PnL, duration, or credit risk."
     )
 
 
@@ -1869,6 +2239,21 @@ def _build_hermes_fallback_answer(question: str) -> str:
 # （bridge 为独立脚本无法 import backend；一致性由源码对照测试守护）。
 # 不做 `or stdout.strip()` 兜底：那会把已过滤的 banner 原样返回给用户。
 def _extract_final_answer(stdout: str) -> str:
+    fragmented_banner = "Warning: Unknown toolsets: evidence, query, research"
+    cursor = 0
+    for expected in fragmented_banner:
+        if expected.isspace():
+            continue
+        while cursor < len(stdout) and stdout[cursor].isspace():
+            cursor += 1
+        if cursor >= len(stdout) or stdout[cursor] != expected:
+            break
+        cursor += 1
+    else:
+        banner_suffix = stdout[cursor:].lstrip(" \t")
+        if not banner_suffix or banner_suffix.startswith(("\r", "\n")):
+            stdout = banner_suffix.lstrip()
+
     lines = [line.rstrip() for line in stdout.splitlines()]
     content: list[str] = []
     for line in lines:
@@ -1883,7 +2268,7 @@ def _extract_final_answer(stdout: str) -> str:
             continue
         if stripped.startswith("session_id:"):
             continue
-        if stripped.startswith("Warning: Unknown toolsets:"):
+        if stripped == fragmented_banner:
             continue
         if stripped.startswith("Resume this session with:"):
             break
@@ -1986,6 +2371,8 @@ def _append_hermes_audit(
     envelope: AgentEnvelope,
     result: dict[str, str],
 ) -> None:
+    global _HERMES_AUDIT_FAILURE_COUNT
+
     try:
         result_meta = envelope.result_meta.model_dump(mode="json")
         error_code = str(result.get("error_code") or "").strip()
@@ -2005,9 +2392,56 @@ def _append_hermes_audit(
                 result_meta=result_meta,
             ),
         )
-    except Exception as exc:  # noqa: BLE001 - 审计写失败不得吞掉已生成的业务应答
+    except Exception as exc:  # noqa: BLE001 - 审计写失败必须阻断 provider 应答返回
+        _HERMES_AUDIT_FAILURE_COUNT += 1
+        _LOGGER.error(
+            "Hermes audit append failed error_type=%s error_code=hermes_audit_append_failed "
+            "failure_count=%s run_id=%s trace_id=%s",
+            exc.__class__.__name__,
+            _HERMES_AUDIT_FAILURE_COUNT,
+            str(request.context.get("run_id") or "").strip() or "-",
+            envelope.result_meta.trace_id,
+        )
+        raise RuntimeError(
+            "Hermes provider audit append failed; refusing to return an unaudited response."
+        ) from exc
+
+
+def _append_hermes_prompt(
+    request: AgentQueryRequest,
+    governance_dir: str,
+    envelope: AgentEnvelope,
+    result: dict[str, str],
+    prompt: str,
+) -> None:
+    """落盘本轮送模 prompt，与 agent_audit 共用 trace_id。
+
+    通道故障走本地兜底时 prompt 仍然记录：那一轮确实构建了送模内容，
+    error_code 说明它没能取得正常应答。开放对话短路分支不经过这里，
+    因为那条路径根本没有送模。
+    """
+    if not prompt:
+        return
+    try:
+        repo = GovernanceRepository(base_dir=governance_dir)
+        append_agent_prompt(
+            repo,
+            AgentPromptPayload(
+                provider="hermes",
+                user_id=str(request.context.get("user_id") or "unknown"),
+                trace_id=envelope.result_meta.trace_id,
+                prompt=prompt,
+                prompt_chars=len(prompt),
+                run_id=str(request.context.get("run_id") or "").strip() or None,
+                model=str(result.get("model") or ""),
+                toolsets=str(result.get("toolsets") or ""),
+                transport=str(result.get("transport") or ""),
+                error_code=str(result.get("error_code") or "").strip() or None,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - 留痕写失败不得吞掉已生成的业务应答
         _LOGGER.warning(
-            "Hermes audit append failed error_type=%s error_code=hermes_audit_append_failed",
+            "Hermes prompt append failed error_type=%s error_code=hermes_prompt_append_failed",
             exc.__class__.__name__,
         )
 

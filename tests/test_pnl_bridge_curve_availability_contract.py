@@ -178,6 +178,112 @@ def test_rows_that_cannot_move_are_exempt_rather_than_observed(overrides):
     assert row.treasury_curve_availability_reason == CURVE_EFFECT_REASON_NO_CURVE_SENSITIVITY
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"years_to_maturity": None, "modified_duration": None},
+        {"years_to_maturity": None, "modified_duration": "4"},
+        {"years_to_maturity": "5", "modified_duration": None},
+        {"years_to_maturity": "0", "modified_duration": "0", "duration_quality_flag": "maturity_unavailable"},
+    ],
+)
+def test_missing_sensitivity_inputs_do_not_claim_observed_zero_risk(overrides):
+    current = _credit_balance_row("2026-07-31", maturity_date=None, **overrides)
+    row = _first(
+        balance_rows_current=[current],
+        treasury_curve_current=_curve("2.50"),
+        treasury_curve_prior=_curve("2.25"),
+        aaa_credit_curve_current=_curve("3.50"),
+        aaa_credit_curve_prior=_curve("3.25"),
+    )
+
+    assert row.quality_flag == "warning"
+    for effect in ("roll_down", "treasury_curve", "credit_spread"):
+        assert getattr(row, effect) == Decimal("0")
+        assert getattr(row, f"{effect}_availability") == CURVE_EFFECT_UNAVAILABLE
+        assert getattr(row, f"{effect}_availability_reason") == "sensitivity_input_unavailable"
+    assert any(message.startswith("SENSITIVITY_INPUT_UNAVAILABLE:") for message in row.balance_diagnostics)
+    assert row.explained_pnl == row.actual_pnl == Decimal("100000")
+    assert row.residual == Decimal("0")
+    assert PnlBridgeRowSchema.model_validate(row).treasury_curve_availability_reason == "sensitivity_input_unavailable"
+    summary = _build_summary([row])
+    assert summary.treasury_curve_availability.applicable_rows == 1
+    assert summary.treasury_curve_availability.unavailable_rows == 1
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"years_to_maturity": "5", "modified_duration": "4", "maturity_date": None},
+        {"years_to_maturity": None, "modified_duration": None, "maturity_date": "2031-07-31"},
+    ],
+)
+def test_usable_materialized_or_contract_sensitivity_remains_available(overrides):
+    row = _first(
+        balance_rows_current=[_balance_row("2026-07-31", **overrides)],
+        treasury_curve_current=_curve("2.50"),
+        treasury_curve_prior=_curve("2.25"),
+    )
+    assert row.treasury_curve_availability == CURVE_EFFECT_OK
+    assert not any(message.startswith("SENSITIVITY_INPUT_UNAVAILABLE:") for message in row.balance_diagnostics)
+
+
+def test_unconfirmed_sensitivity_status_does_not_claim_nonzero_effects_were_zeroed():
+    row = _first(
+        balance_rows_current=[
+            _balance_row("2026-07-31", duration_quality_flag="maturity_unavailable")
+        ],
+        treasury_curve_current=_curve("2.50"),
+        treasury_curve_prior=_curve("2.25"),
+    )
+
+    assert row.treasury_curve == Decimal("-100000")
+    assert row.treasury_curve_availability == CURVE_EFFECT_UNAVAILABLE
+    assert row.treasury_curve_availability_reason == "sensitivity_input_unavailable"
+    diagnostic = next(
+        message for message in row.balance_diagnostics
+        if message.startswith("SENSITIVITY_INPUT_UNAVAILABLE:")
+    )
+    assert "defaulted to 0" not in diagnostic
+    assert "not modeled" not in diagnostic
+    assert "unconfirmed" in diagnostic
+
+
+@pytest.mark.parametrize("basis", ["FVTPL", "AC"])
+def test_unmodeled_fund_sensitivity_preserves_amounts_and_residual_quality(basis):
+    residual = Decimal("-20000") if basis == "FVTPL" else Decimal("0")
+    actual = Decimal("100000") + residual
+    row = _first(
+        pnl_fi_rows=[_fact_row(accounting_basis=basis, fair_value_change_516=str(residual), total_pnl=str(actual))],
+        balance_rows_current=[_balance_row("2026-07-31", accounting_basis=basis, asset_class="fund", maturity_date=None, years_to_maturity=None, modified_duration=None)],
+        treasury_curve_current=_curve("2.50"),
+        treasury_curve_prior=_curve("2.25"),
+    )
+    assert row.treasury_curve == row.roll_down == Decimal("0")
+    assert row.actual_pnl == actual
+    assert row.explained_pnl == Decimal("100000")
+    assert row.residual == residual
+    assert row.quality_flag == ("error" if basis == "FVTPL" else "ok")
+    assert row.treasury_curve_availability == (CURVE_EFFECT_UNAVAILABLE if basis == "FVTPL" else CURVE_EFFECT_NOT_APPLICABLE)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"balance_rows_current": [_balance_row("2026-07-31", market_value_amount=None)]},
+        {"balance_rows_prior": [], "pnl_fi_rows": [_fact_row(fair_value_change_516="-100000", total_pnl="0")]},
+    ],
+)
+def test_unavailable_curve_effect_inputs_escalate_closed_row_quality(kwargs):
+    row = _first(
+        treasury_curve_current=_curve("2.50"),
+        treasury_curve_prior=_curve("2.25"),
+        **kwargs,
+    )
+    assert row.roll_down_availability == CURVE_EFFECT_UNAVAILABLE
+    assert row.quality_flag == "warning"
+
+
 def test_row_without_a_current_balance_row_names_that_gap_instead_of_claiming_zero():
     row = _first(balance_rows_current=[])
 
@@ -734,13 +840,14 @@ def test_published_row_payload_is_unchanged_apart_from_the_new_availability_keys
     assert dumped["roll_down"] == _FROZEN_ROW_BEFORE_AVAILABILITY["roll_down"]
 
 
-def test_summary_amount_fields_are_unchanged_apart_from_the_new_availability_keys():
+def test_summary_compat_amount_fields_stay_unchanged_when_raw_text_is_added():
     dumped = _build_summary(_run()).model_dump(mode="json")
     amounts = {key: value for key, value in dumped.items() if key not in _NEW_SUMMARY_KEYS}
 
     assert set(dumped) - _NEW_SUMMARY_KEYS == set(amounts)
     assert amounts["total_treasury_curve"] == {
         "raw": 0.0,
+        "raw_text": "0",
         "unit": "yuan",
         "display": "+0.00",
         "precision": 2,
@@ -748,6 +855,7 @@ def test_summary_amount_fields_are_unchanged_apart_from_the_new_availability_key
     }
     assert amounts["total_roll_down"] == {
         "raw": 0.0,
+        "raw_text": "0",
         "unit": "yuan",
         "display": "+0.00",
         "precision": 2,
@@ -755,7 +863,9 @@ def test_summary_amount_fields_are_unchanged_apart_from_the_new_availability_key
     }
     assert amounts["total_credit_spread"]["raw"] == 0.0
     assert amounts["total_explained_pnl"]["raw"] == 100000.0
+    assert amounts["total_explained_pnl"]["raw_text"] == "100000"
     assert amounts["total_actual_pnl"]["raw"] == 100000.0
+    assert amounts["total_actual_pnl"]["raw_text"] == "100000"
     assert amounts["total_residual"]["raw"] == 0.0
 
 

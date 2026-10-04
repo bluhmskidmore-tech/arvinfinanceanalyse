@@ -11,8 +11,11 @@ import type {
 } from "../api/contracts";
 import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
+  PRODUCT_CATEGORY_READ_503_RETRY_LIMIT,
   buildProductCategoryDataHealth,
   formatProductCategoryChartNumberTwoDecimals,
+  productCategoryReadRetryDelay,
+  shouldRetryProductCategoryRead,
 } from "../features/product-category-pnl/pages/productCategoryPnlPageModel";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
@@ -178,6 +181,7 @@ function readChartOption(panelTestId: string) {
       name?: string;
       type?: string;
       data?: unknown[];
+      connectNulls?: boolean;
       xAxisIndex?: number;
       yAxisIndex?: number;
       silent?: boolean;
@@ -500,6 +504,44 @@ function buildManagementMonitorAttributionEnvelope(
 }
 
 describe("ProductCategoryPnlPage", () => {
+  it("retries only refresh-period 503 read failures within the bounded window", () => {
+    expect(
+      shouldRetryProductCategoryRead(
+        0,
+        new Error("Request failed: /ui/pnl/product-category/dates (503)"),
+      ),
+    ).toBe(true);
+    expect(
+      shouldRetryProductCategoryRead(
+        PRODUCT_CATEGORY_READ_503_RETRY_LIMIT - 1,
+        { status: 503 },
+      ),
+    ).toBe(true);
+    expect(
+      shouldRetryProductCategoryRead(
+        PRODUCT_CATEGORY_READ_503_RETRY_LIMIT,
+        { status: 503 },
+      ),
+    ).toBe(false);
+    expect(
+      shouldRetryProductCategoryRead(
+        0,
+        new Error("Request failed: /ui/pnl/product-category (500)"),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRetryProductCategoryRead(0, new Error("baseline-unavailable")),
+    ).toBe(false);
+  });
+
+  it("backs off refresh-period retries and caps the polling interval", () => {
+    expect(productCategoryReadRetryDelay(0)).toBe(1_000);
+    expect(productCategoryReadRetryDelay(1)).toBe(2_000);
+    expect(productCategoryReadRetryDelay(3)).toBe(8_000);
+    expect(productCategoryReadRetryDelay(4)).toBe(15_000);
+    expect(productCategoryReadRetryDelay(20)).toBe(15_000);
+  });
+
   it("renders the H1 management monitor as a compact candidate analysis section", async () => {
     const monthEndDates = [
       "2026-06-30",
@@ -561,7 +603,7 @@ describe("ProductCategoryPnlPage", () => {
       within(monitor).getByText("达到 5 月净营收水平"),
     ).toBeInTheDocument();
     expect(
-      within(monitor).getByText("达到 H1 月均净营收水平"),
+      within(monitor).getByText("达到年内月均净营收水平"),
     ).toBeInTheDocument();
     expect(
       within(monitor).getByText("达到 Q1 月均净营收水平"),
@@ -871,9 +913,16 @@ describe("ProductCategoryPnlPage", () => {
     const fullPath = within(bridge).getByTestId(
       "product-category-attribution-full-path",
     );
-    expect(
-      within(rootCause).getAllByTestId("product-category-root-cause-driver"),
-    ).toHaveLength(3);
+    const rootCauseDrivers = within(rootCause).getAllByTestId(
+      "product-category-root-cause-driver",
+    );
+    expect(rootCauseDrivers).toHaveLength(3);
+    rootCauseDrivers.forEach((driver) => {
+      expect(driver.textContent).not.toMatch(/%/);
+      expect(
+        within(driver).getByText(/^(同向|抵消|中性)$/),
+      ).toBeInTheDocument();
+    });
     expect(
       within(rootCause).getByRole("button", { name: "查看正式明细" }),
     ).toBeEnabled();
@@ -1432,10 +1481,13 @@ describe("ProductCategoryPnlPage", () => {
     );
     expect(
       screen.getByTestId("product-category-page-subtitle"),
-    ).toHaveTextContent("报告月 2026年02月");
+    ).toHaveTextContent("产品类别损益与场景分析");
     expect(
       screen.getByTestId("product-category-report-date-slot"),
-    ).toHaveTextContent("2026-02-28 · 正式口径 | 月度视图");
+    ).toHaveTextContent("正式口径 | 月度视图");
+    expect(
+      screen.getByTestId("product-category-report-date-slot"),
+    ).toHaveAttribute("title", "报告日期 2026-02-28");
     expect(screen.getByTestId("product-category-role-badge")).toHaveTextContent(
       "本地离线契约回放",
     );
@@ -1505,19 +1557,25 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getAllByTestId("product-category-core-metric")).toHaveLength(
       5,
     );
-    expect(
-      screen.getByTestId("product-category-adjustment-lead"),
-    ).toHaveTextContent("手工调整与审计");
+    const adjustmentLead = screen.getByTestId("product-category-adjustment-lead");
+    expect(adjustmentLead).toHaveTextContent("手工调整与审计");
+    expect(adjustmentLead).toHaveAttribute("data-numbered", "false");
+    expect(adjustmentLead).toHaveAttribute("data-content-gap", "tight");
+    expect(adjustmentLead).not.toHaveClass("product-category-section-lead");
     expect(
       screen.getByTestId("product-category-unified-controls"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("product-category-formal-table-lead"),
-    ).toHaveTextContent("正式产品类别损益表");
+    const formalTableLead = screen.getByTestId(
+      "product-category-formal-table-lead",
+    );
+    expect(formalTableLead).toHaveTextContent("正式产品类别损益表");
+    expect(formalTableLead).toHaveAttribute("data-numbered", "false");
+    expect(formalTableLead).toHaveAttribute("data-content-gap", "tight");
     await waitForTrendDiagnosticsAutoLoad();
-    expect(
-      screen.getByTestId("product-category-diagnostics-lead"),
-    ).toHaveTextContent("受治理诊断面板");
+    const diagnosticsLead = screen.getByTestId("product-category-diagnostics-lead");
+    expect(diagnosticsLead).toHaveTextContent("受治理诊断面板");
+    expect(diagnosticsLead).toHaveAttribute("data-numbered", "false");
+    expect(diagnosticsLead).toHaveAttribute("data-content-gap", "tight");
     expect(
       screen.getByTestId("product-category-diagnostics-surface"),
     ).toBeInTheDocument();
@@ -1533,9 +1591,12 @@ describe("ProductCategoryPnlPage", () => {
     expect(
       screen.getByTestId("product-category-operating-analysis"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("product-category-operating-profit-rank"),
-    ).toHaveTextContent("1.45");
+    const profitRank = screen.getByTestId(
+      "product-category-operating-profit-rank",
+    );
+    expect(profitRank).toHaveTextContent("AC债券投资");
+    expect(profitRank).toHaveTextContent("0.76");
+    expect(profitRank).not.toHaveTextContent("生息资产");
     await waitFor(() => {
       expect(
         screen.getByTestId("product-category-operating-movement"),
@@ -1576,15 +1637,19 @@ describe("ProductCategoryPnlPage", () => {
     expect(
       screen.getByTestId("product-category-attribution-bridge"),
     ).toHaveTextContent("主导产品与前三驱动");
-    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent(
-      "主导产品",
+    const rootCause = screen.getByTestId("product-category-root-cause");
+    expect(rootCause).toHaveTextContent("主导产品");
+    expect(rootCause).toHaveTextContent(
+      "拆放同业 变动 +0.02 亿元，主导原因是 规模因素 +0.02 亿元。",
     );
-    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent(
-      "FTP因素",
+    expect(rootCause).not.toHaveTextContent("生息资产");
+    const rootCauseDrivers = within(rootCause).getAllByTestId(
+      "product-category-root-cause-driver",
     );
-    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent(
-      "未解释",
-    );
+    expect(rootCauseDrivers).toHaveLength(3);
+    expect(rootCauseDrivers[0]).toHaveTextContent(/规模因素\s*\+0\.02\s*同向/);
+    expect(rootCauseDrivers[1]).toHaveTextContent(/天数因素\s*-0\.01\s*抵消/);
+    expect(rootCauseDrivers[2]).toHaveTextContent(/利率因素\s*\+0\.01\s*同向/);
     expect(
       screen.getByTestId("product-category-decision-focus"),
     ).toHaveTextContent("本期决策焦点");
@@ -1923,6 +1988,55 @@ describe("ProductCategoryPnlPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it(
+    "automatically recovers dates and baseline reads after refresh-period 503 responses",
+    async () => {
+      const baseClient = createApiClient({ mode: "mock" });
+      let datesAttempts = 0;
+      let baselineAttempts = 0;
+      const getProductCategoryDates = vi.fn(async () => {
+        datesAttempts += 1;
+        if (datesAttempts === 1) {
+          throw new Error(
+            "Request failed: /ui/pnl/product-category/dates (503)",
+          );
+        }
+        return baseClient.getProductCategoryDates();
+      });
+      const getProductCategoryPnl = vi.fn(async (options) => {
+        if (!options.scenarioRatePct) {
+          baselineAttempts += 1;
+          if (baselineAttempts === 1) {
+            throw new Error(
+              "Request failed: /ui/pnl/product-category?report_date=2026-02-28&view=monthly (503)",
+            );
+          }
+        }
+        return baseClient.getProductCategoryPnl(options);
+      });
+
+      renderWorkbenchAppWithClient({
+        ...baseClient,
+        getProductCategoryDates,
+        getProductCategoryPnl,
+      });
+
+      expect(
+        await screen.findByTestId(
+          "product-category-table",
+          undefined,
+          { timeout: 5_000 },
+        ),
+      ).toBeInTheDocument();
+      expect(datesAttempts).toBe(2);
+      expect(baselineAttempts).toBeGreaterThanOrEqual(2);
+      expect(
+        screen.getByTestId("product-category-data-health"),
+      ).toHaveAttribute("data-health-state", "ready");
+    },
+    10_000,
+  );
+
   it("surfaces a first-screen baseline failure and recovers through its retry action", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
@@ -2023,7 +2137,10 @@ describe("ProductCategoryPnlPage", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByTestId("product-category-report-date-slot"),
-    ).toHaveTextContent("2026-01-31 · 口径待确认");
+    ).toHaveTextContent("口径待确认");
+    expect(
+      screen.getByTestId("product-category-report-date-slot"),
+    ).toHaveAttribute("title", "报告日期 2026-01-31");
 
     pendingBaseline.resolve(
       buildMockProductCategoryPnlEnvelope({
@@ -2863,8 +2980,9 @@ describe("ProductCategoryPnlPage", () => {
       expect(pnlSpy).toHaveBeenCalled();
       expect(adjSpy).toHaveBeenCalled();
     });
+    // 主报告仍由首个日期决定，监控另行复用当年历史。
     expect(pnlSpy.mock.calls.map((call) => call[0]!.reportDate)).toEqual([
-      firstDate,
+      firstDate, "2026-02-28", "2026-01-31",
     ]);
     expect(pnlSpy.mock.calls[0]![0]).toMatchObject({
       reportDate: firstDate,
@@ -2915,6 +3033,7 @@ describe("ProductCategoryPnlPage", () => {
         screen.getByTestId("product-category-scenario-sensitivity"),
       ).toHaveTextContent("总净营收");
     });
+    const readsAfterSensitivityLoaded = getProductCategoryPnl.mock.calls.length;
     expect(
       screen.getByTestId("product-category-scenario-sensitivity"),
     ).toHaveTextContent("情景解读");
@@ -2985,39 +3104,62 @@ describe("ProductCategoryPnlPage", () => {
       screen.getByTestId("product-category-scenario-sensitivity"),
     ).toHaveTextContent("当前筛选下暂无可比较产品行。");
     await user.click(screen.getByRole("button", { name: "仅承压" }));
-    expect(
-      screen.getByTestId("product-category-scenario-sensitivity"),
-    ).toHaveTextContent("生息资产");
+    const comparison = screen.getByTestId("product-category-scenario-comparison");
+    const acComparisonRow = within(comparison).getByRole("row", {
+      name: /AC债券投资 多情景对比/,
+    });
+    expect(acComparisonRow).toHaveTextContent("0.76");
+    expect(acComparisonRow).toHaveTextContent("0.25 / -0.51");
+    expect(comparison).not.toHaveTextContent("生息资产");
     await user.click(
-      screen.getByRole("button", { name: /生息资产 多情景对比/ }),
+      within(acComparisonRow).getByRole("button", { name: /AC债券投资 多情景对比/ }),
     );
     expect(
       screen.getByTestId("product-category-scenario-explanation"),
-    ).toHaveTextContent("生息资产");
+    ).toHaveTextContent("AC债券投资");
 
     await user.click(screen.getByRole("button", { name: /复核 1/ }));
     const explanation = screen.getByTestId(
       "product-category-scenario-explanation",
     );
     expect(explanation).toHaveTextContent("复核解释包");
-    expect(explanation).toHaveTextContent("生息资产");
-    expect(explanation).toHaveTextContent("正式归因");
-    expect(explanation).toHaveTextContent("FTP因素");
-    expect(explanation).toHaveTextContent("-0.62");
-    expect(explanation).toHaveTextContent("未解释");
+    expect(explanation).toHaveTextContent("AC债券投资");
+    expect(explanation).toHaveTextContent("基线 0.76");
+    expect(explanation).toHaveTextContent("-0.51");
+    // The fixture has no formal attribution row for this leaf product.
+    expect(explanation).toHaveTextContent("当前正式归因未返回可排序的驱动项。");
+    expect(explanation).not.toHaveTextContent("-0.62");
     expect(explanation).toHaveTextContent("口径桥");
     expect(explanation).toHaveTextContent("情景压力");
     expect(explanation).toHaveTextContent("正式归因合计");
     expect(explanation).toHaveTextContent("复核动作");
+    expect(explanation).toHaveTextContent("先补齐正式归因变动、六项驱动与闭合误差");
     expect(explanation).toHaveTextContent("核对正式归因期间口径");
-    expect(explanation).toHaveTextContent("重点追踪 FTP因素");
+    expect(explanation).not.toHaveTextContent("重点追踪 FTP因素");
     expect(
       within(explanation).getAllByRole("button", { name: "待核对" }),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
 
     await user.click(
       within(explanation).getAllByRole("button", { name: "已确认" })[0]!,
     );
+    expect(
+      within(explanation).getAllByRole("button", { name: "已确认" })[0],
+    ).toHaveAttribute("aria-pressed", "true");
+
+    // Product review choices are independent and survive switching the explanation.
+    const otherReviewButton = screen.getByRole("button", { name: /复核 2/ });
+    await user.click(otherReviewButton);
+    const otherExplanation = screen.getByTestId(
+      "product-category-scenario-explanation",
+    );
+    expect(
+      within(otherExplanation).getAllByRole("button", { name: "已确认" })[0],
+    ).toHaveAttribute("aria-pressed", "false");
+    await user.click(
+      within(otherExplanation).getAllByRole("button", { name: "已确认" })[0]!,
+    );
+    await user.click(screen.getByRole("button", { name: /复核 1/ }));
     expect(
       within(explanation).getAllByRole("button", { name: "已确认" })[0],
     ).toHaveAttribute("aria-pressed", "true");
@@ -3030,7 +3172,7 @@ describe("ProductCategoryPnlPage", () => {
     ).toHaveAttribute("aria-pressed", "true");
 
     expect(explanation).toHaveTextContent("复核结论台");
-    expect(explanation).toHaveTextContent("待核对 2");
+    expect(explanation).toHaveTextContent("待核对 1");
     expect(explanation).toHaveTextContent("已确认 0");
     expect(explanation).toHaveTextContent("有差异 1");
 
@@ -3039,10 +3181,10 @@ describe("ProductCategoryPnlPage", () => {
     );
     expect(
       within(explanation).getAllByRole("button", { name: "已确认" }),
-    ).toHaveLength(3);
-    expect(explanation).toHaveTextContent("已确认 3");
+    ).toHaveLength(2);
+    expect(explanation).toHaveTextContent("已确认 2");
     expect(explanation).toHaveTextContent(
-      "复核结论：生息资产动作已全部确认，可进入留痕归档。",
+      "复核结论：AC债券投资动作已全部确认，可进入留痕归档。",
     );
 
     await user.click(
@@ -3056,7 +3198,7 @@ describe("ProductCategoryPnlPage", () => {
     ).toHaveAttribute("aria-pressed", "true");
     expect(explanation).toHaveTextContent("差异原因：FTP 驱动异常");
     expect(explanation).toHaveTextContent("复核备忘");
-    expect(explanation).toHaveTextContent("当前产品：生息资产");
+    expect(explanation).toHaveTextContent("当前产品：AC债券投资");
 
     await user.click(
       within(explanation).getAllByRole("button", { name: "已确认" })[1]!,
@@ -3066,10 +3208,15 @@ describe("ProductCategoryPnlPage", () => {
     await user.click(
       within(explanation).getByRole("button", { name: "重置复核" }),
     );
-    expect(explanation).toHaveTextContent("待核对 3");
+    expect(explanation).toHaveTextContent("待核对 2");
     expect(
       within(explanation).getAllByRole("button", { name: "待核对" })[0],
     ).toHaveAttribute("aria-pressed", "true");
+    await user.click(otherReviewButton);
+    expect(
+      within(otherExplanation).getAllByRole("button", { name: "已确认" })[0],
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(getProductCategoryPnl).toHaveBeenCalledTimes(readsAfterSensitivityLoaded);
   });
 
   it("Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates", async () => {
@@ -3169,7 +3316,7 @@ describe("ProductCategoryPnlPage", () => {
     await screen.findByTestId("product-category-table");
     expect(
       screen.getByTestId("product-category-report-date-slot"),
-    ).toHaveTextContent(selectedDate);
+    ).toHaveAttribute("title", `报告日期 ${selectedDate}`);
     expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
       "href",
       `/ledger-pnl?report_date=${selectedDate}`,
@@ -3192,7 +3339,7 @@ describe("ProductCategoryPnlPage", () => {
     ).toBe(false);
     expect(
       screen.getByTestId("product-category-report-date-slot"),
-    ).toHaveTextContent(selectedDate);
+    ).toHaveAttribute("title", `报告日期 ${selectedDate}`);
     expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
       "href",
       `/ledger-pnl?report_date=${selectedDate}`,
@@ -3310,10 +3457,59 @@ describe("ProductCategoryPnlPage", () => {
       expect(spread).toHaveTextContent("缺少完整收益率对比");
     });
     expect(spread).toHaveTextContent("2026年02月");
-    expect(spread).toHaveTextContent("2026年01月");
+    await waitFor(() => {
+      expect(spread).toHaveTextContent("2026年01月");
+    });
     expect(spread).toHaveTextContent(
       "后端未返回资产端或负债端收益率字段，无法展示利差归因。",
     );
+  });
+
+  it("shows incomplete spread attribution when only the prior spread is missing", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryHistory: vi.fn(async (options) => {
+        const envelope = await baseClient.getProductCategoryHistory(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            items: envelope.result.items.map((item) =>
+              item.report_date === "2026-01-31" && item.result
+                ? {
+                    ...item,
+                    result: {
+                      ...item.result,
+                      interest_spread: {
+                        ...item.result.interest_spread,
+                        all_currency_spread_pct: null,
+                      },
+                    },
+                  }
+                : item,
+            ),
+          },
+        };
+      }),
+    });
+
+    await waitForTrendDiagnosticsAutoLoad();
+    const trendAttribution = await screen.findByTestId(
+      "product-category-trend-spread-attribution",
+    );
+    await waitFor(() => {
+      expect(within(trendAttribution).getByText(
+        "缺少可比上期趋势快照，无法完成利差变动归因。",
+      )).toBeVisible();
+    });
+    expect(trendAttribution).toHaveTextContent("缺少完整收益率对比");
+    expect(trendAttribution).not.toHaveTextContent("后端未返回利差指标，无法展示当期利差。");
   });
 
   it("shows explicit diagnostics fallback copy when rows or spread inputs are incomplete", async () => {
@@ -3419,6 +3615,79 @@ describe("ProductCategoryPnlPage", () => {
         "product-category-liability-side-detail-credit_linked_notes",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("keeps earning spread gaps, a zero scale baseline, and the selected period basis in the rendered charts", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-08-31", "2026-07-31", "2026-06-30"],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const envelope = buildMockProductCategoryPnlEnvelope(options);
+        const metric = (raw: string) => ({
+          raw,
+          display: `${raw}%`,
+          unit: "percent" as const,
+        });
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            interest_earning_spread: {
+              ...envelope.result.interest_earning_spread,
+              all_currency_asset_yield_pct: metric(
+                options.view === "ytd" ? "2.35" : "2.30",
+              ),
+              all_currency_liability_yield_pct: metric(
+                options.view === "ytd" ? "1.57" : "1.52",
+              ),
+              all_currency_spread_pct:
+                options.reportDate === "2026-07-31" ? null : metric("0.78"),
+            },
+          },
+        };
+      }),
+    });
+
+    await waitForTrendDiagnosticsAutoLoad();
+    const spreadPanelId = "product-category-derived-chart-interest-earning-spread";
+    const scalePanelId =
+      "product-category-derived-chart-interest-earning-asset-liability-scale";
+    await waitFor(() => {
+      expect(readChartOption(scalePanelId).yAxis).toMatchObject({ scale: false });
+      expect(readChartOption(spreadPanelId).xAxis).toMatchObject({
+        data: ["2026年06月", "2026年07月", "2026年08月"],
+      });
+    });
+    const monthlyOption = readChartOption(spreadPanelId);
+    expect(monthlyOption.series?.[0]?.data).toEqual([2.3, 2.3, 2.3]);
+    expect(monthlyOption.series?.[1]?.data).toEqual([1.52, 1.52, 1.52]);
+    expect(monthlyOption.series?.[2]?.data).toEqual([0.78, null, 0.78]);
+    expect(
+      monthlyOption.series?.every((series) => series.connectNulls === false),
+    ).toBe(true);
+    expect(screen.getByTestId(spreadPanelId)).toHaveTextContent("单月口径");
+    expect(screen.getByTestId(scalePanelId)).toHaveTextContent("单月口径");
+
+    await user.click(screen.getByRole("button", { name: /^汇总视图$/ }));
+    await waitFor(() => {
+      expect(readChartOption(spreadPanelId).series?.[0]?.data).toEqual([
+        2.35, 2.35, 2.35,
+      ]);
+    });
+    expect(readChartOption(spreadPanelId).series?.[2]?.data).toEqual([
+      0.78, null, 0.78,
+    ]);
+    expect(screen.getByTestId(spreadPanelId)).toHaveTextContent("累计口径");
+    expect(screen.getByTestId(spreadPanelId)).toHaveTextContent(
+      "累计口径 · 截至 2026年08月",
+    );
+    expect(screen.getByTestId(scalePanelId)).toHaveTextContent("累计口径");
   });
 
   it("renders the requested derived chart panels with chart stubs", async () => {
@@ -3754,18 +4023,16 @@ describe("ProductCategoryPnlPage", () => {
       borderColor: nocturneTokens.color.line,
     });
     expect(interestEarningAssetLiabilityScaleOption.legend).toMatchObject({
-      top: 4,
-      right: 8,
       data: ["生息资产日均额（亿元）", "附息负债日均额（亿元）"],
     });
     expect(interestEarningAssetLiabilityScaleOption.grid).toMatchObject({
+      left: 18,
+      right: 16,
       top: 46,
-      bottom: 18,
-      containLabel: true,
     });
     expect(interestEarningAssetLiabilityScaleOption.yAxis).toMatchObject({
       name: "亿元",
-      scale: true,
+      scale: false,
     });
     expect(interestEarningAssetLiabilityScaleOption.series?.[0]).toMatchObject({
       barMaxWidth: 12,
@@ -3774,7 +4041,7 @@ describe("ProductCategoryPnlPage", () => {
       itemStyle: {
         color: "rgba(145,132,217,0.72)",
         borderColor: "rgba(145,132,217,0.4)",
-        borderRadius: [2, 2, 0, 0],
+        borderWidth: 1,
       },
     });
     expect(interestEarningAssetLiabilityScaleOption.series?.[1]).toMatchObject({
@@ -3783,7 +4050,7 @@ describe("ProductCategoryPnlPage", () => {
       itemStyle: {
         color: "rgba(213,178,110,0.72)",
         borderColor: "rgba(213,178,110,0.4)",
-        borderRadius: [2, 2, 0, 0],
+        borderWidth: 1,
       },
     });
 
@@ -3852,14 +4119,14 @@ describe("ProductCategoryPnlPage", () => {
         screen.getByTestId(
           "product-category-liability-side-currency-matrix-cny",
         ),
-      ).getAllByText("收益率").length,
+      ).getAllByText("综合成本率").length,
     ).toBeGreaterThanOrEqual(3);
     expect(
       within(
         screen.getByTestId(
           "product-category-liability-side-currency-matrix-foreign",
         ),
-      ).getAllByText("收益率").length,
+      ).getAllByText("综合成本率").length,
     ).toBeGreaterThanOrEqual(3);
     expect(
       screen.getByTestId(
@@ -5021,12 +5288,10 @@ describe("ProductCategoryPnlPage", () => {
       "product-category-trend-workspace",
     );
     expect(collapsedTrendWorkspace).not.toHaveAttribute("open");
-    expect(getProductCategoryPnl.mock.calls.map((call) => call[0])).toEqual([
-      {
-        reportDate: "2026-03-31",
-        view: "monthly",
-      },
-    ]);
+    expect(getProductCategoryPnl.mock.calls[0]?.[0]).toEqual({
+      reportDate: "2026-03-31",
+      view: "monthly",
+    });
     expect(
       screen.queryByTestId("product-category-derived-chart-tpl-scale-yield"),
     ).not.toBeInTheDocument();
@@ -5219,7 +5484,8 @@ describe("ProductCategoryPnlPage", () => {
     });
 
     await screen.findByTestId("product-category-table");
-    expect(getProductCategoryHistory).not.toHaveBeenCalled();
+    // 常显监控会加载正式历史，展开趋势继续复用相同批次。
+    await waitFor(() => expect(getProductCategoryHistory).toHaveBeenCalled());
 
     await openProductCategoryTrendWorkspace();
 
@@ -5293,9 +5559,9 @@ describe("ProductCategoryPnlPage", () => {
       "product-category-trend-workspace",
     );
     expect(trendWorkspace).not.toHaveAttribute("open");
-    expect(getProductCategoryPnl.mock.calls.map((call) => call[0])).toEqual([
-      { reportDate: "2026-03-31", view: "monthly" },
-    ]);
+    await waitFor(() => expect(getProductCategoryPnl).toHaveBeenCalledWith({
+      reportDate: "2026-01-31", view: "monthly",
+    }));
 
     const diagnosticsWorkspace = await screen.findByTestId(
       "product-category-diagnostics-workspace",
@@ -5411,7 +5677,7 @@ describe("ProductCategoryPnlPage", () => {
     ).not.toHaveAttribute("open");
   });
 
-  it("does not request trend history when the selected report date is not June and every workspace stays collapsed", async () => {
+  it.each([8, 12])("loads the full year through month %s with every workspace collapsed", async (month) => {
     preferCollapsedTrendWorkspace();
     const baseClient = createApiClient({ mode: "mock" });
     const getProductCategoryHistory = vi.fn(baseClient.getProductCategoryHistory);
@@ -5419,26 +5685,43 @@ describe("ProductCategoryPnlPage", () => {
       ...baseClient,
       getProductCategoryDates: vi.fn(async () =>
         buildMockApiEnvelope("product_category_pnl.dates", {
-          report_dates: [
-            "2026-03-31",
-            "2026-02-28",
-            "2026-01-31",
-            "2025-12-31",
-            "2025-11-30",
-            "2025-10-31",
-          ],
+          report_dates: Array.from({ length: month }, (_, index) =>
+            new Date(Date.UTC(2026, month - index, 0)).toISOString().slice(0, 10),
+          ),
         }),
       ),
       getProductCategoryHistory,
+      getProductCategoryAttribution: vi.fn(
+        async ({ reportDate, compare = "mom" }) =>
+          buildManagementMonitorAttributionEnvelope(reportDate, compare),
+      ),
     });
 
     await screen.findByTestId("product-category-table");
     const monitor = await screen.findByTestId(
       "product-category-management-monitor",
     );
-    // 非 6 月末报告期不需要历史快照，懒加载收益必须保留：不应发出批量历史请求。
-    expect(monitor).toHaveTextContent("需选择 6 月末");
-    expect(getProductCategoryHistory).not.toHaveBeenCalled();
+    await waitFor(() => expect(monitor).toHaveTextContent(`${month}/${month} 月正式数据`));
+    expect(monitor).toHaveTextContent(`2026 年 1—${month} 月`);
+    expect(monitor).toHaveTextContent(`达到 ${month - 1} 月净营收水平`);
+    expect(monitor).not.toHaveTextContent("需选择 6 月末");
+    const historyDates = getProductCategoryHistory.mock.calls.flatMap(
+      ([options]) => options.reportDates,
+    );
+    expect(historyDates.sort()).toEqual(Array.from({ length: month - 1 }, (_, index) =>
+      new Date(Date.UTC(2026, index + 1, 0)).toISOString().slice(0, 10),
+    ));
+    if (month === 12) expect(monitor).toHaveTextContent("本年已结束");
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText("选择报告月份"), "2026-07-31");
+    await waitFor(() => expect(screen.getByTestId("product-category-management-monitor"))
+      .toHaveTextContent("7/7 月正式数据"));
+    const julyMonitor = screen.getByTestId("product-category-management-monitor");
+    expect(julyMonitor).toHaveTextContent("2026 年 1—7 月");
+    expect(julyMonitor).toHaveTextContent("达到 6 月净营收水平");
+    expect(julyMonitor).toHaveTextContent("固定7 月规模");
+    expect(julyMonitor).not.toHaveTextContent(`2026 年 1—${month} 月`);
 
     expect(
       screen.getByTestId("product-category-trend-workspace"),
@@ -5552,11 +5835,11 @@ describe("ProductCategoryPnlPage", () => {
       "1.04",
       "1.05",
       "1.06",
-      "1.07",
+      "-1.07",
       "-1.08",
       "-1.09",
-      "-1.10",
-      "1.11",
+      "1.10",
+      "-1.11",
       "1.23",
     ]);
     expect(within(viewGroup).getAllByRole("button")).toHaveLength(2);
@@ -5600,7 +5883,7 @@ describe("ProductCategoryPnlPage", () => {
     );
     const assetCells = within(assetRow as HTMLElement).getAllByRole("cell");
     // 营业减收入 = 倒数第二列；加权收益率 = 最后一列（与表头一致，避免列序魔法数漂移）
-    expect(liabilityCells.at(-2)).toHaveTextContent("1.23");
+    expect(liabilityCells.at(-2)).toHaveTextContent("-1.23");
     expect(assetCells.at(-2)).toHaveTextContent("-1.23");
     expect(liabilityCells.at(-1)).toHaveTextContent("1.41");
     expect(assetCells.at(-1)).toHaveTextContent("1.47");
@@ -5678,7 +5961,7 @@ describe("ProductCategoryPnlPage", () => {
       ).toBeInTheDocument();
       expect(
         within(formalSection!).getByText(
-          "当前页面保留重试入口，不在浏览器端自行拼接正式口径。",
+          "暂时无法获取数据，请重试。",
         ),
       ).toBeInTheDocument();
     });

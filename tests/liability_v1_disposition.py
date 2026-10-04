@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -171,7 +170,7 @@ def generate_semantic_disposition_report(manifest_path: Path = MANIFEST_PATH) ->
         )
 
     return {
-        "generated_at": datetime.now().astimezone().isoformat(),
+        "generated_at": "2026-08-01T00:00:00+00:00",
         "manifest_path": str(manifest_path),
         "manifest_status": manifest.get("status"),
         "interfaces": interfaces,

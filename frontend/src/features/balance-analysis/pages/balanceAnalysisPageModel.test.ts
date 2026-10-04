@@ -8,6 +8,7 @@ import type {
   BalanceMovementPayload,
   ResultMeta,
 } from "../../../api/contracts";
+import { BALANCE_ANALYSIS_METRIC_DEFINITIONS } from "../../../mocks/balanceAnalysisMockClient";
 import {
   BALANCE_ANALYSIS_MIN_CHART_BAR_WIDTH_PCT,
   buildBalanceAnalysisPageModel,
@@ -95,6 +96,29 @@ describe("balanceAnalysisPageModel", () => {
           maximumFractionDigits: 2,
         }),
       );
+    });
+
+    it("keeps plain-decimal display precision beyond the JavaScript safe-integer boundary", () => {
+      expect(formatBalanceAmountToYiFromYuan("9007199250499999.5")).toBe("90,071,992.50");
+      expect(formatBalanceAmountToYiFromYuan("-9007199250499999.5")).toBe("-90,071,992.50");
+      expect(formatBalanceAmountToYiFromWan("9007199254740049.5")).toBe(
+        "900,719,925,474.00",
+      );
+      expect(formatBalanceWorkbookMetricTwoDecimals("9007199254740992.5")).toBe(
+        "9,007,199,254,740,992.50",
+      );
+      expect(formatBalanceOverviewNumber("9007199254740992.1255")).toBe(
+        "9,007,199,254,740,992.126",
+      );
+      expect(formatBalanceGridThousandsValue("9007199254740992.1255")).toBe(
+        "9,007,199,254,740,992.126",
+      );
+      expect(
+        formatBalanceBusinessTextDisplay(
+          "Top rating bucket share reached 0.7550499999999999999.",
+        ),
+      ).toBe("最高评级桶占比达到 75.50%");
+      expect(formatBalanceAmountToYiFromYuan("-0.1")).toBe("-0.00");
     });
 
     it("adds yi unit labels for workbook wan-yuan amount cells", () => {
@@ -217,6 +241,7 @@ describe("balanceAnalysisPageModel", () => {
         liability_total_amortized_cost_amount: "180000000000.00",
         asset_total_accrued_interest_amount: "700000000.00",
         liability_total_accrued_interest_amount: "112345678.90",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
         ...overrides,
       };
     }
@@ -267,18 +292,22 @@ describe("balanceAnalysisPageModel", () => {
 
       expect(model.resolvedReportDate).toBe("2026-04-30");
       expect(model.dateStatus).toBe("matched");
-      expect(model.sourceBadge.label).toBe("正式业务读面");
+      expect(model.sourceBadge.label).toBe("业务数据");
       expect(model.filterLine).toBe("头寸范围 全头寸 · 币种口径 人民币");
       expect(model.kpis.map((item) => item.key)).toEqual([
-        "total-market-value",
-        "total-amortized-cost",
-        "total-accrued-interest",
+        "asset-market-value",
+        "asset-amortized-cost",
+        "asset-accrued-interest",
+        "liability-market-value",
+        "liability-amortized-cost",
+        "liability-accrued-interest",
         "detail-row-count",
         "summary-row-count",
         "decision-item-count",
       ]);
-      expect(model.kpis[0]).toMatchObject({ label: "总市值", value: "3,708.10", unit: "亿元" });
-      expect(model.kpis[5]).toMatchObject({ label: "治理动作", value: "1", unit: "项" });
+      expect(model.kpis[0]).toMatchObject({ label: "资产市值合计", value: "3,708.10", unit: "亿元" });
+      expect(model.kpis[3]).toMatchObject({ label: "负债市值合计", value: "1,841.59", unit: "亿元" });
+      expect(model.kpis[8]).toMatchObject({ label: "治理动作", value: "1", unit: "项" });
       expect(model.evidenceCards).toHaveLength(2);
       expect(model.stateSurfaces).toContainEqual(
         expect.objectContaining({ variant: "neutral", title: "报告日已匹配" }),
@@ -312,7 +341,7 @@ describe("balanceAnalysisPageModel", () => {
       });
 
       expect(model.dateStatus).toBe("pending");
-      expect(model.sourceBadge.label).toBe("等待业务读面");
+      expect(model.sourceBadge.label).toBe("等待业务数据");
       expect(model.statusBadges).toContainEqual(
         expect.objectContaining({ key: "date", label: "报告日待定" }),
       );
@@ -392,8 +421,8 @@ describe("balanceAnalysisPageModel", () => {
         "fallback-date",
       ]);
       expect(model.evidenceCards[0]).toMatchObject({
-        qualityLabel: "陈旧",
-        fallbackLabel: "最新快照降级",
+        qualityLabel: "已过期",
+        fallbackLabel: "使用最近可用日期的数据",
         asOfDate: "2026-03-31",
       });
     });
@@ -927,6 +956,7 @@ describe("balanceAnalysisPageModel", () => {
           liability_total_amortized_cost_amount: "0",
           asset_total_accrued_interest_amount: "0",
           liability_total_accrued_interest_amount: "0",
+          metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
         },
         workbook: {
           report_date: "2025-12-31",
@@ -1100,6 +1130,43 @@ describe("balanceAnalysisPageModel", () => {
       });
     });
 
+    it("labels cross-scope stage analysis from the full-scope workbook, not the detail filter", () => {
+      const model = buildBalanceStageRealDataModel({
+        overview: {
+          report_date: "2025-12-31",
+          position_scope: "asset",
+          currency_basis: "CNY",
+          detail_row_count: 2,
+          summary_row_count: 1,
+          total_market_value_amount: "20000000000",
+          total_amortized_cost_amount: "18000000000",
+          total_accrued_interest_amount: "80000000",
+          asset_total_market_value_amount: "20000000000",
+          liability_total_market_value_amount: "0",
+          asset_total_amortized_cost_amount: "18000000000",
+          liability_total_amortized_cost_amount: "0",
+          asset_total_accrued_interest_amount: "80000000",
+          liability_total_accrued_interest_amount: "0",
+          metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
+        },
+        workbook: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          cards: [{ key: "net_position", label: "净头寸", value: "1200000" }],
+          tables: [],
+          operational_sections: [],
+        },
+      });
+
+      expect(model.summary.tags.map((tag) => tag.label)).toContain("全头寸");
+      expect(model.summary.tags.map((tag) => tag.label)).not.toContain("资产");
+      expect(model.summary.riskRows.find((row) => row.dim === "数据口径")).toMatchObject({
+        current: "全头寸",
+        stress: "人民币",
+      });
+    });
+
     it("keeps a maturity bucket null when the workbook omits an amount", () => {
       const model = buildBalanceStageRealDataModel({
         workbook: {
@@ -1199,7 +1266,11 @@ describe("balanceAnalysisPageModel", () => {
       const model = buildBalanceStageRealDataModel({});
 
       expect(model.hasRealData).toBe(false);
-      expect(model.summary.content).toContain("未返回可用于 stage 的真实 workbook 切片");
+      expect(model.summary.content).toContain("当前报告日暂无可用的工作簿数据");
+      expect(model.summary.riskRows.find((row) => row.dim === "数据口径")).toMatchObject({
+        current: "—",
+        stress: "—",
+      });
       expect(model.contribution.rows).toEqual([
         {
           item: "暂无真实数据",
@@ -1211,7 +1282,7 @@ describe("balanceAnalysisPageModel", () => {
           rowKind: "empty",
         },
       ]);
-      expect(model.contribution.watchItems[0].title).toBe("当前报告日未返回治理事项");
+      expect(model.contribution.watchItems[0].title).toBe("当前报告日暂无待处理事项");
       expect(model.bottom.calendarItems[0].event).toBe("当前报告日未返回事件日历");
     });
     it("uses detail summary fallback in stage summary copy when workbook is unavailable", () => {
@@ -1231,6 +1302,7 @@ describe("balanceAnalysisPageModel", () => {
           liability_total_amortized_cost_amount: "4000000000",
           asset_total_accrued_interest_amount: "0",
           liability_total_accrued_interest_amount: "0",
+          metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
         },
         summaryRows: [
           {
@@ -1279,6 +1351,7 @@ describe("balanceAnalysisPageModel", () => {
       liability_total_amortized_cost_amount: "10000000000",
       asset_total_accrued_interest_amount: "80000000",
       liability_total_accrued_interest_amount: "20000000",
+      metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
     };
     const workbookPayload: BalanceAnalysisWorkbookPayload = {
       report_date: "2026-04-30",
@@ -1307,6 +1380,7 @@ describe("balanceAnalysisPageModel", () => {
       overview: overviewPayload,
       workbook: workbookPayload,
       stageModel,
+      positionScope: "all",
       decisionCount: 2,
       topRiskTitle: "1-2年期限桶负缺口",
     });
@@ -1314,20 +1388,46 @@ describe("balanceAnalysisPageModel", () => {
     expect(cockpit.scaleKpis.map((item) => item.label)).toEqual([
       "资产市值",
       "负债市值",
-      "净头寸",
-      "总市值",
-      "摊余成本",
-      "应计利息",
-      "缺口覆盖率",
+      "全口径余额净头寸",
+      "资产摊余成本",
+      "负债摊余成本",
+      "资产应计利息",
+      "负债应计利息",
     ]);
+    expect(cockpit.scaleKpis.map((item) => item.value)).toEqual([
+      "200.00",
+      "100.00",
+      "120.00",
+      "180.00",
+      "100.00",
+      "0.80",
+      "0.20",
+    ]);
+    expect(cockpit.scaleKpis.find((item) => item.key === "total-market")).toBeUndefined();
+    expect(cockpit.scaleKpis.find((item) => item.key === "amortized-cost")).toBeUndefined();
     expect(cockpit.opsKpis.map((item) => item.label)).toEqual([
       "汇总行数",
       "明细行数",
       "治理待办",
     ]);
-    expect(cockpit.scaleKpis.find((item) => item.key === "gap-coverage")?.value).toBe("50.0");
+    expect(cockpit.scaleKpis.find((item) => item.key === "gap-coverage")).toBeUndefined();
     expect(cockpit.opsKpis.find((item) => item.key === "summary-rows")?.value).toBe("2");
     expect(cockpit.opsKpis.find((item) => item.key === "governance-queue")?.value).toBe("2");
     expect(cockpit.judgementLine).toContain("1-2年期限桶负缺口");
+
+    const assetCockpit = buildBalanceCockpitViewModel({
+      overview: { ...overviewPayload, position_scope: "asset" },
+      workbook: workbookPayload,
+      stageModel,
+      positionScope: "asset",
+      decisionCount: 2,
+    });
+    expect(assetCockpit.scaleKpis.map((item) => item.label)).toEqual([
+      "资产市值",
+      "全口径余额净头寸",
+      "资产摊余成本",
+      "资产应计利息",
+    ]);
+    expect(assetCockpit.scaleKpis.some((item) => item.label.startsWith("负债"))).toBe(false);
   });
 });

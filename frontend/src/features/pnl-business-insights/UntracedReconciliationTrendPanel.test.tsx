@@ -135,9 +135,10 @@ describe("UntracedReconciliationTrendPanel", () => {
   it("shows the empty-state message when rows is empty", () => {
     const { getByTestId, queryByTestId } = render(<UntracedReconciliationTrendPanel rows={[]} />);
 
-    expect(getByTestId("untraced-reconciliation-trend-empty")).toHaveTextContent(
+    expect(getByTestId("untraced-reconciliation-trend-panel-state")).toHaveTextContent(
       "暂无可用的历史对账诊断数据",
     );
-    expect(queryByTestId("untraced-reconciliation-trend-panel")).toBeNull();
+    expect(getByTestId("untraced-reconciliation-trend-panel")).toHaveAttribute("data-state", "empty");
+    expect(queryByTestId("untraced-reconciliation-echarts-stub")).toBeNull();
   });
 });

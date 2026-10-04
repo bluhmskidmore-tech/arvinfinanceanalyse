@@ -84,19 +84,26 @@ powershell -ExecutionPolicy Bypass -File scripts/dev-worker.ps1
 powershell -ExecutionPolicy Bypass -File scripts/dev-frontend.ps1
 ```
 
+前端源码开发使用独立入口：在 `frontend/` 运行 `npm run dev:source`，默认地址为 `http://127.0.0.1:5890`，支持热更新。这个入口保留维护期启动守卫，不修改 `5888` 已选择的验收构建；终端会显示数据模式和 API 代理地址。开发、局部检查和验收步骤见 [前端开发工作流](docs/frontend-development.md)。
+
 ### Docker Compose
 
 ```bash
 docker compose up api worker frontend postgres redis minio
 ```
 
+启动前必须提供 `MOSS_POSTGRES_PASSWORD`、`MOSS_MINIO_ROOT_USER`、`MOSS_MINIO_ROOT_PASSWORD`
+（compose 文件用 `${VAR:?...}` 声明为必填，没有写死的凭据）。
+
 `docker-compose.yml` 中的容器端口基线是：
 
-- API: `8000`
-- Frontend: `5173`
+- API: `8000`（仅容器内端口，`api` 服务没有 `ports:` 映射，宿主机不能直接访问；由 `frontend` 容器代理）
+- Frontend: `5173`（映射到 `127.0.0.1:${MOSS_FRONTEND_PORT:-5173}`）
 - Postgres: `5432`
 - Redis: `6379`
 - MinIO: `9000` / `9001`
+
+Postgres / Redis / MinIO 均只绑定 `127.0.0.1`，宿主机端口可用 `MOSS_POSTGRES_PORT` 等变量覆盖，详见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。
 
 ## 常用验证
 

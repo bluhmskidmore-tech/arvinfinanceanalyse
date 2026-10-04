@@ -2,8 +2,22 @@
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { parseArgs } from "node:util";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
+const { values: options } = parseArgs({
+  options: {
+    scope: { type: "string", default: "all" },
+    "self-test": { type: "boolean" },
+    ratchet: { type: "boolean" },
+  },
+});
+if (!["all", "frontend"].includes(options.scope)) {
+  fail("Invalid --scope: expected all or frontend.");
+}
+if (options.scope === "frontend" && options.ratchet) {
+  fail("--scope frontend is read-only and cannot be combined with --ratchet; use the full audit to update baselines.");
+}
 
 // Debt baselines live in scripts/debt-baselines.json (namespace "frontend").
 // Policy (see the _policy field there): baselines only ratchet DOWN; any
@@ -23,7 +37,16 @@ const requiredProtectedMonolithFiles = [
   "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx",
   "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
   "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts",
+  "frontend/src/features/stock-analysis/lib/stockAnalysisPageModel.ts",
+  "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx",
+  "frontend/src/features/workbench/module-home/moduleHomeModel.ts",
+  "frontend/src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
   "backend/app/services/pnl_service.py",
+];
+
+const requiredProtectedStyleFiles = [
+  "frontend/src/features/source-preview/pages/SourcePreviewPage.tsx",
+  "frontend/src/features/bond-analytics/components/BondAnalyticsReadinessMatrix.tsx",
 ];
 
 function fail(message) {
@@ -33,6 +56,10 @@ function fail(message) {
 
 function isCounterValue(value) {
   return Number.isInteger(value) && value >= 0;
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function loadBaselineDocument() {
@@ -48,11 +75,14 @@ function loadBaselineDocument() {
   } catch (error) {
     fail(`Invalid JSON in ${baselineRelativePath}: ${error.message}`);
   }
+  if (!isPlainObject(document)) {
+    fail(`${baselineRelativePath} must contain a top-level object.`);
+  }
   if (typeof document._policy !== "string" || document._policy.trim() === "") {
     fail(`${baselineRelativePath} must declare a non-empty _policy field (ratchet-only baselines).`);
   }
   const frontend = document.frontend;
-  if (!frontend || typeof frontend !== "object") {
+  if (!isPlainObject(frontend)) {
     fail(`${baselineRelativePath} must contain a "frontend" namespace object.`);
   }
   for (const key of [
@@ -69,8 +99,46 @@ function loadBaselineDocument() {
     }
   }
   for (const key of ["dashboardStyleFiles", "maxPageStyleProps", "maxPageStaticStyleProps", "protectedMonolithFiles"]) {
-    if (!frontend[key] || typeof frontend[key] !== "object") {
+    if (!isPlainObject(frontend[key])) {
       fail(`${baselineRelativePath}: frontend.${key} must be an object.`);
+    }
+  }
+  for (const [repoPath, limits] of Object.entries(frontend.dashboardStyleFiles)) {
+    if (!isPlainObject(limits)) {
+      fail(`${baselineRelativePath} has invalid dashboard style limits for ${repoPath}.`);
+    }
+    for (const metric of ["hardcodedHexes", "gradients", "repeatingGradients", "important"]) {
+      if (!isCounterValue(limits[metric])) {
+        fail(`${baselineRelativePath} has invalid ${metric} limit for ${repoPath}.`);
+      }
+    }
+  }
+  for (const key of ["maxPageStyleProps", "maxPageStaticStyleProps"]) {
+    for (const [repoPath, limit] of Object.entries(frontend[key])) {
+      if (!isCounterValue(limit)) {
+        fail(`${baselineRelativePath} has invalid ${key} limit for ${repoPath}.`);
+      }
+    }
+  }
+  for (const repoPath of requiredProtectedMonolithFiles) {
+    if (!frontend.protectedMonolithFiles[repoPath]) {
+      fail(`${baselineRelativePath} is missing required protected monolith ${repoPath}.`);
+    }
+  }
+  for (const [repoPath, policy] of Object.entries(frontend.protectedMonolithFiles)) {
+    if (!isPlainObject(policy)) {
+      fail(`${baselineRelativePath} has invalid policy for protected monolith ${repoPath}.`);
+    }
+    if (!Number.isInteger(policy.maxLines) || policy.maxLines <= 0) {
+      fail(`${baselineRelativePath} has invalid maxLines for protected monolith ${repoPath}.`);
+    }
+    if (typeof policy.routeHint !== "string" || policy.routeHint.trim() === "") {
+      fail(`${baselineRelativePath} has invalid routeHint for protected monolith ${repoPath}.`);
+    }
+  }
+  for (const repoPath of requiredProtectedStyleFiles) {
+    if (!isCounterValue(frontend.maxPageStyleProps[repoPath])) {
+      fail(`${baselineRelativePath} is missing required per-file style limit ${repoPath}.`);
     }
   }
   return document;
@@ -344,6 +412,14 @@ function runSelfTest() {
       );
     }
   }
+  for (const repoPath of requiredProtectedStyleFiles) {
+    if (!isCounterValue(baseline.maxPageStyleProps[repoPath])) {
+      throw new Error(
+        `${baselineRelativePath} lost the per-file style baseline for ${repoPath}; ` +
+          "removing a protected style entry requires tech-lead sign-off.",
+      );
+    }
+  }
   for (const [repoPath, policy] of Object.entries(baseline.protectedMonolithFiles)) {
     if (!Number.isInteger(policy.maxLines) || policy.maxLines <= 0) {
       throw new Error(`invalid protected monolith maxLines for ${repoPath}`);
@@ -357,7 +433,7 @@ function runSelfTest() {
 
 // Measures every governed counter and pairs it with its baseline plus a
 // ratchet setter so the default audit and --ratchet share one measurement pass.
-function collectMeasurements() {
+function collectMeasurements(scope = "all") {
   const measurements = [];
 
   const apiClient = readText("frontend/src/api/client.ts");
@@ -383,8 +459,11 @@ function collectMeasurements() {
   });
 
   for (const [repoPath, policy] of Object.entries(baseline.protectedMonolithFiles)) {
+    const owner = repoPath.startsWith("frontend/") ? "frontend" : "repository";
+    if (scope === "frontend" && owner === "repository") continue;
     measurements.push({
       kind: "limit",
+      owner,
       label: `${repoPath} lines`,
       actual: countLines(readText(repoPath)),
       max: policy.maxLines,
@@ -530,24 +609,31 @@ function collectMeasurements() {
   return measurements;
 }
 
-function runAudit() {
+function runAudit(scope) {
   const failures = [];
   const notes = [];
 
-  for (const measurement of collectMeasurements()) {
+  console.log(`Debt audit scope=${scope}: ${scope === "all" ? "frontend counters and repository monolith guards" : "frontend counters only; not a full repository audit"}.`);
+  if (scope === "frontend") {
+    const excluded = Object.keys(baseline.protectedMonolithFiles).filter((repoPath) => !repoPath.startsWith("frontend/"));
+    console.log(`Excluded repository monolith guards: ${excluded.join(", ")}.`);
+  }
+
+  for (const measurement of collectMeasurements(scope)) {
+    const label = `[${measurement.owner ?? "frontend"}] ${measurement.label}`;
     if (measurement.kind === "info") {
-      notes.push(`${measurement.label}: ${measurement.actual}`);
+      notes.push(`${label}: ${measurement.actual}`);
       continue;
     }
     if (measurement.actual > measurement.max) {
-      failures.push(`${measurement.label}: ${measurement.actual} > baseline ${measurement.max}. ${measurement.hint}`);
+      failures.push(`${label}: ${measurement.actual} > baseline ${measurement.max}. ${measurement.hint}`);
     } else {
-      notes.push(`${measurement.label}: ${measurement.actual}/${measurement.max}`);
+      notes.push(`${label}: ${measurement.actual}/${measurement.max}`);
     }
   }
 
   if (failures.length > 0) {
-    console.error("Frontend debt audit failed. Current debt may remain, but this change grows it.");
+    console.error(`Debt audit failed (scope=${scope}). Current counts exceed baseline.`);
     for (const failure of failures) {
       console.error(`- ${failure}`);
     }
@@ -558,31 +644,23 @@ function runAudit() {
     process.exit(1);
   }
 
-  console.log("Frontend debt audit passed (no growth over baseline).");
+  console.log(`Debt audit passed (scope=${scope}; no growth over baseline).`);
   for (const note of notes) {
     console.log(`- ${note}`);
   }
 }
 
 function runRatchet() {
-  const tightened = [];
+  const measurements = collectMeasurements().filter((measurement) => measurement.kind === "limit");
   const blocked = [];
 
-  for (const measurement of collectMeasurements()) {
-    if (measurement.kind !== "limit") continue;
-    if (measurement.actual < measurement.max) {
-      measurement.ratchet(measurement.actual);
-      tightened.push(`${measurement.label}: baseline ${measurement.max} -> ${measurement.actual}`);
-    } else if (measurement.actual > measurement.max) {
+  for (const measurement of measurements) {
+    if (measurement.actual > measurement.max) {
       blocked.push(
         `${measurement.label}: actual ${measurement.actual} > baseline ${measurement.max}; ` +
           `--ratchet never raises a baseline. Reduce the debt, or obtain tech-lead sign-off and edit ${baselineRelativePath} manually.`,
       );
     }
-  }
-
-  if (tightened.length > 0) {
-    writeFileSync(baselinePath, `${JSON.stringify(baselineDocument, null, 2)}\n`, "utf8");
   }
 
   const banner = "!".repeat(78);
@@ -591,16 +669,6 @@ function runRatchet() {
   console.log("Policy: baselines only ratchet DOWN; this tool never raises a baseline.");
   console.log(banner);
 
-  if (tightened.length === 0) {
-    console.log(`No baseline lowered; ${baselineRelativePath} left unchanged.`);
-  } else {
-    console.log(`Tightened ${tightened.length} baseline(s) in ${baselineRelativePath}:`);
-    for (const line of tightened) {
-      console.log(`- ${line}`);
-    }
-    console.log("Review the diff and record tech-lead sign-off in the PR before committing.");
-  }
-
   if (blocked.length > 0) {
     console.error(`\nRefused to raise ${blocked.length} baseline(s):`);
     for (const line of blocked) {
@@ -608,16 +676,36 @@ function runRatchet() {
     }
     process.exit(1);
   }
+
+  const tightened = [];
+  for (const measurement of measurements) {
+    if (measurement.actual < measurement.max) {
+      measurement.ratchet(measurement.actual);
+      tightened.push(`${measurement.label}: baseline ${measurement.max} -> ${measurement.actual}`);
+    }
+  }
+
+  if (tightened.length === 0) {
+    console.log(`No baseline lowered; ${baselineRelativePath} left unchanged.`);
+    return;
+  }
+
+  writeFileSync(baselinePath, `${JSON.stringify(baselineDocument, null, 2)}\n`, "utf8");
+  console.log(`Tightened ${tightened.length} baseline(s) in ${baselineRelativePath}:`);
+  for (const line of tightened) {
+    console.log(`- ${line}`);
+  }
+  console.log("Review the diff and record tech-lead sign-off in the PR before committing.");
 }
 
-if (process.argv.includes("--self-test")) {
+if (options["self-test"]) {
   runSelfTest();
   process.exit(0);
 }
 
-if (process.argv.includes("--ratchet")) {
+if (options.ratchet) {
   runRatchet();
   process.exit(0);
 }
 
-runAudit();
+runAudit(options.scope);

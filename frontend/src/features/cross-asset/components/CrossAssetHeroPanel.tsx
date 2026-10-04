@@ -18,9 +18,6 @@ export type CrossAssetHeroPanelProps = {
 };
 
 const UI = {
-  eyebrow: "跨资产驱动",
-  title: "固收组合决策首屏",
-  question: "当前宏观因子正沿哪些传导轴影响固收组合，久期与品种是否该调整？",
   reportDateLabel: "报告日",
   regimeChipPrefix: "体制",
   rateChipPrefix: "利率方向",
@@ -68,10 +65,7 @@ export function CrossAssetHeroPanel({
       aria-busy={loading || undefined}
     >
       <div className="cross-asset-hero-panel__main">
-        <div className="cross-asset-hero-panel__eyebrow">{UI.eyebrow}</div>
-        <h1 className="cross-asset-hero-panel__title">{UI.title}</h1>
-        <p className="cross-asset-hero-panel__question">{UI.question}</p>
-        <p className="cross-asset-hero-panel__conclusion">{conclusionText}</p>
+        <h2 className="cross-asset-hero-panel__conclusion">{conclusionText}</h2>
         <div className="cross-asset-hero-panel__meta">
           <span className="cross-asset-hero-panel__meta-item">
             {UI.reportDateLabel} {reportDate || EM_DASH}

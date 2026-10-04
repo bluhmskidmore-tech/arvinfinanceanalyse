@@ -62,6 +62,35 @@ describe("dashboardHomeAvailability", () => {
     expect(availability.hasResolvedReportDate).toBe(false);
   });
 
+  it("classifies the governed unavailable report date without exposing error metadata", () => {
+    const availability = buildAvailability("error", {
+      requestedDate: "2026-08-28",
+      snapshotErrorDetail:
+        "报告日 2026-08-28 缺少正式损益数据，暂不能生成完整首页。最新可用报告日为 2026-08-31。 [code=home_report_date_unavailable]",
+    });
+
+    expect(availability.kind).toBe("dateUnavailable");
+    expect(availability.failureKind).toBe("reportDateUnavailable");
+    expect(availability.reason).toContain("2026-08-31");
+    expect(availability.reason).not.toContain("home_report_date_unavailable");
+    expect(availability.reason).not.toContain("[code=");
+    expect(availability.title).toContain("未生成首页快照");
+  });
+
+  it("keeps the unavailable-date state when a previous valid snapshot is retained", () => {
+    const availability = buildAvailability("stale", {
+      requestedDate: "2026-08-28",
+      actualDataDate: "2026-08-27",
+      snapshotErrorDetail:
+        "报告日 2026-08-28 缺少正式损益数据，暂不能生成完整首页。最新可用报告日为 2026-08-31。 [code=home_report_date_unavailable]",
+    });
+
+    expect(availability.kind).toBe("dateUnavailable");
+    expect(availability.title).toContain("保留上一有效快照");
+    expect(availability.actualReportDate).toBe("2026-08-27");
+    expect(availability.impact).toContain("后端确定");
+  });
+
   it.each([
     ["ok", "available"],
     ["partial", "partial"],

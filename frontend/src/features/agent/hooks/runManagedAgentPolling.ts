@@ -13,6 +13,7 @@ import {
 
 type RunManagedAgentPollingOptions = {
   requestBody: AgentQueryRequest;
+  existingRun?: AgentRunPayload;
   createAgentRun: (requestBody: AgentQueryRequest) => Promise<AgentRunPayload>;
   fetchAgentRunStatus: (runId: string) => Promise<AgentRunPayload>;
   canCommit: () => boolean;
@@ -29,6 +30,7 @@ type RunManagedAgentPollingOptions = {
  */
 export async function runManagedAgentPolling({
   requestBody,
+  existingRun,
   createAgentRun,
   fetchAgentRunStatus,
   canCommit,
@@ -38,8 +40,8 @@ export async function runManagedAgentPolling({
   signal,
 }: RunManagedAgentPollingOptions): Promise<AgentRunPayload & { result: AgentQueryResult }> {
   const runRequestStartedAtMs = getAgentRequestClockMs();
-  const initialPayload = await createAgentRun(requestBody);
-  const runRequestLatencyMs = normalizeAgentRunRequestLatencyMs(
+  const initialPayload = existingRun ?? await createAgentRun(requestBody);
+  const runRequestLatencyMs = existingRun ? undefined : normalizeAgentRunRequestLatencyMs(
     getAgentRequestClockMs() - runRequestStartedAtMs,
   );
   if (canCommit()) {

@@ -4,12 +4,14 @@ import { describe, expect, it } from "vitest";
 import type { UseQueryResult } from "@tanstack/react-query";
 
 import type { ApiEnvelope, Numeric, ResultMeta } from "../api/contracts";
+import { BALANCE_ANALYSIS_METRIC_DEFINITIONS } from "../mocks/balanceAnalysisMockClient";
+import { EM_DASH } from "../utils/format";
 import { buildMarketCrisisExplain, buildMarketDeskIntel, buildModuleHomeView, formatPanelMetaForHome } from "../features/workbench/module-home/moduleHomeModel";
 import {
   buildMarketCrisisExplain as buildExtractedMarketCrisisExplain,
   buildMarketDeskIntel as buildExtractedMarketDeskIntel,
 } from "../features/workbench/module-home/marketDeskIntelModel";
-import { buildActionQueue } from "../features/workbench/module-home/marketActionQueueModel";
+import { MARKET_OVERVIEW_SNAPSHOT_QUERY_VERSION } from "../features/workbench/module-home/useMarketHomeQueries";
 import { formatRawAsNumeric } from "../utils/format";
 
 function meta(overrides: Partial<ResultMeta> = {}): ResultMeta {
@@ -102,6 +104,7 @@ function portfolioGovernanceQueries(options: {
           liability_total_amortized_cost_amount: "178000000000.00",
           asset_total_accrued_interest_amount: "1280000000.00",
           liability_total_accrued_interest_amount: "644372831.27",
+          metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
         },
         {
           result_kind: "balance-analysis.overview",
@@ -320,6 +323,7 @@ describe("ModuleWorkbenchHome model", () => {
               liability_total_amortized_cost_amount: "20000000",
               asset_total_accrued_interest_amount: "800000",
               liability_total_accrued_interest_amount: "200000",
+              metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
             }),
           },
         ),
@@ -327,8 +331,9 @@ describe("ModuleWorkbenchHome model", () => {
     );
 
     expect(view.stateLabel).toBe("已接入");
-    expect(view.kpis.map((item) => item.value)).toContain("0.8 亿元");
-    expect(view.kpis.map((item) => item.value)).toContain("0.2 亿元");
+    // 组合首页亿元读数固定两位小数，避免同列出现「551.2 亿元」与「629.48 亿元」并排。
+    expect(view.kpis.map((item) => item.value)).toContain("0.80 亿元");
+    expect(view.kpis.map((item) => item.value)).toContain("0.20 亿元");
     expect(view.dataNote.lines.join(" ")).not.toContain("读取失败");
   });
 
@@ -369,7 +374,53 @@ describe("ModuleWorkbenchHome model", () => {
     expect(bondMarket?.value).not.toContain("348,819");
   });
 
-  it("derives the industry distribution total from returned industry rows", () => {
+  it("expresses portfolio KPI month-over-month change in the same units as /bond-dashboard", () => {
+    const kpis = {
+      total_market_value: formatRawAsNumeric({ raw: 332_281_921_064.45, unit: "yuan", sign_aware: false }),
+      unrealized_pnl: formatRawAsNumeric({ raw: 8_202_912_484.65, unit: "yuan", sign_aware: true }),
+      weighted_ytm: formatRawAsNumeric({ raw: 0.02561294, unit: "pct", sign_aware: false }),
+      weighted_duration: formatRawAsNumeric({ raw: 3.45, unit: "ratio", sign_aware: false }),
+      weighted_coupon: formatRawAsNumeric({ raw: 0.0312, unit: "pct", sign_aware: false }),
+      credit_spread_median: formatRawAsNumeric({ raw: 0.023682, unit: "pct", sign_aware: false }),
+      total_dv01: formatRawAsNumeric({ raw: 105_628_442.39, unit: "dv01", sign_aware: false }),
+      bond_count: 1710,
+    };
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "real" },
+      {
+        bondDates: query({ data: envelope({ report_dates: ["2026-05-31"] }) }),
+        bondHeadline: query({
+          data: envelope({
+            report_date: "2026-05-31",
+            prev_report_date: "2026-05-30",
+            kpis,
+            prev_kpis: {
+              ...kpis,
+              total_market_value: formatRawAsNumeric({ raw: 330_000_000_000, unit: "yuan", sign_aware: false }),
+              unrealized_pnl: formatRawAsNumeric({ raw: 8_278_912_484.65, unit: "yuan", sign_aware: true }),
+              weighted_ytm: formatRawAsNumeric({ raw: 0.02562294, unit: "pct", sign_aware: false }),
+              bond_count: 1700,
+            },
+          }),
+        }),
+      },
+    );
+
+    const detailOf = (key: string) => view.kpis.find((item) => item.key === key)?.detail ?? "";
+    expect(detailOf("bond-market")).toContain("环比 +0.69%");
+    expect(detailOf("bond-pnl")).toContain("环比 -0.76 亿");
+    expect(detailOf("bond-pnl")).not.toMatch(/环比 -0\.9\d%/);
+    expect(detailOf("bond-ytm")).toContain("环比 -0.1bp");
+    expect(detailOf("bond-ytm")).not.toContain("%");
+    expect(detailOf("bond-credit-spread")).toContain("环比 0.0bp");
+    expect(detailOf("bond-credit-spread")).not.toContain("-0.0");
+    expect(detailOf("bond-count")).toContain("较前日 +10 只");
+  });
+
+  it("reads the industry distribution total from the backend instead of summing rows", () => {
+    // 夹具刻意让后端 total_market_value（3.50 亿）≠ 行合计（3.00 亿）：
+    // 面板合计必须取后端字段，前端不再对 items 求和（2026-09-02 审计 C3）。
     const view = buildModuleHomeView(
       "portfolio",
       { mode: "real" },
@@ -378,6 +429,7 @@ describe("ModuleWorkbenchHome model", () => {
         bondIndustry: query({
           data: envelope({
             report_date: "2026-04-30",
+            total_market_value: formatRawAsNumeric({ raw: 350_000_000, unit: "yuan", sign_aware: false }),
             items: [
               {
                 industry_name: "金融债",
@@ -400,7 +452,11 @@ describe("ModuleWorkbenchHome model", () => {
     const industryPanel = view.distributionPanels?.find((panel) => panel.key === "industry");
     expect(industryPanel?.rows).toHaveLength(2);
     expect(industryPanel?.rows.map((row) => row.marketValue)).toEqual(["1.00 亿元", "2.00 亿元"]);
-    expect(industryPanel?.totalDisplay).toBe("3.00 亿");
+    // 行业分布只回 Top10：合计是 Top10 之和、占比是 Top10 内占比，与相邻卡的全组合总市值不是同一分母。
+    expect(industryPanel?.title).toBe("行业分布（Top10）");
+    expect(industryPanel?.totalDisplay).toBe("Top10 合计 3.50 亿");
+    expect(industryPanel?.subtitle).toContain("占比为 Top10 内占比");
+    expect(industryPanel?.subtitle).toContain("合计为 Top10 之和");
   });
 
   it("explains the rating distribution tie-out to formal ZQTZ asset CNY basis", () => {
@@ -478,6 +534,7 @@ describe("ModuleWorkbenchHome model", () => {
         bondIndustry: query({
           data: envelope({
             report_date: "2026-04-30",
+            total_market_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
             items: [],
           }),
         }),
@@ -509,6 +566,75 @@ describe("ModuleWorkbenchHome model", () => {
       value: "已返回",
       detail: expect.stringContaining("至少一个子读面已返回"),
       tone: "ok",
+    });
+  });
+
+  it("attributes disabled dependent portfolio reads to the failed report-date list, not an empty backend", () => {
+    // 依赖报告日的读链路在上游日期 query 失败时是 enabled:false：无 data、非 error、非 loading。
+    const idle = <T>() => query<T>({});
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "real" },
+      {
+        balanceDates: query({ error: true }),
+        bondDates: query({ error: true }),
+        balanceOverview: idle(),
+        balanceBasis: idle(),
+        bondHeadline: idle(),
+        bondRisk: idle(),
+        bondAssetType: idle(),
+        bondAssetRating: idle(),
+        bondMaturity: idle(),
+        bondIndustry: idle(),
+        bondYield: idle(),
+        bondPortfolioComparison: idle(),
+        bondSpread: idle(),
+        bondBusinessType: idle(),
+        pnlSummary: idle(),
+        pnlVolumeRate: idle(),
+      },
+    );
+
+    expect(view.stateLabel).toBe("读取失败");
+    const statusByKey = new Map(view.statuses.map((status) => [status.key, status]));
+    for (const key of ["balance", "bond", "bond-risk", "bond-structure", "bond-depth", "balance-basis", "pnl-summary"]) {
+      const status = statusByKey.get(key);
+      expect(status?.value, key).toBe("上游失败");
+      expect(status?.value, key).not.toBe("暂无数据");
+      expect(status?.detail, key).toContain("报告日列表读取失败");
+      expect(status?.detail, key).not.toContain("后端返回为空");
+      expect(status?.tone, key).toBe("error");
+    }
+    for (const panel of view.distributionPanels ?? []) {
+      expect(panel.stateLabel, panel.key).toBe("上游失败");
+      expect(panel.stateDetail, panel.key).not.toContain("后端返回为空");
+      expect(panel.rows, panel.key).toEqual([]);
+    }
+    for (const panel of view.detailPanels ?? []) {
+      expect(panel.stateLabel, panel.key).toBe("上游失败");
+      expect(panel.stateDetail, panel.key).not.toContain("后端返回为空");
+    }
+  });
+
+  it("shows dependent portfolio reads as waiting while the report-date list is still loading", () => {
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "real" },
+      {
+        bondDates: query({ loading: true }),
+        bondHeadline: query({}),
+        bondAssetType: query({}),
+      },
+    );
+
+    expect(view.statuses.find((status) => status.key === "bond")).toMatchObject({
+      value: "读取中",
+      detail: "等待报告日列表返回。",
+      tone: "muted",
+    });
+    expect(view.distributionPanels?.find((panel) => panel.key === "asset-type")).toMatchObject({
+      stateLabel: "读取中",
+      stateDetail: "等待报告日列表返回。",
     });
   });
 
@@ -643,12 +769,12 @@ describe("ModuleWorkbenchHome model", () => {
               {
                 report_date: "2026-05-31",
                 reason:
-                  "Risk tensor stale against rule version for report_date=2026-05-31; expected rv_risk_tensor_formal_materialize_v3, got rv_risk_tensor_formal_materialize_v2. Rematerialize required.",
+                  "Risk tensor stale against rule version for report_date=2026-05-31; expected rv_risk_tensor_formal_materialize_v7, got rv_risk_tensor_formal_materialize_v6. Rematerialize required.",
               },
               {
                 report_date: "2026-06-30",
                 reason:
-                  "Risk tensor stale against rule version for report_date=2026-06-30; expected rv_risk_tensor_formal_materialize_v3, got rv_risk_tensor_formal_materialize_v2. Rematerialize required.",
+                  "Risk tensor stale against rule version for report_date=2026-06-30; expected rv_risk_tensor_formal_materialize_v7, got rv_risk_tensor_formal_materialize_v6. Rematerialize required.",
               },
             ],
           }),
@@ -1183,8 +1309,13 @@ describe("ModuleWorkbenchHome model", () => {
                 initial_build_included: true,
                 final_liquidation_included: false,
               },
-              benchmark: null,
-              portfolios: [],
+              benchmark: { key: "equal_weight", label: "因子池基准", total_return: null, max_drawdown: null },
+              portfolios: [{
+                key: "shadow_missing", label: "收益缺失组合", role: "shadow_candidate",
+                total_return: null, excess_return: null, max_drawdown: null, win_rate: null,
+                average_turnover: null, average_count: 2, average_pe: null, average_pb: null,
+                weights: {}, constraints: {}, cost_results: [], latest_holdings: [],
+              }],
               period_returns: [],
             },
             cffex_member_rank: {
@@ -1212,6 +1343,10 @@ describe("ModuleWorkbenchHome model", () => {
     expect(view.detailPanels?.some((panel) => panel.key === "macro-toolkit-a-share-risk")).toBe(true);
     expect(view.detailPanels?.some((panel) => panel.key === "macro-toolkit-hason")).toBe(true);
     expect(view.detailPanels?.some((panel) => panel.key === "macro-toolkit-shadow")).toBe(true);
+    const shadowRows = view.detailPanels?.find((panel) => panel.key === "macro-toolkit-shadow")?.rows;
+    expect(shadowRows?.find((row) => row.key === "shadow-benchmark")?.value).toBe(`累计 ${EM_DASH} · 回撤 ${EM_DASH}`);
+    expect(shadowRows?.find((row) => row.key === "shadow-shadow_missing")?.value).toBe(`累计 ${EM_DASH} · 超额 ${EM_DASH}`);
+    expect(shadowRows?.find((row) => row.key === "shadow-shadow_missing")?.tone).toBe("watch");
     expect(view.detailPanels?.some((panel) => panel.key === "macro-toolkit-runtime")).toBe(true);
     expect(view.statuses.some((item) => item.key === "a-share-risk")).toBe(true);
   });
@@ -1277,6 +1412,7 @@ describe("ModuleWorkbenchHome model", () => {
               liability_total_amortized_cost_amount: "20000000",
               asset_total_accrued_interest_amount: "800000",
               liability_total_accrued_interest_amount: "200000",
+              metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
             },
             {
               requested_report_date: "2026-04-30",
@@ -1823,6 +1959,172 @@ describe("ModuleWorkbenchHome model", () => {
     expect(panel?.chart?.values?.[1]).toBeNull();
   });
 
+  it("shows EM_DASH instead of a fabricated 'YTM %' when weighted_avg_ytm coverage is missing", () => {
+    const queries = portfolioGovernanceQueries();
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "real" },
+      {
+        ...queries,
+        bondBusinessType: query({
+          data: envelope(
+            {
+              report_date: "2026-05-31",
+              items: [
+                {
+                  name: "无覆盖样例",
+                  market_value: "0.00000000",
+                  weighted_avg_ytm: formatRawAsNumeric({ raw: null, unit: "pct", sign_aware: true }),
+                  weighted_avg_duration: "",
+                  duration_source: "",
+                },
+              ],
+            },
+            {
+              result_kind: "bond_dashboard.business_type_metrics",
+              requested_report_date: "2026-05-31",
+              resolved_report_date: "2026-05-31",
+              as_of_date: "2026-05-31",
+              tables_used: ["fact_formal_bond_analytics_daily"],
+              evidence_rows: 1710,
+            },
+          ),
+        }),
+      },
+    );
+
+    const panel = view.detailPanels?.find((item) => item.key === "business-type-metrics");
+    const row = panel?.rows[0];
+    expect(row?.value).toContain(EM_DASH);
+    expect(row?.value).not.toContain("YTM %");
+    // 空串久期不得渲染成「久期 」，也不得补 0。
+    expect(row?.value).toBe(`YTM ${EM_DASH} · 久期 ${EM_DASH}`);
+    expect(row?.source).toBe("市值 0.00 亿元");
+  });
+
+  it("downgrades business-type row tone to watch when the envelope reports quality_flag=warning", () => {
+    const queries = portfolioGovernanceQueries();
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "real" },
+      {
+        ...queries,
+        bondBusinessType: query({
+          data: envelope(
+            {
+              report_date: "2026-05-31",
+              items: [
+                {
+                  name: "Core book",
+                  market_value: "1000000000.00",
+                  weighted_avg_ytm: formatRawAsNumeric({ raw: 0.0255, unit: "pct", sign_aware: true }),
+                  weighted_avg_duration: "3.50000000",
+                  duration_source: "formal",
+                },
+              ],
+            },
+            {
+              result_kind: "bond_dashboard.business_type_metrics",
+              requested_report_date: "2026-05-31",
+              resolved_report_date: "2026-05-31",
+              as_of_date: "2026-05-31",
+              tables_used: ["fact_formal_bond_analytics_daily"],
+              evidence_rows: 0,
+              quality_flag: "warning",
+            },
+          ),
+        }),
+      },
+    );
+
+    const panel = view.detailPanels?.find((item) => item.key === "business-type-metrics");
+    expect(panel?.rows[0]?.tone).toBe("watch");
+    // 久期后端为 8 位小数字符串，展示保留两位并带「年」；市值固定两位小数。
+    expect(panel?.rows[0]?.value).toBe("YTM 2.55% · 久期 3.50 年");
+    expect(panel?.rows[0]?.source).toBe("市值 10.00 亿元 · formal");
+  });
+
+  it("labels balance basis rows with the asset/liability side so same-basis rows stay distinguishable", () => {
+    const queries = portfolioGovernanceQueries();
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "real" },
+      {
+        ...queries,
+        balanceBasis: query({
+          data: envelope({
+            report_date: "2026-05-31",
+            position_scope: "all",
+            currency_basis: "CNY",
+            rows: [
+              {
+                source_family: "tyw",
+                invest_type_std: "H",
+                accounting_basis: "AC",
+                position_scope: "asset",
+                currency_basis: "CNY",
+                detail_row_count: 12,
+                market_value_amount: "28233000000.00",
+                amortized_cost_amount: "28100000000.00",
+                accrued_interest_amount: "120000000.00",
+              },
+              {
+                source_family: "tyw",
+                invest_type_std: "H",
+                accounting_basis: "AC",
+                position_scope: "liability",
+                currency_basis: "CNY",
+                detail_row_count: 30,
+                market_value_amount: "76325000000.00",
+                amortized_cost_amount: "76000000000.00",
+                accrued_interest_amount: "325000000.00",
+              },
+            ],
+          }),
+        }),
+      },
+    );
+
+    const panel = view.detailPanels?.find((item) => item.key === "balance-basis");
+    expect(panel?.rows.map((row) => row.label)).toEqual(["TYW · 资产 · H · AC", "TYW · 负债 · H · AC"]);
+    expect(panel?.rows.map((row) => row.value)).toEqual(["282.33 亿元", "763.25 亿元"]);
+    expect(panel?.rows[0]?.source).toBe("摊余 281.00 亿元 · 应计 1.20 亿元");
+  });
+
+  it("counts one failed source per underlying request when home-summary projections share the same error", () => {
+    const sharedError = new Error("home-summary unavailable");
+    const failedProjection = () =>
+      ({
+        data: undefined,
+        error: sharedError,
+        isError: true,
+        isLoading: false,
+        isFetching: false,
+        status: "error",
+        fetchStatus: "idle",
+      }) as unknown as UseQueryResult<never>;
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "real" },
+      {
+        bondDates: query({ data: envelope({ report_dates: ["2026-05-31"] }) }),
+        bondHeadline: failedProjection(),
+        bondAssetType: failedProjection(),
+        bondAssetRating: failedProjection(),
+        bondMaturity: failedProjection(),
+        bondIndustry: failedProjection(),
+        bondYield: failedProjection(),
+        bondPortfolioComparison: failedProjection(),
+        bondSpread: failedProjection(),
+        bondBusinessType: failedProjection(),
+        pnlSummary: query({ error: true }),
+      },
+    );
+
+    expect(view.dataNote.lines).toContain("2 项来源读取失败：不使用前端补数。");
+    expect(view.dataNote.lines.join(" ")).not.toContain("10 项来源读取失败");
+  });
+
   it("does not let portfolio comparison failure block decision evidence readiness", () => {
     const view = buildModuleHomeView(
       "portfolio",
@@ -1910,6 +2212,7 @@ describe("ModuleWorkbenchHome model", () => {
             liability_total_amortized_cost_amount: "20000000",
             asset_total_accrued_interest_amount: "800000",
             liability_total_accrued_interest_amount: "200000",
+            metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
           }),
         }),
         bondDates: query({ data: envelope({ report_dates: ["2026-04-30"] }) }),
@@ -1975,6 +2278,7 @@ describe("ModuleWorkbenchHome model", () => {
             liability_total_amortized_cost_amount: "20000000",
             asset_total_accrued_interest_amount: "800000",
             liability_total_accrued_interest_amount: "200000",
+            metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
           }),
         }),
         bondDates: query({ data: envelope({ report_dates: ["2026-05-31"] }) }),
@@ -2057,6 +2361,7 @@ describe("ModuleWorkbenchHome model", () => {
             asset_total_amortized_cost_amount: "79000000",
             liability_total_amortized_cost_amount: "20000000",
             asset_total_accrued_interest_amount: "800000",
+            metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
             liability_total_accrued_interest_amount: "200000",
           }),
         }),
@@ -2161,13 +2466,14 @@ describe("ModuleWorkbenchHome model", () => {
 
     expect(view.stateLabel).toBe("已接入");
     expect(view.kpis.find((item) => item.key === "portfolio-dv01")?.value).toContain("万元");
-    expect(view.kpis.find((item) => item.key === "liquidity-gap")?.label).toBe("久期缺口");
+    expect(view.kpis.find((item) => item.key === "liquidity-gap")?.label).toBe("久期缺口（分析口径）");
+    expect(view.kpis.find((item) => item.key === "liquidity-gap")?.detail).toContain("仅供复核");
     expect(view.kpis.find((item) => item.key === "liquidity-gap")?.tone).toBe("watch");
     expect(view.kpis.every((item) => item.sparkline === undefined)).toBe(true);
     expect(view.decision?.facts.some((fact) => fact.label === "限额状态")).toBe(false);
     expect(view.decision?.detail).toContain("字段级证据");
     expect(view.decision?.tone).toBe("watch");
-    expect(view.statuses.find((status) => status.key === "cashflow")?.value).toBe("分析口径");
+    expect(view.statuses.find((status) => status.key === "cashflow")?.value).toBe("分析口径 · 仅供复核");
 
     const tensorPanel = view.detailPanels?.find((panel) => panel.key === "risk-tensor-detail");
     expect(tensorPanel?.rows.some((row) => row.label === "KRD 5Y")).toBe(true);
@@ -2184,10 +2490,10 @@ describe("ModuleWorkbenchHome model", () => {
     expect(cashflowPanel?.sections?.some((section) => section.key === "cashflow-forecast")).toBe(true);
     expect(cashflowPanel?.rows.some((row) => row.label === "12M 再投资风险")).toBe(true);
     expect(cashflowPanel?.meta).toContain("cashflow-projection");
-    expect(cashflowPanel?.stateLabel).toBe("分析口径");
+    expect(cashflowPanel?.stateLabel).toBe("分析口径 · 仅供复核");
     expect(view.briefings.find((brief) => brief.title === "现金流压力")?.tone).toBe("watch");
     expect(view.briefings.find((brief) => brief.title === "现金流压力")?.evidence).toContain(
-      "formal_use_allowed=false",
+      "分析口径，仅供复核，不纳入正式风险评级",
     );
   });
 
@@ -2319,6 +2625,33 @@ describe("ModuleWorkbenchHome model", () => {
             period_start_date: "2026-01-01",
             period_end_date: "2026-05-31",
             total_pnl: "100000000",
+            coverage_days: 151,
+            expected_days: 151,
+            sample_filled: false,
+            sample_fill_method: null,
+            classified_parent_total_pnl: "100000000",
+            summary: {
+              interest_income: "80000000",
+              fair_value_change: "10000000",
+              capital_gain: "10000000",
+              manual_adjustment: "0",
+              total_pnl: "100000000",
+              avg_balance: "5000000000",
+              current_balance: "5000000000",
+              annualized_yield_pct: null,
+              ftp_rate_pct: "1.60",
+              ftp_cost: null,
+              ftp_net_pnl: null,
+              ftp_net_annualized_yield_pct: null,
+              proportion: "1.00",
+              assets_count: 120,
+            },
+            unallocated_pnl: "0",
+            unallocated_abs_pnl: "0",
+            unallocated_row_count: 0,
+            reconciliation_delta: "0",
+            unallocated_breakdown: [],
+            unallocated_items: [],
             source_tables: ["fact_formal_pnl_fi"],
             items: [
               {
@@ -2347,6 +2680,7 @@ describe("ModuleWorkbenchHome model", () => {
       },
     );
 
+    expect(view.dataState).toBe("ready");
     expect(view.stateLabel).toBe("已接入");
     expect(view.kpis.find((item) => item.key === "business-pnl")?.value).toBe("1 亿元");
 
@@ -2362,6 +2696,155 @@ describe("ModuleWorkbenchHome model", () => {
     expect(pnlPanel?.rows[0]?.value).not.toContain("100,000,000");
     expect(pnlPanel?.meta).toContain("来源 pnl/by-business");
     expect(pnlPanel?.meta).toContain("2026年累计");
+  });
+
+  it("keeps performance in loading state without presenting missing data as an error", () => {
+    const view = buildModuleHomeView(
+      "performance",
+      { mode: "real" },
+      {
+        kpiOwners: query({ loading: true }),
+        kpiSummary: query({ loading: true }),
+        pnlYtd: query({ loading: true }),
+      },
+    );
+
+    expect(view.dataState).toBe("loading");
+    expect(view.stateLabel).toBe("读取中");
+    expect(view.stateDetail).toContain("正在读取 KPI 负责人");
+    expect(view.stateDetail).not.toContain("暂无数据");
+  });
+
+  it("classifies a completed zero-result performance read as empty with one actionable reason", () => {
+    const view = buildModuleHomeView(
+      "performance",
+      { mode: "real" },
+      {
+        kpiOwners: query({ data: { owners: [], total: 0 } }),
+        kpiSummary: query({}),
+        pnlYtd: query({
+          data: envelope({
+            year: 2026,
+            period_type: "yearly",
+            period_label: "2026年累计",
+            period_start_date: "2026-01-01",
+            period_end_date: "2026-08-31",
+            total_pnl: "0",
+            source_tables: [],
+            items: [],
+          } as never),
+        }),
+      },
+    );
+
+    expect(view.dataState).toBe("empty");
+    expect(view.stateLabel).toBe("暂无数据");
+    expect(view.stateDetail).toContain("请先进入绩效考核页核验负责人及指标配置");
+    const kpiPanel = view.detailPanels?.find((panel) => panel.key === "kpi-metric-detail");
+    expect(kpiPanel?.stateLabel).toBe("暂无考核对象");
+    expect(kpiPanel?.stateDetail).toContain("请进入绩效考核页配置负责人");
+    const pnlPanel = view.detailPanels?.find((panel) => panel.key === "business-pnl-detail");
+    expect(pnlPanel?.stateLabel).toBe("明细为空");
+    expect(pnlPanel?.stateDetail).toContain("请进入业务种类损益页核验报告期与来源");
+  });
+
+  it("keeps returned performance data visible as partial when another source fails", () => {
+    const view = buildModuleHomeView(
+      "performance",
+      { mode: "real" },
+      {
+        kpiOwners: query({
+          data: { owners: [{ owner_id: 1, owner_name: "固定收益部" } as never], total: 1 },
+        }),
+        kpiSummary: query({
+          data: {
+            owner_id: 1,
+            owner_name: "固定收益部",
+            year: 2026,
+            period_type: "YEAR",
+            period_label: "2026年度",
+            period_start_date: "2026-01-01",
+            period_end_date: "2026-08-31",
+            metrics: [],
+            total: 0,
+            total_weight: "0",
+            total_score: "0",
+          },
+        }),
+        pnlYtd: query({ error: true }),
+      },
+    );
+
+    expect(view.dataState).toBe("partial");
+    expect(view.stateLabel).toBe("部分可用");
+    expect(view.stateDetail).toContain("已返回的数据继续展示");
+  });
+
+  it("marks complete performance content stale when the pnl envelope is stale", () => {
+    const view = buildModuleHomeView(
+      "performance",
+      { mode: "real" },
+      {
+        kpiOwners: query({
+          data: { owners: [{ owner_id: 1, owner_name: "固定收益部" } as never], total: 1 },
+        }),
+        kpiSummary: query({
+          data: {
+            owner_id: 1,
+            owner_name: "固定收益部",
+            year: 2026,
+            period_type: "YEAR",
+            period_label: "2026年度",
+            period_start_date: "2026-01-01",
+            period_end_date: "2026-08-31",
+            metrics: [
+              {
+                metric_id: 101,
+                metric_code: "KPI_BOND_YIELD",
+                metric_name: "债券投资收益率",
+                target_value: "4.50",
+                unit: "%",
+                period_actual_value: "4.20",
+                period_score_value: "12.50",
+                period_end_date: "2026-08-31",
+                data_date: "2026-08-31",
+              } as never,
+            ],
+            total: 1,
+            total_weight: "100",
+            total_score: "12.50",
+          },
+        }),
+        pnlYtd: query({
+          data: envelope(
+            {
+              year: 2026,
+              period_type: "yearly",
+              period_label: "2026年累计",
+              period_start_date: "2026-01-01",
+              period_end_date: "2026-08-31",
+              total_pnl: "100000000",
+              source_tables: ["fact_formal_pnl_fi"],
+              items: [
+                {
+                  row_key: "zqtz",
+                  sort_order: 1,
+                  business_type: "债券投资",
+                  total_pnl: "100000000",
+                  current_balance: "5000000000",
+                  proportion: "1.00",
+                },
+              ],
+            } as never,
+            { quality_flag: "stale", vendor_status: "vendor_stale" },
+          ),
+        }),
+      },
+    );
+
+    expect(view.dataState).toBe("stale");
+    expect(view.stateLabel).toBe("数据过期");
+    expect(view.stateDetail).toContain("复盘前请先核验报告期与来源");
   });
 
   it("does not attach performance detail panels to portfolio home", () => {
@@ -2401,6 +2884,7 @@ describe("ModuleWorkbenchHome model", () => {
       },
     );
 
+    expect(view.dataState).toBe("error");
     expect(view.stateLabel).toBe("读取失败");
     // §6 状态去重：完整失败原因只在状态条与数据说明各出现一次，分区内保持安静占位。
     expect(view.stateDetail).toContain("不使用前端补数");
@@ -2473,6 +2957,25 @@ describe("market overview trader-first helpers", () => {
               { date: "2026-04-03", crisis_score: -0.63, percentile: 34.0 },
               { date: "2026-04-10", crisis_score: -0.57, percentile: 36.21 },
             ],
+            score_trend: {
+              requested_window_points: 20,
+              window_points: 2,
+              start_date: "2026-04-03",
+              end_date: "2026-04-10",
+              start_score: -0.63,
+              end_score: -0.57,
+              score_change: 0.06,
+              start_percentile: 34.0,
+              end_percentile: 36.21,
+              percentile_change: 2.21,
+              direction: "rising",
+            },
+            risk_gate: {
+              eligible: true,
+              triggered: false,
+              threshold: 2,
+              reason_code: "crisis_score_below_threshold",
+            },
             recommendation: "可适当加仓，风险偏好环境",
             available_component_count: 2,
             component_count: 5,
@@ -2498,6 +3001,25 @@ describe("market overview trader-first helpers", () => {
       componentCount: 5,
       scoreDelta: 0.06,
       percentileDelta: 2.21,
+      trend: {
+        requestedWindowPoints: 20,
+        windowPoints: 2,
+        startDate: "2026-04-03",
+        endDate: "2026-04-10",
+        startScore: -0.63,
+        endScore: -0.57,
+        scoreChange: 0.06,
+        startPercentile: 34.0,
+        endPercentile: 36.21,
+        percentileChange: 2.21,
+        direction: "rising",
+      },
+      riskGate: {
+        eligible: true,
+        triggered: false,
+        threshold: 2,
+        reasonCode: "crisis_score_below_threshold",
+      },
       components: [
         { key: "equity_vol", label: "HS300 realized volatility", zScore: -0.42, weight: 0.25, rawValue: 12.32 },
         { key: "credit_spread", label: "AA 5Y - treasury 5Y", zScore: -0.35, weight: 0.25, rawValue: 0.73 },
@@ -2719,104 +3241,154 @@ describe("market overview trader-first helpers", () => {
     ]);
   });
 
-  it("promotes key-rate action to P1 when spreads or 10Y moved", () => {
-    const items = buildActionQueue({
-      view: {
-        statuses: [],
-      } as never,
-      keyRatePanel: {
-        key: "key-rate-snapshot",
-        title: "关键利率",
-        meta: "",
-        stateLabel: "已就绪",
-        stateDetail: "",
-        tone: "ok",
-        rows: [
-          {
-            key: "gov-10y",
-            label: "10Y国债",
-            value: "2.10%",
-            detail: "+3bp",
-            tradeDate: "2026-06-12",
-            source: "mock",
-            tone: "watch",
-          },
-          {
-            key: "term-spread-10y-2y",
-            label: "10Y-2Y",
-            value: "18bp",
-            detail: "+1bp",
-            tradeDate: "2026-06-12",
-            source: "mock",
-            tone: "ok",
-          },
-        ],
-      },
-      yieldCurvePanel: {
-        key: "yield-curve-quotes",
-        title: "曲线",
-        meta: "",
-        stateLabel: "已就绪",
-        stateDetail: "",
-        tone: "ok",
-        rows: [{ key: "gov-3y", label: "3Y", value: "1.8%", detail: "", tradeDate: "2026-06-12", source: "mock", tone: "ok" }],
-      },
-    });
+  it("maps a-share stampede risk tier names to unambiguous wording and passes unknown tiers through", () => {
+    const buildMarketViewWithStampedeCard = (stance: string, riskName: string) =>
+      buildModuleHomeView(
+        "market",
+        { mode: "mock" },
+        {
+          macroToolkitAnalysis: query({
+            data: envelope({
+              default_data_sources: ["choice"],
+              as_of_date: "2026-08-26",
+              conclusion: {
+                stance: "中性观察",
+                tone: "neutral",
+                summary: "summary",
+                recommended_action: "action",
+              },
+              coverage: {
+                indicator_count: 1,
+                hit_count: 1,
+                hit_rate: 1,
+                script_count: 1,
+                output_file_count: 0,
+              },
+              indicators: [],
+              signal_cards: [
+                { key: "liquidity", title: "流动性", stance: "偏松", tone: "positive", score: 78, evidence: [] },
+                { key: "a_share_stampede_risk", title: "市场踩踏风险", stance, tone: "positive", score: 27, evidence: [] },
+              ],
+              a_share_risk: {
+                trade_date: "2026-08-26",
+                status: "complete",
+                risk_score: 27,
+                risk_level: "green",
+                risk_name: riskName,
+                summary: "宽度与流动性未触发主要踩踏风险。",
+                position_rule: "正常交易。",
+                metrics: {},
+                triggered_rules: [],
+                watch_next: [],
+                warnings: [],
+                tables_used: [],
+              },
+              capability_results: [],
+              strategy_summaries: [],
+              output_files: [],
+              source_checks: [],
+              capabilities: [],
+              warnings: [],
+            }),
+          }),
+        },
+      );
 
-    expect(items.find((item) => item.key === "key-rate-check")?.rank).toBe("P1");
-    expect(items.find((item) => item.key === "cross-asset-path")?.rank).toBe("P2");
+    const view = buildMarketViewWithStampedeCard("绿色风险", "绿色风险");
+    const signalPanel = view.detailPanels?.find((panel) => panel.key === "macro-toolkit-signals");
+    const stampedeRow = signalPanel?.rows.find((row) => row.key === "a_share_stampede_risk");
+    expect(stampedeRow?.value).toBe("风险低（绿档） · 27");
+    // 其他信号卡 stance 不受映射影响。
+    expect(signalPanel?.rows.find((row) => row.key === "liquidity")?.value).toBe("偏松 · 78");
+    // 同页状态区与风险评分行使用同一映射。
+    expect(view.statuses.find((item) => item.key === "a-share-risk")?.value).toBe("风险低（绿档）");
+    const riskPanel = view.detailPanels?.find((panel) => panel.key === "macro-toolkit-a-share-risk");
+    expect(riskPanel?.rows.find((row) => row.key === "a-share-score")?.source).toBe("风险低（绿档）");
+
+    // 未登记档位（C12）：原样透出，不猜测映射。
+    const passthroughView = buildMarketViewWithStampedeCard("数据不足", "数据不足");
+    const passthroughPanel = passthroughView.detailPanels?.find(
+      (panel) => panel.key === "macro-toolkit-signals",
+    );
+    expect(
+      passthroughPanel?.rows.find((row) => row.key === "a_share_stampede_risk")?.value,
+    ).toBe("数据不足 · 27");
   });
 
-  it("keeps key-rate action at P2 when rates are flat", () => {
-    const items = buildActionQueue({
-      view: {
-        statuses: [],
-      } as never,
-      keyRatePanel: {
-        key: "key-rate-snapshot",
-        title: "关键利率",
-        meta: "",
-        stateLabel: "已就绪",
-        stateDetail: "",
-        tone: "ok",
-        rows: [
-          {
-            key: "gov-10y",
-            label: "10Y国债",
-            value: "2.10%",
-            detail: "0bp",
-            tradeDate: "2026-06-12",
-            source: "mock",
-            tone: "ok",
-          },
-        ],
-      },
-      yieldCurvePanel: {
-        key: "yield-curve-quotes",
-        title: "曲线",
-        meta: "",
-        stateLabel: "已就绪",
-        stateDetail: "",
-        tone: "ok",
-        rows: [{ key: "gov-3y", label: "3Y", value: "1.8%", detail: "", tradeDate: "2026-06-12", source: "mock", tone: "ok" }],
-      },
+  it("labels market news copy with the tushare backup chain instead of choice-events", () => {
+    const newsEvent = (index: number) => ({
+      event_key: `news-${index}`,
+      received_at: `2026-08-2${index}T09:30:00Z`,
+      group_id: "news_cmd1",
+      content_type: "",
+      serial_id: index,
+      request_id: index,
+      error_code: 0,
+      error_msg: "",
+      topic_code: "tushare.major_news",
+      item_index: index,
+      payload_text: `事件标题 ${index}`,
+      payload_json: null,
     });
+    const view = buildModuleHomeView(
+      "market",
+      { mode: "mock" },
+      {
+        newsEvents: query({
+          data: envelope({
+            total_rows: 1075,
+            limit: 2,
+            offset: 0,
+            as_of_date: "2026-08-26",
+            excluded_future_rows: 0,
+            events: [newsEvent(1), newsEvent(2)],
+          }),
+        }),
+      },
+    );
 
-    expect(items.find((item) => item.key === "key-rate-check")?.rank).toBe("P2");
+    const briefing = view.briefings.find((item) => item.title === "事件状态");
+    expect(briefing?.conclusion).toContain("新闻事件（Tushare 备份链路）已返回 1075 条");
+    expect(briefing?.conclusion).not.toContain("choice-events");
+    expect(view.statuses.find((item) => item.key === "news-events")?.detail).toBe(
+      "新闻事件流已返回 1075 条事件摘要。",
+    );
+    const newsPanel = view.detailPanels?.find((panel) => panel.key === "news-events-snapshot");
+    expect(newsPanel?.meta).toContain("来源 Tushare 备份链路");
+    expect(newsPanel?.rows.find((row) => row.key === "news-events-total")?.source).toBe(
+      "Tushare 备份链路",
+    );
+    // content_type 为空时来源兜底也不再标注 choice。
+    expect(newsPanel?.rows.find((row) => row.key === "news-event-news-1")?.source).toBe(
+      "Tushare 备份链路",
+    );
   });
+
 });
 
 describe("useMarketHomeQueries contract", () => {
-  it("requests macro toolkit full analysis with historyLimit 430", () => {
+  it("eagerly requests the snapshot and defers full component reads", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/features/workbench/module-home/useMarketHomeQueries.ts"),
       "utf8",
     );
 
-    expect(source).toContain("MARKET_HOME_CRISIS_SCORE_HISTORY_LIMIT = 430");
-    expect(source).toContain("historyLimit: MARKET_HOME_CRISIS_SCORE_HISTORY_LIMIT");
-    expect(source).toContain('"macro-toolkit-analysis"');
-    expect(source).toContain('"full"');
-    expect(source).toContain("MARKET_HOME_CRISIS_SCORE_HISTORY_LIMIT");
+    expect(MARKET_OVERVIEW_SNAPSHOT_QUERY_VERSION).toMatch(/^v\d+$/);
+    expect(source).toContain(
+      `export const MARKET_OVERVIEW_SNAPSHOT_QUERY_VERSION = ${JSON.stringify(MARKET_OVERVIEW_SNAPSHOT_QUERY_VERSION)}`,
+    );
+    expect(source).toContain(`queryKey: [
+      "module-home",
+      "market-snapshot",
+      MARKET_OVERVIEW_SNAPSHOT_QUERY_VERSION,
+      client.mode,
+    ],`);
+    expect(source).toContain('detail: "full"');
+    expect(source).not.toContain("historyLimit:");
+    expect(source).not.toContain("MARKET_HOME_CRISIS_SCORE_HISTORY_LIMIT");
+    expect(source).toContain(
+      'queryKey: ["module-home", "macro-toolkit-analysis", "full", client.mode]',
+    );
+    expect(source).toContain('enabled: readsChartSection("macro") || backendActiveKey === "macro"');
   });
 });

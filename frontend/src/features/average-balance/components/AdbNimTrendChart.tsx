@@ -1,4 +1,8 @@
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import {
+  CHART_CARD_HEIGHTS,
+  type ChartCardHeight,
+} from "../../../components/charts/chartCardScale";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import type { AdbMonthlyDataItem } from "../../../api/contracts";
 import { nocturneTokens } from "../../../theme/designSystem";
@@ -6,7 +10,10 @@ import { EM_DASH } from "../../../utils/format";
 
 export type AdbNimTrendChartProps = {
   months: AdbMonthlyDataItem[];
-  height?: number;
+  title: string;
+  question?: string;
+  height?: ChartCardHeight;
+  flat?: boolean;
 };
 
 function formatPct(value: number | null | undefined): string {
@@ -41,10 +48,8 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
     },
     legend: {
       data: ["资产收益率", "负债成本率", "NIM利差"],
-      top: 0,
-      bottom: "auto",
     },
-    grid: { left: 52, right: 24, top: 48, bottom: 36 },
+    grid: { left: 52, right: 24, top: 48 },
     xAxis: {
       type: "category",
       data: labels,
@@ -93,7 +98,21 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
  * 消费月度统计中已有的 asset_yield / liability_cost / net_interest_margin，
  * 用双轴折线图展示 YTM vs 票息 vs NIM 的月度变化趋势。
  */
-export default function AdbNimTrendChart({ months, height = 320 }: AdbNimTrendChartProps) {
-  if (!months.length) return null;
-  return <BaseChart option={buildNimTrendOption(months)} height={height} />;
+export default function AdbNimTrendChart({
+  months,
+  title,
+  question,
+  height = CHART_CARD_HEIGHTS.hero,
+  flat = false,
+}: AdbNimTrendChartProps) {
+  return (
+    <ChartCard
+      flat={flat}
+      title={title}
+      question={question}
+      unit="%"
+      height={height}
+      option={months.length ? buildNimTrendOption(months) : null}
+    />
+  );
 }

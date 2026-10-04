@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createDataUpdatesClient, type DataUpdateRun, type DataUpdatesClient, type UpdateWorkflow } from "../../api/dataUpdatesClient";
@@ -27,6 +27,8 @@ export default function DataUpdateCenter({ mode, api = defaultApi }: { mode: "re
   const [workflow, setWorkflow] = useState<UpdateWorkflow>("core_financial");
   const [notice, setNotice] = useState("");
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
+  const recoveryKeys = useRef(new Map<string, string>());
+  const recoveryInFlight = useRef(false);
   const overview = useQuery({ queryKey, queryFn: api.overview, enabled: mode === "real", retry: false,
     refetchInterval: 30_000 });
   const data = overview.data;
@@ -41,9 +43,32 @@ export default function DataUpdateCenter({ mode, api = defaultApi }: { mode: "re
   });
   const cancel = useMutation({ mutationFn: api.cancel, onSuccess: () => { setNotice("已取消等待。"); refresh(); } });
   const market = useMutation({ mutationFn: api.requestMarket, onSuccess: (result) => { setNotice(result.message); refresh(); } });
+  const recovery = useMutation({
+    mutationFn: ({ runId, key }: { runId: string; key: string }) => api.recoverPublication(runId, key),
+    onSuccess: async (run, variables) => {
+      setNotice(`${run.message} 恢复请求编号：${run.run_id}`);
+      recoveryKeys.current.delete(variables.runId);
+      await queryClient.invalidateQueries({ queryKey });
+    },
+    onError: async () => { await queryClient.invalidateQueries({ queryKey }); },
+    onSettled: () => { recoveryInFlight.current = false; },
+  });
+  const recoverPublication = (run: DataUpdateRun) => {
+    if (recoveryInFlight.current) return;
+    const runId = run.recovery_of_run_id || run.run_id;
+    const key = recoveryKeys.current.get(runId) ?? crypto.randomUUID();
+    recoveryKeys.current.set(runId, key);
+    recoveryInFlight.current = true;
+    setNotice("");
+    recovery.mutate({ runId, key });
+  };
   const changeDate = (value: string) => { setReportDate(value); setRequestKey(crypto.randomUUID()); submit.reset(); setNotice(""); };
-  const retry = (run: DataUpdateRun) => { changeDate(run.report_date); setWorkflow(run.workflow ?? "core_financial"); setNotice("已选择该报告日，请检查文件后重新提交。"); };
-  const error = submit.error ?? cancel.error ?? market.error;
+  const retry = (run: DataUpdateRun) => {
+    if (run.workflow === "choice_stock_pit_history") return;
+    changeDate(run.report_date); setWorkflow(run.workflow ?? "core_financial");
+    setNotice("已选择该报告日，请检查文件后重新提交。");
+  };
+  const error = recovery.error ?? submit.error ?? cancel.error ?? market.error;
   const canManage = workflow === "balance_daily" ? data?.permissions.balance : data?.permissions.core;
   const preflightMatchesSelection = preflight.data?.report_date === reportDate && preflight.data?.workflow === workflow;
   const canSubmit = Boolean(!overview.isError && model?.schedulerAvailable && canManage && reportDate
@@ -116,33 +141,52 @@ export default function DataUpdateCenter({ mode, api = defaultApi }: { mode: "re
             </ul>
           </section>
         </div>
-        <section className={styles.history} aria-label="财务更新记录">
-          <h3>财务更新记录</h3>
-          {data.runs.length === 0 ? <p className={styles.muted}>尚未提交财务更新请求。已有计划任务的运行状态显示在上方。</p> :
+        <section className={styles.history} aria-label="更新记录">
+          <h3>更新记录</h3>
+          {data.runs.length === 0 ? <p className={styles.muted}>尚未提交更新请求。已有计划任务的运行状态显示在上方。</p> :
             <ul className={styles.runs}>{data.runs.map((run) => {
+              const isPitHistory = run.workflow === "choice_stock_pit_history";
+              const canManageRun = isPitHistory ? data.permissions.market
+                : run.workflow === "balance_daily" ? data.permissions.balance : data.permissions.core;
               const publicationNeedsReview = requiresPublicationReview(run);
+              const recoverySourceId = run.recovery_of_run_id || run.run_id;
+              const hasActiveRecovery = data.runs.some((candidate) => candidate.recovery_mode === "publication_only"
+                && candidate.recovery_of_run_id === recoverySourceId
+                && ["queued", "waiting_inputs", "running", "retrying"].includes(candidate.status));
+              const canRecover = publicationNeedsReview && run.publication_recovery?.available === true
+                && !hasActiveRecovery && canManageRun;
               return <li key={run.run_id}>
               <div className={styles.sectionHeading}><strong>报告日 {run.report_date}</strong><Status value={run.status} />
-                {(run.workflow === "balance_daily" ? data.permissions.balance : data.permissions.core) && ["queued", "waiting_inputs", "retrying"].includes(run.status) &&
+                {canManageRun && ["queued", "waiting_inputs", "retrying"].includes(run.status) &&
                   <button type="button" disabled={cancel.isPending} onClick={() => cancel.mutate(run.run_id)}>取消等待</button>}
-                {(run.workflow === "balance_daily" ? data.permissions.balance : data.permissions.core) && run.status === "failed" && !publicationNeedsReview &&
+                {!isPitHistory && canManageRun && run.status === "failed" && !publicationNeedsReview &&
                   <button type="button" onClick={() => retry(run)}>重新提交此日期</button>}
+                {canRecover && <button type="button" disabled={overview.isError || recovery.isPending}
+                  onClick={() => recoverPublication(run)}>仅恢复发布</button>}
               </div>
-              <small>{run.workflow === "balance_daily" ? "每日余额、持仓与风险" : "完整财务更新（包含损益）"}</small>
+              <small>{isPitHistory ? "历史股票来源恢复" : run.workflow === "balance_daily" ? "每日余额、持仓与风险" : "完整财务更新（包含损益）"}</small>
+              {!isPitHistory && run.recovery_mode === "publication_only" && <>
+                <p>仅恢复发布，保留已完成财务计算。</p>
+                <p>原请求编号：<code>{run.recovery_of_run_id || EM_DASH}</code></p>
+              </>}
               {publicationNeedsReview && <div role="alert">
                 <p className={styles.error}>财务计算已完成，发布待处理</p>
-                <p>请查看失败回执与已完成步骤，由运维核对失败原因及已完成结果。重新提交会重跑所选财务流程，本页暂不提供仅恢复发布的操作。</p>
+                <p>{run.publication_recovery?.available === true
+                  ? "仅恢复发布会核对完成回执与来源版本，并保留已完成财务计算。重新提交会重跑所选财务流程。"
+                  : run.publication_recovery?.reason || "请查看失败回执与已完成步骤，由运维核对失败原因及已完成结果。重新提交会重跑所选财务流程，当前请求尚不能确认可恢复发布。"}</p>
               </div>}
               <p>{run.message}</p>
               {run.workflow === "balance_daily" && run.status === "completed" &&
                 <p className={styles.resultLink}><a href={`/balance-analysis?report_date=${encodeURIComponent(run.report_date)}`}>查看余额结果</a></p>}
+              {isPitHistory && run.status === "failed" && <p>请由运维核对来源和恢复计划后重新提交历史恢复请求。</p>}
               <small>最近变化 {run.updated_at.replace("T", " ").slice(0, 19)} UTC</small>
-              {run.current_step && <p role="status">正在执行：{data.steps.find((step) => step.key === run.current_step)?.label ?? "财务更新"}</p>}
+              {run.current_step && <p role="status">正在执行：{run.steps.find((step) => step.key === run.current_step)?.label
+                ?? data.steps.find((step) => step.key === run.current_step)?.label ?? "数据更新"}</p>}
               {(run.steps.length > 0 || publicationNeedsReview) && <details>
                 <summary>{publicationNeedsReview ? "查看失败回执与已完成步骤" : "查看步骤与结果"}</summary>
                 {publicationNeedsReview && <>
                   <p>请求编号：<code>{run.run_id}</code></p>
-                  <p>失败阶段：{run.failure_receipt?.failed_step === "source_preview" ? "发布前来源摘要检查" : "只读结果发布"}</p>
+                  <p>失败阶段：{(run.failure_receipt?.failed_step ?? run.publication_recovery?.failed_step) === "source_preview" ? "发布前来源摘要检查" : "只读结果发布"}</p>
                 </>}
                 <ol className={styles.steps}>
                 {run.steps.map((step) => {

@@ -5,6 +5,7 @@ import pytest
 from backend.app.core_finance.pnl_attribution.workbench import (
     _risk_exclusion_reason,
     build_advanced_attribution_summary,
+    build_carry_roll_down,
     build_krd_attribution,
     build_pnl_composition,
     build_spread_attribution,
@@ -174,6 +175,39 @@ def test_build_volume_rate_attribution_from_grouped_rows_uses_aligned_business_s
     assert row["recon_error"] == pytest.approx(0.0)
 
 
+def test_volume_rate_attribution_closes_exactly_at_float_output_boundary() -> None:
+    payload = build_volume_rate_attribution_from_grouped_rows(
+        current_rows=[
+            {
+                "business_type_primary": "rate",
+                "total_pnl": 0.1,
+                "scale_amount": 0.1,
+            }
+        ],
+        prior_rows=[
+            {
+                "business_type_primary": "rate",
+                "total_pnl": 0.3,
+                "scale_amount": 0.1,
+            }
+        ],
+        current_period="2026-04",
+        previous_period="2026-03",
+        compare_type="mom",
+    )
+
+    row = payload["items"][0]
+    assert row["volume_effect"] + row["rate_effect"] + row["interaction_effect"] == row["pnl_change"]
+    assert row["recon_error"] == 0.0
+    assert (
+        payload["total_volume_effect"]
+        + payload["total_rate_effect"]
+        + payload["total_interaction_effect"]
+        == payload["total_pnl_change"]
+    )
+    assert payload["total_recon_error"] == 0.0
+
+
 def test_build_volume_rate_attribution_exposes_total_reconciliation_gap() -> None:
     payload = build_volume_rate_attribution_from_grouped_rows(
         current_rows=[
@@ -237,8 +271,38 @@ def test_build_tpl_market_correlation_exposes_total_change_in_bp() -> None:
         end_period="2026-03",
     )
 
-    assert payload["treasury_10y_total_change_bp"] == pytest.approx(-15.0)
+    assert payload["treasury_10y_total_change_bp"] is None
     assert "treasury_10y_total_change" not in payload
+
+
+def test_build_tpl_market_correlation_excludes_non_finite_pairs_and_nulls_contaminated_total() -> None:
+    payload = build_tpl_market_correlation(
+        monthly_points=[
+            {
+                "period": "2026-01",
+                "period_label": "2026年1月",
+                "tpl_fair_value_change": 1.0,
+                "treasury_10y_change": 1.0,
+            },
+            {
+                "period": "2026-02",
+                "period_label": "2026年2月",
+                "tpl_fair_value_change": float("nan"),
+                "treasury_10y_change": 2.0,
+            },
+            {
+                "period": "2026-03",
+                "period_label": "2026年3月",
+                "tpl_fair_value_change": 3.0,
+                "treasury_10y_change": 3.0,
+            },
+        ],
+        start_period="2026-01",
+        end_period="2026-03",
+    )
+
+    assert payload["correlation_coefficient"] == pytest.approx(1.0)
+    assert payload["total_tpl_fv_change"] is None
 
 
 def test_build_advanced_attribution_summary_keeps_single_annualization() -> None:
@@ -313,6 +377,23 @@ def _krd_bond_row(*, market_value: float, modified_duration: float) -> dict[str,
     }
 
 
+@pytest.mark.parametrize("shift", [None, 0.0])
+def test_krd_missing_curve_is_unknown_while_observed_flat_curve_is_zero(shift) -> None:
+    row = _krd_bond_row(market_value=1000, modified_duration=5)
+    payload = build_krd_attribution(
+        report_date="2026-01-31", start_date="2026-01-01", end_date="2026-01-31",
+        bond_rows_end=[row], bond_rows_start=[row], treasury_shift_bp=shift,
+    )
+    expected = None if shift is None else 0
+    assert payload["total_duration_effect"] == expected
+    assert payload["buckets"][0]["duration_contribution"] == expected
+    assert payload["buckets"][0]["contribution_pct"] == expected
+    assert payload["max_contribution_tenor"] == ""
+    assert payload["max_contribution_value"] == expected
+    assert payload["calculation_status"] == ("unavailable" if shift is None else "complete")
+    assert payload["curve_shift_type"] == ("unavailable" if shift is None else "parallel")
+
+
 def test_build_krd_attribution_keeps_parallel_when_only_aggregate_rates_rise_and_long_duration() -> None:
     payload = build_krd_attribution(
         report_date="2026-03-31",
@@ -365,6 +446,9 @@ def test_build_krd_attribution_keeps_parallel_for_aggregate_rate_shift_regressio
 def test_spread_weighted_ytm_excludes_missing_values_from_denominator() -> None:
     def row(*, market_value: float, ytm: float | None) -> dict[str, object]:
         return {
+            "instrument_code": "MISSING" if ytm is None else "OBSERVED",
+            "accounting_class": "FVOCI",
+            "currency_code": "CNY",
             "asset_class_std": "rate",
             "tenor_bucket": "5Y",
             "market_value": market_value,
@@ -390,15 +474,20 @@ def test_spread_weighted_ytm_excludes_missing_values_from_denominator() -> None:
         ],
         treasury_10y_start_pct=2.0,
         treasury_10y_end_pct=2.0,
+        treasury_curve_start={"5Y": 2.0},
+        treasury_curve_end={"5Y": 2.0},
     )
 
     assert payload["items"][0]["yield_change"] == pytest.approx(10.0)
     assert payload["items"][0]["spread_change"] == pytest.approx(10.0)
-    assert payload["total_spread_effect"] == pytest.approx(-2.0)
+    assert payload["total_spread_effect"] == pytest.approx(-0.2)
 
 
 def test_spread_all_missing_ytm_stays_unavailable_instead_of_zero() -> None:
     row = {
+        "instrument_code": "MISSING-YTM",
+        "accounting_class": "FVOCI",
+        "currency_code": "CNY",
         "asset_class_std": "other",
         "tenor_bucket": "5Y",
         "market_value": 1_000.0,
@@ -418,10 +507,123 @@ def test_spread_all_missing_ytm_stays_unavailable_instead_of_zero() -> None:
         bond_rows_end=[row],
         treasury_10y_start_pct=2.0,
         treasury_10y_end_pct=2.0,
+        treasury_curve_start={"5Y": 2.0},
+        treasury_curve_end={"5Y": 2.0},
     )
 
     assert payload["items"][0]["yield_change"] is None
     assert payload["items"][0]["spread_change"] is None
+
+
+def _carry_row(
+    *,
+    market_value: float,
+    coupon_rate: float | None,
+    modified_duration: float | None,
+) -> dict[str, object]:
+    return {
+        "asset_class_std": "rate",
+        "market_value": market_value,
+        "coupon_rate": coupon_rate,
+        "modified_duration": modified_duration,
+        "ytm": 0.030,
+        "years_to_maturity": 5.0,
+    }
+
+
+@pytest.mark.parametrize("missing_field", ["coupon_rate", "modified_duration", "years_to_maturity"])
+def test_carry_missing_input_blocks_full_group_rate_and_amount(missing_field) -> None:
+    observed = _carry_row(market_value=100_000_000, coupon_rate=0.03, modified_duration=2.0)
+    missing = {**observed, "market_value": 900_000_000, missing_field: None}
+    payload = build_carry_roll_down(
+        report_date="2026-06-30", bond_rows=[observed, missing], ftp_rate_pct=0,
+        curve_slope_bp=None, treasury_curve={"1Y": 1, "10Y": 2},
+    )
+    item = payload["items"][0]
+    field = "carry" if missing_field == "coupon_rate" else "rolldown"
+    assert item[field] is None
+    assert item[f"{field}_pnl"] is None
+    assert payload[f"portfolio_{field}"] is None
+    assert payload[f"total_{field}_pnl"] is None
+    assert payload["portfolio_static_return"] is None
+    assert payload["total_static_pnl"] is None
+    if missing_field == "coupon_rate":
+        assert item["coupon_rate"] is None
+        assert item["rolldown"] is not None
+    else:
+        assert item["carry_pnl"] == 2_500_000
+        if missing_field == "modified_duration":
+            assert item["duration"] is None
+            assert item["curve_slope"] is not None
+        else:
+            assert item["curve_slope"] is None
+
+
+@pytest.mark.parametrize("missing_field", ["coupon_rate", "modified_duration", "years_to_maturity"])
+def test_carry_incomplete_group_blocks_portfolio_without_hiding_complete_group(missing_field) -> None:
+    complete = _carry_row(market_value=100_000_000, coupon_rate=0.03, modified_duration=2.0)
+    incomplete = {**complete, "asset_class_std": "credit", missing_field: None}
+    payload = build_carry_roll_down(
+        report_date="2026-06-30", bond_rows=[complete, incomplete], ftp_rate_pct=0,
+        curve_slope_bp=None, treasury_curve={"1Y": 1, "10Y": 2},
+    )
+    rows = {item["category"]: item for item in payload["items"]}
+    assert rows["rate"]["carry_pnl"] == 250_000
+    assert rows["rate"]["rolldown_pnl"] is not None
+    field = "carry" if missing_field == "coupon_rate" else "rolldown"
+    assert payload[f"portfolio_{field}"] is None
+    assert payload[f"total_{field}_pnl"] is None
+    assert payload["portfolio_static_return"] is None
+    assert payload["total_static_pnl"] is None
+
+
+def test_carry_missing_curve_is_unknown_but_explicit_flat_curve_is_zero() -> None:
+    row = _carry_row(market_value=100_000_000, coupon_rate=0.0, modified_duration=0.0)
+    unknown = build_carry_roll_down(
+        report_date="2026-06-30", bond_rows=[row], ftp_rate_pct=0, curve_slope_bp=None,
+    )
+    flat = build_carry_roll_down(
+        report_date="2026-06-30", bond_rows=[row], ftp_rate_pct=0, curve_slope_bp=0.0,
+    )
+    assert unknown["portfolio_carry"] == 0
+    assert unknown["total_carry_pnl"] == 0
+    assert unknown["portfolio_rolldown"] is None
+    assert unknown["items"][0]["curve_slope"] is None
+    assert flat["portfolio_rolldown"] == 0
+    assert flat["total_static_pnl"] == 0
+
+
+def test_carry_all_missing_inputs_stay_unknown() -> None:
+    payload = build_carry_roll_down(
+        report_date="2026-06-30",
+        bond_rows=[_carry_row(market_value=100_000_000, coupon_rate=None, modified_duration=None)],
+        ftp_rate_pct=1, curve_slope_bp=15,
+    )
+    for field in ("coupon_rate", "duration", "carry", "carry_pnl", "rolldown", "rolldown_pnl", "static_return", "static_pnl"):
+        assert payload["items"][0][field] is None
+    assert payload["items"][0]["curve_slope"] == 15
+
+
+def test_carry_rolldown_keeps_explicit_zero_duration_in_denominator() -> None:
+    payload = build_carry_roll_down(
+        report_date="2026-06-30",
+        bond_rows=[
+            _carry_row(market_value=100.0, coupon_rate=0.03, modified_duration=2.0),
+            _carry_row(market_value=100.0, coupon_rate=0.03, modified_duration=0.0),
+        ], ftp_rate_pct=0, curve_slope_bp=15,
+    )
+    assert payload["items"][0]["rolldown"] == pytest.approx(0.15)
+
+
+def test_advanced_summary_preserves_unknown_and_real_zero() -> None:
+    payload = build_advanced_attribution_summary(
+        report_date="2026-06-30", carry_payload={
+            "portfolio_carry": None, "portfolio_rolldown": 0.0, "portfolio_static_return": None,
+        }, spread_payload={}, krd_payload={},
+    )
+    assert payload["portfolio_carry"] is None
+    assert payload["portfolio_rolldown"] == 0
+    assert payload["static_return_annualized"] is None
 
 
 def test_krd_rebuckets_legacy_start_rows_with_current_tenor_policy() -> None:
@@ -487,6 +689,9 @@ def _maturity_risk_row(
     ytm: float | None,
 ) -> dict[str, object]:
     return {
+        "instrument_code": f"{asset_class}-{maturity_date}",
+        "accounting_class": "FVOCI",
+        "currency_code": "CNY",
         "asset_class_std": asset_class,
         "tenor_bucket": "5Y" if years_to_maturity > 0 else "6M",
         "market_value": market_value,
@@ -615,6 +820,8 @@ def test_spread_excludes_missing_and_matured_rows_and_reports_risk_coverage() ->
         bond_rows_end=[valid_end],
         treasury_10y_start_pct=2.00,
         treasury_10y_end_pct=2.05,
+        treasury_curve_start={"5Y": 2.00},
+        treasury_curve_end={"5Y": 2.05},
     )
     mixed = build_spread_attribution(
         report_date="2026-06-30",
@@ -624,6 +831,8 @@ def test_spread_excludes_missing_and_matured_rows_and_reports_risk_coverage() ->
         bond_rows_end=[valid_end, missing, matured],
         treasury_10y_start_pct=2.00,
         treasury_10y_end_pct=2.05,
+        treasury_curve_start={"5Y": 2.00},
+        treasury_curve_end={"5Y": 2.05},
     )
 
     assert mixed["total_market_value"] == pytest.approx(1_000.0)
@@ -675,6 +884,8 @@ def test_duration_risk_excludes_nonpositive_duration_end_to_end() -> None:
         bond_rows_end=[valid_end, nonpositive],
         treasury_10y_start_pct=2.00,
         treasury_10y_end_pct=2.05,
+        treasury_curve_start={"5Y": 2.00},
+        treasury_curve_end={"5Y": 2.05},
     )
 
     assert [bucket["tenor"] for bucket in krd["buckets"]] == ["5Y"]
@@ -696,3 +907,26 @@ def test_duration_risk_excludes_nonpositive_duration_end_to_end() -> None:
                 "market_value": 400.0,
             }
         ]
+
+
+@pytest.mark.parametrize("zero_category", ["rate", "inactive"])
+def test_carry_zero_exposure_missing_row_does_not_block_portfolio(zero_category) -> None:
+    active = _carry_row(market_value=100_000_000, coupon_rate=0.03, modified_duration=2.0)
+    zero = {**_carry_row(market_value=0, coupon_rate=None, modified_duration=None), "asset_class_std": zero_category}
+    common = dict(report_date="2026-06-30", ftp_rate_pct=0, curve_slope_bp=15)
+    expected = build_carry_roll_down(bond_rows=[active], **common)
+    actual = build_carry_roll_down(bond_rows=[active, zero], **common)
+    for field in ("portfolio_carry", "portfolio_rolldown", "portfolio_static_return", "total_carry_pnl", "total_rolldown_pnl", "total_static_pnl"):
+        assert actual[field] == expected[field]
+
+
+def test_carry_offsetting_exposure_is_not_treated_as_zero_exposure() -> None:
+    active = _carry_row(market_value=100_000_000, coupon_rate=0.03, modified_duration=2.0)
+    long_row = {**active, "asset_class_std": "offsetting"}
+    short_row = {**long_row, "market_value": -100_000_000, "coupon_rate": None}
+    payload = build_carry_roll_down(
+        report_date="2026-06-30", bond_rows=[active, long_row, short_row],
+        ftp_rate_pct=0, curve_slope_bp=15,
+    )
+    assert payload["portfolio_carry"] is None
+    assert payload["total_carry_pnl"] is None

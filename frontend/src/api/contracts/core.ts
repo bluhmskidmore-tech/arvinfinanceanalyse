@@ -7,7 +7,10 @@
 export type NumericUnit = "yuan" | "pct" | "bp" | "ratio" | "years" | "count" | "dv01" | "yi";
 
 export type Numeric = {
+  /** 兼容近似数值，保留后端原始浮点/number 形态；正式精度比较不要依赖它。 */
   raw: number | null;
+  /** 可选无损十进制权威文本；存在时优先作为精度/缩放边界输入。 */
+  raw_text?: string | null;
   unit: NumericUnit;
   display: string;
   precision: number;
@@ -60,7 +63,10 @@ export type ResultMeta = {
   as_of_date?: string | null;
   date_basis?: string | null;
   fallback_date?: string | null;
+  /** 响应组装时刻，不是数据新鲜度信号：刚生成的响应可能承载数天前物化的数据。 */
   generated_at: string;
+  /** 数据物化完成时刻（来自治理流 cache_build_run.finished_at）；无已完成构建终态时为空。 */
+  data_built_at?: string | null;
   tables_used?: string[];
   filters_applied?: Record<string, unknown>;
   evidence_rows?: number;

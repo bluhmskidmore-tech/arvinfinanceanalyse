@@ -7,6 +7,11 @@ from typing import Any, cast
 
 import pandas as pd
 from backend.app.core_finance import factor_screen_candidates as factor_module
+from backend.app.core_finance.breakout_geometry import (
+    PATTERN_BREAKOUT_CODE,
+    PATTERN_CONSOLIDATION_CODE,
+    PATTERN_PULLBACK_CODE,
+)
 from backend.app.core_finance.factor_screen_candidates import (
     ACTIVE_MARKET_STATES,
     BREAKOUT_GEOMETRY_MIN_HISTORY,
@@ -448,7 +453,7 @@ def test_off_market_returns_inactive_empty_payload_golden_sample() -> None:
 
     assert payload == {
         "as_of_date": "2026-04-30",
-        "formula_version": "rv_factor_screen_candidates_v4",
+        "formula_version": "rv_factor_screen_candidates_v5",
         "market_state": "OFF",
         "input_stock_count": 15,
         "filtered_out_count": 15,
@@ -492,7 +497,7 @@ def test_overheat_market_remains_active_and_produces_candidates() -> None:
         ).payload,
     )
 
-    assert payload["formula_version"] == "rv_factor_screen_candidates_v4"
+    assert payload["formula_version"] == "rv_factor_screen_candidates_v5"
     assert payload["market_state"] == "OVERHEAT"
     assert payload["candidate_count"] >= 1
     assert payload["items"]
@@ -571,9 +576,9 @@ def test_liquidity_floor_golden_sample_boundaries() -> None:
         assert float(item["avg_amount_20d"]) >= 200_000_000.0
 
 
-def test_formula_version_v4_payload_and_items() -> None:
-    """v4 版本断言 + 候选 payload 与逐 item 补记 formula_version(治理字段)。"""
-    assert FORMULA_VERSION == "rv_factor_screen_candidates_v4"
+def test_formula_version_v5_payload_and_items() -> None:
+    """v5 版本断言 + 候选 payload 与逐 item 补记 formula_version(治理字段)。"""
+    assert FORMULA_VERSION == "rv_factor_screen_candidates_v5"
     rows = [_sample_row(i) for i in range(20)]
     result = compute_factor_screen_candidates(
         as_of_date="2026-05-27",
@@ -581,11 +586,11 @@ def test_formula_version_v4_payload_and_items() -> None:
         rows=rows,
     )
     payload = cast(dict[str, Any], result.payload)
-    assert payload["formula_version"] == "rv_factor_screen_candidates_v4"
+    assert payload["formula_version"] == "rv_factor_screen_candidates_v5"
     items = cast(list[dict[str, Any]], payload["items"])
     assert items
     for item in items:
-        assert item["formula_version"] == "rv_factor_screen_candidates_v4"
+        assert item["formula_version"] == "rv_factor_screen_candidates_v5"
         assert float(item["avg_amount_20d"]) >= MIN_AVG_AMOUNT_20D
 
 
@@ -625,6 +630,72 @@ def test_filter_universe_without_amount_column_keeps_legacy_behavior() -> None:
     assert _filter_factor_screen_universe(frame, min_avg_amount_20d=MIN_AVG_AMOUNT_20D).empty
 
 
+def _neutralization_row(
+    code: str,
+    industry: str,
+    pe: float,
+    *,
+    dividend_yield: float = 0.02,
+) -> dict[str, object]:
+    """除 pe/industry 外全部因子取常数，使评分差异只来自 pe_score。"""
+    return {
+        "stock_code": code,
+        "stock_name": f"N{code[:6]}",
+        "pe": pe,
+        "pb": 1.5,
+        "ps": 1.0,
+        "roe": 0.10,
+        "gross_margin": 0.25,
+        "three_month_return": 0.05,
+        "twelve_month_return": 0.10,
+        "volatility": 0.25,
+        "dividend_yield": dividend_yield,
+        "industry": industry,
+        "sector_code": "801000",
+        "sector_name": industry,
+        "avg_amount_20d": 3.0e8,
+    }
+
+
+def test_valuation_factors_rank_within_industry_v5() -> None:
+    """v5 判别样本：银行整体 PE 远低于软件，但两行业内同分位的股票估值分相同。
+
+    v4 全市场排名下银行 PE=5 的估值分碾压软件 PE=40；v5 行业内排名下两者都是
+    各自行业里"最便宜的那只"，pe_score 相同，总分只由其余（常数）因子决定，
+    因此两只组内分位相同的股票总分必须相等。判别断言直接读全量评分池
+    （_multi_factor_selection top_pct=1.0），不受候选截断影响。
+    """
+    bank_pes = [5.0, 6.0, 7.0, 8.0, 9.0]
+    software_pes = [40.0, 45.0, 50.0, 55.0, 60.0]
+    rows = [
+        *[_neutralization_row(f"60000{i}.SH", "银行", pe) for i, pe in enumerate(bank_pes)],
+        *[_neutralization_row(f"30000{i}.SZ", "软件", pe) for i, pe in enumerate(software_pes)],
+    ]
+    frame = pd.DataFrame(rows).set_index("stock_code")
+
+    selected = factor_module._multi_factor_selection(frame, top_pct=1.0, max_per_industry=10)
+    scores = selected["score"].to_dict()
+
+    # 两行业组内 PE 最低的股票（各自组内分位相同）总分必须相等。
+    assert scores["600000.SH"] == scores["300000.SZ"]
+    # 组内 PE 最低者仍须严格优于同组 PE 最高者。
+    assert scores["600000.SH"] > scores["600004.SH"]
+
+
+def test_small_industry_group_falls_back_to_market_rank_v5() -> None:
+    """组内成员数低于阈值的行业回退全市场排名：两只"独行业"股票若按组内
+    排名会同为满分（无区分度），回退后 PE 低者的估值分严格更高。"""
+    filler = [_neutralization_row(f"60010{i}.SH", "制造", 20.0 + i) for i in range(5)]
+    solo_cheap = _neutralization_row("688100.SH", "独行业甲", 6.0)
+    solo_expensive = _neutralization_row("688200.SH", "独行业乙", 80.0)
+    frame = pd.DataFrame([*filler, solo_cheap, solo_expensive]).set_index("stock_code")
+
+    selected = factor_module._multi_factor_selection(frame, top_pct=1.0, max_per_industry=10)
+    scores = selected["score"].to_dict()
+
+    assert scores["688100.SH"] > scores["688200.SH"]
+
+
 # ---- 观察位几何（attach_factor_screen_breakout_geometry）golden 样本 -----------
 
 
@@ -647,7 +718,7 @@ def _flat_history(prior_close: float, last_close: float) -> list[float]:
 
 
 def test_breakout_geometry_golden_patterns_and_missing_history_stay_none() -> None:
-    """黄金样本：突破/回踩/恰在突破位三档 + 缺 K 线候选四字段保持 None(而非 0)。"""
+    """黄金样本：突破/回踩/恰在突破位三档 + 缺 K 线候选五字段保持 None(而非 0)。"""
     payload = _computed_factor_payload()
     items = cast(list[dict[str, Any]], payload["items"])
     assert len(items) == 4
@@ -673,22 +744,26 @@ def test_breakout_geometry_golden_patterns_and_missing_history_stay_none() -> No
     assert breakout_item["breakout_level"] == 100.0
     assert breakout_item["distance_to_breakout_pct"] == 3.0
     assert breakout_item["pattern"] == PATTERN_BREAKOUT_LABEL
+    assert breakout_item["pattern_code"] == PATTERN_BREAKOUT_CODE
 
     pullback_item = by_code[code_pullback]
     assert pullback_item["distance_to_breakout_pct"] == -2.0
     assert pullback_item["pattern"] == PATTERN_PULLBACK_LABEL
+    assert pullback_item["pattern_code"] == PATTERN_PULLBACK_CODE
 
     # 恰好收在突破位上：距离是真实的 0.0（数据齐全），不是缺数据的 None。
     at_level_item = by_code[code_at_level]
     assert at_level_item["distance_to_breakout_pct"] == 0.0
     assert at_level_item["pattern"] == PATTERN_CONSOLIDATION_LABEL
+    assert at_level_item["pattern_code"] == PATTERN_CONSOLIDATION_CODE
 
-    # 缺 K 线：四字段全部 None，禁止用 0 冒充。
+    # 缺 K 线：五字段全部 None，禁止用 0 冒充。
     missing_item = by_code[code_missing]
     assert missing_item["close"] is None
     assert missing_item["breakout_level"] is None
     assert missing_item["distance_to_breakout_pct"] is None
     assert missing_item["pattern"] is None
+    assert missing_item["pattern_code"] is None
 
     geometry = cast(dict[str, Any], attached["breakout_geometry"])
     assert geometry["price_as_of_date"] == "2026-05-28"
@@ -776,7 +851,7 @@ def test_breakout_geometry_threshold_boundaries_match_livermore_display_rule() -
 
 
 def test_breakout_geometry_fails_closed_on_short_invalid_or_nonpositive_history() -> None:
-    """历史不足 56 根、含 None/NaN、或突破位非正：四字段保持 None,不缩窗改算。"""
+    """历史不足 56 根、含 None/NaN、或突破位非正：五字段保持 None,不缩窗改算。"""
     payload = _computed_factor_payload()
     items = cast(list[dict[str, Any]], payload["items"])
     code_short, code_none, code_nan, code_zero = (str(item["stock_code"]) for item in items)
@@ -797,6 +872,7 @@ def test_breakout_geometry_fails_closed_on_short_invalid_or_nonpositive_history(
         assert item["breakout_level"] is None
         assert item["distance_to_breakout_pct"] is None
         assert item["pattern"] is None
+        assert item["pattern_code"] is None
 
 
 def test_breakout_geometry_matches_livermore_stock_candidate_fields() -> None:

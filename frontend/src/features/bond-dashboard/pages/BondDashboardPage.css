@@ -1,6 +1,10 @@
 /*
- * /bond-dashboard Nocturne 标准包（参照 PositionsView.css / LedgerPnlPage.css 配方）：
- * 页头 + 工具条 + 编号分区（CSS counter）+ KPI 单框横带 + 深色表格密度 + 状态块。
+ * /bond-dashboard 页面外壳样式。
+ *
+ * 2026-08-27 组装式重写后，本文件只保留原语层不覆盖的四类东西：页框与主题桥接、
+ * 页头与工具条（含 antd Select 深色收口）、分区帧、面板卡语言与结论块。
+ * 编号分区头、KPI 横带、分区网格、五态占位、表格密度已分别由 SectionHead /
+ * KpiStrip / SectionGrid / StateSurface / DataTable 承担，页面不再重写这些保证。
  * 颜色一律走 --dh-api-* 语义链；圆角制度 var(--dh-api-radius)；字号下限 11px。
  */
 
@@ -22,12 +26,11 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
-  gap: 16px;
+  gap: 20px;
   min-height: 100%;
-  padding: 16px;
+  padding: 20px 24px 28px;
   background: var(--dh-api-bg);
   color: var(--dh-api-ink);
-  counter-reset: bd-section;
 }
 
 /* ---------------------------------------------------------------- 页头 */
@@ -47,7 +50,7 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -163,119 +166,102 @@
   color: var(--dh-api-blue);
 }
 
-/* ------------------------------------------------------- 编号分区骨架 */
+/* ------------------------------------------------------------ 分区帧 */
 
+/*
+ * 分区只剩两件事：断掉栅格子项的宽度传导、给锚点跳转留粘顶余量。
+ * 分区头与内容的间距归 SectionHead 自带的下边距，分区内多块之间的间距归
+ * SectionGrid 的 gap，所以这里不设 gap（设了会与两者叠加）。
+ */
 .bond-dashboard-section {
-  display: grid;
-  gap: 12px;
   min-width: 0;
-  counter-increment: bd-section;
-  /* 分区锚点跳转时给粘顶导航留出余量。 */
   scroll-margin-top: 52px;
-}
-
-.bond-dashboard-section__lead {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 28px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--dh-api-line-soft);
-}
-
-.bond-dashboard-section__lead::before {
-  content: counter(bd-section, decimal-leading-zero);
-  color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.bond-dashboard-section__lead h2 {
-  margin: 0;
-  overflow: hidden;
-  color: var(--dh-api-ink);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bond-dashboard-section__note,
-.bond-dashboard-section__state {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-
-.bond-dashboard-section__state[data-state="error"] {
-  color: var(--dh-api-red);
-}
-
-.bond-dashboard-section__state[data-state="empty"] {
-  color: var(--dh-api-amber);
-}
-
-.bond-dashboard-section__actions {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-/* ------------------------------------------------- 状态块（notice 三态） */
-
-.bond-dashboard-notice {
-  display: grid;
-  gap: 2px;
-  padding: 10px 12px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.bond-dashboard-notice__title {
-  font-weight: 600;
-}
-
-.bond-dashboard-notice--error {
-  border-color: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
-  background: var(--dh-api-red-soft);
-  color: var(--dh-api-red);
-}
-
-.bond-dashboard-notice--info {
-  background: var(--dh-api-panel-2);
-  color: var(--dh-api-muted);
-}
-
-.bond-dashboard-notice--warning {
-  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
-  background: var(--dh-api-amber-soft);
-  color: var(--dh-api-amber);
 }
 
 /* ------------------------------------------------------- 结论块（01） */
 
+/*
+ * FR-6 / 方向 A：结论块升级为「hero 大数字 + 结论句」双栏。
+ * hero 栏复用 KPI 带的已格式化持仓规模读数（页面 TSX 不新增数据链路），
+ * 缺值时 hero 栏整体不渲染，块自动回退为单栏结论句。
+ */
 .bond-dashboard-page__conclusion {
-  display: grid;
-  gap: 6px;
-  padding: 14px 16px;
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  padding: 18px 20px;
   border: 1px solid var(--dh-api-line);
   border-left: 2px solid var(--dh-api-blue);
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel);
 }
 
+.bond-dashboard-page__conclusion-hero {
+  display: grid;
+  flex: 0 0 auto;
+  align-content: center;
+  gap: 4px;
+  min-width: 190px;
+  padding-right: 24px;
+  border-right: 1px solid var(--dh-api-line-soft);
+}
+
+.bond-dashboard-page__conclusion-hero-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bond-dashboard-page__conclusion-hero-value-row {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.bond-dashboard-page__conclusion-hero-value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-tabular);
+  font-size: clamp(34px, 2.8vw, 40px);
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  word-break: keep-all;
+}
+
+.bond-dashboard-page__conclusion-hero-unit {
+  margin-left: 6px;
+  color: var(--dh-api-muted);
+  font-size: 14px;
+  font-weight: 500;
+  word-break: keep-all;
+}
+
+.bond-dashboard-page__conclusion-hero-delta {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bond-dashboard-page__conclusion-hero-delta[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.bond-dashboard-page__conclusion-hero-delta[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+.bond-dashboard-page__conclusion-copy {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .bond-dashboard-page__conclusion-kicker {
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -293,295 +279,63 @@
   line-height: 1.6;
 }
 
-/* -------------------------------------------------- KPI 单框横带（01） */
+/* --------------------------------------------------- 页面本地面板卡 */
 
-.bond-dashboard-page__kpi-band {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  overflow: hidden;
+/*
+ * 原语层没有卡片/面板原语（SectionHead 绑定编号 counter，不能给面板复用），
+ * 面板容器与面板头因此仍是页面本地实现，但收敛为唯一一套：重构前的
+ * __panel / charts__panel / table-panel 三套方言已合并到这里。
+ */
+.bond-dashboard-page__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel);
 }
 
-.bond-dashboard-page__kpi-cell {
+.bond-dashboard-page__panel-head {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  min-height: 128px;
-  padding: 12px 14px;
-  border-right: 1px solid var(--dh-api-line-soft);
-}
-
-/* 4×2：每行第 4 格去右缝，首行落底缝。 */
-.bond-dashboard-page__kpi-band > :nth-child(4n) {
-  border-right: 0;
-}
-
-.bond-dashboard-page__kpi-band > :nth-child(-n + 4) {
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
-/* 标签 2 行 clamp + 固定 min-height，防同排数值错位（DESIGN.md §3）。 */
-.bond-dashboard-page__kpi-label {
-  display: -webkit-box;
+.bond-dashboard-page__panel-head-title {
   overflow: hidden;
-  min-height: 32px;
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 16px;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-/* 主值下限 20px（§3；1280 断点只收 padding 不降字号）。 */
-.bond-dashboard-page__kpi-value {
-  color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
-  font-size: clamp(20px, 1.55vw, 23px);
-  font-weight: 700;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-  /* keep-all：长数值只在数字与单位间的空格处折行，禁止把「亿元」拆成两行。 */
-  overflow-wrap: normal;
-  word-break: keep-all;
-}
-
-.bond-dashboard-page__kpi-band[data-loading="true"] .bond-dashboard-page__kpi-value {
-  color: var(--dh-api-muted);
-}
-
-.bond-dashboard-page__kpi-unit {
-  margin-left: 4px;
-  color: var(--dh-api-muted);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-/* 环比 footer 贴格底；tone 三色走 --dh-api-* 语义链。 */
-.bond-dashboard-page__kpi-mom {
-  margin-top: auto;
-  color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
-  font-size: 12px;
-  line-height: 1.4;
-  font-variant-numeric: tabular-nums;
-}
-
-.bond-dashboard-page__kpi-mom[data-tone="up"] {
-  color: var(--dh-api-green);
-}
-
-.bond-dashboard-page__kpi-mom[data-tone="down"] {
-  color: var(--dh-api-red);
-}
-
-.bond-dashboard-page__kpi-mom[data-tone="flat"] {
-  color: var(--dh-api-muted);
-}
-
-/* 格内小注（环比基准日）：单行省略，全文进 title。 */
-.bond-dashboard-page__kpi-note {
-  overflow: hidden;
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  line-height: 1.45;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-/* -------------------------------------------------------- 口径行（01） */
-
-.bond-dashboard-page__caliber {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 0;
-  color: var(--dh-api-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.bond-dashboard-page__caliber-item {
-  padding: 0 10px;
-  border-left: 1px solid var(--dh-api-line-soft);
-}
-
-.bond-dashboard-page__caliber-item:first-child {
-  padding-left: 0;
-  border-left: 0;
-}
-
-/* --------------------------------------------------- 分区内容网格 */
-
-.bond-dashboard-page__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-  /* 不等高网格必须 start，禁止 stretch 空白（DESIGN.md §5）。 */
-  align-items: start;
-}
-
-@media (min-width: 992px) {
-  .bond-dashboard-page__grid--3 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .bond-dashboard-page__grid--2 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-/* --------------------------------------------------- 页面本地面板 */
-
-.bond-dashboard-page__panel {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  min-width: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
-}
-
-.bond-dashboard-page__panel-title {
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-/* 空/错/载入收缩到一句话（min-height ≤ 120px），不占满等高格。 */
-.bond-dashboard-page__surface {
-  display: grid;
-  place-items: center;
-  min-height: 96px;
-  margin: 0;
-  padding: 12px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
-  color: var(--dh-api-muted);
-  font-size: 12px;
-  line-height: 1.5;
-  text-align: center;
-}
-
-.bond-dashboard-page__surface--error {
-  color: var(--dh-api-red);
-}
-
-/* KPI 横带载入占位：接近真实横带高度，防内容到达时重排。 */
-.bond-dashboard-page__surface--loading {
-  min-height: 128px;
-}
-
-/* ----------------------------------------------- 治理边界与分区状态（06） */
-
-.bond-dashboard-page__governance-notes {
-  padding: 8px 12px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
-  color: var(--dh-api-soft);
-  font-size: 12px;
-}
-
-.bond-dashboard-page__governance-notes summary {
-  color: var(--dh-api-muted);
-  cursor: pointer;
-  user-select: none;
-}
-
-.bond-dashboard-page__governance-notes p {
-  margin: 8px 0 0;
-  line-height: 1.6;
-}
-
-/* bundle 分区状态占位列表（角色 8 精修前的证据披露）。 */
-.bond-dashboard-page__section-status {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.bond-dashboard-page__section-status-item {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 10px;
-  align-items: baseline;
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.bond-dashboard-page__section-status-state {
-  color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.bond-dashboard-page__section-status-item[data-status="error"] .bond-dashboard-page__section-status-state {
-  color: var(--dh-api-red);
-}
-
-.bond-dashboard-page__section-status-message {
-  color: var(--dh-api-muted);
-}
-
-.bond-dashboard-page__section-status-duration {
-  color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* -------------------------------------------------- antd Table 密度 */
-
-.bond-dashboard-page .ant-table {
-  font-size: 12px;
-}
-
-.bond-dashboard-page .ant-table-thead > tr > th {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--dh-api-line-soft);
-  background: var(--dh-api-panel-2);
-  color: var(--dh-api-muted);
-  font-size: 11px;
   font-weight: 600;
   line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.bond-dashboard-page .ant-table-tbody > tr > td {
-  padding: 5px 10px;
-  border-bottom: 1px solid var(--dh-api-line-soft);
-  font-size: 12px;
-  line-height: 1.35;
-  /* 数值列等宽对齐由 td 继承 tabular-nums，右对齐由列定义出 align。 */
-  font-variant-numeric: tabular-nums;
+/* 头部右侧口径小注（如行业占比分母说明、期限结构合计）。 */
+.bond-dashboard-page__panel-head-note {
+  flex: 0 0 auto;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
-/* 行 hover 用 accent 比例混色，禁止硬编码 rgba。 */
-.bond-dashboard-page .ant-table-tbody > tr > td.ant-table-cell-row-hover,
-.bond-dashboard-page .ant-table-tbody > tr:hover > td {
-  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+/* 等高栅格里吃掉多出空间的那一段，保证面板边框整行对齐。 */
+.bond-dashboard-page__panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* --------------------------------------- FormalResultMetaPanel 收敛 */
 
 .bond-dashboard-page .formal-result-meta-panel {
   --formal-result-meta-border-soft: var(--dh-api-line-soft);
-  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
-  --formal-meta-badge-ok-ink: var(--dh-api-green);
-  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
   --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
   --formal-meta-badge-warn-ink: var(--dh-api-amber);
   --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
@@ -608,42 +362,21 @@
 
 /* ---------------------------------------------------------- 响应式 */
 
-@media (max-width: 1280px) {
-  .bond-dashboard-page__kpi-cell {
-    padding-inline: 10px;
-  }
-}
-
 @media (max-width: 900px) {
   .bond-dashboard-page__header {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .bond-dashboard-section__lead {
-    grid-template-columns: 22px minmax(0, 1fr);
+  .bond-dashboard-page__conclusion {
+    flex-direction: column;
+    gap: 14px;
   }
 
-  .bond-dashboard-section__actions {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 720px) {
-  .bond-dashboard-page__kpi-band {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .bond-dashboard-page__kpi-cell {
-    border-right: 1px solid var(--dh-api-line-soft);
+  .bond-dashboard-page__conclusion-hero {
+    padding-right: 0;
+    padding-bottom: 14px;
+    border-right: none;
     border-bottom: 1px solid var(--dh-api-line-soft);
-  }
-
-  .bond-dashboard-page__kpi-band > :nth-child(2n) {
-    border-right: 0;
-  }
-
-  .bond-dashboard-page__kpi-band > :nth-child(n + 7) {
-    border-bottom: 0;
   }
 }

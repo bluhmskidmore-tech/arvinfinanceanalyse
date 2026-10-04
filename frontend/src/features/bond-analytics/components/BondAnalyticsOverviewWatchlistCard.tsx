@@ -16,7 +16,7 @@ export function BondAnalyticsOverviewWatchlistCard({ topAnomalies }: BondAnalyti
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "grid", gap: 6 }}>
             <div style={EYEBROW}>总览观察清单</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: dt.color.primary[900] /* 近似映射，原值 #18314d。 */ }}>
+            <div style={{ fontSize: 18, fontWeight: 600, color: dt.color.primary[900] /* 近似映射，原值 #18314d。 */ }}>
               异常与就绪信号
             </div>
           </div>

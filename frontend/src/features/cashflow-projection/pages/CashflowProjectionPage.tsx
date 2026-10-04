@@ -1,35 +1,34 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Select, Spin, Table, Typography } from "antd";
+import { Alert, Select, Spin, Typography } from "antd";
 
 import type { Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
+import { DataTable, SectionHead, type DataTableColumn } from "../../../components/layout";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import { modeBadgeStyle } from "../../../components/page/pageStyles";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { type EChartsOption } from "../../../lib/echarts";
 import { nocturneTokens } from "../../../theme/designSystem";
-import { adaptCashflowProjection } from "../adapters/cashflowProjectionAdapter";
+import { adaptCashflowProjection, type CashflowMaturingAssetVM } from "../adapters/cashflowProjectionAdapter";
 import { EM_DASH } from "../../../utils/format";
 import {
+  cashflowRateSensitivityYiDisplay,
+  selectCashflowConclusion,
   describeCashflowWarning,
   selectCashflowDurationGapTone,
+  selectCashflowDurationGapTrendLabel,
   selectCashflowMonthlyProjectionSeries,
   selectCashflowProjectionRiskReadout,
   selectCashflowRateSensitivitySemantic,
   tooltipYi,
   toYi,
+  type CashflowConclusion,
   type CashflowDurationGapTone,
 } from "./cashflowProjectionPageModel";
 import styles from "./CashflowProjectionPage.module.css";
-
-type ConclusionTone = "positive" | "negative" | "neutral" | "pending";
-
-type Conclusion = {
-  title: string;
-  body: string;
-  tone: ConclusionTone;
-};
 
 type KpiSpec = {
   key: string;
@@ -49,61 +48,18 @@ type RailPoint = {
   tone: "positive" | "negative" | "neutral" | "missing";
 };
 
-function buildConclusion(durationGap: Numeric | undefined): Conclusion {
-  const raw = durationGap?.raw;
-  if (raw === null || raw === undefined) {
-    return {
-      title: "当前结论",
-      body: "久期缺口待确认，先核对报告日与上游现金流分桶是否齐备。",
-      tone: "pending",
-    };
-  }
-  if (raw > 0.05) {
-    return {
-      title: "当前结论",
-      body: "资产久期长于负债，当前为正久期缺口。",
-      tone: "positive",
-    };
-  }
-  if (raw < -0.05) {
-    return {
-      title: "当前结论",
-      body: "负债久期长于资产，当前为负久期缺口。",
-      tone: "negative",
-    };
-  }
-  return {
-    title: "当前结论",
-    body: "资产与负债久期基本匹配，缺口已收敛到接近平衡区间。",
-    tone: "neutral",
-  };
-}
-
-function trendLabel(value: Numeric | undefined): string {
-  const raw = value?.raw;
-  if (raw === null || raw === undefined) return "待确认";
-  if (raw > 0) return "正缺口";
-  if (raw < 0) return "负缺口";
-  return "接近平衡";
-}
-
 function axisYiLabel(value: number): string {
   if (!Number.isFinite(value)) return "";
   return `${toYi(value).toFixed(1)}亿`;
 }
 
-function formatRateSensitivityYi(value: Numeric | undefined): string {
-  const raw = value?.raw;
-  if (raw === null || raw === undefined || !Number.isFinite(raw)) return value?.display ?? EM_DASH;
-  if (value?.unit !== "yuan") return value?.display ?? EM_DASH;
-
-  const yi = toYi(raw);
-  const prefix = value.sign_aware && yi >= 0 ? "+" : "";
-  return `${prefix}${yi.toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} \u4ebf`;
-}
+const TOP_MATURING_ASSETS_COLUMNS: readonly DataTableColumn<CashflowMaturingAssetVM>[] = [
+  { key: "instrumentCode", title: "代码" },
+  { key: "instrumentName", title: "名称" },
+  { key: "maturityDate", title: "到期日" },
+  { key: "faceValue", title: "面值", align: "numeric", render: (row) => row.faceValue.display },
+  { key: "marketValue", title: "市值", align: "numeric", render: (row) => row.marketValue.display },
+];
 
 function buildProjectionRail(
   monthlySeries: ReturnType<typeof selectCashflowMonthlyProjectionSeries>,
@@ -168,11 +124,11 @@ export default function CashflowProjectionPage() {
   }, [adapted.state, datesQuery.isLoading, effectiveDate]);
   const vm = adapted.vm;
   const projectionMeta = adapted.meta;
-  const conclusion = buildConclusion(vm?.kpis.durationGap);
+  const conclusion: CashflowConclusion = selectCashflowConclusion(vm?.kpis.durationGap);
   const monthlySeries = useMemo(() => selectCashflowMonthlyProjectionSeries(vm), [vm]);
   const riskReadout = useMemo(() => selectCashflowProjectionRiskReadout(vm), [vm]);
   const projectionRail = useMemo(() => buildProjectionRail(monthlySeries), [monthlySeries]);
-  const rateSensitivity1bpDisplay = formatRateSensitivityYi(vm?.kpis.rateSensitivity1bp);
+  const rateSensitivity1bpDisplay = cashflowRateSensitivityYiDisplay(vm?.kpis.rateSensitivity1bp);
   const rateSensitivitySemantic = useMemo(
     () => selectCashflowRateSensitivitySemantic(vm?.kpis.rateSensitivity1bp),
     [vm?.kpis.rateSensitivity1bp],
@@ -262,7 +218,7 @@ export default function CashflowProjectionPage() {
         nocturneTokens.color.blue,
       ],
       animationDuration: 420,
-      grid: { left: 64, right: 24, top: 54, bottom: 50 },
+      grid: { left: 64, right: 24, top: 54 },
       tooltip: {
         trigger: "axis",
         // 直接透传 value：缺失桶的 null/空串由 tooltipYi 拦成 EM_DASH，
@@ -270,11 +226,6 @@ export default function CashflowProjectionPage() {
         valueFormatter: (value) => tooltipYi(value),
       },
       legend: {
-        top: 8,
-        right: 8,
-        itemWidth: 10,
-        itemHeight: 10,
-        textStyle: { color: nocturneTokens.color.inkSoft, fontSize: 12 },
         data: ["资产流入", "负债流出", "累计净现金流"],
       },
       xAxis: {
@@ -306,14 +257,12 @@ export default function CashflowProjectionPage() {
           type: "bar",
           data: monthlySeries.assetInflow,
           barMaxWidth: 22,
-          itemStyle: { borderRadius: [4, 4, 0, 0] },
         },
         {
           name: "负债流出",
           type: "bar",
           data: monthlySeries.liabilityOutflow,
           barMaxWidth: 22,
-          itemStyle: { borderRadius: [4, 4, 0, 0] },
         },
         {
           name: "累计净现金流",
@@ -349,7 +298,8 @@ export default function CashflowProjectionPage() {
               {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
             </span>
           </div>
-          <Typography.Title level={2} className={styles.title} data-testid="cashflow-page-title">
+          {/* 页面唯一 h1（可访问名 / 大纲）；字号由 .title 钉在原 level=2 的 24px，不随 h1 放大。 */}
+          <Typography.Title level={1} className={styles.title} data-testid="cashflow-page-title">
             现金流预测
           </Typography.Title>
           <Typography.Paragraph className={styles.subtitle}>
@@ -402,7 +352,7 @@ export default function CashflowProjectionPage() {
                 <p title="久期缺口来自 /api/cashflow-projection">{`报告日 ${vm.reportDate}`}</p>
               </div>
               <div className={styles.decisionMetric}>
-                <span>{trendLabel(vm.kpis.durationGap)}</span>
+                <span>{selectCashflowDurationGapTrendLabel(vm.kpis.durationGap)}</span>
                 <strong className={deckGapToneClass}>{vm.kpis.durationGap.display}</strong>
               </div>
               <div className={styles.decisionFacts}>
@@ -469,12 +419,7 @@ export default function CashflowProjectionPage() {
             ) : null}
 
             <section className={styles.panel}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <span className={styles.sectionEyebrow}>总览</span>
-                  <h2>现金流概览</h2>
-                </div>
-              </div>
+              <SectionHead category="总览" title="现金流概览" numbered={false} />
               <div className={styles.metricStrip}>
                 {kpis.map((item) => (
                   <div
@@ -493,20 +438,17 @@ export default function CashflowProjectionPage() {
             </section>
 
             <section className={styles.projectionGrid}>
-              <div className={styles.chartPanel} data-testid="cashflow-monthly-chart">
-                <div className={styles.sectionHeader}>
-                  <div>
-                    <span className={styles.sectionEyebrow}>预测</span>
-                    <h2>月度投影</h2>
-                  </div>
-                  <p>24 个月资产流入、负债流出和累计净现金流，单位按亿元显示。</p>
-                </div>
-                {chartOption ? (
-                  <ReactECharts option={chartOption} className={styles.chart} />
-                ) : (
-                  <div className={styles.emptyChart}>暂无分桶数据</div>
-                )}
-              </div>
+              <ChartCard
+                testId="cashflow-monthly-chart"
+                title="月度投影"
+                question="24个月资产流入、负债流出和累计净现金流"
+                unit="亿元"
+                asOf={vm.reportDate}
+                height={CHART_CARD_HEIGHTS.hero}
+                legendRows={2}
+                option={chartOption}
+                emptyMessage="暂无分桶数据"
+              />
 
               <aside
                 className={`${styles.sidePanel} ${
@@ -557,37 +499,17 @@ export default function CashflowProjectionPage() {
             </section>
 
             <section className={styles.tablePanel}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <span className={styles.sectionEyebrow}>到期</span>
-                  <h2>到期资产与提示</h2>
-                </div>
-                <p>12 个月内到期资产按面值取前十，保留原始表格字段和金额展示。</p>
-              </div>
-              <Table
-                data-testid="cashflow-top-assets-table"
-                size="small"
-                pagination={false}
-                rowKey={(r) => r.instrumentCode}
-                dataSource={vm.topMaturingAssets}
-                scroll={{ x: 760 }}
-                columns={[
-                  { title: "代码", dataIndex: "instrumentCode" },
-                  { title: "名称", dataIndex: "instrumentName" },
-                  { title: "到期日", dataIndex: "maturityDate" },
-                  {
-                    title: "面值",
-                    dataIndex: "faceValue",
-                    align: "right" as const,
-                    render: (v: Numeric) => v.display,
-                  },
-                  {
-                    title: "市值",
-                    dataIndex: "marketValue",
-                    align: "right" as const,
-                    render: (v: Numeric) => v.display,
-                  },
-                ]}
+              <SectionHead
+                category="到期"
+                title="到期资产与提示"
+                note="12 个月内到期资产按面值取前十，保留原始表格字段和金额展示。"
+                numbered={false}
+              />
+              <DataTable<CashflowMaturingAssetVM>
+                testId="cashflow-top-assets-table"
+                rowKey="instrumentCode"
+                rows={vm.topMaturingAssets}
+                columns={TOP_MATURING_ASSETS_COLUMNS}
               />
             </section>
 

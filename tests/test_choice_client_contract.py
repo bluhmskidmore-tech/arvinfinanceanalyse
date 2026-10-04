@@ -246,6 +246,43 @@ def test_edb_and_edbquery_call_start_and_merge_options(monkeypatch):
     assert started == [True, True]
 
 
+def test_edb_explicit_option_exclusion_filters_both_sources_without_changing_defaults(monkeypatch):
+    client_module = load_module(
+        "backend.app.repositories.choice_client_contract_edb_exclusion",
+        "backend/app/repositories/choice_client.py",
+    )
+
+    class FakeC:
+        def start(self, _options: str):
+            return SimpleNamespace(ErrorCode=0)
+
+        def edb(self, codes, merged: str):
+            return (tuple(codes), merged)
+
+        def edbquery(self, codes: str, merged: str):
+            return (codes, merged)
+
+    monkeypatch.setattr(client_module, "configure_emquant_parent", lambda _p: None)
+    monkeypatch.setattr(client_module, "_get_em_c", lambda: FakeC())
+    client = client_module.ChoiceClient(
+        settings=_make_settings(choice_request_options="IsPandas=1,RECVtimeout=9,base=1")
+    )
+
+    assert client.edb(["FX"], "IsLatest=0") == (
+        ("FX",), "IsPandas=1,RECVtimeout=9,base=1,IsLatest=0"
+    )
+    assert client.edb(
+        ["FX"], "iSpAnDaS=0,IsLatest=0",
+        exclude_option_prefixes=(" ISPANDAS= ", " "),
+    ) == (("FX",), "RECVtimeout=9,base=1,IsLatest=0")
+    assert client.edb(["FX"], "IsLatest=0", exclude_option_prefixes=(" ",)) == (
+        ("FX",), "IsPandas=1,RECVtimeout=9,base=1,IsLatest=0"
+    )
+    assert client.edbquery("FX", "IsLatest=0") == (
+        "FX", "IsPandas=1,base=1,IsLatest=0"
+    )
+
+
 def test_cnq_and_cnqcancel_raise_on_nonzero_error_code(monkeypatch):
     client_module = load_module(
         "backend.app.repositories.choice_client_contract_f",

@@ -444,7 +444,16 @@ def _write_factor_snapshot(
             )
         )
     conn.execute("delete from choice_stock_factor_snapshot where as_of_date = ?", [target_date])
-    conn.executemany("insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+    conn.executemany(
+        """
+        insert into choice_stock_factor_snapshot (
+          as_of_date, stock_code, pe, pb, ps, roe, gross_margin,
+          three_month_return, twelve_month_return, volatility, dividend_yield,
+          industry, source_version, vendor_version, rule_version, run_id
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
     return len(rows)
 
 

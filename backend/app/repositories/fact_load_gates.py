@@ -33,10 +33,12 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
+
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 logger = logging.getLogger(__name__)
 
@@ -297,6 +299,7 @@ def commit_report_date_purge(
     tables: Sequence[str],
     report_date: str,
     date_column: str = "report_date",
+    before_commit: Callable[[Any], None] | None = None,
 ) -> None:
     """Delete one report date from each table and commit before re-inserting it.
 
@@ -311,11 +314,26 @@ def commit_report_date_purge(
     empty rather than stale. That is the same state the failure path already
     produces deliberately (``invalidate_report_date_facts``), and an empty date
     is visible to the freshness checks in a way stale data is not.
+    Consumers must check task/run status before treating zero rows as a business fact.
+
+    ``before_commit`` runs on the same connection after the deletes and before
+    the commit. It must not commit or roll back. Writers use it to persist
+    dependent read-model invalidation atomically with the purge.
     """
+    require_repository_task_write_scope("commit_report_date_purge")
     conn.execute("begin transaction")
-    for table_name in tables:
-        conn.execute(f"delete from {table_name} where {date_column} = ?", [report_date])
-    conn.execute("commit")
+    try:
+        for table_name in tables:
+            conn.execute(f"delete from {table_name} where {date_column} = ?", [report_date])
+        if before_commit is not None:
+            before_commit(conn)
+        conn.execute("commit")
+    except Exception:
+        try:
+            conn.execute("rollback")
+        except Exception:  # noqa: BLE001, S110 -- cleanup may fail arbitrarily; outer raise preserves the original failure without logging cleanup payloads
+            pass
+        raise
 
 
 def enforce_gate_outcome(outcome: GateOutcome, *, table_name: str) -> None:

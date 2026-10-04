@@ -368,6 +368,8 @@ def _average(values: Iterable[object]) -> float:
 
 
 def _close_strength(*, close: float, low: float, high: float) -> float:
+    # 一字板（high==low）按本式约为 0，与 livermore_stock_candidates._close_strength 一致；
+    # 若改为最强收盘并影响准入闸门，需单独立项且同步升版 FORMULA_VERSION。
     return (close - low) / (high - low + EPS)
 
 

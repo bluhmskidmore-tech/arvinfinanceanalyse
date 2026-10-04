@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from backend.app.core_finance.bond_analytics.common import (
     TENOR_YEARS,
@@ -21,7 +23,14 @@ from backend.app.governance.formal_compute_lineage import (
     resolve_formal_manifest_lineage_with_completed_build,
 )
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.fact_load_gates import ZQTZ_BALANCE_NATURAL_KEY
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    CACHE_MANIFEST_STREAM,
+    _jsonl_file_cache_key,
+    _resolve_governance_backend_mode,
+)
 from backend.app.repositories.pnl_repo import PnlRepository
 
 try:
@@ -72,6 +81,7 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
 )
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 # Aligned with task-module identity constants; avoid import-time broker/actor registration.
 BALANCE_ANALYSIS_CACHE_KEY = "balance_analysis:materialize:formal"
@@ -80,19 +90,103 @@ BALANCE_ANALYSIS_CACHE_VERSION = (
 )
 BALANCE_ANALYSIS_RULE_VERSION = "rv_balance_analysis_formal_materialize_v1"
 PNL_CACHE_KEY = "pnl:phase2:materialize:formal"
-PNL_RESULT_CACHE_VERSION = "cv_pnl_formal__rv_pnl_phase2_materialize_v3"
-YIELD_CURVE_CACHE_VERSION = "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
+PNL_RESULT_CACHE_VERSION = "cv_pnl_formal__rv_pnl_phase2_materialize_v7"
+YIELD_CURVE_CACHE_VERSION = "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1__cv_source_nodes_v2"
 
 PHASE3_WARNING = (
     "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
 )
 BRIDGE_CACHE_VERSION = (
-    f"cv_pnl_bridge_formal_v1__{PNL_RESULT_CACHE_VERSION}__{BALANCE_ANALYSIS_CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}"
+    f"cv_pnl_bridge_formal_monthly_v6__{PNL_RESULT_CACHE_VERSION}__{BALANCE_ANALYSIS_CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}"
 )
 ZERO = Decimal("0")
+_PNL_BRIDGE_ENVELOPE_CACHE_TTL_SECONDS = 900.0
+_pnl_bridge_envelope_cache: InMemoryTTLCache[tuple[object, ...], dict[str, object]] = get_runtime_cache(
+    "pnl_bridge.envelope",
+    ttl_seconds=_PNL_BRIDGE_ENVELOPE_CACHE_TTL_SECONDS,
+)
+_PnlBridgeEnvelopeCacheKey = tuple[object, ...]
 
 
 def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
+    cache_key = _pnl_bridge_envelope_cache_key(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
+    )
+    if cache_key is None:
+        return _pnl_bridge_envelope_uncached(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            report_date=report_date,
+        )
+    cached = _pnl_bridge_envelope_cache.get_or_set(
+        cache_key,
+        lambda: _pnl_bridge_envelope_uncached(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            report_date=report_date,
+        ),
+    )
+    return _with_fresh_pnl_bridge_runtime_fields(cached)
+
+
+def _pnl_bridge_duckdb_storage_identity(duckdb_path: str) -> tuple[str, int, int] | None:
+    try:
+        effective_path = resolve_effective_read_path(duckdb_path)
+        path = Path(effective_path).resolve()
+        if not path.is_file():
+            return None
+        stat = path.stat()
+    except OSError:
+        return None
+    return (str(path), stat.st_mtime_ns, stat.st_size)
+
+
+def _pnl_bridge_envelope_cache_key(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+) -> _PnlBridgeEnvelopeCacheKey | None:
+    if _resolve_governance_backend_mode("") == "sql-authority":
+        return None
+    storage_identity = _pnl_bridge_duckdb_storage_identity(duckdb_path)
+    if storage_identity is None:
+        return None
+    governance_identities: list[tuple[object, ...]] = []
+    for stream in (CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM):
+        stream_path = Path(governance_dir) / f"{stream}.jsonl"
+        try:
+            stream_identity: tuple[object, ...] | None = _jsonl_file_cache_key(stream_path)
+        except OSError:
+            return None
+        if stream_identity is None:
+            stream_identity = (str(stream_path.resolve()), "missing", 0)
+        governance_identities.append(stream_identity)
+    return (
+        "pnl_bridge_envelope",
+        report_date,
+        *storage_identity,
+        *governance_identities,
+        PNL_CACHE_KEY,
+        BALANCE_ANALYSIS_CACHE_KEY,
+        YIELD_CURVE_CACHE_VERSION,
+        BRIDGE_CACHE_VERSION,
+    )
+
+
+def _with_fresh_pnl_bridge_runtime_fields(envelope: dict[str, object]) -> dict[str, object]:
+    response = dict(envelope)
+    result_meta = response.get("result_meta")
+    if isinstance(result_meta, Mapping):
+        refreshed_meta = dict(result_meta)
+        refreshed_meta["trace_id"] = f"tr_{uuid.uuid4().hex[:12]}"
+        response["result_meta"] = refreshed_meta
+    return response
+
+
+def _pnl_bridge_envelope_uncached(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
     pnl_repo = PnlRepository(duckdb_path)
     balance_repo = BalanceAnalysisRepository(duckdb_path)
     curve_repo = YieldCurveRepository(duckdb_path)
@@ -105,7 +199,11 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         report_date=report_date,
         balance_rows=balance_repo.fetch_pnl_bridge_zqtz_balance_rows(report_date=report_date),
     )
-    prior_date = balance_repo.resolve_prior_pnl_bridge_balance_report_date(report_date=report_date)
+    # Formal FI facts are report-month flows, not daily flows. The exposure/curve
+    # baseline must precede that month, even when daily balances exist in between.
+    pnl_start = date.fromisoformat(report_date).replace(day=1)
+    expected_balance_start = (pnl_start - timedelta(days=1)).isoformat()
+    prior_date = balance_repo.resolve_prior_pnl_bridge_balance_report_date(report_date=pnl_start.isoformat())
     prior_balance_rows = (
         _attach_native_exposure_fields(
             balance_repo=balance_repo,
@@ -115,6 +213,15 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         if prior_date
         else []
     )
+    window_aligned = (
+        prior_date == expected_balance_start and bool(prior_balance_rows) and bool(current_balance_rows)
+    )
+    window_warnings = [] if window_aligned else [
+        "PNL_BRIDGE_WINDOW_MISMATCH: "
+        f"Monthly PnL covers {pnl_start.isoformat()} through {report_date}; "
+        f"expected balance baseline {expected_balance_start}, resolved {prior_date or 'missing'}. "
+        "Exact beginning and ending balance snapshots are required for an aligned monthly bridge."
+    ]
     fx_current = balance_repo.resolve_formal_fx_mid_rates_map(
         report_date=report_date,
         base_currencies=_bridge_fx_base_currencies(pnl_fi_rows, current_balance_rows),
@@ -246,8 +353,23 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     )
     payload = PnlBridgePayload(
         report_date=report_date,
-        rows=[PnlBridgeRowSchema.model_validate(promote_flat_payload(row, PnlBridgeRowSchema)) for row in rows],
-        summary=PnlBridgeSummarySchema.model_validate(promote_flat_payload(summary, PnlBridgeSummarySchema)),
+        rows=[
+            PnlBridgeRowSchema.model_validate(
+                promote_flat_payload(
+                    row,
+                    PnlBridgeRowSchema,
+                    preserve_decimal=True,
+                )
+            )
+            for row in rows
+        ],
+        summary=PnlBridgeSummarySchema.model_validate(
+            promote_flat_payload(
+                summary,
+                PnlBridgeSummarySchema,
+                preserve_decimal=True,
+            )
+        ),
         warnings=_bridge_warnings(
             balance_warnings=[
                 *_build_warnings(
@@ -256,6 +378,7 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
                     prior_report_date=prior_date,
                 ),
                 *row_diagnostic_warnings,
+                *window_warnings,
             ],
             curve_warnings=_compact_warnings([*relevant_curve_warnings]),
             lineage_warnings=lineage_warnings,
@@ -281,7 +404,7 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     quality_flag = _merge_bridge_quality_flag(
         summary_quality=(
             "warning"
-            if curve_conversion_failed and summary.quality_flag == "ok"
+            if (curve_conversion_failed or not window_aligned) and summary.quality_flag == "ok"
             else summary.quality_flag
         ),
         curve_latest_fallback=curve_latest_fallback,
@@ -302,6 +425,26 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         requested_report_date=report_date,
         resolved_report_date=resolved_report_date,
         as_of_date=resolved_report_date,
+        filters_applied={
+            "pnl_window": {"start": pnl_start.isoformat(), "end": report_date, "kind": "monthly_period"},
+            "expected_balance_start": expected_balance_start,
+            "balance_window": {
+                "start": prior_date if prior_balance_rows else None,
+                "end": report_date if current_balance_rows else None,
+            },
+            "window_aligned": window_aligned,
+            "curve_dates": {
+                curve_type: {
+                    "start": (prior or {}).get("trade_date"),
+                    "end": (current or {}).get("trade_date"),
+                }
+                for curve_type, prior, current in (
+                    ("treasury", treasury_prior, treasury_current),
+                    ("cdb", cdb_prior, cdb_current),
+                    ("aaa_credit", aaa_prior, aaa_current),
+                )
+            },
+        },
         # The business report_date remains exact; this date identifies lineage fallback only.
         fallback_date=(
             str(lineage.get("_lineage_fallback_date") or "").strip() or None

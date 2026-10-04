@@ -18,8 +18,12 @@ key sets, so the outer map is governed and the inner row shape is pinned.
 """
 from __future__ import annotations
 
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from backend.app.schemas.pnl_bridge import PnlBridgeEffectAvailabilitySchema
 from backend.app.schemas.result_meta import ResultMeta
-from pydantic import BaseModel, ConfigDict
 
 # JSON numbers arrive as either int or float depending on whether the effect
 # computed to an exact zero. A smart union keeps each one as it was, so the
@@ -36,16 +40,25 @@ class CampisiEffectAvailabilityDetail(_StrictCampisiModel):
     reason: str | None = None
     basis: str | None = None
     unavailable_bonds: int | None = None
+    principal_unavailable_bonds: int | None = None
     unavailable_market_value_start: Number | None = None
+    unavailable_market_value_end: Number | None = None
+    covered_bonds: int | None = None
     min_required_shared_tenors: int | None = None
     shared_positive_tenors: int | None = None
 
 
 class CampisiEffectAvailability(_StrictCampisiModel):
     bonds: int
+    position_change: CampisiEffectAvailabilityDetail | None = None
     accrued_interest: CampisiEffectAvailabilityDetail
     spread_effect: CampisiEffectAvailabilityDetail
     treasury_effect: CampisiEffectAvailabilityDetail
+    # Exact upstream blocks keep their own applicable-row denominator; it is
+    # not the model's bonds count and excludes structurally inapplicable rows.
+    roll_down_availability: PnlBridgeEffectAvailabilitySchema | None = None
+    treasury_curve_availability: PnlBridgeEffectAvailabilitySchema | None = None
+    credit_spread_availability: PnlBridgeEffectAvailabilitySchema | None = None
     # Only the enhanced shape carries these three amounts, and only the
     # formal-bridge path leaves them undecomposed, so the entries are optional:
     # their presence (`status="not_decomposed"`) is what tells a consumer the 0
@@ -79,6 +92,17 @@ class CampisiMissingFields(_StrictCampisiModel):
     end: dict[str, CampisiMissingFieldStat]
 
 
+class CampisiDurationQualityStat(_StrictCampisiModel):
+    start: CampisiMissingFieldStat
+    end: CampisiMissingFieldStat
+
+
+class CampisiIncludedMaturityUnavailable(_StrictCampisiModel):
+    positions: int
+    market_value_start_abs: Number
+    model_residual: Number
+
+
 class CampisiCreditSpreadCoverageRow(_StrictCampisiModel):
     field: str
     rating: str
@@ -92,11 +116,22 @@ class CampisiCreditSpreadCoverageRow(_StrictCampisiModel):
 class CampisiTreasuryEffectCoverage(_StrictCampisiModel):
     status: str
     reason: str | None = None
+    # Exact target-date rows may be absent even when a prior formal snapshot
+    # was accepted; curve_used records the accepted input independently.
     start_curve_rows_present: bool
     end_curve_rows_present: bool
     start_usable_tenors: int
     end_usable_tenors: int
     shared_positive_tenors: int
+    # Position dates stay unchanged when the formal curve resolves to a prior
+    # trading date. A resolved date can also name a stale snapshot that was
+    # discarded; the corresponding curve_used flag distinguishes that case.
+    start_requested_date: str | None = None
+    start_resolved_date: str | None = None
+    end_requested_date: str | None = None
+    end_resolved_date: str | None = None
+    start_curve_used: bool | None = None
+    end_curve_used: bool | None = None
 
 
 class CampisiTreasuryTenorCoverage(_StrictCampisiModel):
@@ -111,6 +146,27 @@ class CampisiMarketCurveCoverage(_StrictCampisiModel):
     treasury_tenors: CampisiTreasuryTenorCoverage
     required_credit_spread_3y: list[CampisiCreditSpreadCoverageRow]
     missing_credit_spread_3y: list[CampisiCreditSpreadCoverageRow]
+
+
+class CampisiPrincipalEvidence(_StrictCampisiModel):
+    # Source quantities explain the model's holding-change guard; they do not
+    # replace formal PnL or change the CNY amounts used for attribution.
+    source: Literal["zqtz_bond_daily_snapshot"]
+    basis: Literal["native_face_value"]
+    period_start: str
+    period_end: str
+    model_only: Literal[True]
+
+
+class CampisiFormalBridgeCoverage(_StrictCampisiModel):
+    # Row inclusion in the accounting bridge is separate from model principal
+    # stability, market-effect availability, and formal-PnL amount closure.
+    source: Literal["pnl.bridge.rows"]
+    basis: Literal["formal_report_pnl_bridge"]
+    status: Literal["ok", "partial", "unavailable"]
+    bridge_rows: int | None = Field(strict=True, ge=0)
+    attributed_rows: int = Field(strict=True, ge=0)
+    reason: str | None = None
 
 
 class CampisiInputQuality(_StrictCampisiModel):
@@ -128,6 +184,26 @@ class CampisiInputQuality(_StrictCampisiModel):
     # `formal_closure` (bridge_quality_flag / bridge_vendor_status /
     # bridge_fallback_mode) instead.
     market_curve_coverage: CampisiMarketCurveCoverage | None = None
+    principal_evidence: CampisiPrincipalEvidence | None = None
+    formal_bridge_coverage: CampisiFormalBridgeCoverage | None = None
+    position_change: CampisiEffectAvailabilityDetail | None = None
+    # Positions present on only one period end. Their four effects and
+    # `total_return` are 0 because a one-sided holding is a position change, not
+    # a price move; without these amounts a consumer cannot tell that zero apart
+    # from "this bond contributed nothing". Emitted by the model path only.
+    single_sided_positions: int | None = None
+    start_only_positions: int | None = None
+    end_only_positions: int | None = None
+    start_only_market_value: Number | None = None
+    end_only_market_value: Number | None = None
+    # Source rows whose `duration_quality_flag` is not `observed`: modified
+    # duration there is a fallback, so treasury/spread effects on those rows are
+    # model output rather than observed rate sensitivity.
+    duration_quality_degraded: CampisiDurationQualityStat | None = None
+    # Model-included rows whose maturity could not be parsed. Their selection
+    # amount is a signed model residual, not evidence of security selection.
+    # Absent when no included row has an unusable maturity (or on bridge paths).
+    included_maturity_unavailable: CampisiIncludedMaturityUnavailable | None = None
     warnings: list[str]
 
 
@@ -146,6 +222,7 @@ class CampisiFormalClosure(_StrictCampisiModel):
     bridge_quality_flag: str | None
     bridge_vendor_status: str | None
     bridge_fallback_mode: str | None
+    bridge_fallback_date: str | None = None
     message: str
 
 
@@ -297,6 +374,7 @@ class CampisiMaturityBucketPayload(_StrictCampisiModel):
     # Keyed by maturity bucket label (`0-1Y` … `10Y+`, plus `UNKNOWN` for
     # positions with no maturity date), which is data-driven.
     buckets: dict[str, CampisiMaturityBucketRow]
+    effect_availability: CampisiEffectAvailability | None = None
     warnings: list[str] | None = None
     input_quality: CampisiInputQuality | None = None
 

@@ -7,8 +7,11 @@ the underlying PnL, balance, FX, or FTP calculations.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from calendar import monthrange
+from collections.abc import Iterable, Mapping, Sequence
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from typing import cast
 
 from backend.app.core_finance.pnl import TWOPLACES
 from backend.app.core_finance.zqtz_asset_bond_category import is_parent_zqtz_business_row
@@ -44,7 +47,8 @@ def _parent_rows(items: Sequence[Mapping[str, object]]) -> list[Mapping[str, obj
     ]
 
 
-def _trailing_month_keys(as_of_date: str, lookback_months: int) -> list[str]:
+def trailing_month_keys(as_of_date: str, lookback_months: int) -> list[str]:
+    """Return the governed rolling natural-month window in ascending order."""
     year = int(as_of_date[:4])
     month = int(as_of_date[5:7])
     keys: list[str] = []
@@ -55,6 +59,17 @@ def _trailing_month_keys(as_of_date: str, lookback_months: int) -> list[str]:
             month = 12
             year -= 1
     return list(reversed(keys))
+
+
+def prior_year_same_period_date(as_of_date: str) -> str:
+    """Return the comparable prior-year date, clamping leap day to month end."""
+    current = date.fromisoformat(as_of_date)
+    baseline_year = current.year - 1
+    baseline_day = min(current.day, monthrange(baseline_year, current.month)[1])
+    return date(baseline_year, current.month, baseline_day).isoformat()
+
+
+_trailing_month_keys = trailing_month_keys
 
 
 def _longest_negative_streak(series: Sequence[tuple[str, Decimal | None]]) -> int:
@@ -173,16 +188,20 @@ def build_negative_ftp_persistence(
     business warning is only valid when both the observation minimum and the
     negative-month-share threshold are met.
     """
-    month_keys = _trailing_month_keys(as_of_date, lookback_months)
+    month_keys = trailing_month_keys(as_of_date, lookback_months)
     overall_series: list[tuple[str, Decimal | None]] = []
     row_values: dict[str, dict[str, Decimal | None]] = {}
     row_labels: dict[str, str] = {}
+    balance_quality_issues: dict[str, dict[str, object]] = {}
 
     for month_key in month_keys:
         bucket = monthly_by_key.get(month_key)
         if bucket is None:
             overall_series.append((month_key, None))
             continue
+        for issue in cast(Iterable[object], bucket.get("balance_quality_issues") or []):
+            if isinstance(issue, Mapping) and issue.get("status", "pending") == "pending":
+                balance_quality_issues[str(issue["issue_id"])] = dict(issue)
         summary = bucket.get("summary")
         summary_value = summary.get("ftp_net_pnl") if isinstance(summary, Mapping) else None
         overall_series.append((month_key, _decimal(summary_value)))
@@ -217,6 +236,12 @@ def build_negative_ftp_persistence(
         overall_series,
         minimum_observed_months=minimum_observed_months,
     )
+    if balance_quality_issues:
+        # Preserve the provisional sequence; do not drop a month or turn it into
+        # zero. Its numbers must not be promoted to a verified business warning.
+        overall_stats.update(eligible=False, status="source_pending")
+        for row in rows:
+            row.update(eligible=False, status="source_pending", warning_triggered=False)
     return {
         "as_of_date": as_of_date,
         "lookback_months": lookback_months,
@@ -226,6 +251,7 @@ def build_negative_ftp_persistence(
         "minimum_observed_months": minimum_observed_months,
         "warning_row_count": sum(1 for row in rows if row["warning_triggered"]),
         "rows": rows,
+        "balance_quality_issues": sorted(balance_quality_issues.values(), key=lambda issue: str(issue["report_date"])),
         **overall_stats,
     }
 
@@ -402,4 +428,5 @@ __all__ = [
     "build_business_type_share_drift",
     "build_negative_ftp_persistence",
     "build_scale_yield_quadrant",
+    "trailing_month_keys",
 ]

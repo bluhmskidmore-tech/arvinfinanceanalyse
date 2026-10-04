@@ -11,6 +11,9 @@ CRISIS_SCORE_RULE_VERSION = "rv_macro_crisis_score_cn_v1"
 CRISIS_SCORE_INSUFFICIENT_DATA_RECOMMENDATION = "数据不足，观察证据仅供参考"
 DEFAULT_CRISIS_SCORE_HISTORY_LIMIT = 430
 CRISIS_SCORE_FFILL_LIMIT = 5
+CRISIS_SCORE_TREND_WINDOW_POINTS = 20
+CRISIS_SCORE_TREND_WINDOWS = (CRISIS_SCORE_TREND_WINDOW_POINTS, 60)
+CRISIS_SCORE_RISK_GATE_THRESHOLD = 2.0
 CRISIS_SCORE_WEIGHTS: dict[str, float] = {
     "equity_vol": 0.25,
     "credit_spread": 0.25,
@@ -56,7 +59,8 @@ def compute_crisis_score_payload(
     latest_index = score_frame["crisis_score"].dropna().index[-1]
     latest = score_frame.loc[latest_index]
     score = float(latest["crisis_score"])
-    regime, recommendation = classify_crisis_score(score)
+    published_score = round(score, 4)
+    regime, recommendation = classify_crisis_score(published_score)
     component_details = _component_details(latest, indicators, latest_index, resolved_weights)
     warnings = _component_warnings(
         series_data,
@@ -64,28 +68,123 @@ def compute_crisis_score_payload(
         indicators=indicators,
         latest_index=latest_index,
     )
+    if latest_index.date() != report_date:
+        warnings = _dedupe([*warnings, "CRISIS_SCORE_REPORT_DATE_LAG"])
     data_status = "complete" if len(component_details) == len(resolved_weights) and not warnings else "degraded"
     if data_status != "complete":
         # 分量缺失/陈旧时合成分只由部分权重支撑，不足以支撑加减仓方向建议。
         recommendation = CRISIS_SCORE_INSUFFICIENT_DATA_RECOMMENDATION
     scores = score_frame["crisis_score"].dropna()
     percentile = float((scores <= score).mean() * 100) if len(scores) else None
+    score_trends = [
+        _build_crisis_score_trend(scores, requested_window_points=window_points)
+        for window_points in CRISIS_SCORE_TREND_WINDOWS
+    ]
+    score_trend = score_trends[0]
+    risk_gate_eligible = data_status == "complete"
 
     return {
         "report_date": latest_index.date().isoformat(),
         "requested_report_date": report_date.isoformat(),
         "data_status": data_status,
         "rule_version": CRISIS_SCORE_RULE_VERSION,
-        "crisis_score": round(score, 4),
+        "crisis_score": published_score,
         "regime": regime,
         "recommendation": recommendation,
-        "headline": f"Crisis Score {score:.2f}: {regime}",
+        "headline": f"Crisis Score {published_score:.2f}: {regime}",
         "percentile": round(percentile, 2) if percentile is not None else None,
+        "score_trend": score_trend,
+        "score_trends": score_trends,
+        "risk_gate": {
+            "eligible": risk_gate_eligible,
+            "triggered": (
+                risk_gate_eligible
+                and published_score >= CRISIS_SCORE_RISK_GATE_THRESHOLD
+            ),
+            "threshold": CRISIS_SCORE_RISK_GATE_THRESHOLD,
+            "reason_code": (
+                "crisis_score_at_or_above_threshold"
+                if risk_gate_eligible
+                and published_score >= CRISIS_SCORE_RISK_GATE_THRESHOLD
+                else "crisis_score_below_threshold"
+                if risk_gate_eligible
+                else "crisis_score_data_not_complete"
+            ),
+        },
         "available_component_count": len(component_details),
         "component_count": len(resolved_weights),
         "components": component_details,
         "weights": resolved_weights,
         "warnings": warnings,
+    }
+
+
+def _build_crisis_score_trend(
+    scores: pd.Series,
+    *,
+    requested_window_points: int = CRISIS_SCORE_TREND_WINDOW_POINTS,
+) -> dict[str, Any]:
+    resolved_window_points = max(1, int(requested_window_points))
+    clean = scores.dropna().tail(resolved_window_points)
+    if clean.empty:
+        return {
+            "requested_window_points": resolved_window_points,
+            "window_points": 0,
+            "start_date": None,
+            "end_date": None,
+            "start_score": None,
+            "end_score": None,
+            "score_change": None,
+            "start_percentile": None,
+            "end_percentile": None,
+            "percentile_change": None,
+            "direction": "insufficient",
+        }
+
+    start_index = clean.index[0]
+    end_index = clean.index[-1]
+    start_score = float(clean.iloc[0])
+    end_score = float(clean.iloc[-1])
+    score_change = end_score - start_score if len(clean) >= 2 else None
+    start_prefix = scores.loc[:start_index].dropna()
+    end_prefix = scores.loc[:end_index].dropna()
+    start_percentile = (
+        float((start_prefix <= start_score).mean() * 100) if len(start_prefix) else None
+    )
+    end_percentile = (
+        float((end_prefix <= end_score).mean() * 100) if len(end_prefix) else None
+    )
+    percentile_change = (
+        end_percentile - start_percentile
+        if start_percentile is not None and end_percentile is not None and len(clean) >= 2
+        else None
+    )
+    rounded_score_change = round(score_change, 4) if score_change is not None else None
+    if rounded_score_change is None:
+        direction = "insufficient"
+    elif rounded_score_change == 0.0:
+        direction = "flat"
+    elif rounded_score_change > 0:
+        direction = "rising"
+    else:
+        direction = "falling"
+
+    def _date_text(value: object) -> str:
+        point_date = value.date() if hasattr(value, "date") else value
+        return point_date.isoformat() if hasattr(point_date, "isoformat") else str(point_date)[:10]
+
+    return {
+        "requested_window_points": resolved_window_points,
+        "window_points": int(len(clean)),
+        "start_date": _date_text(start_index),
+        "end_date": _date_text(end_index),
+        "start_score": round(start_score, 4),
+        "end_score": round(end_score, 4),
+        "score_change": rounded_score_change,
+        "start_percentile": round(start_percentile, 2) if start_percentile is not None else None,
+        "end_percentile": round(end_percentile, 2) if end_percentile is not None else None,
+        "percentile_change": round(percentile_change, 2) if percentile_change is not None else None,
+        "direction": direction,
     }
 
 
@@ -272,6 +371,13 @@ def _component_warnings(
 
 
 def _unavailable_payload(report_date: date, warnings: list[str]) -> dict[str, Any]:
+    score_trends = [
+        _build_crisis_score_trend(
+            pd.Series(dtype="float64"),
+            requested_window_points=window_points,
+        )
+        for window_points in CRISIS_SCORE_TREND_WINDOWS
+    ]
     return {
         "report_date": report_date.isoformat(),
         "requested_report_date": report_date.isoformat(),
@@ -282,6 +388,14 @@ def _unavailable_payload(report_date: date, warnings: list[str]) -> dict[str, An
         "recommendation": CRISIS_SCORE_INSUFFICIENT_DATA_RECOMMENDATION,
         "headline": "Crisis Score 数据不足",
         "percentile": None,
+        "score_trend": score_trends[0],
+        "score_trends": score_trends,
+        "risk_gate": {
+            "eligible": False,
+            "triggered": False,
+            "threshold": CRISIS_SCORE_RISK_GATE_THRESHOLD,
+            "reason_code": "crisis_score_data_not_complete",
+        },
         "available_component_count": 0,
         "component_count": len(CRISIS_SCORE_WEIGHTS),
         "components": [],
@@ -305,23 +419,45 @@ def build_crisis_score_history_payload(
     score_frame: pd.DataFrame,
     *,
     limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
+    weights: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     if score_frame.empty or "crisis_score" not in score_frame.columns:
         return []
     scores = score_frame["crisis_score"].dropna()
     if scores.empty:
         return []
+    resolved_weights = weights or CRISIS_SCORE_WEIGHTS
     tail = scores.tail(max(1, int(limit)))
     history: list[dict[str, Any]] = []
     for index, value in tail.items():
         prefix = scores.loc[:index]
         percentile = float((prefix <= value).mean() * 100) if len(prefix) else None
         point_date = index.date() if hasattr(index, "date") else index
+        score_row = score_frame.loc[index]
+        available_components = [
+            key
+            for key in resolved_weights
+            if f"{key}_z" in score_frame.columns
+            and pd.notna(score_row.get(f"{key}_z"))
+        ]
+        available_component_count = len(available_components)
+        component_count = len(resolved_weights)
+        available_weight = sum(float(resolved_weights[key]) for key in available_components)
+        if component_count > 0 and available_component_count == component_count:
+            data_status = "complete"
+        elif available_component_count > 0:
+            data_status = "degraded"
+        else:
+            data_status = "unavailable"
         history.append(
             {
                 "date": point_date.isoformat() if hasattr(point_date, "isoformat") else str(point_date)[:10],
                 "crisis_score": round(float(value), 4),
                 "percentile": round(percentile, 2) if percentile is not None else None,
+                "available_component_count": available_component_count,
+                "component_count": component_count,
+                "available_weight": round(available_weight, 4),
+                "data_status": data_status,
             }
         )
     return history

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,7 +10,13 @@ vi.mock("../../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../../api/client";
-import type { ApiEnvelope, PnlByBusinessInsightsPayload, PnlDatesPayload, ResultMeta } from "../../api/contracts";
+import type {
+  ApiEnvelope,
+  PnlByBusinessInsightsPayload,
+  PnlByBusinessPrecomputeStatus,
+  PnlDatesPayload,
+  ResultMeta,
+} from "../../api/contracts";
 import PnlByBusinessInsightsPage from "./PnlByBusinessInsightsPage";
 
 const meta: ResultMeta = {
@@ -240,7 +246,10 @@ function buildPayload(
 
 const DEFAULT_REPORT_DATES = ["2026-06-30", "2025-12-31"];
 
-function buildDatesPayload(reportDates: string[]): ApiEnvelope<PnlDatesPayload> {
+function buildDatesPayload(
+  reportDates: string[],
+  sourceReportDates: string[] = reportDates,
+): ApiEnvelope<PnlDatesPayload> {
   return {
     result_meta: {
       ...meta,
@@ -253,9 +262,74 @@ function buildDatesPayload(reportDates: string[]): ApiEnvelope<PnlDatesPayload> 
     },
     result: {
       report_dates: reportDates,
-      formal_fi_report_dates: reportDates,
-      nonstd_bridge_report_dates: reportDates,
+      formal_fi_report_dates: sourceReportDates,
+      nonstd_bridge_report_dates: sourceReportDates,
     },
+  };
+}
+
+function buildPrecomputeStatus(
+  overrides: Partial<PnlByBusinessPrecomputeStatus> = {},
+): PnlByBusinessPrecomputeStatus {
+  return {
+    year: 2026,
+    status: "completed",
+    serving_mode: "published",
+    is_current: true,
+    run_id: null,
+    report_date: "2026-06-30",
+    latest_available_as_of_date: "2026-06-30",
+    source_version: "sv_ready",
+    rule_version: "rv_ready",
+    queued_at: null,
+    started_at: null,
+    finished_at: "2026-06-30T11:59:00Z",
+    generated_at: "2026-06-30T11:59:00Z",
+    record_count: 1,
+    error_message: null,
+    failure_category: null,
+    trigger_reason: null,
+    retry_attempt: 0,
+    retry_policy: { max_retries: 3, min_backoff_seconds: 15 },
+    readiness: "ready",
+    generation: "gen-ready-1",
+    dependencies: [
+      {
+        key: "current_ytd",
+        requested_report_date: "2026-06-30",
+        resolved_report_date: "2026-06-30",
+        readiness: "ready",
+        generation: "gen-ready-1",
+        run_id: null,
+        last_progress_at: "2026-06-30T11:59:00Z",
+        error_message: null,
+      },
+      {
+        key: "baseline_ytd",
+        requested_report_date: "2025-06-30",
+        resolved_report_date: "2025-06-30",
+        readiness: "ready",
+        generation: "gen-ready-1",
+        run_id: null,
+        last_progress_at: "2026-06-30T11:59:00Z",
+        error_message: null,
+      },
+      {
+        key: "monthly",
+        requested_report_date: "2026-06-30",
+        resolved_report_date: "2026-06-30",
+        readiness: "ready",
+        generation: "gen-ready-1",
+        run_id: null,
+        last_progress_at: "2026-06-30T11:59:00Z",
+        error_message: null,
+      },
+    ],
+    permissions: { can_rebuild: false, reason: "当前账号仅可查看" },
+    last_progress_at: "2026-06-30T11:59:00Z",
+    worker_stalled: false,
+    recovery_hint: null,
+    ...overrides,
   };
 }
 
@@ -272,15 +346,18 @@ function buildClient(
 
 function renderPage(client: ApiClient, initialEntry = "/pnl-by-business-insights") {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ApiClientProvider client={client}>
-        <MemoryRouter initialEntries={[initialEntry]}>
-          <PnlByBusinessInsightsPage />
-        </MemoryRouter>
-      </ApiClientProvider>
-    </QueryClientProvider>,
-  );
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <MemoryRouter initialEntries={[initialEntry]}>
+            <PnlByBusinessInsightsPage />
+          </MemoryRouter>
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe("PnlByBusinessInsightsPage", () => {
@@ -306,7 +383,14 @@ describe("PnlByBusinessInsightsPage", () => {
       return node as HTMLElement;
     });
 
-    expect(getInsights).toHaveBeenCalledWith(2026, "2026-06-30");
+    expect(getInsights).toHaveBeenCalledWith(
+      2026,
+      "2026-06-30",
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(client.getFormalPnlDates).toHaveBeenCalledWith({
+      page: "by_business_insights",
+    });
     expect(candidateSpy).not.toHaveBeenCalled();
     expect(ytdSpy).not.toHaveBeenCalled();
     expect(status).toHaveTextContent("正式口径");
@@ -316,27 +400,597 @@ describe("PnlByBusinessInsightsPage", () => {
     expect(document.querySelector('[data-testid="pnl-by-business-insights-disclaimer"]')).toBeNull();
   });
 
-  it("adds a slow-loading note after 10s while the structural analysis is still computing", async () => {
-    // 结构分析接口无缓存、单次重算约 1 分钟：查询挂起超过 10s 时补一行进度说明。
-    const pending = new Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>(() => {});
-    const getInsights = vi.fn(() => pending);
+  it("uses the published page date catalog when per-source date lists are intentionally empty", async () => {
+    const getInsights = vi.fn(async () => buildPayload());
     const client = buildClient(getInsights);
+    client.getFormalPnlDates = vi.fn(async () =>
+      buildDatesPayload(["2026-06-30"], []),
+    );
     renderPage(client);
 
     await waitFor(() => {
-      expect(getInsights).toHaveBeenCalledWith(2026, "2026-06-30");
+      expect(getInsights).toHaveBeenCalledWith(
+        2026,
+        "2026-06-30",
+        { signal: expect.any(AbortSignal) },
+      );
     });
-    expect(
-      document.querySelector('[data-testid="pnl-by-business-insights-slow-loading-note"]'),
-    ).toBeNull();
+    expect(client.getFormalPnlDates).toHaveBeenCalledWith({
+      page: "by_business_insights",
+    });
+  });
+
+  it("uses the real pending task state instead of inferring preparation from a 10s GET timer", async () => {
+    const getInsights = vi.fn(async () => buildPayload());
+    const client = buildClient(getInsights);
+    client.getPnlByBusinessPrecomputeStatus = vi.fn(async () => buildPrecomputeStatus({
+      status: "running",
+      serving_mode: "unavailable",
+      is_current: false,
+      run_id: "run-pending-1",
+      readiness: "pending",
+      generation: null,
+      finished_at: null,
+      generated_at: null,
+      dependencies: buildPrecomputeStatus().dependencies?.map((dependency) => ({
+        ...dependency,
+        readiness: "pending",
+        generation: null,
+        run_id: "run-pending-1",
+      })),
+    }));
+    renderPage(client);
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-precompute-state"]')).toHaveTextContent(
+        "整页本期、同期和月度依赖正在后台准备",
+      );
+    });
+    expect(getInsights).not.toHaveBeenCalled();
 
     await act(async () => {
       vi.advanceTimersByTime(10_500);
     });
 
-    const note = document.querySelector('[data-testid="pnl-by-business-insights-slow-loading-note"]');
-    expect(note).not.toBeNull();
-    expect(note).toHaveTextContent("正在计算年度结构分析，约需 1 分钟");
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-slow-loading-note"]')).toBeNull();
+    expect(client.getPnlByBusinessPrecomputeStatus).toHaveBeenCalledTimes(2);
+    expect(getInsights).not.toHaveBeenCalled();
+  });
+
+  it("fixes the ready generation before reading and rejects a late response from the prior generation", async () => {
+    let firstSignal: AbortSignal | undefined;
+    let resolveFirst: ((value: ApiEnvelope<PnlByBusinessInsightsPayload>) => void) | undefined;
+    let resolveSecond: ((value: ApiEnvelope<PnlByBusinessInsightsPayload>) => void) | undefined;
+    const firstRequest = new Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondRequest = new Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const getInsights = vi.fn((
+      _year: number,
+      _asOfDate: string,
+      options?: { signal?: AbortSignal; generation?: string },
+    ) => {
+      if (options?.generation === "gen-ready-1") {
+        firstSignal = options.signal;
+        return firstRequest;
+      }
+      return secondRequest;
+    });
+    const client = buildClient(getInsights);
+    client.getPnlByBusinessPrecomputeStatus = vi.fn(async () => buildPrecomputeStatus());
+    const { queryClient } = renderPage(client);
+
+    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(
+      2026,
+      "2026-06-30",
+      { signal: expect.any(AbortSignal), generation: "gen-ready-1" },
+    ));
+    act(() => {
+      queryClient.setQueryData(
+        ["pnl-by-business-insights", "precompute-status", "mock", 2026, "2026-06-30"],
+        buildPrecomputeStatus({ generation: "gen-ready-2" }),
+      );
+    });
+
+    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(
+      2026,
+      "2026-06-30",
+      { signal: expect.any(AbortSignal), generation: "gen-ready-2" },
+    ));
+    expect(firstSignal?.aborted).toBe(true);
+    await act(async () => {
+      resolveSecond?.(buildPayload(
+        { trace_id: "tr_generation_2" },
+        { generation: "gen-ready-2" },
+      ));
+    });
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toHaveTextContent(
+        "tr_generation_2",
+      );
+    });
+    await act(async () => {
+      resolveFirst?.(buildPayload(
+        { trace_id: "tr_generation_1_late" },
+        { generation: "gen-ready-1" },
+      ));
+    });
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).not.toHaveTextContent(
+      "tr_generation_1_late",
+    );
+  });
+
+  it("keeps stale data fail-closed for viewers and offers rebuild only when authorized", async () => {
+    const viewerClient = buildClient(vi.fn(async () => buildPayload()));
+    viewerClient.getPnlByBusinessPrecomputeStatus = vi.fn(async () => buildPrecomputeStatus({
+      status: "completed",
+      serving_mode: "unavailable",
+      is_current: false,
+      readiness: "stale",
+      generation: null,
+      permissions: { can_rebuild: false, reason: "当前账号仅可查看" },
+    }));
+    viewerClient.rebuildPnlByBusinessPrecompute = vi.fn(viewerClient.rebuildPnlByBusinessPrecompute);
+    const viewerRender = renderPage(viewerClient);
+
+    await waitFor(() => {
+      const state = document.querySelector('[data-testid="pnl-by-business-insights-precompute-state"]');
+      expect(state).toHaveTextContent("结果已过期");
+      expect(state).toHaveTextContent("不会沿用旧响应的正式使用结论");
+      expect(state).toHaveTextContent("当前账号仅可查看");
+    });
+    expect(viewerClient.getPnlByBusinessInsights).not.toHaveBeenCalled();
+    expect(viewerClient.rebuildPnlByBusinessPrecompute).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-precompute-state"]')).not.toHaveTextContent(
+      "请求后台准备",
+    );
+    viewerRender.unmount();
+
+    const operatorClient = buildClient(vi.fn(async () => buildPayload()));
+    operatorClient.getPnlByBusinessPrecomputeStatus = vi.fn(async () => buildPrecomputeStatus({
+      status: "failed",
+      serving_mode: "unavailable",
+      is_current: false,
+      readiness: "failed",
+      generation: null,
+      error_message: "materialization failed",
+      permissions: { can_rebuild: true, reason: null },
+    }));
+    operatorClient.rebuildPnlByBusinessPrecompute = vi.fn(async () => buildPrecomputeStatus({
+      status: "queued",
+      serving_mode: "unavailable",
+      is_current: false,
+      run_id: "run-rebuild-1",
+      readiness: "pending",
+      generation: null,
+      permissions: { can_rebuild: true, reason: null },
+    }));
+    renderPage(operatorClient);
+    const prepareButton = await waitFor(() => {
+      const button = Array.from(document.querySelectorAll("button")).find((node) => node.textContent === "请求后台准备");
+      expect(button).toBeDefined();
+      return button as HTMLButtonElement;
+    });
+    fireEvent.click(prepareButton);
+    await waitFor(() => expect(operatorClient.rebuildPnlByBusinessPrecompute).toHaveBeenCalledWith(
+      2026,
+      "2026-06-30",
+      { includePageDependencies: true, scope: "selected" },
+    ));
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-precompute-state"]')).toHaveTextContent(
+        "run-rebuild-1",
+      );
+    });
+  });
+
+  it("does not approve a result whose echoed generation differs from the ready status", async () => {
+    const client = buildClient(vi.fn(async () => buildPayload(
+      {},
+      { generation: "gen-obsolete" },
+    )));
+    client.getPnlByBusinessPrecomputeStatus = vi.fn(async () => buildPrecomputeStatus({
+      generation: "gen-ready-2",
+    }));
+    renderPage(client);
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-review"]')).not.toBeNull();
+    });
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toHaveTextContent(
+      "正式口径 待确认",
+    );
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-decision-brief"]')).toBeNull();
+  });
+
+  it("shows source-missing for the selected cutoff without substituting another date or zero result", async () => {
+    const getInsights = vi.fn(async () => buildPayload());
+    const client = buildClient(getInsights);
+    client.getPnlByBusinessPrecomputeStatus = vi.fn(async () => buildPrecomputeStatus({
+      status: "idle",
+      serving_mode: "unavailable",
+      is_current: false,
+      readiness: "source_missing",
+      generation: null,
+      report_date: "2026-06-30",
+      dependencies: [
+        {
+          ...buildPrecomputeStatus().dependencies![0],
+          requested_report_date: "2026-06-30",
+          resolved_report_date: null,
+          readiness: "source_missing",
+          generation: null,
+        },
+      ],
+    }));
+    renderPage(client);
+
+    await waitFor(() => {
+      const state = document.querySelector('[data-testid="pnl-by-business-insights-precompute-state"]');
+      expect(state).toHaveTextContent("源数据缺失");
+      expect(state).toHaveTextContent("2026-06-30");
+      expect(state).toHaveTextContent("不会补零或换用其他日期");
+    });
+    expect(getInsights).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toBeNull();
+  });
+
+  it("stops polling a stalled worker and shows the server recovery path", async () => {
+    const client = buildClient(vi.fn(async () => buildPayload()));
+    client.getPnlByBusinessPrecomputeStatus = vi.fn(async () => buildPrecomputeStatus({
+      status: "running",
+      serving_mode: "unavailable",
+      is_current: false,
+      run_id: "run-stalled-1",
+      readiness: "pending",
+      generation: null,
+      worker_stalled: true,
+      recovery_hint: "请在数据更新中心检查损益准备 worker",
+    }));
+    renderPage(client);
+
+    await waitFor(() => {
+      const state = document.querySelector('[data-testid="pnl-by-business-insights-precompute-state"]');
+      expect(state).toHaveTextContent("后台准备长时间没有进展");
+      expect(state).toHaveTextContent("请在数据更新中心检查损益准备 worker");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(client.getPnlByBusinessPrecomputeStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a compatible published result visible when a newer preparation attempt fails", async () => {
+    const client = buildClient(vi.fn(async () =>
+      buildPayload({}, { generation: "gen-ready-1" }),
+    ));
+    client.getPnlByBusinessPrecomputeStatus = vi.fn(async () => buildPrecomputeStatus({
+      refresh_status: "failed",
+      refresh_error_message: "2026-07-31 更新任务失败",
+      refresh_failure_category: "worker_error",
+    }));
+    renderPage(client);
+
+    const warning = await waitFor(() => {
+      const node = document.querySelector(
+        '[data-testid="pnl-by-business-insights-refresh-failed-serving-published"]',
+      );
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+    expect(warning).toHaveTextContent("当前显示的正式结果日期为 2026-06-30");
+    expect(warning).toHaveTextContent("2026-07-31 更新任务失败");
+    expect(warning).toHaveTextContent("未用失败更新尝试的日期替换当前正式结果");
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toHaveTextContent(
+      "正式口径 已批准",
+    );
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-concentration-kpis"]')).toHaveTextContent(
+      "13.42%",
+    );
+  });
+
+  it("keeps the current cutoff result visible and identifies a failed refresh", async () => {
+    let requestCount = 0;
+    let rejectRefresh: ((reason?: unknown) => void) | undefined;
+    let resolveRetry: ((value: ApiEnvelope<PnlByBusinessInsightsPayload>) => void) | undefined;
+    const pendingRefresh = new Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>((_resolve, reject) => {
+      rejectRefresh = reject;
+    });
+    const pendingRetry = new Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const getInsights = vi.fn(() => {
+      requestCount += 1;
+      if (requestCount === 1) return Promise.resolve(buildPayload());
+      return requestCount === 2 ? pendingRefresh : pendingRetry;
+    });
+    const { queryClient } = renderPage(buildClient(getInsights));
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toHaveTextContent(
+        "tr_pnl_business_insights_test",
+      );
+    });
+
+    act(() => {
+      void queryClient.invalidateQueries({
+        queryKey: ["pnl-by-business-insights", "formal", "mock", 2026, "2026-06-30"],
+      });
+    });
+
+    await waitFor(() => expect(getInsights).toHaveBeenCalledTimes(2));
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toHaveTextContent(
+      "tr_pnl_business_insights_test",
+    );
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-refreshing"]')).toHaveTextContent(
+      "正在更新当前截止日的结构分析",
+    );
+
+    await act(async () => {
+      rejectRefresh?.(new Error("Request failed: /api/pnl/by-business-insights (500)"));
+    });
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-refresh-error"]')).toHaveTextContent(
+        "当前仍显示该截止日上次成功返回的结果",
+      );
+    });
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toHaveTextContent(
+      "tr_pnl_business_insights_test",
+    );
+
+    fireEvent.click(
+      document.querySelector('[data-testid="pnl-by-business-insights-refresh-error"] button')!,
+    );
+    await waitFor(() => expect(getInsights).toHaveBeenCalledTimes(3));
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-refresh-error"]')).toBeNull();
+    await act(async () => {
+      resolveRetry?.(buildPayload());
+    });
+  });
+
+  it("keeps the selected cutoff result visible when the report-date directory refresh fails", async () => {
+    let dateRequestCount = 0;
+    let rejectDatesRefresh: ((reason?: unknown) => void) | undefined;
+    let resolveDatesRetry: ((value: ApiEnvelope<PnlDatesPayload>) => void) | undefined;
+    const pendingDatesRefresh = new Promise<ApiEnvelope<PnlDatesPayload>>((_resolve, reject) => {
+      rejectDatesRefresh = reject;
+    });
+    const pendingDatesRetry = new Promise<ApiEnvelope<PnlDatesPayload>>((resolve) => {
+      resolveDatesRetry = resolve;
+    });
+    const client = buildClient(vi.fn(async () => buildPayload()));
+    client.getFormalPnlDates = vi.fn(() => {
+      dateRequestCount += 1;
+      if (dateRequestCount === 1) return Promise.resolve(buildDatesPayload(DEFAULT_REPORT_DATES));
+      return dateRequestCount === 2 ? pendingDatesRefresh : pendingDatesRetry;
+    });
+    const { queryClient } = renderPage(client);
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toHaveTextContent(
+        "tr_pnl_business_insights_test",
+      );
+    });
+
+    act(() => {
+      void queryClient.invalidateQueries({ queryKey: ["pnl-by-business-insights", "dates", "mock"] });
+    });
+    await waitFor(() => expect(client.getFormalPnlDates).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      rejectDatesRefresh?.(new Error("Request failed: /api/pnl/dates (500)"));
+    });
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-dates-refresh-error"]')).toHaveTextContent(
+        "当前继续使用已成功加载的报告日期目录",
+      );
+    });
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toHaveTextContent(
+      "tr_pnl_business_insights_test",
+    );
+
+    fireEvent.click(
+      document.querySelector('[data-testid="pnl-by-business-insights-dates-refresh-error"] button')!,
+    );
+    await waitFor(() => expect(client.getFormalPnlDates).toHaveBeenCalledTimes(3));
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-dates-refresh-error"]')).toBeNull();
+    await act(async () => {
+      resolveDatesRetry?.(buildDatesPayload(DEFAULT_REPORT_DATES));
+    });
+  });
+
+  it("continues to load a selected cutoff from the retained directory after its refresh fails", async () => {
+    let dateRequestCount = 0;
+    let rejectDatesRefresh: ((reason?: unknown) => void) | undefined;
+    const pendingDatesRefresh = new Promise<ApiEnvelope<PnlDatesPayload>>((_resolve, reject) => {
+      rejectDatesRefresh = reject;
+    });
+    const getInsights = vi.fn((year: number, asOfDate: string) =>
+      Promise.resolve(
+        buildPayload(
+          {
+            trace_id: `tr_pnl_business_insights_${year}`,
+            requested_report_date: asOfDate,
+            resolved_report_date: asOfDate,
+            as_of_date: asOfDate,
+          },
+          { as_of_date: asOfDate },
+        ),
+      ),
+    );
+    const client = buildClient(getInsights);
+    client.getFormalPnlDates = vi.fn(() => {
+      dateRequestCount += 1;
+      return dateRequestCount === 1 ? Promise.resolve(buildDatesPayload(DEFAULT_REPORT_DATES)) : pendingDatesRefresh;
+    });
+    const { queryClient } = renderPage(client);
+
+    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(
+      2026,
+      "2026-06-30",
+      { signal: expect.any(AbortSignal) },
+    ));
+    act(() => {
+      void queryClient.invalidateQueries({ queryKey: ["pnl-by-business-insights", "dates", "mock"] });
+    });
+    await waitFor(() => expect(client.getFormalPnlDates).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      rejectDatesRefresh?.(new Error("date directory temporarily unavailable"));
+    });
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-dates-refresh-error"]')).not.toBeNull();
+    });
+
+    fireEvent.change(document.querySelector('[aria-label="pnl-by-business-insights-year"]')!, {
+      target: { value: "2025" },
+    });
+    await waitFor(() => {
+      expect(getInsights).toHaveBeenCalledWith(
+        2025,
+        "2025-12-31",
+        { signal: expect.any(AbortSignal) },
+      );
+      const status = document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]');
+      expect(status).toHaveTextContent("2025-12-31");
+      expect(status).toHaveTextContent("tr_pnl_business_insights_2025");
+    });
+  });
+
+  it("stops showing cached formal results and diagnostics after an insights 403", async () => {
+    let requestCount = 0;
+    let rejectRefresh: ((reason?: unknown) => void) | undefined;
+    let resolveRecovery: ((value: ApiEnvelope<PnlByBusinessInsightsPayload>) => void) | undefined;
+    const pendingRefresh = new Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>((_resolve, reject) => {
+      rejectRefresh = reject;
+    });
+    const pendingRecovery = new Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>((resolve) => {
+      resolveRecovery = resolve;
+    });
+    const getInsights = vi.fn(() => {
+      requestCount += 1;
+      if (requestCount === 1) return Promise.resolve(buildPayload());
+      return requestCount === 2 ? pendingRefresh : pendingRecovery;
+    });
+    const { queryClient } = renderPage(buildClient(getInsights));
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).not.toBeNull();
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-reconciliation-section"]')).not.toBeNull();
+    });
+    act(() => {
+      void queryClient.invalidateQueries({
+        queryKey: ["pnl-by-business-insights", "formal", "mock", 2026, "2026-06-30"],
+      });
+    });
+    await waitFor(() => expect(getInsights).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      rejectRefresh?.(new Error("Request failed: /api/pnl/by-business-insights (403)"));
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-access-denied"]')).toHaveTextContent(
+        "读取权限已变更",
+      );
+    });
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toBeNull();
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-reconciliation-section"]')).toBeNull();
+
+    fireEvent.click(document.querySelector('[data-testid="pnl-by-business-insights-access-denied"] button')!);
+    await waitFor(() => expect(getInsights).toHaveBeenCalledTimes(3));
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-access-denied"] button')).toBeDisabled();
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toBeNull();
+    await act(async () => {
+      resolveRecovery?.(buildPayload());
+    });
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-access-denied"]')).toBeNull();
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).not.toBeNull();
+    });
+  });
+
+  it("stops using a cached date directory after its refresh returns 401", async () => {
+    let dateRequestCount = 0;
+    let rejectDatesRefresh: ((reason?: unknown) => void) | undefined;
+    const pendingDatesRefresh = new Promise<ApiEnvelope<PnlDatesPayload>>((_resolve, reject) => {
+      rejectDatesRefresh = reject;
+    });
+    const getInsights = vi.fn(async () => buildPayload());
+    const client = buildClient(getInsights);
+    client.getFormalPnlDates = vi.fn(() => {
+      dateRequestCount += 1;
+      return dateRequestCount === 1 ? Promise.resolve(buildDatesPayload(DEFAULT_REPORT_DATES)) : pendingDatesRefresh;
+    });
+    const { queryClient } = renderPage(client);
+
+    await waitFor(() => expect(getInsights).toHaveBeenCalledTimes(1));
+    act(() => {
+      void queryClient.invalidateQueries({ queryKey: ["pnl-by-business-insights", "dates", "mock"] });
+    });
+    await waitFor(() => expect(client.getFormalPnlDates).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      rejectDatesRefresh?.(new Error("Request failed: /api/pnl/dates (401)"));
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-access-denied"]')).toHaveTextContent(
+        "报告日期目录读取权限已变更",
+      );
+    });
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]')).toBeNull();
+    expect(document.querySelector('[aria-label="pnl-by-business-insights-year"]')).toBeDisabled();
+    expect(getInsights).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels the obsolete cutoff request and does not let it replace the selected cutoff", async () => {
+    let firstSignal: AbortSignal | undefined;
+    let resolveFirst: ((value: ApiEnvelope<PnlByBusinessInsightsPayload>) => void) | undefined;
+    const firstRequest = new Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const getInsights = vi.fn((year: number, asOfDate: string, options?: { signal?: AbortSignal }) => {
+      if (year === 2026 && asOfDate === "2026-06-30") {
+        firstSignal = options?.signal;
+        return firstRequest;
+      }
+      return Promise.resolve(
+        buildPayload(
+          {
+            trace_id: "tr_pnl_business_insights_2025",
+            requested_report_date: "2025-12-31",
+            resolved_report_date: "2025-12-31",
+            as_of_date: "2025-12-31",
+          },
+          { as_of_date: "2025-12-31" },
+        ),
+      );
+    });
+    renderPage(buildClient(getInsights));
+
+    await waitFor(() => expect(firstSignal).toBeInstanceOf(AbortSignal));
+    fireEvent.change(document.querySelector('[aria-label="pnl-by-business-insights-year"]')!, {
+      target: { value: "2025" },
+    });
+
+    await waitFor(() => {
+      expect(getInsights).toHaveBeenCalledWith(
+        2025,
+        "2025-12-31",
+        { signal: expect.any(AbortSignal) },
+      );
+    });
+    expect(firstSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      resolveFirst?.(buildPayload({ trace_id: "tr_obsolete_cutoff" }));
+    });
+    await waitFor(() => {
+      const status = document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]');
+      expect(status).toHaveTextContent("2025-12-31");
+      expect(status).toHaveTextContent("tr_pnl_business_insights_2025");
+      expect(status).not.toHaveTextContent("tr_obsolete_cutoff");
+    });
   });
 
   it("renders the approved concentration, threshold, same-period drift and backend quadrant", async () => {
@@ -356,6 +1010,27 @@ describe("PnlByBusinessInsightsPage", () => {
     expect(page).toHaveTextContent("公募基金");
     expect(page).toHaveTextContent("-3.52pp");
     expect(document.querySelector('[data-testid="capital-efficiency-quadrant-grid"]')).not.toBeNull();
+  });
+
+  it("shows source-pending instead of a negative-FTP conclusion or insufficient observations", async () => {
+    const result = buildPayload().result;
+    renderPage(buildClient(vi.fn(async () => buildPayload({}, { negative_ftp_persistence: {
+      ...result.negative_ftp_persistence, status: "source_pending", eligible: false, warning_row_count: 0,
+      balance_quality_issues: [{ issue_id: "pending", report_date: "2025-11-20", status: "pending",
+        reason: "源表日期冲突", source_file: "test.xls", source_version: "sv_test" }],
+      rows: result.negative_ftp_persistence.rows.map((row) => ({
+        ...row, status: "source_pending", eligible: false, warning_triggered: false,
+      })),
+    } }))));
+    await waitFor(() => {
+      const brief = document.querySelector('[data-testid="pnl-by-business-insights-decision-brief"]');
+      expect(brief).toHaveTextContent("2025-11-20余额来源待核实");
+      expect(brief).not.toHaveTextContent("最长连续9个月");
+      expect(brief).not.toHaveTextContent("当前没有业务达到");
+      const table = document.querySelector('[data-testid="pnl-by-business-insights-negative-ftp-table"]');
+      expect(table).toHaveTextContent("余额来源待核实");
+      expect(table).not.toHaveTextContent("观察不足");
+    });
   });
 
   it("combines approved structure, negative-FTP and share-drift outputs into a management brief", async () => {
@@ -604,7 +1279,11 @@ describe("PnlByBusinessInsightsPage", () => {
       "/pnl-by-business-insights?year=2025&as_of_date=2025-12-31",
     );
 
-    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(2025, "2025-12-31"));
+    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(
+      2025,
+      "2025-12-31",
+      { signal: expect.any(AbortSignal) },
+    ));
   });
 
   it("uses the latest available formal cutoff instead of today's unavailable date", async () => {
@@ -613,8 +1292,16 @@ describe("PnlByBusinessInsightsPage", () => {
 
     renderPage(buildClient(getInsights, ["2026-07-31", "2026-06-30"]));
 
-    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(2026, "2026-07-31"));
-    expect(getInsights).not.toHaveBeenCalledWith(2026, "2026-08-11");
+    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(
+      2026,
+      "2026-07-31",
+      { signal: expect.any(AbortSignal) },
+    ));
+    expect(getInsights).not.toHaveBeenCalledWith(
+      2026,
+      "2026-08-11",
+      { signal: expect.any(AbortSignal) },
+    );
   });
 
   it("rejects non-canonical query parameters instead of sending them to the formal endpoint", async () => {
@@ -624,8 +1311,16 @@ describe("PnlByBusinessInsightsPage", () => {
       "/pnl-by-business-insights?year=02025&as_of_date=2025-12-31",
     );
 
-    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(2026, "2026-06-30"));
-    expect(getInsights).not.toHaveBeenCalledWith(2025, "2025-12-31");
+    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(
+      2026,
+      "2026-06-30",
+      { signal: expect.any(AbortSignal) },
+    ));
+    expect(getInsights).not.toHaveBeenCalledWith(
+      2025,
+      "2025-12-31",
+      { signal: expect.any(AbortSignal) },
+    );
   });
 
   it("keeps untraced history in a separate data-quality diagnostic section", async () => {

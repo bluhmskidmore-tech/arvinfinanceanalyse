@@ -4,12 +4,14 @@ import hashlib
 import json
 import uuid
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, cast
 
+import duckdb
 from backend.app.core_finance.macro_bond_linkage import (
     ENVIRONMENT_COMPOSITE_FORMULA_VERSION,
     EquityBondSpreadSignal,
@@ -103,9 +105,20 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
     return _refresh_macro_bond_linkage_envelope(envelope, cache_hit=cache_hit)
 
 
-def get_macro_environment_context(report_date: date) -> dict[str, object]:
+def get_macro_environment_context(
+    report_date: date,
+    *,
+    _conn: duckdb.DuckDBPyConnection | None = None,
+    _duckdb_path: str | None = None,
+) -> dict[str, object]:
     settings = get_settings()
-    duckdb_path = str(settings.duckdb_path)
+    duckdb_path = _duckdb_path or str(settings.duckdb_path)
+    if _conn is not None:
+        return _get_macro_environment_context_uncached(
+            report_date=report_date,
+            duckdb_path=duckdb_path,
+            _conn=_conn,
+        )
     cache_key = _macro_environment_context_cache_key(
         duckdb_path=duckdb_path,
         report_date=report_date,
@@ -264,11 +277,13 @@ def _get_macro_environment_context_uncached(
     *,
     report_date: date,
     duckdb_path: str,
+    _conn: duckdb.DuckDBPyConnection | None = None,
 ) -> dict[str, object]:
     computed_at = datetime.now(UTC).isoformat()
     warnings: list[str] = []
     repo = MacroBondLinkageRepository(duckdb_path, guard_path_exists=True)
-    with repo.scoped_connection() as conn:
+    connection_scope = nullcontext(_conn) if _conn is not None else repo.scoped_connection()
+    with connection_scope as conn:
         if conn is None:
             warnings.append("DuckDB 只读连接不可用，暂无法生成宏观环境评分。")
             return _build_macro_environment_context_envelope(
@@ -526,12 +541,28 @@ def _get_macro_bond_linkage_uncached(
             yield_inputs["series"],
             lookback_days=LOOKBACK_DAYS,
             alignment_mode="conservative",
+            include_lead_lag=False,
         )
         market_timing_corrs = compute_macro_bond_correlations(
             macro_inputs["series"],
             yield_inputs["series"],
             lookback_days=LOOKBACK_DAYS,
             alignment_mode="market_timing",
+            include_lead_lag=False,
+        )
+        conservative_corrs = _complete_visible_correlations(
+            conservative_corrs,
+            macro_inputs["series"],
+            yield_inputs["series"],
+            alignment_mode="conservative",
+            include_research=True,
+        )
+        market_timing_corrs = _complete_visible_correlations(
+            market_timing_corrs,
+            macro_inputs["series"],
+            yield_inputs["series"],
+            alignment_mode="market_timing",
+            include_research=False,
         )
         conservative_rows = _ranked_correlation_payloads(
             conservative_corrs,
@@ -727,11 +758,67 @@ def _empty_method_variants() -> MacroBondLinkageMethodVariants:
     )
 
 
+def _complete_visible_correlations(
+    correlations: list[MacroBondCorrelation],
+    macro_series: dict[str, list[tuple[date, float]]],
+    yield_series: dict[str, list[tuple[date, float]]],
+    *,
+    alignment_mode: Literal["conservative", "market_timing"],
+    include_research: bool,
+) -> list[MacroBondCorrelation]:
+    if not correlations:
+        return correlations
+
+    # Both the displayed top ten and the research views rank only the three
+    # window correlations. Python's stable sort preserves the original pair
+    # order when all windows are unavailable or strengths tie.
+    ranked_rows = _ranked_correlation_payloads(
+        correlations,
+        {},
+        alignment_mode=alignment_mode,
+        limit=None,
+    )
+    selected_pairs = {
+        (row["series_id"], row["target_yield"])
+        for row in ranked_rows[:TOP_CORRELATION_LIMIT]
+    }
+    if include_research:
+        for families in (
+            {"treasury", "cdb"},
+            {"credit_spread", "aaa_credit"},
+            {"treasury", "cdb", "credit_spread", "aaa_credit"},
+        ):
+            first = next((row for row in ranked_rows if row["target_family"] in families), None)
+            if first is not None:
+                selected_pairs.add((first["series_id"], first["target_yield"]))
+
+    completed: dict[tuple[str, str], MacroBondCorrelation] = {}
+    for correlation in correlations:
+        pair = (correlation.series_id, correlation.target_yield)
+        if pair not in selected_pairs:
+            continue
+        full = compute_macro_bond_correlations(
+            {correlation.series_id: macro_series[correlation.series_id]},
+            {correlation.target_yield: yield_series[correlation.target_yield]},
+            lookback_days=LOOKBACK_DAYS,
+            alignment_mode=alignment_mode,
+        )
+        if len(full) != 1:
+            raise RuntimeError(f"Expected one macro-bond correlation for {pair!r}; got {len(full)}")
+        completed[pair] = full[0]
+
+    return [
+        completed.get((correlation.series_id, correlation.target_yield), correlation)
+        for correlation in correlations
+    ]
+
+
 def _ranked_correlation_payloads(
     correlations: list[MacroBondCorrelation],
     series_name_map: dict[str, str],
     *,
     alignment_mode: Literal["conservative", "market_timing"],
+    limit: int | None = TOP_CORRELATION_LIMIT,
 ) -> list[dict[str, Any]]:
     rows = [
         _build_correlation_payload(
@@ -742,7 +829,7 @@ def _ranked_correlation_payloads(
         for correlation in correlations
     ]
     rows.sort(key=_correlation_strength, reverse=True)
-    return rows[:TOP_CORRELATION_LIMIT]
+    return rows if limit is None else rows[:limit]
 
 
 def _build_response_envelope(
@@ -985,6 +1072,7 @@ def _build_correlation_payload(
             "correlation_1y": correlation.correlation_1y,
             "lead_lag_days": correlation.lead_lag_days,
             "direction": correlation.direction,
+            "direction_source_window": correlation.direction_source_window,
             "alignment_mode": alignment_mode,
             "sample_size": correlation.sample_size,
             "winsorized": correlation.winsorized,

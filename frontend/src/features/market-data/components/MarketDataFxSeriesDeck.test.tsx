@@ -1,10 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./MarketDataChartShell", () => ({
-  MarketDataChartShell: ({ testId }: { testId?: string }) => (
-    <div data-testid={testId ?? "market-data-chart-shell-mock"} />
-  ),
+vi.mock("../../../components/charts/ChartCard", () => ({
+  ChartCard: ({ testId }: { testId?: string }) => <figure data-testid={testId} />,
 }));
 
 import { MarketDataFxSeriesDeck } from "./MarketDataFxSeriesDeck";

@@ -13,6 +13,8 @@
 | `mcp/` | MCP 服务器与启动器（含 `moss_project_mcp.py` 单体，勿新增对它的库式 import，见下） |
 | `agent_eval/`、`stitch/` | agent 评测与 Stitch 设计生成的独立子模块（各有自述文件） |
 
+前端日常启动、源码预览和局部验证命令统一见 [前端开发入口](../frontend/README.md)。数据更新通过[数据更新中心的代理执行约定](../docs/data_update_center.md#代理代办更新的执行约定)选择预检、请求与后台任务；正式交接按[验收说明](../docs/acceptance_tests.md)。Wind、Choice 等依赖 Windows 终端的采集入口保留其平台要求，不能因开发入口跨平台而视为已支持其他平台。
+
 ## 新脚本规范（强制）
 
 新增任何 `*.py` 必须以 docstring 开头，且包含 `Lifecycle:` 行：
@@ -29,6 +31,7 @@ Verify: python -m pytest tests/test_xxx.py    # 推荐：给出验证命令
 - `Lifecycle: one-off`：一次性脚本（绑定单一事故/日期/迁移）。完成后应随下一次清理批次移入 `archive/`。
 - 命名沿用现有前缀习惯：`run_`（编排刷新）、`backfill_`（历史回填）、`diagnose_`/`check_`/`verify_`（只读诊断校验）、`repair_`（数据修复）、`export_`（导出）。
 - 多数脚本有配对测试 `tests/test_<name>.py`；新常驻脚本应配测试。
+- 新增任务产物与本地报告的落点、运行版本保护和清理条件统一遵循根 [AGENTS.md 的临时产物与结项清理规则](../AGENTS.md#临时产物与结项清理)。脚本不再另设默认产物目录。
 
 ## DuckDB 访问纪律（禁止裸 `duckdb.connect`）
 
@@ -46,6 +49,12 @@ Verify: python -m pytest tests/test_xxx.py    # 推荐：给出验证命令
 ## 归档记录
 
 - 2026-08-12（C5 批次 1）：19 个一次性已完成脚本（+1 个伴随 SQL）移入 `archive/` 主题目录（`adb-recon-2026-05/`、`strategy-research-2026-07/`、`decimal-backfill-2026-07-31/`、`one-off-repairs/`、`perf-profiling/`、`page-closure-evidence-2026-06/`），10 个专属测试随迁至各主题 `tests_archived/`；守卫白名单同步移除并排除 archive/ 扫描。明细与跳过项见 C5 报告 §6。
+
+### Decimal 单日回填的历史入口
+
+追溯 `2026-07-31` Decimal 回填时，从[本组归档说明](archive/decimal-backfill-2026-07-31/README.md)进入。该组两个脚本和两个归档测试不属于日常执行入口，默认源码检索可排除；2026-10-04 定向核对 CI、package 命令、dev/timer wrappers、后端代码和当前测试，没有发现对这两个脚本的活跃调用，归档测试也不在 `pytest.ini` 默认的 `tests/`、`backend/tests/` 收集路径内。
+
+仍需保留的消费者是本组归档测试、[历史回填 Runbook](../docs/DECIMAL_PRECISION_2026-07-31_BACKFILL_RUNBOOK.md)和 [mypy 基线的来源哈希](mypy_baseline.json)。原文件路径与字节继续保留，历史 Runbook 的 `BLOCKED` 状态不变；归档不构成生产回填完成或执行授权。这里仅提供现有历史说明的导航，不恢复失效导入或新增执行入口。
 
 ## 其他约定
 

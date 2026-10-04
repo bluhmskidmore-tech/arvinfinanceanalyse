@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { BondPositionItem, BondTopHoldingItem, CreditSpreadDetailBondRow, Numeric } from "../../../api/contracts";
 import { EM_DASH } from "../../../pageModel";
 import { formatRawAsNumeric } from "../../../utils/format";
 import {
@@ -14,6 +15,77 @@ import {
 const yuan = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
 const pct = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
 const years = (raw: number) => formatRawAsNumeric({ raw, unit: "years", sign_aware: false });
+
+/** 重仓券契约：ytm 为 governed Numeric，display 已是百分点文案。 */
+const ytmNumeric = (display: string, raw = 0.0245): Numeric => ({
+  raw,
+  unit: "pct",
+  display,
+  precision: 2,
+  sign_aware: true,
+});
+
+const weightNumeric = (display: string, raw = 0.035): Numeric => ({
+  raw,
+  unit: "ratio",
+  display,
+  precision: 4,
+  sign_aware: false,
+});
+
+function tileValue(
+  model: ReturnType<typeof buildBondTradingDeskPageModel>,
+  key: string,
+): string {
+  return model.metricTiles.find((tile) => tile.key === key)?.value ?? "";
+}
+
+function positionItem(overrides: Partial<BondPositionItem> = {}): BondPositionItem {
+  return {
+    bond_code: "149001.SZ",
+    credit_name: "测试券",
+    sub_type: "公司债",
+    asset_class: "credit",
+    market_value: "120000000",
+    face_value: "100000000",
+    valuation_net_price: "102.3",
+    yield_rate: "0.0310",
+    ...overrides,
+  };
+}
+
+function spreadRow(overrides: Partial<CreditSpreadDetailBondRow> = {}): CreditSpreadDetailBondRow {
+  return {
+    instrument_code: "149003.IB",
+    instrument_name: "利差样例",
+    rating: "AA+",
+    tenor_bucket: "3Y",
+    ytm: "3.10000000",
+    benchmark_yield: "2.10",
+    credit_spread: "110bp",
+    spread_duration: "2.0",
+    spread_dv01: "1200",
+    market_value: "5.00",
+    weight: "0.05088252",
+    ...overrides,
+  };
+}
+
+function topHolding(overrides: Partial<BondTopHoldingItem> = {}): BondTopHoldingItem {
+  return {
+    instrument_code: "230210.IB",
+    instrument_name: "23国开10",
+    issuer_name: "国开行",
+    rating: "AAA",
+    asset_class: "rate",
+    market_value: yuan(1_200_000_000),
+    face_value: yuan(1_000_000_000),
+    ytm: ytmNumeric("2.45%"),
+    modified_duration: years(4.2),
+    weight: weightNumeric("3.50%", 0.035),
+    ...overrides,
+  };
+}
 
 describe("bondTradingDeskPageModel", () => {
   it("builds deep link path with bond_code and report_date", () => {
@@ -61,7 +133,7 @@ describe("bondTradingDeskPageModel", () => {
           market_value: "120000000",
           face_value: "100000000",
           valuation_net_price: "102.3",
-          yield_rate: "3.1",
+          yield_rate: "0.0310",
         },
       ],
       creditSpreadRows: [],
@@ -197,5 +269,101 @@ describe("bondTradingDeskPageModel", () => {
       ["credit_spread", "信用利差", EM_DASH, ""],
       ["net_price", "估值净价", EM_DASH, ""],
     ]);
+  });
+
+  it("formats top-holdings Numeric ytm via the governed display path", () => {
+    const model = buildBondTradingDeskPageModel({
+      bondCode: "230210.IB",
+      reportDate: "2026-04-30",
+      topHoldings: [topHolding()],
+      positions: [],
+      creditSpreadRows: [],
+      positionChanges: [],
+    });
+
+    expect(model.snapshot?.coverageSource).toBe("top_holdings");
+    expect(tileValue(model, "ytm")).toBe("2.45%");
+    expect(tileValue(model, "weight")).toBe("3.50%");
+  });
+
+  it("formats positions yield_rate decimal string as percent points", () => {
+    const model = buildBondTradingDeskPageModel({
+      bondCode: "149001.SZ",
+      reportDate: "2026-04-30",
+      topHoldings: [],
+      positions: [positionItem({ yield_rate: "0.0310" })],
+      creditSpreadRows: [],
+      positionChanges: [],
+    });
+
+    expect(model.snapshot?.coverageSource).toBe("positions");
+    expect(tileValue(model, "ytm")).toBe("3.10%");
+  });
+
+  it("formats credit-spread ytm percent-point string without rescaling", () => {
+    const model = buildBondTradingDeskPageModel({
+      bondCode: "149003.IB",
+      reportDate: "2026-04-30",
+      topHoldings: [],
+      positions: [],
+      creditSpreadRows: [spreadRow({ ytm: "3.10000000", weight: "0.05088252" })],
+      positionChanges: [],
+    });
+
+    expect(model.snapshot?.coverageSource).toBe("credit_spread");
+    expect(tileValue(model, "ytm")).toBe("3.10%");
+    expect(tileValue(model, "weight")).toBe("5.09%");
+  });
+
+  it("fills missing position weight from credit-spread ratio string", () => {
+    const model = buildBondTradingDeskPageModel({
+      bondCode: "149001.SZ",
+      reportDate: "2026-04-30",
+      topHoldings: [],
+      positions: [positionItem({ bond_code: "149001.SZ", yield_rate: "0.0310" })],
+      creditSpreadRows: [spreadRow({ instrument_code: "149001.SZ", weight: "0.05088252" })],
+      positionChanges: [],
+    });
+
+    expect(model.snapshot?.coverageSource).toBe("positions");
+    expect(tileValue(model, "ytm")).toBe("3.10%");
+    expect(tileValue(model, "weight")).toBe("5.09%");
+  });
+
+  it("renders null or empty ytm and weight as EM_DASH", () => {
+    const nullModel = buildBondTradingDeskPageModel({
+      bondCode: "149001.SZ",
+      reportDate: "2026-04-30",
+      topHoldings: [],
+      positions: [positionItem({ yield_rate: null })],
+      creditSpreadRows: [],
+      positionChanges: [],
+    });
+    expect(tileValue(nullModel, "ytm")).toBe(EM_DASH);
+    expect(tileValue(nullModel, "weight")).toBe(EM_DASH);
+
+    const emptyModel = buildBondTradingDeskPageModel({
+      bondCode: "149001.SZ",
+      reportDate: "2026-04-30",
+      topHoldings: [],
+      positions: [positionItem({ yield_rate: "" })],
+      creditSpreadRows: [],
+      positionChanges: [],
+    });
+    expect(tileValue(emptyModel, "ytm")).toBe(EM_DASH);
+  });
+
+  it("puts the scaled position YTM into the conclusion sentence", () => {
+    const model = buildBondTradingDeskPageModel({
+      bondCode: "149001.SZ",
+      reportDate: "2026-04-30",
+      topHoldings: [],
+      positions: [positionItem({ credit_name: "测试券", yield_rate: "0.0310" })],
+      creditSpreadRows: [],
+      positionChanges: [],
+    });
+
+    expect(model.conclusion.body).toContain("YTM 3.10%");
+    expect(model.conclusion.body).not.toContain("YTM 0.03%");
   });
 });

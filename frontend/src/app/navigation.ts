@@ -17,6 +17,10 @@ export type WorkbenchSection = {
   readiness: WorkbenchReadiness;
   readinessLabel: string;
   readinessNote: string;
+  /** 业务用户可直接阅读的使用说明；技术记录仍保留在 readinessNote。 */
+  usageNote?: string;
+  /** 必须在说明折叠时仍可见的业务使用限制，不由路由就绪状态推断。 */
+  usageRestriction?: string;
   governanceStatus?: "temporary-exception";
   governanceBanner?: string;
   navigationVisibility?: "primary" | "hidden";
@@ -153,6 +157,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "operations-analysis",
+    usageNote: "汇总经营、市场与资产负债信息；具体数据日期和使用范围请查看相应分析页面。",
     label: "经营分析",
     path: "/operations-analysis",
     icon: "analysis",
@@ -167,6 +172,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "market-finance",
+    usageNote: "分别查看市场、资金转移定价、经营和资产负债分析；数据不足的结论需要进一步复核。",
+    usageRestriction: "当前未提供跨市场传导、其他综合收益与资本影响的完整分析。",
     label: "金市与计财",
     path: "/market-finance",
     icon: "analysis",
@@ -211,6 +218,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "cross-asset",
+    usageNote: "查看宏观与资产价格变化对债券的影响估计，完整历史行情可在市场数据页查询。",
     label: "跨资产驱动",
     path: "/cross-asset",
     icon: "analysis",
@@ -222,6 +230,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "team-performance",
+    usageNote: "可查看团队损益贡献；正式绩效考核功能尚未提供。",
+    usageRestriction: "考核目标分为演示数据，不能用于正式绩效考核。",
     label: "团队绩效",
     path: "/team-performance",
     icon: "team",
@@ -234,6 +244,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "decision-items",
+    usageNote: "按报告日查看待处理事项，并记录确认、忽略和备注；默认显示最新可用报告日。",
     label: "决策事项",
     path: "/decision-items",
     icon: "decision",
@@ -321,6 +332,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "stock-analysis",
+    usageNote: "查看股票市场、行业和个股分析，结合页面标注的数据日期进行复核。",
+    usageRestriction: "仅供观察和复核，不生成交易指令。",
     label: "股票分析",
     path: "/stock-analysis",
     icon: "market",
@@ -333,6 +346,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "source-preview",
+    usageNote: "该功能暂未开放，请从工作台选择其他可用页面。",
     label: "Source Preview",
     path: "/source-preview",
     icon: "market",
@@ -345,6 +359,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "platform-config",
+    usageNote: "查看数据更新情况、数据来源与系统运行状态。",
     label: "数据中心",
     path: "/platform-config",
     icon: "settings",
@@ -366,6 +381,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "bond-dashboard",
+    usageNote: "查看债券组合的规模、结构和风险，具体数据日期以各项指标标注为准。",
     label: "债券总览",
     path: "/bond-dashboard",
     icon: "bond",
@@ -377,6 +393,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "positions",
+    usageNote: "按报告日查看债券与同业持仓，按观察区间查看客户与分布；无数据时请调整日期或筛选条件。",
     label: "持仓透视",
     path: "/positions",
     icon: "bond",
@@ -388,6 +405,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "average-balance",
+    usageNote: "查看同业与债券在所选区间的日均余额及变化。",
+    usageRestriction: "正式余额以资产负债分析页为准。",
     label: "日均分析",
     path: "/average-balance",
     icon: "analysis",
@@ -399,6 +418,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "ledger-pnl",
+    usageNote: "按科目查看总账损益、账户汇总和明细，核对当前报告日的损益变化。",
     label: "总账损益",
     path: "/ledger-pnl",
     icon: "analysis",
@@ -410,6 +430,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "bank-ledger-dashboard",
+    usageNote: "按币种分别查看银行债券台账中的资产、发行负债与净敞口；未完成分类核验的数据暂不参与评估。",
+    usageRestriction: "当前台账尚未获准正式使用。",
     label: "银行台账",
     path: "/bank-ledger-dashboard",
     icon: "analysis",
@@ -446,6 +468,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "concentration-monitor",
+    usageNote: "查看持仓集中度及限额对照，按页面提示复核异常项目。",
     label: "集中度监控",
     path: "/concentration-monitor",
     icon: "risk",
@@ -457,6 +480,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "cashflow-projection",
+    usageNote: "查看预计现金流、期限缺口与再投资风险，结合预测日期和假设阅读结果。",
     label: "现金流预测",
     path: "/cashflow-projection",
     icon: "risk",
@@ -478,6 +502,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "kpi-performance",
+    usageNote: "查看绩效指标、导入数据和计分结果，具体考核范围以页面说明为准。",
     label: "绩效考核",
     path: "/kpi",
     icon: "kpi",
@@ -489,6 +514,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "news-events",
+    usageNote: "查看新闻事件及发布时间，并结合其他信息复核其业务影响。",
+    usageRestriction: "新闻事件仅供分析参考。",
     label: "新闻事件",
     path: "/news-events",
     icon: "decision",
@@ -501,6 +528,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "product-category-pnl",
+    usageNote: "按产品类别查看损益和场景分析，注意区分实际结果与分析假设。",
     label: "产品分析",
     path: "/product-category-pnl",
     icon: "analysis",
@@ -553,6 +581,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "pnl-by-business",
+    usageNote: "按业务种类查看固定收益损益、规模和年度汇总。",
     label: "业务种类损益",
     path: "/pnl-by-business",
     icon: "analysis",
@@ -581,7 +610,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readiness: "gated",
     readinessLabel: "受控试用",
     readinessNote:
-      "仅在开发态显式开启前端开关时开放；默认与生产环境保持关闭，后端权限和开关继续 fail closed。",
+      "显式前端开关仅开放受控试用入口；请求仍受后端权限与运行开关控制，不代表正式发布。",
     navigationVisibility: "hidden",
   },
 ];
@@ -612,10 +641,7 @@ type AgentFrontendEnvironment = Pick<ImportMetaEnv, "DEV" | "VITE_MOSS_AGENT_FRO
 export function isAgentFrontendEnabled(
   environment: AgentFrontendEnvironment = import.meta.env,
 ) {
-  return (
-    environment.DEV === true &&
-    environment.VITE_MOSS_AGENT_FRONTEND_ENABLED === "true"
-  );
+  return environment.VITE_MOSS_AGENT_FRONTEND_ENABLED === "true";
 }
 
 export function getVisibleWorkbenchNavigation(

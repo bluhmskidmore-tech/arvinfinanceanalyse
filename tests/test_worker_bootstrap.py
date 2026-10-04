@@ -1,12 +1,15 @@
 import ast
 import logging
 from pathlib import Path
+from threading import Event, Thread, current_thread
 from types import SimpleNamespace
 
 import dramatiq
 import pytest
+from dramatiq.broker import MessageProxy
 from dramatiq.brokers.redis import RedisBroker
 from dramatiq.brokers.stub import StubBroker
+from dramatiq.middleware import Retries
 
 from tests.helpers import load_module
 
@@ -38,6 +41,7 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.materialize",
         "backend.app.tasks.source_preview_refresh",
         "backend.app.tasks.pnl_materialize",
+        "backend.app.tasks.pnl_by_business_page_publication",
         "backend.app.tasks.balance_analysis_materialize",
         "backend.app.tasks.formal_balance_pipeline",
         "backend.app.tasks.accounting_asset_movement",
@@ -54,6 +58,7 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.home_macro_release_refresh",
         "backend.app.tasks.choice_news",
         "backend.app.tasks.stock_factor_refresh",
+        "backend.app.tasks.stock_adjustment_factor_daily_refresh",
         "backend.app.tasks.research_calendar_upstream_fetch",
         "backend.app.tasks.choice_stock_refresh",
         "backend.app.tasks.macro_toolkit_refresh",
@@ -78,6 +83,562 @@ def test_worker_bootstrap_loads_canonical_modules_on_import():
     assert "import_module" in text
     assert "CANONICAL_TASK_MODULES" in text
     assert "get_broker()" in text
+    assert text.index("LOADED_TASK_MODULES =") < text.index(
+        "register_worker_recovery_middleware(active_broker)"
+    )
+
+
+def test_expired_ack_maintenance_uses_broker_dispatch_and_restores_probability():
+    from backend.app.tasks.broker import run_expired_redis_ack_maintenance
+
+    class FakeRedisBroker:
+        maintenance_chance = 1000
+        delay_queues = {"default.DQ"}
+
+        def __init__(self):
+            self.calls: list[tuple[str, int]] = []
+
+        def get_declared_queues(self):
+            return {"default"}
+
+        def do_qsize(self, queue_name):
+            self.calls.append((queue_name, self.maintenance_chance))
+            return 2
+
+    broker = FakeRedisBroker()
+
+    result = run_expired_redis_ack_maintenance(broker)  # type: ignore[arg-type]
+
+    assert broker.calls == [
+        ("default", 1_000_000),
+        ("default.DQ", 1_000_000),
+    ]
+    assert broker.maintenance_chance == 1000
+    assert result == {
+        "status": "completed",
+        "queue_count": 2,
+        "observed_sizes": {"default": 2, "default.DQ": 2},
+    }
+
+
+def test_worker_recovery_separates_intent_recovery_from_ack_maintenance(monkeypatch):
+    from backend.app.tasks import worker_recovery
+
+    class FakeRedisBroker:
+        heartbeat_timeout = 20
+
+    recovered = Event()
+    maintained = Event()
+    events: list[str] = []
+    middleware = worker_recovery.WorkerRecoveryMiddleware(
+        recovery=lambda: events.append("intent") or recovered.set() or 0,
+        ack_maintenance=lambda _broker: (
+            events.append("ack") or maintained.set() or {"queue_count": 1}
+        ),
+        maintenance_grace_seconds=0,
+    )
+    monkeypatch.setattr(worker_recovery, "RedisBroker", FakeRedisBroker)
+
+    middleware.after_worker_boot(FakeRedisBroker(), object())
+
+    assert recovered.wait(0.1)
+    assert maintained.wait(1)
+    assert events == ["intent", "ack"]
+
+
+def test_worker_recovery_persists_successful_page_actor_receipt(tmp_path):
+    from backend.app.repositories.governance_repo import (
+        CACHE_BUILD_RUN_STREAM,
+        GovernanceRepository,
+    )
+    from backend.app.tasks import worker_recovery
+
+    governance_dir = tmp_path / "governance"
+    message = SimpleNamespace(
+        actor_name="prepare_pnl_by_business_page_envelope",
+        kwargs={
+            "run_id": "page-run-completed",
+            "governance_dir": str(governance_dir),
+            "year": 2026,
+            "as_of_date": "2026-08-31",
+        },
+    )
+
+    persisted = worker_recovery.persist_pnl_by_business_page_completion(
+        message,
+        {
+            "status": "completed",
+            "run_id": "page-run-completed",
+            "year": 2026,
+            "report_date": "2026-08-31",
+            "generation": "financial-20260831-example",
+            "publication_status": "published",
+            "resource_limits": {"status": "within_budget"},
+        },
+    )
+
+    assert persisted is True
+    record = GovernanceRepository(base_dir=governance_dir).read_all(
+        CACHE_BUILD_RUN_STREAM
+    )[-1]
+    assert record["status"] == "completed"
+    assert record["generation"] == "financial-20260831-example"
+    assert record["protocol_version"] == "pnl_by_business_page_intent/v1"
+    assert record["resource_limits"] == {"status": "within_budget"}
+
+
+def test_worker_recovery_persists_failure_only_after_retries_exhausted(tmp_path):
+    from backend.app.repositories.governance_repo import (
+        CACHE_BUILD_RUN_STREAM,
+        GovernanceRepository,
+    )
+    from backend.app.tasks import worker_recovery
+
+    governance_dir = tmp_path / "governance"
+    broker = StubBroker(middleware=[Retries()])
+    actor = dramatiq.actor(
+        lambda **_kwargs: None,
+        actor_name="prepare_pnl_by_business_page_envelope",
+        broker=broker,
+        max_retries=1,
+    )
+    middleware = worker_recovery.register_worker_recovery_middleware(broker)
+    message = MessageProxy(
+        actor.message_with_options(
+            kwargs={
+                "run_id": "page-run-failed",
+                "governance_dir": str(governance_dir),
+                "year": 2026,
+                "as_of_date": "2026-08-31",
+            }
+        )
+    )
+    failure = RuntimeError("publication failed")
+
+    broker.emit_after("process_message", message, exception=failure)
+
+    assert message.failed is False
+    assert GovernanceRepository(base_dir=governance_dir).read_all(
+        CACHE_BUILD_RUN_STREAM
+    ) == []
+
+    broker.emit_after("process_message", message, exception=failure)
+
+    assert message.failed is True
+    records = GovernanceRepository(base_dir=governance_dir).read_all(
+        CACHE_BUILD_RUN_STREAM
+    )
+    assert len(records) == 1
+    assert records[0]["status"] == "failed"
+    assert records[0]["failure_category"] == "actor_terminal_failure"
+    assert records[0]["terminal_reason"] == "retries_exhausted"
+    assert records[0]["retries"] == 2
+    assert records[0]["max_retries"] == 1
+    assert not worker_recovery.persist_pnl_by_business_page_terminal_failure(
+        message,
+        failure,
+        broker=broker,
+    )
+    assert len(
+        GovernanceRepository(base_dir=governance_dir).read_all(
+            CACHE_BUILD_RUN_STREAM
+        )
+    ) == 1
+    assert broker.middleware.index(middleware) < next(
+        index
+        for index, item in enumerate(broker.middleware)
+        if isinstance(item, Retries)
+    )
+
+
+@pytest.mark.parametrize(
+    ("actor_options", "failure", "terminal_reason"),
+    (
+        ({"throws": (ValueError,)}, ValueError("invalid input"), "declared_non_retryable"),
+        (
+            {"retry_when": lambda _retries, _exception: False},
+            RuntimeError("retry policy rejected"),
+            "retry_policy_rejected",
+        ),
+    ),
+)
+def test_worker_recovery_classifies_other_terminal_failures(
+    tmp_path,
+    actor_options,
+    failure,
+    terminal_reason,
+):
+    from backend.app.repositories.governance_repo import (
+        CACHE_BUILD_RUN_STREAM,
+        GovernanceRepository,
+    )
+    from backend.app.tasks import worker_recovery
+
+    governance_dir = tmp_path / terminal_reason
+    broker = StubBroker(middleware=[Retries()])
+    actor = dramatiq.actor(
+        lambda **_kwargs: None,
+        actor_name="prepare_pnl_by_business_page_envelope",
+        broker=broker,
+        **actor_options,
+    )
+    worker_recovery.register_worker_recovery_middleware(broker)
+    message = MessageProxy(
+        actor.message_with_options(
+            kwargs={
+                "run_id": f"page-run-{terminal_reason}",
+                "governance_dir": str(governance_dir),
+                "year": 2026,
+                "as_of_date": "2026-08-31",
+            }
+        )
+    )
+
+    broker.emit_after("process_message", message, exception=failure)
+
+    assert message.failed is True
+    records = GovernanceRepository(base_dir=governance_dir).read_all(
+        CACHE_BUILD_RUN_STREAM
+    )
+    assert len(records) == 1
+    assert records[0]["failure_category"] == "actor_terminal_failure"
+    assert records[0]["terminal_reason"] == terminal_reason
+
+
+def test_worker_ack_recovery_retries_and_can_restart_after_thread_exit(monkeypatch):
+    from backend.app.tasks import worker_recovery
+
+    class FakeRedisBroker:
+        heartbeat_timeout = 0
+
+    attempts: list[int] = []
+    first_pass_completed = Event()
+    second_pass_completed = Event()
+
+    def maintain(_broker):
+        attempts.append(len(attempts) + 1)
+        if len(attempts) == 1:
+            raise ConnectionError("redis temporarily unavailable")
+        if len(attempts) == 2:
+            first_pass_completed.set()
+        else:
+            second_pass_completed.set()
+        return {"queue_count": 1}
+
+    middleware = worker_recovery.WorkerRecoveryMiddleware(
+        recovery=lambda: 0,
+        ack_maintenance=maintain,
+        maintenance_grace_seconds=0,
+        maintenance_retry_seconds=0.01,
+    )
+    monkeypatch.setattr(worker_recovery, "RedisBroker", FakeRedisBroker)
+
+    middleware.after_worker_boot(FakeRedisBroker(), object())
+    assert first_pass_completed.wait(1)
+    first_thread = middleware._maintenance_thread
+    if first_thread is not None:
+        first_thread.join(1)
+    assert middleware._maintenance_thread is None
+
+    middleware.after_worker_boot(FakeRedisBroker(), object())
+    assert second_pass_completed.wait(1)
+    second_thread = middleware._maintenance_thread
+    if second_thread is not None:
+        second_thread.join(1)
+    assert middleware._maintenance_thread is None
+    assert attempts == [1, 2, 3]
+
+
+def test_stale_failure_callback_does_not_override_completed_page_receipt(tmp_path):
+    from backend.app.repositories.governance_repo import (
+        CACHE_BUILD_RUN_STREAM,
+        GovernanceRepository,
+    )
+    from backend.app.tasks import worker_recovery
+
+    governance_dir = tmp_path / "governance"
+    message = SimpleNamespace(
+        actor_name="prepare_pnl_by_business_page_envelope",
+        kwargs={
+            "run_id": "page-run-completed-before-failure",
+            "governance_dir": str(governance_dir),
+            "year": 2026,
+            "as_of_date": "2026-08-31",
+        },
+        options={"retries": 2, "max_retries": 1},
+        failed=True,
+    )
+    assert worker_recovery.persist_pnl_by_business_page_completion(
+        message,
+        {
+            "status": "completed",
+            "run_id": "page-run-completed-before-failure",
+            "year": 2026,
+            "report_date": "2026-08-31",
+            "generation": "financial-20260831-complete",
+        },
+    )
+
+    assert not worker_recovery.persist_pnl_by_business_page_terminal_failure(
+        message,
+        RuntimeError("late duplicate failed"),
+    )
+
+    records = GovernanceRepository(base_dir=governance_dir).read_all(
+        CACHE_BUILD_RUN_STREAM
+    )
+    assert len(records) == 1
+    assert records[0]["status"] == "completed"
+
+
+def test_page_receipt_lock_serializes_failure_before_success(tmp_path, monkeypatch):
+    from backend.app.repositories.governance_repo import (
+        CACHE_BUILD_RUN_STREAM,
+        GovernanceRepository,
+    )
+    from backend.app.tasks import worker_recovery
+
+    governance_dir = tmp_path / "governance"
+    run_id = "page-run-concurrent-terminal-callbacks"
+    repository = GovernanceRepository(base_dir=governance_dir)
+    repository.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": "pnl_by_business_page_prepare",
+            "cache_key": "pnl_by_business_page_prepare",
+            "status": "queued",
+        },
+    )
+    failure_read_complete = Event()
+    release_failure = Event()
+    success_done = Event()
+    errors: list[BaseException] = []
+    original_latest = worker_recovery._latest_page_run_status
+
+    def paused_latest(active_repository, *, run_id):
+        status = original_latest(active_repository, run_id=run_id)
+        if current_thread().name == "failure-receipt":
+            failure_read_complete.set()
+            assert release_failure.wait(2)
+        return status
+
+    monkeypatch.setattr(worker_recovery, "_latest_page_run_status", paused_latest)
+    message = SimpleNamespace(
+        actor_name="prepare_pnl_by_business_page_envelope",
+        kwargs={
+            "run_id": run_id,
+            "governance_dir": str(governance_dir),
+            "year": 2026,
+            "as_of_date": "2026-08-31",
+        },
+        options={"retries": 2, "max_retries": 1},
+        failed=True,
+    )
+
+    def write_failure():
+        try:
+            worker_recovery.persist_pnl_by_business_page_terminal_failure(
+                message,
+                RuntimeError("terminal failure"),
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    def write_success():
+        try:
+            worker_recovery.persist_pnl_by_business_page_completion(
+                message,
+                {
+                    "status": "completed",
+                    "run_id": run_id,
+                    "year": 2026,
+                    "report_date": "2026-08-31",
+                    "generation": "financial-20260831-concurrent",
+                },
+            )
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            success_done.set()
+
+    failure_thread = Thread(target=write_failure, name="failure-receipt")
+    success_thread = Thread(target=write_success, name="success-receipt")
+    failure_thread.start()
+    assert failure_read_complete.wait(1)
+    success_thread.start()
+    try:
+        assert not success_done.wait(0.2)
+    finally:
+        release_failure.set()
+    failure_thread.join(2)
+    success_thread.join(2)
+
+    assert not failure_thread.is_alive()
+    assert not success_thread.is_alive()
+    assert errors == []
+    records = [
+        record
+        for record in repository.read_by_cache_keys(
+            CACHE_BUILD_RUN_STREAM,
+            ("pnl_by_business_page_prepare",),
+        )
+        if record.get("run_id") == run_id
+    ]
+    assert [record["status"] for record in records] == [
+        "queued",
+        "failed",
+        "completed",
+    ]
+
+
+def test_page_receipt_status_lookup_uses_cache_key_scope():
+    from backend.app.tasks import worker_recovery
+
+    calls: list[tuple[str, tuple[str, ...]]] = []
+
+    class ScopedRepository:
+        def read_by_cache_keys(self, stream, cache_keys):
+            calls.append((stream, tuple(cache_keys)))
+            return [
+                {
+                    "run_id": "target-run",
+                    "job_name": "pnl_by_business_page_prepare",
+                    "status": "completed",
+                }
+            ]
+
+        def read_all(self, _stream):
+            raise AssertionError("receipt lookup must not scan the full governance stream")
+
+    assert (
+        worker_recovery._latest_page_run_status(
+            ScopedRepository(),  # type: ignore[arg-type]
+            run_id="target-run",
+        )
+        == "completed"
+    )
+    assert calls == [
+        (
+            "cache_build_run",
+            ("pnl_by_business_page_prepare",),
+        )
+    ]
+
+
+def test_worker_ack_recovery_uses_capped_backoff_and_throttled_logs(
+    caplog,
+):
+    from backend.app.tasks import worker_recovery
+
+    class FakeRedisBroker:
+        pass
+
+    class FakeShutdown:
+        def __init__(self):
+            self.waits: list[float] = []
+
+        def wait(self, seconds):
+            self.waits.append(seconds)
+            return len(self.waits) == 5
+
+        def is_set(self):
+            return False
+
+    shutdown = FakeShutdown()
+    middleware = worker_recovery.WorkerRecoveryMiddleware(
+        recovery=lambda: 0,
+        ack_maintenance=lambda _broker: (_ for _ in ()).throw(
+            ConnectionError("redis unavailable")
+        ),
+        maintenance_retry_seconds=1,
+        maintenance_max_retry_seconds=4,
+    )
+    middleware._shutdown = shutdown  # type: ignore[assignment]
+
+    with caplog.at_level(logging.WARNING, logger="backend.app.tasks.worker_recovery"):
+        middleware._maintain_after_heartbeat_timeout(FakeRedisBroker(), 0)  # type: ignore[arg-type]
+
+    assert shutdown.waits == [0, 1, 2, 4, 4]
+    warnings = [
+        record
+        for record in caplog.records
+        if "Redis ACK maintenance failed" in record.getMessage()
+    ]
+    assert len(warnings) == 3
+    assert "attempt 1" in warnings[0].getMessage()
+    assert "attempt 2" in warnings[1].getMessage()
+    assert "attempt 4" in warnings[2].getMessage()
+
+
+def test_worker_startup_requests_intent_recovery_without_pending_dirty(monkeypatch):
+    from backend.app.tasks import data_update_center, worker_recovery
+
+    settings = object()
+    calls: list[tuple[object, bool]] = []
+
+    def recover(active_settings, *, include_pending_dirty=True):
+        calls.append((active_settings, include_pending_dirty))
+        return 0
+
+    monkeypatch.setattr(worker_recovery, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        data_update_center,
+        "_recover_pending_pnl_by_business_precompute",
+        recover,
+    )
+
+    assert worker_recovery.recover_durable_business_intents() == 0
+    assert calls == [(settings, False)]
+
+
+def test_startup_intent_recovery_keeps_adjustment_and_page_without_dirty_scan(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.repositories import pnl_repo
+    from backend.app.services import pnl_by_business_page_lifecycle, pnl_service
+    from backend.app.tasks.data_update_center import (
+        _recover_pending_pnl_by_business_precompute,
+    )
+
+    calls: list[str] = []
+
+    class UnexpectedDirtyRepository:
+        def __init__(self, *_args, **_kwargs):
+            raise AssertionError("startup must not scan pending dirty state")
+
+    monkeypatch.setattr(pnl_repo, "PnlRepository", UnexpectedDirtyRepository)
+    monkeypatch.setattr(
+        pnl_service,
+        "recover_pending_pnl_by_business_precompute",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("startup must not dispatch pending dirty state")
+        ),
+    )
+    monkeypatch.setattr(
+        pnl_service,
+        "recover_pending_pnl_by_business_adjustment_handoffs",
+        lambda _settings: calls.append("adjustment") or [],
+    )
+    monkeypatch.setattr(
+        pnl_by_business_page_lifecycle,
+        "recover_pending_pnl_by_business_page_rebuilds",
+        lambda _settings: calls.append("page") or {"failed_count": 0},
+    )
+    settings = SimpleNamespace(
+        duckdb_path=tmp_path / "moss.duckdb",
+        governance_path=tmp_path / "governance",
+    )
+
+    assert (
+        _recover_pending_pnl_by_business_precompute(
+            settings,
+            include_pending_dirty=False,
+        )
+        == 0
+    )
+    assert calls == ["adjustment", "page"]
 
 
 def test_worker_bootstrap_includes_task_owned_send_targets():
@@ -88,7 +649,7 @@ def test_worker_bootstrap_includes_task_owned_send_targets():
 
 
 def test_newly_canonical_task_modules_import_and_expose_send_targets():
-    """B5 审计修复：这 5 个 actor 模块必须能被 worker bootstrap 无副作用导入。"""
+    """审计修复：新增 canonical actor 模块必须能被 worker bootstrap 无副作用导入。"""
     from importlib import import_module
 
     expectations = {
@@ -100,6 +661,12 @@ def test_newly_canonical_task_modules_import_and_expose_send_targets():
         "backend.app.tasks.risk_coupon_window_repair": ("repair_risk_coupon_window",),
         "backend.app.tasks.bond_dv01_limit_config_import": ("import_bond_dv01_limit_config",),
         "backend.app.tasks.fx_mid_backfill": ("backfill_fx_mid_history",),
+        "backend.app.tasks.stock_adjustment_factor_daily_refresh": (
+            "refresh_stock_adjustment_factors_for_trade_date_task",
+        ),
+        "backend.app.tasks.pnl_by_business_page_publication": (
+            "prepare_pnl_by_business_page_envelope_actor",
+        ),
     }
     canonical_modules = set(_read_canonical_task_modules())
     for module_path, actor_attrs in expectations.items():

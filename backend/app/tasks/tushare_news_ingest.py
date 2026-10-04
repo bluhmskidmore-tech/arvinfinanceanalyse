@@ -14,7 +14,10 @@ import duckdb
 from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.repositories.news_warehouse_repo import purge_expired_news_events, upsert_news_event
 from backend.app.repositories.task_write_guard import repository_task_write_scope
-from backend.app.tasks.choice_news import ensure_choice_news_event_schema
+from backend.app.tasks.choice_news import (
+    CHOICE_NEWS_VENDOR_TZ,
+    ensure_choice_news_event_schema,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -191,14 +194,14 @@ def materialize_tushare_news_to_choice_news(
 def _normalize_received_at(value: object) -> str:
     raw = str(value or "").strip()
     if not raw:
-        return datetime.now(UTC).isoformat()
+        return datetime.now(CHOICE_NEWS_VENDOR_TZ).isoformat()
     candidate = raw.replace(" ", "T")
     try:
         parsed = datetime.fromisoformat(candidate[:19])
     except ValueError:
         return raw
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
+        parsed = parsed.replace(tzinfo=CHOICE_NEWS_VENDOR_TZ)
     return parsed.isoformat()
 
 

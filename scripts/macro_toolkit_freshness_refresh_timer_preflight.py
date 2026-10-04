@@ -17,11 +17,12 @@ DEFAULT_EVIDENCE = ROOT / "docs/handoff/2026-07-20-macro-toolkit-freshness-timer
 DEFAULT_RECEIPT = ROOT / "data/logs/macro_toolkit_freshness_refresh_receipt.json"
 DEFAULT_TASK_NAME = "MOSS-MacroToolkitFreshness"
 RECEIPT_TASK_NAME = "refresh_macro_toolkit_freshness"
-EXPECTED_SOURCE_VERSION = "macro_toolkit_freshness_refresh_v3"
+EXPECTED_SOURCE_VERSION = "macro_toolkit_freshness_refresh_v4"
 RECEIPT_SCHEMA_VERSION = 1
 REQUIRED_STEPS = frozenset(
     {
         "choice_policy_rate_7d",
+        "choice_crisis_aa_5y",
         "commodity_daily_ingest",
         "public_cross_asset_headlines",
         "tushare_ncd_shibor",
@@ -40,6 +41,7 @@ CORE_LATEST_OBSERVATION_KEYS = frozenset(
         "NCD.SHIBOR.9M",
         "NCD.SHIBOR.1Y",
         "EMM00088132",
+        "EMM00166683",
     }
 )
 STAGES = frozenset({"pre-enable", "post-enable", "all"})

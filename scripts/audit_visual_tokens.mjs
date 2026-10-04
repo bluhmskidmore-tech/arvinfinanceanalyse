@@ -6,7 +6,8 @@
  * Per-file no-growth audit over frontend/src for:
  *  - bare hex color literals (should go through --ib-* / --dh-api-* / designTokens)
  *  - forbidden colors (AI purple family; disallowed by DESIGN.md §4)
- *  - CSS border-radius values outside the Shape Lock allowlist (2px / 6px / 999px)
+ *  - CSS border-radius values outside the Shape Lock allowlist
+ *    (0 / 2px IB / 8px Nocturne / circular 999px or 50% / inherit)
  *  - "--" missing-value literals in TSX (canonical placeholder is the em dash "—")
  *
  * Baseline lives in scripts/audit_visual_tokens.baseline.json.
@@ -66,7 +67,7 @@ const scanRoot = path.join(repoRoot, "frontend", "src");
 const HEX_PATTERN =
   /(?<![0-9a-zA-Z])#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b(?![\u3000-\u303f\u4e00-\u9fff\uff00-\uffef])/g;
 
-/** AI purple family — forbidden by DESIGN.md §4 ("AI 紫/霓虹渐变"). */
+/** Non-approved AI purple family — DESIGN.md §4; approved Nocturne accent is not in this list. */
 const FORBIDDEN_HEXES = [
   "#7c3aed",
   "#8b5cf6",
@@ -216,8 +217,74 @@ if (process.argv.includes("--self-test")) {
 }
 
 const current = collect();
+const metricKeys = ["hex", "forbidden", "offRadius", "doubleDash"];
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function loadBaseline() {
+  let document;
+  try {
+    document = JSON.parse(readFileSync(baselinePath, "utf8"));
+  } catch {
+    console.error(
+      "Missing scripts/audit_visual_tokens.baseline.json. " +
+        "Create and review an explicit zero baseline before using --update-baseline.",
+    );
+    process.exit(1);
+  }
+  if (!isPlainObject(document)) {
+    console.error("Invalid visual-token baseline: top level must be an object.");
+    process.exit(1);
+  }
+  for (const [repoPath, metrics] of Object.entries(document)) {
+    if (!isPlainObject(metrics)) {
+      console.error(`Invalid visual-token baseline entry for ${repoPath}: expected an object.`);
+      process.exit(1);
+    }
+    for (const key of metricKeys) {
+      if (!Number.isInteger(metrics[key]) || metrics[key] < 0) {
+        console.error(
+          `Invalid visual-token baseline entry for ${repoPath}.${key}: expected a non-negative integer.`,
+        );
+        process.exit(1);
+      }
+    }
+  }
+  return document;
+}
+
+const baseline = loadBaseline();
 
 if (process.argv.includes("--update-baseline")) {
+  const blocked = [];
+  const tightened = [];
+  const repoPaths = new Set([...Object.keys(baseline), ...Object.keys(current)]);
+  for (const repoPath of repoPaths) {
+    const actual = current[repoPath] ?? {};
+    const allowed = baseline[repoPath] ?? {};
+    for (const key of metricKeys) {
+      const actualCount = actual[key] ?? 0;
+      const allowedCount = allowed[key] ?? 0;
+      if (actualCount > allowedCount) {
+        blocked.push(`${repoPath} ${key}: actual ${actualCount} > baseline ${allowedCount}`);
+      } else if (actualCount < allowedCount) {
+        tightened.push(`${repoPath} ${key}: baseline ${allowedCount} -> ${actualCount}`);
+      }
+    }
+  }
+
+  if (blocked.length > 0) {
+    console.error("Refused to raise visual-token baseline; baseline file left unchanged.");
+    for (const line of blocked) console.error(`- ${line}`);
+    process.exit(1);
+  }
+  if (tightened.length === 0) {
+    console.log("No visual-token baseline lowered; baseline file left unchanged.");
+    process.exit(0);
+  }
+
   const sorted = Object.fromEntries(
     Object.entries(current).sort(([a], [b]) => a.localeCompare(b)),
   );
@@ -230,22 +297,11 @@ if (process.argv.includes("--update-baseline")) {
   process.exit(0);
 }
 
-let baseline;
-try {
-  baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
-} catch {
-  console.error(
-    "Missing scripts/audit_visual_tokens.baseline.json. " +
-      "Generate it with: node scripts/audit_visual_tokens.mjs --update-baseline",
-  );
-  process.exit(1);
-}
-
 const failures = [];
 const metricHints = {
   hex: "Use --ib-* / --dh-api-* / designTokens instead of new bare hex colors.",
-  forbidden: "AI purple family is forbidden (DESIGN.md §4); use IB accent or info scale.",
-  offRadius: "Shape Lock (DESIGN.md §2.2/§5): only 2px (IB), 8px (canonical Nocturne), 999px (pills).",
+  forbidden: "Non-approved AI purple is forbidden (DESIGN.md §4); use the approved theme/semantic tokens.",
+  offRadius: "Shape Lock (DESIGN.md §2.2/§5): 0, 2px (IB), 8px (Nocturne), circular 999px/50%, or inherit. Token-resolved values require browser verification.",
   doubleDash: 'Use the canonical em dash "—" for missing values (DESIGN.md §6).',
 };
 

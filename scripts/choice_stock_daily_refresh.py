@@ -41,6 +41,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.app.governance.settings import get_settings  # noqa: E402
+from backend.app.repositories.choice_stock_adapter import choice_stock_history_start_date  # noqa: E402
 from backend.app.network.source_bound_socks_proxy import (  # noqa: E402
     resolve_vendor_source_ip,
     source_bound_socks_proxy,
@@ -105,6 +106,18 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--factor-max-stock-count", type=int)
     parser.add_argument(
+        "--tushare-gap-repair",
+        action="store_true",
+        help=(
+            "Use the controlled Tushare daily gap-repair path. With no explicit history start, "
+            "the window is restricted to the target trade date."
+        ),
+    )
+    parser.add_argument(
+        "--history-start-date",
+        help="First trade date (YYYY-MM-DD) for --tushare-gap-repair; defaults to --as-of-date.",
+    )
+    parser.add_argument(
         "--theme-overlay-mode",
         choices=("off", "archive"),
         default="archive",
@@ -124,7 +137,10 @@ def _bind_source_address(original, source_ip: str):
     def source_bound_create_connection(address, *args, **kwargs):
         # create_connection(address, timeout, source_address, ...); only inject
         # when the caller did not pin a source address itself.
-        if len(args) < 2 and kwargs.get("source_address") is None:
+        if len(args) >= 2:
+            if args[1] is None:
+                args = (args[0], (source_ip, 0), *args[2:])
+        elif kwargs.get("source_address") is None:
             kwargs["source_address"] = (source_ip, 0)
         return original(address, *args, **kwargs)
 
@@ -318,20 +334,25 @@ def _supply_freshness_warnings(report: dict[str, object]) -> list[str]:
         if not isinstance(item, dict):
             continue
         status = str(item.get("status") or "")
-        if status not in {"stale", "critical"}:
+        if status not in {"stale", "critical", "missing", "unavailable"}:
             continue
-        warnings.append(
+        warning = (
             f"supply freshness {status}: {item.get('name')} "
             f"latest_date={item.get('latest_date')} "
             f"expected_date={item.get('expected_date')} "
             f"lag_trading_days={item.get('lag_trading_days')}"
         )
+        if status in {"missing", "unavailable"}:
+            warning = f"{warning} reason={item.get('reason')}"
+        warnings.append(warning)
     return warnings
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.history_start_date and not args.tushare_gap_repair:
+        parser.error("--history-start-date requires --tushare-gap-repair")
     if args.vendor_source_ip and not args.run_once:
         parser.error("--vendor-source-ip requires --run-once")
     if args.vendor_source_ip:
@@ -344,7 +365,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     duckdb_path = str(settings.duckdb_path)
     governance_path = str(settings.governance_path)
     as_of_date, weekend_skip = _resolve_as_of_date(args.as_of_date)
+    as_of_date_explicit = bool(str(args.as_of_date or "").strip())
+    history_start_date: str | None = None
+    if args.tushare_gap_repair:
+        history_start_date = str(args.history_start_date or as_of_date)
+        try:
+            history_start_date = date.fromisoformat(history_start_date).isoformat()
+        except ValueError:
+            parser.error("--history-start-date must be YYYY-MM-DD")
+        if history_start_date > as_of_date:
+            parser.error("--history-start-date must be on or before --as-of-date")
     invocation_mode = "dry_run" if args.dry_run else "run_once"
+    resolved_scope = {
+        "as_of_date": as_of_date,
+        "history_start_date": history_start_date or choice_stock_history_start_date(as_of_date),
+        "tushare_gap_repair": bool(args.tushare_gap_repair),
+    }
     warnings: list[str] = []
 
     if args.dry_run:
@@ -359,6 +395,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "refresh_factors": True,
                 "factor_max_stock_count": args.factor_max_stock_count,
                 "theme_overlay_mode": args.theme_overlay_mode,
+                "tushare_gap_repair": bool(args.tushare_gap_repair),
+                "history_start_date": history_start_date,
             },
         }
     elif weekend_skip:
@@ -366,6 +404,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "status": "skipped_non_trading_day",
             "as_of_date": as_of_date,
             "reason": "as_of_date defaulted to a weekend day; pass --as-of-date to force a run",
+            "as_of_date_explicit": as_of_date_explicit,
+            "no_write": True,
+            "database_write_scope": [],
+            "governance_write_scope": [],
         }
     else:
         inflight = latest_choice_stock_inflight_refresh(governance_path, as_of_date=as_of_date)
@@ -383,7 +425,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     invocation_mode=invocation_mode,
                     status="running",
                     exit_code=None,
-                    result={"status": "running", "as_of_date": as_of_date},
+                    result={"status": "running", **resolved_scope},
                     warnings=[],
                 )
                 try:
@@ -407,6 +449,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "factor_max_stock_count": args.factor_max_stock_count,
                 "theme_overlay_mode": args.theme_overlay_mode,
                 "permission": build_choice_stock_refresh_permission_payload(),
+                # This CLI executes synchronously; no broker will retry a failed call.
+                "retry_managed_by_broker": False,
+                "history_start_date": history_start_date,
+                "allow_cross_era_backfill": bool(args.tushare_gap_repair),
             }
             try:
                 if args.vendor_source_ip:
@@ -451,6 +497,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "supply_freshness": supply_freshness,
                 }
 
+    result.update(resolved_scope)
     status = str(result.get("status") or "failed")
     exit_code = 0 if status in SUCCESS_STATUSES else 1
     print(json.dumps(result, ensure_ascii=False, default=str))

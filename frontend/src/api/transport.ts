@@ -30,7 +30,7 @@ export type TransportErrorDetailMode = "status-only" | "json-detail";
 export type TransportRequestOptions = {
   /** Milliseconds before aborting. `null` disables the timeout entirely. */
   timeoutMs?: number | null;
-  /** Optional caller cancellation signal, including during response reading. */
+  /** Optional caller cancellation signal, including body reads; its reason is preserved. */
   signal?: AbortSignal;
   /** How failed (non-2xx) responses are turned into error messages. */
   errorDetail?: TransportErrorDetailMode;
@@ -294,7 +294,11 @@ export function assertShape(
   }
 }
 
-/** Keep cancellation and the deadline active until the response is consumed. */
+/**
+ * Keep cancellation and the deadline active until the response is consumed.
+ * Race the complete read as well as aborting the network, so a stalled body or
+ * a custom fetch implementation cannot leave the caller waiting indefinitely.
+ */
 export async function fetchWithOptionalTimeout<T>(
   fetchImpl: FetchLike,
   url: string,
@@ -307,6 +311,7 @@ export async function fetchWithOptionalTimeout<T>(
   if (callerSignal?.aborted) {
     throw callerSignal.reason;
   }
+
   if (timeoutMs === null) {
     if (!callerSignal) {
       return consumeResponse(await fetchImpl(url, init));
@@ -444,6 +449,7 @@ export async function requestActionJson<T>(
   baseUrl: string,
   path: string,
   init?: RequestInit,
+  options?: Pick<TransportRequestOptions, "errorDetail">,
 ): Promise<T> {
   const response = await fetchImpl(`${baseUrl}${path}`, {
     ...init,
@@ -454,6 +460,11 @@ export async function requestActionJson<T>(
   });
 
   if (!response.ok) {
+    if (options?.errorDetail === "status-only") {
+      throw new ActionRequestError(`Request failed: ${path} (${response.status})`, {
+        status: response.status,
+      });
+    }
     let body: unknown;
     try {
       body = await response.json();

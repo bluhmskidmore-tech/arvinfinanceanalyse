@@ -173,6 +173,20 @@ describe("stockAnalysisBacktestModel", () => {
     expect(backtestStatsText(emptyStats)).toBe("待补");
   });
 
+  it("discloses the independent snapshot day count behind the row sample size", () => {
+    // 30 行只来自 3 个独立快照日：逐行样本数会高估独立信息量。
+    expect(backtestStatsText({ ...positiveStats, available_count: 30, snapshot_day_count: 3 })).toBe(
+      "58.3% / +2.34% / 30条(3日)",
+    );
+    // 老响应无该字段 / 后端报 0 日时保持原文案，不渲染空括号。
+    expect(backtestStatsText({ ...positiveStats, snapshot_day_count: null })).toBe(
+      "58.3% / +2.34% / 12条",
+    );
+    expect(backtestStatsText({ ...positiveStats, snapshot_day_count: 0 })).toBe(
+      "58.3% / +2.34% / 12条",
+    );
+  });
+
   it("uses stable strategy labels and hides external vendor strategy names", () => {
     expect(strategyDisplayLabel("stock_candidate")).toBe("趋势突破");
     expect(strategyDisplayLabel(null, "factor-screen")).toBe("多因子");

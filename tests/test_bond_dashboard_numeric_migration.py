@@ -1,8 +1,14 @@
 """W5.3 migration tests for ``bond_dashboard`` Numeric schema upgrades."""
 from __future__ import annotations
 
+from decimal import Decimal
+from types import SimpleNamespace
+
+import pytest
+
 from backend.app.schemas.bond_dashboard import (
     BondDashboardAssetStructureItem,
+    BondDashboardBusinessTypeMetricItem,
     BondDashboardHeadlineKpiBlock,
     BondDashboardHeadlinePayload,
     BondDashboardIndustryDistributionPayload,
@@ -13,9 +19,18 @@ from backend.app.schemas.bond_dashboard import (
     BondDashboardYieldDistributionPayload,
 )
 from backend.app.schemas.common_numeric import Numeric
+from tests.helpers import load_module
 
 
 class TestBondDashboardHeadlineNumericMigration:
+    def test_large_decimal_market_value_serializes_lossless_raw_text(self) -> None:
+        raw = Decimal("12345678901234567890.12345678")
+        block = BondDashboardHeadlineKpiBlock(total_market_value=raw)
+
+        dumped = block.model_dump(mode="json")
+
+        assert dumped["total_market_value"]["raw_text"] == str(raw)
+
     def test_kpi_block_accepts_legacy_strings(self) -> None:
         block = BondDashboardHeadlineKpiBlock(
             total_market_value="100000000.00",
@@ -67,6 +82,76 @@ class TestBondDashboardHeadlineNumericMigration:
 
 
 class TestBondDashboardBreakdownNumericMigration:
+    @pytest.mark.parametrize(
+        ("raw_ytm", "legacy_pct"),
+        [
+            (None, ""),
+            (Decimal("0"), "0.00000000"),
+            (Decimal("0.0255"), "2.55000000"),
+            (Decimal("-0.0255"), "-2.55000000"),
+            (Decimal("0.02550000005"), "2.55000001"),
+            (Decimal("-0.02550000005"), "-2.55000001"),
+            (Decimal("0.025500000049999999999"), "2.55000000"),
+        ],
+    )
+    def test_business_type_legacy_pct_preserves_decimal_precision_and_missing_values(
+        self, monkeypatch, raw_ytm, legacy_pct,
+    ) -> None:
+        service = load_module(
+            "tests._bond_dashboard_business_type_legacy_pct",
+            "backend/app/services/bond_dashboard_service.py",
+        )
+        monkeypatch.setattr(
+            service,
+            "_repo",
+            lambda: SimpleNamespace(fetch_business_type_metrics=lambda _rd: [{
+                "name": "synthetic",
+                "market_value": Decimal("100"),
+                "weighted_avg_ytm": raw_ytm,
+                "weighted_avg_duration": None,
+            }]),
+        )
+
+        item = service._bond_dashboard_business_type_payload("2026-03-31")["items"][0]
+
+        assert item["weighted_avg_ytm_pct"] == legacy_pct
+        assert item["weighted_avg_ytm"]["unit"] == "pct"
+        assert item["weighted_avg_ytm"]["raw"] == (None if raw_ytm is None else float(raw_ytm))
+        if raw_ytm is None:
+            assert item["weighted_avg_ytm"]["display"] == "—"
+        elif raw_ytm == 0:
+            assert item["weighted_avg_ytm"]["display"] == "+0.00%"
+
+    def test_business_type_legacy_pct_is_required_and_deprecated(self) -> None:
+        schema = BondDashboardBusinessTypeMetricItem.model_json_schema()
+
+        assert "weighted_avg_ytm_pct" in schema["required"]
+        assert schema["properties"]["weighted_avg_ytm_pct"]["type"] == "string"
+        assert schema["properties"]["weighted_avg_ytm_pct"]["deprecated"] is True
+
+    def test_business_type_missing_ytm_stays_missing_while_explicit_zero_is_preserved(self) -> None:
+        missing = BondDashboardBusinessTypeMetricItem(
+            name="未覆盖",
+            market_value="100.00",
+            weighted_avg_ytm_pct="",
+            weighted_avg_duration="",
+        )
+        explicit_zero = BondDashboardBusinessTypeMetricItem(
+            name="真实零",
+            market_value="100.00",
+            weighted_avg_ytm=0,
+            weighted_avg_ytm_pct="0.00000000",
+            weighted_avg_duration="0.00000000",
+        )
+
+        assert missing.weighted_avg_ytm.raw is None
+        assert missing.weighted_avg_ytm.display == "—"
+        assert missing.weighted_avg_ytm.unit == "pct"
+        assert missing.model_dump()["weighted_avg_ytm_pct"] == ""
+        assert explicit_zero.weighted_avg_ytm.raw == 0
+        assert explicit_zero.weighted_avg_ytm.display == "+0.00%"
+        assert explicit_zero.model_dump()["weighted_avg_ytm_pct"] == "0.00000000"
+
     def test_asset_and_spread_items_accept_legacy_strings(self) -> None:
         asset_item = BondDashboardAssetStructureItem(
             category="国债",

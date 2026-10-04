@@ -14,6 +14,7 @@ import {
   type DashboardHomeSnapshotFailureCopy,
 } from "./dashboardHomeAvailability";
 import type {
+  DashboardHomeFirstScreenHydration,
   DashboardHomeFirstScreenView,
   HomeDecisionAction,
   HomeDecisionSuggestion,
@@ -24,6 +25,7 @@ import type {
   HomeProductCategoryHeadline,
   HomeReportDateContext,
   HomeReportDateMode,
+  HomeSupplementalApiState,
   HomeTerminalKpi,
 } from "./dashboardHomeFirstScreenTypes";
 
@@ -50,6 +52,19 @@ export type MapToHomeFirstScreenViewInput = {
   snapshotStale: boolean;
   snapshotLoading: boolean;
   staleWarning?: string | null;
+};
+
+type HomeFirstScreenHydrationInput = Pick<
+  MapToHomeFirstScreenViewInput,
+  | "reportDate"
+  | "bondHeadline"
+  | "portfolio"
+  | "snapshotMeta"
+  | "snapshotUnavailable"
+  | "snapshotLoading"
+> & {
+  bondHeadlineState?: HomeSupplementalApiState;
+  portfolioState?: HomeSupplementalApiState;
 };
 
 const GAP = EM_DASH;
@@ -756,52 +771,85 @@ function riskTickerFromNumeric(args: {
   label: string;
   value: NumericLike;
   unitHint?: string;
+  state?: HomeSupplementalApiState;
 }): DashboardHomeFirstScreenView["keyRiskStrip"][number] {
   return {
     id: args.id,
     label: args.label,
     value: numericDisplay(args.value, GAP, args.unitHint),
-    delta: "当前值",
-    deltaTone: "flat",
+    delta: args.state && args.state.kind !== "ready" ? args.state.label : "当前值",
+    deltaTone: args.state && args.state.kind !== "ready" ? "warn" : "flat",
   };
 }
 
 function buildKeyRiskStrip(args: {
   headline: BondDashboardHeadlinePayload | null;
   portfolio: BondPortfolioHeadlinesPayload | null;
+  headlineState?: HomeSupplementalApiState;
+  portfolioState?: HomeSupplementalApiState;
 }): DashboardHomeFirstScreenView["keyRiskStrip"] {
   const totalDv01 = args.headline?.kpis.total_dv01 ?? args.portfolio?.total_dv01;
   const duration = args.headline?.kpis.weighted_duration ?? args.portfolio?.weighted_duration;
   const creditRatio = args.portfolio?.credit_weight;
   const issuerTop5Weight = args.portfolio?.issuer_top5_weight;
+  const dv01State = args.headline?.kpis.total_dv01 != null ? args.headlineState : args.portfolioState;
+  const durationState = args.headline?.kpis.weighted_duration != null ? args.headlineState : args.portfolioState;
 
   return [
     {
       id: "risk-dv01",
       label: "利率敏感度",
       value: dv01WanValueOrGap(totalDv01),
-      delta: "当前值",
-      deltaTone: "flat" as const,
+      delta: dv01State && dv01State.kind !== "ready" ? dv01State.label : "当前值",
+      deltaTone: dv01State && dv01State.kind !== "ready" ? "warn" as const : "flat" as const,
     },
     riskTickerFromNumeric({
       id: "risk-duration",
       label: "久期",
       value: duration,
       unitHint: "ratio",
+      state: durationState,
     }),
     riskTickerFromNumeric({
       id: "risk-credit",
       label: "信用占比",
       value: ratioAsPercentNumeric(creditRatio),
       unitHint: "pct",
+      state: args.portfolioState,
     }),
     riskTickerFromNumeric({
       id: "risk-top5",
       label: "Top5集中度",
       value: ratioAsPercentNumeric(issuerTop5Weight),
       unitHint: "pct",
+      state: args.portfolioState,
     }),
   ].filter((item) => item.value !== GAP);
+}
+
+/** Supplementary queries only hydrate risk tickers; snapshot metadata owns the update time. */
+export function mapToHomeFirstScreenHydration(input: HomeFirstScreenHydrationInput): {
+  firstScreenHydration: DashboardHomeFirstScreenHydration;
+  updatedAt: string;
+} {
+  const reportDate = cleanDate(input.reportDate) || GAP;
+  const headline = isSameReportDate(reportDate, input.bondHeadline?.report_date)
+    ? input.bondHeadline
+    : null;
+  const portfolio = isSameReportDate(reportDate, input.portfolio?.report_date)
+    ? input.portfolio
+    : null;
+  const generatedTime = input.snapshotMeta?.generated_at?.slice(11, 16)?.trim();
+
+  return {
+    firstScreenHydration: {
+      reportDate,
+      keyRiskStrip: buildKeyRiskStrip({ headline, portfolio, headlineState: input.bondHeadlineState, portfolioState: input.portfolioState }),
+    },
+    updatedAt: input.snapshotUnavailable || input.snapshotLoading
+      ? GAP
+      : generatedTime || GAP,
+  };
 }
 
 /**
@@ -850,7 +898,10 @@ function isGenericVerdictConclusion(conclusion: string): boolean {
 }
 
 function kpiSummarySegment(kpi: HomeTerminalKpi): string {
-  return `${kpi.label} ${kpi.value}${kpi.unit ?? ""}`;
+  const unit = kpi.unit ?? "";
+  // 中文计量单位与数值留空（3,705.38 亿），符号单位紧贴（+0.92%），与依据行写法一致。
+  const joiner = /^[\u4e00-\u9fff]/u.test(unit) ? " " : "";
+  return `${kpi.label} ${kpi.value}${joiner}${unit}`;
 }
 
 function buildKpiSummary(terminalKpis: readonly HomeTerminalKpi[]): string | null {
@@ -861,21 +912,21 @@ function buildKpiSummary(terminalKpis: readonly HomeTerminalKpi[]): string | nul
   return availableKpis.slice(0, 2).map(kpiSummarySegment).join("，");
 }
 
+/**
+ * 后端结论是模板话（「首屏整体偏多 / 可做方向性判断」）时不转述其方向判断，
+ * 也不用「趋势判断待复核」冒充复核事项：只输出可核对的读数事实（§7 诚实文案）。
+ */
 function buildDecisionSummary(verdict: VerdictPayload | null, terminalKpis: readonly HomeTerminalKpi[]): string {
   const conclusion = verdict?.conclusion?.trim();
   const kpiSummary = buildKpiSummary(terminalKpis);
-  if (!conclusion) {
-    return kpiSummary
-      ? `${kpiSummary}。`
-      : "当前报告日暂无经营读数";
-  }
-  if (isGenericVerdictConclusion(conclusion)) {
-    return kpiSummary
-      ? `${kpiSummary}；趋势判断待复核。`
-      : "首屏读数已形成，趋势判断待复核。";
+  if (!conclusion || isGenericVerdictConclusion(conclusion)) {
+    return kpiSummary ? `${kpiSummary}。` : "当前报告日暂无经营读数";
   }
   return conclusion;
 }
+
+/** 依据行分段符「标签 · 数值 · 溯源说明」；展示层据此把溯源说明收进 title。 */
+export const VERDICT_REASON_SEPARATOR = " · ";
 
 function formatVerdictReason(reason: VerdictPayload["reasons"][number] | undefined): string {
   if (!reason) {
@@ -885,7 +936,47 @@ function formatVerdictReason(reason: VerdictPayload["reasons"][number] | undefin
   const detail = reason.detail?.trim();
   const segments = [reason.label.trim(), hasDisplayText(value) ? value : null, hasDisplayText(detail) ? detail : null]
     .filter((item): item is string => Boolean(item));
-  return segments.length > 0 ? segments.join(" · ") : GAP;
+  return segments.length > 0 ? segments.join(VERDICT_REASON_SEPARATOR) : GAP;
+}
+
+function compactText(value: string | null | undefined): string {
+  return (value ?? "").replace(/\s+/gu, "");
+}
+
+/** 依据条目的「标签 + 数值」已逐字出现在结论句里即视为复述（纯文本匹配，不做数值计算）。 */
+function isReasonCoveredByConclusion(
+  reason: VerdictPayload["reasons"][number],
+  conclusion: string,
+): boolean {
+  const haystack = compactText(conclusion);
+  const label = compactText(reason.label);
+  if (!label || !haystack.includes(label)) {
+    return false;
+  }
+  const value = reason.value?.trim();
+  return !hasDisplayText(value) || haystack.includes(compactText(value));
+}
+
+/** 「进入专题页 / 继续下钻」一类只指路不给信息的模板建议，不配做依据行。 */
+function isNavigationSuggestion(text: string): boolean {
+  return /进入.*专题页|继续下钻/u.test(text);
+}
+
+/**
+ * 依据行选择（§6 状态去重、§11 第 3 条）：跳过与结论句复述同一标签+数值的 reason，
+ * 取第一条未被覆盖的；全部被覆盖时退到第一条有信息量的建议；再没有就回 GAP，
+ * 由展示层不渲染依据行，不用填充语占位。
+ */
+function pickVerdictReason(verdict: VerdictPayload | null, conclusion: string): string {
+  const reasons = verdict?.reasons ?? [];
+  const uncovered = reasons.find((reason) => !isReasonCoveredByConclusion(reason, conclusion));
+  if (uncovered) {
+    return formatVerdictReason(uncovered);
+  }
+  const suggestion = (verdict?.suggestions ?? [])
+    .map((item) => item.text.trim())
+    .find((text) => text.length > 0 && !isNavigationSuggestion(text));
+  return suggestion ?? GAP;
 }
 
 const DOMAIN_EFFECTIVE_DATE_LABELS: Readonly<Record<string, string>> = {
@@ -1066,7 +1157,8 @@ function governanceReviewReason(
 export function mapToHomeFirstScreenView(
   input: MapToHomeFirstScreenViewInput,
 ): DashboardHomeFirstScreenView {
-  const reportDate = cleanDate(input.reportDate) || GAP;
+  const { firstScreenHydration, updatedAt: dataUpdatedAt } = mapToHomeFirstScreenHydration(input);
+  const { reportDate, keyRiskStrip } = firstScreenHydration;
   const snapshotFailure = dashboardHomeSnapshotFailureCopy(
     input.snapshotErrorDetail,
   );
@@ -1099,10 +1191,6 @@ export function mapToHomeFirstScreenView(
             : input.snapshotMeta?.formal_use_allowed === true
               ? "正式数据已更新"
               : "数据已更新");
-  const generatedTime = input.snapshotMeta?.generated_at?.slice(11, 16)?.trim();
-  const dataUpdatedAt = input.snapshotUnavailable || input.snapshotLoading
-    ? GAP
-    : generatedTime || GAP;
   const aumMetric = findMetric(input.metrics, ["aum"]);
   const yieldMetric = findMetric(input.metrics, ["yield"]);
   const nimMetric = findMetric(input.metrics, ["nim"]);
@@ -1128,7 +1216,6 @@ export function mapToHomeFirstScreenView(
     portfolio,
     attribution: input.attribution,
   });
-  const keyRiskStrip = buildKeyRiskStrip({ headline, portfolio });
   const reportDateContext = buildReportDateContext({
     reportDate: cleanDate(input.reportDate),
     useMockFallback: input.useMockFallback,
@@ -1153,6 +1240,12 @@ export function mapToHomeFirstScreenView(
   const decisionSuggestions = input.snapshotUnavailable
     ? [{ id: "snapshot-unavailable-suggestion", text: snapshotFailure.recovery }]
     : suggestions;
+  const decisionConclusion = input.snapshotUnavailable
+    ? snapshotFailure.label
+    : buildDecisionSummary(verdict, terminalKpis);
+  const decisionKeyRisk = input.snapshotUnavailable
+    ? `未执行：风险核验依赖主快照，${snapshotFailure.reason}`
+    : pickVerdictReason(verdict, decisionConclusion);
 
   return {
     reportDate,
@@ -1170,7 +1263,9 @@ export function mapToHomeFirstScreenView(
       marketStatus: input.snapshotUnavailable
         ? snapshotFailure.kind === "permission"
           ? "权限不足"
-          : "读取失败"
+          : snapshotFailure.kind === "reportDateUnavailable"
+            ? "报告日不可用"
+            : "读取失败"
         : input.snapshotLoading
           ? "等待数据"
           : input.snapshotStale
@@ -1196,11 +1291,9 @@ export function mapToHomeFirstScreenView(
       dataSyncPrefix,
     },
     decisionRail: {
-      conclusion: input.snapshotUnavailable ? snapshotFailure.label : buildDecisionSummary(verdict, terminalKpis),
+      conclusion: decisionConclusion,
       ...attributionExtremes(input.snapshotUnavailable ? null : input.attribution),
-      keyRisk: input.snapshotUnavailable
-        ? `未执行：风险核验依赖主快照，${snapshotFailure.reason}`
-        : formatVerdictReason(verdict?.reasons?.[0]),
+      keyRisk: decisionKeyRisk,
       suggestions: decisionSuggestions,
       actions: decisionActions,
       pendingSummary: actionableCount > 0 ? `${actionableCount} 项` : "暂无",

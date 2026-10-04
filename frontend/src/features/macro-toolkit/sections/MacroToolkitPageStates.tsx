@@ -1,7 +1,8 @@
 import { ArrowDownOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Alert, Button } from "antd";
 
-import { PageSectionLead, PageStateSurface } from "../../../components/page/PagePrimitives";
+import { SectionHead } from "../../../components/layout";
+import { PageStateSurface } from "../../../components/page/PagePrimitives";
 import { MT_SHELL_TOPBAR_RIGHT } from "../lib/macroToolkitPageChrome";
 import { MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE } from "../lib/macroToolkitPageModel";
 import type { MacroToolkitDeferredContentStage } from "../lib/macroToolkitPageModel";
@@ -79,18 +80,22 @@ export function MacroToolkitInitialAnalysisLoading() {
             />
           </div>
           <section className="macro-toolkit-section">
-            <PageSectionLead
-              eyebrow="信号"
+            <SectionHead
+              category="信号"
               title="核心信号"
-              description="等待后端宏观分析结果返回。"
+              note="等待后端宏观分析结果返回。"
+              numbered={{ counter: "mt-section" }}
+              contentGap="flush"
             />
             <div className="macro-toolkit-empty-output">核心分析加载中，暂不显示占位结论。</div>
           </section>
           <section className="macro-toolkit-section">
-            <PageSectionLead
-              eyebrow="风险"
+            <SectionHead
+              category="风险"
               title="市场踩踏风险"
-              description="等待 A 股宽度、跌停、成交与回落压力判断返回。"
+              note="等待 A 股宽度、跌停、成交与回落压力判断返回。"
+              numbered={{ counter: "mt-section" }}
+              contentGap="flush"
             />
             <div className="macro-toolkit-empty-output">市场踩踏风险加载中，暂不推导风险等级。</div>
           </section>

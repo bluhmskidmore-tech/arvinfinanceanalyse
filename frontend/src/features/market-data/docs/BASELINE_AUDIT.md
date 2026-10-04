@@ -1,5 +1,7 @@
 # 市场数据页基线盘点（阶段 0）
 
+> **已被取代（2026-08-27）：** 本文描述的宏观深度 Tabs（`MarketDataMacroDepthTabs`）、Livermore 折叠区、宏观-债市联动折叠区与利差审计桥均已在 IA 重构阶段 2 退役，相关组件已删除；现行结构与内容归属以 [`docs/plans/2026-08-27-market-data-ia-redesign-prd.md`](../../../../../docs/plans/2026-08-27-market-data-ia-redesign-prd.md) 为准。以下内容仅作历史基线证据保留，不再更新。
+
 **页面路径：** `/market-data`  
 **主组件：** [`MarketDataPage.tsx`](../pages/MarketDataPage.tsx)
 **数据入口：** [`marketDataClient.ts`](../../../api/marketDataClient.ts) → `/ui/market-data/*`

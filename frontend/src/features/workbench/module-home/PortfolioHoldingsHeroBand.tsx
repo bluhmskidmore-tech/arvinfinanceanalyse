@@ -120,6 +120,11 @@ export function PortfolioHoldingsHeroBand({
               <span>{leadingRow?.label ?? "TOP"}</span>
               <strong>{leadingRow?.share !== EM_DASH ? leadingRow?.share : `${leadingRow?.barPct.toFixed(1) ?? 0}%`}</strong>
             </div>
+            {/*
+             * 2026-09-02 曾按结论 13「同数据不双画」撤掉这条堆叠带，业主看后判定页面反而更散：
+             * 左列只剩两行小字，右侧行内条份额最高 18% 视觉上撑不起面板。按业主口径恢复原样；
+             * 结论 13 对"堆叠带 + 行内份额条"的适用边界留待 DESIGN 决议 D3 一并定。
+             */}
             <div className={styles.holdingsHeroStackBar} aria-hidden="true">
               {visibleStackRows.map((row, index) => (
                 <span

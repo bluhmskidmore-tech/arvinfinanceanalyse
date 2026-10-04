@@ -41,6 +41,7 @@ class TestPnlBridgeNumericMigration:
         )
         assert isinstance(row.carry, Numeric)
         assert row.beginning_dirty_mv.unit == "yuan"
+        assert row.carry.raw_text == "12.50000000"
         assert row.residual_ratio.unit == "ratio"
 
     def test_row_accepts_null_residual_ratio(self) -> None:

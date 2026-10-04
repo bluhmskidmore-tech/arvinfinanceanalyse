@@ -1,4 +1,7 @@
+import Decimal from "decimal.js";
+
 import type { Numeric } from "../../../api/contracts";
+import { numericDecimalOrNull } from "../../../api/numeric";
 import { numericRaw, type MetricTone } from "../../../pageModel";
 import { EM_DASH } from "../../../utils/format";
 import type { CashflowBucketVM, CashflowProjectionVM } from "../adapters/cashflowProjectionAdapter";
@@ -42,6 +45,43 @@ export function tooltipYi(value: unknown): string {
   })} 亿`;
 }
 
+const YUAN_PER_YI_DECIMAL = new Decimal("100000000");
+
+function groupedFixed(value: Decimal, fractionDigits: number): string {
+  const fixed = value.abs().toFixed(fractionDigits, Decimal.ROUND_HALF_UP);
+  const [integer, fraction = ""] = fixed.split(".");
+  const groupedInteger = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return fractionDigits > 0 ? `${groupedInteger}.${fraction}` : groupedInteger;
+}
+
+/** Exact yuan → yi-yuan display. Returns null so legacy raw-only responses keep their prior formatter. */
+function exactYuanYiDisplay(value: Numeric, prefixPositive: boolean): string | null {
+  if (value.unit !== "yuan") return null;
+  const exact = numericDecimalOrNull(value);
+  if (exact === null) return null;
+
+  const yi = exact.dividedBy(YUAN_PER_YI_DECIMAL);
+  const prefix = yi.isNegative() && !yi.isZero() ? "-" : prefixPositive ? "+" : "";
+  return `${prefix}${groupedFixed(yi, 2)} 亿`;
+}
+
+/** 1bp sensitivity display prefers governed raw_text; raw-only responses retain the old number formatter. */
+export function cashflowRateSensitivityYiDisplay(value: Numeric | undefined): string {
+  if (!value || value.unit !== "yuan") return value?.display || EM_DASH;
+
+  const exactDisplay = exactYuanYiDisplay(value, value.sign_aware);
+  if (exactDisplay !== null) return exactDisplay;
+
+  const raw = numericRaw(value);
+  if (raw === null) return value.display || EM_DASH;
+  const yi = toYi(raw);
+  const prefix = value.sign_aware && yi >= 0 ? "+" : "";
+  return `${prefix}${yi.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} 亿`;
+}
+
 /** 亿元缩写主值 + 原始精度 title；非 yuan 或缺 raw 时回退后端 display、title 置空。 */
 function yuanReadout(value: Numeric | null | undefined): { display: string; title: string | null } {
   if (!value) return { display: EM_DASH, title: null };
@@ -49,12 +89,23 @@ function yuanReadout(value: Numeric | null | undefined): { display: string; titl
   if (raw === null || value.unit !== "yuan") {
     return { display: value.display || EM_DASH, title: null };
   }
-  return { display: tooltipYi(raw), title: value.display || null };
+  return {
+    display: exactYuanYiDisplay(value, false) ?? tooltipYi(raw),
+    title: value.display || null,
+  };
 }
 
 export type CashflowRateSensitivitySemantic = {
   tone: "default" | "positive" | "negative" | "warning";
   detail: string;
+};
+
+export type CashflowConclusionTone = "positive" | "negative" | "neutral" | "pending";
+
+export type CashflowConclusion = {
+  title: string;
+  body: string;
+  tone: CashflowConclusionTone;
 };
 
 /** Display tone for duration gap — positive gap must never map to up/green. */
@@ -66,34 +117,81 @@ export type CashflowDurationGapTone = "default" | "gapPositive" | "negative" | "
  * - negative gap → `--ib-down` for direction only
  * - missing → warn
  */
+export function cashflowDurationGapDecimalOrNull(value: Numeric | undefined): Decimal | null {
+  const exact = numericDecimalOrNull(value);
+  if (exact !== null) return exact;
+
+  const raw = numericRaw(value);
+  return raw === null ? null : new Decimal(raw);
+}
+
 export function selectCashflowDurationGapTone(
   value: Numeric | undefined,
 ): CashflowDurationGapTone {
-  const raw = numericRaw(value);
-  if (raw === null) return "warning";
-  if (raw < 0) return "negative";
-  if (raw > 0.05) return "warning";
-  if (raw > 0) return "gapPositive";
+  const gap = cashflowDurationGapDecimalOrNull(value);
+  if (gap === null) return "warning";
+  if (gap.lessThan(0)) return "negative";
+  if (gap.greaterThan("0.05")) return "warning";
+  if (gap.greaterThan(0)) return "gapPositive";
   return "default";
+}
+
+export function selectCashflowConclusion(durationGap: Numeric | undefined): CashflowConclusion {
+  const value = cashflowDurationGapDecimalOrNull(durationGap);
+
+  if (value === null) {
+    return {
+      title: "当前结论",
+      body: "久期缺口待确认，先核对报告日与上游现金流分桶是否齐备。",
+      tone: "pending",
+    };
+  }
+  if (value.greaterThan("0.05")) {
+    return {
+      title: "当前结论",
+      body: "资产久期长于负债，当前为正久期缺口。",
+      tone: "positive",
+    };
+  }
+  if (value.lessThan("-0.05")) {
+    return {
+      title: "当前结论",
+      body: "负债久期长于资产，当前为负久期缺口。",
+      tone: "negative",
+    };
+  }
+  return {
+    title: "当前结论",
+    body: "资产与负债久期基本匹配，缺口已收敛到接近平衡区间。",
+    tone: "neutral",
+  };
+}
+
+export function selectCashflowDurationGapTrendLabel(value: Numeric | undefined): string {
+  const gap = cashflowDurationGapDecimalOrNull(value);
+  if (gap === null) return "待确认";
+  if (gap.greaterThan(0)) return "正缺口";
+  if (gap.lessThan(0)) return "负缺口";
+  return "接近平衡";
 }
 
 export function selectCashflowRateSensitivitySemantic(
   value: Numeric | undefined,
 ): CashflowRateSensitivitySemantic {
-  const raw = numericRaw(value);
-  if (raw === null) {
+  const amount = riskDecimalOrNull(value);
+  if (amount === null) {
     return {
       tone: "warning",
       detail: "利率上行 1bp 的权益变动待确认（原始单位：元）",
     };
   }
-  if (raw < 0) {
+  if (amount.lessThan(0)) {
     return {
       tone: "negative",
       detail: "利率上行 1bp → 权益减少（原始单位：元）",
     };
   }
-  if (raw > 0) {
+  if (amount.greaterThan(0)) {
     return {
       tone: "positive",
       detail: "利率上行 1bp → 权益增加（原始单位：元）",
@@ -119,13 +217,25 @@ export function selectCashflowMonthlyProjectionSeries(
   };
 }
 
+/**
+ * Risk comparisons prefer the lossless backend decimal text. Older responses
+ * without `raw_text` keep their existing approximate-number behavior.
+ */
+function riskDecimalOrNull(value: Numeric | null | undefined): Decimal | null {
+  const exact = numericDecimalOrNull(value);
+  if (exact !== null) return exact;
+
+  const raw = numericRaw(value);
+  return raw === null ? null : new Decimal(raw);
+}
+
 /** Pick the extreme bucket across readable values only; a missing bucket never wins. */
 function pickExtremeBucket(
   buckets: CashflowBucketVM[],
-  read: (bucket: CashflowBucketVM) => number | null,
-  isBetter: (candidate: number, incumbent: number) => boolean,
+  read: (bucket: CashflowBucketVM) => Decimal | null,
+  isBetter: (candidate: Decimal, incumbent: Decimal) => boolean,
 ): CashflowBucketVM | null {
-  let best: { bucket: CashflowBucketVM; value: number } | null = null;
+  let best: { bucket: CashflowBucketVM; value: Decimal } | null = null;
   for (const bucket of buckets) {
     const value = read(bucket);
     if (value === null) continue;
@@ -142,19 +252,21 @@ export function selectCashflowProjectionRiskReadout(
   const buckets = vm?.monthlyBuckets ?? [];
   if (buckets.length === 0) return null;
 
-  const cumulativeRaws = buckets.map((bucket) => numericRaw(bucket.cumulativeNet));
-  const negativeCumulativeMonths = cumulativeRaws.filter((raw) => raw !== null && raw < 0).length;
-  const missingCumulativeMonths = cumulativeRaws.filter((raw) => raw === null).length;
+  const cumulativeValues = buckets.map((bucket) => riskDecimalOrNull(bucket.cumulativeNet));
+  const negativeCumulativeMonths = cumulativeValues.filter(
+    (value) => value !== null && value.lessThan(0),
+  ).length;
+  const missingCumulativeMonths = cumulativeValues.filter((value) => value === null).length;
 
   const worstCumulative = pickExtremeBucket(
     buckets,
-    (bucket) => numericRaw(bucket.cumulativeNet),
-    (candidate, incumbent) => candidate < incumbent,
+    (bucket) => riskDecimalOrNull(bucket.cumulativeNet),
+    (candidate, incumbent) => candidate.lessThan(incumbent),
   );
   const largestOutflow = pickExtremeBucket(
     buckets,
-    (bucket) => numericRaw(bucket.liabilityOutflow),
-    (candidate, incumbent) => candidate > incumbent,
+    (bucket) => riskDecimalOrNull(bucket.liabilityOutflow),
+    (candidate, incumbent) => candidate.greaterThan(incumbent),
   );
   const finalBucket = buckets[buckets.length - 1];
 
@@ -269,7 +381,7 @@ const CASHFLOW_WARNING_RULES: CashflowWarningRule[] = [
       const totalYi = warningAmountYi(match[2]);
       if (excludedYi === null || totalYi === null) return null;
       const side = match[3] === "asset market value" ? "资产市值" : "负债价值";
-      return `${side} ${excludedYi}（合计 ${totalYi}）缺久期信息；久期缺口仅按久期覆盖余额计算，不向缺失部分外推。`;
+      return `${side} ${excludedYi}（合计 ${totalYi}）未纳入久期计算；久期缺口仅按已覆盖余额计算，不向未覆盖部分外推。`;
     },
   },
 ];

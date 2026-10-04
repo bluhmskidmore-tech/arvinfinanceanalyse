@@ -80,7 +80,7 @@ export type PnlByBusinessInsightConfidence =
   | "仅对账"
   | "预警/降级";
 
-export type PnlByBusinessAdbEvidenceStatus = "comparison" | "loading" | "ytd_fallback";
+export type PnlByBusinessAdbEvidenceStatus = "comparison" | "loading" | "ytd_fallback" | "pnl_primary";
 
 export type PnlByBusinessDrilldownRecommendation = {
   targetBusinessLabel: string;
@@ -196,6 +196,20 @@ function numeric(raw: string | number | null | undefined): number | null {
   }
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+export function buildNegativeFtpList(rows: PnlByBusinessAnalysisRow[]) {
+  const unavailableRows = rows.filter((row) => numeric(row.ftp_net_pnl) === null);
+  const negativeRows = rows.filter((row) => {
+    const net = numeric(row.ftp_net_pnl);
+    return net !== null && net < 0;
+  }).sort((left, right) => (numeric(left.ftp_net_pnl) ?? 0) - (numeric(right.ftp_net_pnl) ?? 0));
+  return {
+    topRows: negativeRows.slice(0, 10),
+    negativeCount: negativeRows.length,
+    calculatedCount: rows.length - unavailableRows.length,
+    unavailableRows,
+  };
 }
 
 export function formatPnlByBusinessFtpStatus(

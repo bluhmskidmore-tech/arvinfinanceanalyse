@@ -1,7 +1,8 @@
 /* Align balance page with dashboard-home shell: page owns the top toolbar. */
-.workbench-shell-grid--cockpit:has(.balance-analysis-page) .workbench-main-column > main {
-  gap: 12px !important;
-  padding: 14px !important;
+.balance-analysis-page .ant-tag-geekblue {
+  color: var(--dh-api-ink);
+  background: var(--dh-api-blue-soft);
+  border-color: var(--dh-api-blue);
 }
 
 .balance-analysis-page {
@@ -36,7 +37,6 @@
   --ib-down: var(--dh-api-red);
   --ib-warn: var(--dh-api-amber);
   --ib-gold: var(--dh-api-gold);
-  --ib-radius: var(--dh-api-radius);
   --ib-shadow: none;
   /*
    * 只补 boundary 深色重映射块里已存在的 --moss-color-* 五项（今天即钢蓝，
@@ -62,18 +62,13 @@
   --moss-color-neutral-600: var(--dh-api-soft);
   --moss-color-neutral-700: var(--dh-api-soft);
   --moss-color-neutral-800: var(--dh-api-ink);
-  --moss-color-neutral-900: var(--dh-api-ink);
-  /* PagePrimitives（PageSectionLead）内联墨字浅色兜底在 theme-dh-api 深底不可读，经 --moss-page-* 变量接管 */
-  --moss-page-ink: var(--ib-ink);
-  --moss-page-ink-secondary: var(--ib-ink-secondary);
-  --moss-page-ink-muted: var(--ib-ink-muted);
 }
 
 /* ------------------------------------------------------------------ 页头
-   首页标准包：20px 页题 + 12px 副题 + 模式徽标（无胶囊/大写宽字距）+ 32px 控件。 */
+   首页标准包：20px 页题 + 12px 副题 + 模式提示 + 36px 控件。 */
 .balance-analysis-topbar {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -92,7 +87,7 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -114,28 +109,23 @@
 }
 
 .balance-analysis-topbar__mode-badge {
-  padding: 4px 8px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
+  padding: 4px 0;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
   white-space: nowrap;
 }
 
 .balance-analysis-topbar__mode-badge[data-tone="success"] {
-  background: var(--dh-api-green-soft);
-  color: var(--dh-api-green);
+  color: var(--dh-api-muted);
 }
 
 .balance-analysis-topbar__mode-badge[data-tone="mock"] {
-  background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
+  color: var(--dh-api-amber);
 }
 
 .balance-analysis-topbar__mode-badge[data-tone="neutral"] {
-  background: var(--dh-api-panel-2);
   color: var(--dh-api-soft);
 }
 
@@ -153,20 +143,21 @@
 
 .balance-analysis-topbar__field-label {
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .balance-analysis-topbar__select {
   min-width: 132px;
-  height: 32px;
+  height: 36px;
   padding: 0 8px;
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel-2);
   color: var(--dh-api-ink);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .balance-analysis-topbar__select:focus-visible {
@@ -183,22 +174,40 @@
   margin-left: auto;
 }
 
-/* 32px 操作钮：描边默认、accent 主操作。 */
+.balance-analysis-topbar__notes {
+  display: grid;
+  gap: 4px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.balance-analysis-topbar__notes p {
+  margin: 0;
+}
+
+/* 36px 操作钮：描边默认，每组只有一个 accent 主操作。 */
 .balance-analysis-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 36px;
   padding: 5px 12px;
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   background: transparent;
   color: var(--dh-api-soft);
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
+}
+
+.balance-analysis-btn:focus-visible,
+.balance-analysis-quicknav__item:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
 }
 
 .balance-analysis-btn:hover:not(:disabled) {
@@ -239,94 +248,31 @@
   scroll-margin-top: 52px;
 }
 
-.balance-analysis-sec-head {
-  display: grid;
-  gap: 4px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--dh-api-line-soft);
-}
-
-.balance-analysis-sec-head__row {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 20px;
-}
-
-.balance-analysis-sec-head__row::before {
-  content: counter(ba-section, decimal-leading-zero);
-  color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.balance-analysis-sec-head__title {
-  margin: 0;
-  overflow: hidden;
-  color: var(--dh-api-ink);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.balance-analysis-sec-head__meta {
-  overflow: hidden;
-  max-width: 46vw;
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.balance-analysis-sec-head__actions {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.balance-analysis-sec-head__hint {
-  margin: 0 0 0 32px;
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
 /* -------------------------------------------------------- 结论块（01） */
 .balance-analysis-conclusion {
   display: grid;
   gap: 6px;
-  padding: 14px 16px;
-  border: 1px solid var(--dh-api-line);
-  border-left: 2px solid var(--dh-api-blue);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  padding: 0;
 }
 
 .balance-analysis-conclusion__body {
   margin: 0;
   color: var(--dh-api-ink);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.45;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
 }
 
 /* ---------------------------------------------------- KPI 单框横带（01）
-   发丝竖缝走 gap:1px 露底色（average-balance 先例），断点折行免 nth-child 补缝。 */
+   共用单一底色，单元格仅以细线分隔。 */
 .balance-analysis-kpi-band {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 1px;
+  gap: 0;
   overflow: hidden;
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
-  background: var(--dh-api-line-soft);
+  background: var(--dh-api-panel);
 }
 
 .balance-analysis-kpi-cell {
@@ -335,8 +281,12 @@
   gap: 6px;
   min-width: 0;
   min-height: 84px;
-  padding: 12px 14px;
-  background: var(--dh-api-panel);
+  padding: 12px;
+  border-inline-start: 1px solid var(--dh-api-line-soft);
+}
+
+.balance-analysis-kpi-cell:first-child {
+  border-inline-start: 0;
 }
 
 /* 标签 2 行 clamp + 固定 min-height，防同排数值错位（DESIGN.md §3）。 */
@@ -345,8 +295,8 @@
   overflow: hidden;
   min-height: 32px;
   color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 16px;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -356,9 +306,9 @@
 .balance-analysis-kpi-cell__value {
   margin-top: auto;
   color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
-  font-size: clamp(20px, 1.5vw, 22px);
-  font-weight: 700;
+  font-family: var(--moss-font-tabular);
+  font-size: 20px;
+  font-weight: 600;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
   overflow-wrap: normal;
@@ -368,14 +318,22 @@
 .balance-analysis-kpi-cell__value small {
   margin-left: 4px;
   color: var(--dh-api-muted);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 400;
 }
 
 /* 1440/1920 基准视口保持单行 7 格等分（不再 4+3 折行）；窄于 1280 才降 4 列。 */
 @media (max-width: 1280px) {
   .balance-analysis-kpi-band {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .balance-analysis-kpi-cell:nth-child(4n + 1) {
+    border-inline-start: 0;
+  }
+
+  .balance-analysis-kpi-cell:nth-child(n + 5) {
+    border-top: 1px solid var(--dh-api-line-soft);
   }
 
   /* 7 格在 4 列网格尾行差 1 格，末格跨 2 列补满，避免露出底色空洞。 */
@@ -388,6 +346,14 @@
   .balance-analysis-kpi-band {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .balance-analysis-kpi-cell:nth-child(2n + 1) {
+    border-inline-start: 0;
+  }
+
+  .balance-analysis-kpi-cell:nth-child(n + 3) {
+    border-top: 1px solid var(--dh-api-line-soft);
+  }
 }
 
 /* ------------------------------------------------ 运营读数窄条（01） */
@@ -395,10 +361,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px 0;
-  padding: 8px 14px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  padding: 0;
 }
 
 .balance-analysis-ops-item {
@@ -416,23 +379,23 @@
 
 .balance-analysis-ops-item__label {
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .balance-analysis-ops-item__value {
   color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 .balance-analysis-ops-item__value small {
   margin-left: 3px;
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 400;
 }
 
 /* ---------------------------------------------------- 读面平卡（02） */
@@ -452,20 +415,16 @@
   background: var(--dh-api-panel);
 }
 
-.balance-analysis-panel:hover {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-line));
-}
-
 .balance-analysis-panel__title {
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
 }
 
 /* ------------------------------------------------------ 页内密度表格
-   表头 11px / 表体 12px / 发丝底边 / 数值右对齐等宽（首页表格纪律）。 */
+   表头与表体 12px / 发丝底边 / 数值右对齐等宽。 */
 .balance-analysis-table {
   width: 100%;
   border-collapse: collapse;
@@ -478,13 +437,14 @@
   border-bottom: 1px solid var(--dh-api-line-soft);
   background: var(--dh-api-panel-2);
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.35;
   text-align: right;
 }
 
 .balance-analysis-table td {
+  height: 32px;
   padding: 5px 8px;
   border-bottom: 1px solid var(--dh-api-line-soft);
   font-size: 12px;
@@ -500,7 +460,7 @@
 
 .balance-analysis-table td:first-child b {
   color: var(--dh-api-ink);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .balance-analysis-table tbody tr:last-child td {
@@ -518,14 +478,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 8px 12px;
-  border: 1px solid var(--dh-api-line);
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  background: transparent;
   color: var(--dh-api-soft);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   text-align: left;
 }
@@ -543,7 +503,7 @@
 
 .balance-analysis-quicknav__item b {
   color: var(--dh-api-ink);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 @media (max-width: 1280px) {
@@ -591,9 +551,9 @@
 .balance-analysis-details__summary::before {
   content: counter(ba-section, decimal-leading-zero);
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
 
@@ -626,7 +586,7 @@
   overflow: hidden;
   color: var(--dh-api-ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -636,7 +596,7 @@
   overflow: hidden;
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -706,9 +666,6 @@
     margin-left: 0;
   }
 
-  .balance-analysis-sec-head__meta {
-    display: none;
-  }
 }
 
 .balance-analysis-abnormal-sentinels {
@@ -785,7 +742,7 @@
   background: var(--dh-api-blue);
   color: var(--balance-on-accent);
   font-size: 12px;
-  font-weight: 780;
+  font-weight: 600;
 }
 
 .balance-analysis-hero__title-row {
@@ -801,7 +758,7 @@
   margin: 0;
   color: var(--moss-color-text-primary);
   font-size: 21px;
-  font-weight: 860;
+  font-weight: 600;
   line-height: 1.08;
 }
 
@@ -824,13 +781,13 @@
   background: var(--dh-api-blue-soft); /* 原 #e8f0fa，Nocturne 下取 accent 软底 */
   color: var(--dh-api-blue);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-analysis-hero__title-row span:not(.balance-analysis-hero__tag) {
   color: var(--dh-api-blue);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .balance-analysis-hero__identity p {
@@ -865,7 +822,7 @@
 .balance-analysis-hero__report {
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .balance-analysis-hero-conclusion {
@@ -896,7 +853,7 @@
   width: fit-content;
   border-radius: var(--ib-radius, 2px);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .balance-analysis-source-badge {
@@ -953,7 +910,7 @@
 .balance-analysis-action-button {
   min-height: 32px;
   border-radius: var(--ib-radius, 2px);
-  font-weight: 680;
+  font-weight: 600;
 }
 
 .balance-analysis-control {
@@ -1034,7 +991,7 @@
 .balance-analysis-report-date-empty span {
   color: var(--dh-api-blue);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .balance-analysis-report-date-empty h2 {
@@ -1050,55 +1007,6 @@
   color: var(--dh-api-soft);
   font-size: 13px;
   line-height: 1.65;
-}
-
-.balance-analysis-contract-kpis {
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 6px;
-}
-
-.balance-analysis-contract-kpis .moss-page-v2-kpi-metric {
-  position: relative;
-  min-height: 58px;
-  overflow: hidden;
-  border-color: var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background:
-    linear-gradient(180deg, var(--dh-api-panel), var(--dh-api-panel-2)),
-    repeating-linear-gradient(90deg, transparent 0 32px, color-mix(in srgb, var(--dh-api-blue) 3%, transparent) 32px 33px);
-  box-shadow: 0 8px 18px rgba(15, 37, 68, 0.045);
-}
-
-.balance-analysis-contract-kpis .moss-page-v2-kpi-metric::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: linear-gradient(180deg, var(--dh-api-blue), var(--dh-api-blue));
-}
-
-.balance-analysis-contract-kpis .moss-page-v2-kpi-metric__label {
-  font-size: 11px;
-  line-height: 1.2;
-}
-
-.balance-analysis-contract-kpis .moss-page-v2-kpi-metric__value {
-  font-size: 18px;
-  line-height: 1.05;
-}
-
-.balance-analysis-kpi-unit {
-  margin-left: 6px;
-  color: var(--dh-api-muted);
-  font-family: var(--moss-font-sans);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.balance-analysis-contract-kpis .moss-page-v2-kpi-metric__footer {
-  overflow-wrap: anywhere;
-  font-size: 12px;
-  line-height: 1.25;
 }
 
 @media (min-width: 1281px) {
@@ -1165,19 +1073,6 @@
     padding: 3px 9px;
   }
 
-  .balance-analysis-contract-kpis {
-    gap: 7px;
-  }
-
-  .balance-analysis-contract-kpis .moss-page-v2-kpi-metric {
-    min-height: 58px;
-    padding: 7px 10px;
-  }
-
-  .balance-analysis-contract-kpis .moss-page-v2-kpi-metric__footer {
-    font-size: 12px;
-    line-height: 1.25;
-  }
 }
 
 @media (max-width: 900px) {
@@ -1233,6 +1128,15 @@
   line-height: 1.7;
 }
 
+.balance-analysis-publication-diagnostics {
+  margin-bottom: var(--moss-space-3);
+  overflow-wrap: anywhere;
+}
+
+.balance-analysis-publication-diagnostics p {
+  margin: 0;
+}
+
 .balance-analysis-state-stack,
 .balance-analysis-evidence-ledger {
   display: grid;
@@ -1258,7 +1162,7 @@
 .balance-analysis-evidence-card__top span {
   color: var(--dh-api-blue);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .balance-analysis-evidence-card dl {
@@ -1277,7 +1181,7 @@
 .balance-analysis-evidence-card dt {
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
@@ -1353,7 +1257,7 @@
 
 .balance-analysis-mini-label--strong {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-analysis-mini-value,
@@ -1363,7 +1267,7 @@
 .balance-analysis-mini-value--warning-soft,
 .balance-analysis-mini-value--net {
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-analysis-mini-value {
@@ -1599,10 +1503,6 @@
     justify-content: flex-start;
   }
 
-  .balance-analysis-contract-kpis {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .balance-analysis-evidence-details__summary {
     grid-template-columns: minmax(0, 1fr);
     gap: 3px;
@@ -1728,25 +1628,25 @@
 }
 
 .balance-analysis-reconciliation__status--aligned {
-  /* 原 tailwind 绿（10% 底/实心字）按语义映射 success 阶。 */
+  /* 原基线绿色（10% 底/实心字）按语义映射 success 阶。 */
   background: var(--dh-api-green-soft);
   color: var(--dh-api-green);
 }
 
 .balance-analysis-reconciliation__status--watch {
-  /* 原 tailwind 琥珀 10% 底映射 warning-50；文字同值 warning-500。 */
+  /* 原基线琥珀色 10% 底映射 warning-50；文字同值 warning-500。 */
   background: var(--dh-api-amber-soft);
   color: var(--dh-api-amber);
 }
 
 .balance-analysis-reconciliation__status--unavailable {
-  /* 原 tailwind slate（10% 底/实心字）按语义映射 neutral 阶。 */
+  /* 原基线灰蓝色（10% 底/实心字）按语义映射 neutral 阶。 */
   background: var(--dh-api-panel-3);
   color: var(--dh-api-soft);
 }
 
 .balance-analysis-reconciliation__status--pending {
-  /* 原 tailwind 蓝 10% 底映射 info-50；文字同值 info-600。 */
+  /* 原基线蓝色 10% 底映射 info-50；文字同值 info-600。 */
   background: var(--dh-api-blue-soft);
   color: var(--dh-api-blue);
 }
@@ -1769,7 +1669,7 @@
 .balance-analysis-reconciliation__tile-label {
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-analysis-reconciliation__tile-value {
@@ -1801,7 +1701,7 @@
   border-radius: var(--ib-radius, 2px);
   background: var(--balance-home-card);
   color: var(--dh-api-blue);
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -1834,7 +1734,7 @@
 
 .balance-analysis-rating-card__label {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-analysis-rating-card__value {
@@ -1855,7 +1755,7 @@
 .balance-analysis-rating-reconciliation__total {
   color: var(--dh-api-ink); /* 原 #111827。 */
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1989,7 +1889,7 @@
 .balance-analysis-governance-panel__title {
   color: var(--dh-api-ink);
   font-size: 16px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -2014,7 +1914,7 @@
   background: var(--dh-api-panel-2);
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -2055,7 +1955,7 @@
 
 .balance-analysis-current-user strong {
   color: var(--dh-api-ink);
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .balance-analysis-governance-filter-row {
@@ -2157,7 +2057,7 @@
 
 .balance-analysis-right-rail-drilldown-detail__title {
   color: var(--dh-api-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-analysis-right-rail-drilldown-detail__status {
@@ -2258,7 +2158,7 @@
 .balance-analysis-stage-details__eyebrow {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 740;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -2371,7 +2271,7 @@
 
 .balance-analysis-hero__title-row h1 {
   color: var(--balance-ink);
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .balance-analysis-hero__title-row span,
@@ -2402,8 +2302,7 @@
   background: linear-gradient(180deg, var(--balance-home-card), var(--balance-home-card-soft));
 }
 
-.balance-analysis-action-button[data-variant="primary"],
-[data-testid="balance-analysis-refresh-button"] {
+.balance-analysis-action-button[data-variant="primary"] {
   border-color: color-mix(in srgb, var(--dh-api-blue) 44%, transparent);
   background: var(--dh-api-blue);
   color: var(--balance-on-accent);
@@ -2446,8 +2345,7 @@
     border-top-width: 2px;
   }
 
-  .balance-analysis-action-button[data-variant="primary"],
-  [data-testid="balance-analysis-refresh-button"] {
+  .balance-analysis-action-button[data-variant="primary"] {
     min-width: min(100%, 190px);
   }
 }
@@ -2515,8 +2413,7 @@
   color: var(--balance-home-blue);
 }
 
-.balance-analysis-action-button[data-variant="primary"],
-[data-testid="balance-analysis-refresh-button"] {
+.balance-analysis-action-button[data-variant="primary"] {
   border-color: var(--balance-home-blue);
   background: var(--balance-home-blue);
   color: var(--balance-on-accent);
@@ -2612,9 +2509,6 @@
 /* FormalResultMetaPanel 徽章变量出口按 ledger-pnl 等 9 页先例定义；圆角随先例归一。 */
 .balance-analysis-page .formal-result-meta-panel {
   --formal-result-meta-border-soft: var(--dh-api-line-soft);
-  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
-  --formal-meta-badge-ok-ink: var(--dh-api-green);
-  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
   --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
   --formal-meta-badge-warn-ink: var(--dh-api-amber);
   --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);

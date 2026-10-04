@@ -4,6 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
@@ -101,10 +102,8 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     assert payload["result_meta"]["result_kind"] == "risk.tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result_meta"]["quality_flag"] == "ok"
-    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
-    assert (
-        payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
-    )
+    assert payload["result_meta"]["rule_version"] == FIXED_INCOME_VERSION_SET.risk_tensor.rule_version
+    assert payload["result_meta"]["cache_version"] == FIXED_INCOME_VERSION_SET.risk_tensor.cache_version
     assert payload["result"]["report_date"] == REPORT_DATE
     assert payload["result"]["bond_count"] == 3
     assert isinstance(payload["result"]["portfolio_dv01"], dict)
@@ -124,6 +123,8 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     projection_quality_fields = (
         "missing_maturity_market_value",
         "missing_maturity_count",
+        "missing_liability_maturity_principal_amount",
+        "missing_liability_maturity_count",
         "floating_rate_proxy_market_value",
         "floating_rate_proxy_count",
         "payment_frequency_fallback_market_value",
@@ -141,6 +142,32 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     assert payload["result"]["quality_flag"] == "ok"
     assert payload["result"]["warnings"] == []
 
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_api_discloses_missing_liability_maturity_principal(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_and_materialize_risk_tensor_with_tyw_liability(
+        tmp_path,
+        monkeypatch,
+        liability_maturity_date=None,
+    )
+
+    client = _risk_tensor_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/api/risk/tensor",
+        params={"report_date": REPORT_DATE},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["missing_liability_maturity_principal_amount"]["unit"] == "yuan"
+    assert result["missing_liability_maturity_principal_amount"]["raw"] == 4.0
+    assert result["missing_liability_maturity_count"] == 1
+    assert result["liability_cashflow_30d"]["raw"] == 0.0
+    assert result["liquidity_gap_30d"]["raw"] == result["asset_cashflow_30d"]["raw"]
     get_settings.cache_clear()
 
 
@@ -215,17 +242,31 @@ def test_risk_scenario_stress_api_returns_scenario_envelope(tmp_path, monkeypatc
     assert payload["result_meta"]["result_kind"] == "risk.tensor.scenario_stress"
     assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["result_meta"]["scenario_flag"] is True
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_scenario_stress_v2"
+    assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_scenario_stress_v2"
     assert payload["result"]["basis"] == "scenario"
     assert payload["result"]["scenario_set_id"] == "standard_risk_tensor_scenario_v1"
-    assert payload["result"]["rule_version"] == "rv_risk_tensor_scenario_stress_v1"
+    assert payload["result"]["rule_version"] == "rv_risk_tensor_scenario_stress_v2"
     assert payload["result"]["source"]["result_kind"] == "risk.tensor"
-    assert payload["result"]["source"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
+    assert payload["result"]["evidence"]["actual_risk_date"] == REPORT_DATE
+    assert payload["result"]["evidence"]["coverage"]["status"] == "complete"
+    assert payload["result"]["evidence"]["amount_display_allowed"] is True
     assert (
-        payload["result"]["source"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
+        payload["result"]["source"]["rule_version"]
+        == FIXED_INCOME_VERSION_SET.risk_tensor.rule_version
+    )
+    assert (
+        payload["result"]["source"]["cache_version"]
+        == FIXED_INCOME_VERSION_SET.risk_tensor.cache_version
     )
     assert payload["result"]["summary"]["scenario_count"] == 4
     assert payload["result"]["summary"]["available_count"] == 3
     assert payload["result"]["summary"]["review_required_count"] == 4
+    assert payload["result"]["summary"]["comparison_measure"] == "estimated_pnl_impact"
+    assert payload["result"]["summary"]["worst_scenario_key"] in {
+        "parallel_rate_up_10bp",
+        "credit_spread_up_10bp",
+    }
     assert payload["result"]["warnings"]
     assert any(
         "3 rows with market_value=429.00000000 lack an explicit payment frequency"

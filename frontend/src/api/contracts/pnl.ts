@@ -51,6 +51,55 @@ export type PnlDataPayload = {
 };
 
 /** GET /api/pnl/overview：仅正式口径读模型；后端不消费 basis 查询参数（分析口径读模型未建）。 */
+export type PnlOverviewInternalArithmeticReconciliation = {
+  check_kind: "internal_arithmetic";
+  component_total: number | null;
+  pnl_total: number | null;
+  diff: number | null;
+  breached: boolean;
+  missing_keys: string[];
+};
+
+export type PnlOverviewIndependentReconciliationStatus = "pass" | "fail" | "pending";
+
+export type PnlOverviewIndependentComponent =
+  | "interest_income_514"
+  | "fair_value_change_516"
+  | "capital_gain_517"
+  | "manual_adjustment";
+
+export type PnlOverviewIndependentComponentCheck = {
+  component: PnlOverviewIndependentComponent;
+  status: PnlOverviewIndependentReconciliationStatus;
+  formal_value_yuan: string | null;
+  reference_value_yuan: string | null;
+  diff_yuan: string | null;
+  evidence_refs: string[];
+  reason: string;
+};
+
+export type PnlOverviewIndependentLedgerReconciliation = {
+  check_kind: "independent_ledger";
+  status: PnlOverviewIndependentReconciliationStatus;
+  breached: boolean | null;
+  report_date: string;
+  currency_basis: "CNY";
+  source_version: string | null;
+  rule_version: string | null;
+  threshold_yuan: string;
+  components: PnlOverviewIndependentComponentCheck[];
+  pending_components: PnlOverviewIndependentComponent[];
+  formal_total_yuan: string | null;
+  reference_total_yuan: string | null;
+  total_diff_yuan: string | null;
+  reason: string;
+};
+
+export type PnlOverviewReconciliationChecks = {
+  internal_arithmetic?: PnlOverviewInternalArithmeticReconciliation;
+  independent_ledger?: PnlOverviewIndependentLedgerReconciliation;
+};
+
 export type PnlOverviewPayload = {
   report_date: string;
   formal_fi_row_count: number;
@@ -60,6 +109,7 @@ export type PnlOverviewPayload = {
   capital_gain_517: string;
   manual_adjustment: string;
   total_pnl: string;
+  reconciliation_checks?: PnlOverviewReconciliationChecks;
 };
 
 export type PnlV1DetailRow = {
@@ -205,6 +255,15 @@ export type PnlByBusinessYtdSummary = {
   assets_count: number;
 };
 
+export type PnlByBusinessBalanceQualityIssue = {
+  issue_id: string;
+  report_date: string;
+  status: "pending";
+  reason: string;
+  source_file: string;
+  source_version: string;
+};
+
 export type PnlByBusinessYtdPayload = {
   year: number;
   period_type: "yearly";
@@ -212,18 +271,20 @@ export type PnlByBusinessYtdPayload = {
   period_start_date: string;
   period_end_date: string;
   total_pnl: string;
-  coverage_days?: number;
-  expected_days?: number;
-  sample_filled?: boolean;
-  sample_fill_method?: string | null;
-  classified_parent_total_pnl?: string;
-  summary?: PnlByBusinessYtdSummary;
-  unallocated_pnl?: string;
-  unallocated_abs_pnl?: string;
-  unallocated_row_count?: number;
-  reconciliation_delta?: string;
-  unallocated_breakdown?: PnlByBusinessYtdUnallocatedBreakdownRow[];
-  unallocated_items?: PnlByBusinessYtdUnallocatedItem[];
+  coverage_days: number;
+  avg_balance_basis?: "book_value_including_accrued_interest";
+  balance_quality_issues?: PnlByBusinessBalanceQualityIssue[];
+  expected_days: number;
+  sample_filled: boolean;
+  sample_fill_method: string | null;
+  classified_parent_total_pnl: string;
+  summary: PnlByBusinessYtdSummary;
+  unallocated_pnl: string;
+  unallocated_abs_pnl: string;
+  unallocated_row_count: number;
+  reconciliation_delta: string;
+  unallocated_breakdown: PnlByBusinessYtdUnallocatedBreakdownRow[];
+  unallocated_items: PnlByBusinessYtdUnallocatedItem[];
   source_tables: string[];
   items: PnlByBusinessYtdItem[];
 };
@@ -250,10 +311,10 @@ export type PnlByBusinessManualAdjustmentPayload = {
   approval_status: string;
   manual_adjustment: string;
   reason: string;
-  /** 后端恒输出；默认空串表示未记录录入人。`?` 兼容尚未补齐该字段的 mock 装置。 */
-  created_by?: string;
-  /** 后端恒输出；默认空串表示未记录审批人。`?` 兼容尚未补齐该字段的 mock 装置。 */
-  approved_by?: string;
+  /** 后端恒输出（默认空串表示未记录录入人）。 */
+  created_by: string;
+  /** 后端恒输出（默认空串表示未记录审批人）。 */
+  approved_by: string;
 };
 
 export type PnlByBusinessManualAdjustmentListPayload = {
@@ -264,10 +325,46 @@ export type PnlByBusinessManualAdjustmentListPayload = {
   events: PnlByBusinessManualAdjustmentPayload[];
 };
 
+export type PnlByBusinessPrecomputeReadiness =
+  | "ready"
+  | "pending"
+  | "stale"
+  | "failed"
+  | "source_missing";
+
+export type PnlByBusinessPrecomputeRefreshStatus =
+  | "idle"
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed";
+
+export type PnlByBusinessPrecomputeDependencyKey =
+  | "current_ytd"
+  | "baseline_ytd"
+  | "monthly"
+  | "monthly_baseline";
+
+export type PnlByBusinessPrecomputeDependency = {
+  key: PnlByBusinessPrecomputeDependencyKey;
+  requested_report_date: string;
+  resolved_report_date: string | null;
+  readiness: PnlByBusinessPrecomputeReadiness;
+  generation: string | null;
+  run_id: string | null;
+  last_progress_at: string | null;
+  error_message: string | null;
+};
+
+export type PnlByBusinessPrecomputePermissions = {
+  can_rebuild: boolean;
+  reason: string | null;
+};
+
 export type PnlByBusinessPrecomputeStatus = {
   year: number;
   status: "idle" | "queued" | "running" | "completed" | "failed";
-  serving_mode: "precomputed" | "live_fallback";
+  serving_mode: "precomputed" | "live_fallback" | "published" | "unavailable";
   is_current: boolean;
   run_id: string | null;
   report_date: string | null;
@@ -287,6 +384,18 @@ export type PnlByBusinessPrecomputeStatus = {
     max_retries: number;
     min_backoff_seconds: number;
   };
+  /** New page-readiness protocol. Optional while old and new servers coexist. */
+  readiness?: PnlByBusinessPrecomputeReadiness;
+  /** Present only when every dependency needed by the page is published and ready. */
+  generation?: string | null;
+  dependencies?: PnlByBusinessPrecomputeDependency[];
+  permissions?: PnlByBusinessPrecomputePermissions;
+  last_progress_at?: string | null;
+  worker_stalled?: boolean;
+  recovery_hint?: string | null;
+  refresh_status?: PnlByBusinessPrecomputeRefreshStatus;
+  refresh_error_message?: string | null;
+  refresh_failure_category?: string | null;
 };
 
 export type PnlByBusinessMonthlyItem = {
@@ -327,6 +436,7 @@ export type PnlByBusinessMonthlySummary = {
 };
 
 export type PnlByBusinessMonthlyBucket = {
+  balance_quality_issues?: PnlByBusinessBalanceQualityIssue[];
   month_key: string;
   period_start_date: string;
   period_end_date: string;
@@ -385,12 +495,15 @@ export type PnlByBusinessMonthlyManagementChange = {
   previous_month_key: string;
   coverage_warning_months: string[];
   reconciliation_warning_months: string[];
+  balance_quality_warning_months?: string[];
   incomplete_months: string[];
   summary: PnlByBusinessMonthlyChangeMetrics | null;
   rows: PnlByBusinessMonthlyChangeRow[];
 };
 
 export type PnlByBusinessMonthlyPayload = {
+  avg_balance_basis?: "book_value_including_accrued_interest";
+  balance_quality_issues?: PnlByBusinessBalanceQualityIssue[];
   year: number;
   as_of_date: string;
   source_tables: string[];
@@ -427,6 +540,8 @@ export type PnlByBusinessAnalysisRow = {
 };
 
 export type PnlByBusinessAnalysisPayload = {
+  avg_balance_basis?: "book_value_including_accrued_interest";
+  balance_quality_issues?: PnlByBusinessBalanceQualityIssue[];
   year: number;
   as_of_date: string;
   business_key: string | null;
@@ -477,7 +592,7 @@ export type PnlByBusinessNegativeFtpPersistenceRow = {
   negative_ftp_longest_streak_months: number | null;
   warning_triggered: boolean;
   eligible: boolean;
-  status: "eligible" | "insufficient_observations";
+  status: "eligible" | "insufficient_observations" | "source_pending";
 };
 
 export type PnlByBusinessNegativeFtpPersistenceSummary = {
@@ -492,8 +607,9 @@ export type PnlByBusinessNegativeFtpPersistenceSummary = {
   minimum_observed_months: number;
   warning_row_count: number;
   eligible: boolean;
-  status: "eligible" | "insufficient_observations";
+  status: "eligible" | "insufficient_observations" | "source_pending";
   rows: PnlByBusinessNegativeFtpPersistenceRow[];
+  balance_quality_issues?: PnlByBusinessBalanceQualityIssue[];
 };
 
 export type PnlByBusinessShareDriftRow = {
@@ -612,6 +728,8 @@ export type PnlByBusinessUntracedTrendSummary = {
 
 export type PnlByBusinessCandidateInsightsPayload = {
   result_version: "v2";
+  /** Echoes the requested published generation under the new readiness protocol. */
+  generation?: string;
   year: number;
   as_of_date: string;
   baseline_requested_report_date: string;
@@ -670,6 +788,7 @@ export type PnlBridgeEffectAvailabilityReason =
   | "market_value_base_missing"
   | "roll_window_missing"
   | "tenor_outside_curve_support"
+  | "sensitivity_input_unavailable"
   // not_applicable：这一行本来就不会有这个效应，不需要补数据
   | "non_fvtpl_basis"
   | "not_credit_book"

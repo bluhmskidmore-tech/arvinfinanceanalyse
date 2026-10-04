@@ -1,11 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Tabs } from "antd";
+import { Tabs } from "antd";
 import { useSearchParams } from "react-router-dom";
 
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import type { BondPositionItem, InterbankPositionItem } from "../../../api/contracts";
 import { FilterBar } from "../../../components/FilterBar";
+import {
+  KpiStrip,
+  SectionHead,
+  StateSurface,
+  StateSurfaceQuotaProvider,
+  type KpiCell,
+  type SectionState,
+  type SurfaceStatus,
+} from "../../../components/layout";
+import type { LabeledValue } from "../../../pageModel";
 import {
   buildPositionsBondsKpiBand,
   buildPositionsCaliberItems,
@@ -25,17 +35,33 @@ import PositionsInterbankSplitSection from "./PositionsInterbankSplitSection";
 import PositionsInterbankWorkspaceSection, {
   type InterbankDirectionFilter,
 } from "./PositionsInterbankWorkspaceSection";
-import PositionsKpiBand from "./PositionsKpiBand";
-import PositionsSectionLead, { type PositionsSectionState } from "./PositionsSectionLead";
 import "./PositionsView.css";
 
 const PAGE_SIZE = 20;
 
-/** 分区头状态位：loading/error/empty 三态露出一句话，ready 返回 null。 */
+/** 六格横带：≥1281 一行六格，1281 以下三格，720 以下折两格。 */
+const KPI_COLS = { base: 2, md: 3, lg: 3, xl: 6 } as const;
+
+/**
+ * 首屏状态条三档（antd Alert 的 error / warning / info）→ 原语五态。
+ * 模型里 `info` 只产出「暂无可用报告日 / 当前报告日暂无数据」两句，是真空态；
+ * `warning` 只产出「回退到最近可用快照 / 数据可能偏旧」，是过期态。两档在原语里
+ * 分别是中性收缩框与琥珀状态行，与迁移前 Alert 的 info 蓝 / warning 琥珀同档。
+ */
+const FIRST_SCREEN_STATUS: Record<"error" | "warning" | "info", SurfaceStatus> = {
+  error: "error",
+  warning: "stale",
+  info: "empty",
+};
+
+/**
+ * 分区头状态位：loading/error/empty 三态露出一句话，ready 返回 null。
+ * 文案与迁移前 `PositionsSectionLead` 逐字一致，只是渲染换成原语。
+ */
 function positionsSectionState(
   query: { isLoading: boolean; isError: boolean },
   options?: { isEmpty?: boolean; emptyLabel?: string },
-): PositionsSectionState {
+): SectionState {
   if (query.isLoading) {
     return { label: "读取中", tone: "loading" };
   }
@@ -46,6 +72,23 @@ function positionsSectionState(
     return { label: options.emptyLabel ?? "暂无数据", tone: "empty" };
   }
   return null;
+}
+
+/**
+ * `LabeledValue` → 原语格。`status: "loading"` 原来只是把主值染灰，横带整体
+ * 在读时改由 KpiStrip 的骨架档表达，格级 status 不再需要落到样式上。
+ */
+function toKpiCells(items: LabeledValue[]): KpiCell[] {
+  return items.map((item) => {
+    const amount = item.value.match(/^(.*) (亿元|万亿元|户)$/u);
+    return {
+      key: item.key,
+      label: item.label,
+      value: amount?.[1] ?? item.value,
+      unit: amount ? ` ${amount[2]}` : undefined,
+      note: item.note ?? null,
+    };
+  });
 }
 
 export default function PositionsView() {
@@ -97,8 +140,14 @@ export default function PositionsView() {
     setRangeTo(reportDate);
   }, [rangeTouched, reportDate]);
 
-  const startDate = rangeFrom.trim() || null;
-  const endDate = rangeTo.trim() || null;
+  const rangeError = rangeTouched && (!rangeFrom || !rangeTo)
+    ? "请补全区间起止日期，区间统计暂不查询。"
+    : rangeFrom && rangeTo && rangeFrom > rangeTo
+      ? "区间起始日期不能晚于结束日期，请调整后查看区间统计。"
+      : null;
+  // 无效区间不进入任何区间查询，包括下方评级、行业和质量分布。
+  const startDate = rangeError ? null : rangeFrom.trim() || null;
+  const endDate = rangeError ? null : rangeTo.trim() || null;
 
   const [selectedSubType, setSelectedSubType] = useState("");
   const [selectedProductType, setSelectedProductType] = useState("");
@@ -108,6 +157,7 @@ export default function PositionsView() {
 
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
 
   const handleTabChange = (nextTab: PositionsTabKey) => {
     setPage(1);
@@ -334,12 +384,24 @@ export default function PositionsView() {
   const listEvidenceMeta =
     tab === "bonds" ? bondsListQuery.data?.result_meta : interbankListQuery.data?.result_meta;
   const aggregateEvidenceMeta = aggregateQuery.data?.result_meta;
+  const workspaceTabs = (
+    <Tabs
+      className="positions-view__tabs"
+      activeKey={tab}
+      onChange={(key) => handleTabChange(key as PositionsTabKey)}
+      items={[
+        { key: "bonds", label: "债券持仓" },
+        { key: "interbank", label: "同业持仓" },
+      ]}
+    />
+  );
 
   /*
    * 深色 owner 由外层 ThemedRouteBoundary 的 data-moss-theme="dark" 独占；
    * 页根只声明换肤 scope，重复声明 owner 会让深色路由校验判定出两个 owner。
    */
   return (
+    <StateSurfaceQuotaProvider>
     <section
       className="positions-view theme-dh-api"
       data-testid="positions-page"
@@ -350,16 +412,9 @@ export default function PositionsView() {
           <h1 data-testid="positions-page-title" className="positions-view__title">
             持仓透视
           </h1>
-          <p className="positions-view__subtitle">
-            先锁定报告日和观察区间，再判断债券评级收益率、行业分布和客户集中度是否需要下钻。
-          </p>
         </div>
-        <span
-          className={`positions-view__mode-badge positions-view__mode-badge--${
-            client.mode === "real" ? "real" : "mock"
-          }`}
-        >
-          {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
+        <span className="positions-view__mode-note">
+          {client.mode === "real" ? "明细按报告日，指标按观察区间" : "本地演示数据"}
         </span>
       </header>
 
@@ -389,6 +444,8 @@ export default function PositionsView() {
               className="positions-view__filters-control"
               type="date"
               value={rangeFrom}
+              aria-invalid={Boolean(rangeError)}
+              aria-describedby={rangeError ? "positions-range-error" : undefined}
               onChange={(e) => {
                 setRangeTouched(true);
                 setRangeFrom(e.target.value);
@@ -403,6 +460,8 @@ export default function PositionsView() {
               className="positions-view__filters-control"
               type="date"
               value={rangeTo}
+              aria-invalid={Boolean(rangeError)}
+              aria-describedby={rangeError ? "positions-range-error" : undefined}
               onChange={(e) => {
                 setRangeTouched(true);
                 setRangeTo(e.target.value);
@@ -411,7 +470,7 @@ export default function PositionsView() {
             />
           </label>
           {explicitReportDate ? (
-            <p className="positions-view__filters-note">已由地址栏报告日参数固定</p>
+            <p className="positions-view__filters-note">当前链接已限定报告日</p>
           ) : null}
           <button
             type="button"
@@ -426,6 +485,11 @@ export default function PositionsView() {
             刷新
           </button>
         </FilterBar>
+        {rangeError ? (
+          <p id="positions-range-error" className="positions-view__range-error" role="alert">
+            {rangeError}
+          </p>
+        ) : null}
       </div>
 
       <section
@@ -433,48 +497,44 @@ export default function PositionsView() {
         className="positions-view__section"
         data-testid="positions-decision-hero"
       >
-        <PositionsSectionLead title="当日结论" />
         {firstScreenStatus ? (
-          <Alert
-            data-testid="positions-data-state-alert"
-            type={firstScreenStatus.type}
-            showIcon
+          <StateSurface
+            testId="positions-data-state-alert"
+            status={FIRST_SCREEN_STATUS[firstScreenStatus.type]}
             message={firstScreenStatus.message}
-            description={firstScreenStatus.description}
+            reason={firstScreenStatus.description}
+            density="compact"
+            dedupeKey="positions-first-screen-availability"
           />
         ) : null}
-        <PositionsKpiBand testId="positions-kpi-band" items={kpiItems} />
-        {/* 指标边界属证据层：治理必显但视觉降权为一行说明，不做告警盒（§6 溯源分层）。 */}
-        <p data-testid="positions-list-candidate-boundary" className="positions-view__candidate-boundary">
-          <strong>持仓列表指标边界</strong>
-          GAP-POS-LIST 尚未关闭；MTR-POS-001、MTR-POS-002 仍为 candidate，pending_confirmation=true，bound_sample_id=GS-POSITIONS-BONDS-LIST-A / GS-POSITIONS-INTERBANK-LIST-A（capture-ready，待业主审批）。
+        {/*
+          * 不走 KpiStrip 的骨架档：模型在读取中已经返回带标签的 EM_DASH 占位格
+          * （`kpiBandPlaceholders`），六格标签自始至终在位，切到骨架反而会让首屏
+          * 标签消失一拍。格级 `status: "loading"` 原本只把主值染灰，属可放弃的
+          * 细节（见报告「原语层缺口」）。
+          */}
+        <KpiStrip
+          testId="positions-kpi-band"
+          cells={toKpiCells(kpiItems)}
+          cols={KPI_COLS}
+          size="compact"
+        />
+        <p data-testid="positions-analysis-boundary" className="positions-view__candidate-boundary">
+          明细与区间统计仅供分析，未经正式口径批准。
+          <a href="#positions-section-evidence" onClick={() => setEvidenceOpen(true)}>
+            查看口径依据
+          </a>
         </p>
-        <div data-testid="positions-data-status" className="positions-view__caliber">
-          {caliberItems.map((item, index) => (
-            <span key={`${index}-${item}`} className="positions-view__caliber-item">
-              {item}
-            </span>
-          ))}
-        </div>
       </section>
 
-      <section id="positions-section-workspace" className="positions-view__section">
-        <PositionsSectionLead
-          title="持仓工作区"
-          actions={
-            <Tabs
-              className="positions-view__tabs"
-              activeKey={tab}
-              onChange={(k) => handleTabChange(k as PositionsTabKey)}
-              items={[
-                { key: "bonds", label: "债券持仓" },
-                { key: "interbank", label: "同业持仓" },
-              ]}
-            />
-          }
-        />
+      <section
+        id="positions-section-workspace"
+        className="positions-view__section"
+        aria-label="持仓工作区"
+      >
         {tab === "bonds" ? (
           <PositionsBondsWorkspaceSection
+            tabs={workspaceTabs}
             reportDate={reportDate}
             subTypeValue={selectedSubType}
             subTypeOptions={bondSubTypesQuery.data}
@@ -492,6 +552,7 @@ export default function PositionsView() {
           />
         ) : (
           <PositionsInterbankWorkspaceSection
+            tabs={workspaceTabs}
             reportDate={reportDate}
             productTypeValue={selectedProductType}
             productTypeOptions={interbankProductTypesQuery.data}
@@ -514,64 +575,80 @@ export default function PositionsView() {
 
       {tab === "bonds" ? (
         <section id="positions-section-concentration" className="positions-view__section">
-          <PositionsSectionLead
+          <SectionHead
             title="授信主体与质量"
-            state={positionsSectionState(bondsCpQuery, {
+            numbered={false}
+            state={rangeError ? null : positionsSectionState(bondsCpQuery, {
               isEmpty: (bondsCp?.items.length ?? 0) === 0,
             })}
           />
-          <PositionsBondsConcentrationSection
-            startDate={startDate}
-            endDate={endDate}
-            subType={selectedSubType || null}
-            stats={bondsCp}
-            statsLoading={bondsCpQuery.isLoading}
-            statsError={bondsCpQuery.isError}
-            searchText={searchText}
-            onSearchTextChange={setSearchText}
-            onCustomerOpen={(customerName) => {
-              setSelectedCustomer(customerName);
-              setCustomerModalOpen(true);
-            }}
-          />
+          {rangeError ? (
+            <StateSurface status="empty" message="请先修正观察区间，再查看授信主体统计。" />
+          ) : (
+            <PositionsBondsConcentrationSection
+              startDate={startDate}
+              endDate={endDate}
+              subType={selectedSubType || null}
+              stats={bondsCp}
+              statsLoading={bondsCpQuery.isLoading}
+              statsError={bondsCpQuery.isError}
+              searchText={searchText}
+              onSearchTextChange={setSearchText}
+              onCustomerOpen={(customerName) => {
+                setSelectedCustomer(customerName);
+                setCustomerModalOpen(true);
+              }}
+            />
+          )}
         </section>
       ) : (
         <section id="positions-section-split" className="positions-view__section">
-          <PositionsSectionLead
+          <SectionHead
             title="资产负债结构"
-            state={positionsSectionState(interbankSplitQuery, {
+            numbered={false}
+            state={rangeError ? null : positionsSectionState(interbankSplitQuery, {
               isEmpty:
                 (interbankCpSplit?.asset_items.length ?? 0) === 0 &&
                 (interbankCpSplit?.liability_items.length ?? 0) === 0,
             })}
           />
-          <PositionsInterbankSplitSection
-            split={interbankCpSplit}
-            loading={interbankSplitQuery.isLoading}
-            isError={interbankSplitQuery.isError}
-            searchText={searchText}
-            onSearchTextChange={setSearchText}
-          />
+          {rangeError ? (
+            <StateSurface status="empty" message="请先修正观察区间，再查看资产负债结构。" />
+          ) : (
+            <PositionsInterbankSplitSection
+              split={interbankCpSplit}
+              loading={interbankSplitQuery.isLoading}
+              isError={interbankSplitQuery.isError}
+              searchText={searchText}
+              onSearchTextChange={setSearchText}
+            />
+          )}
         </section>
       )}
 
       {tab === "bonds" ? (
         <section id="positions-section-distribution" className="positions-view__section">
-          <PositionsSectionLead title="评级与行业分布" />
-          <PositionsBondsDistributionSection
-            startDate={startDate}
-            endDate={endDate}
-            subType={selectedSubType || null}
-          />
+          <SectionHead title="评级与行业分布" numbered={false} />
+          {rangeError ? (
+            <StateSurface status="empty" message="请先修正观察区间，再查看评级与行业分布。" />
+          ) : (
+            <PositionsBondsDistributionSection
+              startDate={startDate}
+              endDate={endDate}
+              subType={selectedSubType || null}
+            />
+          )}
         </section>
       ) : null}
 
       <section id="positions-section-evidence" className="positions-view__section">
-        <PositionsSectionLead title="证据与口径" />
         <PositionsEvidenceSection
           tab={tab}
           listMeta={listEvidenceMeta}
           aggregateMeta={aggregateEvidenceMeta}
+          caliberItems={caliberItems}
+          open={evidenceOpen}
+          onOpenChange={setEvidenceOpen}
         />
       </section>
 
@@ -582,5 +659,6 @@ export default function PositionsView() {
         reportDate={reportDate}
       />
     </section>
+    </StateSurfaceQuotaProvider>
   );
 }

@@ -15,7 +15,7 @@ import type {
   MacroToolkitShadowPortfolioReport,
   MacroToolkitStrategySummary,
 } from "../../../api/macroToolkitClient";
-import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { SectionHead } from "../../../components/layout";
 import { EM_DASH } from "../../../utils/format";
 import { formatNumberValue } from "../lib/macroToolkitCrisisSupport";
 import { formatQueryError } from "../lib/macroToolkitDisplayFormat";
@@ -190,6 +190,15 @@ export function ShadowPortfolioReview({ report }: { report: MacroToolkitShadowPo
   );
 }
 
+/** 运行状态 antd 色名 → 信号圆点 tone（沿用横带语义圆点语言）。 */
+function dualFrequencyStateTone(status: string) {
+  const color = statusColor(status);
+  if (color === "green") return " macro-toolkit-signal-state--positive";
+  if (color === "red") return " macro-toolkit-signal-state--negative";
+  if (color === "gold") return " macro-toolkit-signal-state--missing";
+  return "";
+}
+
 export function DualFrequencyRiskBudgetPanel({
   snapshot,
 }: {
@@ -297,7 +306,15 @@ export function DualFrequencyRiskBudgetPanel({
           </small>
         </div>
         <div className="macro-toolkit-tag-row">
-          <Tag color={boundaryConfirmed ? statusColor(status) : "red"}>{statusText}</Tag>
+          {/* H：模块头只留一枚口径徽标，运行状态降为语义圆点。 */}
+          <em
+            className={`macro-toolkit-signal-state${
+              boundaryConfirmed ? dualFrequencyStateTone(status) : " macro-toolkit-signal-state--negative"
+            }`}
+          >
+            <i aria-hidden="true" />
+            {statusText}
+          </em>
           <Tag color="gold">不进入下单</Tag>
         </div>
       </div>
@@ -754,7 +771,13 @@ export function MacroToolkitStrategySection({
         selectedEvidenceHref === "#macro-toolkit-strategy-detail" ? "macro-toolkit-section--audit-focus" : ""
       }`}
     >
-      <PageSectionLead eyebrow="策略" title="策略展示" description={strategyDescription} />
+      <SectionHead
+        category="策略"
+        title="策略展示"
+        note={strategyDescription}
+        numbered={{ counter: "mt-section" }}
+        contentGap="flush"
+      />
       {/* 闭环计数与对齐状态拆两行，避免单行元信息分隔符超配额（DESIGN §7）。 */}
       <div className="macro-toolkit-strategy-supply-strip" aria-label="策略供数闭环">
         <div className="macro-toolkit-strategy-supply-strip__row">

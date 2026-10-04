@@ -156,6 +156,34 @@ def test_ingest_writes_all_five_streams(tmp_path: Path, monkeypatch: pytest.Monk
             "tushare_major",
             "tushare_research",
         } <= groups
+        received_rows = conn.execute(
+            "select group_id, received_at from choice_news_event order by group_id, received_at"
+        ).fetchall()
+        assert all(str(received_at).endswith("+08:00") for _, received_at in received_rows)
+        received_by_group = {
+            group_id: {
+                str(received_at)
+                for row_group_id, received_at in received_rows
+                if row_group_id == group_id
+            }
+            for group_id in groups
+        }
+        assert received_by_group["tushare_policy"] == {
+            f"{recent_day}T10:00:00+08:00"
+        }
+        assert received_by_group["tushare_news"] == {
+            f"{recent_day}T11:00:00+08:00"
+        }
+        assert received_by_group["tushare_major"] == {
+            f"{recent_day}T09:00:00+08:00"
+        }
+        assert received_by_group["tushare_research"] == {
+            f"{recent_day}T00:00:00+08:00"
+        }
+        assert received_by_group["tushare_cctv"] == {
+            f"{compact_date[:4]}-{compact_date[4:6]}-{compact_date[6:]}T00:00:00+08:00"
+            for compact_date in cctv_rows_by_date
+        }
         # research / policy 都应当带 _url（下游前端凭它出"查看原文"按钮）
         for group_id in ("tushare_research", "tushare_policy"):
             payload_json = conn.execute(
@@ -168,6 +196,21 @@ def test_ingest_writes_all_five_streams(tmp_path: Path, monkeypatch: pytest.Monk
         assert int(wh_count[0]) >= 5
     finally:
         conn.close()
+
+
+def test_missing_vendor_time_uses_beijing_wall_clock_and_offset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import backend.app.tasks.tushare_news_ingest as mod
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 27, 12, 29, 46, tzinfo=tz)
+
+    monkeypatch.setattr(mod, "datetime", FrozenDateTime)
+
+    assert mod._normalize_received_at(None) == "2026-08-27T12:29:46+08:00"
 
 
 def test_ingest_strips_html_from_news_payload_and_warehouse(
@@ -440,11 +483,9 @@ def test_tushare_news_background_actor_calls_task_materializer(
     class FakeSettings:
         tushare_news_src = "configured-src"
 
-    class FakeTushareModule:
-        @staticmethod
-        def pro_api(token: str) -> object:
-            tokens_seen.append(token)
-            return pro_object
+    def fake_rest_api(token: str) -> object:
+        tokens_seen.append(token)
+        return pro_object
 
     monkeypatch.setattr(task_module, "get_settings", lambda: FakeSettings())
     monkeypatch.setattr(
@@ -452,7 +493,9 @@ def test_tushare_news_background_actor_calls_task_materializer(
         "resolve_tushare_token_with_settings_fallback",
         lambda settings: f"token-for-{settings.tushare_news_src}",
     )
-    monkeypatch.setattr(task_module, "import_tushare_pro", lambda: FakeTushareModule)
+    from backend.app.tasks import choice_stock_materialize
+
+    monkeypatch.setattr(choice_stock_materialize, "_TushareRestApi", fake_rest_api)
     monkeypatch.setattr(mod, "materialize_tushare_news_to_choice_news", fake_materialize)
 
     db = tmp_path / "news.duckdb"

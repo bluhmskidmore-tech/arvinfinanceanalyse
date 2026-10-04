@@ -96,6 +96,24 @@ describe("LedgerPnlFinancialIndicatorSummaryPanel", () => {
     expect(loansRow).not.toHaveTextContent("已与财务指标工作簿贷款余额核对一致");
   });
 
+  it("R5: 增减幅列头显示就近提示，说明未取绝对值、符号可能与直觉相反", async () => {
+    const client = createApiClient({ mode: "mock" });
+    renderPanel(client);
+
+    await screen.findByTestId("ledger-indicator-summary-section-financial");
+    const markers = screen.getAllByTitle(
+      "按工作簿口径直接相除、未取绝对值，对比期为负时符号可能与直觉相反",
+    );
+    expect(markers.length).toBeGreaterThan(0);
+    const header = markers[0].closest("th");
+    expect(header).not.toBeNull();
+    expect(header).toHaveTextContent("增减幅");
+    expect(markers[0]).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("按工作簿口径直接相除、未取绝对值"),
+    );
+  });
+
   it("labels flow columns as 上年同期 and point columns as 上年末", async () => {
     const client = createApiClient({ mode: "mock" });
     renderPanel(client);
@@ -189,6 +207,117 @@ describe("LedgerPnlFinancialIndicatorSummaryPanel", () => {
     expect(businessSummary).not.toBeNull();
     fireEvent.click(businessSummary as HTMLElement);
     expect(businessSection.open).toBe(true);
+  });
+
+  it("B3: defaults to the current month group only and expands to all months on toggle", async () => {
+    const client = createApiClient({ mode: "mock" });
+    renderPanel(client);
+
+    const financialSection = await screen.findByTestId(
+      "ledger-indicator-summary-section-financial",
+    );
+    // 默认只显示当月组（202603 → "2026年1-3月"），更早的月组列头不渲染。
+    expect(within(financialSection).getAllByText("2026年1-3月").length).toBeGreaterThan(0);
+    expect(within(financialSection).queryByText("2026年1月")).not.toBeInTheDocument();
+    expect(within(financialSection).queryByText("2026年1-2月")).not.toBeInTheDocument();
+
+    const toggle = screen.getByTestId("ledger-indicator-summary-month-toggle");
+    const toggleButton = within(toggle).getByRole("button", { name: "展开全部月份（3）" });
+    expect(toggleButton).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(toggleButton);
+
+    expect(within(financialSection).getAllByText("2026年1月").length).toBeGreaterThan(0);
+    expect(within(financialSection).getAllByText("2026年1-2月").length).toBeGreaterThan(0);
+    expect(within(financialSection).getAllByText("2026年1-3月").length).toBeGreaterThan(0);
+    const collapseButton = within(toggle).getByRole("button", { name: "仅看当月" });
+    expect(collapseButton).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(collapseButton);
+    expect(within(financialSection).queryByText("2026年1月")).not.toBeInTheDocument();
+    expect(
+      within(toggle).getByRole("button", { name: "展开全部月份（3）" }),
+    ).toBeInTheDocument();
+  });
+
+  it("B3: keeps a no-source parent row with computed descendants visible while folding pure no-source rows", async () => {
+    const client = createApiClient({ mode: "mock" });
+    renderPanel(client);
+
+    const financialSection = await screen.findByTestId(
+      "ledger-indicator-summary-section-financial",
+    );
+
+    // "一、集团营业收入"是无系统来源，但其子行"（一）母公司营收"可计算 → 父行保留在默认视图。
+    const groupRevenueRow = within(financialSection).getByTestId(
+      "ledger-indicator-summary-row-fin.group_revenue",
+    );
+    expect(groupRevenueRow).toHaveTextContent("一、集团营业收入");
+
+    // 整段皆无来源的子行（青银金租/理财/村镇银行营收）默认收进折叠组，折叠未展开时不可见。
+    const fold = within(financialSection).getByTestId(
+      "ledger-indicator-summary-nosource-fold-financial",
+    ) as HTMLDetailsElement;
+    expect(fold.open).toBe(false);
+    expect(fold).toHaveTextContent("无系统来源行（16），展开查看");
+    expect(
+      within(fold).getByTestId("ledger-indicator-summary-row-fin.leasing_revenue"),
+    ).not.toBeVisible();
+    expect(
+      within(fold).getByTestId("ledger-indicator-summary-row-fin.wm_revenue"),
+    ).not.toBeVisible();
+    expect(
+      within(fold).getByTestId("ledger-indicator-summary-row-fin.village_revenue"),
+    ).not.toBeVisible();
+  });
+
+  it("B3: expanding the no-source fold group reveals originally hidden rows without changing their content", async () => {
+    const client = createApiClient({ mode: "mock" });
+    renderPanel(client);
+
+    const financialSection = await screen.findByTestId(
+      "ledger-indicator-summary-section-financial",
+    );
+    const fold = within(financialSection).getByTestId(
+      "ledger-indicator-summary-nosource-fold-financial",
+    ) as HTMLDetailsElement;
+    expect(fold.open).toBe(false);
+
+    const summary = fold.querySelector("summary");
+    expect(summary).not.toBeNull();
+    fireEvent.click(summary as HTMLElement);
+    expect(fold.open).toBe(true);
+
+    const leasingRow = within(fold).getByTestId(
+      "ledger-indicator-summary-row-fin.leasing_revenue",
+    );
+    expect(leasingRow).toHaveTextContent("（二）青银金租营收");
+    expect(leasingRow).toHaveAttribute("data-availability", "no_system_source");
+    expect(within(leasingRow).getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("B3: folds the full dead-end no-source subtree for business and asset_quality sections", async () => {
+    const client = createApiClient({ mode: "mock" });
+    renderPanel(client);
+
+    const businessSection = (await screen.findByTestId(
+      "ledger-indicator-summary-section-business",
+    )) as HTMLDetailsElement;
+    const assetQualitySection = screen.getByTestId(
+      "ledger-indicator-summary-section-asset_quality",
+    ) as HTMLDetailsElement;
+
+    fireEvent.click(businessSection.querySelector("summary") as HTMLElement);
+    fireEvent.click(assetQualitySection.querySelector("summary") as HTMLElement);
+
+    expect(
+      within(businessSection).getByTestId("ledger-indicator-summary-nosource-fold-business"),
+    ).toHaveTextContent("无系统来源行（2），展开查看");
+    expect(
+      within(assetQualitySection).getByTestId(
+        "ledger-indicator-summary-nosource-fold-asset_quality",
+      ),
+    ).toHaveTextContent("无系统来源行（11），展开查看");
   });
 
   it("shows the no-data state for a month without ledger sources", async () => {

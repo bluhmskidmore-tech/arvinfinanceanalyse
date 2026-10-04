@@ -52,10 +52,14 @@ export function useMacroToolkitDeferredContent({
       typeof window !== "undefined" &&
       window.location.hash === "#macro-toolkit-script-artifact-detail",
   );
+  // 「展开全部」与打印模式要把后段运维层的折叠壳一并强制展开；
+  // 滚动解锁到最终 stage 不置位，折叠壳仍保持默认折叠。
+  const [operationsLayerExpanded, setOperationsLayerExpanded] = useState(false);
 
   const revealAllDeferredContent = useCallback(() => {
     setDeferredContentStage(MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE);
     setReceiptTechnicalDetailsExpanded(true);
+    setOperationsLayerExpanded(true);
   }, []);
 
   useEffect(() => {
@@ -262,6 +266,7 @@ export function useMacroToolkitDeferredContent({
     deferredContentSentinelRef,
     deferredContentStage,
     handleDeferredContentLinkClick,
+    operationsLayerExpanded,
     receiptTechnicalDetailsExpanded,
     revealAllDeferredContent,
     setReceiptTechnicalDetailsExpanded,

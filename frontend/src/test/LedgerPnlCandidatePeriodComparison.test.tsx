@@ -191,7 +191,10 @@ describe("LedgerPnlCandidatePeriodComparison", () => {
       "5项可比、2项暂不可比（降级候选）",
     );
     expect(within(region).getByText("候选分析 · 禁止正式使用")).toBeInTheDocument();
-    expect(within(region).getByText("历史源未锁 · 降级候选")).toBeInTheDocument();
+    expect(within(region).getByText("来源未锁 · 降级候选")).toBeInTheDocument();
+    expect(within(region).getByText(
+      "202605、202604 总账未登记锁定哈希；可比结果不得替代正式财务口径。",
+    )).toBeInTheDocument();
     expect(within(region).getByText("完整 186 项对比不可用")).toBeInTheDocument();
     expect(within(region).getByText("202605 · 日均源")).toBeInTheDocument();
     expect(within(region).getByText("缺少工作表：微贷")).toBeInTheDocument();
@@ -407,11 +410,12 @@ describe("LedgerPnlCandidatePeriodComparison", () => {
       </AppProviders>,
     );
 
+    // 经营观察者优先（2026-08-26）：来源未确认也默认停在经营分析视图，
+    // 跨期比较随之立即挂载；治理视图入口保持在 tab 上。
     const governanceTab = await screen.findByRole("tab", { name: /^治理与补证/ });
-    expect(governanceTab).toHaveAttribute("aria-selected", "true");
-    expect(comparisonRead).not.toHaveBeenCalled();
+    const analysisTab = screen.getByRole("tab", { name: /^经营分析/ });
+    expect(analysisTab).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.click(screen.getByRole("tab", { name: /^经营分析/ }));
     await waitFor(() => expect(comparisonRead).toHaveBeenCalledTimes(1));
     expect(comparisonSignal).toBeDefined();
     expect(comparisonSignal?.aborted).toBe(false);

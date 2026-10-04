@@ -410,7 +410,7 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
     payload = service_mod.get_krd_curve_risk(date.fromisoformat(REPORT_DATE), "standard")
     result = payload["result"]
 
-    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v2"
+    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v5"
     assert result["portfolio_duration"] == "5.05978431"
     assert result["portfolio_modified_duration"] == "4.87293147"
     assert result["portfolio_dv01"] == "0.22175249"
@@ -419,13 +419,6 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
     # 组合层 35.23794449 -> 37.92819750（+7.63%）。久期 / DV01 未变，见上三条断言。
     assert result["portfolio_convexity"] == "37.92819750"
     assert result["krd_buckets"] == [
-        {
-            "tenor": "10Y",
-            "avg_modified_duration": "8.03613072",
-            "krd": "8.03613072",
-            "dv01": "0.12054196",
-            "market_value_weight": "0.32634033",
-        },
         {
             "tenor": "1Y",
             "avg_modified_duration": "0.98231827",
@@ -439,6 +432,13 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
             "krd": "4.56936732",
             "dv01": "0.09138735",
             "market_value_weight": "0.44289044",
+        },
+        {
+            "tenor": "10Y",
+            "avg_modified_duration": "8.03613072",
+            "krd": "8.03613072",
+            "dv01": "0.12054196",
+            "market_value_weight": "0.32634033",
         },
     ]
     assert result["scenarios"][0]["scenario_name"] == "parallel_up_25bp"

@@ -5,6 +5,7 @@ import type {
   CampisiEffectAvailabilityReason,
   CampisiEffectAvailabilityStatus,
   CampisiFourEffectsPayload,
+  ResultMeta,
 } from "../../../api/contracts";
 
 export type CampisiEffectKey =
@@ -33,14 +34,16 @@ const CAMPISI_AVAILABILITY_REASON_LABELS: Record<CampisiEffectAvailabilityReason
   curve_absent: "该交易日没有曲线事实",
   curve_unusable: "曲线有行但没有可用关键期限",
   insufficient_shared_tenors: "两端共同期限不足",
+  insufficient_shared_positive_tenors: "两端共同的有效正收益率期限不足",
   bridge_curve_unavailable: "正式桥判定该行曲线效应不可用",
   credit_spread_input_missing: "缺信用利差输入",
   accrued_interest_missing: "缺应计利息",
+  principal_change_without_cashflows: "持仓新增、退出或本金变化/缺失，且没有交易现金流，已排除相关持仓",
   bridge_second_order_not_decomposed: "bridge 一阶分解框架不拆二阶项，贡献并入选券残差",
 };
 
 export function campisiReasonLabel(reason: CampisiEffectAvailabilityReason | null | undefined): string {
-  return reason ? CAMPISI_AVAILABILITY_REASON_LABELS[reason] : "未标注成因";
+  return reason ? CAMPISI_AVAILABILITY_REASON_LABELS[reason] ?? "未识别的缺失成因" : "未标注成因";
 }
 
 export type CampisiEffect = {
@@ -49,7 +52,7 @@ export type CampisiEffect = {
   amount: number | null;
   share: number | null;
   role: string;
-  /** 完全不可用：金额不得以数字形式呈现。`partial` 仍是被低估的观测量。 */
+  /** 完全不可用：金额不得以数字形式呈现。`partial` 保留已归因金额，不推断全人口差额方向。 */
   unavailable: boolean;
   unavailableReason: CampisiEffectAvailabilityReason | null;
 };
@@ -121,14 +124,16 @@ export function normalizeCampisiData(
   }
 
   if ("totals" in data) {
-    const totalReturn = finiteOrNull(data.totals.total_return);
+    const excluded = data.effect_availability?.position_change?.status === "unavailable";
+    const coveredValue = (value: number | null | undefined) => excluded ? null : finiteOrNull(value);
+    const totalReturn = coveredValue(data.totals.total_return);
     const pct = (value: number | null) =>
       totalReturn !== null && totalReturn !== 0 && value !== null
         ? (value / totalReturn) * 100
         : null;
-    const income = finiteOrNull(data.totals.income_return);
-    const treasury = finiteOrNull(data.totals.treasury_effect);
-    const spread = finiteOrNull(data.totals.spread_effect);
+    const income = coveredValue(data.totals.income_return);
+    const treasury = coveredValue(data.totals.treasury_effect);
+    const spread = coveredValue(data.totals.spread_effect);
     const hasBridgeDetails =
       data.totals.realized_trading !== undefined ||
       data.totals.manual_adjustment !== undefined ||
@@ -142,7 +147,7 @@ export function normalizeCampisiData(
       hasBridgeDetails,
     );
     const fx = optionalFiniteOrNull(data.totals.fx_translation, hasBridgeDetails);
-    const selection = finiteOrNull(data.totals.selection_effect);
+    const selection = coveredValue(data.totals.selection_effect);
     return {
       total_return: totalReturn,
       total_income: income,
@@ -198,7 +203,7 @@ export function normalizeCampisiData(
     decomposition_basis: undefined,
     formal_closure: undefined,
     has_bridge_details: false,
-    effect_availability: undefined,
+    effect_availability: data.effect_availability,
     shares_frontend_derived: false,
     items: data.items.map((row) => ({
       category: row.category,
@@ -213,7 +218,7 @@ export function normalizeCampisiData(
   };
 }
 
-/** 只有"全部债券都受影响"才允许整列改判；`partial` 仍是被低估的观测量。 */
+/** 只有"全部债券都受影响"才允许整列改判；`partial` 保留部分覆盖的已归因金额。 */
 function isFullyUnavailable(entry: CampisiEffectAvailabilityEntry | undefined): boolean {
   return entry?.status === "unavailable";
 }
@@ -295,10 +300,62 @@ export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffec
       : "剩余已确认损益，包括个券表现、交易和会计口径差异。",
     ...available,
   });
+  if (isFullyUnavailable(availability?.position_change)) {
+    return rows.map((row) => ({ ...row, amount: null, share: null, unavailable: true,
+      unavailableReason: "principal_change_without_cashflows" }));
+  }
   return rows;
 }
 
 export type CampisiAvailabilityNotice = { key: string; text: string };
+
+type CampisiBridgeSourceQuality = Pick<
+  NonNullable<CampisiFourEffectsPayload["formal_closure"]>,
+  "bridge_quality_flag" | "bridge_vendor_status" | "bridge_fallback_mode" | "bridge_fallback_date"
+>;
+
+/** 金额闭合与来源质量分别披露；缺少来源状态不能当作通过质量检查。 */
+export function buildCampisiBridgeQualityNotice(
+  closure: CampisiBridgeSourceQuality | null | undefined,
+): string | null {
+  if (!closure) return null;
+  const messages: string[] = [];
+  const quality = closure.bridge_quality_flag;
+  const vendor = closure.bridge_vendor_status;
+  const fallback = closure.bridge_fallback_mode;
+  if (quality === "error") messages.push("正式 PnL 来源存在数据质量错误");
+  else if (quality === "stale") messages.push("正式 PnL 来源数据已陈旧");
+  else if (quality === "warning") messages.push("正式 PnL 来源存在质量警告");
+  if (vendor === "vendor_stale") messages.push("上游行情数据已陈旧");
+  else if (vendor === "vendor_unavailable") messages.push("上游行情数据不可用");
+  if (fallback === "latest_snapshot") {
+    messages.push(
+      closure.bridge_fallback_date
+        ? `已使用降级快照，来源日期为 ${closure.bridge_fallback_date}`
+        : "已使用降级快照，来源日期未提供",
+    );
+  }
+  if (
+    !["ok", "warning", "error", "stale"].includes(quality ?? "") ||
+    !["ok", "vendor_stale", "vendor_unavailable"].includes(vendor ?? "") ||
+    !["none", "latest_snapshot"].includes(fallback ?? "")
+  ) {
+    messages.push("正式 PnL 来源状态未确认");
+  }
+  return messages.length
+    ? `${messages.join("；")}。金额闭合不代表数据质量通过。`
+    : null;
+}
+
+/** 增强版/到期桶没有闭合明细，直接消费同源的外层元信息。 */
+export function buildCampisiResultQualityNotice(meta: ResultMeta | null): string | null {
+  return meta ? buildCampisiBridgeQualityNotice({
+    bridge_quality_flag: meta.quality_flag,
+    bridge_vendor_status: meta.vendor_status,
+    bridge_fallback_mode: meta.fallback_mode,
+    bridge_fallback_date: meta.fallback_date,
+  }) : null;
+}
 
 /** 逐效应披露：状态、覆盖面和成因缺一不可，只报"有问题"等于没报。 */
 export function buildCampisiAvailabilityNotices(
@@ -310,17 +367,73 @@ export function buildCampisiAvailabilityNotices(
     { key: "spread_effect", label: "信用利差效应", entry: availability.spread_effect },
     { key: "accrued_interest", label: "应计利息口径", entry: availability.accrued_interest },
   ];
+  if (availability.position_change) {
+    entries.push({ key: "position_change", label: "持仓收益覆盖", entry: availability.position_change });
+  }
   return entries
     .filter(({ entry }) => entry && entry.status !== "ok")
-    .map(({ key, label, entry }) => ({
-      key,
-      text:
-        `${label}${CAMPISI_AVAILABILITY_LABELS[entry.status]}：${campisiReasonLabel(entry.reason)}，` +
-        `影响 ${entry.unavailable_bonds}/${availability.bonds} 只债券。` +
-        (entry.status === "unavailable"
-          ? "该效应本期没有可比输入，页面不以数字形式发布，不能读成“市场没有变动”。"
-          : "受影响债券的该效应缺少输入，合计因此被低估。"),
-    }));
+    .map(({ key, label, entry }) => {
+      const denominator = key === "position_change"
+        ? availability.bonds
+        : availability.position_change?.covered_bonds ?? availability.bonds;
+      const detail = key === "position_change"
+        ? `排除期初市值 ${entry.unavailable_market_value_start} 元` +
+          (entry.unavailable_market_value_end != null ? `、期末市值 ${entry.unavailable_market_value_end} 元` : "") +
+          "（均为绝对市值）；" +
+          (entry.status === "unavailable"
+            ? "全部持仓均被排除，零金额只是占位，本期无法计算组合模型归因，未外推全组合。"
+            : "金额仅汇总可归因持仓，未外推全组合。")
+        : key === "accrued_interest"
+          ? "应计利息缺口仅统计可归因持仓；它是输入质量提示，并非单列效应金额，不能由缺口数量推断合计回报偏差方向。"
+          : entry.status === "unavailable"
+            ? "该效应本期没有可比输入，页面不以数字形式发布，不能读成“市场没有变动”。"
+            : "受影响债券的该效应缺少输入，贡献信息不完整；不能据此判断合计回报偏差方向。";
+      return {
+        key,
+        text: `${label}${CAMPISI_AVAILABILITY_LABELS[entry.status]}：${campisiReasonLabel(entry.reason)}，` +
+          `影响 ${entry.unavailable_bonds}/${denominator} 只债券。${detail}`,
+      };
+    });
+}
+
+/** 持仓日期与曲线观测日期分开披露；未采纳的解析日不能称为观测日。 */
+export function buildCampisiTreasuryCurveDateNotice(
+  payload: CampisiFourEffectsPayload | null | undefined,
+): string | null {
+  const curve = payload?.input_quality?.market_curve_coverage?.treasury_effect;
+  if (!curve) return null;
+  const date = (value: string | null | undefined) =>
+    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  const startResolved = date(curve.start_resolved_date);
+  const endResolved = date(curve.end_resolved_date);
+  if (
+    !startResolved && !endResolved &&
+    curve.start_curve_used !== true && curve.start_curve_used !== false &&
+    curve.end_curve_used !== true && curve.end_curve_used !== false
+  ) return null;
+
+  if (curve.start_curve_used === true && curve.end_curve_used === true && startResolved && endResolved) {
+    const periodDiffers = startResolved !== payload.period_start || endResolved !== payload.period_end;
+    return `${periodDiffers ? `持仓归因区间 ${payload.period_start} 至 ${payload.period_end}；` : ""}` +
+      `国债曲线实际观测日 ${startResolved} 至 ${endResolved}。`;
+  }
+
+  const side = (
+    label: string,
+    requested: string | null,
+    resolved: string | null,
+    used: boolean | null | undefined,
+  ) => {
+    if (used === true) return `${label}实际观测日 ${resolved ?? "未提供"}`;
+    if (used === false) {
+      return `${label}${requested ? `请求 ${requested}，` : "曲线"}` +
+        `${resolved ? `解析到 ${resolved}，` : ""}未采用`;
+    }
+    return resolved ? `${label}解析到 ${resolved}，采纳状态未提供` : `${label}观测日未提供`;
+  };
+  return `持仓归因区间 ${payload.period_start} 至 ${payload.period_end}；国债曲线：` +
+    `${side("期初", date(curve.start_requested_date), startResolved, curve.start_curve_used)}；` +
+    `${side("期末", date(curve.end_requested_date), endResolved, curve.end_curve_used)}。`;
 }
 
 export function sumCampisiEffectAmounts(effects: readonly CampisiEffect[]): number | null {

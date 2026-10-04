@@ -1,4 +1,4 @@
-﻿"""实时建议仓位（position_size_hint）正式计算。
+"""实时建议仓位（position_size_hint）正式计算。
 
 主参考口径为等权（``primary_basis`` 由 :class:`SizingPolicy` 单一来源声明）：
 
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
+from decimal import Decimal
 
 from backend.app.core_finance.strategy_policy import POLICY, SizingPolicy
 
@@ -62,7 +63,9 @@ COVERAGE_DEGRADED_WARNING = (
 
 
 def _as_finite_float(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    # DuckDB 的 double 列回 float，但 decimal 列或上游 Decimal 化的行会回 Decimal；
+    # 两者都是合法数值输入，不能被当作缺失而静默落到 fallback 止损距离。
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
         return None
     number = float(value)
     if not math.isfinite(number):

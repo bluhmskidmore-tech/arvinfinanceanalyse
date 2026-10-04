@@ -87,6 +87,104 @@ def test_dry_run_reports_plan_without_running_refresh(monkeypatch, cli_settings,
     assert payload["would_run"]["theme_overlay_mode"] == "archive"
 
 
+def test_dry_run_reports_explicit_tushare_gap_window(monkeypatch, cli_settings, capsys) -> None:
+    monkeypatch.setattr(cli, "default_choice_stock_refresh_as_of_date", lambda _path: "2026-08-24")
+
+    assert (
+        cli.main(
+            [
+                "--dry-run",
+                "--as-of-date",
+                "2026-09-04",
+                "--tushare-gap-repair",
+                "--history-start-date",
+                "2026-08-25",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["would_run"]["tushare_gap_repair"] is True
+    assert payload["would_run"]["history_start_date"] == "2026-08-25"
+
+
+def test_run_once_tushare_gap_defaults_to_single_target_day(monkeypatch, cli_settings) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(cli, "run_choice_stock_refresh", lambda **kwargs: calls.append(kwargs))
+
+    assert cli.main(["--run-once", "--as-of-date", "2026-09-04", "--tushare-gap-repair"]) == 0
+
+    assert len(calls) == 1
+    assert calls[0]["history_start_date"] == "2026-09-04"
+    assert calls[0]["allow_cross_era_backfill"] is True
+
+
+def test_history_start_date_requires_tushare_gap_mode(cli_settings, capsys) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(
+            [
+                "--dry-run",
+                "--as-of-date",
+                "2026-09-04",
+                "--history-start-date",
+                "2026-08-25",
+            ]
+        )
+    assert excinfo.value.code == 2
+    assert "--history-start-date requires --tushare-gap-repair" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("start_date", [None, "2026-08-25"])
+@pytest.mark.parametrize("fails", [False, True])
+def test_gap_receipts_preserve_resolved_scope_without_status_query_fields(
+    monkeypatch, cli_settings, tmp_path, start_date, fails
+) -> None:
+    receipt_path = tmp_path / "gap-receipt.json"
+    expected = {
+        "as_of_date": "2026-09-04",
+        "history_start_date": start_date or "2026-09-04",
+        "tushare_gap_repair": True,
+    }
+
+    def fake_run(**kwargs):
+        running = json.loads(receipt_path.read_text(encoding="utf-8"))
+        assert running["status"] == "running"
+        assert {key: running["result"][key] for key in expected} == expected
+        assert kwargs["history_start_date"] == expected["history_start_date"]
+        if fails:
+            raise RuntimeError("fixture refresh failure")
+
+    monkeypatch.setattr(cli, "run_choice_stock_refresh", fake_run)
+    args = [
+        "--run-once", "--run-kind", "scheduled", "--as-of-date", "2026-09-04",
+        "--tushare-gap-repair", "--receipt-path", str(receipt_path),
+    ]
+    if start_date is not None:
+        args.extend(["--history-start-date", start_date])
+    assert cli.main(args) == (1 if fails else 0)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["status"] == ("failed" if fails else "success")
+    assert {key: receipt["result"][key] for key in expected} == expected
+    assert "history_start_date" not in receipt["result"]["refresh"]
+
+
+def test_tushare_gap_history_start_cannot_follow_target_date(cli_settings, capsys) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(
+            [
+                "--dry-run",
+                "--as-of-date",
+                "2026-09-04",
+                "--tushare-gap-repair",
+                "--history-start-date",
+                "2026-09-05",
+            ]
+        )
+    assert excinfo.value.code == 2
+    assert "must be on or before --as-of-date" in capsys.readouterr().err
+
+
 def test_run_once_scheduled_writes_running_then_final_receipt(
     monkeypatch, cli_settings, tmp_path
 ) -> None:
@@ -123,6 +221,7 @@ def test_run_once_scheduled_writes_running_then_final_receipt(
     assert kwargs["refresh_history"] is True
     assert kwargs["refresh_factors"] is True
     assert kwargs["theme_overlay_mode"] == "archive"
+    assert kwargs["retry_managed_by_broker"] is False
     assert str(kwargs["run_id"]).startswith("choice_stock_refresh:2026-08-11:")
 
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -211,6 +310,64 @@ def test_run_once_appends_supply_freshness_and_warns_stale_items(
         (
             "supply freshness stale: cn10y_yield latest_date=2026-08-07 "
             "expected_date=2026-08-11 lag_trading_days=2"
+        ),
+        (
+            "supply freshness unavailable: choice_stock_daily latest_date=None "
+            "expected_date=2026-08-11 lag_trading_days=None reason=duckdb_locked"
+        ),
+    ]
+
+
+def test_run_once_warns_missing_and_unavailable_supply_items(
+    monkeypatch, cli_settings, tmp_path
+) -> None:
+    receipt_path = tmp_path / "receipt.json"
+    freshness_report = {
+        "status": "missing",
+        "expected_date": "2026-08-11",
+        "thresholds": {
+            "stale_after_trading_days": 1,
+            "critical_after_trading_days": 5,
+        },
+        "calendar": {"holiday_aware": False},
+        "series": [
+            {
+                "name": "stock_analysis_theme_overlay",
+                "latest_date": "2026-08-08",
+                "expected_date": "2026-08-11",
+                "lag_trading_days": 1,
+                "status": "missing",
+                "reason": "exact_date_missing_for_latest_choice_observation",
+            },
+            {
+                "name": "choice_stock_daily",
+                "latest_date": None,
+                "expected_date": "2026-08-11",
+                "lag_trading_days": None,
+                "status": "unavailable",
+                "reason": "duckdb_locked",
+            },
+        ],
+    }
+
+    monkeypatch.setattr(cli, "run_choice_stock_refresh", lambda **_kwargs: None)
+    monkeypatch.setattr(cli, "build_supply_freshness_report", lambda **_kwargs: freshness_report)
+
+    exit_code = cli.main(
+        ["--run-once", "--as-of-date", "2026-08-11", "--receipt-path", str(receipt_path)]
+    )
+
+    assert exit_code == 0
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["warnings"] == [
+        (
+            "supply freshness missing: stock_analysis_theme_overlay latest_date=2026-08-08 "
+            "expected_date=2026-08-11 lag_trading_days=1 "
+            "reason=exact_date_missing_for_latest_choice_observation"
+        ),
+        (
+            "supply freshness unavailable: choice_stock_daily latest_date=None "
+            "expected_date=2026-08-11 lag_trading_days=None reason=duckdb_locked"
         ),
     ]
 
@@ -475,12 +632,14 @@ def test_is_duckdb_writer_contention_detects_lock_messages() -> None:
 
 
 def test_run_once_failure_writes_failed_receipt_and_exit_1(
-    monkeypatch, cli_settings, tmp_path
+    monkeypatch, cli_settings, tmp_path, capsys
 ) -> None:
     receipt_path = tmp_path / "receipt.json"
 
     def fake_run(**_kwargs):
-        raise RuntimeError("vendor unavailable")
+        raise RuntimeError(
+            "vendor unavailable token=TOP-SECRET api_key=LEAKED-KEY password: OPEN-SESAME"
+        )
 
     monkeypatch.setattr(cli, "run_choice_stock_refresh", fake_run)
 
@@ -500,6 +659,11 @@ def test_run_once_failure_writes_failed_receipt_and_exit_1(
     assert receipt["exit_code"] == 1
     assert "RuntimeError: vendor unavailable" in str(receipt["result"]["error"])
     assert receipt["result"]["refresh"] == {"status": "completed", "run_id": "r-latest"}
+    exposed_text = json.dumps(receipt, ensure_ascii=False) + capsys.readouterr().out
+    assert "TOP-SECRET" not in exposed_text
+    assert "LEAKED-KEY" not in exposed_text
+    assert "OPEN-SESAME" not in exposed_text
+    assert "***" in exposed_text
 
 
 def test_default_weekend_date_is_skipped(monkeypatch, cli_settings, tmp_path, capsys) -> None:
@@ -518,9 +682,14 @@ def test_default_weekend_date_is_skipped(monkeypatch, cli_settings, tmp_path, ca
     payload = json.loads(capsys.readouterr().out.strip())
     assert payload["status"] == "skipped_non_trading_day"
     assert payload["as_of_date"] == "2026-08-09"
+    assert payload["as_of_date_explicit"] is False
+    assert payload["no_write"] is True
+    assert payload["database_write_scope"] == []
+    assert payload["governance_write_scope"] == []
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     assert receipt["status"] == "skipped_non_trading_day"
     assert receipt["exit_code"] == 0
+    assert receipt["result"] == payload
 
 
 def test_explicit_weekend_as_of_date_still_runs(monkeypatch, cli_settings) -> None:
@@ -603,6 +772,10 @@ def test_vendor_source_network_binds_sockets_and_restores(monkeypatch) -> None:
         assert os.environ["CHOICE_MACRO_SOCKS5_PROXY_PORT"] == "1080"
         assert socket.create_connection(("example.com", 443)) == "sentinel-socket"
         assert recorded[-1]["kwargs"]["source_address"] == ("10.0.0.9", 0)
+        # http.client passes the unpinned source as a positional None.
+        socket.create_connection(("www.safe.gov.cn", 443), 5.0, None)
+        assert recorded[-1]["args"] == (5.0, ("10.0.0.9", 0))
+        assert "source_address" not in recorded[-1]["kwargs"]
         pinned = socket.create_connection(
             ("example.com", 443), 5.0, ("192.0.2.1", 0)
         )

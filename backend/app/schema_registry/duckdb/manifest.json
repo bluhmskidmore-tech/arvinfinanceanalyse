@@ -227,6 +227,62 @@
       "path": "44_choice_stock_concept_membership_interval.sql",
       "ensure_module": "backend.app.tasks.concept_membership_intervalize",
       "ensure_symbol": "ensure_concept_membership_interval_schema"
+    },
+    {
+      "path": "45_snapshot_natural_key_constraints.sql",
+      "ensure_module": "backend.app.repositories.snapshot_repo",
+      "ensure_symbol": "ensure_snapshot_natural_key_constraints",
+      "lazy_ensure_exempt": true,
+      "lazy_ensure_reason": "The ordinary migration ledger is frozen at v45 (see test_stock_analysis_current_rule_cohort_schema_controlled.py::test_default_connection_migration_stops_at_v45_without_controlled_tables and test_controlled_entry_rejects_unexpected_future_ledger_versions): the controlled v46 stock-analysis migration requires the pre-46 ledger to be exactly {1..45}, so appending a new version to register_all would permanently break that gate for every fresh database. Runtime schema is guaranteed by a lazy ensure call inside ensure_snapshot_tables.",
+      "lazy_ensure_callsites": [
+        "backend/app/repositories/snapshot_repo.py"
+      ]
+    }
+  ],
+  "readiness_requirements": {
+    "columns": [
+      {
+        "requirement_id": "bond-analytics-coupon-rate-input-status",
+        "table_schema": "main",
+        "table_name": "fact_formal_bond_analytics_daily",
+        "column_name": "coupon_rate_input_status",
+        "data_type": "VARCHAR",
+        "source_kind": "ledger_neutral_head_patch",
+        "source_symbol": "backend.app.repositories.duckdb_migrations.ensure_bond_analytics_input_quality_columns"
+      },
+      {
+        "requirement_id": "bond-analytics-ytm-input-status",
+        "table_schema": "main",
+        "table_name": "fact_formal_bond_analytics_daily",
+        "column_name": "ytm_input_status",
+        "data_type": "VARCHAR",
+        "source_kind": "ledger_neutral_head_patch",
+        "source_symbol": "backend.app.repositories.duckdb_migrations.ensure_bond_analytics_input_quality_columns"
+      },
+      {
+        "requirement_id": "bond-analytics-duration-quality-flag",
+        "table_schema": "main",
+        "table_name": "fact_formal_bond_analytics_daily",
+        "column_name": "duration_quality_flag",
+        "data_type": "VARCHAR",
+        "source_kind": "ledger_neutral_head_patch",
+        "source_symbol": "backend.app.repositories.duckdb_migrations.ensure_bond_analytics_input_quality_columns"
+      }
+    ]
+  },
+  "controlled_migration_descriptions": {
+    "46": "Controlled stock-analysis current-rule cohort storage"
+  },
+  "controlled_migrations": [
+    {
+      "migration_version": 46,
+      "path": "controlled/45_stock_analysis_current_rule_cohort.sql",
+      "ensure_module": "backend.app.repositories.duckdb_migrations",
+      "ensure_symbol": "apply_stock_analysis_current_rule_cohort_schema_on_connection",
+      "governance_state": "approved_controlled_only",
+      "auto_registered": false,
+      "required_predecessor_version": 45,
+      "predecessor_ledger_must_be_complete": true
     }
   ]
 }

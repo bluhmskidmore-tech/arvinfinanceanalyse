@@ -11,7 +11,7 @@ from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
 
-def test_pnl_materialize_rule_version_tracks_vat_normalization_policy() -> None:
+def test_pnl_materialize_rule_version_tracks_formal_517_recognition_policy() -> None:
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
         task_module = load_module(
@@ -19,7 +19,7 @@ def test_pnl_materialize_rule_version_tracks_vat_normalization_policy() -> None:
             "backend/app/tasks/pnl_materialize.py",
         )
 
-    assert task_module.RULE_VERSION == "rv_pnl_phase2_materialize_v3"
+    assert task_module.RULE_VERSION == "rv_pnl_phase2_materialize_v7"
 
 
 def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path):
@@ -317,7 +317,8 @@ def test_pnl_materialize_applies_vat_to_taxable_fi_and_jm_514(tmp_path) -> None:
     ]
 
 
-def test_pnl_materialize_recognizes_2026h1_cumulative_fi_517_after_vat(tmp_path) -> None:
+@pytest.mark.parametrize("report_date", ["2024-12-31", "2026-07-31", "2100-12-31"])
+def test_pnl_materialize_recognizes_cumulative_fi_517_for_all_dates(tmp_path, report_date) -> None:
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
         task_module = load_module(
@@ -327,11 +328,11 @@ def test_pnl_materialize_recognizes_2026h1_cumulative_fi_517_after_vat(tmp_path)
 
     duckdb_path = tmp_path / "moss.duckdb"
     task_module.materialize_pnl_facts.fn(
-        report_date="2026-06-30",
+        report_date=report_date,
         is_month_end=True,
         fi_rows=[
             {
-                "report_date": "2026-06-30",
+                "report_date": report_date,
                 "instrument_code": "FI-517-A",
                 "portfolio_name": "FI Desk",
                 "cost_center": "CC100",
@@ -345,7 +346,7 @@ def test_pnl_materialize_recognizes_2026h1_cumulative_fi_517_after_vat(tmp_path)
                 "source_version": "src-fi-517",
             },
             {
-                "report_date": "2026-06-30",
+                "report_date": report_date,
                 "instrument_code": "FI-517-H",
                 "portfolio_name": "FI Desk",
                 "cost_center": "CC100",
@@ -359,7 +360,7 @@ def test_pnl_materialize_recognizes_2026h1_cumulative_fi_517_after_vat(tmp_path)
                 "source_version": "src-fi-517",
             },
             {
-                "report_date": "2026-06-30",
+                "report_date": report_date,
                 "instrument_code": "FI-517-T",
                 "portfolio_name": "FI Desk",
                 "cost_center": "CC100",
@@ -397,6 +398,59 @@ def test_pnl_materialize_recognizes_2026h1_cumulative_fi_517_after_vat(tmp_path)
         ("FI-517-H", Decimal("0E-8"), Decimal("200.00000000"), Decimal("200.00000000")),
         ("FI-517-T", Decimal("5.00000000"), Decimal("300.00000000"), Decimal("305.00000000")),
     ]
+
+
+def test_materialize_rebuilds_2025_nonstd_currency_without_double_conversion(tmp_path) -> None:
+    from backend.app.tasks.pnl_materialize import run_pnl_materialize_sync
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    with duckdb.connect(str(duckdb_path)) as conn:
+        conn.execute("""
+            create table fx_daily_mid (
+                trade_date varchar, base_currency varchar, quote_currency varchar,
+                mid_rate decimal(24, 8), source_name varchar, is_business_day boolean,
+                is_carry_forward boolean, source_version varchar, observed_trade_date varchar
+            )
+        """)
+        conn.execute("""
+            insert into fx_daily_mid values
+            ('2025-12-31', 'USD', 'CNY', 7.0, 'CFETS', true, false, 'sv-fx-2025', '2025-12-31')
+        """)
+    common = {
+        "report_date": "2025-12-31", "is_month_end": True,
+        "duckdb_path": str(duckdb_path), "governance_dir": str(tmp_path / "governance"),
+        "formal_pnl_enabled": True, "formal_pnl_scope_json": '["*"]',
+    }
+    row_common = {
+        "voucher_date": "2025-12-31", "asset_code": "J1-LEGACY", "portfolio_name": "FI Desk",
+        "cost_center": "CC100", "source_file": "nonstd-2025.xlsx", "source_version": "src-j1-2025",
+    }
+    legacy_sources = {
+        "514": [{**row_common, "account_code": "51401000004", "dc_flag": "贷", "event_type": "interest", "raw_amount": "10"}],
+        "516": [{**row_common, "account_code": "51601010004", "dc_flag": "借", "event_type": "mtm", "raw_amount": "2"}],
+        "517": [{**row_common, "account_code": "51701010002", "dc_flag": "贷", "event_type": "realized", "raw_amount": "5"}],
+    }
+    run_pnl_materialize_sync(**common, fi_rows=[], nonstd_rows_by_type=legacy_sources)
+    with duckdb.connect(str(duckdb_path)) as conn:
+        conn.execute("update fact_nonstd_pnl_bridge set rule_version='rv_pnl_phase2_materialize_v1'")
+        assert conn.execute("select total_pnl from fact_nonstd_pnl_bridge").fetchone()[0] == Decimal("13")
+    sources = {
+        bucket: [{**row, "fx_base_currency": "USD"} for row in rows]
+        for bucket, rows in legacy_sources.items()
+    }
+    for _ in range(2):
+        result = run_pnl_materialize_sync(
+            **common, fi_rows=[], nonstd_rows_by_type=sources,
+        )
+        assert result["nonstd_bridge_rows"] == 1
+        assert "sv-fx-2025" in result["source_version"]
+        with duckdb.connect(str(duckdb_path), read_only=True) as conn:
+            assert conn.execute("""
+                select interest_income_514, fair_value_change_516, capital_gain_517, total_pnl, rule_version
+                from fact_nonstd_pnl_bridge
+            """).fetchall() == [
+                (Decimal("70"), Decimal("-14"), Decimal("35"), Decimal("91"), result["rule_version"]),
+            ]
 
 
 def test_formal_fi_fact_projection_preserves_source_classification_metadata() -> None:
@@ -891,7 +945,7 @@ def test_pnl_materialize_task_accepts_weekend_fx_carry_forward(tmp_path):
         conn.execute(
             """
             insert into fx_daily_mid values
-            ('2026-01-03', 'USD', 'CNY', 7.10000000, 'CFETS', false, true, 'sv_fx_carry', '2026-01-02')
+            ('2026-01-03', 'USD', 'CNY', 7.10000000, 'CFETS', false, true, 'sv_fx_carry', '2025-12-31')
             """
         )
     finally:
@@ -945,7 +999,7 @@ def test_pnl_materialize_task_accepts_weekend_fx_carry_forward(tmp_path):
     )
 
 
-def test_pnl_materialize_task_accepts_cfets_currency_holiday_fx_carry_forward(tmp_path):
+def test_pnl_materialize_task_accepts_fixing_on_usd_settlement_holiday(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
         task_module = load_module(
@@ -974,7 +1028,7 @@ def test_pnl_materialize_task_accepts_cfets_currency_holiday_fx_carry_forward(tm
         conn.execute(
             """
             insert into fx_daily_mid values
-            ('2026-01-19', 'USD', 'CNY', 7.10000000, 'CFETS', false, true, 'sv_fx_usd_holiday', '2026-01-16')
+            ('2026-01-19', 'USD', 'CNY', 7.10000000, 'CFETS', true, false, 'sv_fx_usd_holiday', '2026-01-19')
             """
         )
     finally:

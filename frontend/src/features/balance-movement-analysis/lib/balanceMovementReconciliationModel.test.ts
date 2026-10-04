@@ -61,6 +61,15 @@ const chainBrokenRow = row({
 const signedYi = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
 
 describe("balanceMovementReconciliationModel", () => {
+  it("discloses verified FX translation separately from broken chains", () => {
+    const summary = reconciliationTieoutSummary([
+      row({ chain_status: "fx_adjusted", chain_fx_adjustment: "-5619710.79" }),
+    ], signedYi);
+    expect(chainStatusLabel("fx_adjusted")).toBe("折算后衔接");
+    expect(summary).toContain("1 / 1 一致");
+    expect(summary).toContain("折算后衔接 1");
+    expect(summary).not.toContain("断裂");
+  });
   it("gives gl_only, mismatch and chain_broken distinct labels and tones", () => {
     expect(reconciliationStatusLabels.gl_only).not.toBe(reconciliationStatusLabels.mismatch);
     expect(reconciliationStatusLabels.chain_broken).not.toBe(reconciliationStatusLabels.mismatch);

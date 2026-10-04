@@ -12,7 +12,7 @@ import { marketDataChartTheme } from "./marketDataChartTheme";
 
 type BarDataItem = {
   value: number | null;
-  itemStyle: { color: string; borderRadius: number[] };
+  itemStyle: { color: string; borderRadius?: number[] };
 };
 
 function firstSeries(option: EChartsOption | null) {
@@ -28,6 +28,11 @@ function seriesData(option: EChartsOption | null): BarDataItem[] {
   return Array.isArray(series?.data) ? series.data : [];
 }
 
+function formatTooltipValue(option: EChartsOption | null, value: number): string | undefined {
+  const tooltip = option?.tooltip as { valueFormatter?: (raw: unknown) => string } | undefined;
+  return tooltip?.valueFormatter?.(value);
+}
+
 describe("linkage chart options", () => {
   it("builds environment score bars from API fields", () => {
     const option = buildLinkageEnvironmentBarOption({
@@ -36,6 +41,7 @@ describe("linkage chart options", () => {
     });
     const series = firstSeries(option);
     expect(Array.isArray(series?.data) ? series.data.length : 0).toBe(2);
+    expect(formatTooltipValue(option, 0.4)).toBe("0.40");
   });
 
   it("colors environment bars by sign via theme fields with capped width", () => {
@@ -46,8 +52,8 @@ describe("linkage chart options", () => {
     const [positive, negative] = seriesData(option);
     expect(positive.itemStyle.color).toBe(marketDataChartTheme.positiveBar);
     expect(negative.itemStyle.color).toBe(marketDataChartTheme.negativeBar);
-    expect(positive.itemStyle.borderRadius).toEqual([2, 2, 0, 0]);
-    expect(negative.itemStyle.borderRadius).toEqual([0, 0, 2, 2]);
+    expect(positive.itemStyle.borderRadius).toBeUndefined();
+    expect(negative.itemStyle.borderRadius).toBeUndefined();
     const series = firstSeries(option) as { barMaxWidth?: number };
     expect(series.barMaxWidth).toBe(LINKAGE_BAR_MAX_WIDTH);
   });
@@ -58,9 +64,11 @@ describe("linkage chart options", () => {
       term_spread_10y_2y: 8,
     });
     expect(option?.yAxis).toBeTruthy();
+    expect(option?.xAxis).toMatchObject({ name: "bp" });
+    expect(formatTooltipValue(option, 8)).toBe("8.00 bp");
   });
 
-  it("keeps derived spread bars on the theme spread color with horizontal rounding", () => {
+  it("keeps derived spread bars on the theme spread color without local rounding", () => {
     const option = buildDerivedSpreadsBarOption({
       credit_spread_3y: 12,
       term_spread_10y_2y: -8,
@@ -68,8 +76,8 @@ describe("linkage chart options", () => {
     const [positive, negative] = seriesData(option);
     expect(positive.itemStyle.color).toBe(marketDataChartTheme.derivedSpreadColor);
     expect(negative.itemStyle.color).toBe(marketDataChartTheme.negativeBar);
-    expect(positive.itemStyle.borderRadius).toEqual([0, 2, 2, 0]);
-    expect(negative.itemStyle.borderRadius).toEqual([2, 0, 0, 2]);
+    expect(positive.itemStyle.borderRadius).toBeUndefined();
+    expect(negative.itemStyle.borderRadius).toBeUndefined();
   });
 
   it("builds grouped correlation bars", () => {
@@ -107,8 +115,8 @@ describe("linkage chart options", () => {
     expect(series[0].data[0].itemStyle.color).toBe(marketDataChartTheme.positiveBar);
     expect(series[1].data[0].itemStyle.color).toBe(marketDataChartTheme.negativeBar);
     expect(series[2].data[0].itemStyle.color).toBe(marketDataChartTheme.neutralBar);
-    expect(series[0].data[0].itemStyle.borderRadius).toEqual([2, 2, 0, 0]);
-    expect(series[1].data[0].itemStyle.borderRadius).toEqual([0, 0, 2, 2]);
+    expect(series[0].data[0].itemStyle.borderRadius).toBeUndefined();
+    expect(series[1].data[0].itemStyle.borderRadius).toBeUndefined();
     expect(series.every((entry) => entry.barMaxWidth === LINKAGE_BAR_MAX_WIDTH)).toBe(true);
 
     const xAxis = option?.xAxis as {

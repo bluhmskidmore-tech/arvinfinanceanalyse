@@ -8,11 +8,12 @@ tests/test_lazy_task_import_constants.py 锁定。
 from __future__ import annotations
 
 from backend.app.governance.locks import LockDefinition
+from backend.app.repositories.pnl_repo import PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
 
 CACHE_KEY = "pnl:phase2:materialize:formal"
 PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY = "pnl:by-business:precompute"
 PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION = (
-    "cv_pnl_by_business_precompute__rv_pnl_by_business_precompute_v8"
+    f"cv_pnl_by_business_precompute__{PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION}"
 )
 PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME = "pnl_by_business_precompute"
 PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION = "sv_pnl_by_business_precompute_pending"
@@ -20,7 +21,7 @@ PNL_MATERIALIZE_LOCK = LockDefinition(
     key="lock:duckdb:formal:pnl:phase2:materialize",
     ttl_seconds=900,
 )
-PNL_RESULT_CACHE_VERSION = "cv_pnl_formal__rv_pnl_phase2_materialize_v3"
+PNL_RESULT_CACHE_VERSION = "cv_pnl_formal__rv_pnl_phase2_materialize_v7"
 
 
 class _MaterializePnlFactsProxy:

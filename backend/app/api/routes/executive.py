@@ -1,18 +1,23 @@
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 from backend.app.api.deps import ensure_read_allowed
-from backend.app.api.perf_logging import timed_api_call
-from backend.app.api.response_cache import (
+from backend.app.governance.settings import get_settings
+from backend.app.observability.perf_logging import timed_api_call
+from backend.app.observability.response_cache import (
     home_research_reports_cache_key,
     market_home_response_cache,
 )
-from backend.app.governance.settings import get_settings
 from backend.app.repositories.home_macro_release_context_repo import (
     HomeMacroReleaseContextRepository,
 )
-from backend.app.schemas.executive_dashboard import ExecutiveOverviewEnvelope
+from backend.app.schemas.executive_dashboard import (
+    ExecutiveOverviewEnvelope,
+    HomeIncomeTrendEnvelope,
+    HomeResearchReportsEnvelope,
+    HomeSnapshotEnvelope,
+)
 from backend.app.schemas.home_macro_release_context import HomeMacroReleaseContextEnvelope
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.executive_service import (
@@ -50,6 +55,7 @@ def _require_landed_executive_surface(
     *,
     route_name: str,
     promoted: bool = True,
+    allow_partial: bool = False,
 ) -> dict[str, object]:
     if not promoted:
         raise HTTPException(
@@ -58,6 +64,37 @@ def _require_landed_executive_surface(
         )
     meta = payload.get("result_meta")
     if isinstance(meta, dict) and meta.get("vendor_status") == "vendor_unavailable":
+        result = payload.get("result")
+        if route_name == "home_snapshot" and allow_partial and isinstance(result, dict):
+            effective = result.get("domains_effective_date")
+            if result.get("mode") == "partial" and result.get("report_date") and isinstance(effective, dict):
+                missing_domains = result.get("domains_missing", [])
+                if any(
+                    domain not in missing_domains and effective.get(domain) == result["report_date"]
+                    for domain in ("balance_sheet", "pnl")
+                ):
+                    return payload
+        filters = meta.get("filters_applied")
+        if route_name == "home_snapshot" and isinstance(filters, dict):
+            requested = filters.get("requested_report_date")
+            latest = filters.get("latest_available_report_date")
+            missing = filters.get("domains_missing")
+            if requested and latest and isinstance(missing, list) and missing:
+                labels = {"balance_sheet": "余额、持仓与风险", "pnl": "正式损益"}
+                missing_labels = "、".join(labels.get(domain, domain) for domain in cast(list[str], missing))
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "code": "home_report_date_unavailable",
+                        "message": (
+                            f"报告日 {requested} 缺少{missing_labels}数据，暂不能生成完整首页。"
+                            f"最新可用报告日为 {latest}。"
+                        ),
+                        "requested_report_date": requested,
+                        "latest_available_report_date": latest,
+                        "domains_missing": missing,
+                    },
+                )
         raise HTTPException(
             status_code=503,
             detail=f"Executive route {route_name} is not backed by governed data yet.",
@@ -130,7 +167,7 @@ def alerts(
     _raise_executive_reserved_surface("alerts")
 
 
-@router.get("/home/snapshot")
+@router.get("/home/snapshot", response_model=HomeSnapshotEnvelope)
 def home_snapshot(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str | None = None,
@@ -146,11 +183,12 @@ def home_snapshot(
                 allow_partial=allow_partial,
             ),
             route_name="home_snapshot",
+            allow_partial=allow_partial,
         ),
     )
 
 
-@router.get("/home/research-reports")
+@router.get("/home/research-reports", response_model=HomeResearchReportsEnvelope)
 def home_research_reports(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str,
@@ -176,7 +214,7 @@ def home_research_reports(
     )
 
 
-@router.get("/home/income-trend")
+@router.get("/home/income-trend", response_model=HomeIncomeTrendEnvelope)
 def home_income_trend(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str,

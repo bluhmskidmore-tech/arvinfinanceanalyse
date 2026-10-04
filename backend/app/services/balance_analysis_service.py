@@ -29,10 +29,15 @@ from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.balance_analysis_decision_repo import BalanceAnalysisDecisionRepository
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
+    CACHE_MANIFEST_STREAM,
     GovernanceRepository,
+    _jsonl_file_cache_key,
+    _resolve_governance_backend_mode,
 )
+from backend.app.repositories.system_read_publication_repo import system_read_cache_identity
 from backend.app.schemas.balance_analysis import (
     BalanceAnalysisBasisBreakdownPayload,
     BalanceAnalysisBasisBreakdownRow,
@@ -63,7 +68,7 @@ from backend.app.services import balance_analysis_summary_export_service, balanc
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
 )
-from backend.app.services.runtime_cache import get_runtime_cache
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 
 class _MaterializeBalanceAnalysisFactsProxy:
@@ -137,11 +142,17 @@ _BALANCE_ANALYSIS_CACHE = get_runtime_cache(
     "balance_analysis.read_models",
     ttl_seconds=_BALANCE_ANALYSIS_CACHE_TTL_SECONDS,
 )
+_BALANCE_WORKBOOK_PAYLOAD_CACHE: InMemoryTTLCache[
+    tuple[object, ...], tuple[dict[str, object], dict[str, object] | None]
+] = get_runtime_cache(
+    "balance_analysis.workbook_payload",
+    ttl_seconds=900,
+)
 _BalanceAnalysisCacheKey = tuple[object, ...]
 
 
 def _duckdb_storage_identity(duckdb_path: str) -> tuple[str, int, int] | None:
-    path = Path(duckdb_path)
+    path = Path(resolve_effective_read_path(duckdb_path))
     if not path.exists():
         return None
     try:
@@ -170,6 +181,44 @@ def _balance_analysis_cache_key(
         RULE_VERSION,
         CACHE_VERSION,
         *parts,
+    )
+
+
+def _balance_workbook_payload_cache_key(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    position_scope: str,
+    currency_basis: str,
+) -> _BalanceAnalysisCacheKey | None:
+    storage = _duckdb_storage_identity(duckdb_path)
+    if storage is None:
+        return None
+    if _resolve_governance_backend_mode("") == "sql-authority":
+        return None
+    governance_identities: list[tuple[object, ...]] = []
+    for stream in (CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM):
+        stream_path = Path(governance_dir) / f"{stream}.jsonl"
+        try:
+            stream_identity: tuple[object, ...] | None = _jsonl_file_cache_key(stream_path)
+        except OSError:
+            return None
+        if stream_identity is None:
+            stream_identity = (str(stream_path.resolve()), "missing", 0)
+        governance_identities.append(stream_identity)
+    resolved_path, mtime_ns, size = storage
+    return (
+        "workbook_payload",
+        resolved_path,
+        mtime_ns,
+        size,
+        *governance_identities,
+        RULE_VERSION,
+        CACHE_VERSION,
+        report_date,
+        position_scope,
+        currency_basis,
     )
 
 
@@ -896,6 +945,7 @@ def _balance_analysis_workbook_envelope_uncached(
             field_name=field_name,
             report_date=report_date,
         ),
+        quality_flag=_balance_workbook_quality_flag(workbook),
         result_payload=BalanceAnalysisWorkbookPayload(
             report_date=workbook["report_date"],
             position_scope=workbook["position_scope"],
@@ -968,6 +1018,7 @@ def balance_analysis_decision_items_envelope(
     report_date: str,
     position_scope: Literal["asset", "liability", "all"] = "all",
     currency_basis: Literal["native", "CNY"] = "CNY",
+    force_refresh: bool = False,
 ) -> dict[str, object]:
     _validate_balance_overview_filters(
         position_scope=position_scope,
@@ -979,6 +1030,7 @@ def balance_analysis_decision_items_envelope(
         report_date=report_date,
         position_scope=position_scope,
         currency_basis=currency_basis,
+        force_refresh=force_refresh,
     )
     decision_section = _extract_generated_decision_section(workbook)
     latest_statuses = BalanceAnalysisDecisionRepository(governance_dir).list_latest_statuses(
@@ -996,6 +1048,7 @@ def balance_analysis_decision_items_envelope(
             field_name=field_name,
             report_date=report_date,
         ),
+        quality_flag=_balance_workbook_quality_flag(workbook),
         result_payload=BalanceAnalysisDecisionItemsPayload(
             report_date=report_date,
             position_scope=position_scope,
@@ -1121,19 +1174,52 @@ def _build_balance_workbook_payload(
     report_date: str,
     position_scope: Literal["asset", "liability", "all"],
     currency_basis: Literal["native", "CNY"],
+    force_refresh: bool = False,
 ) -> tuple[dict[str, Any], dict[str, object] | None]:
-    return balance_analysis_workbook_service._build_balance_workbook_payload(
+    cache_key = _balance_workbook_payload_cache_key(
         duckdb_path=duckdb_path,
         governance_dir=governance_dir,
         report_date=report_date,
         position_scope=position_scope,
         currency_basis=currency_basis,
-        cache_key=CACHE_KEY,
-        job_name=BALANCE_ANALYSIS_JOB_NAME,
-        resolve_completed_formal_build_lineage_fn=_resolve_balance_build_lineage_for_workbook,
-        repo_cls=BalanceAnalysisRepository,
-        import_module_fn=importlib.import_module,
-        reload_module_fn=importlib.reload,
+    )
+
+    def build_payload() -> tuple[dict[str, Any], dict[str, object] | None]:
+        return balance_analysis_workbook_service._build_balance_workbook_payload(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+            cache_key=CACHE_KEY,
+            job_name=BALANCE_ANALYSIS_JOB_NAME,
+            resolve_completed_formal_build_lineage_fn=_resolve_balance_build_lineage_for_workbook,
+            repo_cls=BalanceAnalysisRepository,
+            import_module_fn=importlib.import_module,
+            reload_module_fn=importlib.reload,
+        )
+
+    if cache_key is None:
+        return build_payload()
+    if force_refresh:
+        generation = _BALANCE_WORKBOOK_PAYLOAD_CACHE.generation()
+        read_identity = system_read_cache_identity(cache_key)
+        payload = build_payload()
+        if (
+            cache_key == _balance_workbook_payload_cache_key(
+                duckdb_path=duckdb_path,
+                governance_dir=governance_dir,
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            )
+            and read_identity == system_read_cache_identity(cache_key)
+        ):
+            _BALANCE_WORKBOOK_PAYLOAD_CACHE.set(cache_key, payload, generation=generation)
+        return payload
+    return _BALANCE_WORKBOOK_PAYLOAD_CACHE.get_or_set(
+        cache_key,
+        build_payload,
     )
 
 
@@ -1537,6 +1623,23 @@ def _balance_workbook_evidence_rows(workbook: dict[str, Any]) -> int:
             continue
         return sum(int(row.get("row_count") or 0) for row in section.get("rows", []))
     return 0
+
+
+def _balance_workbook_quality_flag(
+    workbook: dict[str, Any],
+) -> Literal["warning"] | None:
+    for section in workbook.get("tables", []):
+        if (
+            str(section.get("key")) != "risk_alerts"
+            and str(section.get("section_kind")) != "risk_alerts"
+        ):
+            continue
+        if any(
+            str(row.get("rule_id")) == "bal_wb_risk_maturity_missing_001"
+            for row in section.get("rows", [])
+        ):
+            return "warning"
+    return None
 
 
 def _as_decimal(value: object) -> Decimal:

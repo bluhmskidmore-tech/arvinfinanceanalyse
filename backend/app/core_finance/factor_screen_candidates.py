@@ -12,14 +12,20 @@ from backend.app.core_finance.strategy_policy import POLICY
 # 均额缺失/无法定标的行 fail-closed 剔除并计数。
 # v4：执行 POLICY 声明的市场状态门控；OFF 与非活跃数据态返回 inactive 空候选，
 # WARM/HOT/OVERHEAT 保持 v3 评分与流动性过滤语义。
-FORMULA_VERSION = "rv_factor_screen_candidates_v4"
+# v5：估值（pe/pb/ps）、质量（roe/margin）与股息因子改为行业内百分位排名
+# （组内成员数 >= industry_neutral_min_group_size 才启用，小组回退全市场），
+# 消除"银行/煤炭永远便宜"的跨行业结构性偏差；动量与波动保持全市场排名。
+FORMULA_VERSION = "rv_factor_screen_candidates_v5"
 ACTIVE_MARKET_STATES = POLICY.factor_screen_active_states
-TOP_PCT = 0.10  # 取评分池前 10%（实际输出另受 MAX_CANDIDATES=30 截断）
-MAX_CANDIDATES = 30  # 最多输出 30 只
-MAX_CANDIDATES_PER_INDUSTRY = 3
-MAX_ABS_ROE = 0.60
-MAX_DIVIDEND_YIELD = 0.12
-MIN_POSITIVE_MARGIN = 0.03
+# 数值统一收编在 strategy_policy.FactorScreenParams（v4 原值，行为不变）；
+# 模块级常量名保留给既有下游 import（equity_shadow_portfolio、测试）。
+_PARAMS = POLICY.factor_screen
+TOP_PCT = _PARAMS.top_pct  # 取评分池前 10%（实际输出另受 MAX_CANDIDATES 截断）
+MAX_CANDIDATES = _PARAMS.max_candidates
+MAX_CANDIDATES_PER_INDUSTRY = _PARAMS.max_candidates_per_industry
+MAX_ABS_ROE = _PARAMS.max_abs_roe
+MAX_DIVIDEND_YIELD = _PARAMS.max_dividend_yield
+MIN_POSITIVE_MARGIN = _PARAMS.min_positive_margin
 # 近 20 日均成交额列（元口径，由服务装载层经 choice_stock_units.amount_rmb_sql 归一化后传入）。
 AVG_AMOUNT_20D_COLUMN = "avg_amount_20d"
 # 流动性地板与动量族入场过滤同源（POLICY.entry_filters.min_daily_amount，元），
@@ -282,25 +288,27 @@ def _multi_factor_selection(
         raise ValueError("max_per_industry must be positive")
 
     scored = df.copy()
-    scored["pe_score"] = _rank_low_is_good(scored["pe"])
-    scored["pb_score"] = _rank_low_is_good(scored["pb"])
-    scored["ps_score"] = _rank_low_is_good(scored["ps"])
-    scored["roe_score"] = _rank_high_is_good(scored["roe"])
-    scored["margin_score"] = _rank_high_is_good(scored["gross_margin"])
+    # v5：估值/质量/股息按行业内百分位排名（组内成员不足时回退全市场），
+    # 动量与波动是跨行业现象，保持全市场排名。
+    scored["pe_score"] = _industry_neutral_rank_low_is_good(scored, "pe")
+    scored["pb_score"] = _industry_neutral_rank_low_is_good(scored, "pb")
+    scored["ps_score"] = _industry_neutral_rank_low_is_good(scored, "ps")
+    scored["roe_score"] = _industry_neutral_rank_high_is_good(scored, "roe")
+    scored["margin_score"] = _industry_neutral_rank_high_is_good(scored, "gross_margin")
     scored["mom_3m_score"] = _rank_high_is_good(scored["three_month_return"])
     scored["mom_12m_score"] = _rank_high_is_good(scored["twelve_month_return"])
     scored["vol_score"] = _rank_low_is_good(scored["volatility"])
-    scored["div_score"] = _rank_high_is_good(scored["dividend_yield"])
+    scored["div_score"] = _industry_neutral_rank_high_is_good(scored, "dividend_yield")
     scored["score"] = (
-        0.16 * scored["roe_score"]
-        + 0.14 * scored["margin_score"]
-        + 0.12 * scored["pe_score"]
-        + 0.10 * scored["pb_score"]
-        + 0.08 * scored["ps_score"]
-        + 0.14 * scored["mom_3m_score"]
-        + 0.10 * scored["mom_12m_score"]
-        + 0.10 * scored["vol_score"]
-        + 0.06 * scored["div_score"]
+        _PARAMS.weight_roe * scored["roe_score"]
+        + _PARAMS.weight_margin * scored["margin_score"]
+        + _PARAMS.weight_pe * scored["pe_score"]
+        + _PARAMS.weight_pb * scored["pb_score"]
+        + _PARAMS.weight_ps * scored["ps_score"]
+        + _PARAMS.weight_mom_3m * scored["mom_3m_score"]
+        + _PARAMS.weight_mom_12m * scored["mom_12m_score"]
+        + _PARAMS.weight_vol * scored["vol_score"]
+        + _PARAMS.weight_div * scored["div_score"]
     )
 
     selected = (
@@ -318,6 +326,34 @@ def _rank_low_is_good(series: pd.Series) -> pd.Series:
 
 def _rank_high_is_good(series: pd.Series) -> pd.Series:
     return _rank_score(series, ascending=True)
+
+
+def _industry_neutral_rank_low_is_good(df: pd.DataFrame, column: str) -> pd.Series:
+    return _industry_neutral_rank_score(df, column, ascending=False)
+
+
+def _industry_neutral_rank_high_is_good(df: pd.DataFrame, column: str) -> pd.Series:
+    return _industry_neutral_rank_score(df, column, ascending=True)
+
+
+def _industry_neutral_rank_score(df: pd.DataFrame, column: str, *, ascending: bool) -> pd.Series:
+    """行业内百分位排名；小行业组回退全市场排名。
+
+    单只/两只股票的组内 pct 排名没有区分度（恒为 1.0 / {0.5, 1.0}），会把小行业
+    候选系统性推成满分，因此组内成员数低于
+    ``industry_neutral_min_group_size`` 时该组沿用全市场排名。
+    """
+    market_score = _rank_score(df[column], ascending=ascending)
+    industries = df["industry"].fillna("").astype(str)
+    group_sizes = industries.groupby(industries).transform("size")
+    group_score = (
+        df[column]
+        .groupby(industries, group_keys=False)
+        .apply(lambda values: _rank_score(values, ascending=ascending))
+        .reindex(df.index)
+    )
+    use_market = group_sizes < _PARAMS.industry_neutral_min_group_size
+    return market_score.where(use_market, group_score).astype("float64")
 
 
 def _rank_score(series: pd.Series, *, ascending: bool) -> pd.Series:

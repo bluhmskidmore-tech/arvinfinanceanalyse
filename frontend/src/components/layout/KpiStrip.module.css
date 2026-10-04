@@ -1,0 +1,331 @@
+/*
+ * KpiStrip 原语：单框多格 KPI 横带的机械视觉保证层（DESIGN.md §3/§5/§6）。
+ *
+ * 分隔线用 CSS grid `gap` 当发丝：容器背景 = 分隔线色，格子自己的背景 = 面板色，
+ * 缝隙处露出容器背景即形成 1px 发丝线。天然支持任意行列数与不满一行的末行，
+ * 不需要靠索引选择器精确计算"第几列/最后一行"，也就不会在列数随 cols 变化时露馅。
+ * `grid-auto-rows: 1fr` 保证所有行等高（不止同一行内等高），满足"等高分格"。
+ *
+ * 颜色只走 --dh-api-* 语义链；圆角走 var(--dh-api-radius)；不使用强制覆盖声明；无内联 style。
+ */
+
+.strip {
+  display: grid;
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  overflow: hidden;
+  background: var(--dh-api-line-soft);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+}
+
+/* 列数由 resolveCols() 计算后落到 data-cols-* 属性，避免用内联 style 传递动态列数。
+   xl 为默认（>=1280px，无 media query 时生效）；lg/md/base 依次在更窄断点覆盖。
+   1-8 覆盖当前全部已知 KPI 横带用例（4x2/5/6/8 格）。 */
+.strip[data-cols-xl="1"] { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.strip[data-cols-xl="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.strip[data-cols-xl="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.strip[data-cols-xl="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.strip[data-cols-xl="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.strip[data-cols-xl="6"] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.strip[data-cols-xl="7"] { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.strip[data-cols-xl="8"] { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+
+@media (max-width: 1279px) {
+  .strip[data-cols-lg="1"] { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+  .strip[data-cols-lg="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .strip[data-cols-lg="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .strip[data-cols-lg="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .strip[data-cols-lg="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .strip[data-cols-lg="6"] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .strip[data-cols-lg="7"] { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .strip[data-cols-lg="8"] { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1023px) {
+  .strip[data-cols-md="1"] { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+  .strip[data-cols-md="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .strip[data-cols-md="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .strip[data-cols-md="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .strip[data-cols-md="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .strip[data-cols-md="6"] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .strip[data-cols-md="7"] { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .strip[data-cols-md="8"] { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+}
+
+/* 720 折 2 列（DESIGN.md 惯例断点）；base 默认即为 2，可由 cols.base 覆盖。 */
+@media (max-width: 720px) {
+  .strip[data-cols-base="1"] { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+  .strip[data-cols-base="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .strip[data-cols-base="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .strip[data-cols-base="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .strip[data-cols-base="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .strip[data-cols-base="6"] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .strip[data-cols-base="7"] { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .strip[data-cols-base="8"] { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 112px;
+  padding: 12px 16px;
+  background: var(--dh-api-panel);
+}
+
+/* 标签 2 行 clamp + 固定 min-height：防止同排标签换行不一致导致数值错位（DESIGN.md §3/§11.9）。
+   完整文案由使用方放进 title（组件在 KpiStrip.tsx 里保证）。 */
+.label {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 32px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.valueRow {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+/* 主值固定 20px。长读数保留字号并完整换行，不能通过缩字或截断改变可读值。 */
+.value {
+  min-width: 0;
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-tabular);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.valueRow[data-compact="true"] .value {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+/* 状态词、分类名等非数值结论不使用等宽大数语言。 */
+.valueRow[data-value-variant="text"] .value {
+  font-family: var(--moss-font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.valueAdornment {
+  display: inline-flex;
+  margin-left: 6px;
+  font-family: var(--moss-font-sans);
+  font-size: 14px;
+  vertical-align: 0.08em;
+}
+
+/* 主值着色与 .delta 同色阶，但 neutral 不下沉到 muted：delta 是次要读数，
+   主值是主要读数，中性主值仍应是 ink。因此 neutral 不写规则，直接继承
+   `.value`，渲染结果与不传 tone 逐字相同。缺值（EM_DASH）由组件侧不挂
+   属性保证恒为中性——把"没有数据"染成红或绿会读成一个结论。 */
+.value[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.value[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+.value[data-tone="warning"] {
+  color: var(--dh-api-amber);
+}
+
+/* 状态优先于语气：非 ready 的格子，状态色压过 valueTone。靠的是选择器特异性
+   （0-3-0 的 `.cell[data-status] .value` 高于 0-2-0 的 `.value[data-tone]`），
+   没有用优先级强制标记。`ready` 与"不传 status"都不写规则，于是两者与既有渲染
+   逐字相同——存量调用点不受影响。 */
+.cell[data-status="loading"] .value,
+.cell[data-status="deferred"] .value {
+  color: var(--dh-api-muted);
+}
+
+.cell[data-status="failed"] .value {
+  color: var(--dh-api-red);
+}
+
+/* 单位与主值按基线对齐。窄格可整段换行，多字符单位本身不拆开。 */
+.unit {
+  margin-left: 4px;
+  color: var(--dh-api-soft);
+  font-size: 14px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  word-break: keep-all;
+}
+
+.delta {
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  color: var(--dh-api-muted);
+}
+
+.delta[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.delta[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+.delta[data-tone="warning"] {
+  color: var(--dh-api-amber);
+}
+
+.delta[data-tone="neutral"] {
+  color: var(--dh-api-muted);
+}
+
+.sparkRow {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+}
+
+.spark {
+  overflow: visible;
+}
+
+.sparkLine {
+  fill: none;
+  stroke: var(--dh-api-blue);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* 无有效历史序列时的诚实小注，禁止常数兜底序列冒充正式口径（DESIGN.md §6/§11.11）。 */
+.sparkNote {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 查询工作区使用短标签紧凑档；保留主值字号和标签完整换行能力。 */
+.strip[data-size="compact"] .cell {
+  min-height: 92px;
+  padding: 12px;
+}
+
+.strip[data-size="compact"] .label {
+  min-height: 16px;
+}
+
+/* 单位换行后从数值左边线起排；文本型读数也保留一行主值的高度。 */
+.strip[data-size="compact"] .valueRow {
+  column-gap: var(--moss-space-1);
+  min-height: 25px;
+}
+
+.strip[data-size="compact"] .unit {
+  margin-left: 0;
+  line-height: 1.25;
+}
+
+.strip[data-size="compact"] .note {
+  margin-top: auto;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+/* hero 只放宽留白；主值仍为 DESIGN §5.4 的 20px，不另设大字号。 */
+.strip[data-size="hero"] .cell {
+  gap: 8px;
+  min-height: 120px;
+  padding: 16px;
+}
+
+.strip[data-size="hero"] .label {
+  min-height: 32px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.strip[data-size="hero"] .value {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.strip[data-size="hero"] .valueRow[data-compact="true"] .value {
+  font-size: 20px;
+}
+
+.strip[data-size="hero"] .valueRow[data-value-variant="text"] .value {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.strip[data-size="hero"] .unit {
+  font-size: 14px;
+}
+
+/* loading 骨架：复用 .cell（同背板同 min-height），内部只换成安静的静态占位条，
+   不做无限循环闪烁动效（DESIGN.md §8 默认禁止装饰性循环动效）。 */
+.skeletonLabel,
+.skeletonValue,
+.skeletonDelta {
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 70%, var(--dh-api-line) 30%);
+}
+
+.skeletonLabel {
+  width: 70%;
+  height: 22px;
+}
+
+.skeletonValue {
+  width: 52%;
+  height: 24px;
+}
+
+.skeletonDelta {
+  margin-top: auto;
+  width: 38%;
+  height: 14px;
+}

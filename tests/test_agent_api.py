@@ -125,7 +125,10 @@ def test_server_catalog_enforces_confirmation_even_when_client_strips_flags(
     stripped_action = {
         "type": "execute_intent",
         "label": "Portfolio overview",
-        "payload": {"intent": "portfolio_overview"},
+        "payload": {
+            "intent": "portfolio_overview",
+            "confirmation_scope": {"user_id": "user_a"},
+        },
     }
 
     stripped_response = client.post(
@@ -134,6 +137,7 @@ def test_server_catalog_enforces_confirmation_even_when_client_strips_flags(
             "question": "组合概览",
             "context": {"suggested_action": stripped_action},
         },
+        headers=_user_headers("user_a"),
     )
     assert stripped_response.status_code == 403
     assert "confirmation token" in stripped_response.json()["detail"]
@@ -153,6 +157,7 @@ def test_server_catalog_enforces_confirmation_even_when_client_strips_flags(
                 "suggested_action_confirmation_token": valid_token,
             },
         },
+        headers=_user_headers("user_a"),
     )
     assert confirmed_response.status_code == 200
     assert len(calls) == 1
@@ -167,6 +172,7 @@ def test_server_catalog_enforces_confirmation_even_when_client_strips_flags(
                 "suggested_action_confirmation_token": forged_token,
             },
         },
+        headers=_user_headers("user_a"),
     )
     assert forged_response.status_code == 403
     assert "confirmation token" in forged_response.json()["detail"]
@@ -275,6 +281,46 @@ def test_confirmation_scope_matching_user_passes_route_gate(
     assert len(calls) == 1
 
 
+def test_confirmation_configuration_failure_returns_403_before_execution(
+    monkeypatch, tmp_path, caplog,
+) -> None:
+    import importlib
+
+    from backend.app.agent.runtime.action_token import agent_action_confirmation_token
+
+    monkeypatch.delenv("MOSS_AGENT_ACTION_TOKEN_SECRET", raising=False)
+    client, calls = _confirmation_client(monkeypatch, tmp_path)
+    # load_module refreshes the route/settings import chain; patch the active module.
+    settings_module = importlib.import_module("backend.app.governance.settings")
+    action = _scoped_confirmation_action()
+    token = agent_action_confirmation_token(
+        action_type=action["type"], label=action["label"], payload=action["payload"],
+    )
+
+    def broken_settings():
+        raise RuntimeError("private-token-configuration-detail")
+
+    monkeypatch.setattr(settings_module, "get_settings", broken_settings)
+    client = TestClient(client.app, raise_server_exceptions=False, client=("127.0.0.1", 50000))
+    response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "组合概览",
+            "context": {
+                "suggested_action": action,
+                "suggested_action_confirmation_token": token,
+            },
+        },
+        headers=_user_headers("user_a"),
+    )
+
+    assert response.status_code == 403
+    assert "confirmation token" in response.json()["detail"]
+    assert "private-token-configuration-detail" not in response.text
+    assert "private-token-configuration-detail" not in caplog.text
+    assert calls == []
+
+
 def test_confirmation_scope_cross_user_replay_rejected_at_route(
     monkeypatch,
     tmp_path,
@@ -310,12 +356,21 @@ def test_confirmation_scope_cross_user_replay_rejected_at_route(
     assert calls == []
 
 
-def test_confirmation_token_without_scope_keeps_passing(
+def test_confirmation_token_without_scope_is_rejected(
     monkeypatch,
     tmp_path,
 ) -> None:
-    """无 confirmation_scope 的历史 token 保持放行（向后兼容，仅收紧不放宽）。"""
-    from backend.app.agent.runtime.action_token import agent_action_confirmation_token
+    """无 confirmation_scope 的旧格式 token 一律拒绝（兼容放行分支已移除）。
+
+    签发入口已 fail-closed 拒发无 scope token，这里用模块内部原语直接对
+    无 scope payload 计算合法 HMAC，模拟收紧前签发、仍在 15 分钟 TTL 内的
+    旧 token：任何用户提交都必须 403。
+    """
+    import hashlib
+    import hmac
+    import time
+
+    from backend.app.agent.runtime import action_token as action_token_module
 
     client, calls = _confirmation_client(monkeypatch, tmp_path)
     legacy_action = {
@@ -323,26 +378,34 @@ def test_confirmation_token_without_scope_keeps_passing(
         "label": "Portfolio overview",
         "payload": {"intent": "portfolio_overview"},
     }
-    token = agent_action_confirmation_token(
-        action_type=legacy_action["type"],
-        label=legacy_action["label"],
-        payload=legacy_action["payload"],
-    )
+    expires_at = int(time.time()) + 300
+    digest = hmac.new(
+        action_token_module._action_token_secret().encode("utf-8"),
+        action_token_module._canonical_action_payload(
+            action_type=legacy_action["type"],
+            label=legacy_action["label"],
+            payload=legacy_action["payload"],
+            expires_at=expires_at,
+        ).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    legacy_token = f"agent_action:v1:{expires_at}:{digest}"
 
-    response = client.post(
-        "/api/agent/query",
-        json={
-            "question": "组合概览",
-            "context": {
-                "suggested_action": legacy_action,
-                "suggested_action_confirmation_token": token,
+    for submitting_user in ("user_a", "user_b"):
+        response = client.post(
+            "/api/agent/query",
+            json={
+                "question": "组合概览",
+                "context": {
+                    "suggested_action": legacy_action,
+                    "suggested_action_confirmation_token": legacy_token,
+                },
             },
-        },
-        headers=_user_headers("user_b"),
-    )
-
-    assert response.status_code == 200
-    assert len(calls) == 1
+            headers=_user_headers(submitting_user),
+        )
+        assert response.status_code == 403
+        assert "confirmation token" in response.json()["detail"]
+    assert calls == []
 
 
 def test_uncataloged_action_without_client_flags_keeps_passing(

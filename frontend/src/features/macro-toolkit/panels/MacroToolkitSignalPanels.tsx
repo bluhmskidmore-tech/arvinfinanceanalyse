@@ -27,6 +27,15 @@ import {
   publishModelChainEvidenceBridge,
 } from "./macroToolkitModelEvidenceShared";
 
+/** 运行状态 antd 色名 → 信号圆点 tone（沿用横带语义圆点语言）。 */
+function statusStateTone(status: string) {
+  const color = statusColor(status);
+  if (color === "green") return " macro-toolkit-signal-state--positive";
+  if (color === "red") return " macro-toolkit-signal-state--negative";
+  if (color === "gold") return " macro-toolkit-signal-state--missing";
+  return "";
+}
+
 export function HasonMacroStrategyPanel({
   strategy,
 }: {
@@ -73,7 +82,11 @@ export function HasonMacroStrategyPanel({
           </small>
         </div>
         <div className="macro-toolkit-tag-row">
-          <Tag color={statusColor(strategy.status)}>{statusLabel(strategy.status)}</Tag>
+          {/* D/H：模块头只留一枚口径徽标，运行状态降为语义圆点。 */}
+          <em className={`macro-toolkit-signal-state${statusStateTone(strategy.status)}`}>
+            <i aria-hidden="true" />
+            {statusLabel(strategy.status)}
+          </em>
           <Tag color={strategy.observation_only ? "gold" : "green"}>
             {strategy.observation_only ? "仅作观察" : "可执行"}
           </Tag>
@@ -399,13 +412,19 @@ export function ModelSignalMatrix({
         data-testid="macro-toolkit-model-readiness-detail"
       >
         <span>模型就绪度 · 仅观察</span>
-        {/* 段落式「/」串摘要改为模型名 + 状态徽标胶囊列表（06 区模型卡同语言）。 */}
+        {/* D：同状态徽标只在组头出现一次，行内只留模型名（明细收 title）。 */}
         {blockedEntries.length ? (
           <ul className="macro-toolkit-model-readiness-pills" aria-label="待复核模型清单">
-            {blockedEntries.map((item) => (
-              <li key={item.id} title={formatModelReadinessDetail(item)}>
-                {modelSignalMatrixLabel(item)}{" "}
-                <em data-readiness={item.readiness}>{modelReadinessStatusLabel(item.readiness)}</em>
+            {groupModelReadinessEntries(blockedEntries).map(([readiness, entries]) => (
+              <li key={readiness}>
+                <em data-readiness={readiness}>
+                  {modelReadinessStatusLabel(readiness)} {entries.length} 项
+                </em>
+                {entries.map((entry) => (
+                  <span key={entry.id} title={formatModelReadinessDetail(entry)}>
+                    {modelSignalMatrixLabel(entry)}
+                  </span>
+                ))}
               </li>
             ))}
           </ul>
@@ -421,6 +440,20 @@ export function ModelSignalMatrix({
       ) : null}
     </section>
   );
+}
+
+/** D：待复核清单按就绪状态分组，保持稳定顺序（按首次出现）。 */
+function groupModelReadinessEntries(entries: MacroToolkitModelReadiness[]) {
+  const groups = new Map<MacroToolkitModelReadiness["readiness"], MacroToolkitModelReadiness[]>();
+  for (const entry of entries) {
+    const list = groups.get(entry.readiness);
+    if (list) {
+      list.push(entry);
+    } else {
+      groups.set(entry.readiness, [entry]);
+    }
+  }
+  return Array.from(groups.entries());
 }
 
 function formatModelReadinessDetail(item: MacroToolkitModelReadiness) {

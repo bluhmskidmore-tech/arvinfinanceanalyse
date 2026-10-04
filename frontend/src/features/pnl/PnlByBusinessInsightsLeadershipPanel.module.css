@@ -22,7 +22,7 @@
 .eyebrow {
   color: var(--moss-color-primary-700);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -41,7 +41,7 @@
 .link {
   color: var(--moss-color-primary-700);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -111,14 +111,14 @@ button.item:hover {
   margin-bottom: 6px;
   color: var(--moss-color-neutral-500);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
 .value {
   color: var(--moss-color-neutral-900);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.4;
 }
 

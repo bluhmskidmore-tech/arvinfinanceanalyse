@@ -79,9 +79,10 @@
 
 .balance-movement-page-header__identity > span {
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.08em;
   line-height: 1.2;
 }
@@ -91,7 +92,7 @@
   color: var(--dh-api-ink);
   font-family: inherit;
   font-size: 18px;
-  font-weight: 720;
+  font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.45;
 }
@@ -116,9 +117,10 @@
   border-radius: var(--ib-radius);
   background: var(--dh-api-panel);
   color: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -195,9 +197,9 @@
   content: counter(bm-section, decimal-leading-zero);
   margin-right: 8px;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.08em;
 }
@@ -280,9 +282,10 @@
 .balance-movement-provenance__grid article > span,
 .balance-movement-provenance__export-note > span {
   color: var(--dh-api-blue);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
-  font-weight: 800;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.12em;
   line-height: 1.2;
 }
@@ -291,11 +294,11 @@
 .balance-movement-data-trust__header > strong {
   padding: 5px 8px;
   border: 1px solid color-mix(in srgb, var(--dh-api-amber) 38%, transparent);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: color-mix(in srgb, var(--dh-api-amber) 10%, transparent);
   color: var(--dh-api-amber);
-  font-size: 10px;
-  font-weight: 760;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -305,7 +308,7 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: clamp(20px, 1.67vw, 24px);
-  font-weight: 740;
+  font-weight: 600;
   letter-spacing: -0.025em;
   line-height: 34px;
 }
@@ -394,13 +397,14 @@
   border-radius: var(--ib-radius);
   background: var(--dh-api-panel-2);
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
 }
 
 .balance-movement-decision-hero__chips strong {
   color: var(--dh-api-ink);
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .balance-movement-decision-hero__chips [data-bucket="tpl"] {
@@ -459,8 +463,9 @@
   min-width: 0;
   overflow: hidden;
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-weight: 700;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -523,7 +528,7 @@
 .balance-movement-kpi-ribbon small {
   overflow: hidden;
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -532,9 +537,9 @@
 .balance-movement-kpi-ribbon strong {
   overflow: hidden;
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
   font-size: 20px;
-  font-weight: 760;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
   line-height: 1.2;
@@ -625,7 +630,7 @@
 .balance-movement-kpi-ribbon__signal[data-state="unavailable"] > span {
   width: 100%;
   color: var(--dh-api-muted);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 4px;
   text-align: center;
 }
@@ -660,7 +665,7 @@
   margin: 2px 0 0;
   color: var(--dh-api-ink);
   font-size: 16px;
-  font-weight: 720;
+  font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.25;
 }
@@ -669,8 +674,9 @@
   flex: 0 0 auto;
   margin: 2px 0 0;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   line-height: 1.3;
   text-align: right;
 }
@@ -679,11 +685,12 @@
   flex: 0 0 auto;
   padding: 4px 7px;
   border: 1px solid color-mix(in srgb, var(--dh-api-green) 45%, var(--dh-api-line-soft));
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   color: var(--dh-api-green);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
-  font-weight: 650;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -734,7 +741,7 @@
 .balance-movement-structure-list span {
   color: var(--dh-api-soft);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .balance-movement-driver-list strong,
@@ -742,8 +749,8 @@
 .balance-movement-structure-list strong,
 .balance-movement-structure-list small {
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
@@ -753,7 +760,6 @@
 .balance-movement-structure-list small {
   color: var(--dh-api-muted);
 }
-
 .balance-movement-driver-list progress {
   width: 100%;
   height: 8px;
@@ -798,8 +804,9 @@
 
 .balance-movement-band-unavailable > span {
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   letter-spacing: 0.02em;
 }
 
@@ -826,9 +833,10 @@
 .balance-movement-structure-mix text,
 .balance-movement-maturity-coverage text {
   fill: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
-  font-weight: 700;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
@@ -846,29 +854,23 @@
 .balance-movement-structure-mix g[data-bucket="ac"] text {
   fill: var(--bm-cat-ac);
 }
-
 .balance-movement-driver-list progress::-webkit-progress-bar {
   border-radius: 999px;
   background: var(--dh-api-panel-3, var(--dh-api-panel-2));
 }
-
 .balance-movement-driver-list progress::-webkit-progress-value {
   border-radius: 999px;
   background: var(--dh-api-blue);
 }
-
 .balance-movement-driver-list [data-bucket="tpl"] progress::-webkit-progress-value {
   background: var(--bm-cat-tpl);
 }
-
 .balance-movement-driver-list [data-bucket="oci"] progress::-webkit-progress-value {
   background: var(--bm-cat-oci);
 }
-
 .balance-movement-driver-list [data-bucket="ac"] progress::-webkit-progress-value {
   background: var(--bm-cat-ac);
 }
-
 .balance-movement-driver-list progress::-moz-progress-bar {
   border-radius: 999px;
   background: var(--dh-api-blue);
@@ -888,14 +890,14 @@
 
 .balance-movement-structure-list strong {
   font-size: 20px;
-  font-weight: 740;
+  font-weight: 600;
 }
 
 .balance-movement-compact-panel__note {
   align-self: end;
   margin: auto 0 0;
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -943,7 +945,7 @@
 .balance-movement-maturity-compact__grid small {
   overflow: hidden;
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -951,7 +953,7 @@
 
 .balance-movement-maturity-compact__grid strong {
   color: var(--dh-api-blue);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
@@ -1045,15 +1047,16 @@
 .balance-movement-concentration-compact__gauge > span,
 .balance-movement-concentration-compact__unknown > span {
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
 }
 
 .balance-movement-concentration-compact__hhi > strong {
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
   font-size: 30px;
-  font-weight: 720;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1097,9 +1100,9 @@
   position: relative;
   z-index: 1;
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
   font-size: 18px;
-  font-weight: 720;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1107,7 +1110,7 @@
   position: absolute;
   bottom: 10px;
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-style: normal;
 }
 
@@ -1127,8 +1130,8 @@
 
 .balance-movement-concentration-compact__unknown > strong {
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1166,7 +1169,8 @@
 .balance-movement-provenance__grid strong {
   overflow: hidden;
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -1177,7 +1181,7 @@
 .balance-movement-provenance__export-note p {
   margin: 0;
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -1195,9 +1199,10 @@
 
 .balance-movement-provenance__export-note strong {
   color: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
-  font-weight: 650;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1228,8 +1233,8 @@
   padding: 0 10px;
   border-bottom: 1px solid var(--dh-api-line-soft);
   color: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
@@ -1237,8 +1242,8 @@
 
 .balance-movement-accounting-buckets thead th {
   color: var(--dh-api-muted);
-  font-size: 9px;
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .balance-movement-accounting-buckets th:first-child,
@@ -1300,9 +1305,10 @@
 .balance-movement-figma-header span {
   display: block;
   color: var(--dh-api-blue);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
-  font-weight: 800;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.14em;
   line-height: 1.2;
 }
@@ -1312,7 +1318,7 @@
   margin: 5px 0 0;
   color: var(--dh-api-ink);
   font-size: 18px;
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
@@ -1322,8 +1328,9 @@
   flex: 0 0 auto;
   margin: 2px 0 0;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   line-height: 1.35;
   text-align: right;
 }
@@ -1341,7 +1348,42 @@
 }
 
 .balance-movement-maturity-panel {
-  min-height: 920px;
+  min-height: 0;
+}
+
+.balance-movement-maturity-panel .balance-movement-maturity-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.balance-movement-maturity-filter {
+  border: 0;
+  background: transparent;
+  color: var(--dh-api-blue);
+  font: inherit;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.balance-movement-maturity-filter[aria-pressed="true"] {
+  text-decoration: underline;
+}
+
+.balance-movement-maturity-filter:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+.balance-movement-maturity-detail {
+  margin-top: 20px;
+}
+
+.balance-movement-maturity-detail p {
+  color: var(--dh-api-muted);
+}
+
+.balance-movement-maturity-detail .ant-input-affix-wrapper {
+  max-width: 420px;
+  margin-bottom: 12px;
 }
 
 .balance-movement-maturity-kpis,
@@ -1373,7 +1415,7 @@
 .balance-movement-maturity-kpis span,
 .balance-movement-concentration-signal span {
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.2;
 }
 
@@ -1391,21 +1433,32 @@
 .balance-movement-maturity-kpis small {
   overflow: hidden;
   color: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .balance-movement-maturity-ladder {
   min-width: 0;
-  height: 252px;
+  height: auto;
   padding: 14px 14px 10px;
   border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-api-bg);
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+.balance-movement-maturity-chart-placeholder {
+  height: 300px;
+}
+
+.balance-movement-maturity-panel td.balance-movement-top-moves-table__delta {
+  display: table-cell;
+  color: var(--dh-api-ink);
+  text-align: right;
 }
 
 .balance-movement-maturity-ladder__heading {
@@ -1427,8 +1480,9 @@
   display: block;
   margin: 3px 0 0;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -1471,8 +1525,8 @@
 .balance-movement-maturity-ladder__readout strong,
 .balance-movement-maturity-ladder__readout span {
   overflow: hidden;
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 8px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -1481,7 +1535,7 @@
 
 .balance-movement-maturity-ladder__readout strong {
   color: var(--dh-api-soft);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .balance-movement-maturity-ladder__bar-track {
@@ -1515,7 +1569,7 @@
   align-self: center;
   overflow: hidden;
   color: var(--dh-api-soft);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1537,7 +1591,7 @@
   border-left: 2px solid var(--dh-api-blue);
   background: var(--dh-api-blue-soft);
   color: var(--dh-api-soft);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -1545,9 +1599,10 @@
 .balance-movement-concentration-governance > span {
   flex: 0 0 auto;
   color: var(--dh-api-blue);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
-  font-weight: 800;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.12em;
 }
 
@@ -1564,7 +1619,7 @@
   border-collapse: collapse;
   background: transparent;
   color: var(--dh-api-soft);
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1582,8 +1637,8 @@
   height: 32px;
   background: var(--dh-api-panel-2);
   color: var(--dh-api-muted);
-  font-size: 9px;
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .balance-movement-figma-table thead th:first-child,
@@ -1593,7 +1648,7 @@
 
 .balance-movement-figma-table tbody th {
   color: var(--dh-api-ink);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .balance-movement-figma-table tbody tr:last-child th,
@@ -1616,8 +1671,8 @@
   justify-content: flex-end;
   gap: 22px;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1685,15 +1740,16 @@
 .balance-movement-concentration-card__meta {
   margin: 4px 0 0;
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
 .balance-movement-concentration-card__header > strong {
   flex: 0 0 auto;
   color: var(--dh-api-green);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   line-height: 1.3;
   text-align: right;
 }
@@ -1710,13 +1766,13 @@
 
 .balance-movement-concentration-card__metrics span {
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .balance-movement-concentration-card__metrics strong {
   margin-left: 4px;
   color: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1730,7 +1786,7 @@
   padding-top: 7px;
   border-top: 1px solid var(--dh-api-line-soft);
   color: var(--dh-api-muted);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -1748,7 +1804,7 @@
   align-items: center;
   border-bottom: 1px solid var(--dh-api-line-soft);
   color: var(--dh-api-soft);
-  font-size: 9px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1760,26 +1816,27 @@
   grid-template-columns: 20px minmax(105px, 1fr) minmax(55px, 0.58fr) 58px 54px 46px;
   gap: 6px;
   min-height: 20px;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .balance-movement-concentration-row__rank {
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   text-align: center;
 }
 
 .balance-movement-concentration-row > strong {
   overflow: hidden;
   color: var(--dh-api-ink);
-  font-size: 10px;
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .balance-movement-concentration-row--compact > strong {
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .balance-movement-concentration-row > span:nth-last-child(-n + 3),
@@ -1835,7 +1892,7 @@
   min-height: 96px;
   place-items: center;
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* 三维度同句口径提示的区头收敛位（各卡差异时仍在卡内原文保留）。 */
@@ -1853,8 +1910,9 @@
 .balance-movement-concentration-governance > strong {
   margin-left: auto;
   color: var(--dh-api-amber);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -1885,9 +1943,10 @@
 
 .balance-movement-business-lead__decision > span {
   color: var(--dh-api-amber);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
-  font-weight: 800;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.12em;
 }
 
@@ -1906,7 +1965,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--dh-api-soft);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1935,7 +1994,7 @@
 .balance-movement-business-lead__stability span,
 .balance-movement-business-lead__stability small {
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .balance-movement-business-lead__stability strong {
@@ -1946,7 +2005,8 @@
 
 .balance-movement-business-lead__stability small {
   color: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
 }
 
 .balance-movement-business-charts {
@@ -1986,15 +2046,16 @@
   display: grid;
   gap: 2px;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 8px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   line-height: 1.3;
   text-align: right;
 }
 
 .balance-movement-mover-panel__header small {
   color: var(--dh-api-muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .balance-movement-mover-panel__rows {
@@ -2030,21 +2091,21 @@
 
 .balance-movement-mover-row__label strong {
   color: var(--dh-api-ink);
-  font-size: 9px;
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .balance-movement-mover-row__label span {
   margin-top: 3px;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 8px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
 .balance-movement-mover-row > strong {
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -2121,8 +2182,9 @@
   display: block;
   margin-top: 5px;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 8px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
 }
 
 .balance-movement-contribution__band {
@@ -2174,15 +2236,15 @@
 .balance-movement-contribution__labels span,
 .balance-movement-contribution__labels small {
   color: var(--dh-api-muted);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.25;
 }
 
 .balance-movement-contribution__labels strong {
   overflow: hidden;
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2240,8 +2302,8 @@
   border-right: 1px solid var(--dh-api-line-soft);
   border-bottom: 1px solid var(--dh-api-line-soft);
   color: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   line-height: 1;
@@ -2252,8 +2314,8 @@
 .balance-movement-six-month__matrix thead th {
   color: var(--dh-api-muted);
   font-family: inherit;
-  font-size: 9px;
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .balance-movement-six-month__matrix th:first-child,
@@ -2261,12 +2323,15 @@
   width: 120px;
   color: var(--dh-api-ink);
   text-align: left;
+  /* 行头允许折两行：字号抬到 11px 地板后「AC / OCI / TPL 合计」在 120px 内放不下一行。 */
+  white-space: normal;
+  line-height: 1.2;
 }
 
 .balance-movement-six-month__matrix tr:last-child th,
 .balance-movement-six-month__matrix tr:last-child td {
   border-bottom: 0;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .balance-movement-six-month__matrix th:last-child,
@@ -2299,7 +2364,7 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 620;
+  font-weight: 600;
   line-height: 20px;
 }
 
@@ -2322,8 +2387,9 @@
   justify-items: center;
   align-items: end;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
 }
 
 .balance-movement-six-month__bar > div {
@@ -2344,7 +2410,7 @@
   place-items: center;
   overflow: hidden;
   color: var(--dh-api-ink);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1;
 }
 
@@ -2388,8 +2454,9 @@
 
 .balance-movement-six-month__insight small {
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
 }
 
 .balance-movement-structure-bridge {
@@ -2440,14 +2507,15 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 520;
+  font-weight: 600;
   line-height: 20px;
 }
 
 .balance-movement-structure-bridge__migration > header strong,
 .balance-movement-structure-bridge__waterfall > header strong {
   color: var(--dh-api-amber);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: 500;
   line-height: 20px;
@@ -2458,8 +2526,9 @@
 .balance-movement-structure-bridge__waterfall > p {
   margin: 0;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   line-height: 18px;
 }
 
@@ -2492,7 +2561,7 @@
 .balance-movement-structure-bridge__bucket small,
 .balance-movement-structure-bridge__bucket > em {
   color: var(--bm-cat-ac);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
   font-size: 11px;
   font-style: normal;
   font-variant-numeric: tabular-nums;
@@ -2502,7 +2571,7 @@
 
 .balance-movement-structure-bridge__bucket small {
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .balance-movement-structure-bridge__bucket > em {
@@ -2532,7 +2601,7 @@
 .balance-movement-structure-bridge__migration aside p {
   margin: 0;
   color: var(--dh-api-amber);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
 }
 
@@ -2545,8 +2614,9 @@
 .balance-movement-structure-bridge__signals {
   overflow: hidden;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 8px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2570,7 +2640,7 @@
 
 .balance-movement-structure-bridge__endpoint strong {
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
@@ -2610,7 +2680,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--dh-api-ink);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2618,14 +2688,15 @@
 
 .balance-movement-structure-bridge .balance-movement-waterfall__component p {
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
 }
 
 /* 瀑布组件金额是带符号读数，恒绿即方向色谎言；未支持/残差仍走琥珀。 */
 .balance-movement-structure-bridge .balance-movement-waterfall__component strong {
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   text-align: right;
@@ -2656,14 +2727,14 @@
 .balance-movement-structure-bridge__closure span,
 .balance-movement-structure-bridge__closure strong {
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 16px;
 }
 
 .balance-movement-structure-bridge__closure strong {
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2699,7 +2770,7 @@
 .balance-movement-live-decomposition__metric strong {
   overflow: hidden;
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   line-height: 16px;
   text-overflow: ellipsis;
@@ -2708,7 +2779,7 @@
 
 .balance-movement-live-decomposition__metric strong {
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
   font-size: 15px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
@@ -2763,7 +2834,7 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 14px;
-  font-weight: 520;
+  font-weight: 600;
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2771,7 +2842,8 @@
 
 .balance-movement-live-decomposition__bucket header strong {
   color: var(--bm-cat-ac);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
 }
 
@@ -2787,8 +2859,9 @@
 .balance-movement-live-decomposition__bucket > span,
 .balance-movement-live-decomposition__bucket > footer {
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 8px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   font-weight: 400;
   line-height: 16px;
 }
@@ -2839,7 +2912,7 @@
 .balance-movement-live-decomposition__component small {
   overflow: hidden;
   color: var(--dh-api-soft);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2849,8 +2922,8 @@
 .balance-movement-live-decomposition__component strong,
 .balance-movement-live-decomposition__component small {
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   text-align: right;
@@ -2858,7 +2931,7 @@
 
 .balance-movement-live-decomposition__component small {
   color: var(--dh-api-muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .balance-movement-live-decomposition__availability {
@@ -2873,7 +2946,7 @@
   border-radius: var(--ib-radius);
   background: var(--dh-api-panel-3);
   color: var(--dh-api-amber);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2918,7 +2991,8 @@
   margin: 0;
   overflow: hidden;
   color: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   line-height: 16px;
   text-overflow: ellipsis;
@@ -2960,8 +3034,8 @@
 .balance-movement-data-states__state small {
   overflow: hidden;
   color: var(--dh-api-amber);
-  font-size: 10px;
-  font-weight: 520;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2978,8 +3052,9 @@
 .balance-movement-data-states__state span,
 .balance-movement-data-states__state small {
   color: var(--dh-api-ink);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 8px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   font-weight: 400;
 }
 
@@ -3013,7 +3088,7 @@
   padding: 11px 14px;
   color: var(--dh-api-soft);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 16px;
 }
 
@@ -3051,7 +3126,7 @@
 .balance-movement-data-states__evidence > header code {
   color: var(--dh-api-blue);
   font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .balance-movement-data-states__fields {
@@ -3081,7 +3156,7 @@
   overflow: hidden;
   color: var(--dh-api-blue);
   font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3106,7 +3181,8 @@
 }
 
 .balance-movement-data-states__rules span {
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
 }
 
 .balance-movement-data-states__pass {
@@ -3143,7 +3219,7 @@
 .balance-movement-data-states__pass strong,
 .balance-movement-data-states__pass span {
   color: var(--dh-api-green);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   line-height: 16px;
 }
@@ -3180,8 +3256,9 @@
 
 .balance-movement-supplementary-matrix > header span {
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
 }
 
 .balance-movement-supplementary-matrix .balance-movement-business-matrix__table-wrap {
@@ -3236,8 +3313,9 @@
 .balance-movement-zqtz-detail-page__header p {
   margin: 0;
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   line-height: 16px;
   text-align: right;
 }
@@ -3266,7 +3344,7 @@
   overflow: hidden;
   color: var(--dh-api-blue);
   font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3302,8 +3380,8 @@
   border-collapse: collapse;
   table-layout: fixed;
   color: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -3325,7 +3403,7 @@
   height: 32px;
   background: var(--dh-api-panel-3);
   color: var(--dh-api-muted);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .balance-movement-zqtz-detail-page__table th:first-child {
@@ -3351,7 +3429,7 @@
 .balance-movement-zqtz-detail-page__row--summary td {
   background: var(--dh-api-panel-3);
   color: var(--dh-api-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* Figma 40:19 — business balance matrix and three-bucket reconciliation. */
@@ -3386,8 +3464,8 @@
   border-collapse: collapse;
   table-layout: fixed;
   color: var(--dh-api-soft);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -3413,7 +3491,7 @@
   height: 32px;
   background: var(--dh-api-panel-3);
   color: var(--dh-api-blue);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .balance-movement-business-matrix__table th:first-child,
@@ -3422,7 +3500,7 @@
   width: 164px;
   color: var(--dh-api-ink);
   font-family: inherit;
-  font-weight: 650;
+  font-weight: 600;
   text-align: left;
 }
 
@@ -3434,7 +3512,7 @@
 .balance-movement-business-matrix__table tr[data-side="total"] td {
   background: color-mix(in srgb, var(--dh-api-blue) 4%, var(--dh-api-panel-2));
   color: var(--dh-api-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /*
@@ -3480,8 +3558,9 @@
   border-radius: var(--ib-radius);
   background: var(--dh-api-panel-2);
   color: var(--dh-api-muted);
-  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 9px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

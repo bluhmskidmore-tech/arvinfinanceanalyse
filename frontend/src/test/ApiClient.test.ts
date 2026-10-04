@@ -1,8 +1,8 @@
-﻿import { describe, expect, it, test, vi } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 import { createDeferredApiClient } from "../api/clientContext";
-import { parseBalanceAmount } from "../api/balanceAnalysisClient";
+import { parseBalanceAmount } from "../mocks/balanceAnalysisMockClient";
 
 describe("createApiClient", () => {
   it("rejects invalid mock balance amounts instead of coercing them to zero", () => {
@@ -78,6 +78,31 @@ describe("createApiClient", () => {
     );
   });
 
+  it("surfaces structured FastAPI object detail on governed market-data reads", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({
+        detail: {
+          message:
+            "Choice macro refresh terminal status is unavailable after its governed deadline.",
+          code: "choice_macro_refresh_deadline",
+          run_id: "market-home-refresh:deadline",
+          last_status: "running",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(client.getMarketDataCatalog()).rejects.toThrow(
+      "Choice macro refresh terminal status is unavailable after its governed deadline. [code=choice_macro_refresh_deadline, run_id=market-home-refresh:deadline, last_status=running]",
+    );
+  });
+
   it("uses mock mode by default", async () => {
     const client = createApiClient({ mode: "mock" });
 
@@ -99,11 +124,21 @@ describe("createApiClient", () => {
   it("keeps liability mock readers on the governed result_meta shape", async () => {
     const client = createApiClient({ mode: "mock" });
 
-    const [risk, yieldMetrics, counterparty, liabilitiesMonthly, adbMonthly] = await Promise.all([
+    const [
+      risk,
+      yieldMetrics,
+      counterparty,
+      liabilitiesMonthly,
+      liabilitiesMonthlySummary,
+      liabilitiesMonthlyDetail,
+      adbMonthly,
+    ] = await Promise.all([
       client.getLiabilityRiskBuckets("2026-01-31"),
       client.getLiabilityYieldMetrics("2026-01-31"),
       client.getLiabilityCounterparty({ reportDate: "2026-01-31", topN: 10 }),
       client.getLiabilitiesMonthly(2026),
+      client.getLiabilitiesMonthlySummary(2026),
+      client.getLiabilitiesMonthlyDetail("2026-01"),
       client.getLiabilityAdbMonthly(2026),
     ]);
 
@@ -111,9 +146,19 @@ describe("createApiClient", () => {
     expect(yieldMetrics.result_meta?.result_kind).toBe("liability_analytics.yield_metrics");
     expect(counterparty.result_meta?.result_kind).toBe("liability_analytics.counterparty");
     expect(liabilitiesMonthly.result_meta?.result_kind).toBe("liability_analytics.monthly");
+    expect(liabilitiesMonthlySummary.result_meta?.result_kind).toBe("liability_analytics.monthly_summary");
+    expect(liabilitiesMonthlyDetail.result_meta?.result_kind).toBe("liability_analytics.monthly_detail");
     expect(adbMonthly.result_meta?.result_kind).toBe("adb.monthly");
     expect(
-      [risk, yieldMetrics, counterparty, liabilitiesMonthly, adbMonthly].every(
+      [
+        risk,
+        yieldMetrics,
+        counterparty,
+        liabilitiesMonthly,
+        liabilitiesMonthlySummary,
+        liabilitiesMonthlyDetail,
+        adbMonthly,
+      ].every(
         (payload) =>
           payload.result_meta?.basis === "analytical" &&
           payload.result_meta?.formal_use_allowed === false &&
@@ -121,6 +166,49 @@ describe("createApiClient", () => {
           payload.result_meta?.vendor_status === "ok",
       ),
     ).toBe(true);
+  });
+
+  it("loads liability monthly summary and selected-month detail through split real endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: { result_kind: "liability_analytics.monthly_summary" },
+          result: {
+            year: 2026,
+            months: [],
+            ytd_avg_total_liabilities: null,
+            ytd_avg_liability_cost: null,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: { result_kind: "liability_analytics.monthly_detail" },
+          result: { year: 2026, selected_month: "2026-07", detail: null },
+        }),
+      });
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getLiabilitiesMonthlySummary(2026);
+    await client.getLiabilitiesMonthlyDetail("2026-07");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/liabilities/monthly?year=2026&detail_level=summary",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/liabilities/monthly/detail?month=2026-07",
+      expect.any(Object),
+    );
   });
 
   it("keeps mock positions list count envelopes at candidate analytical boundary", async () => {
@@ -167,7 +255,7 @@ describe("createApiClient", () => {
     });
   });
 
-  it("keeps mock balance-analysis overview, detail, basis, and summary amounts consistent", async () => {
+  it("keeps mock balance-analysis overview, detail, workbook, basis, and summary amounts consistent", async () => {
     const client = createApiClient({ mode: "mock" });
     const overview = await client.getBalanceAnalysisOverview({
       reportDate: "2025-12-31",
@@ -182,6 +270,11 @@ describe("createApiClient", () => {
       offset: 0,
     });
     const basis = await client.getBalanceAnalysisSummaryByBasis({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    const workbook = await client.getBalanceAnalysisWorkbook({
       reportDate: "2025-12-31",
       positionScope: "all",
       currencyBasis: "CNY",
@@ -206,6 +299,24 @@ describe("createApiClient", () => {
     expect(detail.result.summary[2]?.market_value_amount).toBe("41000000000.00");
     expect(basis.result.rows).toHaveLength(summary.result.rows.length);
     expect(basis.result.rows[2]?.market_value_amount).toBe("41000000000.00");
+
+    const cards = Object.fromEntries(workbook.result.cards.map((card) => [card.key, Number(card.value)]));
+    expect(cards.net_position).toBe(
+      cards.bond_assets_excluding_issue
+        + cards.interbank_assets
+        - cards.interbank_liabilities
+        - cards.issuance_liabilities,
+    );
+    expect(workbook.result.cards.find((card) => card.key === "net_position")?.label).toBe(
+      "全口径余额净头寸",
+    );
+    const maturityRow = workbook.result.tables.find((table) => table.key === "maturity_gap")?.rows[0];
+    expect(Number(maturityRow?.full_scope_gap_amount)).toBe(cards.net_position);
+    const issuanceRows =
+      workbook.result.tables.find((table) => table.key === "issuance_business_types")?.rows ?? [];
+    expect(
+      issuanceRows.reduce((total, row) => total + Number(row.balance_amount), 0),
+    ).toBe(cards.issuance_liabilities);
   });
 
   it("keeps mock manual-adjustment current state reduced while exposing full timeline", async () => {
@@ -1198,6 +1309,93 @@ describe("createApiClient", () => {
     expect(monthly.ytd_avg_liabilities).toBeNull();
   });
 
+  it("preserves top-level calibration on monthly ADB responses and leaves missing values absent", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_adb_monthly_with_calibration",
+            basis: "analytical",
+            result_kind: "adb.monthly",
+            formal_use_allowed: false,
+            source_version: "sv_adb",
+            vendor_version: "vv_none",
+            rule_version: "rv_adb",
+            cache_version: "cv_adb",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-08-31T09:00:00Z",
+          },
+          calibration: {
+            position_scope: "all",
+            currency_basis: "CNY",
+            source_families: ["zqtz", "tyw"],
+            data_basis: "formal_facts",
+            calibration_note: "资产负债范围，人民币币种，含同业（同业以本金计）",
+          },
+          result: {
+            year: 2025,
+            months: [],
+            ytd_avg_assets: 1,
+            ytd_avg_liabilities: 2,
+            ytd_asset_yield: null,
+            ytd_liability_cost: null,
+            ytd_nim: null,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_liability_adb_monthly_without_calibration",
+            basis: "analytical",
+            result_kind: "adb.monthly",
+            formal_use_allowed: false,
+            source_version: "sv_adb",
+            vendor_version: "vv_none",
+            rule_version: "rv_adb",
+            cache_version: "cv_adb",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-08-31T09:05:00Z",
+          },
+          result: {
+            year: 2025,
+            months: [],
+            ytd_avg_assets: 3,
+            ytd_avg_liabilities: 4,
+            ytd_asset_yield: null,
+            ytd_liability_cost: null,
+            ytd_nim: null,
+          },
+        }),
+      });
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const adbMonthly = await client.getAdbMonthly(2025);
+    const liabilityAdbMonthly = await client.getLiabilityAdbMonthly(2025);
+
+    expect(adbMonthly.calibration).toEqual({
+      position_scope: "all",
+      currency_basis: "CNY",
+      source_families: ["zqtz", "tyw"],
+      data_basis: "formal_facts",
+      calibration_note: "资产负债范围，人民币币种，含同业（同业以本金计）",
+    });
+    expect(liabilityAdbMonthly.calibration).toBeUndefined();
+  });
+
   it("uses real mode to fetch ledger pnl dates, summary, and detail payloads", async () => {
     const fetchMock = vi
       .fn()
@@ -1325,9 +1523,9 @@ describe("createApiClient", () => {
             surface: "/ledger-pnl formal financial indicator source contract",
             report_month: "202603",
             report_date: "2026-03-31",
-            source_workbook: "C:/Users/arvin/Desktop/2026年财务指标表-3月最终(1).xlsx",
+            source_workbook: "/synthetic/financial-indicators/2026-03.xlsx",
             source_sheet: "财务指标-汇总",
-            source_basis: "Excel 2026-03 formal financial indicator table supplied by user",
+            source_basis: "Synthetic formal-indicator fixture for source-status tests",
             source_version: "sv_formal_financial_indicators_excel_202603_contract",
             rule_version: "rv_formal_financial_indicators_source_status_v1",
             formal_use_allowed: false,
@@ -3139,6 +3337,56 @@ describe("createApiClient", () => {
     expect(stableSeriesIds).not.toContain("CDB10Y");
   });
 
+  it("returns the market-overview snapshot in deferred mock mode", async () => {
+    const client = createDeferredApiClient({ mode: "mock" });
+
+    const envelope = await client.getMarketOverviewSnapshot();
+
+    expect(envelope.result_meta.result_kind).toBe("market.snapshot");
+    expect(envelope.result.gate?.level).toBe("review");
+    expect(envelope.result.crisis?.status).toBe("ok");
+    expect(envelope.result.tape?.slots).toHaveLength(8);
+  });
+
+  it("keeps the three first-screen envelopes within the 80 KB response budget", async () => {
+    const client = createDeferredApiClient({ mode: "mock" });
+    const envelopes = await Promise.all([
+      client.getMarketOverviewSnapshot(),
+      client.getMarketDataRates(),
+      client.getChoiceMacroLatest(),
+    ]);
+    const encodedBytes = envelopes.reduce(
+      (total, envelope) => total + new TextEncoder().encode(JSON.stringify(envelope)).byteLength,
+      0,
+    );
+
+    expect(encodedBytes).toBeLessThanOrEqual(80 * 1024);
+  });
+
+  it("serializes bounded market-overview include options in real mode", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: { basis: "analytical" },
+        result: { components: {}, tape: { status: "ok", reason: null, slots: [] } },
+      }),
+    }));
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getMarketOverviewSnapshot({ include: ["tape", "news"] });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-overview/snapshot?include=tape%2Cnews",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch Choice news events with filters", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -3425,6 +3673,45 @@ describe("createApiClient", () => {
             result: {
               report_date: "2026-02-28",
               source_tables: ["data_input/pnl"],
+              rows: [],
+            },
+          }),
+        };
+      }
+      if (url.includes("/api/pnl/by-business?report_date=2026-02-28")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: {
+              trace_id: "tr_pnl_by_business",
+              basis: "formal",
+              result_kind: "pnl.by_business",
+              formal_use_allowed: true,
+              source_version: "sv_pnl",
+              vendor_version: "vv_none",
+              rule_version: "rv_pnl",
+              cache_version: "cv_pnl",
+              quality_flag: "ok",
+              vendor_status: "ok",
+              fallback_mode: "none",
+              scenario_flag: false,
+              generated_at: "2026-04-11T03:00:00Z",
+            },
+            result: {
+              report_date: "2026-02-28",
+              source_tables: ["data_input/pnl"],
+              summary: {
+                business_count: 0,
+                total_pnl: "0.00",
+                total_scale_amount: "0.00",
+                interest_income_514: "0.00",
+                fair_value_change_516: "0.00",
+                capital_gain_517: "0.00",
+                manual_adjustment: "0.00",
+                pnl_row_count: 0,
+                traced_pnl_row_count: 0,
+                untraced_pnl_row_count: 0,
+              },
               rows: [],
             },
           }),
@@ -5226,8 +5513,8 @@ describe("createApiClient", () => {
           formal_use_allowed: false,
           source_version: "sv_livermore",
           vendor_version: "vv_none",
-          rule_version: "rv_stock_analysis_workbench_v1",
-          cache_version: "cv_stock_analysis_workbench_v1",
+          rule_version: "rv_stock_analysis_workbench_v2",
+          cache_version: "cv_stock_analysis_workbench_v2",
           quality_flag: "ok",
           vendor_status: "ok",
           fallback_mode: "none",
@@ -5346,8 +5633,8 @@ describe("createApiClient", () => {
           formal_use_allowed: false,
           source_version: "sv_livermore__sv_macro",
           vendor_version: "vv_livermore__vv_macro",
-          rule_version: "rv_livermore_signal_confluence_v1",
-          cache_version: "cv_livermore_signal_confluence_v1",
+          rule_version: "rv_livermore_signal_confluence_v3_authoritative_macro_lineage",
+          cache_version: "cv_livermore_signal_confluence_v3_authoritative_macro_lineage",
           quality_flag: "warning",
           vendor_status: "ok",
           fallback_mode: "latest_snapshot",
@@ -5403,6 +5690,32 @@ describe("createApiClient", () => {
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
     );
+  });
+
+  it("returns structured macro component values in Livermore signal confluence mock mode", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const envelope = await client.getLivermoreSignalConfluence({ asOfDate: "2026-04-29" });
+    const [pmi, creditImpulse] = envelope.result.macro_context.components ?? [];
+
+    expect(envelope.result_meta.rule_version).toBe(
+      "rv_livermore_signal_confluence_v3_authoritative_macro_lineage",
+    );
+    expect(envelope.result_meta.cache_version).toBe(
+      "cv_livermore_signal_confluence_v3_authoritative_macro_lineage",
+    );
+    expect(pmi).toMatchObject({
+      input_family: "PMI",
+      value_numeric: 49.8,
+      unit: "index",
+      value_kind: "index",
+    });
+    expect(creditImpulse).toMatchObject({
+      input_family: "credit_impulse",
+      value_numeric: 0.2,
+      unit: "ppt",
+      value_kind: "ppt",
+    });
   });
 
   it("uses real mode to materialize Livermore position snapshots", async () => {

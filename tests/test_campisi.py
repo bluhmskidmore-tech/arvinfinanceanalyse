@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 
 from backend.app.core_finance import campisi as campisi_module
+from backend.app.core_finance.bond_analytics.common import compute_macaulay_duration_and_convexity
 from backend.app.core_finance.campisi import (
     _coerce_percent_curve,
     benchmark_yield_change_decimal,
@@ -26,6 +27,59 @@ from backend.app.core_finance.campisi import (
     treasury_tenor_coverage,
     usable_spread_bp,
 )
+
+
+@pytest.mark.parametrize("mode,frequency,bullet", [
+    ("每年付息", 1, False), ("每半年付息", 2, False),
+    ("每季付息", 4, False), ("按月付息", 12, False),
+    ("到期一次还本付息", 1, True),
+])
+@pytest.mark.parametrize("enhanced", [False, True])
+def test_explicit_interest_mode_uses_formal_cashflow_risk(mode, frequency, bullet, enhanced):
+    start, end, maturity = date(2026, 1, 1), date(2026, 1, 31), date(2031, 7, 15)
+    position = {
+        "bond_code": "MODE_SYNTHETIC", "market_value_start": 1000,
+        "market_value_end": 1005, "face_value_start": 1000, "face_value_end": 1000,
+        "coupon_rate_start": 0.04, "yield_to_maturity_start": 0.05,
+        "maturity_date_start": maturity, "asset_class_start": "国债",
+        "accounting_class": "FVTPL", "interest_mode_start": mode,
+        "accrued_interest_start": 0, "accrued_interest_end": 0,
+    }
+    market_start = {f"treasury_{tenor}y": 2.0 for tenor in (1, 3, 5, 7, 10, 30)}
+    market_end = {key: 3.0 for key in market_start}
+    duration, convexity = compute_macaulay_duration_and_convexity(
+        coupon_rate=Decimal("0.04"), ytm=Decimal("0.05"),
+        years_to_maturity=Decimal((maturity - start).days) / Decimal(365),
+        coupon_frequency=frequency, single_cashflow_at_maturity=bullet,
+        report_date=start, maturity_date=maturity,
+    )
+    expected_modified = duration / (1 + Decimal("0.05") / frequency)
+    result = (campisi_enhanced if enhanced else campisi_attribution)(
+        [position], market_start, market_end, start, end,
+    )
+    row = result["by_bond"][0] if enhanced else result.by_bond[0]
+    assert float(row["mod_duration"]) == pytest.approx(float(expected_modified), abs=1e-10)
+    assert float(row["treasury_effect"]) == pytest.approx(float(-expected_modified * 10), abs=1e-9)
+    assert float(row["income_return"]) == pytest.approx(40 * 30 / 365)
+    if bullet:
+        assert duration == Decimal((maturity - start).days) / Decimal(365)
+    if enhanced:
+        assert float(row["convexity_effect"]) == pytest.approx(float(convexity * Decimal("0.05")), abs=1e-9)
+
+
+@pytest.mark.parametrize("mode", [None, "", "固定", "浮动", "未知方式"])
+def test_unknown_interest_mode_keeps_legacy_frequency_with_disclosure(mode):
+    position = {
+        "bond_code": "MODE_UNKNOWN", "market_value_start": 1000, "market_value_end": 1005,
+        "face_value_start": 1000, "coupon_rate_start": 0.04,
+        "yield_to_maturity_start": 0.05, "maturity_date_start": date(2031, 7, 15),
+        "asset_class_start": "国债", "accounting_class": "FVTPL", "interest_mode_start": mode,
+        "accrued_interest_start": 0, "accrued_interest_end": 0,
+    }
+    result = campisi_attribution([position], {}, {}, date(2026, 1, 1), date(2026, 1, 31))
+    assert campisi_module._coupon_freq("国债", mode) == 2
+    assert campisi_module._coupon_freq("超短融", mode) == 1
+    assert any("coupon_frequency_asset_class_fallback" in message for message in result.diagnostics)
 
 
 class TestTreasuryYieldInterpolation:
@@ -145,8 +199,8 @@ class TestRateUnitCoercion:
         assert result["treasury_3y"] == 2.80
         assert result["treasury_5y"] == 3.10
 
-    def test_decimal_input_scaled_up(self):
-        """Decimal values (<2) should be scaled by 100."""
+    def test_small_declared_percent_input_keeps_its_unit(self):
+        """The percent-only entry point must preserve even very low rates."""
         market = {
             "treasury_1y": 0.0255,
             "treasury_3y": 0.0280,
@@ -156,9 +210,9 @@ class TestRateUnitCoercion:
             "treasury_30y": 0.0400,
         }
         result = _coerce_percent_curve(market)
-        assert result["treasury_1y"] == pytest.approx(2.55, abs=1e-6)
-        assert result["treasury_3y"] == pytest.approx(2.80, abs=1e-6)
-        assert result["treasury_5y"] == pytest.approx(3.10, abs=1e-6)
+        assert result["treasury_1y"] == pytest.approx(0.0255, abs=1e-6)
+        assert result["treasury_3y"] == pytest.approx(0.0280, abs=1e-6)
+        assert result["treasury_5y"] == pytest.approx(0.0310, abs=1e-6)
 
     def test_low_percent_input_under_two_is_not_scaled(self):
         """Chinese government yields can be valid percent values below 2%."""
@@ -945,3 +999,31 @@ class TestLargePortfolioAggregationPrecision:
 
         for key, expected_value in expected.items():
             assert result["totals"][key] == float(expected_value)
+
+
+@pytest.mark.parametrize("ytm,effective_ytm", [(0, Decimal("0")), (-0.01, Decimal("-0.01")), (None, Decimal("0.04"))])
+@pytest.mark.parametrize("enhanced", [False, True])
+def test_bullet_interest_mode_retains_zero_negative_and_missing_yield(ytm, effective_ytm, enhanced):
+    start, end, maturity = date(2026, 1, 1), date(2026, 1, 31), date(2031, 7, 15)
+    position = {
+        "bond_code": "BULLET_YIELD", "market_value_start": 1000, "market_value_end": 1005,
+        "face_value_start": 1000, "coupon_rate_start": 0.04, "yield_to_maturity_start": ytm,
+        "maturity_date_start": maturity, "asset_class_start": "国债", "accounting_class": "FVTPL",
+        "interest_mode_start": "到期一次还本付息", "accrued_interest_start": 0, "accrued_interest_end": 0,
+    }
+    market_start = {f"treasury_{tenor}y": 2.0 for tenor in (1, 3, 5, 7, 10, 30)}
+    market_end = {key: 3.0 for key in market_start}
+    result = (campisi_enhanced if enhanced else campisi_attribution)(
+        [position], market_start, market_end, start, end,
+    )
+    row = result["by_bond"][0] if enhanced else result.by_bond[0]
+    years = Decimal((maturity - start).days) / Decimal(365)
+    assert float(row["mod_duration"]) == pytest.approx(float(years / (1 + effective_ytm)), abs=1e-10)
+    if enhanced:
+        convexity = years * (years + 1) / (1 + effective_ytm) ** 2
+        assert float(row["convexity_effect"]) == pytest.approx(float(convexity * Decimal("0.05")), abs=1e-9)
+        keys = ("income_return", "treasury_effect", "spread_effect", "convexity_effect",
+                "cross_effect", "reinvestment_effect", "selection_effect")
+    else:
+        keys = ("income_return", "treasury_effect", "spread_effect", "selection_effect")
+    assert sum(float(row[key]) for key in keys) == pytest.approx(float(row["total_return"]), abs=1e-9)

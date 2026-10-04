@@ -35,6 +35,19 @@ def _stage_repo(
         python_dir = repo / python_layout / "Scripts"
         python_dir.mkdir(parents=True)
         (python_dir / "python.exe").write_bytes(b"")
+    (repo / "scripts" / "dev-python.ps1").write_text(
+        """
+function Resolve-DevPython {
+  param([string[]]$RequiredModules)
+  foreach ($layout in @(".venv", "backend/.venv")) {
+    $candidate = Join-Path $env:TEST_REPO "$layout/Scripts/python.exe"
+    if ([IO.File]::Exists($candidate)) { return $candidate }
+  }
+  throw "Repository Python not found."
+}
+""".lstrip(),
+        encoding="utf-8",
+    )
     return repo, installer
 
 
@@ -44,6 +57,7 @@ def _run_harness(
     python_layout: str | None,
     unregister: bool = False,
     include_launcher: bool = True,
+    what_if: bool = True,
 ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
     repo, installer = _stage_repo(
         tmp_path, python_layout=python_layout, include_launcher=include_launcher
@@ -78,8 +92,10 @@ function Unregister-ScheduledTask {
 }
 if ($env:TEST_UNREGISTER -eq "1") {
   & $env:TEST_INSTALLER -RepoRoot $env:TEST_REPO -Unregister
-} else {
+} elseif ($env:TEST_WHAT_IF -eq "1") {
   & $env:TEST_INSTALLER -RepoRoot $env:TEST_REPO -WhatIf
+} else {
+  & $env:TEST_INSTALLER -RepoRoot $env:TEST_REPO
 }
 if (-not $?) { exit 1 }
 """.lstrip(),
@@ -94,6 +110,7 @@ if (-not $?) { exit 1 }
         "TEST_TRIGGER_PATH": str(trigger_path),
         "TEST_UNREGISTER_PATH": str(unregister_path),
         "TEST_UNREGISTER": "1" if unregister else "0",
+        "TEST_WHAT_IF": "1" if what_if else "0",
     }
     completed = subprocess.run(
         [
@@ -118,7 +135,7 @@ if (-not $?) { exit 1 }
 
 
 @pytest.mark.parametrize("python_layout", [".venv", "backend/.venv"])
-def test_installer_dry_run_resolves_python_layout_and_preserves_task_contract(
+def test_installer_dry_run_preserves_task_contract_without_resolving_python(
     tmp_path: Path, python_layout: str
 ) -> None:
     completed, action_path, trigger_path = _run_harness(
@@ -152,12 +169,23 @@ def test_uninstall_does_not_require_python_environment(tmp_path: Path) -> None:
 
 
 def test_install_rejects_missing_python_before_creating_action(tmp_path: Path) -> None:
-    completed, action_path, trigger_path = _run_harness(tmp_path, python_layout=None)
+    completed, action_path, trigger_path = _run_harness(
+        tmp_path, python_layout=None, what_if=False
+    )
 
     assert completed.returncode != 0
     assert "Repository Python not found" in (completed.stderr or completed.stdout)
     assert not action_path.exists()
     assert not trigger_path.exists()
+
+
+def test_installer_preview_does_not_require_python_environment(tmp_path: Path) -> None:
+    completed, action_path, trigger_path = _run_harness(tmp_path, python_layout=None)
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    assert action_path.exists()
+    assert trigger_path.exists()
+    assert "What if:" in completed.stdout
 
 
 def test_install_rejects_missing_launcher_before_creating_action(

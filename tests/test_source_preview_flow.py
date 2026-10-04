@@ -1,4 +1,4 @@
-﻿import importlib
+import importlib
 import json
 import os
 import sys
@@ -14,6 +14,7 @@ from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import ROOT, load_module
 
@@ -1833,10 +1834,11 @@ def test_materialize_ignores_manifest_rows_whose_archived_paths_no_longer_exist(
         },
     )
 
-    summaries = preview_module.materialize_source_previews(
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    with repository_task_write_scope("backend.app.tasks.source_preview_flow_test"):
+        summaries = preview_module.materialize_source_previews(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
 
     assert len(summaries) == 1
     assert summaries[0]["source_version"] == "sv_valid"
@@ -1889,12 +1891,13 @@ def test_materialize_applies_source_family_scope_before_archive_boundary_validat
         },
     )
 
-    summaries = preview_module.materialize_source_previews(
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-        source_families=["tyw"],
-        archive_root=str(archive_dir),
-    )
+    with repository_task_write_scope("backend.app.tasks.source_preview_flow_test"):
+        summaries = preview_module.materialize_source_previews(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            source_families=["tyw"],
+            archive_root=str(archive_dir),
+        )
 
     assert len(summaries) == 1
     assert summaries[0]["source_version"] == "sv_valid"
@@ -2191,3 +2194,120 @@ def test_source_preview_refresh_failure_restores_preview_tables_while_writer_loc
         if line.strip()
     ]
     assert build_runs[-1]["status"] == "failed"
+
+
+@pytest.mark.parametrize(
+    ("from_existing_manifests", "expected_batch_id", "expected_ingest_calls"),
+    [
+        (False, "batch-new", 1),
+        (True, None, 0),
+    ],
+)
+def test_source_preview_refresh_existing_manifest_mode_preserves_default_ingest_contract(
+    tmp_path,
+    monkeypatch,
+    from_existing_manifests,
+    expected_batch_id,
+    expected_ingest_calls,
+):
+    import backend.app.tasks.source_preview_refresh as refresh_module
+
+    settings = type(
+        "Settings",
+        (),
+        {
+            "duckdb_path": str(tmp_path / "preview.duckdb"),
+            "governance_path": tmp_path / "governance",
+            "local_archive_path": tmp_path / "archive",
+            "governance_sql_dsn": "",
+            "source_preview_governance_backend": "jsonl",
+            "job_state_dsn": "",
+        },
+    )()
+    ingest_calls = []
+    materialize_calls = []
+
+    monkeypatch.setattr(refresh_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        refresh_module,
+        "_run_source_preview_ingest",
+        lambda **kwargs: ingest_calls.append(kwargs) or {"ingest_batch_id": "batch-new"},
+    )
+    monkeypatch.setattr(refresh_module, "snapshot_preview_tables", lambda *_args: None)
+    monkeypatch.setattr(refresh_module, "cleanup_preview_backups", lambda *_args: None)
+    monkeypatch.setattr(
+        refresh_module,
+        "materialize_source_previews",
+        lambda **kwargs: materialize_calls.append(kwargs)
+        or [
+            {
+                "source_family": "zqtz",
+                "report_date": "2026-09-16",
+                "source_version": "zqtz-new",
+            },
+            {
+                "source_family": "tyw",
+                "report_date": "2026-09-16",
+                "source_version": "tyw-new",
+            },
+        ],
+    )
+
+    result = refresh_module._refresh_source_preview_cache(
+        duckdb_path=settings.duckdb_path,
+        governance_dir=str(settings.governance_path),
+        data_root=str(tmp_path / "input"),
+        from_existing_manifests=from_existing_manifests,
+    )
+
+    assert len(ingest_calls) == expected_ingest_calls
+    assert materialize_calls[0]["ingest_batch_id"] == expected_batch_id
+    assert result["ingest_batch_id"] == expected_batch_id
+    assert result["refresh_mode"] == (
+        "existing_manifests"
+        if from_existing_manifests
+        else "ingest_then_materialize"
+    )
+
+
+def test_source_preview_refresh_from_existing_manifests_reuses_real_archives_without_ingest(
+    tmp_path, monkeypatch
+):
+    import backend.app.tasks.source_preview_refresh as refresh_module
+
+    duckdb_path, governance_dir, data_root = _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+    )
+    initial = refresh_module._refresh_source_preview_cache(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        data_root=str(data_root),
+    )
+    assert initial["status"] == "completed"
+
+    monkeypatch.setattr(
+        refresh_module,
+        "_run_source_preview_ingest",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("existing-manifest refresh must not ingest")
+        ),
+    )
+    refreshed = refresh_module._refresh_source_preview_cache(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        data_root=str(data_root),
+        from_existing_manifests=True,
+    )
+
+    assert refreshed["status"] == "completed"
+    assert refreshed["refresh_mode"] == "existing_manifests"
+    assert refreshed["ingest_batch_id"] is None
+    assert set(refreshed["preview_sources"]) == {"zqtz", "tyw"}
+    with duckdb.connect(str(duckdb_path), read_only=True) as conn:
+        assert {
+            row[0]
+            for row in conn.execute(
+                "select distinct source_family from phase1_source_preview_summary"
+            ).fetchall()
+        } == {"zqtz", "tyw"}

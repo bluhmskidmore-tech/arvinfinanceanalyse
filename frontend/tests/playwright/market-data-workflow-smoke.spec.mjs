@@ -13,27 +13,35 @@ async function activateWithKeyboard(locator) {
 }
 
 test.describe("market data workflow smoke", () => {
-  test("spreads tab, linkage collapse, and tushare currency filter", async ({ page }) => {
+  test("linkage summary card, cross-asset handoff, and tushare currency filter", async ({ page }) => {
     await openMarketData(page);
 
-    await activateWithKeyboard(page.getByTestId("market-data-macro-tab-trigger-spreads"));
-    const spreadsPanel = page.getByTestId("market-data-macro-tab-spreads");
-    await expect(spreadsPanel).toBeVisible();
-    const spreadTable = spreadsPanel.getByTestId("market-data-linkage-spread-table");
-    await expect(spreadTable).toBeVisible({ timeout: 30_000 });
-    await expect(spreadTable.locator(".market-data-spread-tenor-loading")).toHaveCount(0, { timeout: 30_000 });
-    await expect(spreadTable.getByTestId("market-data-macro-spread-slot-5Y")).toBeVisible({ timeout: 30_000 });
+    // IA 阶段 2：02 区利差 Tab 与联动折叠区退役，明细读面由 /cross-asset 承接。
+    await expect(page.getByTestId("market-data-macro-tab-trigger-spreads")).toHaveCount(0);
+    await expect(page.getByTestId("market-data-linkage-collapse")).toHaveCount(0);
+    await expect(page.getByTestId("market-data-linkage-spreads-audit")).toHaveCount(0);
 
-    const linkageCollapse = page.getByTestId("market-data-linkage-collapse");
-    await activateWithKeyboard(linkageCollapse.locator(".ant-collapse-header").first());
-    await expect(linkageCollapse).toBeVisible();
+    const linkageSummary = page.getByTestId("market-data-linkage-summary-card");
+    await linkageSummary.scrollIntoViewIfNeeded();
+    await expect(linkageSummary).toBeVisible();
+    await expect(page.getByTestId("market-data-linkage-caveat")).toContainText("分析口径");
+    // 摘要卡近视口才发联动请求：等载荷回来后报告日期必须显式可读。
+    await expect
+      .poll(
+        async () =>
+          ((await page.getByTestId("market-data-linkage-summary-report-date").textContent()) ?? "").trim(),
+        { timeout: 30_000 },
+      )
+      .toMatch(/报告日期\s*\d{4}-\d{2}-\d{2}/);
+    await expect(page.getByTestId("market-data-linkage-summary-link")).toHaveAttribute(
+      "href",
+      "/cross-asset#cross-asset-zone-linkage",
+    );
 
-    const auditBridge = page.getByTestId("market-data-linkage-spreads-audit");
-    await expect(auditBridge).toBeVisible();
-    await expect(page.getByTestId("market-data-linkage-spreads-audit-open")).toBeVisible();
-    await page.getByTestId("market-data-linkage-spreads-audit-open").click();
-    await expect(page.getByTestId("market-data-macro-tab-spreads")).toBeVisible();
+    await page.getByTestId("market-data-linkage-summary-link").click();
+    await expect(page.getByTestId("cross-asset-zone-linkage")).toBeVisible({ timeout: 30_000 });
 
+    await openMarketData(page);
     await activateWithKeyboard(
       page.getByTestId("market-data-tushare-collapse").locator(".ant-collapse-header").first(),
     );

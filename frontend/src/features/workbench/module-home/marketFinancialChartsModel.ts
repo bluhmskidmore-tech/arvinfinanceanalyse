@@ -9,6 +9,7 @@ import type {
   MacroToolkitStrategySummariesPayload,
 } from "../../../api/macroToolkitClient";
 import type { EChartsOption } from "../../../lib/echarts";
+import { designTokens } from "../../../theme/designSystem";
 import {
   MARKET_CHART_STATIC_PALETTE,
   type MarketChartPalette,
@@ -25,7 +26,6 @@ type MarketChartColors = {
   ink: string;
   muted: string;
   grid: string;
-  surface: string;
   /** 强调色柱面内标签的墨色：取页面底色以保证对比。 */
   labelOnAccent: string;
 };
@@ -41,10 +41,6 @@ type MarketChartTheme = {
   tooltip: {
     trigger: "axis";
     confine: boolean;
-    backgroundColor: string;
-    borderColor: string;
-    borderWidth: number;
-    textStyle: { color: string; fontSize: number };
   };
 };
 
@@ -63,7 +59,6 @@ function createMarketChartTheme(palette: MarketChartPalette): MarketChartTheme {
     ink: palette.inkSoft,
     muted: palette.inkMuted,
     grid: palette.lineSoft,
-    surface: palette.panel2,
     labelOnAccent: palette.canvas,
   };
   return {
@@ -82,7 +77,7 @@ function createMarketChartTheme(palette: MarketChartPalette): MarketChartTheme {
     axisLabel: {
       color: colors.muted,
       fontSize: 10,
-      fontFamily: '"Cascadia Mono", "SFMono-Regular", monospace',
+      fontFamily: designTokens.fontFamily.tabular,
     },
     splitLine: {
       lineStyle: {
@@ -99,13 +94,6 @@ function createMarketChartTheme(palette: MarketChartPalette): MarketChartTheme {
     tooltip: {
       trigger: "axis" as const,
       confine: true,
-      backgroundColor: colors.surface,
-      borderColor: colors.grid,
-      borderWidth: 1,
-      textStyle: {
-        color: palette.ink,
-        fontSize: 11,
-      },
     },
   };
 }
@@ -119,15 +107,6 @@ const lineSeries = {
   symbol: "none" as const,
   showSymbol: false,
   connectNulls: false,
-};
-
-const legend = {
-  top: 0,
-  left: 0,
-  itemWidth: 14,
-  itemHeight: 2,
-  itemGap: 14,
-  icon: "roundRect",
 };
 
 export type MarketFinancialChartSpec = {
@@ -175,6 +154,16 @@ export type MarketFinancialChartSection = {
   charts: MarketFinancialChartSpec[];
 };
 
+/** 首页实际展示的原图；首页渲染与专题去重必须完整消费同一清单。 */
+export const DENSE_FIRST_SCREEN_CHART_PICKS = [
+  { sectionKey: "rates", chartIndex: 1, indexLabel: "B" },
+  { sectionKey: "cross", chartIndex: 1, indexLabel: "C" },
+] as const satisfies readonly {
+  sectionKey: MarketFinancialChartSection["key"];
+  chartIndex: number;
+  indexLabel: string;
+}[];
+
 export type MarketFinancialChartsInput = {
   latest?: ChoiceMacroLatestPayload;
   rates?: ChoiceMacroLatestPayload;
@@ -189,6 +178,7 @@ export type MarketFinancialChartsInput = {
 type LineInput = {
   name: string;
   values: Map<string, number>;
+  prominence?: "primary" | "secondary";
 };
 
 type YieldCurveRow = {
@@ -218,6 +208,114 @@ function timelineRange(series: ChoiceMacroLatestPoint[]) {
   return `${dates[0]}–${dates.at(-1)}`;
 }
 
+const MIN_ALIGNED_OBSERVATIONS = 2;
+
+/**
+ * 后端 `recent_points` 按序列各取最近 N 行，更新节奏不同的序列窗口起点也不同：
+ * 停更序列会把并集日轴向左拉宽，让数据齐全的序列在左侧留出整段空白，看起来像断点。
+ * 这里把共享日轴收敛到各序列的共同起点；只有当收敛后每条序列仍保有 2 个以上可见
+ * 观测时才收敛，避免把交错的稀疏观测裁成孤点。窗口内的缺口仍然保持为空。
+ */
+export function sharedDateAxis(
+  dateGroups: readonly (readonly string[])[],
+): string[] {
+  const union = [...new Set(dateGroups.flat())].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  if (dateGroups.length < 2 || dateGroups.some((group) => group.length === 0))
+    return union;
+  const alignedStart = dateGroups
+    .map(
+      (group) =>
+        [...group].sort((left, right) => left.localeCompare(right))[0],
+    )
+    .reduce((latest, start) => (start > latest ? start : latest));
+  const keepsEverySeries = dateGroups.every(
+    (group) =>
+      group.filter((date) => date >= alignedStart).length >=
+      MIN_ALIGNED_OBSERVATIONS,
+  );
+  return keepsEverySeries
+    ? union.filter((date) => date >= alignedStart)
+    : union;
+}
+
+/** 最新观测早于日轴末端的序列：其右侧空白是真实停更，需要在脚注写明。 */
+function laggingSeriesNotes(lines: LineInput[], axisEnd: string | undefined) {
+  if (!axisEnd) return [];
+  return lines.flatMap((line) => {
+    const latestDate = [...line.values.keys()]
+      .sort((left, right) => left.localeCompare(right))
+      .at(-1);
+    return latestDate && latestDate < axisEnd
+      ? [`${line.name} 最新观测 ${latestDate}`]
+      : [];
+  });
+}
+
+export type InnerGapRange = { start: string; end: string };
+
+/**
+ * 序列自身首末观测之间、共享日轴上有刻度但该序列缺失的日期段：这是窗口中段的
+ * 真实数据缺口（例如政策操作类序列的无操作日）。缺失日期按共享日轴的相邻关系
+ * 聚合成区间，供脚注披露与图内缺口标注共用。
+ */
+export function innerGapRanges(
+  observedDates: readonly string[],
+  axis: readonly string[],
+): InnerGapRange[] {
+  const observed = new Set(observedDates);
+  if (observed.size === 0) return [];
+  const sorted = [...observed].sort((left, right) => left.localeCompare(right));
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const gapRuns: string[][] = [];
+  let current: string[] | null = null;
+  for (const date of axis) {
+    if (date <= first || date >= last || observed.has(date)) {
+      current = null;
+      continue;
+    }
+    if (current) {
+      current.push(date);
+    } else {
+      current = [date];
+      gapRuns.push(current);
+    }
+  }
+  return gapRuns.map((run) => ({ start: run[0], end: run[run.length - 1] }));
+}
+
+/** 窗口内缺口的脚注文案：「名称 起–止 无观测」，断线不披露会被误读为链路故障。 */
+export function innerGapNotes(
+  series: readonly { name: string; dates: readonly string[] }[],
+  axis: readonly string[],
+): string[] {
+  return series.flatMap((line) => {
+    const ranges = innerGapRanges(line.dates, axis);
+    if (ranges.length === 0) return [];
+    const labels = ranges.map((range) =>
+      range.start === range.end ? range.start : `${range.start}–${range.end}`,
+    );
+    return [`${line.name} ${labels.join("、")} 无观测`];
+  });
+}
+
+/**
+ * 只给前后观测都缺失的孤立点画小圆点，其余点不画符号：断口切到窗口边缘时
+ * 单个观测否则完全不可见（期限结构图「孤立观测画小圆点」同一先例）。
+ */
+export function orphanSymbolSize(
+  data: readonly (number | null)[],
+  size: number,
+): (value: unknown, params: { dataIndex: number }) => number {
+  const isOrphan = (index: number) =>
+    data[index] != null &&
+    (index === 0 || data[index - 1] == null) &&
+    (index === data.length - 1 || data[index + 1] == null);
+  return (_value, params) => (isOrphan(params.dataIndex) ? size : 0);
+}
+
 function compactSeriesName(series: ChoiceMacroLatestPoint) {
   const name = series.series_name;
   const tenor = name.match(/(\d+(?:\.\d+)?)\s*年/)?.[1];
@@ -241,16 +339,22 @@ function buildMultiLineOption(
     unit: string;
     decimals?: number;
     scale?: boolean;
+    /** 已对齐的共享日轴；缺省时按各序列日期的并集绘制。 */
+    dates?: readonly string[];
   },
 ): EChartsOption | null {
   const { lineColors: LINE_COLORS, axisLabel, axisLine, splitLine, tooltip } =
     theme;
   if (lines.length === 0) return null;
   const dates = [
-    ...new Set(lines.flatMap((line) => [...line.values.keys()])),
-  ].sort((left, right) => left.localeCompare(right));
+    ...(options.dates ??
+      [...new Set(lines.flatMap((line) => [...line.values.keys()]))].sort(
+        (left, right) => left.localeCompare(right),
+      )),
+  ];
   if (dates.length < 2) return null;
   const decimals = options.decimals ?? 2;
+  const hasProminence = lines.some((line) => line.prominence != null);
   return {
     animationDuration: 420,
     color: [...LINE_COLORS],
@@ -259,16 +363,10 @@ function buildMultiLineOption(
       valueFormatter: (value: unknown) =>
         finiteNumber(value) ? `${value.toFixed(decimals)}${options.unit}` : EM_DASH,
     },
-    legend: {
-      ...legend,
-      textStyle: axisLabel,
-    },
     grid: {
       left: 0,
       right: 6,
       top: 26,
-      bottom: 0,
-      containLabel: true,
     },
     xAxis: {
       type: "category",
@@ -284,27 +382,68 @@ function buildMultiLineOption(
     yAxis: {
       type: "value",
       scale: options.scale ?? true,
+      splitNumber: hasProminence ? 4 : undefined,
       axisLabel: {
         ...axisLabel,
         formatter: (value: number) => value.toFixed(decimals),
       },
       axisLine: { show: false },
       axisTick: { show: false },
-      splitLine,
+      splitLine: hasProminence
+        ? {
+            ...splitLine,
+            lineStyle: { ...splitLine.lineStyle, opacity: 0.28 },
+          }
+        : splitLine,
     },
-    series: lines.map((line, index) => ({
-      ...lineSeries,
-      name: line.name,
-      lineStyle: {
-        color: LINE_COLORS[index % LINE_COLORS.length],
-        width: index === 0 ? 1.8 : 1.4,
-      },
-      itemStyle: {
-        color: LINE_COLORS[index % LINE_COLORS.length],
-      },
-      emphasis: { focus: "series" },
-      data: dates.map((date) => line.values.get(date) ?? null),
-    })),
+    series: lines.map((line, index) => {
+      const color = LINE_COLORS[index % LINE_COLORS.length];
+      const data = dates.map((date) => line.values.get(date) ?? null);
+      const gaps = innerGapRanges([...line.values.keys()], dates);
+      const isPrimary = line.prominence === "primary";
+      const isSecondary = line.prominence === "secondary";
+      return {
+        ...lineSeries,
+        name: line.name,
+        showSymbol: true,
+        symbol: "circle" as const,
+        symbolSize: orphanSymbolSize(data, 4),
+        lineStyle: {
+          color,
+          width: isPrimary ? 2.1 : isSecondary ? 1.1 : index === 0 ? 1.8 : 1.4,
+          ...(line.prominence
+            ? { opacity: isPrimary ? 0.96 : 0.5 }
+            : {}),
+        },
+        itemStyle: {
+          color,
+          ...(line.prominence
+            ? { opacity: isPrimary ? 0.96 : 0.5 }
+            : {}),
+        },
+        emphasis: { focus: "series" as const },
+        data,
+        // 窗口内缺口保留低透明度纵带；有主次层级的图改用中性色，避免与折线争抢注意力。
+        ...(gaps.length > 0
+          ? {
+              markArea: {
+                silent: true,
+                itemStyle: {
+                  color: hasProminence ? theme.colors.muted : color,
+                  opacity: hasProminence ? 0.035 : 0.1,
+                },
+                data: gaps.map(
+                  (gap) =>
+                    [{ xAxis: gap.start }, { xAxis: gap.end }] as [
+                      { xAxis: string },
+                      { xAxis: string },
+                    ],
+                ),
+              },
+            }
+          : {}),
+      };
+    }),
   };
 }
 
@@ -333,6 +472,30 @@ function latestCoherentYieldCurveRows(rows: YieldCurveRow[]) {
       ? rows.filter((row) => row.tradeDate === selectedDate)
       : [],
   };
+}
+
+/**
+ * 数值横轴下 axis tooltip 的默认标题是坐标数值（无期限语义），null 观测会显示
+ * 成 "-"：改为标题「NY」+ 每行「曲线名 收益率%」，缺测期限显示 EM_DASH，与旧
+ * category 轴 valueFormatter 的披露口径一致。
+ */
+function yieldCurveTooltipFormatter(params: unknown): string {
+  const items = (Array.isArray(params) ? params : [params]) as {
+    seriesName?: string;
+    marker?: string;
+    value?: unknown;
+  }[];
+  const tenor = items
+    .map((item) => (Array.isArray(item.value) ? item.value[0] : null))
+    .find(finiteNumber);
+  const lines = items.map((item) => {
+    const value = Array.isArray(item.value) ? item.value[1] : null;
+    const text = finiteNumber(value) ? `${value.toFixed(3)}%` : EM_DASH;
+    return `${item.marker ?? ""}${item.seriesName ?? ""} ${text}`;
+  });
+  return [finiteNumber(tenor) ? `${tenor}Y` : "", ...lines]
+    .filter(Boolean)
+    .join("<br/>");
 }
 
 function buildYieldCurveChart(
@@ -446,6 +609,13 @@ function buildYieldCurveChart(
         `${entry.curve}仅返回 ${entry.labels.join("/")} 共 ${entry.labels.length} 点，两序列期限不完全重叠属数据缺口`,
     )
     .join("；");
+  // 单边曲线整条缺失时 coverageGapNote 不触发（只剩一条曲线，点数比较无对象）：
+  // 必须单独披露缺失方，否则标题与导读仍引导读者做双曲线比较。
+  const missingCurve =
+    curves.length === 1 ? (curves[0] === "国债" ? "国开" : "国债") : undefined;
+  const missingCurveNote = missingCurve
+    ? `${missingCurve}未返回本日报价，仅绘制${curves[0]}曲线`
+    : "";
   const option: EChartsOption | null =
     selectedRows.length === 0
       ? null
@@ -463,8 +633,6 @@ function buildYieldCurveChart(
               left: 48,
               right: 28,
               top: 16,
-              bottom: 30,
-              containLabel: true,
             },
             xAxis: {
               type: "category",
@@ -511,27 +679,26 @@ function buildYieldCurveChart(
           color: [COLORS.lavender, COLORS.gold],
           tooltip: {
             ...tooltip,
-            valueFormatter: (value: unknown) =>
-              finiteNumber(value) ? `${value.toFixed(3)}%` : EM_DASH,
-          },
-          legend: {
-            ...legend,
-            textStyle: axisLabel,
+            formatter: yieldCurveTooltipFormatter,
           },
           grid: {
             left: 0,
             right: 10,
             top: 26,
-            bottom: 0,
-            containLabel: true,
           },
+          // 期限横轴按年限真实比例定位：category 等距会把短端拉宽、长端压缩，
+          // 扭曲曲线斜率的视觉读数（首页「期限小图按真实比例定位」同一先例）。
           xAxis: {
-            type: "category",
-            boundaryGap: false,
-            data: tenors.map((tenor) => `${tenor}Y`),
-            axisLabel,
+            type: "value",
+            min: 0,
+            max: tenors[tenors.length - 1],
+            axisLabel: {
+              ...axisLabel,
+              formatter: (value: number) => `${value}Y`,
+            },
             axisLine,
             axisTick: { show: false },
+            splitLine: { show: false },
           },
           yAxis: {
             type: "value",
@@ -558,12 +725,14 @@ function buildYieldCurveChart(
             itemStyle: {
               color: index === 0 ? COLORS.lavender : COLORS.gold,
             },
-            data: tenors.map(
-              (tenor) =>
-                selectedRows.find(
-                  (row) => row.curve === curve && row.tenor === tenor,
-                )?.value ?? null,
-            ),
+            // [期限, 收益率] 数值对；缺测期限保留 null 断点（connectNulls 为
+            // false），避免跨缺口直连把数据缺口画成一段假斜率。
+            data: tenors.map((tenor) => [
+              tenor,
+              selectedRows.find(
+                (row) => row.curve === curve && row.tenor === tenor,
+              )?.value ?? null,
+            ]),
           })),
         };
   return {
@@ -577,7 +746,9 @@ function buildYieldCurveChart(
           ? `${singleTenorMessage} 数值直接取自后端最新收益率。`
           : !hasRenderableCurve && tenors.length >= 2
             ? `${sparseTenorsMessage} 数值直接取自后端最新收益率。`
-            : `共 ${tenors.length} 个唯一期限；直接绘制后端最新收益率，纵轴采用聚焦刻度以辨识期限结构。`,
+            : `共 ${tenors.length} 个唯一期限；${
+                missingCurveNote ? `${missingCurveNote}；` : ""
+              }直接绘制后端最新收益率，纵轴采用聚焦刻度以辨识期限结构。`,
     readingGuide:
       tenors.length === 0
         ? "等待同一报告日的有效收益率报价；不补点、不插值。"
@@ -587,9 +758,11 @@ function buildYieldCurveChart(
             ? "读取当前期限的已返回收益率；缺少其他期限，不能判断期限结构。"
             : !hasRenderableCurve && tenors.length >= 2
               ? "逐项核对已返回报价；不同曲线的单个期限不能连成一条曲线。"
-              : coverageGapNote
-                ? `比较同一日期各期限的斜率，以及国债与国开的相对水平。${coverageGapNote}。`
-                : "比较同一日期各期限的斜率，以及国债与国开的相对水平。",
+              : missingCurve
+                ? `比较同一日期${curves[0]}各期限的斜率；${missingCurve}未返回本日报价，不比较两条曲线的相对水平。`
+                : coverageGapNote
+                  ? `比较同一日期各期限的斜率，以及国债与国开的相对水平。${coverageGapNote}。`
+                  : "比较同一日期各期限的斜率，以及国债与国开的相对水平。",
     yieldCurveDisplay,
     option,
     height: 300,
@@ -632,31 +805,58 @@ function buildKeyRateTrend(
   rates: ChoiceMacroLatestPayload | undefined,
 ): MarketFinancialChartSpec {
   const selected = pickKeyRateSeries(latest, rates);
-  const lines = selected.map((series) => ({
-    name: compactSeriesName(series),
-    values: new Map(
-      sortedRecentPoints(series).map((point) => [
-        point.trade_date,
-        point.value_numeric,
-      ]),
-    ),
-  }));
+  const lines = selected.map((series): LineInput => {
+    const baseName = compactSeriesName(series);
+    const isFdrProxy = baseName === "DR007" && (
+      series.vendor_name === "public_repo_rate_query" ||
+      /\bFDR007\b/i.test(series.policy_note ?? "")
+    );
+    return {
+      name: isFdrProxy ? "FDR007（代理参考）" : baseName,
+      prominence:
+        baseName === "国债 10Y" || baseName === "DR007" ? "primary" : "secondary",
+      values: new Map(
+        sortedRecentPoints(series).map((point) => [
+          point.trade_date,
+          point.value_numeric,
+        ]),
+      ),
+    };
+  });
+  const dates = sharedDateAxis(
+    lines.map((line) => [...line.values.keys()]),
+  );
+  const laggingNotes = laggingSeriesNotes(lines, dates.at(-1));
+  const gapNotes = innerGapNotes(
+    lines.map((line) => ({ name: line.name, dates: [...line.values.keys()] })),
+    dates,
+  );
   return {
     key: "key-rate-trend",
     title: "关键利率近 20 期走势",
-    subtitle: `${timelineRange(selected)} · %`,
-    footnote: `共 ${selected.length} 条同单位利率序列；仅比较百分比利率原值，不同日期缺口保持为空，不做前端插值。`,
+    subtitle: `${
+      dates.length === 0 ? "日期未返回" : `${dates[0]}–${dates.at(-1)}`
+    } · %`,
+    footnote: `${selected.length} 条百分比利率序列；日轴对齐到各序列共同起点，缺口留空，不插值。${
+      gapNotes.length > 0 ? `${gapNotes.join("；")}，缺口段留空。` : ""
+    }${
+      laggingNotes.length > 0 ? `${laggingNotes.join("；")}，其后留空。` : ""
+    }`,
     option: buildMultiLineOption(theme, lines, {
       unit: "%",
       decimals: 3,
+      dates,
     }),
     height: 300,
   };
 }
 
-function pickCrossAssetSeries(latest: ChoiceMacroLatestPayload | undefined) {
+function pickCrossAssetSeries(
+  latest: ChoiceMacroLatestPayload | undefined,
+  minimumObservations = 8,
+) {
   const all = (latest?.series ?? []).filter(
-    (series) => (series.recent_points?.length ?? 0) >= 8,
+    (series) => (series.recent_points?.length ?? 0) >= minimumObservations,
   );
   const patterns = [
     /沪深300指数收盘价/i,
@@ -709,15 +909,50 @@ function buildLatestCrossAssetMove(
   latest: ChoiceMacroLatestPayload | undefined,
 ): MarketFinancialChartSpec {
   const { colors: COLORS, axisLabel, axisLine, splitLine, tooltip } = theme;
+  const unavailableNotes = pickCrossAssetSeries(latest, 0)
+    .filter((series) => (series.recent_points?.length ?? 0) < 8)
+    .map((series) => {
+      const count = (series.recent_points ?? []).filter((point) =>
+        finiteNumber(point.value_numeric),
+      ).length;
+      const reason = count < 2
+        ? "不足两个有效观测，无法比较"
+        : "历史观测不足 8 期，本图暂不展示";
+      return `${compactSeriesName(series)}${reason}`;
+    });
   const selected = pickCrossAssetSeries(latest)
     .map((series) => {
+      const name = compactSeriesName(series);
+      if ((series.recent_points ?? []).some((point) =>
+        finiteNumber(point.value_numeric) && (
+          typeof point.trade_date !== "string"
+          || !/^\d{4}-\d{2}-\d{2}$/.test(point.trade_date)
+          || !Number.isFinite(Date.parse(point.trade_date))
+          || new Date(point.trade_date).toISOString().slice(0, 10) !== point.trade_date
+        ),
+      )) {
+        unavailableNotes.push(`${name}观测日期缺失或格式无效，无法核验比较区间`);
+        return null;
+      }
       const points = sortedRecentPoints(series);
       const latestPoint = points.at(-1);
       const previousPoint = points.at(-2);
-      if (!latestPoint || !previousPoint || previousPoint.value_numeric === 0)
+      if (!latestPoint || !previousPoint) {
+        unavailableNotes.push(`${name}不足两个有效观测，无法比较`);
         return null;
+      }
+      if (previousPoint.trade_date === latestPoint.trade_date) {
+        unavailableNotes.push(`${name}最近两个有效观测日期重复，无法核验两期比较`);
+        return null;
+      }
+      if (previousPoint.value_numeric === 0) {
+        unavailableNotes.push(`${name}前值为零，无法计算变化率`);
+        return null;
+      }
       return {
-        name: compactSeriesName(series),
+        name,
+        previousDate: previousPoint.trade_date,
+        latestDate: latestPoint.trade_date,
         value:
           ((latestPoint.value_numeric - previousPoint.value_numeric) /
             Math.abs(previousPoint.value_numeric)) *
@@ -739,15 +974,16 @@ function buildLatestCrossAssetMove(
                 : EM_DASH,
           },
           grid: {
-            left: 82,
+            left: 8,
             right: 30,
-            top: 16,
+            top: 8,
             bottom: 30,
             containLabel: true,
           },
           xAxis: {
             type: "value",
             name: "%",
+            splitNumber: 3,
             nameTextStyle: axisLabel,
             axisLabel,
             axisLine,
@@ -755,8 +991,10 @@ function buildLatestCrossAssetMove(
           },
           yAxis: {
             type: "category",
-            data: selected.map((item) => item.name),
-            axisLabel,
+            data: selected.map((item) =>
+              `${item.name}\n${item.previousDate}\n至 ${item.latestDate}`,
+            ),
+            axisLabel: { ...axisLabel, interval: 0, lineHeight: 14 },
             axisLine: { show: false },
             axisTick: { show: false },
           },
@@ -766,13 +1004,14 @@ function buildLatestCrossAssetMove(
               barMaxWidth: 14,
               data: selected.map((item) => ({
                 value: item.value,
+                previousDate: item.previousDate,
+                latestDate: item.latestDate,
                 itemStyle: {
                   color:
                     item.value >= 0 ? COLORS.lavender : COLORS.risk,
                   borderColor:
                     item.value >= 0 ? COLORS.lavender : COLORS.risk,
                   borderWidth: 1,
-                  borderRadius: item.value >= 0 ? [0, 3, 3, 0] : [3, 0, 0, 3],
                 },
               })),
               label: {
@@ -791,10 +1030,10 @@ function buildLatestCrossAssetMove(
   return {
     key: "cross-asset-move",
     title: "最新一期跨资产变动",
-    subtitle: `${selected.length} 类资产 · 相邻两个后端观测的百分比变化`,
-    footnote: "显示变化率而非绝对点差；正负以实心/开放填充和零轴共同区分。",
+    subtitle: `${selected.length} 类资产 · 各自相邻两期观测的百分比变化`,
+    footnote: `各资产比较日期见图中标签，采用各自相邻两期观测，非同日涨跌排行。显示变化率而非绝对点差；正值紫色、负值红色，并以零轴区分方向。${unavailableNotes.length > 0 ? `未绘制：${unavailableNotes.join("；")}。` : ""}`,
     option,
-    height: 280,
+    height: Math.max(280, selected.length * 52 + 46),
   };
 }
 
@@ -826,8 +1065,6 @@ function buildMacroIndicatorChange(
             left: 116,
             right: 42,
             top: 14,
-            bottom: 30,
-            containLabel: true,
           },
           xAxis: {
             type: "value",
@@ -898,19 +1135,10 @@ function buildCapabilityStatus(
             valueFormatter: (value: unknown) =>
               finiteNumber(value) ? `${value} 项` : EM_DASH,
           },
-          legend: {
-            top: 0,
-            left: 0,
-            itemWidth: 14,
-            itemHeight: 8,
-            textStyle: axisLabel,
-          },
           grid: {
             left: 70,
             right: 28,
             top: 42,
-            bottom: 26,
-            containLabel: true,
           },
           xAxis: {
             type: "value",
@@ -942,7 +1170,7 @@ function buildCapabilityStatus(
               position: "inside",
               color: COLORS.labelOnAccent,
               fontSize: 10,
-              fontWeight: 700,
+              fontWeight: 600,
               formatter: `${count}`,
             },
             data: [count],
@@ -1011,19 +1239,10 @@ function buildStrategyPortfolioComparison(
             valueFormatter: (value: unknown) =>
               finiteNumber(value) ? `${value.toFixed(2)}%` : EM_DASH,
           },
-          legend: {
-            top: 0,
-            left: 0,
-            itemWidth: 14,
-            itemHeight: 8,
-            textStyle: axisLabel,
-          },
           grid: {
             left: 48,
             right: 24,
             top: 42,
-            bottom: 52,
-            containLabel: true,
           },
           xAxis: {
             type: "category",
@@ -1098,7 +1317,7 @@ function buildRankedBar(
       valueFormatter: (value: unknown) =>
         finiteNumber(value) ? `${value.toLocaleString("zh-CN")} 条` : EM_DASH,
     },
-    grid: { left: 102, right: 36, top: 14, bottom: 28, containLabel: true },
+    grid: { left: 102, right: 36, top: 14 },
     xAxis: {
       type: "value",
       min: 0,
@@ -1126,7 +1345,6 @@ function buildRankedBar(
           itemStyle: {
             color,
             opacity: 0.45 + (row.value / maxValue) * 0.55,
-            borderRadius: [0, 3, 3, 0],
           },
         })),
         label: {
@@ -1182,8 +1400,6 @@ function buildNewsDateChart(
             left: 44,
             right: 24,
             top: 18,
-            bottom: 42,
-            containLabel: true,
           },
           xAxis: {
             type: "category",
@@ -1212,7 +1428,6 @@ function buildNewsDateChart(
               barMaxWidth: 18,
               itemStyle: {
                 color: COLORS.contrast,
-                borderRadius: [3, 3, 0, 0],
               },
               data: rows.map((row) => row.value),
             },

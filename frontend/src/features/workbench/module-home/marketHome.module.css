@@ -96,7 +96,7 @@
   overflow: hidden;
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -105,7 +105,7 @@
 .macroTickerValue {
   color: var(--ib-ink);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.1;
   white-space: nowrap;
 }
@@ -131,7 +131,7 @@
 .macroTickerChange {
   font-size: 12px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -153,7 +153,7 @@
   padding: 10px 12px;
   color: var(--ib-ink-muted);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .marketPrimaryColumn {
@@ -208,7 +208,7 @@
   z-index: 1;
   color: var(--dh-blue, var(--ib-accent));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -222,7 +222,7 @@
   max-width: 62ch;
   color: var(--dh-ink, var(--ib-ink));
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.24;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -409,7 +409,7 @@
 .terminalCard :global(.ant-tabs-tab) {
   padding: 7px 0;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .terminalCard :global(.ant-tabs-ink-bar) {
@@ -583,14 +583,14 @@
 .macroOverviewEvidenceItem span {
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
 .macroOverviewStance {
   color: var(--dh-blue-deep, var(--ib-accent));
   font-size: 17px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.24;
   overflow-wrap: anywhere;
 }
@@ -599,7 +599,7 @@
   margin: 0;
   color: var(--dh-ink-2, var(--ib-ink-secondary));
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -607,7 +607,7 @@
 .macroOverviewSummary span {
   margin-right: 6px;
   color: var(--dh-blue, var(--ib-accent));
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .macroOverviewAction {
@@ -645,7 +645,7 @@
 .macroOverviewEvidenceItem strong {
   color: var(--dh-blue-deep, var(--ib-accent));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -657,7 +657,7 @@
   min-width: 0;
   color: var(--dh-muted-2, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -738,9 +738,10 @@
   border: 1px solid rgba(114, 167, 220, 0.16);
   background: var(--ib-surface);
   color: var(--dh-blue-deep, var(--ib-accent));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -748,7 +749,7 @@
   width: 100%;
   color: var(--dh-ink, var(--ib-ink));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -843,9 +844,10 @@
   border: 1px solid rgba(114, 167, 220, 0.16);
   background: var(--ib-surface);
   color: var(--dh-blue-deep, var(--ib-accent));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -853,7 +855,7 @@
   grid-column: 2;
   color: var(--dh-ink, var(--ib-ink));
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .observationBadge {
@@ -864,7 +866,7 @@
   background: var(--dh-line-soft, var(--ib-hairline));
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .observationCard p {
@@ -935,19 +937,19 @@
 .macroSignalValue {
   color: var(--dh-ink, var(--ib-ink));
   font-size: 14px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
   min-width: 0;
 }
 
 .macroSignalChange[data-change="up"]::before {
   content: "↑ ";
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macroSignalChange[data-change="down"]::before {
   content: "↓ ";
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macroLeadMetaRow {
@@ -978,7 +980,7 @@
 .macroGroupTabs :global(.ant-tabs-tab) {
   padding: 7px 0;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .macroGroupTabs :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
@@ -1032,14 +1034,14 @@
 
 .macroDetailSummaryTitle {
   color: var(--dh-blue-deep, var(--ib-accent));
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macroDetailSummaryValue {
   overflow: hidden;
   color: var(--dh-ink, var(--ib-ink));
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1055,7 +1057,7 @@
   padding: 9px 2px 0 !important;
   color: var(--dh-blue, var(--ib-accent)) !important;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macroDetailCollapse :global(.ant-collapse-content-box) {
@@ -1115,7 +1117,7 @@
 .drillLink b {
   color: var(--dh-ink, var(--ib-ink));
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1154,7 +1156,7 @@
   background: var(--dh-blue-soft);
   color: var(--dh-blue-deep, var(--ib-accent));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1198,7 +1200,7 @@
   color: rgba(169, 182, 199, 0.82);
   font-size: 12px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -1226,7 +1228,7 @@
 .evidenceRailLabel {
   color: rgba(156, 201, 255, 0.92);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -1375,7 +1377,7 @@
   background: var(--dh-api-blue-soft);
   border-color: rgba(114, 167, 220, 0.36);
   color: var(--dh-api-blue);
-  font-weight: 800;
+  font-weight: 600;
   border-radius: var(--ib-radius);
 }
 
@@ -1430,7 +1432,7 @@
 }
 
 .evidenceRailHeader span {
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ib-ink);
@@ -1476,7 +1478,7 @@
 .evidenceRailStatusList span {
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 780;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1493,7 +1495,7 @@
   overflow: hidden;
   color: var(--ib-ink);
   font-size: 12px;
-  font-weight: 860;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1548,14 +1550,14 @@
 
 .marketInstrumentTitle strong {
   color: var(--ib-ink);
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
   font-size: 16px;
 }
 
 .marketInstrumentTitle span {
   color: var(--ib-accent);
-  font-weight: 850;
+  font-weight: 600;
   font-size: 12px;
 }
 
@@ -1563,7 +1565,7 @@
   overflow: hidden;
   color: var(--ib-ink-muted);
   font-style: normal;
-  font-weight: 760;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
@@ -1572,7 +1574,7 @@
 .marketInstrumentFacts b {
   overflow: hidden;
   color: var(--ib-ink);
-  font-weight: 850;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
@@ -1585,7 +1587,7 @@
   letter-spacing: 0;
   max-width: 66ch;
   color: var(--ib-ink);
-  font-weight: 900;
+  font-weight: 600;
   margin: 6px 0 7px;
   font-size: 18px;
   line-height: 1.32;
@@ -1682,14 +1684,14 @@
 .evidenceRailMetric span {
   overflow: hidden;
   color: rgba(169, 182, 199, 0.76);
-  font-weight: 780;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
 }
 
 .evidenceRailMetric strong {
-  font-weight: 900;
+  font-weight: 600;
   overflow-wrap: anywhere;
   color: var(--ib-ink);
   font-size: 12px;
@@ -1834,7 +1836,7 @@
 .macroSection :global(.dhSectionTitle) > span {
   color: var(--dh-ink);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .marketWorkbenchSection :global(.dhLink),
@@ -1842,7 +1844,7 @@
 .macroSection :global(.dhLink) {
   color: var(--ib-accent);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .ratePanel,
@@ -1883,7 +1885,7 @@
 .panelSummaryStrip b {
   overflow: hidden;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1893,7 +1895,7 @@
 .panelSummaryStrip strong {
   overflow: hidden;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1915,7 +1917,7 @@
   display: grid;
   border-bottom: 1px solid var(--dh-line, var(--ib-hairline));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
   border-bottom-color: var(--dh-line);
   background: var(--dh-card-soft);
@@ -1947,7 +1949,7 @@
 .rateTableValue,
 .terminalTableValue {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: right;
   white-space: nowrap;
   color: var(--dh-blue);
@@ -1967,7 +1969,7 @@
 .terminalCard :global(.ant-tabs-tab),
 .macroGroupTabs :global(.ant-tabs-tab) {
   color: var(--dh-muted);
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .terminalCard :global(.ant-tabs-tab-active .ant-tabs-tab-btn),
@@ -2001,13 +2003,13 @@
 
 .macroLeadTitle {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--dh-ink);
 }
 
 .macroLeadValue {
   font-size: 20px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.3;
   color: var(--ib-ink);
 }
@@ -2112,7 +2114,7 @@
 .macroSection :global([class*="dhSectionTitle"]) > span {
   color: var(--ib-ink);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .marketWorkbenchSection :global([class*="dhSectionTitle"]) > span::before,
@@ -2189,7 +2191,7 @@
   color: var(--dh-green);
   padding: 1px 6px;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .terminalCard :global(.ant-tabs-nav),
@@ -2294,7 +2296,7 @@
     margin: 0 0 6px;
     color: var(--dh-muted-2, var(--ib-ink-muted));
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: 0.02em;
     text-align: right;
   }
@@ -2330,7 +2332,7 @@
     margin: 0 0 6px;
     color: var(--dh-muted-2, var(--ib-ink-muted));
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: 0.02em;
     text-align: right;
   }
@@ -2380,7 +2382,7 @@
     margin: 0 0 6px;
     color: var(--ib-ink-muted);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: 0.02em;
     text-align: right;
   }
@@ -2653,7 +2655,7 @@
   background: var(--dh-green-soft);
   color: var(--dh-green);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .marketCockpitCohesion .evidenceRailHeader strong[data-tone="watch"],
@@ -2705,7 +2707,7 @@
 .marketCockpitCohesion .evidenceRailDateStack dt {
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .marketCockpitCohesion .evidenceRailDateStack dd {
@@ -2714,7 +2716,7 @@
   overflow: hidden;
   color: var(--ib-ink);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3082,7 +3084,7 @@
   background: var(--ib-accent);
   color: var(--dh-api-bg);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
@@ -3103,7 +3105,7 @@
   grid-area: link;
   color: var(--ib-accent);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -3177,7 +3179,7 @@
 .topbarDate {
   margin-right: 6px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   white-space: nowrap;
   color: var(--ib-ink);
 }
@@ -3188,7 +3190,7 @@
   overflow: hidden;
   max-width: 560px;
   font-size: 12.5px;
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--ib-ink-secondary);
@@ -3275,7 +3277,7 @@
 .marketThesisKicker {
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -3315,7 +3317,7 @@
 .marketThesisBriefingTitle {
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -3365,7 +3367,7 @@
   gap: 8px;
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -3400,7 +3402,7 @@
 .marketThesisTransmission strong {
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -3590,7 +3592,7 @@
 .marketActionBandHead span {
   color: var(--ib-ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .marketActionBandHead em {
@@ -3612,7 +3614,7 @@
 .marketAuditFooter :global(.ant-collapse-header) {
   padding: 8px 12px !important;
   color: var(--ib-ink) !important;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .marketAuditFooterLabel {
@@ -3683,7 +3685,7 @@
 .marketMosaicPanelTitle {
   color: var(--ib-ink);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -3705,7 +3707,7 @@
 .marketSummaryKicker {
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -3752,7 +3754,7 @@
 .marketIbLink {
   color: var(--ib-accent);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -3794,7 +3796,7 @@
   background: var(--ib-surface-muted);
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -3810,7 +3812,7 @@
 
 .terminalTableLadder .terminalTableValue {
   color: var(--ib-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .terminalTableLadderCompact .terminalTableMain {
@@ -3876,7 +3878,7 @@
   overflow: hidden;
   color: var(--ib-ink);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3909,7 +3911,7 @@
 .macroSectionHead span {
   color: var(--ib-ink);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .marketAuditTabLabel {
@@ -3925,7 +3927,7 @@
   background: var(--dh-card-soft, var(--ib-paper));
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   text-align: center;
 }
 
@@ -3939,7 +3941,7 @@
 .macroSignalHitKicker {
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -3980,7 +3982,7 @@
 .macroSignalKicker {
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.08em;
 }
 
@@ -3988,7 +3990,7 @@
   overflow: hidden;
   color: var(--ib-ink-secondary, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4005,7 +4007,7 @@
 .macroSignalScore {
   color: var(--ib-accent);
   font-size: 24px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -4013,7 +4015,7 @@
   display: block;
   overflow: hidden;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4044,7 +4046,7 @@
 .marketInstitutionalCockpit .macroLeadTitle {
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .marketInstitutionalCockpit .macroLeadCompact {
@@ -4078,7 +4080,7 @@
   }
 }
 
-/* Market overview density pass �?align panel rhythm with risk home (8�?2px gaps) */
+/* Market overview density pass — align panel rhythm with risk home (8–12px gaps) */
 
 .marketHeroMeta {
   align-items: flex-start;
@@ -4454,10 +4456,11 @@
 .marketDeskPanel i[data-section-index] {
   margin-right: 8px;
   color: var(--dh-api-blue, var(--dh-blue));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-style: normal;
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: 0.08em;
   opacity: 0.85;
 }
@@ -4491,7 +4494,7 @@
   padding: 0 12px;
   border: 1px solid rgba(103, 119, 142, 0.26);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   text-decoration: none;
   border-radius: var(--ib-radius);
   min-height: 28px;
@@ -4509,7 +4512,7 @@
 .evidenceRailLink::after {
   content: "→";
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   color: var(--dh-api-amber);
   margin-left: auto;
@@ -4524,10 +4527,11 @@
 
 .evidenceRailLink i[data-row-index] {
   color: var(--dh-api-blue, var(--dh-blue));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-style: normal;
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: 0.08em;
   opacity: 0.8;
 }
@@ -4543,10 +4547,11 @@
 .marketNewsStripList i[data-row-index] {
   grid-row: span 2;
   color: var(--dh-api-blue, var(--dh-blue));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-style: normal;
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: 0.08em;
   line-height: 1.4;
   opacity: 0.8;
@@ -4561,7 +4566,7 @@
 .terminalCard :global(.ant-tabs-tab) {
   padding: 5px 12px;
   border: 1px solid rgba(114, 167, 220, 0.22);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   transition:
     border-color 0.16s ease,
     background-color 0.16s ease;
@@ -4632,9 +4637,12 @@
 }
 
 /* ── Mission-control layout pass (2026-07-19) ─────────────────────────────
-   方向 B：任务控制三栏骨�?+ 结论首屏。只重排布局与视觉层级——跑马灯降噪�?   磁带条、判断卡独占首屏第一视觉、晨会读盘改三栏、模块导航收到底部�?   数据契约、testid、适配器与指标定义均不动�?── */
+   方向 B：任务控制三栏骨架 + 结论首屏。只重排布局与视觉层级——跑马灯降噪为
+   磁带条、判断卡独占首屏第一视觉、晨会读盘改三栏、模块导航收到底部。
+   数据契约、testid、适配器与指标定义均不动。
+── */
 
-/* 1) 跑马灯：去卡片化，降为安静的磁带条，并按 利率 / 跨资�?/ 立场 分组 */
+/* 1) 跑马灯：去卡片化，降为安静的磁带条，并按 利率 / 跨资产 / 立场 分组 */
 .marketCockpitCohesion .macroTickerBar {
   border-color: var(--dh-line);
   border: 0;
@@ -4657,12 +4665,12 @@
 .marketCockpitCohesion .macroTickerLabel {
   color: var(--dh-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .marketCockpitCohesion .macroTickerValue {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .marketCockpitCohesion .macroTickerChange {
@@ -4682,7 +4690,7 @@
   opacity: 0.72;
 }
 
-/* 分组标签做成通栏细分隔行，不再作为游离格子散落在磁带�?*/
+/* 分组标签做成通栏细分隔行，不再作为游离格子散落在磁带条 */
 .macroTickerGroupChip {
   display: flex;
   flex-basis: 100%;
@@ -4692,7 +4700,7 @@
   padding: 4px 2px;
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.14em;
   white-space: nowrap;
   user-select: none;
@@ -4761,7 +4769,7 @@
   height: 20px;
 }
 
-/* 3) 晨会读盘：新�?| 焦点 | 动作 三栏�?*/
+/* 3) 晨会读盘：新闻 | 焦点 | 动作 三栏。*/
 .marketCockpitCohesion .marketActionBand {
   grid-template-columns: minmax(240px, 0.85fr) minmax(280px, 0.95fr) minmax(340px, 1.3fr);
   gap: 10px 18px;
@@ -4781,7 +4789,7 @@
   border-bottom: 0;
 }
 
-/* 4) 底部模块导航：降噪，贴近核验�?*/
+/* 4) 底部模块导航：降噪，贴近核验区 */
 .marketCockpitCohesion .marketBottomNavItem {
   padding: 8px 12px;
 }
@@ -4790,7 +4798,7 @@
   font-size: 13px;
 }
 
-/* 5) 响应式回落：窄屏退回单栏，不硬压三�?*/
+/* 5) 响应式回落：窄屏退回单栏，不硬压三栏 */
 @media (max-width: 1180px) {
   .marketCockpitCohesion .marketHero {
     grid-template-columns: minmax(0, 1fr);
@@ -4851,13 +4859,13 @@
   color: var(--ib-ink);
   font-family: Georgia, "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
 }
 
 .marketCockpitCohesion .marketThesisHero h2 {
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.34;
 }
 
@@ -4901,27 +4909,15 @@
   border-right: 0;
 }
 
-@keyframes marketCockpitStatusBreathe {
-  0%,
-  100% {
-    opacity: 0.58;
-  }
-
-  50% {
-    opacity: 1;
-  }
-}
-
+/*
+ * 状态圆点保持静态：DESIGN.md §8 唯一豁免的无限循环装饰动效是经营日报首页 hero 呼吸光，
+ * 豁免不扩散到其他页面；圆点的语义由颜色承载（§6），不需要呼吸来提示存在。
+ */
 .marketStatusItem > i {
-  animation: marketCockpitStatusBreathe 3.2s ease-in-out infinite;
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .marketStatusItem > i {
-    animation: none;
-    opacity: 1;
-  }
-
   .marketCockpitCohesion .evidenceRailLink:hover {
     transform: none;
   }

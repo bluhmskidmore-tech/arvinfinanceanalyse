@@ -15,14 +15,14 @@
 .cross-asset-class-analysis__eyebrow {
   color: var(--ca-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__title {
   margin: 0;
   color: var(--ca-text);
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -63,7 +63,7 @@
   cursor: pointer;
   color: var(--ca-muted);
   font-size: 0.75rem;
-  font-weight: 760;
+  font-weight: 600;
   list-style: none;
 }
 
@@ -82,9 +82,10 @@
   border-radius: var(--ib-radius, 2px);
   color: var(--ca-info-text);
   background: var(--ca-card);
-  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--moss-font-tabular), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.75rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__details[open] > summary::before {
@@ -101,7 +102,7 @@
   flex: 0 0 auto;
   color: var(--ca-muted);
   font-size: 0.7rem;
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__details > summary:focus-visible {
@@ -144,7 +145,7 @@
   justify-content: space-between;
   color: var(--ca-sub);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__cards {
@@ -183,7 +184,7 @@
 .cross-asset-class-analysis__judgment-kicker {
   color: var(--ca-sage);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -191,7 +192,7 @@
   margin: 0;
   color: var(--ca-text);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -223,7 +224,7 @@
   gap: 10px;
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__judgment-tone {
@@ -236,7 +237,7 @@
   border-radius: var(--ib-radius, 2px);
   background: var(--ca-card-mute);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__card-header {
@@ -249,7 +250,7 @@
 .cross-asset-class-analysis__card-title {
   color: var(--ca-text);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -270,7 +271,7 @@
   color: var(--ca-sub);
   background: var(--ca-surface-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__direction--supportive {
@@ -333,13 +334,13 @@
 .cross-asset-class-analysis__line-title {
   color: var(--ca-text);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__line-status {
   color: var(--ca-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__line-explanation {
@@ -385,7 +386,7 @@
   align-items: start;
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__evidence-item strong {
@@ -421,7 +422,7 @@
   border-top: 1px solid var(--ca-warning-border);
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cross-asset-class-analysis__pending-line span:last-child {
@@ -432,7 +433,7 @@
   grid-column: 1 / -1;
   color: var(--ca-warning-text);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.45;
   word-break: break-word;
 }
@@ -559,7 +560,7 @@
   color: var(--ca-text);
   font-family: var(--moss-font-sans);
   font-size: 24px;
-  font-weight: 860;
+  font-weight: 600;
   letter-spacing: 0;
   line-height: 1.15;
 }
@@ -575,7 +576,7 @@
   background: transparent;
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -592,8 +593,9 @@
 }
 
 .cross-asset-reference-toolbar__date strong {
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
-  font-weight: 850;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .cross-asset-reference-toolbar__export {
@@ -666,7 +668,7 @@
 .cross-asset-reference-summary__label {
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 820;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -676,7 +678,7 @@
   color: var(--ca-text);
   font-family: var(--moss-font-sans);
   font-size: 17px;
-  font-weight: 880;
+  font-weight: 600;
   line-height: 1.22;
   line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -687,7 +689,7 @@
   overflow: hidden;
   color: var(--ca-sub);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -717,7 +719,7 @@
 .cross-asset-first-screen-judgment span {
   color: var(--ca-muted);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -726,7 +728,7 @@
   overflow: hidden;
   color: var(--ca-text);
   font-size: 13px;
-  font-weight: 880;
+  font-weight: 600;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -737,7 +739,7 @@
   color: var(--ca-sub);
   font-size: 11px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -776,13 +778,13 @@
 .cross-asset-driver-chain__item span {
   color: var(--ca-muted);
   font-size: 11px;
-  font-weight: 780;
+  font-weight: 600;
 }
 
 .cross-asset-driver-chain__item strong {
   color: var(--ca-accent);
   font-size: 11px;
-  font-weight: 860;
+  font-weight: 600;
 }
 
 .cross-asset-driver-chain__item p,
@@ -793,7 +795,7 @@
   overflow: hidden;
   color: var(--ca-sub);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -844,7 +846,7 @@
   color: var(--ca-positive-text);
   font-family: var(--moss-font-sans);
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .cross-asset-reference-summary__regime .ca-regime__desc {
@@ -873,7 +875,7 @@
 .cross-asset-reference-summary__boundary span {
   color: var(--ca-muted);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .cross-asset-reference-summary__quality strong,
@@ -884,7 +886,7 @@
   gap: 6px;
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -897,16 +899,17 @@
   color: var(--ca-accent);
 }
 
+/* 这些卡片全部落在 .cross-asset-decision-zone 里，而两者背景的计算值逐字相同
+   （实测都是 rgb(35,37,50)）——边框、圆角、阴影三者都没有改变身后的表面，只是
+   在同一片底色上又画了一圈线。分区已由 decision-zone 的框界定，卡片之间靠它的
+   gap:10px 分隔就够了。这是 DESIGN.md「单一外框，不做卡片套卡片」。 */
 .cross-asset-reference-card {
   display: grid;
   align-content: start;
   gap: 8px;
   min-width: 0;
   padding: 10px;
-  border: 1px solid var(--ca-border-soft);
-  border-radius: var(--moss-radius-sm);
   background: var(--ca-card);
-  box-shadow: var(--ca-shadow);
 }
 
 .cross-asset-reference-card__head {
@@ -922,7 +925,7 @@
   color: var(--ca-text);
   font-family: var(--moss-font-sans);
   font-size: 15px;
-  font-weight: 860;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -930,20 +933,21 @@
   min-width: 0;
   color: var(--ca-sub);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cross-asset-reference-evidence.cross-asset-reference-card {
-  align-content: stretch;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-column: 1 / -1;
+  align-content: start;
+  grid-template-rows: auto auto auto;
 }
 
 .cross-asset-reference-source-audit.cross-asset-reference-card {
-  align-content: stretch;
-  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
+  grid-template-rows: auto auto;
 }
 
 .cross-asset-reference-evidence .cross-asset-reference-card__head,
@@ -959,14 +963,18 @@
 }
 
 .cross-asset-reference-evidence .cross-asset-reference-table {
-  height: 100%;
+  height: auto;
+  min-width: 760px;
+  table-layout: auto;
 }
 
 .cross-asset-reference-fusion-side-panel.cross-asset-fusion-side-panel {
-  grid-template-rows: minmax(0, 1fr);
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto;
   gap: 0;
   min-height: 0;
-  height: 100%;
+  height: auto;
 }
 
 .cross-asset-reference-fusion-side-panel > .cross-asset-review-queue {
@@ -1022,15 +1030,16 @@
   background: var(--ca-card-mute);
   color: var(--ca-text);
   font-size: 11px;
-  font-weight: 820;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .cross-asset-reference-table__value,
 .cross-asset-reference-table__change,
 .cross-asset-reference-direction {
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
-  font-weight: 850;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   text-align: right;
   white-space: nowrap;
 }
@@ -1060,7 +1069,7 @@
   gap: 5px;
   color: var(--ca-sub);
   font-size: 12px;
-  font-weight: 780;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1107,8 +1116,10 @@
 
 .cross-asset-reference-audit-list {
   display: grid;
-  align-content: stretch;
-  height: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  align-content: start;
+  height: auto;
   min-height: 0;
   margin: 0;
   overflow: hidden;
@@ -1139,12 +1150,12 @@
 }
 
 .cross-asset-reference-audit-list dt {
-  font-weight: 820;
+  font-weight: 600;
 }
 
 .cross-asset-reference-audit-list dd {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px 12px;
   align-items: center;
   color: var(--ca-sub);
@@ -1152,12 +1163,12 @@
 
 .cross-asset-reference-audit-list dd > ul,
 .cross-asset-reference-audit-list dd > span:only-child {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
 }
 
 .cross-asset-reference-audit-list dd strong {
   color: var(--ca-text);
-  font-weight: 820;
+  font-weight: 600;
 }
 
 .cross-asset-reference-audit-list dd .cross-asset-reference-audit-warning {
@@ -1175,7 +1186,7 @@
 .cross-asset-reference-audit-list dd a {
   color: var(--ca-accent);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -1230,7 +1241,7 @@
 
 .cross-asset-reference-correlation .cross-asset-reference-card__head span {
   font-size: 12px;
-  font-weight: 780;
+  font-weight: 600;
 }
 
 .cross-asset-reference-correlation__matrix {
@@ -1253,7 +1264,7 @@
   background: var(--ca-card);
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.18;
   overflow-wrap: normal;
   text-align: center;
@@ -1264,7 +1275,7 @@
 .cross-asset-reference-correlation__row > strong {
   background: var(--ca-card-mute);
   color: var(--ca-sub);
-  font-weight: 820;
+  font-weight: 600;
 }
 
 .cross-asset-reference-correlation__row {
@@ -1272,8 +1283,9 @@
 }
 
 .cross-asset-reference-correlation__row > span {
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
-  font-weight: 850;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .cross-asset-reference-correlation__legend {
@@ -1283,7 +1295,8 @@
   align-items: center;
   margin-top: 8px;
   color: var(--ca-muted);
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   line-height: 1;
 }
@@ -1324,17 +1337,18 @@
 
 .cross-asset-reference-transmission__steps em {
   color: var(--ca-text);
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-style: normal;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .cross-asset-reference-transmission__steps strong {
   overflow: hidden;
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 820;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1343,7 +1357,7 @@
 .cross-asset-reference-transmission__steps span {
   color: var(--ca-muted);
   font-size: 12px;
-  font-weight: 820;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1385,7 +1399,7 @@
 .cross-asset-reference-judgment > strong {
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 /* 环色随判断 tone（偏多绿/偏空红/中性灰/策略词次级墨）；环内只放单字置信度。 */
@@ -1401,7 +1415,7 @@
 .cross-asset-reference-judgment__ring span {
   color: var(--ca-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-reference-judgment__ring--bull {
@@ -1442,7 +1456,7 @@
   overflow: hidden;
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1501,7 +1515,7 @@
   background: var(--ca-card);
   color: var(--ca-text);
   font-size: 11px;
-  font-weight: 820;
+  font-weight: 600;
 }
 
 .cross-asset-reference-trend-strip__range button[aria-pressed="true"] {
@@ -1539,10 +1553,11 @@
 .cross-asset-reference-trend-card em {
   min-width: 0;
   overflow: hidden;
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-style: normal;
-  font-weight: 850;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1583,7 +1598,8 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 2px;
   color: var(--ib-ink-secondary);
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   line-height: 1.15;
   text-align: center;
@@ -1591,7 +1607,8 @@
 
 .cross-asset-reference-trend-card__axis span {
   color: var(--ib-ink-secondary);
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: 600;
 }
@@ -1657,13 +1674,13 @@
 .cross-asset-decision-hero .moss-page-v2-decision-hero__eyebrow {
   color: var(--ca-muted);
   font-size: 0.6875rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .cross-asset-decision-hero .moss-page-v2-decision-hero__title {
   color: var(--ca-slate);
   font-size: 1rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.16;
 }
 
@@ -1689,7 +1706,7 @@
 
 .cross-asset-decision-hero .moss-page-v2-decision-hero__report a {
   color: var(--ca-slate);
-  font-weight: 800;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -1705,11 +1722,14 @@
   background: color-mix(in srgb, var(--ca-info-bg) 22%, var(--ib-surface));
   color: var(--ca-text);
   font-size: 0.8125rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.42;
   white-space: normal;
 }
 
+/* 四周灰边框与身后表面同色，去掉；左侧强调线保留——它带 accent 色，是在说
+   「这块是可信度面板」，不是装饰。并非所有边框都是多余的，判据是它有没有改变
+   身后的表面或承载语义。 */
 .cross-asset-trust-panel {
   display: grid;
   align-content: start;
@@ -1717,9 +1737,7 @@
   min-width: 0;
   min-height: 100%;
   padding: 6px 7px;
-  border: 1px solid var(--ca-border-soft);
   border-left: 2px solid color-mix(in srgb, var(--ca-accent) 36%, var(--ib-surface));
-  border-radius: var(--moss-radius-sm);
   background: var(--ca-card);
 }
 
@@ -1740,14 +1758,14 @@
 .cross-asset-trust-panel__summary span,
 .cross-asset-trust-panel__grid dt {
   color: var(--ca-muted);
-  font-size: 0.66rem;
-  font-weight: 780;
+  font-size: 0.6875rem;
+  font-weight: 600;
 }
 
 .cross-asset-trust-panel__summary strong {
   color: var(--ca-text);
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -1760,9 +1778,9 @@
   border-radius: var(--ib-radius, 2px);
   background: var(--ca-card);
   color: var(--ca-sub);
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
   font-style: normal;
-  font-weight: 820;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1789,8 +1807,8 @@
   margin: 0;
   overflow: hidden;
   color: var(--ca-text);
-  font-size: 0.68rem;
-  font-weight: 820;
+  font-size: 0.6875rem;
+  font-weight: 600;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1834,7 +1852,7 @@
   margin: 0;
   color: var(--ca-muted);
   font-size: 11px;
-  font-weight: 720;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -1843,7 +1861,7 @@
   margin: 0;
   color: var(--ca-text);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1860,7 +1878,7 @@
   border-radius: var(--ib-radius, 2px);
   background: color-mix(in srgb, var(--ca-card) 72%, transparent);
   color: var(--ca-muted);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   line-height: 1.32;
 }
 
@@ -1871,13 +1889,13 @@
 .cross-asset-data-status-strip .status-pill {
   flex: 0 0 auto;
   padding: 1px 6px;
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
   white-space: nowrap;
 }
 
 .cross-asset-data-status-strip__flag > span:last-child {
   color: var(--ca-sub);
-  font-weight: 650;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1979,7 +1997,7 @@
   gap: 4px 10px;
   margin: 0;
   color: var(--ca-muted);
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -2025,7 +2043,7 @@
   display: -webkit-box;
   overflow: hidden;
   color: var(--ca-sub);
-  font-size: 0.61rem;
+  font-size: 0.6875rem;
   line-height: 1.18;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2040,7 +2058,7 @@
   border: 1px solid color-mix(in srgb, var(--ca-border-soft) 88%, var(--ca-accent));
   border-radius: var(--moss-radius-sm);
   background: color-mix(in srgb, var(--ca-border-soft) 86%, var(--ib-surface));
-  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--moss-font-tabular), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2062,8 +2080,8 @@
 .cross-asset-market-tape__item span {
   overflow: hidden;
   color: var(--ca-muted);
-  font-size: 0.62rem;
-  font-weight: 800;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2072,7 +2090,7 @@
   overflow: hidden;
   color: var(--ca-text);
   font-size: 0.69rem;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.1;
   text-align: right;
   text-overflow: ellipsis;
@@ -2083,9 +2101,9 @@
   grid-column: 1 / -1;
   overflow: hidden;
   color: var(--ca-sub);
-  font-size: 0.6rem;
+  font-size: 0.6875rem;
   font-style: normal;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2113,7 +2131,7 @@
 
 .cross-asset-transmission-canvas .status-pill {
   padding: 1px 7px;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
 }
 
 .cross-asset-transmission-canvas .cross-asset-research-views {
@@ -2156,15 +2174,15 @@
 
 .cross-asset-transmission-map__head span {
   color: var(--ca-muted);
-  font-size: 0.68rem;
-  font-weight: 780;
+  font-size: 0.6875rem;
+  font-weight: 600;
 }
 
 .cross-asset-transmission-map__head strong {
   overflow: hidden;
   color: var(--ca-text);
   font-size: 0.76rem;
-  font-weight: 850;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2178,9 +2196,10 @@
   min-width: 0;
   min-height: 0;
   padding: 7px 8px 8px;
+  /* 这里原先在 border-left 之后又写了 `border: 1px solid var(--ca-border-soft)`
+     简写，简写会把左边线整条冲掉——那条 3px 强调线从来没显示过，实测到的一直是
+     1px 灰边。灰边与身后表面同色属于零信息，去掉后左边线才生效。 */
   border-left: 3px solid color-mix(in srgb, var(--ca-accent) 58%, var(--ib-surface));
-  border-radius: var(--moss-radius-sm);
-  border: 1px solid var(--ca-border-soft);
   background: var(--ca-card);
   color: var(--ca-text);
   box-shadow: none;
@@ -2196,8 +2215,8 @@
 .cross-asset-action-rail__action span,
 .cross-asset-action-rail__metrics dt {
   color: var(--ca-muted);
-  font-size: 0.68rem;
-  font-weight: 760;
+  font-size: 0.6875rem;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -2205,7 +2224,7 @@
   margin: 0;
   color: var(--ca-text);
   font-size: 0.94rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -2224,13 +2243,13 @@
 .cross-asset-action-rail__action strong {
   color: var(--ca-text);
   font-size: 0.8rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.32;
 }
 
 .cross-asset-action-rail__summary small {
   color: var(--ca-sub);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   line-height: 1.38;
 }
 
@@ -2267,7 +2286,7 @@
   margin: 0;
   color: var(--ca-text);
   font-size: 0.78rem;
-  font-weight: 820;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -2282,8 +2301,8 @@
 
 .cross-asset-action-ledger__title {
   color: var(--ca-muted);
-  font-size: 0.68rem;
-  font-weight: 780;
+  font-size: 0.6875rem;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -2339,8 +2358,8 @@
 .cross-asset-review-queue__list dt,
 .cross-asset-review-queue__list span {
   color: var(--ca-muted);
-  font-size: 0.68rem;
-  font-weight: 760;
+  font-size: 0.6875rem;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -2348,7 +2367,7 @@
   margin: 0;
   color: var(--ca-text);
   font-size: 0.9rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -2390,7 +2409,7 @@
   overflow: hidden;
   color: var(--ca-text);
   font-size: 0.76rem;
-  font-weight: 820;
+  font-weight: 600;
   line-height: 1.32;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2405,12 +2424,12 @@
 
 .cross-asset-action-ledger dt {
   color: var(--ca-muted);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-action-ledger dd {
   color: var(--ca-text);
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .cross-asset-decision-board {
@@ -2453,7 +2472,7 @@
 .cross-asset-reference-depth-summary__head span {
   color: var(--ca-info-text);
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -2461,7 +2480,7 @@
 .cross-asset-reference-depth-summary__head strong {
   color: var(--ca-text);
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -2471,7 +2490,7 @@
   overflow: hidden;
   color: var(--ca-sub);
   font-size: 0.69rem;
-  font-weight: 720;
+  font-weight: 600;
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2503,8 +2522,8 @@
 .cross-asset-reference-depth-summary__item small {
   overflow: hidden;
   color: var(--ca-muted);
-  font-size: 0.67rem;
-  font-weight: 760;
+  font-size: 0.6875rem;
+  font-weight: 600;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2514,7 +2533,7 @@
   overflow: hidden;
   color: var(--ca-text);
   font-size: 0.96rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2541,7 +2560,7 @@
   padding-bottom: 6px;
   color: var(--ca-text);
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .cross-asset-reference-depth .cross-asset-decision-zone__body {
@@ -2604,7 +2623,7 @@
 }
 
 .cross-asset-reference-depth .cross-asset-class-analysis__eyebrow {
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
 }
 
 .cross-asset-reference-depth .cross-asset-class-analysis__title {
@@ -2689,7 +2708,7 @@
 .cross-asset-reference-depth .cross-asset-transmission-axes__meta {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2958,7 +2977,7 @@
   border-bottom: 1px solid var(--ca-border-muted);
   color: var(--ca-sub);
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -2977,7 +2996,7 @@
   margin: 0 0 10px;
   color: var(--ca-text);
   font-size: 0.875rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .cross-asset-decision-zone__body {
@@ -2993,6 +3012,7 @@
 }
 
 .cross-asset-evidence-tape {
+  grid-column: 1 / -1;
   display: grid;
   gap: 6px;
   min-width: 0;
@@ -3012,16 +3032,17 @@
 
 .cross-asset-evidence-tape__head span {
   color: var(--ca-muted);
-  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.68rem;
-  font-weight: 850;
+  font-family: var(--moss-font-tabular), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
 .cross-asset-evidence-tape__head strong {
   color: var(--ca-text);
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .cross-asset-evidence-tape__table-wrap {
@@ -3050,8 +3071,8 @@
 .cross-asset-evidence-tape__table th {
   background: color-mix(in srgb, var(--ca-card-mute) 88%, var(--ib-surface));
   color: var(--ca-muted);
-  font-size: 0.66rem;
-  font-weight: 850;
+  font-size: 0.6875rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -3062,20 +3083,20 @@
 .cross-asset-evidence-tape__factor {
   display: block;
   color: var(--ca-text);
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.3;
 }
 
 .cross-asset-evidence-tape__table small {
   display: block;
   color: var(--ca-muted);
-  font-size: 0.66rem;
-  font-weight: 740;
+  font-size: 0.6875rem;
+  font-weight: 600;
   line-height: 1.32;
 }
 
 .cross-asset-evidence-tape__delta {
-  font-weight: 820;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -3109,7 +3130,9 @@
 }
 
 .cross-asset-evidence-details {
+  grid-column: 1 / -1;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
   padding: 0;
@@ -3120,6 +3143,7 @@
 
 .cross-asset-evidence-details > summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -3128,7 +3152,7 @@
   color: var(--ca-sub);
   cursor: pointer;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 600;
   list-style: none;
 }
 
@@ -3152,7 +3176,7 @@
   border-radius: 50%;
   color: var(--ca-accent);
   background: var(--ca-card);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   line-height: 1;
 }
 
@@ -3168,8 +3192,8 @@
 .cross-asset-evidence-details > summary strong {
   flex: 0 0 auto;
   color: var(--ca-muted);
-  font-size: 0.68rem;
-  font-weight: 820;
+  font-size: 0.6875rem;
+  font-weight: 600;
 }
 
 .cross-asset-evidence-details[open] {
@@ -3206,7 +3230,7 @@
   grid-column: 1 / -1;
   color: var(--ca-muted);
   font-size: 0.6875rem;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -3241,7 +3265,7 @@
 .cross-asset-candidate-actions__header span {
   color: var(--ca-muted);
   font-size: 0.6875rem;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -3249,7 +3273,7 @@
 .cross-asset-candidate-actions__header strong {
   color: var(--ca-text);
   font-size: 0.8125rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
   white-space: nowrap;
 }
@@ -3316,7 +3340,7 @@
 }
 
 .cross-asset-candidate-actions__item--warning {
-  --ca-action-state-line: color-mix(in srgb, var(--ca-warning) 58%, transparent);
+  --ca-action-state-line: color-mix(in srgb, var(--ca-warning-text) 58%, transparent);
 }
 
 .cross-asset-candidate-actions__item--bull {
@@ -3346,8 +3370,8 @@
   border-radius: var(--ib-radius, 2px);
   background: color-mix(in srgb, var(--ca-info-text) 8%, var(--ca-card-mute));
   color: var(--ca-info-text);
-  font-size: 0.625rem;
-  font-weight: 900;
+  font-size: 0.6875rem;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -3364,7 +3388,7 @@
   overflow: hidden;
   color: var(--ca-text);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.28;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3450,7 +3474,7 @@
   cursor: pointer;
   color: var(--ca-muted);
   font-size: 0.7rem;
-  font-weight: 760;
+  font-weight: 600;
   list-style: none;
 }
 
@@ -3463,7 +3487,7 @@
   cursor: pointer;
   color: var(--ca-muted);
   font-size: 0.7rem;
-  font-weight: 760;
+  font-weight: 600;
   list-style: none;
 }
 
@@ -3486,9 +3510,10 @@
   border-radius: var(--ib-radius, 2px);
   color: var(--ca-info-text);
   background: var(--ca-card);
-  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-family: var(--moss-font-tabular), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+  font-weight: 600;
 }
 
 .cross-asset-observation-secondary[open] > summary::before,
@@ -3509,7 +3534,7 @@
   flex: 0 0 auto;
   color: var(--ca-muted);
   font-size: 0.7rem;
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .cross-asset-decision-appendix__body {
@@ -3536,7 +3561,7 @@
   gap: 8px;
   color: var(--ca-muted);
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   list-style: none;
 }
@@ -3804,7 +3829,7 @@
   background: color-mix(in srgb, var(--ca-warning-bg) 54%, var(--ca-card));
   color: var(--ca-warning-text);
   font-size: 0.6875rem;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3898,7 +3923,7 @@
   }
 
   .cross-asset-market-state-strip .ca-regime__desc {
-    font-size: 0.62rem;
+    font-size: 0.6875rem;
     line-height: 1.2;
   }
 
@@ -3938,7 +3963,7 @@
 
   .cross-asset-action-rail__summary small,
   .cross-asset-action-rail__metrics dt {
-    font-size: 0.63rem;
+    font-size: 0.6875rem;
     line-height: 1.26;
   }
 
@@ -3963,7 +3988,7 @@
 
   .cross-asset-action-ledger dt,
   .cross-asset-action-ledger dd {
-    font-size: 0.63rem;
+    font-size: 0.6875rem;
     line-height: 1.26;
   }
 
@@ -4009,7 +4034,7 @@
 
 .cross-asset-observation-secondary-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: start;
   min-width: 0;
@@ -4017,17 +4042,19 @@
 
 /*
  * 事件与风险线索表（共享 CalendarList 的页面作用域覆盖）：
- * 固定级别列宽让新增 11px 表头与行网格对齐；发行人 pill / 事件标题的浅色
+ * 固定级别列宽让表头与行网格对齐；发行人 pill / 事件标题的浅色
  * 字面量在深色终端页重映射为 --ca-* 链。
  */
 .cross-asset-event-calendar__table {
   display: grid;
   gap: 6px;
+  overflow-x: auto;
 }
 
 .cross-asset-event-calendar__head,
 .cross-asset-event-calendar__table .calendar-list__item {
   grid-template-columns: 88px minmax(0, 1.1fr) 96px 44px minmax(0, 1fr);
+  min-width: 680px;
 }
 
 .cross-asset-event-calendar__head {
@@ -4036,8 +4063,8 @@
   padding-bottom: 4px;
   border-bottom: 1px solid var(--ca-border-soft);
   color: var(--ca-muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .cross-asset-event-calendar__table .calendar-list__event-title {
@@ -4061,12 +4088,6 @@
   align-content: start;
   align-items: start;
   min-width: 0;
-}
-
-@media (min-width: 1000px) {
-  .cross-asset-observation-support-grid {
-    grid-template-columns: minmax(320px, 0.78fr) minmax(0, 1.22fr);
-  }
 }
 
 @media (max-width: 900px) {
@@ -4120,7 +4141,7 @@
   padding: 2px 8px;
   border-radius: var(--ib-radius, 2px);
   font-size: 0.6875rem;
-  font-weight: 700;
+  font-weight: 600;
   border: 1px solid var(--ca-border);
   background: var(--ca-card);
   color: var(--ca-muted);
@@ -4198,7 +4219,7 @@
   background: var(--ca-card);
   color: var(--ca-muted);
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -4312,7 +4333,7 @@
 .cross-asset-livermore__eyebrow {
   color: var(--ca-sub);
   font-size: 0.6875rem;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -4335,7 +4356,7 @@
   flex: 0 0 auto;
   color: var(--ca-info-text);
   font-size: 0.75rem;
-  font-weight: 750;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -4359,15 +4380,16 @@
 .cross-asset-livermore__label {
   color: var(--ca-sub);
   font-size: 0.75rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .cross-asset-livermore__value {
   color: var(--ca-text);
-  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+  font-family: var(--moss-font-tabular), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 1.35rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.15;
 }
 
@@ -4495,7 +4517,7 @@
   min-width: 0;
   color: var(--ca-sub);
   font-size: 0.75rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .cross-asset-livermore__manual-fields input {
@@ -4507,7 +4529,7 @@
   color: var(--ca-text);
   background: var(--ca-surface-soft);
   font: inherit;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .cross-asset-livermore__manual-fields input:focus {
@@ -4530,7 +4552,7 @@
   color: var(--ca-card);
   background: var(--ca-info-text);
   font-size: 0.75rem;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -4543,7 +4565,7 @@
 .cross-asset-livermore__manual-success,
 .cross-asset-livermore__manual-error {
   font-size: 0.75rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -4580,7 +4602,7 @@
 .cross-asset-livermore-confluence__diagnostic-code {
   color: var(--ca-sub);
   font-size: 0.6875rem;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -4607,7 +4629,7 @@
   max-width: 320px;
   color: var(--ca-muted);
   font-size: 0.75rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   text-align: right;
 }
@@ -4648,10 +4670,11 @@
 
 .cross-asset-livermore-confluence__summary-value {
   color: var(--ca-text);
-  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+  font-family: var(--moss-font-tabular), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 1.2rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.15;
 }
 
@@ -4724,7 +4747,7 @@
 .cross-asset-livermore-confluence__group-header span {
   color: var(--ca-sub);
   font-size: 0.75rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .cross-asset-livermore-confluence__list {
@@ -4762,7 +4785,7 @@
   background: var(--ca-info-bg);
   color: var(--ca-info-text);
   font-size: 0.6875rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-livermore-confluence__item-action--warning {
@@ -4797,16 +4820,17 @@
 .cross-asset-livermore-confluence__metrics dt {
   color: var(--ca-sub);
   font-size: 0.6875rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .cross-asset-livermore-confluence__metrics dd {
   margin: 0;
   color: var(--ca-text);
-  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+  font-family: var(--moss-font-tabular), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.875rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .cross-asset-livermore-confluence__evidence li {
@@ -4849,9 +4873,10 @@
   border-radius: var(--ib-radius, 2px);
   color: var(--ca-info-text);
   background: var(--ca-card);
-  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--moss-font-tabular), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.75rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-ncd-proxy[open] > summary::before {
@@ -4885,7 +4910,7 @@
 .cross-asset-ncd-proxy__rows {
   margin: 0;
   padding-left: 0;
-  color: var(--ca-text-muted);
+  color: var(--ca-muted);
   font-size: 0.75rem;
   line-height: 1.45;
   list-style: none;
@@ -4901,7 +4926,7 @@
 
 .cross-asset-ncd-proxy__row-label {
   color: var(--ca-sub);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .cross-asset-ncd-proxy__row-cells {
@@ -4940,7 +4965,7 @@
 .cross-asset-drivers-page__driver-title {
   color: var(--ca-muted);
   font-size: 0.75rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .cross-asset-drivers-page__driver-stance {
@@ -4948,7 +4973,7 @@
   padding: 2px 8px;
   border-radius: var(--ib-radius, 2px);
   font-size: 0.75rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 /* 页内统一 tone 映射：偏多=绿、偏空=红、中性=muted 灰（§4 同页同语义单色值）。 */
@@ -5007,7 +5032,7 @@
 
 .cross-asset-drivers-page__heatmap td:first-child {
   color: var(--ca-text);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .cross-asset-drivers-page__eval-tone--bull {
@@ -5025,7 +5050,7 @@
 .cross-asset-drivers-page__heatmap td:nth-child(2),
 .cross-asset-drivers-page__heatmap td:nth-child(3) {
   color: var(--ca-sub);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .cross-asset-transmission-axes {
@@ -5173,7 +5198,7 @@
   .cross-asset-data-status-strip__meta {
     justify-content: flex-start;
     gap: 4px 8px;
-    font-size: 0.68rem;
+    font-size: 0.6875rem;
   }
 }
 
@@ -5211,7 +5236,7 @@
 
 .ca-regime__label {
   font-size: 1.125rem;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0;
   line-height: 1.3;
 }
@@ -5245,7 +5270,7 @@
 .ca-correlation__title {
   margin: 0 0 6px;
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ca-text);
 }
 
@@ -5278,8 +5303,8 @@
 .ca-correlation__summary-card span,
 .ca-correlation__summary-card small {
   color: var(--ca-muted);
-  font-size: 0.68rem;
-  font-weight: 760;
+  font-size: 0.6875rem;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -5287,7 +5312,7 @@
   min-width: 0;
   color: var(--ca-text);
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -5296,7 +5321,7 @@
   color: var(--ca-accent);
   font-size: 1rem;
   font-style: normal;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.1;
 }
 
@@ -5317,7 +5342,7 @@
   color: var(--ca-sub);
   cursor: pointer;
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 600;
   list-style: none;
 }
 
@@ -5352,8 +5377,8 @@
 .ca-correlation__details > summary strong {
   flex: 0 0 auto;
   color: var(--ca-muted);
-  font-size: 0.68rem;
-  font-weight: 820;
+  font-size: 0.6875rem;
+  font-weight: 600;
 }
 
 .ca-correlation__matrix-wrap {
@@ -5395,7 +5420,7 @@
   align-items: center;
   justify-content: center;
   padding: 5px 2px;
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   border-radius: var(--ib-radius);
@@ -5417,8 +5442,8 @@
 }
 
 .ca-correlation__cell--header {
-  font-size: 0.58rem;
-  font-weight: 700;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-transform: uppercase;
   color: var(--ca-muted);
   background: transparent !important;
@@ -5439,10 +5464,10 @@
 }
 
 .ca-correlation__cell--diagonal {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ca-muted);
   background: var(--ca-card-mute) !important;
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
 }
 
 .ca-correlation__legend {
@@ -5498,11 +5523,11 @@
 .cross-asset-reference-depth .ca-correlation__cell {
   min-height: 24px;
   padding: 3px 4px;
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
 }
 
 .cross-asset-reference-depth .ca-correlation__cell--header {
-  font-size: 0.62rem;
+  font-size: 0.6875rem;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -5584,7 +5609,7 @@
   color: var(--ca-text);
   font-size: 1rem;
   line-height: 1.2;
-  font-weight: 800;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -5627,7 +5652,7 @@
 .ca-waterfall__gap-summary span,
 .ca-waterfall__gap-summary strong {
   font-size: 0.6875rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.3;
   white-space: nowrap;
 }
@@ -5647,7 +5672,7 @@
   overflow: hidden;
   color: var(--ca-sub);
   font-size: 0.6875rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5655,7 +5680,7 @@
 
 .ca-waterfall__title {
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ca-text);
   margin: 0 0 6px;
 }
@@ -5759,8 +5784,8 @@
   z-index: 2;
   transform: translateX(-50%);
   color: var(--ca-neutral-text);
-  font-size: 0.625rem;
-  font-weight: 700;
+  font-size: 0.6875rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
@@ -5787,8 +5812,8 @@
   bottom: -28px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.625rem;
-  font-weight: 700;
+  font-size: 0.6875rem;
+  font-weight: 600;
   color: var(--ca-muted);
   white-space: nowrap;
 }
@@ -5815,8 +5840,8 @@
   border-radius: var(--ib-radius, 2px);
   background: var(--ca-card);
   color: var(--ca-muted);
-  font-size: 0.5625rem;
-  font-weight: 800;
+  font-size: 0.6875rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -5931,12 +5956,12 @@
 
 .ca-waterfall__evidence-item span {
   color: var(--ca-muted);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .ca-waterfall__evidence-item strong {
   color: var(--ca-text);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .ca-waterfall__evidence-item p {
@@ -6044,7 +6069,7 @@
   min-height: 28px;
   padding-top: 6px;
   border-top: 1px dashed var(--ca-border-muted);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
   white-space: normal;
@@ -6068,7 +6093,7 @@
 
 .cross-asset-reference-depth .ca-waterfall__bar-label {
   max-width: 72px;
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
 }
 
 /* Product Design screenshot fidelity pass: keep the reference page from inheriting legacy cockpit chrome. */
@@ -6145,7 +6170,7 @@
   min-width: 0;
   overflow: hidden;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.3;
   text-overflow: ellipsis;
 }
@@ -6207,7 +6232,7 @@
   overflow: hidden;
   color: var(--ca-sub);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6263,8 +6288,13 @@
 }
 
 .cross-asset-reference-depth .cross-asset-observation-support-grid {
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+  gap: 12px;
+}
+
+.cross-asset-reference-depth .cross-asset-risk-snapshot-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 12px;
 }
 
 .cross-asset-reference-depth [data-testid="cross-asset-watch-list"] table {
@@ -6273,24 +6303,24 @@
 
 .cross-asset-reference-depth [data-testid="cross-asset-watch-list"] th:nth-child(1),
 .cross-asset-reference-depth [data-testid="cross-asset-watch-list"] td:nth-child(1) {
-  width: 58px;
+  width: 16%;
   white-space: normal;
 }
 
 .cross-asset-reference-depth [data-testid="cross-asset-watch-list"] th:nth-child(2),
 .cross-asset-reference-depth [data-testid="cross-asset-watch-list"] td:nth-child(2) {
-  width: 70px;
+  width: 16%;
   white-space: nowrap;
 }
 
 .cross-asset-reference-depth [data-testid="cross-asset-watch-list"] th:nth-child(3),
 .cross-asset-reference-depth [data-testid="cross-asset-watch-list"] td:nth-child(3) {
-  width: 38%;
+  width: 34%;
 }
 
 .cross-asset-reference-depth [data-testid="cross-asset-watch-list"] th:nth-child(4),
 .cross-asset-reference-depth [data-testid="cross-asset-watch-list"] td:nth-child(4) {
-  width: 42%;
+  width: 34%;
 }
 
 .cross-asset-reference-depth .ca-momentum,
@@ -6326,8 +6356,8 @@
 .cross-asset-reference-depth .cross-asset-evidence-ledger__head span,
 .cross-asset-reference-depth .cross-asset-evidence-ledger__head em {
   color: var(--ca-muted);
-  font-size: 0.68rem;
-  font-weight: 780;
+  font-size: 0.6875rem;
+  font-weight: 600;
   font-style: normal;
   white-space: nowrap;
 }
@@ -6336,7 +6366,7 @@
   overflow: hidden;
   color: var(--ca-text);
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6349,28 +6379,20 @@
 
 .cross-asset-reference-depth .cross-asset-evidence-ledger__matrix-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 450px), 1fr));
+  align-items: start;
+  gap: 12px;
   min-width: 0;
-}
-
-/*
- * 四列因子卡在 ≤1560 视口只剩 ~150px/卡，5 列迷你表数值逐字符竖排；
- * 先收 2 列（≤900 已有单列规则），保证数值列不折行。
- */
-@media (max-width: 1560px) {
-  .cross-asset-reference-depth .cross-asset-evidence-ledger__matrix-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 .cross-asset-reference-depth .cross-asset-evidence-ledger .cross-asset-evidence-factor {
   --factor-accent: var(--ca-accent);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto;
   gap: 0;
+  min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: auto;
   padding: 0;
   border: 1px solid var(--ca-border-soft);
   border-top: 3px solid var(--factor-accent);
@@ -6419,15 +6441,15 @@
   border-radius: var(--ib-radius, 2px);
   color: var(--factor-accent);
   background: var(--ca-card);
-  font-size: 0.64rem;
-  font-weight: 820;
+  font-size: 0.6875rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .cross-asset-reference-depth .cross-asset-evidence-ledger .cross-asset-evidence-group__cue {
   color: var(--ca-muted);
-  font-size: 0.66rem;
-  font-weight: 780;
+  font-size: 0.6875rem;
+  font-weight: 600;
   line-height: 1.2;
   text-transform: none;
 }
@@ -6436,27 +6458,24 @@
   margin: 0;
   color: var(--factor-accent);
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.25;
 }
 
 .cross-asset-reference-depth .cross-asset-evidence-ledger .cross-asset-evidence-factor p {
-  display: -webkit-box;
   margin: 0;
-  overflow: hidden;
   color: var(--ca-sub);
-  font-size: 0.68rem;
+  font-size: 12px;
   line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .cross-asset-evidence-factor__table {
   width: 100%;
+  min-width: 440px;
   border-collapse: collapse;
-  font-size: 0.69rem;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .cross-asset-evidence-factor__table th,
@@ -6471,8 +6490,8 @@
 .cross-asset-evidence-factor__table th {
   background: color-mix(in srgb, var(--ca-card-mute) 64%, var(--ib-surface));
   color: var(--ca-muted);
-  font-size: 0.6rem;
-  font-weight: 880;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -6482,64 +6501,66 @@
 
 .cross-asset-evidence-factor__table th:nth-child(1),
 .cross-asset-evidence-factor__table td:nth-child(1) {
-  width: 28%;
+  width: auto;
+  min-width: 100px;
 }
 
 .cross-asset-evidence-factor__table th:nth-child(2),
 .cross-asset-evidence-factor__table td:nth-child(2) {
-  width: 20%;
+  width: 1%;
 }
 
 .cross-asset-evidence-factor__table th:nth-child(3),
 .cross-asset-evidence-factor__table td:nth-child(3) {
-  width: 22%;
+  width: 1%;
 }
 
 .cross-asset-evidence-factor__table th:nth-child(4),
 .cross-asset-evidence-factor__table td:nth-child(4) {
-  width: 16%;
+  width: 1%;
 }
 
 .cross-asset-evidence-factor__table th:nth-child(5),
 .cross-asset-evidence-factor__table td:nth-child(5) {
-  width: 14%;
+  width: 1%;
+  min-width: 72px;
 }
 
-/* 数值列（当前/变化）等宽右对齐且永不折行；指标名列 ellipsis + title 兜底。 */
+/* 数值按内容保留列宽，名称自然换行；窄容器由卡片提供横向滚动。 */
 .cross-asset-evidence-factor__table th:nth-child(2),
 .cross-asset-evidence-factor__table td:nth-child(2),
 .cross-asset-evidence-factor__table th:nth-child(3),
 .cross-asset-evidence-factor__table td:nth-child(3) {
   text-align: right;
   white-space: nowrap;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }
 
-.cross-asset-evidence-factor__table td strong,
-.cross-asset-evidence-factor__table td span {
+.cross-asset-evidence-factor__table td:first-child strong,
+.cross-asset-evidence-factor__table td:first-child span {
   display: block;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .cross-asset-evidence-factor__table td strong {
   color: var(--ca-text);
-  font-size: 0.69rem;
-  font-weight: 850;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.25;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .cross-asset-evidence-factor__table td span {
   color: var(--ca-muted);
-  font-size: 0.59rem;
-  font-weight: 720;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.25;
 }
 
 .cross-asset-evidence-ledger__delta {
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .cross-asset-evidence-ledger__delta--positive {
@@ -6556,7 +6577,7 @@
 
 .cross-asset-evidence-factor__value {
   color: var(--ca-text);
-  font-weight: 850;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -6568,16 +6589,17 @@
   border-radius: var(--ib-radius, 2px);
   background: var(--ca-card);
   color: var(--ca-sub) !important;
-  font-size: 0.6rem !important;
-  font-weight: 850 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
   line-height: 1.3 !important;
   text-align: center;
+  white-space: nowrap;
 }
 
 .cross-asset-evidence-ledger__percentile--high,
 .cross-asset-evidence-ledger__percentile--extreme_high {
-  border-color: color-mix(in srgb, var(--ca-warning) 34%, var(--ca-border-muted));
-  color: var(--moss-color-warning-800) !important;
+  border-color: color-mix(in srgb, var(--ca-warning-text) 34%, var(--ca-border-muted));
+  color: var(--ca-warning-text) !important;
 }
 
 .cross-asset-evidence-ledger__percentile--low,
@@ -6592,16 +6614,16 @@
 
 .cross-asset-evidence-factor__source {
   display: inline-grid !important;
-  max-width: 100%;
   padding: 1px 4px;
   border: 1px solid var(--ca-border-muted);
   border-radius: var(--ib-radius, 2px);
   color: var(--ca-sub) !important;
   background: var(--ca-card);
-  font-size: 0.58rem !important;
-  font-weight: 820 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
   line-height: 1.25 !important;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .cross-asset-evidence-factor__foot {
@@ -6619,8 +6641,8 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ca-muted);
-  font-size: 0.62rem;
-  font-weight: 760;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6631,8 +6653,8 @@
   border-radius: var(--ib-radius, 2px);
   color: var(--ca-neutral-text);
   background: var(--ca-card);
-  font-size: 0.64rem;
-  font-weight: 850;
+  font-size: 0.6875rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -6679,13 +6701,13 @@
 .cross-asset-reference-depth .cross-asset-linkage-heatmap-ledger__title span {
   color: var(--ca-text);
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .cross-asset-reference-depth .cross-asset-linkage-heatmap-ledger__title strong {
   color: var(--ca-muted);
-  font-size: 0.68rem;
-  font-weight: 780;
+  font-size: 0.6875rem;
+  font-weight: 600;
 }
 
 .cross-asset-linkage-heatmap-ledger__legend {
@@ -6704,11 +6726,11 @@
   min-height: 20px;
   padding: 2px 6px;
   border: 1px solid color-mix(in srgb, var(--legend-color) 20%, var(--ca-border-muted));
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: color-mix(in srgb, var(--legend-color) 8%, var(--ib-surface));
   color: color-mix(in srgb, var(--legend-color) 82%, var(--ca-text));
-  font-size: 0.62rem;
-  font-weight: 820;
+  font-size: 0.6875rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -6762,8 +6784,8 @@
 .cross-asset-reference-depth .cross-asset-linkage-heatmap-ledger .cross-asset-drivers-page__heatmap th {
   background: color-mix(in srgb, var(--ca-card-mute) 82%, var(--ib-surface));
   color: var(--ca-muted);
-  font-size: 0.64rem;
-  font-weight: 850;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-transform: none;
 }
 
@@ -6796,7 +6818,7 @@
   overflow: hidden;
   color: var(--ca-text);
   font-size: 0.72rem;
-  font-weight: 860;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6804,8 +6826,8 @@
 .cross-asset-linkage-heatmap-ledger__pair span {
   overflow: hidden;
   color: var(--ca-muted);
-  font-size: 0.62rem;
-  font-weight: 720;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6813,33 +6835,33 @@
 .cross-asset-linkage-heatmap-ledger__cell {
   border-right: 1px solid color-mix(in srgb, var(--ca-border-muted) 72%, transparent);
   color: var(--ca-muted) !important;
-  font-weight: 900;
+  font-weight: 600;
   text-align: center !important;
 }
 
 .cross-asset-linkage-heatmap-ledger__cell--positive {
   color: var(--ca-positive-text) !important;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .cross-asset-linkage-heatmap-ledger__cell--negative {
   color: var(--ca-negative-text) !important;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .cross-asset-linkage-heatmap-ledger__cell--missing {
   color: var(--ca-muted) !important;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .cross-asset-linkage-heatmap-ledger__cell--missing {
   background: color-mix(in srgb, var(--ca-card-mute) 74%, var(--ib-surface));
   color: color-mix(in srgb, var(--ca-muted) 72%, var(--ib-surface)) !important;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .cross-asset-reference-depth .cross-asset-linkage-heatmap-ledger .cross-asset-drivers-page__eval-tone {
-  font-weight: 900;
+  font-weight: 600;
   text-align: center;
 }
 
@@ -6926,7 +6948,7 @@
   }
 }
 
-/* DESIGN.md �8: infinite status/loading motion must fully static under reduce. */
+/* DESIGN.md §8: infinite status/loading motion must fully static under reduce. */
 @media (prefers-reduced-motion: reduce) {
   .cross-asset-trend-panel__summary-dot,
   .cross-asset-trend-panel__spinner {

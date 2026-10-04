@@ -1,5 +1,6 @@
 import { SummaryBlock } from "../../../components/SummaryBlock";
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
 import { type EChartsOption } from "../../../lib/echarts";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import type { BalanceStageSummaryModel } from "../pages/balanceAnalysisPageModel";
@@ -25,25 +26,13 @@ function riskBadgeClass(level: "low" | "mid" | "high" | "neutral") {
   return rowStyles.riskBadgeMid;
 }
 
-function buildAllocationChartOption(
-  model: BalanceStageSummaryModel,
-  includeTitle: boolean,
-): EChartsOption {
+function buildAllocationChartOption(model: BalanceStageSummaryModel): EChartsOption {
   const nct = nocturneTokens.color;
   const items = model.allocationItems.length
     ? model.allocationItems
     : [{ label: "无真实数据", value: 0, color: nct.inkMuted }];
   return {
-    title: includeTitle
-      ? {
-          text: "资产负债净头寸（真实数据）",
-          left: 0,
-          top: 0,
-          /* canvas 读不到 CSS 变量，取 nocturneTokens 常量（数值源=tokens.css Nocturne scope）。 */
-          textStyle: { fontSize: 14, fontWeight: 700, color: nct.ink },
-        }
-      : undefined,
-    grid: { left: 8, right: 8, top: includeTitle ? 40 : 16, bottom: 24, containLabel: true },
+    grid: { left: 8, right: 8, top: 16 },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
     xAxis: {
       type: "value",
@@ -57,7 +46,7 @@ function buildAllocationChartOption(
     yAxis: {
       type: "category",
       data: items.map((item) => item.label),
-      axisLabel: { width: 72, overflow: "truncate", fontSize: 10, color: nct.inkSoft },
+      axisLabel: { width: 72, overflow: "truncate", fontSize: designTokens.fontSize[11], color: nct.inkSoft },
       axisLine: { lineStyle: { color: nct.line } },
     },
     series: [
@@ -76,7 +65,7 @@ function buildAllocationChartOption(
 export function BalanceSummaryRow({ model, variant = "default" }: BalanceSummaryRowProps) {
   const gridStyle = useBalanceAnalysisThreeColumnGridStyle();
   const isTerminal = variant === "terminal";
-  const allocationChartOption = buildAllocationChartOption(model, !isTerminal);
+  const allocationChartOption = buildAllocationChartOption(model);
 
   const summaryBlock = (
     <SummaryBlock
@@ -87,13 +76,15 @@ export function BalanceSummaryRow({ model, variant = "default" }: BalanceSummary
   );
 
   const chartBlock = (
-    <>
-      <div className={isTerminal ? rowStyles.chartPanelTerminal : rowStyles.chartPanel}>
-        {/* opts.renderer=canvas 为 echarts 默认值，迁 BaseChart 后省略等价。 */}
-        <BaseChart option={allocationChartOption} height={isTerminal ? 210 : 240} />
-      </div>
-      <div className={rowStyles.netPositionFoot}>净头寸: {model.allocationNetValue}</div>
-    </>
+    <ChartCard
+      flat
+      title={isTerminal ? undefined : "资产负债净头寸"}
+      ariaLabel="资产负债净头寸"
+      height={CHART_CARD_HEIGHTS.default}
+      legend="none"
+      option={model.allocationItems.length ? allocationChartOption : null}
+      footnote={`净头寸: ${model.allocationNetValue}`}
+    />
   );
 
   const riskBlock = (

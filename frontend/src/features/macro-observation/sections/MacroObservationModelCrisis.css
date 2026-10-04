@@ -107,7 +107,7 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -131,9 +131,9 @@
 
 .macro-observation-modelstrategy-readiness-item strong {
   color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -276,46 +276,6 @@
   color: var(--dh-api-muted);
   font-size: 11px;
   line-height: 1.6;
-}
-
-/* ---------------------------------------------- 04：历史折线图容器 */
-
-.macro-observation-crisis-chart-panel {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-  min-width: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
-}
-
-.macro-observation-crisis-chart {
-  min-width: 0;
-}
-
-.macro-observation-crisis-chart-host {
-  min-width: 0;
-}
-
-/* echarts-for-react 无 style 时注入 inline height:300px，需 !important
-   收敛到设计高度（PositionsBondsSections.css 图表画布同款先例）。 */
-.macro-observation-crisis-chart-canvas {
-  width: 100%;
-  height: 240px !important;
-}
-
-/* 无历史序列占位（禁止演示数据冒充）。 */
-.macro-observation-crisis-placeholder {
-  display: grid;
-  place-items: center;
-  min-height: 160px;
-  margin: 0;
-  border: 1px dashed var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  color: var(--dh-api-muted);
-  font-size: 12px;
 }
 
 /* ---------------------------------------------------------- 响应式 */

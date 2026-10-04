@@ -16,6 +16,18 @@ function sheet(title: string): QdbGlMonthlyAnalysisSheet {
   };
 }
 
+function sheetWithRows(title: string, rowCount: number): QdbGlMonthlyAnalysisSheet {
+  return {
+    key: title,
+    title,
+    columns: ["科目", "金额"],
+    rows: Array.from({ length: rowCount }, (_, index) => ({
+      科目: `科目-${index + 1}`,
+      金额: index + 1,
+    })),
+  };
+}
+
 const GROUPS: LedgerPnlWorkbookGroup[] = [
   {
     id: "overview",
@@ -87,6 +99,60 @@ describe("LedgerPnlWorkbookTables", () => {
     fireEvent.click(screen.getByRole("tab", { name: "总览与预警 0/1" }));
 
     expect(screen.getByTestId("financial-indicator-status")).toHaveTextContent("暂无可展示数据");
+  });
+
+  it("R3: 行数超过 rowLimit 时显示截断提示，可展开全部和收起", () => {
+    const truncatedGroups: LedgerPnlWorkbookGroup[] = [
+      {
+        id: "big",
+        label: "大表分组",
+        tables: [
+          {
+            title: "超长表",
+            sheet: sheetWithRows("超长表", 8),
+            testId: "big-table",
+            rowLimit: 5,
+          },
+        ],
+      },
+    ];
+
+    render(<LedgerPnlWorkbookTables groups={truncatedGroups} />);
+
+    const table = screen.getByTestId("big-table");
+    const truncation = screen.getByTestId("big-table-truncation");
+    expect(truncation).toHaveTextContent("共 8 行，仅显示前 5 行");
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(5);
+
+    fireEvent.click(screen.getByRole("button", { name: "展开全部" }));
+    expect(truncation).toHaveTextContent("已展开全部 8 行");
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(8);
+
+    fireEvent.click(screen.getByRole("button", { name: "收起" }));
+    expect(truncation).toHaveTextContent("共 8 行，仅显示前 5 行");
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(5);
+  });
+
+  it("R3: 行数未超过 rowLimit 时不显示截断提示", () => {
+    const groups: LedgerPnlWorkbookGroup[] = [
+      {
+        id: "small",
+        label: "小表分组",
+        tables: [
+          {
+            title: "短表",
+            sheet: sheetWithRows("短表", 3),
+            testId: "small-table",
+            rowLimit: 5,
+          },
+        ],
+      },
+    ];
+
+    render(<LedgerPnlWorkbookTables groups={groups} />);
+
+    expect(screen.queryByTestId("small-table-truncation")).not.toBeInTheDocument();
+    expect(screen.getByTestId("small-table").querySelectorAll("tbody tr")).toHaveLength(3);
   });
 
   it("全部分组无数据时仍选中第一个分组", () => {

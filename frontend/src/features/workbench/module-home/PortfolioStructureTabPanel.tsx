@@ -126,9 +126,13 @@ export function PortfolioStructureTabPanel({ panel }: PortfolioStructureTabPanel
     panel.key === "yield-distribution" ? panel.rows.filter(isYieldSummaryRow) : [];
   const tableRows =
     summaryRows.length > 0 ? panel.rows.filter((row) => !isYieldSummaryRow(row)) : panel.rows;
+  const isEmpty = panel.rows.length === 0;
 
   return (
-    <div className={`${styles.embeddedPanel} ${hasChart ? styles.structureSplit : ""}`}>
+    <div
+      className={`${styles.embeddedPanel} ${hasChart ? styles.structureSplit : ""}`}
+      data-empty={isEmpty ? "true" : undefined}
+    >
       <div
         className={styles.structureListCol}
         role="region"
@@ -146,9 +150,12 @@ export function PortfolioStructureTabPanel({ panel }: PortfolioStructureTabPanel
                 className={styles.structureSummaryLine}
                 data-testid="module-home-portfolio-yield-summary"
                 key={row.key}
-                title={`字段 ${row.source}（${row.label}）`}
+                title="按持仓权重计算的到期收益率，口径见债券分析。"
               >
-                <span>加权到期收益率</span>
+                <span>
+                  加权到期收益率
+                  {row.coverageNote ? <span className={styles.coverageNote}>{row.coverageNote}</span> : null}
+                </span>
                 <strong className={toneClass(row.tone)}>{row.value}</strong>
               </p>
             ))}
@@ -174,6 +181,7 @@ export function PortfolioStructureTabPanel({ panel }: PortfolioStructureTabPanel
                   >
                     <div className={styles.compactRowMain}>
                       <span className={styles.compactLabel}>{row.label}</span>
+                      {row.coverageNote ? <span className={styles.coverageNote}>{row.coverageNote}</span> : null}
                     </div>
                     {cells.map((cell, index) => {
                       const isValueCell = index === cells.length - 1;
@@ -196,7 +204,12 @@ export function PortfolioStructureTabPanel({ panel }: PortfolioStructureTabPanel
             </ul>
           </>
         ) : (
-          <p className={`${styles.detailSource} ${toneClass(panel.tone)}`}>{panel.stateDetail}</p>
+          <p
+            className={`${styles.structureEmptyState} ${toneClass(panel.tone)}`}
+            data-testid={`module-home-structure-empty-${panel.key}`}
+          >
+            {panel.stateDetail}
+          </p>
         )}
       </div>
       {hasChart && panel.chart ? (

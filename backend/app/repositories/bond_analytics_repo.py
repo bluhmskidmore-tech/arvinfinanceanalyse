@@ -13,6 +13,7 @@ from backend.app.core_finance.bond_analytics.read_models import (
     summarize_portfolio_risk,
 )
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.duckdb_repo import catalog_presence_cached, read_only_connection
 from backend.app.repositories.fact_load_gates import (
     commit_report_date_purge,
@@ -42,6 +43,16 @@ _DASHBOARD_RATE_DURATION_ELIGIBLE_SQL = (
 )
 _DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL = (
     f"case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then market_value else 0 end"
+)
+_DASHBOARD_YTM_ELIGIBLE_SQL = f"{_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} and ytm is not null"
+_DASHBOARD_YTM_MARKET_VALUE_SQL = (
+    f"case when {_DASHBOARD_YTM_ELIGIBLE_SQL} then market_value else 0 end"
+)
+# Coverage is the observed absolute market value within the existing eligible
+# rate/credit universe; it does not change the signed weighting of the yield.
+_DASHBOARD_YTM_COVERAGE_SQL = (
+    f"sum(abs({_DASHBOARD_YTM_MARKET_VALUE_SQL})) "
+    f"/ nullif(sum(abs({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})), 0)"
 )
 
 # Column name constants — single source of truth for row→dict mapping and INSERT ordering.
@@ -110,6 +121,9 @@ _ANALYTICS_COLUMNS = (
     "interest_payment_frequency_fallback_used",
     "interest_rate_style",
     "ytm",
+    "coupon_rate_input_status",
+    "ytm_input_status",
+    "duration_quality_flag",
     "value_date",
     "maturity_date",
     "next_call_date",
@@ -379,12 +393,14 @@ class BondAnalyticsRepository:
                       asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                       accounting_class, accounting_rule_id, currency_code, face_value, market_value_native, market_value,
                       amortized_cost, accrued_interest, coupon_rate, interest_mode, interest_payment_frequency,
-                      interest_payment_frequency_fallback_used, interest_rate_style, ytm, value_date, maturity_date, next_call_date,
+                      interest_payment_frequency_fallback_used, interest_rate_style, ytm,
+                      coupon_rate_input_status, ytm_input_status, duration_quality_flag,
+                      value_date, maturity_date, next_call_date,
                       years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                       convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                       ingest_batch_id, trace_id
                     ) values (
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                      {", ".join(["?"] * len(_ANALYTICS_COLUMNS))}
                     )
                     """,
                     [
@@ -414,6 +430,9 @@ class BondAnalyticsRepository:
                             row.interest_payment_frequency_fallback_used,
                             row.interest_rate_style,
                             row.ytm,
+                            getattr(row, "coupon_rate_input_status", None),
+                            getattr(row, "ytm_input_status", None),
+                            getattr(row, "duration_quality_flag", None),
                             row.value_date.isoformat() if row.value_date else None,
                             row.maturity_date.isoformat() if row.maturity_date else None,
                             row.next_call_date.isoformat() if row.next_call_date else None,
@@ -524,6 +543,21 @@ class BondAnalyticsRepository:
                 if _column_exists(conn, self.path, FACT_TABLE, "market_value_native")
                 else "null as market_value_native"
             )
+            coupon_rate_input_status_expr = (
+                "coupon_rate_input_status"
+                if _column_exists(conn, self.path, FACT_TABLE, "coupon_rate_input_status")
+                else "cast(null as varchar) as coupon_rate_input_status"
+            )
+            ytm_input_status_expr = (
+                "ytm_input_status"
+                if _column_exists(conn, self.path, FACT_TABLE, "ytm_input_status")
+                else "cast(null as varchar) as ytm_input_status"
+            )
+            duration_quality_flag_expr = (
+                "duration_quality_flag"
+                if _column_exists(conn, self.path, FACT_TABLE, "duration_quality_flag")
+                else "cast(null as varchar) as duration_quality_flag"
+            )
             where_parts = ["report_date = ?"]
             params: list[object] = [report_date]
             if asset_class != "all":
@@ -538,7 +572,9 @@ class BondAnalyticsRepository:
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                        accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
                        amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr},
-                       {interest_payment_frequency_fallback_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
+                       {interest_payment_frequency_fallback_expr}, {interest_rate_style_expr}, ytm,
+                       {coupon_rate_input_status_expr}, {ytm_input_status_expr}, {duration_quality_flag_expr},
+                       {value_date_expr}, maturity_date, {next_call_date_expr},
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id
@@ -601,6 +637,21 @@ class BondAnalyticsRepository:
                 if _column_exists(conn, self.path, FACT_TABLE, "market_value_native")
                 else "null as market_value_native"
             )
+            coupon_rate_input_status_expr = (
+                "coupon_rate_input_status"
+                if _column_exists(conn, self.path, FACT_TABLE, "coupon_rate_input_status")
+                else "cast(null as varchar) as coupon_rate_input_status"
+            )
+            ytm_input_status_expr = (
+                "ytm_input_status"
+                if _column_exists(conn, self.path, FACT_TABLE, "ytm_input_status")
+                else "cast(null as varchar) as ytm_input_status"
+            )
+            duration_quality_flag_expr = (
+                "duration_quality_flag"
+                if _column_exists(conn, self.path, FACT_TABLE, "duration_quality_flag")
+                else "cast(null as varchar) as duration_quality_flag"
+            )
             placeholders = ",".join(["?"] * len(requested))
             rows = conn.execute(
                 f"""
@@ -608,7 +659,9 @@ class BondAnalyticsRepository:
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                        accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
                        amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr},
-                       {interest_payment_frequency_fallback_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
+                       {interest_payment_frequency_fallback_expr}, {interest_rate_style_expr}, ytm,
+                       {coupon_rate_input_status_expr}, {ytm_input_status_expr}, {duration_quality_flag_expr},
+                       {value_date_expr}, maturity_date, {next_call_date_expr},
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id
@@ -846,6 +899,8 @@ class BondAnalyticsRepository:
         observation and keeps its weight. ``*_coverage_ratio`` reports the
         market-value share actually carrying the field.
         """
+        # 正式事实的 ytm 已由 bond_analytics/engine.py 归一为小数（唯一归一点，含
+        # [−0.20, 0) 的合法负收益率）；负值不命中 `>1` 分支、原样直通，此处不做二次判定。
         ytm_norm = (
             "(case when ytm is null then null "
             "when ytm > 1 and ytm <= 100 then ytm / 100.0 else ytm end)"
@@ -957,11 +1012,11 @@ class BondAnalyticsRepository:
                   portfolio_name,
                   coalesce(sum(market_value), 0) as total_market_value,
                   case
-                    when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+                    when coalesce(sum({_DASHBOARD_YTM_MARKET_VALUE_SQL}), 0) > 0
                     then sum(
-                      case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then ytm * market_value else 0 end
-                    ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
-                    else 0
+                      case when {_DASHBOARD_YTM_ELIGIBLE_SQL} then ytm * market_value else 0 end
+                    ) / sum({_DASHBOARD_YTM_MARKET_VALUE_SQL})
+                    else null
                   end as weighted_ytm,
                   case
                     when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
@@ -971,7 +1026,8 @@ class BondAnalyticsRepository:
                     else 0
                   end as weighted_duration,
                   coalesce(sum(dv01), 0) as total_dv01,
-                  count(*)::bigint as bond_count
+                  count(*)::bigint as bond_count,
+                  {_DASHBOARD_YTM_COVERAGE_SQL} as weighted_ytm_coverage_ratio
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                 group by portfolio_name
@@ -987,6 +1043,7 @@ class BondAnalyticsRepository:
                     "weighted_duration": row[3],
                     "total_dv01": row[4],
                     "bond_count": int(row[5]),
+                    "weighted_ytm_coverage_ratio": row[6],
                 }
                 for row in rows
             ]
@@ -1039,26 +1096,30 @@ class BondAnalyticsRepository:
                   maturity_bucket,
                   coalesce(sum(market_value), 0) as total_market_value,
                   count(*)::bigint as bond_count,
-                  min(years_to_maturity) as sort_ytm
+                  min(days_to_maturity) as sort_maturity
                 from (
                   select
                     market_value,
-                    years_to_maturity,
+                    date_diff('day', cast(report_date as date), maturity_date) as days_to_maturity,
                     case
-                      when years_to_maturity <= 0.0192 then '7天内'
-                      when years_to_maturity <= 0.0822 then '8-30天'
-                      when years_to_maturity <= 0.2466 then '31-90天'
-                      when years_to_maturity <= 1 then '91天-1年'
-                      when years_to_maturity <= 3 then '1-3年'
-                      when years_to_maturity <= 5 then '3-5年'
+                      -- Same SA/其他 fund convention as classify_accounting_maturity.
+                      when maturity_date is null and instrument_code like 'SA%' and bond_type = '其他'
+                        then '基金未列到期日'
+                      when maturity_date is null then '到期日未知'
+                      when days_to_maturity <= 0 then '已到期仍有余额'
+                      when days_to_maturity <= 7 then '7天内'
+                      when days_to_maturity <= 30 then '8-30天'
+                      when days_to_maturity <= 90 then '31-90天'
+                      when days_to_maturity <= 365 then '91天-1年'
+                      when days_to_maturity <= 1095 then '1-3年'
+                      when days_to_maturity <= 1825 then '3-5年'
                       else '5年以上'
                     end as maturity_bucket
                   from {FACT_TABLE}
                   where cast(report_date as varchar) = ?
-                    and years_to_maturity is not null
                 ) t
                 group by maturity_bucket
-                order by sort_ytm
+                order by sort_maturity nulls last, maturity_bucket
                 """,
                 [report_date],
             ).fetchall()
@@ -1141,7 +1202,9 @@ class BondAnalyticsRepository:
                   coalesce(sum(spread_dv01), 0) as total_spread_dv01,
                   case
                     when coalesce(sum(face_value), 0) > 0
-                    then sum(case when years_to_maturity <= 1 then face_value else 0 end) / sum(face_value)
+                    then sum(case
+                      when date_diff('day', cast(report_date as date), maturity_date) between 1 and 365
+                      then face_value else 0 end) / sum(face_value)
                     else 0
                   end as reinvestment_ratio_1y,
                   sum(case when convexity is not null then abs(coalesce(market_value, 0)) else 0 end)
@@ -1233,7 +1296,9 @@ class BondAnalyticsRepository:
                 accounting_class,
                 currency_code,
                 sum(coalesce(face_value, 0)) as face_value,
-                sum(coalesce(market_value, 0)) as market_value,
+                sum(market_value) as market_value,
+                -- Missing MV has no usable weight: coverage is the share of observed rows.
+                count(market_value) * 1.0 / count(*) as market_value_coverage_ratio,
                 sum(coalesce(amortized_cost, 0)) as amortized_cost,
                 sum(coalesce(accrued_interest, 0)) as accrued_interest,
                 -- 缺失≠0：缺字段的行不得 coalesce 成 0 拉低加权值；显式 0 才是真实观测。
@@ -1296,7 +1361,12 @@ class BondAnalyticsRepository:
                 end as convexity_coverage_ratio,
                 sum(coalesce(dv01, 0)) as dv01,
                 max(case when coalesce(is_credit, false) then 1 else 0 end) as is_credit,
-                sum(coalesce(spread_dv01, 0)) as spread_dv01,
+                sum(spread_dv01) as spread_dv01,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when spread_dv01 is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as spread_dv01_coverage_ratio,
                 count(*) as source_row_count
             from fact_formal_bond_analytics_daily
             where cast(report_date as date) = cast(? as date)
@@ -1338,19 +1408,27 @@ def _normalize_dashboard_risk_row(data: dict[str, object]) -> dict[str, object]:
 
 
 def _empty_dashboard_headline_kpis_row() -> dict[str, object]:
+    """No fact rows for the period: every amount/rate is unknown, not a real zero.
+
+    ``bond_count`` stays ``0`` (a true count), but ``total_market_value`` /
+    ``unrealized_pnl`` / ``weighted_coupon`` / ``total_dv01`` must not collapse to
+    ``Decimal("0")`` here — a no-holdings day would otherwise render as "持仓规模
+    0 亿元" indistinguishable from an actual zero-value portfolio.
+    """
     z = Decimal("0")
     return {
         "bond_count": 0,
         "total_face_value": z,
-        "total_market_value": z,
-        "unrealized_pnl": z,
+        "total_market_value": None,
+        "unrealized_pnl": None,
         "total_amortized_cost": z,
         "total_accrued_interest": z,
         "weighted_ytm": None,
+        "weighted_ytm_coverage_ratio": None,
         "weighted_duration": None,
-        "weighted_coupon": z,
+        "weighted_coupon": None,
         "credit_spread_median": None,
-        "total_dv01": z,
+        "total_dv01": None,
         "weighted_coupon_coverage_ratio": z,
     }
 
@@ -1387,7 +1465,9 @@ def _fetch_one_period_headline_kpis(
         """,
         [report_date],
     ).fetchone()
-    if row is None:
+    # 无事实行（该日 fact 表命中 0 行）时以上 coalesce(...,0) 聚合全部退化为
+    # 「看似真实的零」；以 bond_count==0 为无证据判据，改走 null 形态而非零。
+    if row is None or int(row[0] or 0) == 0:
         return _empty_dashboard_headline_kpis_row()
     weighted = _fetch_one_period_weighted_rate_duration_kpis(conn, report_date)
     return {
@@ -1398,6 +1478,7 @@ def _fetch_one_period_headline_kpis(
         "total_amortized_cost": _decimal(row[4]),
         "total_accrued_interest": _decimal(row[5]),
         "weighted_ytm": weighted["weighted_ytm"],
+        "weighted_ytm_coverage_ratio": weighted["weighted_ytm_coverage_ratio"],
         "weighted_duration": weighted["weighted_duration"],
         "weighted_coupon": _decimal(row[6]),
         "credit_spread_median": None if row[7] is None else _decimal(row[7]),
@@ -1414,10 +1495,10 @@ def _fetch_one_period_weighted_rate_duration_kpis(
         f"""
         select
           case
-            when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+            when coalesce(sum({_DASHBOARD_YTM_MARKET_VALUE_SQL}), 0) > 0
             then sum(
-              case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then ytm * market_value else 0 end
-            ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
+              case when {_DASHBOARD_YTM_ELIGIBLE_SQL} then ytm * market_value else 0 end
+            ) / sum({_DASHBOARD_YTM_MARKET_VALUE_SQL})
             else null
           end as weighted_ytm,
           case
@@ -1426,7 +1507,8 @@ def _fetch_one_period_weighted_rate_duration_kpis(
               case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then modified_duration * market_value else 0 end
             ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
             else null
-          end as weighted_duration
+          end as weighted_duration,
+          {_DASHBOARD_YTM_COVERAGE_SQL} as weighted_ytm_coverage_ratio
         from {FACT_TABLE}
         where cast(report_date as varchar) = ?
           and {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL}
@@ -1434,10 +1516,11 @@ def _fetch_one_period_weighted_rate_duration_kpis(
         [report_date],
     ).fetchone()
     if row is None:
-        return {"weighted_ytm": None, "weighted_duration": None}
+        return {"weighted_ytm": None, "weighted_duration": None, "weighted_ytm_coverage_ratio": None}
     return {
         "weighted_ytm": None if row[0] is None else _decimal(row[0]),
         "weighted_duration": None if row[1] is None else _decimal(row[1]),
+        "weighted_ytm_coverage_ratio": None if row[2] is None else _decimal(row[2]),
     }
 
 
@@ -1494,6 +1577,7 @@ def _column_exists(conn: duckdb.DuckDBPyConnection, path: str, table_name: str, 
 
 
 def _connect_read_only(path: str) -> duckdb.DuckDBPyConnection | None:
+    path = resolve_effective_read_path(path)
     try:
         return duckdb.connect(path, read_only=True)
     except duckdb.IOException:

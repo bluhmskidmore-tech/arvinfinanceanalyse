@@ -11,7 +11,7 @@ describe("/agent route when its frontend gate is closed", () => {
     await import("../app/ThemedRouteBoundary");
     // mock 客户端按需动态 import；本文件只有一个快速用例，预热避免
     // in-flight import 滞留到环境拆除（EnvironmentTeardownError）。
-    await import("../api/mockApiClient");
+    await import("../mocks/mockApiClient");
     await import("../mocks/mockApiEnvelope");
     await import("../mocks/workbench");
   }, 30_000);

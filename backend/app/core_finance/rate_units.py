@@ -50,7 +50,14 @@ def bp_to_pct(value: Decimal | float | str) -> Decimal:
     return Decimal(str(value)) / _HUNDRED
 
 
-def normalize_percent_rate_to_decimal(raw: Any) -> float | None:
+# 合法负收益率的脏值下界（小数年利率，含端点）。与上方 +20% 上界对称：+20 → 0.20 仍是
+# 观测值、+20.01 是脏值；对应地 −20 → −0.20 仍是观测值、−20.01 是脏值。合法负收益率的
+# 量级在 −1% 附近，−20% 以下几乎只可能是符号/单位错误。任意付息频率 f>=1 下该下界保证
+# 折现基数 ``1 + y/f >= 0.8 > 0``。票息永远不接受负值，只有 YTM 调用方传入此下界。
+NEGATIVE_YIELD_DIRTY_FLOOR = -0.20
+
+
+def normalize_percent_rate_to_decimal(raw: Any, *, negative_floor: float | None = None) -> float | None:
     """
     将「百分数口径」存储的年利率归一为小数形式。1.82（=1.82%）→ 0.0182。
 
@@ -64,7 +71,9 @@ def normalize_percent_rate_to_decimal(raw: Any) -> float | None:
     的 >2 启发式处理——那会把 1.82% 静默当作小数 182%。
 
     规则：
-    - None / 非数值 / NaN / Inf / 负数 → None
+    - None / 非数值 / NaN / Inf → None
+    - 负数：``negative_floor`` 为 None（票息、默认）→ None；否则归一为小数后
+      低于 ``negative_floor`` → None（脏值），不低于 → 归一值（合法负收益率）
     - > 20（即年利率 > 20%）→ None（脏数据，取证发现 ytm 极值 20720.93）
     - 其余无条件除以 100
     """
@@ -74,8 +83,21 @@ def normalize_percent_rate_to_decimal(raw: Any) -> float | None:
         v = float(raw)
     except (TypeError, ValueError):
         return None
-    if math.isnan(v) or math.isinf(v) or v < 0:
+    if math.isnan(v) or math.isinf(v):
         return None
+    if v < 0:
+        if negative_floor is None:
+            return None
+        decimal_rate = v / 100.0
+        if decimal_rate < negative_floor:
+            logger.warning(
+                "normalize_percent_rate_to_decimal: value %s below the negative-yield floor %s%%, "
+                "treating as dirty data, returning None",
+                v,
+                negative_floor * 100.0,
+            )
+            return None
+        return decimal_rate
     if v > 20:
         logger.warning(
             "normalize_percent_rate_to_decimal: value %s > 20 (i.e. rate > 20%%), "
@@ -115,7 +137,7 @@ def detect_percent_unit_from_curve(values: list[float]) -> bool:
     return is_percent
 
 
-def normalize_annual_rate_to_decimal(raw: Any) -> float | None:
+def normalize_annual_rate_to_decimal(raw: Any, *, negative_floor: float | None = None) -> float | None:
     """
     将「小数口径」来源的年利率做防御性归一（0.035 表示 3.5%）。
 
@@ -126,7 +148,9 @@ def normalize_annual_rate_to_decimal(raw: Any) -> float | None:
     docs/audits/2026-07-19-system-calculation-audit.md 取证 1。
 
     规则：
-    - None / 负数 → None
+    - None → None
+    - 负数：``negative_floor`` 为 None（票息、默认）→ None；否则低于
+      ``negative_floor`` → None（脏值），不低于 → 原值（合法负收益率，已是小数）
     - > 20 → None（债券利率超过 20% 视为脏数据，原阈值 > 100 过宽）
     - > 2  → 除以 100 并 WARNING（仅修正明显误入的百分数，如 3.5 被误存为百分数；
               正常债券利率不超过 20%，但 1.5% 存为 0.015 不会触发此分支）
@@ -143,8 +167,12 @@ def normalize_annual_rate_to_decimal(raw: Any) -> float | None:
         v = float(raw)
     except (TypeError, ValueError):
         return None
-    if math.isnan(v) or math.isinf(v) or v < 0:
+    if math.isnan(v) or math.isinf(v):
         return None
+    if v < 0:
+        if negative_floor is None or v < negative_floor:
+            return None
+        return v
     if v > 20:
         logger.warning(
             "normalize_annual_rate_to_decimal: value %s > 20, treating as dirty data, returning None",

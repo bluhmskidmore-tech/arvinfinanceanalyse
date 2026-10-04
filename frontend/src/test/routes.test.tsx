@@ -6,8 +6,10 @@ import {
   RouterProvider,
   type RouteObject,
 } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createApiClient } from "../api/client";
+import { AppProviders } from "../app/providers";
 import { routerFuture } from "../router/routerFuture";
 import { workbenchRoutes } from "../router/routes";
 
@@ -35,6 +37,14 @@ vi.mock("../features/workbench/pages/WorkbenchPlaceholderPage", () => ({
   default: () => <section data-testid="workbench-placeholder-page" />,
 }));
 
+vi.mock("../features/publication-showcase/PublicationShowcasePage", () => ({
+  default: () => <section data-testid="publication-showcase-page" />,
+}));
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 function getRootChildren(routes: RouteObject[]): RouteObject[] {
   const rootChildren = routes.find((route) => route.path === "/")?.children ?? [];
   // 展开无 path 的布局层（子路由级错误边界），保持重复路径检查覆盖真实叶子路由。
@@ -44,6 +54,18 @@ function getRootChildren(routes: RouteObject[]): RouteObject[] {
 }
 
 describe("workbench route definitions", () => {
+  it("registers the publication showcase outside the workbench navigation shell", () => {
+    const showcaseRoute = workbenchRoutes.find(
+      (route) => route.path === "/publication-showcase",
+    );
+    const rootChildren = getRootChildren(workbenchRoutes);
+
+    expect(showcaseRoute?.element).toBeDefined();
+    expect(
+      rootChildren.some((route) => route.path === "publication-showcase"),
+    ).toBe(false);
+  });
+
   it("does not register duplicate child paths under the workbench root", () => {
     const paths = getRootChildren(workbenchRoutes)
       .map((route) => route.path)
@@ -73,9 +95,28 @@ describe("workbench route definitions", () => {
       future: routerFuture,
     });
 
-    render(<RouterProvider router={router} future={routerFuture} />);
+    render(
+      <AppProviders client={createApiClient({ mode: "mock" })}>
+        <RouterProvider router={router} future={routerFuture} />
+      </AppProviders>,
+    );
 
     expect(await screen.findByTestId("pnl-by-business-insights-page")).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-placeholder-page")).not.toBeInTheDocument();
+  });
+
+  it("resolves /publication-showcase when the feature flag is enabled", async () => {
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("PROD", false);
+    vi.stubEnv("VITE_DATA_SOURCE", "mock");
+
+    const router = createMemoryRouter(workbenchRoutes, {
+      initialEntries: ["/publication-showcase"],
+      future: routerFuture,
+    });
+
+    render(<RouterProvider router={router} future={routerFuture} />);
+
+    expect(await screen.findByTestId("publication-showcase-page")).toBeInTheDocument();
   });
 });

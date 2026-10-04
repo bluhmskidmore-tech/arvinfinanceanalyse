@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import logging
 import re
 import time
+from collections.abc import Mapping
 from datetime import date
-from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from pydantic import BaseModel
 
 from backend.app.api.deps import ensure_read_allowed
-from backend.app.api.perf_logging import timed_api_call
-from backend.app.api.response_cache import market_home_response_cache
 from backend.app.governance.settings import get_settings
+from backend.app.observability.perf_logging import timed_api_call
+from backend.app.observability.response_cache import market_home_response_cache
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_cycle_proxy_backtest_envelope,
@@ -29,7 +33,9 @@ from backend.app.services.livermore_position_snapshot_dispatch_service import (
     queue_livermore_position_snapshot_rows,
 )
 from backend.app.services.livermore_sector_rank_series_service import livermore_sector_rank_series_envelope
-from backend.app.services.livermore_signal_confluence_service import livermore_signal_confluence_envelope
+from backend.app.services.livermore_signal_confluence_service import (
+    livermore_signal_confluence_envelope,
+)
 from backend.app.services.livermore_stock_detail_service import livermore_stock_detail_envelope
 from backend.app.services.macro_bond_linkage_service import get_macro_context_v1
 
@@ -37,9 +43,12 @@ from backend.app.services.macro_bond_linkage_service import get_macro_context_v1
 # module namespace so existing monkeypatch/import contracts keep working;
 # endpoints keep calling them through unqualified module globals.
 from backend.app.services.market_data_livermore_route_support import (
+    STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS,
     _actionable_unsupported_output_count,
     _active_data_gap_count,
     _active_diagnostic_count,
+    _cached_livermore_signal_confluence,
+    _cached_stock_analysis_workbench,
     _count_array,
     _count_array_or_mapping,
     _count_mapping,
@@ -52,6 +61,7 @@ from backend.app.services.market_data_livermore_route_support import (
     _livermore_portfolio_backtest_cache_key,
     _livermore_sector_rank_series_cache_key,
     _livermore_stock_detail_cache_key,
+    _livermore_strategy_cache_key,
     _livermore_strategy_optimization_cache_key,
     _livermore_strategy_score_cache_key,
     _livermore_workbench_candidate_history_summary,
@@ -68,37 +78,84 @@ from backend.app.services.market_data_livermore_route_support import (
     _optional_text,
     _present,
     _resolve_livermore_position_csv_path,
+    _selected_pretrade_external_read,
+    _stock_analysis_workbench_cache_key,
     _stock_heavyweight_trends_cache_key,
     _stock_kline_analysis_cache_key,
     _sum_optional_counts,
     _with_livermore_workbench_summary,
 )
+from backend.app.services.market_data_livermore_route_support import (
+    _livermore_signal_confluence_cache_key as _livermore_signal_confluence_cache_key,
+)
+from backend.app.services.market_data_livermore_route_support import (
+    _qualified_livermore_signal_confluence as _qualified_livermore_signal_confluence_support,
+)
 from backend.app.services.market_data_livermore_service import (
-    livermore_business_inputs_version,
-    livermore_data_version,
     livermore_strategy_envelope_from_catalog,
     theme_overlay_fingerprint,
     theme_overlay_reader_from_settings,
 )
+from backend.app.services.pretrade_qualification import (
+    STRATEGY_CALCULATION_MODE as STRATEGY_CALCULATION_MODE,
+)
+from backend.app.services.pretrade_qualification import (
+    canonical_pretrade_confluence_projection_sha256 as canonical_pretrade_confluence_projection_sha256,
+)
 from backend.app.services.stock_analysis_workbench_service import (
     DEFAULT_INCLUDE_KEYS,
+    WORKBENCH_CACHE_VERSION,
+    WORKBENCH_RULE_VERSION,
     stock_analysis_workbench_envelope,
 )
 from backend.app.services.stock_heavyweight_trend_service import stock_heavyweight_trend_envelope
 from backend.app.services.stock_kline_analysis_service import stock_kline_analysis_envelope
 from backend.app.services.stock_official_evidence_service import stock_official_evidence_envelope
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
-from pydantic import BaseModel
+from backend.app.services.stock_portfolio_construction_service import (
+    SUPPORTED_PORTFOLIO_ID,
+    stock_portfolio_construction_envelope,
+)
+
+__all__ = [
+    "DEFAULT_INCLUDE_KEYS",
+    "STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS",
+    "WORKBENCH_CACHE_VERSION",
+    "WORKBENCH_RULE_VERSION",
+    "_actionable_unsupported_output_count",
+    "_active_data_gap_count",
+    "_active_diagnostic_count",
+    "_count_array",
+    "_count_array_or_mapping",
+    "_count_mapping",
+    "_invalidate_livermore_response_cache",
+    "_is_known_livermore_policy_pause",
+    "_item_count",
+    "_livermore_workbench_candidate_history_summary",
+    "_livermore_workbench_cycle_proxy_summary",
+    "_livermore_workbench_portfolio_summary",
+    "_livermore_workbench_sector_series_summary",
+    "_livermore_workbench_signal_summary",
+    "_livermore_workbench_strategy_optimization_summary",
+    "_livermore_workbench_strategy_score_summary",
+    "_livermore_workbench_strategy_summary",
+    "_livermore_workbench_summary",
+    "_mapping",
+    "_optional_count",
+    "_optional_text",
+    "_present",
+    "_stock_analysis_workbench_cache_key",
+    "_sum_optional_counts",
+    "get_macro_context_v1",
+    "stock_analysis_workbench_envelope",
+]
 
 # Keep existing module hooks while the implementations remain service-owned.
 _theme_overlay_reader_from_settings = theme_overlay_reader_from_settings
 _theme_overlay_fingerprint = theme_overlay_fingerprint
 
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
+logger = logging.getLogger(__name__)
 _STOCK_CODE_LIVERMORE_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")
-# Freshness comes from DuckDB, Choice catalog, repository business-input, and
-# theme-overlay fingerprints. Keep unchanged snapshots for one day.
-STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS = 24 * 60 * 60.0
 
 
 class LivermorePositionSnapshotRequest(BaseModel):
@@ -149,123 +206,25 @@ def _ensure_livermore_gate_supplement_refresh_allowed(*, settings: object, auth:
             action="refresh",
         )
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        logger.warning(
+            "Livermore gate-supplement refresh forbidden error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="LIVERMORE_GATE_SUPPLEMENT_FORBIDDEN：无权执行该刷新操作",
+        ) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-def _livermore_strategy_cache_key(
-    *,
-    duckdb_path: str,
-    catalog_file: object,
-    as_of_date: str | None,
-    theme_overlay_fingerprint: str = "theme-overlay-reader:not-configured",
-) -> str:
-    return (
-        f"livermore/strategy::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}"
-        f"::data_version={livermore_data_version(duckdb_path)}"
-        f"::theme_overlay={theme_overlay_fingerprint}"
-        f"::business_inputs={livermore_business_inputs_version()}"
-    )
-
-
-def _stock_analysis_workbench_cache_key(
-    *,
-    duckdb_path: str,
-    catalog_file: object,
-    as_of_date: str | None,
-    include: str | None,
-    sector_window_days: int,
-    top_k: int,
-    theme_overlay_fingerprint: str = "theme-overlay-reader:not-configured",
-) -> str:
-    include_keys = set(DEFAULT_INCLUDE_KEYS)
-    include_keys.update(item.strip() for item in str(include or "").split(",") if item.strip())
-    include_token = ",".join(sorted(include_keys))
-    return (
-        f"livermore/workbench::as_of={as_of_date or ''}::include={include_token}"
-        f"::sector_window_days={sector_window_days}::top_k={top_k}"
-        f"::catalog={catalog_file}::catalog_version={_choice_stock_catalog_fingerprint(catalog_file)}"
-        f"::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
-        f"::theme_overlay={theme_overlay_fingerprint}"
-        f"::business_inputs={livermore_business_inputs_version()}"
-    )
-
-
-def _livermore_signal_confluence_cache_key(
-    *,
-    duckdb_path: str,
-    catalog_file: object,
-    as_of_date: str | None,
-    theme_overlay_fingerprint: str = "theme-overlay-reader:not-configured",
-) -> str:
-    return (
-        f"livermore/signal-confluence::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}"
-        f"::data_version={livermore_data_version(duckdb_path)}"
-        f"::theme_overlay={theme_overlay_fingerprint}"
-        f"::business_inputs={livermore_business_inputs_version()}"
-    )
-
-
-def _choice_stock_catalog_fingerprint(catalog_file: object) -> str:
-    try:
-        stat = Path(str(catalog_file)).stat()
-    except OSError:
-        return "missing"
-    return f"{stat.st_mtime_ns}:{stat.st_size}"
-
-
-def _cached_stock_analysis_workbench(
-    *,
-    settings: object,
-    as_of_date: str | None,
-    include: str | None,
-    sector_window_days: int,
-    top_k: int,
-) -> tuple[dict[str, object], str, float, float, float]:
-    duckdb_path = str(settings.duckdb_path)  # type: ignore[attr-defined]
-    catalog_file = settings.choice_stock_catalog_file  # type: ignore[attr-defined]
-    overlay_started = time.perf_counter()
-    theme_overlay_reader = _theme_overlay_reader_from_settings(settings)
-    overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
-    overlay_ms = (time.perf_counter() - overlay_started) * 1000
-    compute_ms = 0.0
-
-    def build() -> dict[str, object]:
-        nonlocal compute_ms
-        compute_started = time.perf_counter()
-        try:
-            return timed_api_call(
-                "/ui/market-data/stock-analysis/workbench",
-                lambda: stock_analysis_workbench_envelope(
-                    duckdb_path=duckdb_path,
-                    as_of_date=as_of_date,
-                    choice_stock_catalog_file=catalog_file,
-                    include=include,
-                    sector_window_days=sector_window_days,
-                    top_k=top_k,
-                    theme_overlay_reader=theme_overlay_reader,
-                ),
-            )
-        finally:
-            compute_ms = (time.perf_counter() - compute_started) * 1000
-
-    cache_started = time.perf_counter()
-    payload, cache_status = market_home_response_cache.get_or_build_with_status(
-        _stock_analysis_workbench_cache_key(
-            duckdb_path=duckdb_path,
-            catalog_file=catalog_file,
-            as_of_date=as_of_date,
-            include=include,
-            sector_window_days=sector_window_days,
-            top_k=top_k,
-            theme_overlay_fingerprint=overlay_fingerprint,
-        ),
-        build,
-        ttl_seconds=STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS,
-    )
-    cache_ms = (time.perf_counter() - cache_started) * 1000
-    return payload, cache_status, compute_ms, overlay_ms, cache_ms
+        logger.error(
+            "Livermore gate-supplement authorization unavailable error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="LIVERMORE_GATE_SUPPLEMENT_AUTH_UNAVAILABLE：权限服务暂不可用，请稍后重试",
+        ) from exc
 
 
 @router.get("/livermore")
@@ -338,6 +297,43 @@ def stock_analysis_workbench(
     return payload
 
 
+@router.get("/stock-analysis/portfolio-construction")
+def stock_analysis_portfolio_construction(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    portfolio_id: str = Query(..., min_length=7),
+    as_of_date: str | None = Query(None),
+) -> dict[str, object]:
+    """Return a proposal-only stock target projection from the cached workbench."""
+    normalized_portfolio_id = portfolio_id.strip()
+    if normalized_portfolio_id != SUPPORTED_PORTFOLIO_ID:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid portfolio_id. Phase 2A supports only {SUPPORTED_PORTFOLIO_ID}.",
+        )
+    if as_of_date is not None:
+        try:
+            as_of_date = date.fromisoformat(as_of_date.strip()).isoformat()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
+
+    settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
+    # Reuse the workbench response/cache so this projection does not trigger a
+    # second stock strategy scan for the same page context.
+    workbench_payload, _cache_status, _compute_ms, _overlay_ms, _cache_ms = _cached_stock_analysis_workbench(
+        settings=settings,
+        as_of_date=as_of_date,
+        include=None,
+        sector_window_days=20,
+        top_k=10,
+    )
+    return stock_portfolio_construction_envelope(
+        portfolio_id=normalized_portfolio_id,
+        workbench_envelope=workbench_payload,
+        as_of_date=as_of_date,
+    )
+
+
 @router.get("/livermore/signal-confluence")
 def livermore_signal_confluence(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
@@ -355,24 +351,51 @@ def livermore_signal_confluence(
     catalog_file = settings.choice_stock_catalog_file
     theme_overlay_reader = _theme_overlay_reader_from_settings(settings)
     overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
-    return market_home_response_cache.get_or_build(
-        _livermore_signal_confluence_cache_key(
-            duckdb_path=duckdb_path,
-            catalog_file=catalog_file,
-            as_of_date=as_of_date,
-            theme_overlay_fingerprint=overlay_fingerprint,
+    (
+        pretrade_qualification,
+        captured_external_inputs,
+        target_date,
+        authority_fingerprint,
+    ) = _selected_pretrade_external_read(
+        catalog_file=catalog_file,
+        as_of_date=as_of_date,
+    )
+    return _cached_livermore_signal_confluence(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        catalog_file=catalog_file,
+        theme_overlay_reader=theme_overlay_reader,
+        theme_overlay_fingerprint=overlay_fingerprint,
+        selected_pretrade_read=(
+            pretrade_qualification,
+            captured_external_inputs,
+            target_date,
+            authority_fingerprint,
         ),
-        lambda: _with_livermore_workbench_summary(
-            livermore_signal_confluence_envelope(
-                duckdb_path=duckdb_path,
-                as_of_date=as_of_date,
-                choice_stock_catalog_file=catalog_file,
-                theme_overlay_reader=theme_overlay_reader,
-            ),
-            summary_kind="signal_confluence",
-        ),
+        qualified_builder=_qualified_livermore_signal_confluence,
     )
 
+
+def _qualified_livermore_signal_confluence(
+    *,
+    duckdb_path: str,
+    as_of_date: str | None,
+    catalog_file: object,
+    theme_overlay_reader: Any,
+    pretrade_qualification: Mapping[str, object] | None = None,
+    captured_external_inputs: Mapping[str, object] | None = None,
+    target_date: str | None = None,
+) -> dict[str, object]:
+    return _qualified_livermore_signal_confluence_support(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        catalog_file=catalog_file,
+        theme_overlay_reader=theme_overlay_reader,
+        pretrade_qualification=pretrade_qualification,
+        captured_external_inputs=captured_external_inputs,
+        target_date=target_date,
+        envelope_builder=livermore_signal_confluence_envelope,
+    )
 
 @router.post("/livermore/position-snapshot")
 def materialize_position_snapshot(
@@ -388,9 +411,25 @@ def materialize_position_snapshot(
     try:
         _ensure_livermore_position_import_allowed(settings=settings, auth=auth)
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        logger.warning(
+            "Livermore position snapshot import forbidden error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="LIVERMORE_POSITION_SNAPSHOT_FORBIDDEN：无权执行该导入操作",
+        ) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.error(
+            "Livermore position snapshot authorization unavailable error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="LIVERMORE_POSITION_SNAPSHOT_AUTH_UNAVAILABLE：权限服务暂不可用，请稍后重试",
+        ) from exc
 
     try:
         csv_path = _resolve_livermore_position_csv_path(
@@ -398,10 +437,22 @@ def materialize_position_snapshot(
             csv_path=request.csv_path,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        logger.warning(
+            "Livermore position snapshot CSV path rejected error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=422,
+            detail="LIVERMORE_POSITION_CSV_PATH_INVALID：数据文件路径无效，请检查后重试",
+        ) from exc
 
     if not csv_path.exists():
-        raise HTTPException(status_code=422, detail=f"Livermore position snapshot CSV not found: {csv_path}")
+        logger.warning("Livermore position snapshot CSV not found path=%s", csv_path)
+        raise HTTPException(
+            status_code=404,
+            detail="LIVERMORE_POSITION_CSV_NOT_FOUND：数据文件缺失，请联系管理员刷新数据源",
+        )
 
     try:
         return queue_livermore_position_snapshot_csv(
@@ -410,7 +461,16 @@ def materialize_position_snapshot(
             duckdb_path=settings.duckdb_path,
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.error(
+            "Livermore position snapshot queue failed error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="LIVERMORE_POSITION_SNAPSHOT_QUEUE_FAILED：任务提交失败，请稍后重试",
+        ) from exc
 
 
 @router.post("/livermore/position-snapshot/manual")
@@ -427,9 +487,25 @@ def materialize_manual_position_snapshot(
     try:
         _ensure_livermore_position_import_allowed(settings=settings, auth=auth)
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        logger.warning(
+            "Livermore manual position snapshot import forbidden error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="LIVERMORE_POSITION_SNAPSHOT_FORBIDDEN：无权执行该导入操作",
+        ) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.error(
+            "Livermore manual position snapshot authorization unavailable error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="LIVERMORE_POSITION_SNAPSHOT_AUTH_UNAVAILABLE：权限服务暂不可用，请稍后重试",
+        ) from exc
 
     try:
         return queue_livermore_position_snapshot_rows(
@@ -438,7 +514,16 @@ def materialize_manual_position_snapshot(
             duckdb_path=settings.duckdb_path,
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.error(
+            "Livermore manual position snapshot queue failed error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="LIVERMORE_POSITION_SNAPSHOT_QUEUE_FAILED：任务提交失败，请稍后重试",
+        ) from exc
 
 
 @router.post("/livermore/refresh-gate-supplement", status_code=202)
@@ -467,13 +552,46 @@ def refresh_gate_supplement(
             idempotency_key=idempotency_key,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        logger.warning(
+            "Livermore gate-supplement refresh request rejected error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=422,
+            detail="LIVERMORE_GATE_SUPPLEMENT_REQUEST_INVALID：刷新请求参数无效，请检查后重试",
+        ) from exc
     except LivermoreGateSupplementRefreshConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        logger.warning(
+            "Livermore gate-supplement refresh conflict error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail="LIVERMORE_GATE_SUPPLEMENT_REFRESH_CONFLICT：刷新任务已在执行，请稍后重试",
+        ) from exc
     except LivermoreGateSupplementRefreshQueueError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.error(
+            "Livermore gate-supplement refresh queue failed error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="LIVERMORE_GATE_SUPPLEMENT_QUEUE_FAILED：刷新任务提交失败，请稍后重试",
+        ) from exc
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.error(
+            "Livermore gate-supplement refresh failed error_type=%s detail=%s",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="LIVERMORE_GATE_SUPPLEMENT_REFRESH_FAILED：刷新服务暂不可用，请稍后重试",
+        ) from exc
 
     return result
 
@@ -493,7 +611,16 @@ def refresh_gate_supplement_status(
             run_id=run_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        logger.warning(
+            "Livermore gate-supplement refresh run not found run_id=%s error_type=%s detail=%s",
+            run_id,
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail="LIVERMORE_GATE_SUPPLEMENT_RUN_NOT_FOUND：未找到对应的刷新任务",
+        ) from exc
 
 
 @router.get("/livermore/stock-detail")
@@ -946,7 +1073,15 @@ def livermore_sector_rank_series(
         try:
             parsed_as_of = date.fromisoformat(as_of_date.strip()[:10])
         except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            logger.warning(
+                "Livermore sector-rank-series as_of_date rejected error_type=%s detail=%s",
+                type(exc).__name__,
+                exc,
+            )
+            raise HTTPException(
+                status_code=422,
+                detail="LIVERMORE_AS_OF_DATE_INVALID：日期格式无效，应为 YYYY-MM-DD",
+            ) from exc
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     duckdb_path = str(settings.duckdb_path)
     as_of_text = parsed_as_of.isoformat() if parsed_as_of is not None else None

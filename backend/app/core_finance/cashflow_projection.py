@@ -10,6 +10,10 @@ ZERO = Decimal("0")
 ONE_BPS = Decimal("0.0001")
 DAYS_IN_YEAR = Decimal("365")
 TYWL_DEMAND_PRODUCTS = frozenset({"同业存放", "存放同业"})
+# Keep the formal bond-analytics vocabulary here as a literal to avoid importing
+# its common module: that module already imports cashflow helpers in its legacy
+# calculation path, so a reverse import would create a core-finance cycle.
+DURATION_QUALITY_MATURITY_UNAVAILABLE = "maturity_unavailable"
 
 
 @dataclass(slots=True, frozen=True)
@@ -160,9 +164,14 @@ def project_liability_cashflows(
     tyw_rows: list[dict[str, Any]],
     report_date: date,
     horizon_months: int = 24,
+    *,
+    include_report_date: bool = False,
 ) -> list[CashflowEvent]:
     """
     Project liability maturity and funding-cost cashflows within the horizon.
+
+    Including report-date maturities changes the event boundary only; interest
+    still accrues from the actual report_date.
     """
 
     horizon_end = _add_months(report_date, horizon_months)
@@ -170,7 +179,11 @@ def project_liability_cashflows(
     for row in tyw_rows:
         if not _is_liability_row(row):
             continue
-        events.extend(_project_tyw_row_cashflows(row, report_date, horizon_end))
+        events.extend(
+            _project_tyw_row_cashflows(
+                row, report_date, horizon_end, include_report_date=include_report_date
+            )
+        )
     return sorted(events, key=lambda event: (event.event_date, event.event_type, event.instrument_code))
 
 
@@ -470,9 +483,13 @@ def compute_duration_gap(
         # missing-duration balances are not extrapolated into the 1bp sensitivity.
         equity_dollar_duration = asset_duration_numerator - liability_duration_numerator
         if equity == ZERO:
-            _append_warning(warnings, "Equity is zero; equity duration and 1bp sensitivity were set to zero.")
-            equity_duration: Decimal | None = ZERO
-            rate_sensitivity_1bp: Decimal | None = ZERO
+            _append_warning(
+                warnings,
+                "Equity is zero; equity duration is unavailable because its denominator is zero. "
+                "The 1bp sensitivity remains the measured covered dollar-duration sensitivity.",
+            )
+            equity_duration = None
+            rate_sensitivity_1bp = -(equity_dollar_duration * ONE_BPS)
         else:
             equity_duration = equity_dollar_duration / equity
             rate_sensitivity_1bp = -(equity_dollar_duration * ONE_BPS)
@@ -550,13 +567,21 @@ def compute_duration_gap(
     )
 
 
-def _project_tyw_row_cashflows(row: dict[str, Any], report_date: date, horizon_end: date) -> list[CashflowEvent]:
+def _project_tyw_row_cashflows(
+    row: dict[str, Any],
+    report_date: date,
+    horizon_end: date,
+    *,
+    include_report_date: bool = False,
+) -> list[CashflowEvent]:
     scope = _row_scope(row)
     if scope not in {"asset", "liability"}:
         return []
 
     maturity_date = _effective_tyw_maturity_date(row, report_date)
-    if maturity_date is None or maturity_date <= report_date or maturity_date > horizon_end:
+    if maturity_date is None or maturity_date < report_date or maturity_date > horizon_end:
+        return []
+    if maturity_date == report_date and not include_report_date:
         return []
 
     principal = _coerce_decimal(_get_value(row, "principal_amount", "principal_native"))
@@ -642,12 +667,14 @@ def _coupon_dates_between(
     interval_months: int,
 ) -> list[date]:
     dates: list[date] = []
+    months_back = 0
     current = maturity_date
-    while current > horizon_end:
-        current = _add_months(current, -interval_months)
     while current > report_date:
-        dates.append(current)
-        current = _add_months(current, -interval_months)
+        if current <= horizon_end:
+            dates.append(current)
+        months_back += interval_months
+        # A February clamp belongs to one payment only, never to the anchor.
+        current = _add_months(maturity_date, -months_back)
     return sorted(dates)
 
 
@@ -672,6 +699,15 @@ def _coerce_tyw_years_to_maturity(row: dict[str, Any], report_date: date) -> Dec
 
 
 def _coerce_asset_duration(row: dict[str, Any], report_date: date) -> Decimal | None:
+    # ``maturity_unavailable`` is a DURATION_UNAVAILABLE(0) sentinel from the
+    # formal bond-analytics fact, not an observed zero duration.  Do not let the
+    # numeric zero into the duration denominator and, critically, do not fall back
+    # to a remaining-term proxy from a possibly unrelated balance-row maturity.
+    # ``no_remaining_term`` deliberately remains valid: it denotes a real matured
+    # position whose observed remaining duration is zero.
+    duration_quality_flag = _get_text(row, "duration_quality_flag").strip().lower()
+    if duration_quality_flag == DURATION_QUALITY_MATURITY_UNAVAILABLE:
+        return None
     macaulay_duration = _coerce_optional_decimal(_get_value(row, "macaulay_duration"))
     if macaulay_duration is not None and macaulay_duration >= ZERO:
         return macaulay_duration
@@ -724,8 +760,15 @@ def _coerce_decimal(value: Any) -> Decimal:
     if value in (None, ""):
         return ZERO
     if isinstance(value, Decimal):
+        if not value.is_finite():
+            return ZERO
         return value
-    return Decimal(str(value))
+    result = Decimal(str(value))
+    if not result.is_finite():
+        # float NaN/Inf 与 "nan"/"inf" 字符串都能被 Decimal(str(...)) 解析成功，
+        # 但会静默传染到后续金额加总，按本函数既有的 None/"" 失败语义归 0。
+        return ZERO
+    return result
 
 
 def _coerce_rate_decimal(value: Any) -> Decimal:

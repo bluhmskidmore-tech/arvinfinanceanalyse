@@ -132,6 +132,21 @@ describe("PnlByBusinessManagementChangePanel", () => {
     expect(screen.getByText(/日均、FTP 净损益及 FTP 后年化变化在覆盖补齐前已停止用于汇报/)).toBeInTheDocument();
   });
 
+  it("blocks balance and FTP comparisons when a source date is pending despite complete coverage", () => {
+    render(<PnlByBusinessManagementChangePanel
+      managementChange={{ ...availableChange(), comparison_status: "data_quality_warning",
+        balance_quality_warning_months: ["2025-11"],
+        summary: { ...availableChange().summary!, ftp_net_pnl_delta: "20000.00" },
+      }}
+      expectedCurrentMonthKey="2025-12" selectedRowKey={null} isLoading={false} isError={false}
+    />);
+    const avgCard = screen.getByText("日均变化").closest("article");
+    const ftpCard = screen.getByText("FTP净损益变化").closest("article");
+    expect(within(avgCard!).getByText("待核对")).toBeInTheDocument();
+    expect(within(ftpCard!).getByText("待核对")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("2025-11 余额来源待核实而暂不比较");
+  });
+
   it("marks cached comparison data stale when a background refresh fails", () => {
     render(
       <PnlByBusinessManagementChangePanel

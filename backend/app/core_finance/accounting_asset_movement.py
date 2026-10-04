@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
@@ -22,7 +22,7 @@ ReconciliationStatus = Literal[
 ]
 # no_prior_month 表示没有可比上月（首月，或该分类桶在上月没有落库行），与列值
 # 为 NULL（写于本控制落地之前，未记录）语义不同。
-ChainStatus = Literal["continuous", "broken", "no_prior_month"]
+ChainStatus = Literal["continuous", "fx_adjusted", "broken", "no_prior_month"]
 # 头寸源在该报告日两个候选口径都没有资产行时写入的哨兵值。用显式字符串而不是
 # NULL，是为了把它与"旧行未记录"区分开。
 POSITION_SOURCE_UNAVAILABLE = "unavailable"
@@ -37,6 +37,27 @@ DEFAULT_RELATIVE_TOLERANCE = Decimal("0.000001")
 _BUCKET_ORDER: tuple[BasisBucket, ...] = ("AC", "OCI", "TPL")
 
 
+def classify_accounting_maturity(
+    *, maturity_date: date | None, report_date: date,
+    instrument_code: str, bond_type: str, force_unknown: bool = False,
+) -> str:
+    """公募基金沿用页面 SA/其他 分类；日期缺失不推断逾期或永久期限。"""
+    if force_unknown:
+        return "unknown"
+    if maturity_date is None:
+        if instrument_code.startswith("SA") and bond_type == "其他":
+            return "fund_no_maturity"
+        return "unknown"
+    days = (maturity_date - report_date).days
+    if days < 0:
+        return "overdue_or_matured"
+    for limit, bucket in ((30, "<=30d"), (90, "31-90d"), (365, "91d-1y"),
+                          (1095, "1-3y"), (1825, "3-5y")):
+        if days <= limit:
+            return bucket
+    return ">5y"
+
+
 @dataclass(slots=True, frozen=True)
 class ZqtzAccountingAssetBalance:
     report_date: date
@@ -47,6 +68,9 @@ class ZqtzAccountingAssetBalance:
     currency_basis: str = "CNY"
     source_version: str = ""
     rule_version: str = ""
+    accrued_interest_amount: Decimal = Decimal("0")
+    face_value_amount: Decimal = Decimal("0")
+    is_voucher_treasury: bool = False
 
 
 @dataclass(slots=True, frozen=True)
@@ -117,6 +141,32 @@ class AccountingAssetMovementSummary:
     bucket_count: int
 
 
+@dataclass(slots=True, frozen=True)
+class UnmappedGlAccount:
+    """144 科目前缀既未映射到 OCI 桶、也不在已知排除前缀内的科目。"""
+
+    account_code: str
+    beginning_balance: Decimal
+    ending_balance: Decimal
+
+
+@dataclass(slots=True, frozen=True)
+class AccountingAssetMovementBuildResult:
+    """分类桶行 + 144 家族未映射披露；迭代/下标兼容既有 list 用法。"""
+
+    rows: list[AccountingAssetMovementRow]
+    unmapped_gl_accounts: tuple[UnmappedGlAccount, ...] = ()
+
+    def __iter__(self):
+        return iter(self.rows)
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def __getitem__(self, index: int) -> AccountingAssetMovementRow:
+        return self.rows[index]
+
+
 def build_accounting_asset_movement_rows(
     *,
     report_date: date,
@@ -126,7 +176,8 @@ def build_accounting_asset_movement_rows(
     relative_tolerance: Decimal = DEFAULT_RELATIVE_TOLERANCE,
     position_source_available: bool = True,
     position_source_basis: str | None = None,
-) -> list[AccountingAssetMovementRow]:
+    excluded_gl_account_prefixes: Sequence[str] = (),
+) -> AccountingAssetMovementBuildResult:
     """把独立头寸源（zqtz_rows）与总账控制科目（gl_rows）对账成分类桶月度行。
 
     zqtz_rows 必须来自独立于 gl_rows 的头寸系统。两侧取自同一张总账表时
@@ -139,6 +190,11 @@ def build_accounting_asset_movement_rows(
     position_source_basis 是头寸侧实际命中的折算口径（例如 'CNY'），落到行上
     供读取端判断 zqtz_amount / reconciliation_diff 是否有对手方支撑。缺失当期
     统一写 POSITION_SOURCE_UNAVAILABLE；调用方不传则留 None（未记录）。
+
+    excluded_gl_account_prefixes 是已知排除的科目前缀（如 '144020'），由调用
+    方传入；core_finance 不引用 service 常量。这些科目不进任何分类桶，也不
+    进入未映射披露。144 前缀、既非 1440101 也非排除前缀的科目同样不进桶，
+    但会出现在 unmapped_gl_accounts。
     """
     resolved_position_basis = (
         position_source_basis if position_source_available else POSITION_SOURCE_UNAVAILABLE
@@ -155,22 +211,25 @@ def build_accounting_asset_movement_rows(
         bucket = _bucket_from_accounting_basis(row.accounting_basis)
         if bucket is None:
             continue
-        zqtz_amounts[bucket] += (
+        principal = (
             row.amortized_cost_amount if bucket == ACCOUNTING_BASIS_AC else row.market_value_amount
         )
+        # 与本页明细金额一致：凭证式国债未提供估值时按面值补本金，利息另加。
+        if row.is_voucher_treasury and principal == ZERO:
+            principal = row.market_value_amount or row.face_value_amount
+        zqtz_amounts[bucket] += principal + row.accrued_interest_amount
         _append_unique(source_versions, row.source_version)
         _append_unique(rule_versions, row.rule_version)
 
-    for row in gl_rows:
-        if row.report_date != report_date:
-            continue
-        bucket = _bucket_from_gl_account(row.account_code)
+    dated_gl_rows = [row for row in gl_rows if row.report_date == report_date]
+    for gl_row in dated_gl_rows:
+        bucket = _bucket_from_gl_account(gl_row.account_code)
         if bucket is None:
             continue
-        gl_beginning[bucket] += row.beginning_balance
-        gl_ending[bucket] += row.ending_balance
-        _append_unique(source_versions, row.source_version)
-        _append_unique(rule_versions, row.rule_version)
+        gl_beginning[bucket] += gl_row.beginning_balance
+        gl_ending[bucket] += gl_row.ending_balance
+        _append_unique(source_versions, gl_row.source_version)
+        _append_unique(rule_versions, gl_row.rule_version)
 
     changes = {
         bucket: gl_ending[bucket] - gl_beginning[bucket]
@@ -215,7 +274,13 @@ def build_accounting_asset_movement_rows(
                 position_source_basis=resolved_position_basis,
             )
         )
-    return rows
+    return AccountingAssetMovementBuildResult(
+        rows=rows,
+        unmapped_gl_accounts=collect_unmapped_gl144_accounts(
+            dated_gl_rows,
+            excluded_gl_account_prefixes=excluded_gl_account_prefixes,
+        ),
+    )
 
 
 def build_accounting_asset_movement_summary(
@@ -272,6 +337,7 @@ def evaluate_chain_continuity(
     prior_current_balances: Mapping[str, Decimal],
     tolerance: Decimal = DEFAULT_TOLERANCE,
     relative_tolerance: Decimal = DEFAULT_RELATIVE_TOLERANCE,
+    fx_adjustments: Mapping[str, Decimal] | None = None,
 ) -> list[ChainContinuityBreach]:
     """校验 previous_balance(M) == current_balance(M-1)。
 
@@ -286,7 +352,7 @@ def evaluate_chain_continuity(
         if row.basis_bucket not in prior_current_balances:
             continue
         prior_balance = prior_current_balances[row.basis_bucket]
-        gap = row.previous_balance - prior_balance
+        gap = row.previous_balance - prior_balance - (fx_adjustments or {}).get(row.basis_bucket, ZERO)
         bucket_tolerance = effective_tolerance(
             left=row.previous_balance,
             right=prior_balance,
@@ -315,6 +381,7 @@ def apply_chain_continuity_status(
     breaches: Iterable[ChainContinuityBreach],
     prior_report_date: str | None,
     prior_current_balances: Mapping[str, Decimal],
+    fx_adjustments: Mapping[str, Decimal] | None = None,
 ) -> list[AccountingAssetMovementRow]:
     """把跨月勾稽判决写进行里，并否决"断裂却仍显示已对平"的行。
 
@@ -330,6 +397,8 @@ def apply_chain_continuity_status(
             chain_status: ChainStatus = "no_prior_month"
         elif row.basis_bucket in broken_buckets:
             chain_status = "broken"
+        elif (fx_adjustments or {}).get(row.basis_bucket, ZERO) != ZERO:
+            chain_status = "fx_adjusted"
         else:
             chain_status = "continuous"
         reconciliation_status: ReconciliationStatus = (
@@ -345,6 +414,48 @@ def apply_chain_continuity_status(
             )
         )
     return updated
+
+
+def reconcile_chain_fx_adjustments(
+    *,
+    current_gl: Sequence[GlAccountingAssetBalance],
+    prior_gl: Sequence[GlAccountingAssetBalance],
+    prior_rate: Decimal,
+    current_rate: Decimal,
+) -> dict[str, Decimal]:
+    """仅解释逐科目可闭合的单一外币折算；不以桶净额抵销真实断点。
+
+    调用方须验证独立头寸源只含一种外币，且两个月正式汇率齐备。
+    CNX/CNY 两侧必须逐键覆盖、人民币余额衔接，折算残差不超过一分。
+    任一科目不满足则整桶保留原始勾稽判定，禁止反推差额充当汇率。
+    """
+    if prior_rate <= ZERO or current_rate <= ZERO or prior_rate == current_rate:
+        return {}
+    current = {(r.account_code, r.currency_basis): r for r in current_gl}
+    prior = {(r.account_code, r.currency_basis): r for r in prior_gl}
+    if len(current) != len(current_gl) or len(prior) != len(prior_gl):
+        return {}
+    adjustments: dict[str, Decimal] = {}
+    invalid: set[str] = set()
+    codes = {code for code, currency in current.keys() | prior.keys() if currency == "CNX"}
+    for code in codes:
+        bucket = _bucket_from_gl_account(code)
+        if bucket is None:
+            continue
+        sides = (current.get((code, "CNX")), prior.get((code, "CNX")),
+                 current.get((code, "CNY")), prior.get((code, "CNY")))
+        if any(row is None for row in sides):
+            invalid.add(bucket)
+            continue
+        now, before, now_cny, before_cny = sides
+        assert now is not None and before is not None and now_cny is not None and before_cny is not None
+        domestic_gap = now_cny.beginning_balance - before_cny.ending_balance
+        expected_fx = (before.ending_balance - before_cny.ending_balance) * (current_rate / prior_rate - 1)
+        gap = now.beginning_balance - before.ending_balance
+        if abs(domestic_gap) > DEFAULT_TOLERANCE or abs(gap - expected_fx) > DEFAULT_TOLERANCE:
+            invalid.add(bucket)
+        adjustments[bucket] = adjustments.get(bucket, ZERO) + expected_fx
+    return {bucket: amount for bucket, amount in adjustments.items() if bucket not in invalid and amount != ZERO}
 
 
 def _bucket_from_accounting_basis(value: str) -> BasisBucket | None:
@@ -367,6 +478,48 @@ def _bucket_from_gl_account(account_code: str) -> BasisBucket | None:
     if code.startswith("1440101"):
         return "OCI"
     return None
+
+
+def _is_unmapped_gl144(
+    account_code: str,
+    excluded_gl_account_prefixes: Sequence[str],
+) -> bool:
+    code = str(account_code or "").strip()
+    if not code.startswith("144"):
+        return False
+    if code.startswith("1440101"):
+        return False
+    return not any(
+        code.startswith(str(prefix).strip())
+        for prefix in excluded_gl_account_prefixes
+        if str(prefix).strip()
+    )
+
+
+def collect_unmapped_gl144_accounts(
+    gl_rows: Iterable[GlAccountingAssetBalance],
+    *,
+    excluded_gl_account_prefixes: Sequence[str] = (),
+) -> tuple[UnmappedGlAccount, ...]:
+    """汇总 144 前缀、既非 1440101 也非已知排除前缀的科目金额。不进入分类桶。"""
+    totals: dict[str, tuple[Decimal, Decimal]] = {}
+    for row in gl_rows:
+        code = str(row.account_code or "").strip()
+        if not _is_unmapped_gl144(code, excluded_gl_account_prefixes):
+            continue
+        beginning, ending = totals.get(code, (ZERO, ZERO))
+        totals[code] = (
+            beginning + row.beginning_balance,
+            ending + row.ending_balance,
+        )
+    return tuple(
+        UnmappedGlAccount(
+            account_code=code,
+            beginning_balance=beginning,
+            ending_balance=ending,
+        )
+        for code, (beginning, ending) in sorted(totals.items())
+    )
 
 
 def _reconciliation_status(
@@ -406,6 +559,7 @@ __all__ = [
     "DEFAULT_RELATIVE_TOLERANCE",
     "DEFAULT_TOLERANCE",
     "POSITION_SOURCE_UNAVAILABLE",
+    "AccountingAssetMovementBuildResult",
     "AccountingAssetMovementRow",
     "AccountingAssetMovementSummary",
     "BasisBucket",
@@ -413,10 +567,12 @@ __all__ = [
     "ChainStatus",
     "GlAccountingAssetBalance",
     "ReconciliationStatus",
+    "UnmappedGlAccount",
     "ZqtzAccountingAssetBalance",
     "apply_chain_continuity_status",
     "build_accounting_asset_movement_rows",
     "build_accounting_asset_movement_summary",
+    "collect_unmapped_gl144_accounts",
     "effective_tolerance",
     "evaluate_chain_continuity",
 ]

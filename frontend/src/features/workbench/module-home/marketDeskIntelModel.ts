@@ -16,6 +16,27 @@ export type MarketCrisisHistoryPoint = {
   percentile: number | null;
 };
 
+export type MarketCrisisTrendView = {
+  requestedWindowPoints: number;
+  windowPoints: number;
+  startDate: string | null;
+  endDate: string | null;
+  startScore: number | null;
+  endScore: number | null;
+  scoreChange: number | null;
+  startPercentile: number | null;
+  endPercentile: number | null;
+  percentileChange: number | null;
+  direction: "rising" | "falling" | "flat" | "insufficient";
+};
+
+export type MarketCrisisRiskGateView = {
+  eligible: boolean;
+  triggered: boolean;
+  threshold: number | null;
+  reasonCode: string | null;
+};
+
 export type MarketDeskIndicatorHighlight = {
   key: string;
   label: string;
@@ -44,6 +65,8 @@ export type MarketCrisisExplainView = {
   componentCount: number | null;
   scoreDelta: number | null;
   percentileDelta: number | null;
+  trend: MarketCrisisTrendView | null;
+  riskGate: MarketCrisisRiskGateView | null;
   components: MarketCrisisExplainComponent[];
   scoreHistory: MarketCrisisHistoryPoint[];
   warnings: string[];
@@ -72,29 +95,6 @@ export function macroToolkitModuleTone(tone: string): ModuleHomeTone {
     return "watch";
   }
   return "muted";
-}
-
-function crisisHistoryDelta(history: MarketCrisisHistoryPoint[]): {
-  scoreDelta: number | null;
-  percentileDelta: number | null;
-} {
-  if (history.length < 2) {
-    return { scoreDelta: null, percentileDelta: null };
-  }
-  const first = history[0];
-  const last = history[history.length - 1];
-  const scoreDelta =
-    first && last && Number.isFinite(first.crisisScore) && Number.isFinite(last.crisisScore)
-      ? Number((last.crisisScore - first.crisisScore).toFixed(4))
-      : null;
-  const percentileDelta =
-    first?.percentile !== null &&
-    first?.percentile !== undefined &&
-    last?.percentile !== null &&
-    last?.percentile !== undefined
-      ? Number((last.percentile - first.percentile).toFixed(2))
-      : null;
-  return { scoreDelta, percentileDelta };
 }
 
 function readCrisisResultNumber(value: unknown): number | null {
@@ -186,6 +186,48 @@ function readMarketCrisisScoreHistory(raw: unknown): MarketCrisisHistoryPoint[] 
     .filter((item): item is MarketCrisisHistoryPoint => Boolean(item));
 }
 
+function readMarketCrisisTrend(raw: unknown): MarketCrisisTrendView | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const trend = raw as Record<string, unknown>;
+  const direction = readCrisisResultString(trend.direction);
+  if (
+    direction !== "rising" &&
+    direction !== "falling" &&
+    direction !== "flat" &&
+    direction !== "insufficient"
+  ) {
+    return null;
+  }
+  return {
+    requestedWindowPoints:
+      readCrisisResultNumber(trend.requested_window_points) ?? 0,
+    windowPoints: readCrisisResultNumber(trend.window_points) ?? 0,
+    startDate: readCrisisResultString(trend.start_date),
+    endDate: readCrisisResultString(trend.end_date),
+    startScore: readCrisisResultNumber(trend.start_score),
+    endScore: readCrisisResultNumber(trend.end_score),
+    scoreChange: readCrisisResultNumber(trend.score_change),
+    startPercentile: readCrisisResultNumber(trend.start_percentile),
+    endPercentile: readCrisisResultNumber(trend.end_percentile),
+    percentileChange: readCrisisResultNumber(trend.percentile_change),
+    direction,
+  };
+}
+
+function readMarketCrisisRiskGate(raw: unknown): MarketCrisisRiskGateView | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const gate = raw as Record<string, unknown>;
+  if (typeof gate.eligible !== "boolean" || typeof gate.triggered !== "boolean") {
+    return null;
+  }
+  return {
+    eligible: gate.eligible,
+    triggered: gate.triggered,
+    threshold: readCrisisResultNumber(gate.threshold),
+    reasonCode: readCrisisResultString(gate.reason_code),
+  };
+}
+
 export function buildMarketCrisisExplain(
   analysis: MacroToolkitAnalysisPayload | null | undefined,
 ): MarketCrisisExplainView | null {
@@ -221,7 +263,8 @@ export function buildMarketCrisisExplain(
     ? result.warnings.map((item) => String(item).trim()).filter(Boolean)
     : capability.warnings ?? [];
   const scoreHistory = readMarketCrisisScoreHistory(result.score_history);
-  const { scoreDelta, percentileDelta } = crisisHistoryDelta(scoreHistory);
+  const trend = readMarketCrisisTrend(result.score_trend);
+  const riskGate = readMarketCrisisRiskGate(result.risk_gate);
 
   return {
     crisisScore: readCrisisResultNumber(result.crisis_score) ?? capability.score,
@@ -232,8 +275,10 @@ export function buildMarketCrisisExplain(
     dataStatus: readCrisisResultString(result.data_status) ?? capability.status,
     availableComponentCount: readCrisisResultNumber(result.available_component_count),
     componentCount: readCrisisResultNumber(result.component_count),
-    scoreDelta,
-    percentileDelta,
+    scoreDelta: trend?.scoreChange ?? null,
+    percentileDelta: trend?.percentileChange ?? null,
+    trend,
+    riskGate,
     components,
     scoreHistory,
     warnings,

@@ -202,7 +202,7 @@ describe("ReturnDecompositionView", () => {
     expect(screen.getByTestId("return-decomposition-total-mv")).toHaveTextContent("1.00 亿");
     expect(screen.getByText("320 万")).toBeInTheDocument();
     expect(screen.getByTestId("return-decomposition-by-accounting-class")).toHaveTextContent("FVTPL");
-    expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("供应商状态");
+    expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("数据来源状态");
     expect(screen.getAllByText("Rates").length).toBeGreaterThan(0);
   });
 
@@ -311,6 +311,6 @@ describe("ReturnDecompositionView", () => {
     expect(screen.getByTestId("return-decomposition-result-meta-alert")).toHaveTextContent(
       "降级模式=最新快照降级",
     );
-    expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("供应商陈旧");
+    expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("数据源更新延迟");
   });
 });

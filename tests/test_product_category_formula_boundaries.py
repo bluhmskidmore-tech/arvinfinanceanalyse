@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import re
 from datetime import date
 from decimal import Decimal
@@ -12,15 +13,16 @@ from backend.app.core_finance.config.product_category_mapping import (
 )
 from backend.app.core_finance.product_category_pnl import (
     CanonicalFactRow,
-    calculate_read_model,
     calculate_product_category_interest_spread_metrics,
     calculate_product_category_liability_cost_decomposition,
+    calculate_read_model,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_APP = ROOT / "backend" / "app"
 CORE_FILE = BACKEND_APP / "core_finance" / "product_category_pnl.py"
 SERVICE_FILE = BACKEND_APP / "services" / "product_category_pnl_service.py"
+READ_SERVICE_FILE = BACKEND_APP / "services" / "product_category_pnl_read_service.py"
 SOURCE_SERVICE_FILE = BACKEND_APP / "services" / "product_category_source_service.py"
 ANALYSIS_ADAPTERS_FILE = BACKEND_APP / "services" / "analysis_adapters.py"
 TASK_FILE = BACKEND_APP / "tasks" / "product_category_pnl.py"
@@ -77,14 +79,16 @@ def test_product_category_formal_helpers_are_defined_only_in_core_finance():
 
 
 def test_product_category_service_remains_orchestration_only():
-    text = SERVICE_FILE.read_text(encoding="utf-8")
-
-    violations = [snippet for snippet in SERVICE_FORBIDDEN_SNIPPETS if snippet in text]
-    assert not violations, (
-        "product_category_pnl_service.py should orchestrate only, without formal "
-        "finance calculations:\n" + "\n".join(violations)
-    )
-    assert "backend.app.core_finance.product_category_pnl" not in text
+    for path in (SERVICE_FILE, READ_SERVICE_FILE):
+        text = path.read_text(encoding="utf-8")
+        violations = [snippet for snippet in SERVICE_FORBIDDEN_SNIPPETS if snippet in text]
+        assert not violations, (
+            f"{path.name} should orchestrate only, without formal "
+            "finance calculations:\n" + "\n".join(violations)
+        )
+        assert "duckdb.connect(" not in text
+    assert "backend.app.core_finance.product_category_pnl" not in SERVICE_FILE.read_text(encoding="utf-8")
+    assert "backend.app.tasks" not in READ_SERVICE_FILE.read_text(encoding="utf-8")
 
 
 def test_only_allowed_services_touch_product_category_core_module():
@@ -98,13 +102,56 @@ def test_only_allowed_services_touch_product_category_core_module():
         CORE_FILE.relative_to(ROOT).as_posix(),
         SOURCE_SERVICE_FILE.relative_to(ROOT).as_posix(),
         ANALYSIS_ADAPTERS_FILE.relative_to(ROOT).as_posix(),
+        READ_SERVICE_FILE.relative_to(ROOT).as_posix(),
         (BACKEND_APP / "tasks" / "product_category_pnl.py").relative_to(ROOT).as_posix(),
     }
     violations: list[str] = []
     for path in BACKEND_APP.rglob("*.py"):
         rel = path.relative_to(ROOT).as_posix()
         text = path.read_text(encoding="utf-8")
-        if "backend.app.core_finance.product_category_pnl" in text and rel not in allowed_files:
+        if path == PRODUCT_CATEGORY_REPO_FILE:
+            # Storage may hydrate domain rows, but cannot invoke financial calculations.
+            for node in ast.walk(ast.parse(text)):
+                if isinstance(node, ast.ImportFrom):
+                    if node.module == "backend.app.core_finance.product_category_pnl":
+                        names = {alias.name for alias in node.names}
+                        if not names <= {"CanonicalFactRow", "ManualAdjustment"}:
+                            violations.append(f"{rel}: non-DTO core imports {sorted(names)}")
+                    elif node.module == "backend.app.core_finance" and any(
+                        alias.name in {"product_category_pnl", "*"} for alias in node.names
+                    ):
+                        violations.append(f"{rel}: core module import bypasses DTO restriction")
+                elif isinstance(node, ast.Import) and any(
+                    alias.name in {"backend.app.core_finance", "backend.app.core_finance.product_category_pnl"}
+                    for alias in node.names
+                ):
+                    violations.append(f"{rel}: core module import bypasses DTO restriction")
+            continue
+        # Inspect imports, not module-name literals used by refresh fingerprints.
+        core_module = "backend.app.core_finance.product_category_pnl"
+        imports_core = any(
+            (
+                isinstance(node, ast.ImportFrom)
+                and (
+                    node.module == core_module
+                    or node.module == "backend.app.core_finance"
+                    and any(alias.name in {"product_category_pnl", "*"} for alias in node.names)
+                )
+            )
+            or isinstance(node, ast.Import) and any(alias.name == core_module for alias in node.names)
+            or (
+                isinstance(node, ast.Call)
+                and (
+                    isinstance(node.func, ast.Name) and node.func.id == "__import__"
+                    or isinstance(node.func, ast.Attribute) and node.func.attr == "import_module"
+                )
+                and bool(node.args)
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == core_module
+            )
+            for node in ast.walk(ast.parse(text))
+        )
+        if imports_core and rel not in allowed_files:
             violations.append(rel)
 
     assert not violations, (

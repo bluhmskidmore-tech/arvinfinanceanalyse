@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
-import ReactECharts, { type EChartsOption } from "../../lib/echarts";
-import { BaseChart } from "../../components/charts/BaseChart";
-import { useApiClient } from "../../api/client";
+import InteractiveEChart, { type EChartsOption } from "../../lib/echarts";
+import { ChartCard } from "../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../components/charts/chartCardScale";
+import { useApiClient } from "../../api/clientContext";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { nocturneChartTheme } from "../../components/charts/chartTheme";
 import { KpiCard } from "../../components/KpiCard";
+import { SectionHead } from "../../components/layout";
 import type {
   ResultMeta,
   RiskScenarioStressPayload,
@@ -24,7 +26,17 @@ import {
 } from "../bond-analytics/adapters/bondAnalyticsAdapter";
 import { numericRaw } from "../../pageModel";
 import { EM_DASH } from "../../utils/format";
+import {
+  durationExclusionTone,
+  liquidityGapLabel,
+  liquidityGapTone,
+  projectionQualityTone,
+  riskTensorExactScaledAmountDisplayOrNull,
+  scenarioStressTone,
+  selectDominantRiskTensorRow,
+} from "./riskTensorPageModel";
 import "./RiskTensorPage.css";
+import { describeRiskTensorWarning } from "./riskTensorPresentation";
 
 /** 雷达轴顺序与后端字段一一对应；max 仅用于可视化比例，不做前端金融重算。 */
 const RADAR_META = [
@@ -48,6 +60,12 @@ const RADAR_NAVIGATION_TARGETS: Record<RadarKey, string> = {
 };
 
 const KPI_RADAR_ISSUE_KEYS = new Set(["portfolio_modified_duration", "portfolio_dv01", "portfolio_convexity", "cs01"]);
+const SCENARIO_SOURCE_LABELS: Record<string, string> = {
+  regulatory_dv01: "监管口径 DV01",
+  cs01: "CS01",
+  "asset_cashflow_30d/liability_cashflow_30d/liquidity_gap_30d": "30 日现金流",
+  fx_exposure: "汇率敞口",
+};
 
 function displayStr(value: Parameters<typeof bondNumericDisplay>[0]) {
   return bondNumericDisplay(value);
@@ -91,10 +109,10 @@ const REQUIRED_DURATION_SCOPE_FIELDS = [
 ] as const;
 const PROJECTION_QUALITY_FIELDS = [
   {
-    title: "缺少到期日（专属排除）",
+    title: "未列到期日（现金流排除）",
     marketValueKey: "missing_maturity_market_value",
     countKey: "missing_maturity_count",
-    detail: "缺少到期日的债券单列披露，不并入期限桶。",
+    detail: "兼容字段含基金等未列日期资产；产品属性见久期排除拆分，不并入合同到期现金流。",
   },
   {
     title: "浮息债代理",
@@ -125,6 +143,12 @@ const KRD_FIELDS = [
 ] as const;
 
 function scrollRiskTensorTargetIntoView(target: HTMLElement | null | undefined) {
+  // Reveal the requested evidence before scrolling, including nested disclosures.
+  let disclosure = target?.closest("details");
+  while (disclosure) {
+    disclosure.open = true;
+    disclosure = disclosure.parentElement?.closest("details") ?? null;
+  }
   const scrollIntoView = target?.scrollIntoView;
   if (typeof scrollIntoView === "function") {
     scrollIntoView.call(target, { behavior: "smooth", block: "center" });
@@ -183,7 +207,11 @@ function riskTensorPayloadQualityIssues(result: RiskTensorPayload) {
 }
 
 function amountUnit(value: RiskTensorDisplayValue, unit: string) {
-  return riskTensorRawOrNull(value) === null ? undefined : unit;
+  return riskTensorDecisionAmountAvailable(value) ? unit : undefined;
+}
+
+function riskTensorDecisionAmountAvailable(value: RiskTensorDisplayValue) {
+  return riskTensorExactScaledAmountDisplayOrNull(value, 1) !== null || riskTensorRawOrNull(value) !== null;
 }
 
 function shouldPrefixPositiveAmount(value: RiskTensorDisplayValue) {
@@ -194,6 +222,15 @@ function shouldPrefixPositiveAmount(value: RiskTensorDisplayValue) {
 }
 
 function formatYuanAmount(value: RiskTensorDisplayValue, divisor: number) {
+  const exactDisplay = riskTensorExactScaledAmountDisplayOrNull(
+    value,
+    divisor,
+    shouldPrefixPositiveAmount(value),
+  );
+  if (exactDisplay !== null) {
+    return exactDisplay;
+  }
+
   const raw = riskTensorRawOrNull(value);
   if (raw === null) {
     return displayStr(value);
@@ -299,19 +336,11 @@ function projectionQualityCountDisplay(value: number | null | undefined) {
   return `${value.toLocaleString("zh-CN")} 笔`;
 }
 
-function projectionQualityTone(
-  value: RiskTensorDisplayValue | null | undefined,
-  count: number | null | undefined,
-  status: RiskTensorPayload["projection_quality_status"],
-) {
-  if (status !== "available") {
-    return "default";
+function excludedLiabilityCountDisplay(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
+    return "条数不可用";
   }
-  const amountRaw = riskTensorRawOrNull(value) ?? 0;
-  if (amountRaw > 0 || (typeof count === "number" && Number.isFinite(count) && count > 0)) {
-    return "warning";
-  }
-  return "default";
+  return `${value.toLocaleString("zh-CN")} 条`;
 }
 
 function hasDurationScopeDisclosure(result: RiskTensorPayload) {
@@ -322,14 +351,6 @@ function hasDurationScopeDisclosure(result: RiskTensorPayload) {
     hasRiskTensorValue(result.duration_excluded_market_value) ||
     (result.duration_excluded_count !== null && result.duration_excluded_count !== undefined)
   );
-}
-
-function durationExclusionTone(result: RiskTensorPayload) {
-  const excludedMarketValue = riskTensorRawOrNull(result.duration_excluded_market_value);
-  if ((result.duration_excluded_count ?? 0) > 0 || (excludedMarketValue ?? 0) > 0) {
-    return "warning";
-  }
-  return "default";
 }
 
 function qualityFlagLabel(flag: string | undefined) {
@@ -427,26 +448,6 @@ function filtersAppliedLabel(filters: ResultMeta["filters_applied"] | undefined)
   return entries.map(([key, value]) => `${key}=${metaValueLabel(value)}`).join("；");
 }
 
-function liquidityGapLabel(raw: number | null) {
-  if (raw === null) {
-    return "30 日缺口待确认";
-  }
-  if (raw < 0) {
-    return "30 日缺口为负";
-  }
-  if (raw > 0) {
-    return "30 日缺口为正";
-  }
-  return "30 日缺口持平";
-}
-
-function liquidityGapTone(raw: number | null) {
-  if (raw === null) {
-    return "neutral";
-  }
-  return raw < 0 ? "danger" : "ok";
-}
-
 function errorStatusCode(error: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const match = message.match(/\((\d{3})\)/);
@@ -520,19 +521,42 @@ function scenarioStressCategoryLabel(category: RiskScenarioStressRow["category"]
   return category;
 }
 
-function scenarioStressDataStatusLabel(status: RiskScenarioStressRow["data_status"]) {
-  return status === "available" ? "已估算" : "待接入";
+function scenarioStressDataStatusLabel(
+  status: RiskScenarioStressRow["data_status"],
+  amountDisplayAllowed: boolean,
+) {
+  if (status !== "available") return "待接入";
+  return amountDisplayAllowed ? "已估算" : "金额待核验";
 }
 
-function scenarioStressTone(row: RiskScenarioStressRow) {
-  if (row.data_status !== "available") {
-    return "warning";
+function scenarioAmountGateReason(payload: RiskScenarioStressPayload) {
+  const evidence = payload.evidence;
+  if (!evidence) {
+    return "后端未返回监管 DV01 覆盖证据。";
   }
-  const raw = riskTensorRawOrNull(row.estimated_impact);
-  if (raw === null) {
-    return "warning";
+
+  const reasons: string[] = [];
+  if (evidence.date_status !== "verified") {
+    reasons.push("风险日期尚未完成核验");
   }
-  return raw < 0 ? "danger" : "ok";
+  if (evidence.fallback_status !== "none") {
+    reasons.push(evidence.fallback_date ? `风险来源使用回退数据 ${evidence.fallback_date}` : "风险来源存在回退");
+  }
+  if (evidence.coverage.status !== "complete") {
+    const missingCount = evidence.coverage.missing_risk_position_count;
+    reasons.push(
+      `监管 DV01 覆盖${evidence.coverage.status === "incomplete" ? "不完整" : "状态待核验"}${
+        typeof missingCount === "number" ? `，缺少风险输入 ${missingCount.toLocaleString("zh-CN")} 条` : ""
+      }`,
+    );
+  }
+  reasons.push(
+    ...evidence.coverage.reasons
+      .map((reason) => reason.trim().replace(/[。；]+$/u, ""))
+      .filter(Boolean),
+  );
+  const reasonText = Array.from(new Set(reasons)).join("；");
+  return reasonText ? `${reasonText}。` : "金额展示条件未通过。";
 }
 
 function RiskScenarioStressPanel({
@@ -553,6 +577,18 @@ function RiskScenarioStressPanel({
   onMetaJump: () => void;
 }) {
   const errorMessage = error ? errorEvidenceMessage(error) : "";
+  const amountDisplayAllowed = payload?.evidence?.amount_display_allowed === true;
+  const worstScenario = payload?.summary.worst_scenario_key
+    ? payload.scenarios.find((row) => row.scenario_key === payload.summary.worst_scenario_key)
+    : undefined;
+  const worstImpactAvailable = riskTensorRawOrNull(payload?.summary.worst_estimated_impact) !== null;
+  const comparisonMeasureVerified =
+    Boolean(payload?.summary.comparison_measure) &&
+    payload?.summary.comparison_measure === worstScenario?.measure;
+  const showWorstImpact =
+    amountDisplayAllowed && worstImpactAvailable && Boolean(worstScenario) && comparisonMeasureVerified;
+  const worstEstimateTitle =
+    payload?.summary.comparison_measure === "estimated_pnl_impact" ? "最不利损益估算" : "最不利可比估算";
 
   return (
     <section className="risk-tensor-scenario-stress" data-testid="risk-tensor-scenario-stress">
@@ -560,15 +596,15 @@ function RiskScenarioStressPanel({
         <div>
           <span>情景压力</span>
           <h2>多情景压力测试</h2>
-          <p>基于当前正式风险张量生成 scenario 口径估算；用于复核利率、信用、流动性和汇率输入缺口。</p>
+          <p>估算利率、信用、流动性和汇率变化的影响，仅供复核，不代表实际损益或限额判定。</p>
         </div>
-        <strong>{meta?.basis ?? payload?.basis ?? "scenario"}</strong>
+        <strong title={meta?.basis ?? payload?.basis ?? "scenario"}>情景估算</strong>
       </div>
 
       {isLoading ? (
         <div className="risk-tensor-scenario-stress__empty">
           <span>正在读取压力测试</span>
-          <p>报告日 {reportDate || "未选择"}；等待后端按正式风险张量生成情景覆盖层。</p>
+          <p>正在准备 {reportDate || "所选报告日"} 的情景估算。</p>
         </div>
       ) : error ? (
         <div className="risk-tensor-scenario-stress__empty" data-testid="risk-tensor-scenario-stress-error">
@@ -596,33 +632,49 @@ function RiskScenarioStressPanel({
               <strong>{payload.summary.available_count}</strong>
               <p>汇率等缺口会单独显示待接入</p>
             </div>
-            <div>
-              <span>最不利估算</span>
-              <strong>{yuanAsWanWithUnit(payload.summary.worst_estimated_impact)}</strong>
-              <p>{payload.summary.worst_scenario_key ?? "暂无可估算情景"}</p>
+            <div data-testid="risk-tensor-scenario-worst-estimate">
+              <span>{worstEstimateTitle}</span>
+              <strong>
+                {showWorstImpact ? yuanAsWanWithUnit(payload.summary.worst_estimated_impact) : "暂不展示"}
+              </strong>
+              <p>
+                {amountDisplayAllowed
+                  ? comparisonMeasureVerified
+                    ? worstScenario?.label
+                    : "后端未返回可比口径"
+                  : "覆盖证据未通过，摘要金额已隐藏"}
+              </p>
             </div>
           </div>
 
+          {!amountDisplayAllowed ? (
+            <div className="risk-tensor-scenario-stress__warning" data-testid="risk-tensor-scenario-amount-gate">
+              情景金额暂不展示：{scenarioAmountGateReason(payload)}
+            </div>
+          ) : null}
+
           {payload.warnings.length > 0 ? (
-            <div className="risk-tensor-scenario-stress__warning">{payload.warnings.join(" / ")}</div>
+            <div className="risk-tensor-scenario-stress__warning">{payload.warnings.map(describeRiskTensorWarning).join(" / ")}</div>
           ) : null}
 
           <div className="risk-tensor-scenario-stress__grid">
             {payload.scenarios.map((row) => (
               <article
                 className="risk-tensor-scenario-stress__card"
-                data-tone={scenarioStressTone(row)}
+                data-tone={amountDisplayAllowed ? scenarioStressTone(row) : "warning"}
                 data-testid={`risk-scenario-stress-row-${row.scenario_key}`}
                 key={row.scenario_key}
               >
                 <div className="risk-tensor-scenario-stress__card-head">
                   <span>{scenarioStressCategoryLabel(row.category)}</span>
-                  <strong>{scenarioStressDataStatusLabel(row.data_status)}</strong>
+                  <strong>{scenarioStressDataStatusLabel(row.data_status, amountDisplayAllowed)}</strong>
                 </div>
                 <h3>{row.label}</h3>
                 <div className="risk-tensor-scenario-stress__impact">
                   {row.data_status === "available"
-                    ? yuanAsWanWithUnit(row.estimated_impact)
+                    ? amountDisplayAllowed
+                      ? yuanAsWanWithUnit(row.estimated_impact)
+                      : "暂不展示"
                     : displayStr(row.estimated_impact)}
                 </div>
                 <p>{row.interpretation}</p>
@@ -632,31 +684,48 @@ function RiskScenarioStressPanel({
                     <dd>{displayStr(row.shock)}</dd>
                   </div>
                   <div>
-                    <dt>来源</dt>
-                    <dd>{row.source_field}</dd>
+                    <dt>计算依据</dt>
+                    <dd title={row.source_field}>{SCENARIO_SOURCE_LABELS[row.source_field] ?? row.source_field}</dd>
                   </div>
-                  {row.baseline_value && row.stressed_value ? (
+                  {amountDisplayAllowed && row.baseline_value && row.stressed_value ? (
                     <div>
                       <dt>压力后</dt>
                       <dd>{yuanAsWanWithUnit(row.stressed_value)}</dd>
                     </div>
                   ) : null}
                 </dl>
-                <small>{row.human_review_required ? "human_review_required=true" : "human_review_required=false"}</small>
+                {row.human_review_required ? <small>需人工复核</small> : null}
               </article>
             ))}
           </div>
 
-          <div className="risk-tensor-scenario-stress__footer">
+          <details className="risk-tensor-disclosure" data-testid="risk-tensor-scenario-evidence">
+            <summary>情景计算说明与来源</summary>
+            <div className="risk-tensor-scenario-stress__footer">
             <span>scenario_set_id {payload.scenario_set_id}</span>
             <span>rule_version {payload.rule_version}</span>
             <span>source_trace_id {payload.source.trace_id ?? EM_DASH}</span>
-          </div>
+            <span>amount_display_allowed {String(amountDisplayAllowed)}</span>
+            {payload.evidence ? (
+              <>
+                <span>风险日期 {payload.evidence.actual_risk_date ?? EM_DASH}</span>
+                <span>监管 DV01 覆盖状态 {payload.evidence.coverage.status}</span>
+                <span>
+                  持仓记录 {countDisplay(payload.evidence.coverage.total_position_count)}；纳入范围 {countDisplay(payload.evidence.coverage.included_position_count)}；
+                  排除范围 {countDisplay(payload.evidence.coverage.excluded_position_count)}；缺少风险输入 {countDisplay(payload.evidence.coverage.missing_risk_position_count)}
+                </span>
+                {payload.evidence.coverage.reasons.map((reason, index) => <p key={`coverage-reason-${index}`}>{reason}</p>)}
+              </>
+            ) : <p>未返回监管 DV01 覆盖证据。</p>}
+            {payload.scenarios.map((row) => <span key={row.scenario_key}>{row.label}：{row.source_field}；human_review_required={String(row.human_review_required)}</span>)}
+            {payload.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
+            </div>
+          </details>
         </>
       ) : (
         <div className="risk-tensor-scenario-stress__empty">
           <span>暂无压力测试结果</span>
-          <p>等待正式风险张量读取成功后生成情景覆盖层。</p>
+          <p>风险数据就绪后可查看情景估算。</p>
         </div>
       )}
     </section>
@@ -776,8 +845,7 @@ export default function RiskTensorPage() {
     const labels = KRD_FIELDS.map((item) => item.tenor);
     const data = KRD_FIELDS.map((item) => yuanAsWanMagnitudeOrNull(result[item.key]));
     return nocturneChartTheme.createBarChartOption({
-      grid: { left: 52, right: 16, top: 36, bottom: 28 },
-      legend: { show: false },
+      grid: { left: 52, right: 16, top: 36 },
       xAxis: {
         type: "category",
         data: labels,
@@ -789,7 +857,7 @@ export default function RiskTensorPage() {
         {
           type: "bar",
           data,
-          itemStyle: { color: nocturneChartTheme.palette[0], borderRadius: [2, 2, 0, 0] },
+          itemStyle: { color: nocturneChartTheme.palette[0] },
         },
       ],
     });
@@ -827,12 +895,7 @@ export default function RiskTensorPage() {
   const kpiRadarIssues = invalidRadarRows.filter((row) => KPI_RADAR_ISSUE_KEYS.has(row.key));
 
   const dominantTenorRow = useMemo(() => {
-    if (tenorRows.length === 0) {
-      return undefined;
-    }
-    return [...tenorRows]
-      .filter((row) => row.magnitude !== null)
-      .sort((left, right) => Math.abs(right.magnitude ?? 0) - Math.abs(left.magnitude ?? 0))[0];
+    return selectDominantRiskTensorRow(tenorRows);
   }, [tenorRows]);
 
   useEffect(() => {
@@ -859,10 +922,12 @@ export default function RiskTensorPage() {
   const metadataFiltersApplied = filtersAppliedLabel(tensorMeta?.filters_applied);
   const primaryTenor = dominantTenorRow?.tenor ?? EM_DASH;
   const primaryTenorValue = dominantTenorRow ? yuanAsWanWithUnit(dominantTenorRow.value) : EM_DASH;
-  const liquidity30dRaw = result ? bondNumericRawOrNull(result.liquidity_gap_30d) : null;
+  const liquidity30dValue = result?.liquidity_gap_30d;
+  const actionTileRawWarning = result?.warnings[0];
   const actionTileDetail =
-    result?.warnings[0] ??
-    "当前 formal 读面无待补信息；压力估算请在独立 scenario 面复核。";
+    actionTileRawWarning ? describeRiskTensorWarning(actionTileRawWarning) : "暂无待补信息，可继续查看压力情景。";
+  const actionTileDetailEvidence =
+    actionTileRawWarning && actionTileDetail !== actionTileRawWarning ? actionTileRawWarning : undefined;
   const actionTileCanJump = Boolean(result?.warnings.length);
   const actionTileTone = (result?.warnings.length ?? 0) > 0 ? "warning" : "ok";
   const actionTileSummary = result?.warnings.length ? `${result.warnings.length} 条需核对` : "暂无待补项";
@@ -883,7 +948,7 @@ export default function RiskTensorPage() {
   const topLineSummary = result
     ? [
         `主风险桶 ${primaryTenor}`,
-        liquidityGapLabel(liquidity30dRaw),
+        liquidityGapLabel(liquidity30dValue),
         `质量标记：${qualityFlagLabel(result.quality_flag)}`,
       ].join(" / ")
     : "";
@@ -891,7 +956,7 @@ export default function RiskTensorPage() {
   const qualityReviewReasons = [
     tensorMeta?.fallback_date ? `fallback_date ${tensorMeta.fallback_date}` : null,
     blockedReportDates.length > 0 ? blockedReportDateSummary : null,
-    result?.warnings[0] ?? null,
+    result?.warnings[0] ? describeRiskTensorWarning(result.warnings[0]) : null,
   ].filter((item): item is string => Boolean(item));
   const qualityReviewReasonSummary =
     qualityReviewReasons.length > 0 ? qualityReviewReasons.join("；") : "查看质量证据";
@@ -1658,12 +1723,9 @@ export default function RiskTensorPage() {
     const radarValues = [duration, dv01, convexity, cs01, hhi, liqRatio];
 
     return nocturneChartTheme.createBaseChartOption({
-      legend: { show: false },
       grid: undefined,
       tooltip: {
         trigger: "item",
-        borderColor: nocturneChartTheme.axisLine.lineStyle.color,
-        textStyle: { color: nocturneChartTheme.axisLabel.color, fontSize: 13 },
       },
       radar: {
         indicator,
@@ -1729,7 +1791,7 @@ export default function RiskTensorPage() {
       <div className="risk-tensor-page__hero">
         <h1>风险张量</h1>
         <p>
-          第一屏先回答风险集中在哪个期限桶、30 日流动性是否有缺口、DV01 控制是否可判定，以及当前数据是否可用。
+          查看利率敏感度、流动性缺口与风险集中情况。
         </p>
       </div>
 
@@ -1761,14 +1823,7 @@ export default function RiskTensorPage() {
             <span>后端未返回可用风险报告日。</span>
           ) : datesBlockingError ? (
             <span>风险报告日载入失败。</span>
-          ) : (
-            <>
-              报告日：<strong>{reportDate}</strong>
-              <span className="risk-tensor-report-date-status__hint">
-                （可通过地址栏报告日参数覆盖）
-              </span>
-            </>
-          )}
+          ) : null}
           {highlightedBlockedReportDate ? (
             <>
               <br />
@@ -2030,7 +2085,7 @@ export default function RiskTensorPage() {
                 <span>风险判读</span>
                 <h2>{topLineSummary}</h2>
                 <p>
-                  当前仅展示已物化的 formal 截面风险读数；压力估算与处置判断由下方独立 scenario 面承载。
+                  先核对主要敞口与数据限制，再查看压力情景。
                 </p>
                 {conclusionNeedsQualityReview ? (
                   <button
@@ -2044,9 +2099,14 @@ export default function RiskTensorPage() {
                 ) : null}
                 {result.warnings.length > 0 ? (
                   <ul aria-label="risk tensor warnings">
-                    {result.warnings.slice(0, 2).map((warning, index) => (
-                      <li key={index}>{warning}</li>
-                    ))}
+                    {result.warnings.slice(0, 2).map((warning, index) => {
+                      const warningSummary = describeRiskTensorWarning(warning);
+                      return (
+                        <li key={index} title={warningSummary !== warning ? warning : undefined}>
+                          {warningSummary}
+                        </li>
+                      );
+                    })}
                     {result.warnings.length > 2 ? (
                       <li>
                         <button
@@ -2063,9 +2123,11 @@ export default function RiskTensorPage() {
                 ) : null}
                 <div className="risk-tensor-brief__badges" aria-label="risk tensor data status">
                   <span>报告日 {result.report_date}</span>
-                  <span>{tensorMeta?.basis ?? "formal"} 口径</span>
-                  <span>{fallbackStatus}</span>
-                  <span>{blockedReportDateSummary}</span>
+                  {tensorMeta?.basis && tensorMeta.basis !== "formal" ? <span title={tensorMeta.basis}>数据口径需复核</span> : null}
+                  {result.report_date !== reportDate ? <span>实际数据日 {result.report_date}</span> : null}
+                  {tensorMeta?.fallback_mode !== "none" ? <span>{fallbackStatus}</span> : null}
+                  {tensorMeta?.fallback_date ? <span>回退数据日 {tensorMeta.fallback_date}</span> : null}
+                  {blockedReportDates.length > 0 ? <span>{blockedReportDateSummary}</span> : null}
                 </div>
               </div>
 
@@ -2080,7 +2142,7 @@ export default function RiskTensorPage() {
                   <span>主风险桶</span>
                   <strong>{primaryTenor}</strong>
                   <span className="risk-tensor-brief__tile-detail">
-                    KRD {primaryTenorValue}，按后端 KRD 桶绝对值定位。
+                    KRD {primaryTenorValue}，绝对敞口最大的期限。
                   </span>
                 </button>
                 <button
@@ -2091,16 +2153,16 @@ export default function RiskTensorPage() {
                   onClick={() => handleSectionJump("risk-tensor-scenario-stress")}
                 >
                   <span>压力情景</span>
-                  <strong>独立 scenario 面</strong>
+                  <strong>查看冲击影响</strong>
                   <span className="risk-tensor-brief__tile-detail">
-                    监管口径 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}；不在 formal 读面补算冲击与限额。
+                    监管 DV01 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}；情景结果需复核。
                   </span>
                 </button>
                 <button
                   type="button"
                   className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
                   data-testid="risk-tensor-liquidity-action"
-                  data-tone={liquidityGapTone(liquidity30dRaw)}
+                  data-tone={liquidityGapTone(liquidity30dValue)}
                   onClick={handleLiquidityDetailJump}
                 >
                   <span>流动性</span>
@@ -2132,8 +2194,7 @@ export default function RiskTensorPage() {
                   <span>数据状态</span>
                   <strong>{qualityFlagLabel(result.quality_flag)}</strong>
                   <span className="risk-tensor-brief__tile-detail">
-                    来源 {compactVersion(tensorMeta?.source_version)}；规则 {compactVersion(tensorMeta?.rule_version)}；
-                    {fallbackStatus}；{blockedReportDateSummary}。
+                    {result.warnings.length} 条风险提示，查看数据与计算说明。
                   </span>
                 </button>
                 {actionTileCanJump ? (
@@ -2146,13 +2207,13 @@ export default function RiskTensorPage() {
                   >
                     <span>待补信息</span>
                     <strong>{actionTileSummary}</strong>
-                    <span className="risk-tensor-brief__tile-detail">{actionTileDetail}</span>
+                    <span className="risk-tensor-brief__tile-detail" title={actionTileDetailEvidence}>{actionTileDetail}</span>
                   </button>
                 ) : (
                   <article className="risk-tensor-brief__tile" data-tone={actionTileTone}>
                     <span>待补信息</span>
                     <strong>{actionTileSummary}</strong>
-                    <p>{actionTileDetail}</p>
+                    <p title={actionTileDetailEvidence}>{actionTileDetail}</p>
                   </article>
                 )}
               </div>
@@ -2266,7 +2327,7 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="面值口径 DV01"
                 value={yuanAsWanDisplay(result.portfolio_dv01)}
-                detail="portfolio_dv01，持仓面值敏感性口径，非监管限额口径；单位口径 万元/bp（后端 CNY_per_1bp，见 MTR-RSK-001）。"
+                detail="持仓面值敏感性，非监管限额口径；万元/bp。"
                 unit={WAN_YUAN_UNIT}
                 tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.portfolio_dv01))}
                 testId="risk-tensor-portfolio-dv01-kpi"
@@ -2274,7 +2335,7 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="监管口径 DV01"
                 value={regulatoryDv01Display(result.regulatory_dv01)}
-                detail="后端监管/限额口径字段；不得用组合 DV01 替代；单位口径 万元/bp。"
+                detail="监管及限额口径；万元/bp。"
                 unit={amountUnit(result.regulatory_dv01, WAN_YUAN_UNIT)}
                 tone={regulatoryDv01Tone(result.regulatory_dv01)}
                 testId="risk-tensor-regulatory-dv01-kpi"
@@ -2282,14 +2343,14 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="修正久期"
                 value={displayStr(result.portfolio_modified_duration)}
-                detail="portfolio_modified_duration；按利率风险适用资产加权。"
+                detail="按利率风险适用资产加权。"
                 unit="年"
                 testId="risk-tensor-duration-kpi"
               />
               <KpiCard
                 title="CS01"
                 value={yuanAsWanDisplay(result.cs01)}
-                detail="cs01（信用 spread DV01 聚合）；单位口径 万元/bp。"
+                detail="信用利差敏感度；万元/bp。"
                 unit={WAN_YUAN_UNIT}
                 tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.cs01))}
                 testId="risk-tensor-cs01-kpi"
@@ -2297,20 +2358,17 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="组合凸性"
                 value={displayStr(result.portfolio_convexity)}
-                detail="portfolio_convexity。"
                 tone={toneFromSignedDisplayString(displayStr(result.portfolio_convexity))}
                 testId="risk-tensor-convexity-kpi"
               />
               <KpiCard
-                title="债券只数"
+                title="持仓记录数"
                 value={String(result.bond_count)}
-                detail="bond_count。"
-                unit="只"
+                unit="条"
               />
               <KpiCard
                 title="总市值"
                 value={yuanAsYiDisplay(result.total_market_value)}
-                detail="total_market_value。"
                 unit={YI_YUAN_UNIT}
                 tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.total_market_value))}
               />
@@ -2334,36 +2392,70 @@ export default function RiskTensorPage() {
                   <span>久期口径</span>
                   <h2>利率风险适用资产覆盖</h2>
                   <p>
-                    组合久期只按有到期日且正久期的资产加权；无到期日或零久期资产不造期限，DV01 仍保留在总量。
+                    组合久期只按有到期日且正久期的资产加权；基金不编造合同期限，底层利率风险尚未穿透，未覆盖范围不能解释为零风险。
                   </p>
                 </div>
                 <div className="risk-tensor-duration-scope__grid">
                   <KpiCard
                     title="利率风险市值"
                     value={yuanAsYiDisplay(result.rate_risk_market_value)}
-                    detail="rate_risk_market_value；进入久期分母的市值。"
+                    detail="参与久期加权的市值。"
                     unit={YI_YUAN_UNIT}
                     tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.rate_risk_market_value))}
                   />
                   <KpiCard
                     title="利率风险 DV01"
                     value={yuanAsWanDisplay(result.rate_risk_dv01)}
-                    detail="rate_risk_dv01；进入久期分母的 DV01；单位口径 万元/bp。"
+                    detail="参与久期加权的资产敞口；万元/bp。"
                     unit={amountUnit(result.rate_risk_dv01, WAN_YUAN_UNIT)}
                     tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.rate_risk_dv01))}
                   />
                   <KpiCard
                     title="利率风险久期"
                     value={displayStr(result.rate_risk_modified_duration)}
-                    detail="rate_risk_modified_duration；应与修正久期一致。"
+                    detail="参与加权资产的修正久期。"
                     unit={amountUnit(result.rate_risk_modified_duration, "年")}
                   />
                   <KpiCard
                     title="久期排除市值"
                     value={yuanAsYiDisplay(result.duration_excluded_market_value)}
-                    detail={`duration_excluded_market_value；排除行数 ${countDisplay(result.duration_excluded_count)}。`}
+                    detail={`${countDisplay(result.duration_excluded_count)} 条持仓未计入久期。`}
                     unit={amountUnit(result.duration_excluded_market_value, YI_YUAN_UNIT)}
                     tone={durationExclusionTone(result)}
+                  />
+                </div>
+                <div className="risk-tensor-duration-scope__header" data-testid="risk-tensor-maturity-breakdown">
+                  <h3>久期排除原因</h3>
+                  {result.maturity_breakdown_status !== "available" ? (
+                    <p>该报告日的旧版物化行尚未提供排除原因拆分，以下空值不能视为零。</p>
+                  ) : (
+                    <p>四类金额及记录数合计为上方久期排除总量；基金未列固定到期日不属于要求补造日期的异常。</p>
+                  )}
+                </div>
+                <div className="risk-tensor-duration-scope__grid">
+                  <KpiCard
+                    title="基金未列固定到期日"
+                    value={yuanAsYiDisplay(result.fund_no_maturity_market_value)}
+                    detail={`${countDisplay(result.fund_no_maturity_count)} 条；底层利率风险尚未穿透。`}
+                    unit={amountUnit(result.fund_no_maturity_market_value, YI_YUAN_UNIT)}
+                  />
+                  <KpiCard
+                    title="期限属性待核实"
+                    value={yuanAsYiDisplay(result.unknown_maturity_market_value)}
+                    detail={`${countDisplay(result.unknown_maturity_count)} 条；核对来源日期或产品属性。`}
+                    unit={amountUnit(result.unknown_maturity_market_value, YI_YUAN_UNIT)}
+                  />
+                  <KpiCard
+                    title="已到期仍有余额"
+                    value={yuanAsYiDisplay(result.matured_outstanding_market_value)}
+                    detail={`${countDisplay(result.matured_outstanding_count)} 条；需核对余额，不据此推断违约。`}
+                    unit={amountUnit(result.matured_outstanding_market_value, YI_YUAN_UNIT)}
+                  />
+                  <KpiCard
+                    title="未来到期但久期非正"
+                    value={yuanAsYiDisplay(result.nonpositive_duration_market_value)}
+                    detail={`${countDisplay(result.nonpositive_duration_count)} 条；需核查久期输入。`}
+                    unit={amountUnit(result.nonpositive_duration_market_value, YI_YUAN_UNIT)}
                   />
                 </div>
                 {durationCoverageQualityIssues.length > 0 ? (
@@ -2401,7 +2493,7 @@ export default function RiskTensorPage() {
                   <span>现金流投影质量</span>
                   <h2>投影质量披露</h2>
                   <p>
-                    状态：{projectionQualityStatusLabel(result.projection_quality_status)}；缺少到期日单列展示，不并入期限桶；
+                    状态：{projectionQualityStatusLabel(result.projection_quality_status)}；未列到期日资产单列展示，含基金，不并入合同期限桶；
                     浮息债按冻结票息代理，未模拟 reset；付息频率采用年付代理，非合同确认；起息日缺失时使用一年利息代理。
                   </p>
                 </div>
@@ -2438,13 +2530,14 @@ export default function RiskTensorPage() {
 
             <div className="risk-tensor-chart-row">
               <div className="risk-tensor-chart-column">
-                <div data-testid="risk-tensor-radar-card" className="risk-tensor-radar-card">
-                  <div className="risk-tensor-radar-card__title">
-                    风险张量雷达
-                  </div>
-                  {radarChartOption ? (
-                    <BaseChart option={radarChartOption} height={400} />
-                  ) : null}
+                <ChartCard
+                  testId="risk-tensor-radar-card"
+                  title="风险张量雷达"
+                  asOf={result?.report_date}
+                  height={CHART_CARD_HEIGHTS.hero}
+                  legend="none"
+                  option={radarChartOption}
+                >
                   {invalidRadarRows.length > 0 ? (
                     <div className="risk-tensor-radar-quality" data-testid="risk-tensor-radar-quality-note">
                       {invalidRadarRows.map((row) => `${row.key} ${row.issue}`).join(" / ")}
@@ -2479,19 +2572,27 @@ export default function RiskTensorPage() {
                       ))}
                     </div>
                   ) : null}
-                </div>
+                </ChartCard>
               </div>
               <div className="risk-tensor-chart-column">
-                <h2 className="risk-tensor-section-heading risk-tensor-section-heading--flush">
-                  KRD 分档（面值 DV01，万元/bp）
-                </h2>
-              {krdChartOption ? (
-                <ReactECharts
+                <ChartCard
+                  title="KRD分档"
+                  question="面值DV01"
+                  unit="万元/bp"
+                  asOf={result?.report_date}
+                  height={CHART_CARD_HEIGHTS.hero}
+                  legend="none"
                   option={krdChartOption}
-                  onEvents={{ click: handleKrdChartClick }}
-                  className="risk-tensor-chart risk-tensor-chart--krd"
+                  chartRenderer={({ option }) => (
+                    <InteractiveEChart
+                      option={option}
+                      onEvents={{ click: handleKrdChartClick }}
+                      className="risk-tensor-chart risk-tensor-chart--krd"
+                      notMerge
+                      lazyUpdate
+                    />
+                  )}
                 />
-              ) : null}
               {!selectedTenorRow ? krdQualityNote : null}
 
               {selectedTenorRow ? (
@@ -2500,7 +2601,7 @@ export default function RiskTensorPage() {
                     期限桶下钻
                   </div>
                   <div className="risk-tensor-tenor-drill__desc">
-                    先用现有风险张量 payload 中可解析的 KRD 字段选择最强期限桶，再查看该桶的敏感度读数。
+                    选择期限，查看对应的利率敏感度。
                   </div>
                   {krdQualityNote}
                   <div className="risk-tensor-chip-row">
@@ -2527,21 +2628,21 @@ export default function RiskTensorPage() {
             </div>
           </div>
 
-            <section data-testid="risk-tensor-issuer-concentration-detail" aria-label="发行人集中度明细">
-              <h2 className="risk-tensor-section-heading">
-                发行人集中度
-              </h2>
+            <section
+              data-testid="risk-tensor-issuer-concentration-detail"
+              aria-label="发行人集中度明细"
+              className="risk-tensor-section-head-gap"
+            >
+              <SectionHead title="发行人集中度" numbered={false} />
               <div className="risk-tensor-summary-grid">
                 <KpiCard
                   title="发行人 HHI"
                   value={displayStr(result.issuer_concentration_hhi)}
-                  detail="issuer_concentration_hhi。"
                   testId="risk-tensor-issuer-hhi"
                 />
                 <KpiCard
                   title="前五大权重"
                   value={ratioPercentDisplay(result.issuer_top5_weight)}
-                  detail="issuer_top5_weight。"
                 />
               </div>
               {issuerConcentrationIssue ? (
@@ -2557,31 +2658,37 @@ export default function RiskTensorPage() {
               ) : null}
             </section>
 
-            <section data-testid="risk-tensor-liquidity-gap-detail" aria-label="流动性现金流缺口明细">
-              <h2 className="risk-tensor-section-heading">
-                流动性现金流缺口
-              </h2>
+            <section
+              data-testid="risk-tensor-liquidity-gap-detail"
+              aria-label="流动性现金流缺口明细"
+              className="risk-tensor-section-head-gap"
+            >
+              <SectionHead title="流动性现金流缺口" numbered={false} />
               <div className="risk-tensor-summary-grid">
                 <KpiCard
                   title="30 日资产现金流 - 负债现金流"
                   value={yuanAsYiDisplay(result.liquidity_gap_30d)}
-                  detail="liquidity_gap_30d。"
                   unit={YI_YUAN_UNIT}
                   tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.liquidity_gap_30d))}
                 />
                 <KpiCard
                   title="90 日资产现金流 - 负债现金流"
                   value={yuanAsYiDisplay(result.liquidity_gap_90d)}
-                  detail="liquidity_gap_90d。"
                   unit={YI_YUAN_UNIT}
                   tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.liquidity_gap_90d))}
                 />
                 <KpiCard
                   title="30 日流动性缺口比例"
                   value={ratioPercentDisplay(result.liquidity_gap_30d_ratio)}
-                  detail="liquidity_gap_30d_ratio。"
                   tone={ratioTone(result.liquidity_gap_30d_ratio)}
                   testId="risk-tensor-liquidity-gap-ratio"
+                />
+                <KpiCard
+                  title="无到期日负债排除"
+                  value={projectionQualityAmountDisplay(result.missing_liability_maturity_principal_amount)}
+                  detail={`${excludedLiabilityCountDisplay(result.missing_liability_maturity_count)}；未纳入 30/90 日负债现金流与流动性缺口。`}
+                  unit={projectionQualityAmountUnit(result.missing_liability_maturity_principal_amount)}
+                  testId="risk-tensor-missing-liability-maturity"
                 />
               </div>
               {liquidityGapRatioIssue ? (
@@ -2597,43 +2704,39 @@ export default function RiskTensorPage() {
               ) : null}
             </section>
 
-            <h2 className="risk-tensor-section-heading">
-              现金流构成
-            </h2>
+            <div className="risk-tensor-section-head-gap">
+              <SectionHead title="现金流构成" numbered={false} />
+            </div>
             <div data-testid="risk-tensor-cashflow-grid" className="risk-tensor-summary-grid">
               <KpiCard
                 title="30 日资产现金流"
                 value={yuanAsYiDisplay(result.asset_cashflow_30d)}
-                detail="asset_cashflow_30d。"
                 unit={YI_YUAN_UNIT}
               />
               <KpiCard
                 title="30 日负债现金流"
                 value={yuanAsYiDisplay(result.liability_cashflow_30d)}
-                detail="liability_cashflow_30d。"
                 unit={YI_YUAN_UNIT}
               />
               <KpiCard
                 title="90 日资产现金流"
                 value={yuanAsYiDisplay(result.asset_cashflow_90d)}
-                detail="asset_cashflow_90d。"
                 unit={YI_YUAN_UNIT}
               />
               <KpiCard
                 title="90 日负债现金流"
                 value={yuanAsYiDisplay(result.liability_cashflow_90d)}
-                detail="liability_cashflow_90d。"
                 unit={YI_YUAN_UNIT}
               />
             </div>
 
-            <div
+            <details
               data-testid="risk-tensor-quality-detail"
-              className="risk-tensor-quality-detail"
+              className="risk-tensor-quality-detail risk-tensor-disclosure"
               data-tone={result.quality_flag === "ok" ? "ok" : result.quality_flag}
             >
-              <div className="risk-tensor-quality-detail__title">
-                质量标记：
+              <summary className="risk-tensor-quality-detail__title">
+                数据与计算说明 · <span>质量标记：
                 {result.quality_flag === "ok"
                   ? "正常"
                   : result.quality_flag === "warning"
@@ -2642,8 +2745,8 @@ export default function RiskTensorPage() {
                       ? "错误"
                       : result.quality_flag === "stale"
                         ? "陈旧"
-                        : result.quality_flag}
-              </div>
+                        : result.quality_flag}</span>
+              </summary>
               <div className="risk-tensor-quality-detail__evidence" data-testid="risk-tensor-quality-evidence">
                 <strong>证据范围</strong>
                 <span>trace_id {tensorMeta?.trace_id ?? EM_DASH}</span>
@@ -2873,19 +2976,22 @@ export default function RiskTensorPage() {
                   </ul>
                 </div>
               )}
-            </div>
+            </details>
           </>
         ) : null}
       </PageAsyncSection>
 
-      <FormalResultMetaPanel
+      <details className="risk-tensor-disclosure" data-testid="risk-tensor-technical-details">
+        <summary>技术信息与数据血缘</summary>
+        <FormalResultMetaPanel
         testId="risk-tensor-result-meta-panel"
         sections={[
           { key: "dates", title: "风险报告日列表", meta: datesQuery.data?.result_meta },
           { key: "tensor", title: "风险张量主读面", meta: envelope?.result_meta },
           { key: "scenario", title: "风险情景压力", meta: scenarioStressQuery.data?.result_meta },
         ]}
-      />
+        />
+      </details>
     </section>
   );
 }

@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
+import { SectionHead } from "../../../components/layout";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import type {
   ProductCategoryManualAdjustmentQuery,
@@ -126,11 +127,14 @@ function SectionLead(props: {
   testId?: string;
 }) {
   return (
-    <div data-testid={props.testId} className="product-category-section-lead">
-      <span className="product-category-section-lead__eyebrow">{props.eyebrow}</span>
-      <h2 className="product-category-section-lead__title">{props.title}</h2>
-      <p className="product-category-section-lead__description">{props.description}</p>
-    </div>
+    <SectionHead
+      title={props.title}
+      category={props.eyebrow}
+      note={props.description}
+      numbered={false}
+      contentGap="tight"
+      testId={props.testId}
+    />
   );
 }
 
@@ -351,6 +355,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
   const eventCanNext = eventOffset + eventLimit < eventTotal;
 
   async function handleExport() {
+    if (!selectedDate) return;
     setExportError(null);
     try {
       const payload = await client.exportProductCategoryManualAdjustmentsCsv(
@@ -408,7 +413,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             type="button"
             data-testid="audit-export-button"
             onClick={() => void handleExport()}
-            disabled={adjustmentsQuery.isLoading}
+            disabled={!selectedDate || adjustmentsQuery.isLoading}
           >
             导出审计
           </button>

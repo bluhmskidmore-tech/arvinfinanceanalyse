@@ -4,42 +4,8 @@
    字段级明细表、质量与血缘。所有色值取自应用 --dh-api-* token（墨版语义），
    不硬编码原型色值。 */
 
-/* ── 编号节题（01 / 02 / 03 / 04 统一件） ─────────────────────── */
-.roSecHead {
-  align-items: baseline;
-  border-bottom: 1px solid var(--ro-line);
-  display: flex;
-  gap: 12px;
-  padding-bottom: 10px;
-}
-
-.roSecHead i {
-  color: var(--ro-acc);
-  font-family: var(--dh-font-mono);
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.roSecHead h2 {
-  color: var(--ro-ink);
-  font-size: 15px;
-  font-weight: 750;
-  letter-spacing: 0.05em;
-  line-height: 1.25;
-  margin: 0;
-}
-
-.roSecHead span {
-  color: var(--ro-mut);
-  font-size: 12px;
-  margin-left: auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* 01-04 编号节题已迁到 components/layout 的 SectionHead 原语（编号由原语的
+   CSS counter 生成，不再手写 <i>01</i>），本文件不再持有节题样式。 */
 
 /* ── 状态胶囊（gpill）：圆角随页面 --dh-api-radius 制度 ─────────── */
 .roV6Pill {
@@ -49,8 +15,9 @@
   color: var(--ro-ink-2);
   display: inline-flex;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   gap: 6px;
   letter-spacing: 0.03em;
   padding: 3px 10px;
@@ -130,13 +97,14 @@
 .roV6HeroSub {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   margin-top: 10px;
 }
 
 .roV6HeroSub b {
   color: var(--ro-amber);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .roV6HeroLede {
@@ -152,6 +120,7 @@
   display: flex;
   flex-wrap: wrap;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   gap: 8px 20px;
   margin-top: 14px;
@@ -167,7 +136,7 @@
 
 .roV6Facts b {
   color: var(--ro-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .roV6FactDot,
@@ -211,6 +180,7 @@
 .roV6RateCap {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   letter-spacing: 0.16em;
 }
@@ -231,8 +201,9 @@
   color: var(--ro-mut);
   display: flex;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   gap: 10px;
   letter-spacing: 0.16em;
   margin: 0;
@@ -262,6 +233,7 @@
 .roV6GateDetail {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   font-style: normal;
   width: 100%;
@@ -294,6 +266,7 @@
   color: var(--ro-mut);
   display: flex;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   justify-content: space-between;
   letter-spacing: 0.14em;
@@ -321,10 +294,10 @@
 /* 数字改首页 KPI 横带语言：纯 ink 等宽 tabular，不再用渐变 text clip。 */
 .roV6KpiNum {
   color: var(--ro-ink);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-size: 22px;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.15;
   white-space: nowrap;
@@ -391,6 +364,7 @@
   color: var(--ro-mut);
   display: flex;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   height: 30px;
   justify-content: center;
@@ -409,6 +383,7 @@
   border-radius: var(--dh-api-radius, 6px);
   color: var(--ro-acc);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   letter-spacing: 0.03em;
   padding: 2px 9px;
@@ -423,6 +398,7 @@
 .roV6KpiChipVoid {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   padding: 2px 9px;
 }
@@ -439,6 +415,7 @@
 .roV6SparkCap {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   letter-spacing: 0.1em;
   margin-top: -12px;
@@ -461,6 +438,7 @@
 .roV6BriefT {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   letter-spacing: 0.16em;
 }
@@ -468,7 +446,7 @@
 .roV6BriefC {
   color: var(--ro-ink);
   font-size: 17px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.5;
   margin-top: 8px;
 }
@@ -508,15 +486,16 @@
 .roV6PanelHead b {
   color: var(--ro-ink);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0.05em;
 }
 
 .roV6PanelHead span {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.14em;
   min-width: 0;
   overflow: hidden;
@@ -528,6 +507,7 @@
   border-top: 1px solid var(--ro-line);
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   margin-top: 10px;
   padding-top: 9px;
@@ -549,8 +529,9 @@
 .roV6KrdBk {
   color: var(--ro-ink-2);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .roV6KrdHot {
@@ -591,7 +572,7 @@
 .roV6KrdVal {
   color: var(--ro-ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: right;
 }
 
@@ -648,6 +629,7 @@
 .roV6CurveTick {
   fill: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
 }
 
@@ -699,8 +681,9 @@ circle.roV6CurveEndDot.roV6CurveAcc {
 
 .roV6CurveEndText {
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 text.roV6CurveEndText.roV6CurveInk {
@@ -731,8 +714,9 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roV6CashW {
   color: var(--ro-acc);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .roV6CashT {
@@ -763,7 +747,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roV6CashVal {
   color: var(--ro-ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: right;
 }
 
@@ -789,7 +773,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roV6GapChip b {
   color: var(--ro-err);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .roV6GapChipDim b {
@@ -810,7 +794,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--ro-ink-2);
   display: flex;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   justify-content: space-between;
   letter-spacing: 0.08em;
   padding-bottom: 9px;
@@ -819,55 +803,14 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roV6TblHead span {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.14em;
 }
 
-.roV6Tbl table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-.roV6Tbl th {
-  border-bottom: 1px solid var(--ro-line-2);
-  color: var(--ro-mut);
-  font-family: var(--dh-font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  padding: 9px 0 7px;
-  text-align: left;
-}
-
-.roV6Tbl th:last-child,
-.roV6Tbl td:last-child {
-  text-align: right;
-}
-
-.roV6Tbl td {
-  border-bottom: 1px solid var(--ro-line);
-  color: var(--ro-ink-2);
-  font-size: 12px;
-  padding: 9px 0;
-}
-
-.roV6Tbl tr:last-child td {
-  border-bottom: 0;
-}
-
-.roV6TblNum {
-  color: var(--ro-ink);
-  font-size: 12px;
-  font-weight: 700;
-  text-align: right;
-}
-
-.roV6TblDt {
-  color: var(--ro-mut);
-  font-size: 12px;
-  text-align: right;
-}
+/* 表体密度（表头 11px / 表体 12px / 发丝底边 / 数值列右对齐等宽）已由 DataTable
+   原语自带，本文件不再重写一遍；.roV6TblHead 仍是分区内的面板题条。 */
 
 /* ── 04 数据质量与血缘 ────────────────────────────────────────── */
 .roV6Qual {
@@ -888,6 +831,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   counter-increment: roV6Warn;
   display: grid;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   gap: 8px;
   grid-template-columns: 26px 1fr;
@@ -904,11 +848,12 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--ro-amber);
   content: counter(roV6Warn, decimal-leading-zero);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .roV6Lineage {
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .roV6LineageRow {
@@ -959,8 +904,9 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondEvidenceHead span {
   color: var(--ro-acc);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.16em;
 }
 
@@ -981,7 +927,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--ro-acc);
   flex-shrink: 0;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -1005,13 +951,14 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondBoundary span {
   color: var(--ro-amber);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.1em;
 }
 
 .roBondBoundary b {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 /* 说明句独占第二行、与主句同列对齐；单栏折行时（-2/-1）自动落回第 1 列。 */
@@ -1035,8 +982,9 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--ro-acc);
   flex-shrink: 0;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.08em;
 }
 
@@ -1093,8 +1041,9 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondCardHead > div > span {
   color: var(--ro-acc);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.14em;
 }
 
@@ -1132,7 +1081,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondMetric strong {
   /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   font-size: 14px;
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .roBondMetric small {
@@ -1161,7 +1110,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roBondComparison strong {
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -1189,7 +1138,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roBondMeta b {
   color: var(--ro-ink-2);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .roBondComparisonBasis {
@@ -1201,6 +1150,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roBondComparisonBasis span {
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   letter-spacing: 0.08em;
 }
@@ -1236,7 +1186,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondTrendValues b {
   color: var(--ro-ink-2);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   min-width: 0;
   overflow-wrap: anywhere;
   text-align: right;
@@ -1245,13 +1195,14 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondTrendHead b {
   color: var(--ro-ink-2);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .roBondTrendHead span,
 .roBondTrendDates {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
 }
 
@@ -1328,7 +1279,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--dh-api-amber);
   flex-shrink: 0;
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: 0.04em;
   padding: 4px 9px;
   white-space: nowrap;
@@ -1344,7 +1295,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBlockedBody strong {
   color: var(--dh-api-ink);
   font-size: 12.5px;
-  font-weight: 720;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -1352,6 +1303,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBlockedBody span {
   color: var(--dh-api-muted);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   line-height: 1.5;
   overflow-wrap: break-word;
@@ -1362,7 +1314,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--dh-api-blue);
   flex-shrink: 0;
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -1460,19 +1412,10 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 /* ══════════════════════════════════════════════════════════════════
    Consolidated visual pass（Tier 1，仅追加段 · 2026-07）
-   范围：/risk-overview 单页。宽屏限宽、页题/区块标题层级、KPI 单表面、
+   范围：/risk-overview 单页。页题/区块标题层级、KPI 单表面、
    债券证据区去框套框、证据板去外框、状态点呼吸动效。
    不改 DOM / testid / 指标语义；本段自带完整 reduced-motion 收尾。
    ══════════════════════════════════════════════════════════════════ */
-
-/* ── 1) 宽屏限宽：对齐组合 / 市场工作台首页（仅当主列内含本页时生效） ── */
-:global(.workbench-main-column):has([data-testid="risk-overview-page"]) {
-  width: min(100%, 1440px);
-  max-width: 1440px;
-  min-width: 0;
-  box-sizing: border-box;
-  justify-self: center;
-}
 
 /* ── v6 作用域 token（派生自应用 dh token）：多层定义已按后者赢合并至此 ── */
 .roV6Scope {
@@ -1494,7 +1437,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   --ro-hero-grad: linear-gradient(92deg, var(--dh-api-ink) 25%, var(--ro-acc) 95%);
   --ro-spark-fill: var(--dh-api-blue-soft);
   --ro-spark-fill-err: var(--dh-api-red-soft);
-  --dh-font-mono: var(--moss-font-mono);
+  --dh-font-mono: var(--moss-font-tabular);
   box-sizing: border-box;
   max-width: 100%;
   min-width: 0;
@@ -1504,11 +1447,10 @@ text.roV6CurveEndText.roV6CurveAcc {
 /* ── 2) 旧 top rail 规则已随工具栏收敛为首页 dhTopbar 语言（文件末尾
    「Nocturne 首页排版对齐段」）而移除。 ── */
 
-/* 区块标题提级：01–04 节题与债券证据区标题 */
-.roSecHead h2,
+/* 区块标题提级：债券证据区标题（01–04 节题的那一半随 SectionHead 迁移移除） */
 .roBondEvidenceHead h2 {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* ── 3) KPI 单表面：gap 格子墙 → 1px hairline 接缝的整块表面 ── */
@@ -1638,30 +1580,19 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 /* ══════════════════════════════════════════════════════════════════
    Supplemental visual pass（Tier 1，仅追加段 · 2026-07-20 第二轮）
-   范围：/risk-overview 单页。修复 1440 限宽被 cockpit 壳层覆盖、
-   编辑式主角数字层级、债券证据区压平、残余边框清理、动效克制、
+   范围：/risk-overview 单页。编辑式主角数字层级、债券证据区压平、
+   残余边框清理、动效克制、
    语义 pill 可读性。不改 DOM / testid / 指标语义；
    末尾自带 reduced-motion 收尾。
    ══════════════════════════════════════════════════════════════════ */
-
-/* ── 1) 1440 限宽落地：上一轮 :global(.workbench-main-column):has(...)
-   与 dashboardCockpit.css 的 .workbench-shell-grid--cockpit
-   .workbench-main-column（width:100%; justify-self:stretch）特异度
-   相同且无 !important，实测被覆盖（main 左贴边）。对齐
-   portfolioHome.module.css L1-4 的形态：提高特异度并加 !important。 ── */
-:global(.workbench-shell-grid--cockpit:has([data-testid="risk-overview-page"]) .workbench-main-column) {
-  justify-self: center !important;
-  max-width: 1440px !important;
-  width: min(100%, 1440px) !important;
-}
 
 /* ── 2) 编辑式主角：hero 数字为首屏唯一主角（36px），评级值压回
    次级（20px），页题提到 24px；区块 h2 维持上一轮的 18px 不动。 ── */
 .roV6HeroNum {
   -webkit-background-clip: text;
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-variant-numeric: tabular-nums;
-  font-weight: 680;
+  font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1.08;
   margin-top: 4px;
@@ -1671,16 +1602,17 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roV6HeroNum small {
   font-family: var(--dh-font-mono);
-  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   letter-spacing: 0.06em;
   -webkit-text-fill-color: var(--ro-mut);
   font-size: 16px;
 }
 
 .roV6RateVal {
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-family: var(--dh-font-mono, var(--moss-font-tabular));
   font-variant-numeric: tabular-nums;
-  font-weight: 680;
+  font-weight: 600;
   line-height: 1.1;
   margin-top: 6px;
   font-size: 20px;
@@ -1725,6 +1657,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--ro-ink-2);
   display: inline-flex;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   gap: 7px;
   padding: 3px 10px;
@@ -1737,6 +1670,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   border-radius: var(--dh-api-radius, 6px);
   display: inline-flex;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   gap: 8px;
   background: color-mix(in srgb, var(--dh-api-red) 8%, transparent);
   border-color: transparent;
@@ -1813,7 +1747,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roSectionNavLabel {
   color: var(--ro-mut);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -2023,7 +1957,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roPageTitle {
   color: var(--ro-ink);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
   margin: 0;
 }
@@ -2097,32 +2031,11 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--ro-amber);
 }
 
-/* ── 01-04 编号分区头统一首页语言（ledger-pnl / market-overview 同款） ── */
-.roSecHead {
-  gap: 10px;
-  min-height: 28px;
-  padding-bottom: 8px;
-}
-
-.roSecHead i {
-  color: var(--ro-mut);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  letter-spacing: 0;
-  min-width: 22px;
-}
-
-.roSecHead h2 {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0;
-  line-height: 20px;
-}
-
+/* ── 编号分区头统一首页语言：01-04 已交给 SectionHead 原语（14px/600 标题、
+   11px 等宽 tabular muted 序号、发丝底边），此处只留债券证据区那一条。 ── */
 .roBondEvidenceHead h2 {
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 20px;
 }
 

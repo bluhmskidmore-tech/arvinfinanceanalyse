@@ -1,16 +1,35 @@
 from __future__ import annotations
 
 import uuid
+from collections import Counter
 from datetime import date
 from decimal import Decimal
 from typing import Any
 
+import duckdb
+from backend.app.core_finance.bond_analytics.engine import (
+    DURATION_QUALITY_MATURITY_UNAVAILABLE,
+    DURATION_QUALITY_NO_REMAINING_TERM,
+    DURATION_QUALITY_OBSERVED,
+    DURATION_QUALITY_YTM_PAR_FALLBACK,
+    RATE_INPUT_STATUS_DIRTY,
+    RATE_INPUT_STATUS_MISSING,
+    RATE_INPUT_STATUS_OBSERVED,
+)
+from backend.app.core_finance.risk_tensor import ASSUMPTION_BASED_DURATION_QUALITY_FLAGS
+from backend.app.core_finance.risk_tensor_regulatory_scope import (
+    DEFAULT_REGULATORY_DV01_SCOPE_RULES,
+    row_in_regulatory_dv01_scope,
+)
+from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.risk_tensor_repo import RiskTensorRepository
 from backend.app.schemas.common_numeric import numeric_from_raw
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.risk_tensor_service import risk_tensor_envelope
 
-RULE_VERSION = "rv_risk_tensor_scenario_stress_v1"
-CACHE_VERSION = "cv_risk_tensor_scenario_stress_v1"
+RULE_VERSION = "rv_risk_tensor_scenario_stress_v2"
+CACHE_VERSION = "cv_risk_tensor_scenario_stress_v2"
+SUMMARY_COMPARISON_MEASURE = "estimated_pnl_impact"
 
 
 def risk_scenario_stress_envelope(
@@ -33,6 +52,9 @@ def risk_scenario_stress_envelope(
     tensor_meta = dict(tensor_meta_raw)
     scenarios = _scenario_rows(tensor_result)
     source_warnings = [str(item) for item in tensor_result.get("warnings") or []]
+    evidence = _scenario_evidence(duckdb_path, report_date_text, tensor_result, tensor_meta)
+    if evidence["fallback_status"] == "unknown":
+        source_warnings.append("来源回退状态未核验，情景金额暂不可展示。")
 
     return build_result_envelope(
         basis="scenario",
@@ -46,14 +68,15 @@ def risk_scenario_stress_envelope(
         # Values come from a validated ResultMeta dump; an out-of-set value would
         # still fail inside ResultMeta construction downstream (behavior preserved).
         vendor_status=str(tensor_meta.get("vendor_status") or "ok"),  # type: ignore[arg-type]
-        fallback_mode=str(tensor_meta.get("fallback_mode") or "none"),  # type: ignore[arg-type]
+        fallback_mode=("latest_snapshot" if evidence["fallback_status"] == "fallback" else "none"),
         filters_applied={"report_date": report_date_text},
         tables_used=["fact_formal_risk_tensor_daily"],
         evidence_rows=1,
         source_surface="risk_tensor",
         requested_report_date=report_date_text,
-        resolved_report_date=report_date_text,
-        as_of_date=report_date_text,
+        resolved_report_date=evidence["actual_risk_date"],
+        as_of_date=evidence["actual_risk_date"],
+        fallback_date=evidence["fallback_date"],
         date_basis="formal_snapshot_scenario_overlay",
         result_payload={
             "basis": "scenario",
@@ -68,15 +91,172 @@ def risk_scenario_stress_envelope(
                 "cache_version": tensor_meta.get("cache_version"),
                 "quality_flag": tensor_meta.get("quality_flag"),
             },
-            "summary": _scenario_summary(scenarios),
+            "summary": _scenario_summary(
+                scenarios,
+                amount_display_allowed=evidence["amount_display_allowed"],
+            ),
             "scenarios": scenarios,
             "warnings": [
                 "Scenario stress is a review-only overlay on the materialized formal Risk Tensor; "
                 "it is not a formal PnL, limit decision, or trading instruction."
             ],
             "source_warnings": source_warnings,
+            "evidence": evidence,
         },
     )
+
+
+def _scenario_evidence(
+    duckdb_path: str,
+    requested_date: str,
+    tensor_result: dict[str, Any],
+    tensor_meta: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate the existing formal scope; never recompute the scenario amount."""
+    payload_date = _evidence_date(tensor_result.get("report_date"))
+    resolved_date = _evidence_date(tensor_meta.get("resolved_report_date"))
+    as_of_date = _evidence_date(tensor_meta.get("as_of_date"))
+    dates = {value for value in (payload_date, resolved_date, as_of_date) if value}
+    date_status = "conflict" if len(dates) > 1 else "unknown"
+    if payload_date and resolved_date and as_of_date and len(dates) == 1:
+        date_status = "verified"
+    actual_date = payload_date if date_status == "verified" else None
+    fallback_date = _evidence_date(tensor_meta.get("fallback_date"))
+    fallback_mode = tensor_meta.get("fallback_mode")
+    fallback_status = "unknown"
+    if fallback_mode == "latest_snapshot" or fallback_date or (actual_date and actual_date != requested_date):
+        fallback_status = "fallback"
+    elif fallback_mode == "none" and actual_date:
+        fallback_status = "none"
+    if fallback_status == "fallback" and fallback_date is None:
+        fallback_date = actual_date
+    coverage: dict[str, Any] = {
+        "status": "unknown",
+        "total_position_count": None,
+        "included_position_count": None,
+        "excluded_position_count": None,
+        "missing_risk_position_count": None,
+        "reasons": [],
+    }
+    reasons = coverage["reasons"]
+    if actual_date:
+        try:
+            fact = RiskTensorRepository(duckdb_path).fetch_risk_tensor_row(actual_date)
+            rows = BondAnalyticsRepository(duckdb_path).fetch_bond_analytics_rows(report_date=actual_date)
+        except (OSError, duckdb.Error):
+            fact, rows = None, []
+            reasons.append("正式风险范围证据读取失败。")
+        if fact is None or not rows:
+            reasons.append("缺少可核对的正式风险事实或债券分析明细。")
+        else:
+            included = [row for row in rows if row_in_regulatory_dv01_scope(row)]
+            input_problems = Counter(
+                problem for row in included if (problem := _risk_input_evidence_problem(row))
+            )
+            missing = sum(count for (is_missing, _), count in input_problems.items() if is_missing)
+            coverage.update(
+                total_position_count=len(rows),
+                included_position_count=len(included),
+                excluded_position_count=len(rows) - len(included),
+                missing_risk_position_count=missing,
+            )
+            reasons.extend(f"适用范围内有 {count} 项{problem}。" for (_, problem), count in input_problems.items())
+            if len(rows) != tensor_result.get("bond_count") or len(rows) != fact.get("bond_count"):
+                reasons.append("正式债券分析行数与风险张量范围不一致。")
+            if _evidence_date(fact.get("report_date")) != actual_date or any(
+                _evidence_date(row.get("report_date")) != actual_date for row in rows
+            ):
+                reasons.append("风险事实与明细日期不一致。")
+            if not tensor_meta.get("source_version") or fact.get("source_version") != tensor_meta.get("source_version"):
+                reasons.append("风险事实版本与返回结果不一致。")
+            upstream_version = fact.get("upstream_source_version")
+            # Bond facts retain input snapshot rule_version, whereas the tensor's
+            # upstream_rule_version identifies the analytics materializer. The
+            # formal tensor service already checks that materializer lineage.
+            # Its source version is the sorted union of input source versions.
+            row_versions = {str(row.get("source_version") or "").strip() for row in rows}
+            if not upstream_version or "" in row_versions or "__".join(sorted(row_versions)) != upstream_version:
+                reasons.append("正式债券明细版本与风险张量上游版本不一致。")
+            coverage["status"] = "incomplete" if missing else "unknown" if reasons else "complete"
+            par_fallback_count = sum(
+                row.get("duration_quality_flag") == DURATION_QUALITY_YTM_PAR_FALLBACK
+                and _risk_input_evidence_problem(row) is None
+                for row in included
+            )
+            if par_fallback_count:
+                reasons.append(
+                    f"适用范围内有 {par_fallback_count} 项采用既有平价收益率假设（YTM=票息）；"
+                    "该假设按现行正式口径保留，情景仍需人工复核。"
+                )
+    else:
+        reasons.append("实际风险日期缺失或来源日期冲突。")
+    regulatory_value = tensor_result.get("regulatory_dv01")
+    has_risk_value = isinstance(regulatory_value, dict) and _finite_risk_input(regulatory_value.get("raw"))
+    if not has_risk_value:
+        reasons.append("监管口径 DV01 不可用。")
+    return {
+        "requested_report_date": requested_date,
+        "actual_risk_date": actual_date,
+        "date_status": date_status,
+        "fallback_status": fallback_status,
+        "fallback_date": fallback_date,
+        "metric_id": "MTR-RSK-001R",
+        "scope_label": "正式债券分析持仓，按监管 DV01 纳入规则；不代表全行所有资产",
+        "scope_rule_ids": [rule.rule_id for rule in DEFAULT_REGULATORY_DV01_SCOPE_RULES],
+        "coverage": coverage,
+        "amount_display_allowed": bool(
+            date_status == "verified" and fallback_status == "none"
+            and coverage["status"] == "complete" and has_risk_value
+        ),
+        "human_review_required": True,
+    }
+
+
+def _evidence_date(value: object) -> str | None:
+    try:
+        return date.fromisoformat(str(value)).isoformat()
+    except (ValueError, TypeError):
+        return None
+
+
+def _finite_risk_input(value: object) -> bool:
+    try:
+        return value is not None and Decimal(str(value)).is_finite()
+    except (ValueError, TypeError, ArithmeticError):
+        return False
+
+
+def _risk_input_evidence_problem(row: dict[str, Any]) -> tuple[bool, str] | None:
+    """Return whether risk is missing plus its evidence gap; preserve formal values."""
+    if not _finite_risk_input(row.get("dv01")):
+        return True, "缺少有限数值 DV01"
+    quality = row.get("duration_quality_flag")
+    if quality == DURATION_QUALITY_MATURITY_UNAVAILABLE:
+        return True, "缺少到期日，DV01 零占位不能证明零风险"
+    if quality == DURATION_QUALITY_YTM_PAR_FALLBACK:
+        # calc_rules.md retains par fallback for missing/dirty/zero YTM. It is
+        # an approved formal assumption, not missing risk; disclose it separately.
+        if row.get("coupon_rate_input_status") == RATE_INPUT_STATUS_OBSERVED and row.get("ytm_input_status") in {
+            RATE_INPUT_STATUS_OBSERVED, RATE_INPUT_STATUS_MISSING, RATE_INPUT_STATUS_DIRTY,
+        }:
+            return None
+        return False, "平价收益率假设与票息或收益率输入状态不一致"
+    if quality in ASSUMPTION_BASED_DURATION_QUALITY_FLAGS:
+        # The formal engine retains and discloses these values. They are not
+        # missing DV01; their applicability to this scenario remains unverified.
+        return False, "DV01 使用近似或代理输入，其情景适用性待复核"
+    if quality == DURATION_QUALITY_NO_REMAINING_TERM:
+        # Matured positions have genuine zero rate sensitivity; coupon/yield
+        # inputs are not needed for that persisted no-remaining-term result.
+        return None if Decimal(str(row["dv01"])) == 0 else (False, "已到期标记与非零 DV01 冲突")
+    if quality != DURATION_QUALITY_OBSERVED:
+        return False, "DV01 输入质量未核验"
+    if any(
+        row.get(field) != RATE_INPUT_STATUS_OBSERVED
+        for field in ("coupon_rate_input_status", "ytm_input_status")
+    ):
+        return False, "DV01 观测标记与票息或收益率输入状态不一致"
+    return None
 
 
 def _scenario_rows(tensor_result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -214,18 +394,28 @@ def _fx_scenario() -> dict[str, Any]:
     }
 
 
-def _scenario_summary(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
+def _scenario_summary(
+    scenarios: list[dict[str, Any]],
+    *,
+    amount_display_allowed: bool = True,
+) -> dict[str, Any]:
     available = [row for row in scenarios if row.get("data_status") == "available"]
     impacts = [
         (raw, str(row["scenario_key"]))
         for row in available
+        if row.get("measure") == SUMMARY_COMPARISON_MEASURE
         if (raw := _numeric_raw(row.get("estimated_impact"))) is not None
     ]
-    worst_impact, worst_key = min(impacts, key=lambda item: item[0]) if impacts else (None, None)
+    worst_impact, worst_key = (
+        min(impacts, key=lambda item: item[0])
+        if amount_display_allowed and impacts
+        else (None, None)
+    )
     return {
         "scenario_count": len(scenarios),
         "available_count": len(available),
         "review_required_count": sum(bool(row.get("human_review_required")) for row in scenarios),
+        "comparison_measure": SUMMARY_COMPARISON_MEASURE,
         "worst_estimated_impact": numeric_from_raw(
             raw=_as_float(worst_impact),
             unit="yuan",
@@ -233,7 +423,12 @@ def _scenario_summary(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
             sign_aware=True,
         ).model_dump(mode="json"),
         "worst_scenario_key": worst_key,
-        "message": "已基于物化风险张量生成标准压力情景；所有结果均需人工复核。",
+        "message": (
+            "利率与信用价格影响仅在同一估值损益口径内比较；"
+            "流动性缺口变化单独披露，所有结果均需人工复核。"
+            if amount_display_allowed
+            else "来源证据未通过金额显示门禁，摘要金额已隐藏；所有结果均需人工复核。"
+        ),
     }
 
 

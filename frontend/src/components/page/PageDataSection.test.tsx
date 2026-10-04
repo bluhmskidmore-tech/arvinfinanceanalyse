@@ -57,7 +57,7 @@ describe("PageDataSection", () => {
     expectPageV2State("data-section-error", "error");
     expect(screen.getByText("数据载入失败。")).toBeInTheDocument();
     expect(
-      screen.getByText("当前页面保留重试入口，不在浏览器端自行拼接正式口径。"),
+      screen.getByText("暂时无法获取数据，请重试。"),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "重试" }));
@@ -70,6 +70,13 @@ describe("PageDataSection", () => {
     expectPageV2State("data-section-empty", "empty");
     expect(screen.getByText("当前暂无可展示内容。")).toBeInTheDocument();
     expect(screen.queryByTestId("inner")).not.toBeInTheDocument();
+  });
+
+  it("keeps caller-supplied business restrictions visible in an error state", () => {
+    renderSection({ kind: "error", message: "所选报告日尚未批准使用。" });
+
+    expect(screen.getByText("所选报告日尚未批准使用。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "重试" })).toBeVisible();
   });
 
   it("renders stale banner date and details while preserving children", () => {

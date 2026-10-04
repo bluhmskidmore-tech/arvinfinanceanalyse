@@ -3,11 +3,11 @@ from importlib import import_module
 from typing import Annotated, Literal
 
 from backend.app.api.deps import ensure_read_allowed
-from backend.app.api.response_cache import (
+from backend.app.governance.settings import get_settings
+from backend.app.observability.response_cache import (
     campisi_four_effects_cache_key,
     market_home_response_cache,
 )
-from backend.app.governance.settings import get_settings
 from backend.app.schemas.campisi_attribution_read import (
     CampisiEnhancedEnvelope,
     CampisiFourEffectsReadEnvelope,

@@ -53,6 +53,29 @@
   color: var(--dh-api-red);
 }
 
+.market-data-page__decision-hero-shell > .market-data-hero-status {
+  border-color: var(--dh-api-line);
+  border-left: 3px solid var(--dh-api-blue);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.market-data-section-head-shell {
+  padding: 13px 16px 0;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--market-data-card-accent, var(--imd-blue)) 7%, var(--dh-api-panel)), var(--dh-api-panel) 58%);
+}
+
+.market-data-section-head-shell a {
+  color: var(--imd-blue);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.market-data-section-head-shell a:hover {
+  text-decoration: underline;
+}
+
 .market-data-hero-select--curve {
   width: 100px;
 }
@@ -83,11 +106,6 @@
   background: var(--dh-api-panel);
 }
 
-.market-data-page[data-view-mode="compact"] .market-data-macro-workbench {
-  gap: 4px;
-}
-
-.market-data-page[data-view-mode="compact"] .market-data-formal-rates-head,
 .market-data-page[data-view-mode="compact"] .market-data-formal-rate-panel,
 .market-data-page[data-view-mode="compact"] .market-data-supply-panel {
   padding: 6px 8px;
@@ -152,26 +170,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   }
 }
 
-.market-data-macro-workbench {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(224px, 256px);
-  gap: 6px;
-  align-items: start;
-  min-width: 0;
-}
-
-.market-data-supply-evidence-rail {
-  grid-column: 2;
-  grid-row: 3;
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-}
-
 .market-data-supply-panel {
   display: grid;
   gap: 6px;
@@ -196,12 +194,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   min-width: 0;
   padding: 6px 0;
   border-bottom: 1px solid var(--dh-api-line);
-}
-
-.market-data-supply-evidence-list article[data-tone="stale"],
-.market-data-supply-evidence-list article[data-tone="error"],
-.market-data-supply-meta {
-  display: none;
 }
 
 .market-data-supply-evidence-list article:last-child {
@@ -252,7 +244,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-supply-meta strong {
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .market-data-next-action-list {
@@ -265,7 +257,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-next-action-list li {
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .market-data-next-action-list em {
@@ -273,7 +265,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   margin-left: 6px;
   padding: 1px 6px;
   border: 1px solid var(--dh-api-line);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-style: normal;
 }
 
@@ -286,37 +278,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   border-radius: var(--dh-api-radius, 2px);
   background: var(--dh-api-panel);
   box-shadow: none;
-}
-
-.market-data-formal-rates-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  align-items: center;
-  min-width: 0;
-  padding: 0;
-  margin-bottom: 12px;
-  border-bottom: 0;
-}
-
-.market-data-formal-rates-head span {
-  color: var(--dh-api-blue);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.market-data-formal-rates-head h2 {
-  margin: 2px 0 0;
-  color: var(--dh-api-blue);
-  font-size: 15px;
-  font-weight: 900;
-}
-
-.market-data-formal-rates-head a {
-  color: var(--dh-api-blue);
-  font-size: 12px;
-  font-weight: 800;
-  text-decoration: none;
 }
 
 .market-data-formal-rates-grid {
@@ -353,13 +314,13 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-formal-rate-panel header strong {
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .market-data-formal-rate-panel header span {
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .market-data-formal-rates-board table {
@@ -411,7 +372,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-panel-head span {
   color: var(--dh-api-muted);
   font-size: var(--ib-kicker-font-size, 11px);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
   text-transform: uppercase;
 }
@@ -427,17 +388,13 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-panel-head strong {
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .market-data-page__decision-hero-shell > *,
 .market-data-page__decision-hero-shell .moss-page-v2-decision-hero__top,
 .market-data-page__decision-hero-shell .moss-page-v2-decision-hero__titles,
 .market-data-page__decision-hero-shell .moss-page-v2-decision-hero__actions,
-.market-data-page__decision-hero-shell .market-data-header-body,
-.market-data-page__decision-hero-shell .market-data-hero-inner,
-.market-data-page__decision-hero-shell .market-data-filter-tray,
-.market-data-page__decision-hero-shell .market-data-filter-row,
 .market-data-observation-grid > * {
   min-width: 0;
 }
@@ -449,180 +406,15 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   scrollbar-width: thin; scrollbar-color: var(--dh-api-panel-3) transparent;
 }
 
-.market-data-terminal-decision-rail {
-  position: sticky;
-  top: 8px;
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--dh-api-line);
-  border-top: 2px solid color-mix(in srgb, var(--dh-api-amber) 72%, var(--dh-api-line));
-  border-radius: var(--dh-api-radius, 2px);
-  background: color-mix(in srgb, var(--dh-api-panel) 88%, var(--dh-api-bg));
-  color: var(--dh-api-ink);
-  box-shadow: none;
-}
-
-.market-data-terminal-rail-head {
-  display: grid;
-  gap: 2px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--dh-api-line);
-}
-
-.market-data-terminal-rail-head > span,
-.market-data-terminal-rail-kicker {
-  color: var(--dh-api-muted);
-  font-size: var(--ib-kicker-font-size, 11px);
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
-  text-transform: uppercase;
-}
-
-.market-data-terminal-rail-head > strong {
-  color: var(--dh-api-ink);
-  font-family: var(--moss-font-sans);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.1;
-}
-
-.market-data-terminal-rail-head > small {
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  line-height: 1.25;
-}
-
-.market-data-terminal-source-gate,
-.market-data-terminal-rail-metrics {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.market-data-terminal-source-row {
-  display: grid;
-  grid-template-columns: minmax(56px, 0.42fr) minmax(0, 1fr);
-  gap: 6px;
-  align-items: baseline;
-  min-width: 0;
-  padding: 4px 6px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: color-mix(in srgb, var(--dh-api-panel) 88%, var(--dh-api-bg));
-}
-
-.market-data-terminal-source-row > span {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  line-height: 1.25;
-  text-transform: uppercase;
-}
-
-.market-data-terminal-source-row > strong {
-  min-width: 0;
-  color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.market-data-terminal-source-row--source > strong {
-  display: -webkit-box;
-  max-height: 28px;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
-.market-data-terminal-rail-metric {
-  --market-terminal-metric-tone: var(--dh-api-ink);
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  padding: 5px 6px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: color-mix(in srgb, var(--dh-api-panel) 90%, var(--dh-api-bg));
-}
-
-.market-data-terminal-rail-metric-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  min-width: 0;
-}
-
-.market-data-terminal-rail-metric-head > span,
-.market-data-terminal-rail-metric > span {
-  color: var(--dh-api-muted);
-  font-size: var(--ib-kicker-font-size, 11px);
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.market-data-terminal-rail-metric > strong {
-  color: var(--market-terminal-metric-tone);
-  font-family: var(--moss-font-mono);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.05;
-  overflow-wrap: anywhere;
-}
-
-.market-data-terminal-rail-metric > small {
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.market-data-terminal-anchor-nav {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  min-width: 0;
-}
-
-.market-data-terminal-anchor-nav > a {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  min-height: 26px;
-  padding: 0 5px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-panel);
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.15;
-  text-align: center;
-  text-decoration: none;
-}
-
-.market-data-terminal-anchor-nav > a:hover {
-  border-color: var(--dh-api-blue);
-  color: var(--dh-api-blue);
-}
-
 .market-data-page .market-data-page__decision-hero-shell.moss-page-v2-decision-hero {
   display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
   gap: 8px;
   margin-bottom: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--dh-api-line);
-  border-top: 2px solid var(--dh-api-blue);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-panel);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
 }
 
@@ -640,31 +432,40 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   min-width: 0;
 }
 
-.market-data-header-body {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
 .market-data-page__decision-hero-shell .moss-page-v2-decision-hero__top {
-  align-items: center;
-  gap: 8px;
+  display: contents;
 }
 
 .market-data-page__decision-hero-shell .moss-page-v2-decision-hero__titles {
-  gap: 3px;
+  display: contents;
 }
 
-/* DESIGN §6 标题去重：外壳终端条已有大标题，hero 只保留眉标 + 业务问题句。 */
-.market-data-page__decision-hero-shell .moss-page-v2-decision-hero__title {
-  display: none;
+.market-data-page__decision-hero-shell .moss-page-v2-decision-hero__actions {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
 }
 
+.market-data-page__decision-hero-shell > .market-data-hero-status {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+}
+
+/* DESIGN §6 标题去重：外壳终端条已有大标题与业务问题句，hero 的眉标/标题/问题句
+ * 全部视觉隐藏（sr-only 保留 DOM 文本以满足契约断言），首屏只留状态条 + 操作行 + KPI 带。 */
+.market-data-page__decision-hero-shell .moss-page-v2-decision-hero__title,
+.market-data-page__decision-hero-shell .moss-page-v2-decision-hero__eyebrow,
 .market-data-page__decision-hero-shell .moss-page-v2-decision-hero__question {
-  max-width: 76ch;
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  line-height: 1.35;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .market-data-page .market-data-hero-actions .ant-select.market-data-hero-select .ant-select-selector {
@@ -695,79 +496,17 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   color: var(--dh-api-ink);
 }
 
-.market-data-page .moss-page-v2-kpi-band {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+.market-data-hero-kpi-strip {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
 }
 
-.market-data-page .moss-page-v2-kpi-metric {
-  border: 0;
-  border-left: 1px solid var(--dh-api-line-soft);
-  border-radius: 0;
-  background: transparent;
-}
-
-.market-data-page .moss-page-v2-kpi-metric:first-child {
-  border-left: 0;
-}
-
-.market-data-page .moss-page-v2-kpi-metric__label {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--dh-api-muted);
-  font-size: 12px;
-  line-height: 1.3;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.market-data-page .moss-page-v2-kpi-metric__footer {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-}
-
-.market-data-header-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px 10px;
-  color: var(--dh-api-soft);
-  font-size: 12px;
+/* L1 折叠条/区块头主文本与区块标题同规格（15px/800），徽章仍走各自的小字号。 */
+.market-data-fx-formal-head,
+.market-data-extended-terminal-collapse.ant-collapse > .ant-collapse-item > .ant-collapse-header {
+  font-size: 15px;
   font-weight: 600;
-}
-
-.market-data-header-meta > span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 18px;
-}
-
-.market-data-filter-tray {
-  padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, var(--dh-api-ink) 16%, transparent);
-  border-radius: var(--dh-api-radius);
-  background: color-mix(in srgb, var(--dh-api-panel) 92%, transparent);
-}
-
-.market-data-filter-row {
-  gap: 6px 8px !important;
-  align-items: end !important;
-}
-
-.market-data-fx-formal-collapse.ant-collapse,
-.market-data-livermore-collapse.ant-collapse {
-  border: 1px solid color-mix(in srgb, var(--dh-api-ink) 12%, transparent);
-  border-radius: var(--dh-api-radius);
-  background: color-mix(in srgb, var(--dh-api-panel) 92%, transparent);
-}
-
-.market-data-fx-formal-collapse .ant-collapse-header,
-.market-data-livermore-collapse .ant-collapse-header {
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .market-data-fx-formal-label {
@@ -786,32 +525,12 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   background: var(--dh-api-green-soft);
   color: var(--dh-api-green);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .market-data-fx-formal-status--missing {
   background: var(--dh-api-amber-soft);
   color: var(--dh-api-amber);
-}
-
-.market-data-livermore-collapse.ant-collapse,
-.market-data-livermore-collapse.ant-collapse > .ant-collapse-item,
-.market-data-livermore-collapse.ant-collapse .ant-collapse-content {
-  border: 0;
-  background: transparent;
-}
-
-.market-data-active-filter-summary {
-  margin-top: 4px;
-  padding: 3px 7px 3px 9px;
-  border: 1px solid var(--dh-api-line);
-  border-left: 2px solid var(--dh-api-blue);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-bg);
-  color: var(--dh-api-ink);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.35;
 }
 
 .market-data-terminal-ticker {
@@ -829,133 +548,11 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   box-shadow: none;
 }
 
-.market-data-terminal-ticker--compact {
-  gap: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.market-data-terminal-ticker--compact .market-data-terminal-ticker-grid {
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
-}
-
-.market-data-terminal-ticker--compact .market-data-terminal-ticker-cell {
-  grid-template-columns: auto auto auto;
-  flex: 0 0 auto;
-  padding: 3px 8px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
-}
-
-.market-data-terminal-ticker--compact .market-data-terminal-ticker-label {
-  font-size: 11px;
-}
-
-.market-data-terminal-ticker--compact .market-data-terminal-ticker-value {
-  font-size: 12px;
-}
-
-.market-data-terminal-ticker--compact .market-data-terminal-ticker-delta {
-  font-size: 11px;
-}
-
-.market-data-terminal-ticker-status {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  margin-left: auto;
-  padding-left: 10px;
-  white-space: nowrap;
-}
-
-.market-data-terminal-ticker-status span,
-.market-data-terminal-ticker-status strong {
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.market-data-terminal-ticker-status strong[data-tone="ok"] {
-  color: var(--dh-api-green);
-}
-
-.market-data-terminal-ticker-empty--compact {
-  min-height: 24px;
-  padding: 4px 8px;
-  font-size: 11px;
-}
-
-.market-data-terminal-ticker-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-}
-
-.market-data-terminal-ticker-kicker {
-  color: var(--dh-api-muted);
-  font-size: var(--ib-kicker-font-size, 11px);
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
-  text-transform: uppercase;
-}
-
-.market-data-terminal-ticker-basis {
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.market-data-terminal-ticker-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 0;
-  min-width: 0;
-}
-
-.market-data-terminal-ticker-cell {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto auto auto auto auto;
-  align-items: center;
-  gap: 3px 6px;
-  min-width: 0;
-  padding: 1px 12px 1px 0;
-}
-
-.market-data-terminal-ticker-sparkline-placeholder {
-  display: block;
-  width: 52px;
-  height: 14px;
-}
-
-.market-data-terminal-ticker-label {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
-  white-space: nowrap;
-}
-
-.market-data-terminal-ticker-value {
-  color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  line-height: 1.1;
-  white-space: nowrap;
-}
-
 .market-data-terminal-ticker-delta {
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -971,12 +568,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   color: var(--dh-api-muted);
 }
 
-.market-data-terminal-ticker-date {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
 .market-data-terminal-ticker-empty {
   padding: 8px 10px;
   border: 1px dashed var(--dh-api-line);
@@ -985,40 +576,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.35;
-}
-
-.market-data-terminal-curve-lock {
-  margin-bottom: 6px;
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.market-data-terminal-kpi-strip {
-  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
-  gap: 6px;
-}
-
-.market-data-terminal-kpi-strip .market-data-overview-card.market-data-terminal-kpi-card {
-  min-height: 50px;
-  padding: 6px 8px 5px;
-  gap: 2px;
-}
-
-.market-data-terminal-kpi-strip .market-data-overview-card__detail {
-  margin-top: 0;
-}
-
-.market-data-terminal-kpi-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-
-.market-data-terminal-kpi-card__head .market-data-overview-card__label {
-  min-width: 0;
 }
 
 .market-data-terminal-sparkline {
@@ -1034,173 +591,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-terminal-sparkline--ticker {
   width: 52px;
   height: 14px;
-}
-
-.market-data-terminal-kpi-empty {
-  padding: 8px 10px;
-  border: 1px dashed var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-bg);
-  color: var(--dh-api-soft);
-  font-size: 12px;
-}
-
-.market-data-pipeline-kpi-collapse.ant-collapse {
-  background: transparent;
-}
-
-.market-data-pipeline-kpi-section {
-  display: grid;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-panel);
-}
-
-.market-data-pipeline-kpi-section-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  align-items: baseline;
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.market-data-pipeline-kpi-section-kicker {
-  color: var(--dh-api-muted);
-  font-size: var(--ib-kicker-font-size, 11px);
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
-  text-transform: uppercase;
-}
-
-.market-data-pipeline-kpi-section-head strong {
-  color: var(--dh-api-ink);
-  font-size: 13px;
-}
-
-.market-data-pipeline-kpi-section-hint {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-}
-
-.market-data-evidence-section {
-  margin-top: var(--moss-space-2);
-}
-
-.market-data-evidence-section-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  align-items: baseline;
-  margin-bottom: 8px;
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.market-data-evidence-section-kicker {
-  color: var(--dh-api-muted);
-  font-size: var(--ib-kicker-font-size, 11px);
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
-  text-transform: uppercase;
-}
-
-.market-data-evidence-section-title {
-  color: var(--dh-api-ink);
-  font-size: 13px;
-}
-
-.market-data-evidence-section-hint {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-}
-
-.market-data-pipeline-kpi-collapse .ant-collapse-item {
-  border: 1px solid color-mix(in srgb, var(--dh-api-ink) 12%, transparent);
-  border-radius: var(--dh-api-radius);
-  background: color-mix(in srgb, var(--dh-api-panel) 88%, transparent);
-}
-
-.market-data-pipeline-kpi-collapse .ant-collapse-header {
-  padding: 8px 10px !important;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--dh-api-soft);
-}
-
-.market-data-pipeline-kpi-strip {
-  padding-top: 4px;
-}
-
-.market-data-overview-strip {
-  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
-  width: 100%;
-  min-width: 0;
-  gap: 8px;
-}
-
-.market-data-overview-card {
-  --market-overview-tone: var(--dh-api-ink);
-  position: relative;
-  overflow: hidden;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-  gap: 3px;
-  min-height: 66px;
-  padding: 10px 12px 8px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-panel);
-  min-width: 0;
-  transition: border-color 160ms ease;
-}
-
-.market-data-overview-card:hover {
-  border-color: var(--dh-api-blue);
-  box-shadow: none;
-  transform: none;
-}
-
-.market-data-overview-card__bar {
-  display: none;
-}
-
-.market-data-overview-card__label {
-  color: var(--dh-api-muted);
-  font-size: var(--ib-kicker-font-size, 11px);
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
-  line-height: 1.2;
-}
-
-.market-data-overview-card__value {
-  color: var(--market-overview-tone);
-  font-family: var(--moss-font-mono);
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.market-data-overview-card--text .market-data-overview-card__value {
-  font-size: 13px;
-  line-height: 1.15;
-}
-
-.market-data-overview-card__detail {
-  margin: 0;
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
 }
 
 .market-data-workbench-shared-meta,
@@ -1244,8 +634,8 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   gap: 4px 10px;
   min-width: 0;
   color: var(--dh-api-ink);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .market-data-extended-terminal-label__kicker {
@@ -1254,29 +644,11 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   letter-spacing: 0.08em;
 }
 
-.market-data-extended-terminal-label > strong { color: var(--dh-api-ink); font-size: 14px; font-weight: 600; }
+.market-data-extended-terminal-label > strong { color: var(--dh-api-ink); font-size: 15px; font-weight: 600; }
 
 .market-data-extended-terminal-body {
   display: grid;
   gap: var(--moss-space-3);
-}
-
-.market-data-supplementary-panel {
-  display: grid;
-  gap: 12px;
-  padding: 12px 16px 16px;
-  min-width: 0;
-}
-
-.market-data-supplementary-panel .async-section {
-  gap: 8px;
-  height: auto;
-  min-height: 0;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
 }
 
 .market-data-supplementary-theme-grid {
@@ -1324,46 +696,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   color: var(--dh-api-muted);
 }
 
-.market-data-supplementary-panel > .market-data-supplementary-tier-rail {
-  padding-top: 8px;
-  border-top: 1px solid var(--dh-api-line);
-}
-
-.market-data-supplementary-tier-collapse.ant-collapse {
-  background: transparent;
-}
-
-.market-data-supplementary-tier-collapse .ant-collapse-item {
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-panel-2);
-}
-
-.market-data-supplementary-tier-collapse .ant-collapse-header {
-  padding: 8px 10px !important;
-  color: var(--dh-api-muted) !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.market-data-supplementary-tier-collapse .ant-collapse-content-box {
-  padding: 8px 10px 10px !important;
-}
-
-.market-data-supplementary-panel .market-data-series-category-card__head {
-  padding: 8px 10px;
-}
-
-.market-data-supplementary-panel .market-data-series-category-card__body {
-  padding: 6px 8px 8px;
-  max-height: min(560px, 72vh);
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--dh-api-panel-3) transparent;
-}
-
 .market-data-supplementary-empty {
   display: flex;
   align-items: center;
@@ -1378,28 +710,11 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   text-align: center;
 }
 
-.market-data-supplementary-macro-body {
-  display: grid;
-  gap: var(--moss-space-2);
-  min-width: 0;
-}
-
-.market-data-supplementary-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 8px 16px;
-  margin-bottom: 0;
-  padding: 13px 16px 10px;
-  border-bottom: 1px solid var(--dh-api-line-soft);
-}
-
 .market-data-supplementary-kicker {
   display: block;
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1418,20 +733,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   color: var(--dh-api-muted);
   font-size: 11px;
   line-height: 1.45;
-}
-
-.market-data-supplementary-missing {
-  padding: 0 16px 16px;
-}
-
-.market-data-supplementary-missing .ant-collapse {
-  background: transparent;
-}
-
-.market-data-supplementary-missing .ant-collapse .ant-collapse-item > .ant-collapse-header {
-  padding: 6px 8px;
-  color: var(--dh-api-muted);
-  font-size: 12px;
 }
 
 .market-data-terminal-panel {
@@ -1556,24 +857,20 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-terminal-pending-compact__status {
   padding: 1px 7px;
   border: 1px solid var(--dh-api-line-soft);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   color: var(--dh-api-muted);
   font-size: 11px;
   font-weight: 600;
 }
 
-.market-data-obs-code { color: var(--dh-api-muted); font-family: var(--moss-font-mono); font-size: 11px; }
+.market-data-obs-code { color: var(--dh-api-muted); font-family: var(--moss-font-tabular); font-variant-numeric: tabular-nums; font-size: 11px; }
 .market-data-obs-name { color: var(--dh-api-ink); }
-.market-data-obs-num { color: var(--dh-api-ink); font-family: var(--moss-font-mono); }
+.market-data-obs-num { color: var(--dh-api-ink); font-family: var(--moss-font-tabular); font-variant-numeric: tabular-nums; }
 .market-data-obs-delta[data-tone="up"] { color: var(--dh-api-green); }
 .market-data-obs-delta[data-tone="down"] { color: var(--dh-api-red); }
 .market-data-obs-delta[data-tone="flat"] { color: var(--dh-api-muted); }
 
-.market-data-section-block:has(.market-data-livermore-collapse),
-.market-data-section-block:has(.market-data-fx-formal-collapse),
-.market-data-section-block:has(.market-data-linkage-collapse) {
-  margin-top: var(--moss-space-2);
-}
+/* 折叠式区块不再自带 margin-top，垂直节奏统一由 .market-data-main 的 gap 提供。 */
 
 .market-data-workbench-shared-meta > span,
 .market-data-source-pending-summary,
@@ -1637,30 +934,13 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   line-height: 1.6;
 }
 
-.market-data-filter-tray .ant-select {
-  height: 28px;
-}
-
-.market-data-filter-tray .ant-select .ant-select-selector {
-  min-height: 28px !important;
-  height: 28px !important;
-  border-radius: var(--dh-api-radius);
-  font-size: 12px;
-}
-
-.market-data-filter-tray .ant-select .ant-select-selection-item {
-  line-height: 26px;
-}
-
 @media (max-width: 1120px) {
-  .market-data-macro-workbench,
-.market-data-formal-rates-grid {
+  .market-data-formal-rates-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .market-data-supply-evidence-rail,
-.market-data-formal-rates-board,
-.market-data-desk-bridge-band {
+  .market-data-formal-rates-board {
     grid-column: 1;
     grid-row: auto;
   }
@@ -1675,129 +955,14 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   }
 }
 
-@media (max-width: 980px) {
-
-  .market-data-terminal-decision-rail {
-    position: static;
-  }
-}
-
-@media (max-width: 900px) {
-  .market-data-overview-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 560px) {
 
   .market-data-observation-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .market-data-terminal-anchor-nav,
-  .market-data-overview-strip {
-    grid-template-columns: 1fr;
+  
   }
-
-  .market-data-terminal-source-row {
-    grid-template-columns: 1fr;
-  }
-}
-
-.market-data-section-block {
-  margin-top: var(--moss-space-2);
-}
-
-/* —— 布局与面板（由 TSX 内联样式迁入，降低 style= 计数） —— */
-.market-data-detail-panel {
-  padding: var(--moss-space-3);
-  border-radius: var(--dh-api-radius, 2px);
-  border: 1px solid var(--dh-api-line);
-  background: var(--dh-api-panel);
-  box-shadow: none;
-}
-
-.market-data-linkage-correlation-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(4, minmax(48px, max-content)) minmax(48px, max-content);
-  gap: 10px;
-  align-items: center;
-  padding: 5px 2px;
-  color: var(--dh-api-ink);
-  font-size: 12px;
-}
-
-.market-data-linkage-correlation-row + .market-data-linkage-correlation-row {
-  border-top: 1px solid var(--dh-api-line-soft);
-}
-
-.market-data-linkage-correlation-head {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.market-data-linkage-correlation-head > span:not(:first-child),
-.market-data-linkage-correlation-value {
-  justify-self: end;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.market-data-linkage-correlation-name {
-  min-width: 0;
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.market-data-linkage-correlation-row > .market-data-dir-pill { justify-self: end; }
-.market-data-linkage-correlation-value[data-tone="up"] { color: var(--dh-api-green); }
-.market-data-linkage-correlation-value[data-tone="down"] { color: var(--dh-api-red); }
-.market-data-linkage-correlation-value[data-tone="neutral"] { color: var(--dh-api-muted); }
-
-.market-data-macro-tab-panel,
-.market-data-macro-depth-tabs + [role="tabpanel"] {
-  margin-top: 0;
-  border-top: 1px solid var(--dh-api-line-soft);
-  padding-top: var(--moss-space-2);
-}
-
-.market-data-macro-depth-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 0;
-  border-bottom: 1px solid var(--dh-api-line);
-}
-
-.market-data-macro-depth-tab {
-  min-height: 30px;
-  padding: 5px 8px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--dh-api-soft);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.market-data-macro-depth-tab:hover {
-  color: var(--dh-api-blue);
-}
-
-.market-data-macro-depth-tab:focus-visible {
-  outline: 2px solid var(--dh-api-blue);
-  outline-offset: 2px;
-}
-
-.market-data-macro-depth-tab--active {
-  border-bottom-color: var(--dh-api-blue);
-  color: var(--dh-api-blue);
-  font-weight: 600;
-}
 
 .market-data-macro-readiness-banner {
   margin: 8px 0;
@@ -1819,21 +984,11 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   color: var(--dh-api-red);
 }
 
-.market-data-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--moss-space-3);
-}
-
 .market-data-observation-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
   gap: var(--moss-space-3);
   align-items: start;
-}
-
-.market-data-macro-chart-shell--flush-top {
-  margin-top: 0;
 }
 
 .market-data-hero-actions {
@@ -1845,143 +1000,21 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   justify-content: flex-end;
 }
 
-.market-data-hero-inner {
-  margin-top: 6px;
-  display: grid;
-  gap: 8px;
-}
-
-.market-data-mode-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 8px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: transparent;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
-}
-
-.market-data-mode-pill::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: 0 0 auto;
-}
-
-.market-data-mode-pill--real {
-  color: var(--dh-api-green);
-}
-
-.market-data-mode-pill--mock {
-  color: var(--dh-api-blue);
-}
-
-.market-data-refresh-banner {
-  padding: 10px 16px;
-  border-radius: var(--moss-space-3);
-  font-size: 13px;
-}
-
-.market-data-refresh-banner--info {
-  background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
-}
-
-.market-data-refresh-banner--warn {
-  background: var(--dh-api-amber-soft);
-  color: var(--dh-api-amber);
-}
-
-.market-data-filter-label {
-  display: grid;
-  gap: 3px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--dh-api-soft);
-}
-
-.market-data-filter-control {
-  width: 100%;
-  height: 28px;
-  padding: 0 var(--moss-space-3);
-  border-radius: var(--dh-api-radius);
-  border: 1px solid var(--dh-api-line);
-  background: var(--dh-api-panel);
-  font-size: 12px;
-  color: var(--dh-api-ink);
-  outline: none;
-  transition: border-color 0.2s ease;
-}
-
-.market-data-filter-select {
-  width: 190px;
-}
-
 .market-data-hero-refresh-btn {
   height: 32px;
   padding: 0 12px;
   border-radius: var(--dh-api-radius);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
 }
-
-.market-data-hero-refresh-btn--enabled {
-  border: 1px solid var(--dh-api-blue);
-  background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
-}
-
-.market-data-hero-refresh-btn--disabled {
-  border: 1px solid var(--dh-api-line);
-  background: var(--dh-api-panel-2);
-  color: var(--dh-api-muted);
-  cursor: not-allowed;
-}
-
-.market-data-stack-gap-5 {
-  display: grid;
-  gap: var(--moss-space-5);
-}
-
-/* Linkage collapse inner stack: 8px rhythm (class name kept for TSX stability). */
-.market-data-linkage-collapse .market-data-stack-gap-5 {
-  gap: var(--moss-space-2);
-}
-
-.market-data-linkage-collapse.ant-collapse { background: transparent; }
-
-.market-data-linkage-collapse > .ant-collapse-item > .ant-collapse-header {
-  align-items: center;
-  padding: 13px 16px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--dh-api-blue) 7%, var(--dh-api-panel)), var(--dh-api-panel) 58%);
-  color: var(--dh-api-ink);
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.market-data-linkage-collapse > .ant-collapse-item-active > .ant-collapse-header { border-bottom: 1px solid var(--dh-api-line-soft); }
-
-.market-data-linkage-collapse .market-data-stack-gap-5 > * + * {
-  padding-top: var(--moss-space-2);
-  border-top: 1px solid var(--dh-api-line-soft);
-}
-
-.market-data-linkage-collapse-label,
 .market-data-tushare-collapse-label {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
-
-.market-data-linkage-collapse-label__badge,
 .market-data-tushare-collapse-label__badge {
   padding: 1px 7px;
   border-radius: var(--dh-api-radius, 2px);
@@ -2000,35 +1033,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   font-variant-numeric: tabular-nums;
 }
 
-.market-data-block-title {
-  margin: var(--moss-space-3) 0 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--dh-api-ink);
-}
-
-.market-data-block-title--flush {
-  margin-top: 0;
-}
-
-.market-data-curve-intro {
-  margin-top: 2px;
-  margin-bottom: 0;
-  overflow: hidden;
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  line-height: 1.5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.market-data-linkage-tab-intro {
-  margin: 0 0 var(--moss-space-3);
-  color: var(--dh-api-soft);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
 .market-data-linkage-caveat {
   padding: 10px 12px;
   border-radius: var(--dh-api-radius, 2px);
@@ -2037,35 +1041,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   display: grid;
   gap: var(--moss-space-2);
 }
-
-.market-data-pill-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border: 1px solid color-mix(in srgb, var(--market-data-card-accent, var(--dh-api-blue)) 42%, var(--dh-api-line));
-  border-radius: var(--dh-api-radius, 2px);
-  background: color-mix(in srgb, var(--market-data-card-accent, var(--dh-api-blue)) 8%, white);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
-}
-
-.market-data-pill-tag--info {
-  color: var(--dh-api-blue);
-  text-transform: uppercase;
-}
-
-.market-data-pill-tag--warn {
-  color: var(--dh-api-amber);
-}
-
-.market-data-linkage-caveat-body {
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.market-data-linkage-warning-list,
 .market-data-tushare-warning-hint {
   margin: 0;
   padding: 6px 10px 6px 26px;
@@ -2078,27 +1053,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 
 .market-data-tushare-warning-hint {
   padding-left: 10px;
-}
-
-.market-data-linkage-warning-empty {
-  color: var(--dh-api-muted);
-  font-size: 12px;
-}
-
-.market-data-portfolio-empty,
-.market-data-corr-empty {
-  padding: var(--moss-space-4);
-  border-radius: var(--dh-api-radius, 2px);
-  border: 1px dashed var(--dh-api-line);
-  background: var(--dh-api-panel);
-  color: var(--dh-api-soft);
-  font-size: 12px;
-}
-
-.market-data-portfolio-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--moss-space-3);
 }
 
 .market-data-dir-pill {
@@ -2118,21 +1072,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-dir-pill--neg { background: var(--dh-api-red-soft); color: var(--dh-api-red); }
 .market-data-dir-pill--neu { background: var(--dh-api-panel-2); color: var(--dh-api-muted); }
 
-.market-data-section-lead--compact h2 {
-  margin: 0;
-  font-size: 14px !important;
-  font-weight: 650 !important;
-  line-height: 1.35 !important;
-}
-
-.market-data-section-lead--compact p {
-  margin: 4px 0 0 !important;
-  max-width: none !important;
-  color: var(--dh-api-soft) !important;
-  font-size: 12px !important;
-  line-height: 1.45 !important;
-}
-
 .market-data-catalog-row {
   display: grid;
   gap: var(--moss-space-2);
@@ -2147,225 +1086,9 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   font-size: 13px;
 }
 
-.market-data-linkage-panel-title {
-  margin-top: 0;
-  margin-bottom: var(--moss-space-2);
-  color: var(--dh-api-ink);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.market-data-linkage-panel-lede {
-  margin-top: 0;
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.market-data-linkage-section-note {
-  margin: 0 0 var(--moss-space-2);
-  padding: 6px 10px;
-  border-left: 2px solid var(--dh-api-amber);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-panel-2);
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.market-data-linkage-spreads-audit {
-  display: grid;
-  gap: 10px;
-}
-
-.market-data-linkage-spreads-audit-summary {
-  color: var(--dh-api-ink);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.market-data-linkage-spreads-audit-slots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.market-data-linkage-spreads-audit-slot {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 4px 10px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-bg);
-  font-size: 12px;
-}
-
-.market-data-linkage-spreads-audit-slot[data-has-data="false"] {
-  color: var(--dh-api-muted);
-}
-
-.market-data-linkage-spreads-audit-tenor {
-  font-weight: 700;
-  color: var(--dh-api-ink);
-}
-
-.market-data-linkage-spreads-audit-status {
-  color: var(--dh-api-soft);
-}
-
-.market-data-linkage-spreads-audit-link {
-  justify-self: start;
-  border: none;
-  background: transparent;
-  color: var(--dh-api-blue);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-}
-
 .market-data-dim-label {
   color: var(--dh-api-muted);
   font-size: 12px;
-}
-
-.market-data-desk-bridge-band {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-panel);
-}
-
-.market-data-desk-bridge-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-}
-
-.market-data-desk-bridge-link {
-  color: var(--dh-api-blue);
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.market-data-desk-bridge-link:hover {
-  text-decoration: underline;
-}
-
-.market-data-desk-bridge-link--muted {
-  color: var(--dh-api-muted);
-  font-weight: 500;
-}
-
-.market-data-desk-bridge-body {
-  display: grid;
-  gap: 8px;
-}
-
-.market-data-desk-bridge-metrics {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-@media (max-width: 1180px) {
-  .market-data-desk-bridge-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.market-data-desk-bridge-metric {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-bg);
-}
-
-.market-data-desk-bridge-metric-label {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.market-data-desk-bridge-metric-value {
-  color: var(--dh-api-ink);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.market-data-desk-bridge-metric-detail {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-style: normal;
-}
-
-.market-data-desk-bridge-empty {
-  margin: 0;
-  color: var(--dh-api-muted);
-  font-size: 12px;
-}
-
-.market-data-desk-bridge-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.market-data-desk-bridge-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: color-mix(in srgb, var(--dh-api-blue) 3%, transparent);
-  color: var(--dh-api-soft);
-  font-size: 11px;
-}
-
-.market-data-header-meta--compact {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.market-data-terminal-workbench-nav {
-  display: grid;
-  gap: 6px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--dh-api-line);
-}
-
-.market-data-terminal-workbench-links {
-  display: grid;
-  gap: 4px;
-}
-
-.market-data-terminal-workbench-link {
-  color: var(--dh-api-blue);
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.market-data-terminal-workbench-link:hover {
-  text-decoration: underline;
 }
 
 .market-data-rate-quote-chart-block {
@@ -2381,41 +1104,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.market-data-chart-shell {
-  width: 100%;
-  min-width: 0;
-  padding: 8px 4px 4px;
-  background: var(--dh-api-bg);
-  border-radius: 4px;
-}
-
-.market-data-rate-quote-card .market-data-chart-shell {
-  padding: 8px 8px 4px;
-}
-
-.market-data-chart-shell--loading,
-.market-data-chart-shell--empty,
-.market-data-chart-shell--error {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 180px;
-  padding: 16px;
-  border: 1px dashed var(--dh-api-line);
-  border-radius: 4px;
-  background: var(--dh-api-bg);
-  color: var(--dh-api-muted);
-  font-size: 12px;
-}
-
-.market-data-rate-quote-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 
 .market-data-rate-quote-card .ant-tabs-nav {
@@ -2434,7 +1122,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   background: color-mix(in srgb, var(--dh-api-panel-2) 82%, white) !important;
   color: var(--dh-api-muted) !important;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -2550,58 +1238,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   margin-top: 12px;
 }
 
-.market-data-linkage-chart-note {
-  margin: 0 0 6px;
-  color: var(--dh-api-soft);
-  font-size: 11px;
-}
-
-.market-data-curve-series-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.market-data-curve-series-chip {
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius, 8px);
-  background: var(--dh-api-panel-2);
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  line-height: 1;
-  padding: 4px 10px;
-  cursor: pointer;
-}
-
-.market-data-curve-series-picker-actions {
-  width: 100%;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.market-data-curve-series-picker-actions .ant-btn {
-  height: auto;
-  padding: 0;
-  color: var(--dh-api-blue);
-  font-size: 11px;
-}
-
-.market-data-curve-series-picker-actions .ant-btn:disabled {
-  color: var(--dh-api-muted);
-}
-
-.market-data-curve-series-chip-stale {
-  color: var(--dh-api-amber);
-  font-size: 11px;
-}
-
-.market-data-curve-series-chip--active {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 45%, transparent);
-  color: var(--dh-api-blue);
-  background: var(--dh-api-blue-soft);
-}
-
 .market-data-linkage-summary-band {
   display: flex;
   flex-wrap: wrap;
@@ -2665,25 +1301,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   font-size: 11px;
   cursor: pointer;
   padding: 0;
-}
-
-.market-data-desk-bridge-chart-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.market-data-desk-bridge-chart-links-label {
-  font-size: 11px;
-  color: var(--dh-api-muted);
-}
-
-.market-data-desk-bridge-chart-link {
-  font-size: 11px;
-  color: var(--dh-api-blue);
-  text-decoration: none;
 }
 
 .market-data-supplementary-chart-first {
@@ -2798,27 +1415,20 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   gap: 6px;
 }
 
+/* 分类卡保留通用双列网格；内容高度差异由具体 deck 决定是否拉伸。 */
 .market-data-category-deck-grid {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.market-data-liquidity-deck {
   align-items: start;
-}
-
-.market-data-core-observation-deck {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.market-data-core-observation-deck__footer {
-  grid-column: 1 / -1;
 }
 
 .market-data-terminal-embedded {
   min-width: 0;
-}
-
-.market-data-terminal-embedded .market-data-rate-quote-head {
-  justify-content: flex-end;
 }
 
 .market-data-terminal-embedded .market-data-terminal-source {
@@ -2847,8 +1457,9 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   min-width: 0;
 }
 
+/* 卡级链路徽章：正常/稳定态与区头信息重复，默认隐藏；降级态是治理披露项，保留黄色警示。 */
 .market-data-series-category-card__kicker {
-  display: inline-flex;
+  display: none;
   align-items: center;
   width: fit-content;
   padding: 1px 6px;
@@ -2856,21 +1467,17 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   background: var(--dh-api-blue-soft);
   color: var(--dh-api-blue);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
-.market-data-series-category-card__kicker--formal,
-.market-data-series-category-card__kicker--stable {
-  background: var(--dh-api-green-soft);
-  color: var(--dh-api-green);
-}
-
 .market-data-series-category-card__kicker--fallback {
+  display: inline-flex;
   background: var(--dh-api-amber-soft);
   color: var(--dh-api-amber);
 }
 
+/* L2 卡级标题统一规格：14px/700。 */
 .market-data-series-category-card__title {
   margin: 0;
   font-size: 14px;
@@ -2940,14 +1547,14 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   border-radius: var(--dh-api-radius, 2px);
   background: var(--dh-api-bg);
   color: var(--dh-api-soft);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .market-data-fx-event-item__title {
   min-width: 0;
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -2971,7 +1578,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-fx-event-insight__head strong {
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .market-data-fx-event-insight__head span {
@@ -2996,7 +1603,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   background: color-mix(in srgb, var(--dh-api-blue) 5%, var(--dh-api-bg));
   color: var(--dh-api-soft);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -3032,7 +1639,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   overflow: hidden;
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3129,7 +1736,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   border-bottom: 1px solid var(--dh-api-line-soft);
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: left;
   white-space: nowrap;
 }
@@ -3205,28 +1812,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   font-weight: 600;
 }
 
-.market-data-spreads-tab-panel {
-  display: grid;
-  gap: 8px;
-}
-
-.market-data-spreads-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: 10px;
-  align-items: start;
-}
-
-.market-data-spreads-layout__cards {
-  order: 1;
-  min-width: 0;
-}
-
-.market-data-spreads-layout__chart {
-  order: 2;
-  min-width: 0;
-}
-
 .market-data-spread-tenor-panel {
   display: grid;
   gap: 8px;
@@ -3249,7 +1834,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -3270,7 +1855,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   background: color-mix(in srgb, var(--dh-api-blue) 6%, var(--dh-api-bg));
   color: var(--dh-api-soft);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -3312,7 +1897,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 
 .market-data-spread-tenor-card__metrics dd[data-strength="strong"] {
   color: var(--dh-api-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .market-data-spread-tenor-card__metrics dd[data-strength="weak"] {
@@ -3330,13 +1915,13 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-spread-tenor-card__tenor {
   color: var(--dh-api-ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .market-data-spread-tenor-card__family {
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -3372,7 +1957,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-spread-tenor-card__metrics dt {
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
@@ -3398,17 +1983,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius, 2px);
   background: var(--dh-api-bg);
-}
-
-@media (max-width: 960px) {
-  .market-data-spreads-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .market-data-spreads-layout__cards,
-  .market-data-spreads-layout__chart {
-    order: unset;
-  }
 }
 
 @media (max-width: 720px) {
@@ -3503,7 +2077,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-tushare-summary-card__value {
   color: var(--market-data-tushare-tone);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.15;
 }
 
@@ -3536,7 +2110,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   border-bottom: 1px solid var(--dh-api-line);
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .market-data-tushare-money-trend__row {
@@ -3650,7 +2224,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   padding: 0 2px;
   color: var(--dh-api-soft);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -3699,7 +2273,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 }
 
 /* Lower deck: liquidity, Tushare supplement, news/calendar */
-.market-data-lower-deck-section {
+.market-data-main > .market-data-lower-deck-section {
   display: grid;
   gap: var(--moss-space-2);
   padding: 16px;
@@ -3707,15 +2281,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   border-radius: var(--dh-api-radius, 2px);
   background: var(--dh-api-panel);
   box-shadow: none;
-}
-
-.market-data-lower-deck-panel {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-panel);
 }
 
 .market-data-tushare-freshness-hint {
@@ -3733,91 +2298,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   border-color: color-mix(in srgb, var(--dh-api-amber) 42%, var(--dh-api-line));
   background: color-mix(in srgb, var(--dh-api-amber) 6%, var(--dh-api-bg));
   color: var(--dh-api-ink);
-}
-
-.market-data-news-calendar-section {
-  min-width: 0;
-}
-
-.market-data-news-calendar-head {
-  margin-bottom: 4px;
-}
-
-.market-data-news-calendar-tabs .ant-tabs-nav {
-  margin-bottom: 8px;
-}
-
-.market-data-news-calendar-pane {
-  min-height: 120px;
-}
-
-.market-data-news-calendar-pane--scroll {
-  max-height: 360px;
-  overflow: auto;
-}
-
-.market-data-news-calendar-loading {
-  display: flex;
-  justify-content: center;
-  padding: 28px 0;
-}
-
-.market-data-news-calendar-empty {
-  margin: 0;
-  padding: 12px 2px;
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.market-data-news-calendar-list {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.market-data-news-calendar-item {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 8px 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-line) 72%, transparent);
-}
-
-.market-data-news-calendar-item:last-child {
-  border-bottom: none;
-}
-
-.market-data-news-calendar-item__time,
-.market-data-news-calendar-item__date {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.market-data-news-calendar-item__title {
-  color: var(--dh-api-ink);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.market-data-news-calendar-item--event {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
-}
-
-.market-data-news-calendar-item__meta {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-@media (max-width: 720px) {
-  .market-data-news-calendar-item {
-    grid-template-columns: 44px minmax(0, 1fr);
-  }
 }
 
 /* ============================================================
@@ -3840,7 +2320,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   --t-green: var(--dh-api-green);
   --t-red: var(--dh-api-red);
   --t-warn: var(--dh-api-amber);
-  --t-mono: var(--moss-font-mono);
+  --t-mono: var(--moss-font-tabular);
 }
 
 /* --- 页面背景 --- */
@@ -3853,10 +2333,8 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 /* --- 统一白卡 --- */
 .market-data-main > .market-data-formal-rates-board,
 .market-data-main > .market-data-lower-deck-section,
-.market-data-main > [data-testid="market-data-macro-depth-card"],
-.market-data-main > .market-data-desk-bridge-band,
-.market-data-main > section,
-.market-data-main > div > section,
+.market-data-main > section:not(.market-data-explorer),
+.market-data-main > div > section:not(.market-data-extended-terminal-section),
 .market-data-main > .ant-collapse {
   background: var(--t-card) !important;
   border: 1px solid var(--t-border) !important;
@@ -3867,10 +2345,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 }
 
 /* --- 深蓝标题栏（所有 section header 统一） --- */
-.market-data-formal-rates-head,
 .market-data-panel-head,
-.market-data-lower-deck-section .market-data-section-lead--compact,
-.market-data-desk-bridge-band > *:first-child,
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header {
   background: var(--t-navy) !important;
   color: var(--ib-rail-text-active) !important;
@@ -3881,20 +2356,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   align-items: center;
 }
 
-/* 隐藏 header 内的副标题/描述文本，保持标题栏紧凑 */
-.market-data-formal-rates-head small,
-.market-data-formal-rates-head span:not([data-testid]),
-.market-data-lower-deck-section .market-data-section-lead--compact p,
-.market-data-lower-deck-section .market-data-section-lead--compact > span,
-.market-data-desk-bridge-band .market-data-desk-bridge-empty,
-.market-data-formal-rates-head a,
-.market-data-workbench-shared-meta {
-  display: none !important;
-}
-
-.market-data-formal-rates-head h2,
 .market-data-panel-head strong,
-.market-data-lower-deck-section h3,
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header {
   color: var(--ib-rail-text-active) !important;
   font-size: 14px !important;
@@ -3904,12 +2366,10 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   margin: 0 !important;
 }
 
-.market-data-formal-rates-head h2::before,
 .market-data-panel-head strong::before {
   display: none !important;
 }
 
-.market-data-formal-rates-head span,
 .market-data-panel-head span {
   color: var(--dh-api-soft) !important;
   font-size: 11px !important;
@@ -3945,12 +2405,26 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   }
 }
 
-/* DESIGN §6 防重排：懒加载占位带背板并接近真实区块高度。 */
+/* 延迟区未挂载时与真实收起态同高，避免整页截图出现无标题空壳。 */
 .market-data-lazy-placeholder {
-  min-height: 240px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  min-height: 56px;
+  padding: 10px 14px;
   border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.market-data-lazy-placeholder strong {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 /* ============================================================
@@ -3960,17 +2434,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 /* --- 利率表区 --- */
 .market-data-formal-rates-board {
   padding: 0 !important;
-}
-
-.market-data-formal-rates-head {
-  margin: 0 !important;
-  border-bottom: 1px solid var(--t-border) !important;
-}
-
-.market-data-formal-rates-head h2 {
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  font-family: inherit !important;
 }
 
 .market-data-formal-rates-grid {
@@ -4098,12 +2561,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 /* 状态 chip */
 
 /* 筛选行 */
-
-.market-data-filter-label {
-  font-size: 11px !important;
-  font-weight: 500 !important;
-  color: var(--t-ink-muted) !important;
-}
 
 /* --- 右栏 --- */
 .market-data-rail { gap: 8px; }
@@ -4258,6 +2715,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   color: var(--t-ink-2) !important;
   line-height: 1.6;
   font-family: var(--t-mono);
+  font-variant-numeric: tabular-nums;
   max-height: 200px;
   overflow-y: auto;
 }
@@ -4276,157 +2734,14 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   gap: 8px;
 }
 
-/* --- DeskBridgeBand --- */
-.market-data-desk-bridge-band {
-  background: var(--t-card) !important;
-  border: 1px solid var(--t-border) !important;
-  border-radius: 2px !important;
-  padding: 0 !important;
-  box-shadow: none !important;
-  overflow: hidden;
-}
-
-.market-data-desk-bridge-links {
-  padding: 4px 12px !important;
-  background: var(--t-navy) !important;
-  color: var(--ib-rail-text-active) !important;
-}
-
-.market-data-desk-bridge-link {
-  color: var(--ib-rail-text-active) !important;
-  font-size: 11px !important;
-  font-weight: 500 !important;
-}
-
-.market-data-desk-bridge-link--muted {
-  color: var(--dh-api-muted) !important;
-}
-
-.market-data-desk-bridge-body {
-  padding: 8px 12px;
-  gap: 8px;
-}
-
-.market-data-desk-bridge-metrics {
-  grid-template-columns: repeat(4, 1fr) !important;
-  gap: 4px !important;
-}
-
-.market-data-desk-bridge-metric {
-  background: var(--t-card-alt) !important;
-  border: 1px solid var(--t-border) !important;
-  border-radius: 2px !important;
-  padding: 4px 8px !important;
-}
-
-.market-data-desk-bridge-metric-label {
-  color: var(--t-ink-muted) !important;
-  font-size: 11px !important;
-  text-transform: none !important;
-  letter-spacing: 0 !important;
-}
-
-.market-data-desk-bridge-metric-value {
-  color: var(--t-ink) !important;
-  font-size: 14px !important;
-  font-weight: 600 !important;
-  font-family: var(--t-mono) !important;
-  font-variant-numeric: tabular-nums;
-}
-
-.market-data-desk-bridge-metric-detail {
-  color: var(--t-ink-muted) !important;
-  font-size: 11px !important;
-}
-
-.market-data-desk-bridge-chip-row {
-  gap: 4px;
-}
-
-.market-data-desk-bridge-chip {
-  font-size: 11px !important;
-  padding: 2px 6px !important;
-  border-radius: 2px !important;
-  background: var(--t-card-alt) !important;
-  border: 1px solid var(--t-border) !important;
-  color: var(--t-ink-2) !important;
-}
-
-.market-data-desk-bridge-chart-links {
-  padding: 0 12px 8px;
-  gap: 12px;
-}
-
-.market-data-desk-bridge-chart-links-label {
-  font-size: 11px;
-  color: var(--t-ink-muted);
-}
-
-.market-data-desk-bridge-chart-link {
-  font-size: 11px;
-  color: var(--t-navy);
-  font-weight: 500;
-}
-
-/* --- 宏观深度卡片 --- */
-[data-testid="market-data-macro-depth-card"] {
-  padding: 0 !important;
-}
-
-[data-testid="market-data-macro-depth-card"] .market-data-series-category-card__head {
-  padding: 4px 12px !important;
-  border-bottom: 1px solid var(--t-navy) !important;
-  min-height: 30px;
-  align-items: center;
-}
-
-[data-testid="market-data-macro-depth-card"] .market-data-series-category-card__head h3 {
-  font-size: 13px !important;
-  font-weight: 700 !important;
-  color: var(--ib-rail-text-active) !important;
-}
-
-[data-testid="market-data-macro-depth-card"] .market-data-series-category-card__head p,
-[data-testid="market-data-macro-depth-card"] .market-data-series-category-card__head span {
-  display: none !important;
-}
-
-[data-testid="market-data-macro-depth-card"] .market-data-series-category-card__body {
-  padding: 8px 12px;
-}
-
 /* --- 资金/存单区 --- */
-.market-data-lower-deck-section {
+.market-data-main > .market-data-lower-deck-section {
   background: var(--t-card) !important;
   border: 1px solid var(--t-border) !important;
   border-radius: 2px !important;
   padding: 0 !important;
   box-shadow: none !important;
   overflow: hidden;
-}
-
-.market-data-lower-deck-section .market-data-section-lead--compact {
-  padding: 4px 12px !important;
-  min-height: 30px;
-  align-items: center;
-}
-
-.market-data-lower-deck-section .market-data-section-lead--compact h3 {
-  font-size: 13px !important;
-  font-weight: 700 !important;
-  color: var(--ib-rail-text-active) !important;
-}
-
-.market-data-lower-deck-section .market-data-section-lead--compact p {
-  display: none !important;
-}
-
-/* --- 图表容器 --- */
-.market-data-chart-shell {
-  background: var(--t-card-alt) !important;
-  border: 1px solid var(--t-border-soft) !important;
-  border-radius: 2px !important;
-  padding: 6px 4px 2px !important;
 }
 
 /* --- Collapse --- */
@@ -4459,17 +2774,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-key-rate-list article strong,
 .market-data-supply-evidence-list article strong {
   font-family: var(--t-mono);
-}
-
-/* --- 底部区块标题 --- */
-.market-data-section-lead--compact h3 {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.market-data-section-lead--compact p {
-  font-size: 11px;
-  color: var(--t-ink-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- 全局数字渲染 --- */
@@ -4508,14 +2813,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   color: var(--t-ink-muted);
 }
 
-/* --- 骨架屏适配 --- */
-
-.market-data-rail-skeleton-item {
-  background: linear-gradient(90deg, var(--t-card-alt) 25%, var(--t-border) 50%, var(--t-card-alt) 75%);
-  background-size: 200% 100%;
-  animation: market-data-skeleton-shimmer 1.4s ease-in-out infinite;
-}
-
 /* --- 响应式 --- */
 @media (max-width: 719px) {
   .market-data-layout { grid-template-columns: minmax(0, 1fr); }
@@ -4552,7 +2849,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   --imd-shadow-soft: none;
   --imd-radius: var(--dh-api-radius);
   --imd-radius-sm: var(--dh-api-radius);
-  --imd-mono: var(--moss-font-mono);
+  --imd-mono: var(--moss-font-tabular);
   gap: 18px;
   padding: 4px;
   background: var(--imd-bg) !important;
@@ -4598,10 +2895,8 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 
 .market-data-main > .market-data-formal-rates-board,
 .market-data-main > .market-data-lower-deck-section,
-.market-data-main > [data-testid="market-data-macro-depth-card"],
-.market-data-main > .market-data-desk-bridge-band,
-.market-data-main > section,
-.market-data-main > div > section,
+.market-data-main > section:not(.market-data-explorer),
+.market-data-main > div > section:not(.market-data-extended-terminal-section),
 .market-data-main > .ant-collapse,
 [data-testid="market-data-tushare-collapse"],
 .market-data-supply-panel,
@@ -4613,36 +2908,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   overflow: hidden;
 }
 
-.market-data-filter-label {
-  color: var(--imd-muted) !important;
-  font-size: 11px !important;
-  font-weight: 700 !important;
-  letter-spacing: 0 !important;
-}
-
-.market-data-filter-select .ant-select-selector {
-  min-height: 30px !important;
-  border: 1px solid var(--imd-border) !important;
-  border-radius: var(--imd-radius-sm) !important;
-  background: var(--dh-api-panel) !important;
-  color: var(--imd-ink) !important;
-  font-size: 12px !important;
-  font-weight: 700 !important;
-  box-shadow: none !important;
-}
-
-.market-data-active-filter-summary {
-  display: block !important;
-  padding: 0 14px 10px !important;
-  background: var(--imd-card-subtle) !important;
-  color: var(--imd-muted) !important;
-  font-size: 11px !important;
-  font-weight: 700;
-}
-
-.market-data-formal-rates-head,
-.market-data-lower-deck-section .market-data-section-lead--compact,
-.market-data-desk-bridge-links,
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header,
 [data-testid="market-data-tushare-collapse"] .ant-collapse-header {
   display: flex !important;
@@ -4657,92 +2922,51 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   color: var(--imd-ink) !important;
 }
 
-.market-data-formal-rates-head > div,
-.market-data-lower-deck-section .market-data-section-lead--compact > div,
-.market-data-section-lead--compact > div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.market-data-formal-rates-head span,
-.market-data-lower-deck-section .market-data-section-lead--compact > span,
-.market-data-section-lead--compact > span {
-  display: inline-flex !important;
-  width: fit-content;
-  color: var(--imd-blue) !important;
-  font-size: 11px !important;
-  font-weight: 850 !important;
-  letter-spacing: 0 !important;
-  text-transform: none !important;
-}
-
-.market-data-formal-rates-head h2,
-.market-data-lower-deck-section h2,
-.market-data-lower-deck-section h3,
-.market-data-section-lead--compact h2,
-.market-data-section-lead--compact h3,
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header,
 [data-testid="market-data-tushare-collapse"] .ant-collapse-header {
   margin: 0 !important;
   padding: 0 !important;
   color: var(--imd-ink) !important;
   font-size: 15px !important;
-  font-weight: 800 !important;
+  font-weight: 600 !important;
   letter-spacing: 0 !important;
   line-height: 1.25;
 }
 
-.market-data-formal-rates-head small,
-.market-data-lower-deck-section .market-data-section-lead--compact p,
-.market-data-section-lead--compact p,
-.market-data-workbench-shared-meta,
-.market-data-desk-bridge-empty,
-.market-data-formal-rates-head a {
+.market-data-workbench-shared-meta {
   display: block !important;
   color: var(--imd-muted) !important;
   font-size: 12px !important;
-  font-weight: 650 !important;
+  font-weight: 600 !important;
   line-height: 1.45;
 }
 
-.market-data-formal-rates-head a {
-  display: inline-flex !important;
-  align-items: center;
-  color: var(--imd-blue) !important;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.market-data-formal-rates-head a:hover {
-  text-decoration: underline;
-}
-
+/* 口径摘要降级为区头下的静默元信息行：正常态不需要胶囊级视觉权重。 */
 .market-data-workbench-shared-meta {
   display: flex !important;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px !important;
-  padding: 0 16px 12px !important;
-  margin: -4px 0 0 !important;
+  padding: 4px 16px 6px !important;
+  margin: 0 !important;
 }
 
 .market-data-workbench-shared-meta > span {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 3px 8px;
-  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 35%, var(--dh-api-panel));
-  border-radius: 999px;
-  background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue) !important;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--imd-muted) !important;
   font-size: 11px !important;
-  font-weight: 750;
+  font-weight: 500;
 }
 
 .market-data-formal-rates-board,
-.market-data-lower-deck-section,
-.market-data-series-category-card,
-.market-data-desk-bridge-band {
+.market-data-main > .market-data-lower-deck-section,
+.market-data-series-category-card {
   background: var(--imd-card) !important;
   border: 1px solid var(--imd-border) !important;
   border-radius: var(--imd-radius) !important;
@@ -4755,9 +2979,29 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 
 .market-data-formal-rates-grid {
   display: grid !important;
-  grid-template-columns: minmax(240px, 0.92fr) minmax(280px, 1.18fr) minmax(210px, 0.9fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "quote key"
+    "trend curve";
   gap: 12px !important;
   padding: 0 16px 16px !important;
+}
+
+.market-data-formal-rate-panel--quote {
+  grid-area: quote;
+}
+
+.market-data-formal-rate-panel--key {
+  grid-area: key;
+}
+
+.market-data-formal-rate-panel--trend {
+  grid-area: trend;
+}
+
+.market-data-formal-rate-panel--curve {
+  grid-area: curve;
+  order: 0;
 }
 
 .market-data-formal-rate-panel {
@@ -4786,13 +3030,13 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-formal-rate-panel header strong {
   color: var(--imd-ink) !important;
   font-size: 12px !important;
-  font-weight: 850 !important;
+  font-weight: 600 !important;
 }
 
 .market-data-formal-rate-panel header span {
   color: var(--imd-muted) !important;
   font-size: 11px !important;
-  font-weight: 750 !important;
+  font-weight: 600 !important;
 }
 
 .market-data-page table,
@@ -4816,7 +3060,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   background: transparent !important;
   color: var(--imd-muted) !important;
   font-size: 11px !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
   letter-spacing: 0 !important;
   text-transform: none !important;
 }
@@ -4834,8 +3078,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-formal-rates-board td:nth-child(n + 2),
 .market-data-formal-rate-panel td:nth-child(n + 2),
 .market-data-key-rate-list article strong,
-.market-data-supply-evidence-list article strong,
-.market-data-desk-bridge-metric-value {
+.market-data-supply-evidence-list article strong {
   font-family: var(--imd-mono) !important;
   font-variant-numeric: tabular-nums;
 }
@@ -4855,13 +3098,13 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-key-rate-list article span {
   color: var(--imd-muted) !important;
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .market-data-key-rate-list article strong {
   color: var(--imd-ink) !important;
   font-size: 14px !important;
-  font-weight: 850 !important;
+  font-weight: 600 !important;
 }
 
 .market-data-key-rate-list article em {
@@ -4870,101 +3113,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   font-style: normal;
 }
 
-.market-data-desk-bridge-band {
-  padding: 0 !important;
-}
-
-.market-data-desk-bridge-links {
-  justify-content: flex-start;
-}
-
-.market-data-desk-bridge-link {
-  color: var(--imd-blue) !important;
-  font-size: 12px !important;
-  font-weight: 800 !important;
-  text-decoration: none;
-}
-
-.market-data-desk-bridge-link--muted {
-  color: var(--imd-muted) !important;
-}
-
-.market-data-desk-bridge-body {
-  padding: 12px 16px !important;
-}
-
-.market-data-desk-bridge-metrics {
-  gap: 8px !important;
-}
-
-.market-data-desk-bridge-metric,
 .market-data-series-category-card__body > .market-data-terminal-embedded {
-  border: 1px solid var(--imd-border-soft) !important;
-  border-radius: 10px !important;
-  background: var(--imd-paper) !important;
-}
-
-.market-data-desk-bridge-metric {
-  padding: 9px 10px !important;
-}
-
-.market-data-desk-bridge-metric-label {
-  color: var(--imd-muted) !important;
-  font-size: 11px !important;
-  font-weight: 750;
-  letter-spacing: 0 !important;
-  text-transform: none;
-}
-
-.market-data-desk-bridge-metric-value {
-  color: var(--imd-ink) !important;
-  font-size: 16px !important;
-  font-weight: 850 !important;
-}
-
-.market-data-desk-bridge-metric-detail,
-.market-data-desk-bridge-chart-links-label {
-  color: var(--imd-muted) !important;
-  font-size: 11px !important;
-}
-
-.market-data-desk-bridge-chip {
-  border-color: var(--imd-border) !important;
-  border-radius: 999px !important;
-  background: var(--dh-api-panel-2) !important;
-  color: var(--imd-ink-2) !important;
-  font-size: 11px !important;
-  font-weight: 750;
-}
-
-[data-testid="market-data-macro-depth-card"] {
-  padding: 0 !important;
-}
-
-[data-testid="market-data-macro-depth-card"] .market-data-series-category-card__head {
-  min-height: auto !important;
-}
-
-[data-testid="market-data-macro-depth-card"] .market-data-series-category-card__head h3 {
-  color: var(--imd-ink) !important;
-  font-size: 15px !important;
-}
-
-[data-testid="market-data-macro-depth-card"] .market-data-series-category-card__head p,
-[data-testid="market-data-macro-depth-card"] .market-data-series-category-card__head span {
-  display: block !important;
-  color: var(--imd-muted) !important;
-}
-
-[data-testid="market-data-macro-depth-card"] .market-data-series-category-card__body {
-  padding: 12px 16px 16px !important;
-}
-
-.market-data-lower-deck-section .market-data-section-lead--compact {
-  min-height: auto;
-}
-
-.market-data-chart-shell {
   border: 1px solid var(--imd-border-soft) !important;
   border-radius: 10px !important;
   background: var(--imd-paper) !important;
@@ -5028,7 +3177,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   min-width: 0;
   color: var(--imd-muted) !important;
   font-size: 11px !important;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0 !important;
   text-transform: none;
   white-space: normal;
@@ -5038,7 +3187,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   min-width: 0;
   color: var(--imd-ink) !important;
   font-size: 13px !important;
-  font-weight: 800 !important;
+  font-weight: 600 !important;
   letter-spacing: 0 !important;
   white-space: normal;
 }
@@ -5069,7 +3218,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   min-width: 0;
   color: var(--imd-muted) !important;
   font-size: 11px !important;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
   white-space: normal;
 }
@@ -5077,7 +3226,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-supply-evidence-list article strong {
   color: var(--imd-ink);
   font-size: 16px !important;
-  font-weight: 800 !important;
+  font-weight: 600 !important;
   line-height: 1;
 }
 
@@ -5145,15 +3294,16 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-supply-meta > div span {
   color: var(--imd-muted) !important;
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .market-data-supply-meta > div strong {
   min-width: 0;
   color: var(--imd-ink) !important;
   font-family: var(--imd-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 600;
   text-align: right;
   overflow-wrap: anywhere;
 }
@@ -5175,7 +3325,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   border-bottom: 1px solid var(--imd-border-soft);
   color: var(--imd-ink-2) !important;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .market-data-next-action-list li:last-child {
@@ -5188,12 +3338,12 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   min-height: 21px;
   padding: 2px 7px;
   border: 1px solid color-mix(in srgb, var(--dh-api-blue) 35%, var(--dh-api-panel));
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--dh-api-blue-soft);
   color: var(--imd-blue) !important;
   font-size: 11px !important;
   font-style: normal;
-  font-weight: 850;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -5206,7 +3356,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   background: color-mix(in srgb, var(--dh-api-amber) 8%, var(--dh-api-panel));
   color: var(--imd-amber) !important;
   font-size: 11px !important;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -5219,6 +3369,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   background: var(--dh-api-panel-2) !important;
   color: var(--imd-ink-2) !important;
   font-family: var(--imd-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px !important;
   line-height: 1.45;
 }
@@ -5232,11 +3383,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 }
 
 .market-data-terminal-empty,
-.market-data-news-calendar-empty,
 .market-data-series-compact-empty,
-.market-data-linkage-warning-empty,
-.market-data-portfolio-empty,
-.market-data-corr-empty,
 .market-data-tushare-empty-hint,
 .market-data-terminal-ticker-empty {
   display: grid !important;
@@ -5249,7 +3396,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   background: color-mix(in srgb, var(--dh-api-amber) 8%, var(--dh-api-panel)) !important;
   color: var(--imd-amber) !important;
   font-size: 12px !important;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.55;
 }
 
@@ -5273,7 +3420,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   font-size: 12px;
 }
 
-.market-data-chart-shell--error .ant-btn,
 .market-data-page [data-testid*="error"] .ant-btn,
 .market-data-page [class*="retry"],
 .market-data-page .async-section button {
@@ -5283,11 +3429,10 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   background: var(--dh-api-panel) !important;
   color: var(--imd-navy) !important;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   box-shadow: none;
 }
 
-.market-data-chart-shell--error .ant-btn:hover,
 .market-data-page [data-testid*="error"] .ant-btn:hover,
 .market-data-page [class*="retry"]:hover,
 .market-data-page .async-section button:hover {
@@ -5327,16 +3472,38 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   }
 }
 
-/* 双侧栏挤压下（≤1560 视口主列 ≤ 850px）三列会把曲线画布压到 230px：
-   收敛为两列（表格 | 关键利率），曲线独占整行拿到 700px 级画布。 */
-@media (max-width: 1560px) {
+/* 与资金区共用 1100px 断点：窄屏统一退成单列，避免两套列基线互相打架。 */
+@media (max-width: 1100px) {
   .market-data-formal-rates-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas:
+      "quote"
+      "key"
+      "trend"
+      "curve";
   }
 
-  .market-data-formal-rate-panel[data-testid="market-data-formal-rates-curve"] {
-    order: 3;
-    grid-column: 1 / -1;
+  .market-data-page .market-data-page__decision-hero-shell.moss-page-v2-decision-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .market-data-page__decision-hero-shell > .market-data-hero-status {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .market-data-page__decision-hero-shell .moss-page-v2-decision-hero__actions {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: stretch;
+  }
+
+  .market-data-page__decision-hero-shell .market-data-hero-actions {
+    justify-content: flex-start;
+  }
+
+  .market-data-hero-kpi-strip {
+    grid-row: 3;
   }
 }
 
@@ -5349,36 +3516,14 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
     padding: 0;
   }
 
-  .market-data-formal-rates-head,
-.market-data-series-category-card__head,
-.market-data-lower-deck-section .market-data-section-lead--compact {
+  .market-data-series-category-card__head {
     flex-direction: column;
     align-items: flex-start !important;
   }
 
-  .market-data-formal-rates-grid,
-.market-data-desk-bridge-metrics {
+  .market-data-formal-rates-grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
-}
-
-/* Supervisor fix: keep the source/basis rail as one readable column. */
-.market-data-rail > .market-data-supply-evidence-rail,
-.market-data-rail > .market-data-macro-evidence-rail {
-  grid-column: 1 / -1 !important;
-  grid-row: auto !important;
-  width: 100% !important;
-  min-width: 0;
-}
-
-.market-data-rail > .market-data-supply-evidence-rail {
-  order: 1;
-}
-
-.market-data-rail > .market-data-macro-evidence-rail {
-  order: 2;
-  max-height: 42vh !important;
-  overflow-y: auto !important;
 }
 
 /* Visual acceptance override: hidden cockpit duplicate must not widen the page. */
@@ -5388,32 +3533,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
  * Scope: metric tiles, section cards, chart shells. Visual only.
  * ============================================================ */
 
-.market-data-page {
-  --imd-bg: var(--dh-api-bg);
-  --imd-paper: var(--dh-api-bg);
-  --imd-card: var(--dh-api-panel);
-  --imd-card-subtle: var(--dh-api-panel-2);
-  --imd-border: var(--dh-api-line);
-  --imd-border-soft: color-mix(in srgb, var(--dh-api-line) 66%, transparent);
-  --imd-ink: var(--dh-api-ink);
-  --imd-ink-2: var(--dh-api-soft);
-  --imd-muted: var(--dh-api-muted);
-  --imd-navy: var(--dh-api-blue);
-  --imd-blue: var(--dh-api-blue);
-  --imd-teal: var(--dh-api-blue);
-  --imd-green: var(--dh-api-green);
-  --imd-amber: var(--dh-api-amber);
-  --imd-red: var(--dh-api-red);
-  --imd-orange: var(--dh-api-amber);
-  --imd-shadow: none;
-  --imd-shadow-soft: none;
-  --imd-radius: var(--dh-api-radius);
-  --imd-radius-sm: var(--dh-api-radius);
-}
-
-.market-data-overview-card,
-.market-data-terminal-kpi-strip .market-data-overview-card.market-data-terminal-kpi-card,
-.market-data-terminal-rail-metric,
 .market-data-tushare-summary-card {
   --market-kpi-tone: var(--imd-blue);
   --market-kpi-tint: var(--dh-api-blue-soft);
@@ -5431,19 +3550,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
     box-shadow 160ms ease;
 }
 
-.market-data-overview-card,
-.market-data-terminal-kpi-strip .market-data-overview-card.market-data-terminal-kpi-card {
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 5px !important;
-  min-height: 76px !important;
-  padding: 11px 12px 10px !important;
-}
-
-.market-data-terminal-kpi-strip .market-data-overview-card.market-data-terminal-kpi-card {
-  min-height: 66px !important;
-  padding: 9px 11px 8px !important;
-}
-
 .market-data-tushare-summary-card[data-tone="up"] {
   --market-kpi-tone: var(--imd-green);
   --market-kpi-tint: color-mix(in srgb, var(--dh-api-green) 8%, var(--dh-api-panel));
@@ -5459,62 +3565,35 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   --market-kpi-tint: var(--dh-api-blue-soft);
 }
 
-.market-data-overview-card:hover,
-.market-data-terminal-rail-metric:hover,
 .market-data-tushare-summary-card:hover {
   border-color: color-mix(in srgb, var(--market-kpi-tone) 36%, var(--imd-border)) !important;
   box-shadow: var(--imd-shadow-soft) !important;
   transform: translateY(-1px);
 }
 
-.market-data-overview-card__bar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  display: block !important;
-  width: 3px;
-  background: var(--market-kpi-tone);
-}
-
-.market-data-overview-card__label,
-.market-data-terminal-rail-metric-head > span,
-.market-data-terminal-rail-metric > span,
 .market-data-tushare-summary-card__label {
   color: var(--imd-muted) !important;
   font-size: 11px !important;
-  font-weight: 750 !important;
+  font-weight: 600 !important;
   letter-spacing: 0 !important;
   line-height: 1.2;
   text-transform: uppercase;
 }
 
-.market-data-overview-card__value,
-.market-data-terminal-rail-metric > strong,
 .market-data-tushare-summary-card__value {
   color: var(--market-kpi-tone) !important;
   font-family: var(--imd-mono) !important;
   font-size: 24px !important;
   font-variant-numeric: tabular-nums;
-  font-weight: 800 !important;
+  font-weight: 600 !important;
   letter-spacing: 0 !important;
   line-height: 1.05 !important;
 }
 
-.market-data-terminal-kpi-card .market-data-overview-card__value,
-.market-data-terminal-rail-metric > strong,
 .market-data-tushare-summary-card__value {
   font-size: 20px !important;
 }
 
-.market-data-overview-card--text .market-data-overview-card__value {
-  color: var(--imd-ink) !important;
-  font-family: inherit !important;
-  font-size: 13px !important;
-  font-weight: 750 !important;
-  line-height: 1.35 !important;
-}
-
-.market-data-overview-card__detail,
-.market-data-terminal-rail-metric > small,
 .market-data-tushare-summary-card__caption {
   display: -webkit-box;
   margin: 0;
@@ -5527,31 +3606,27 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   -webkit-line-clamp: 2;
 }
 
-.market-data-terminal-rail-metric {
-  gap: 5px !important;
-  padding: 10px 11px 9px !important;
-}
-
 .market-data-tushare-summary-card {
   gap: 5px !important;
   min-height: 76px !important;
   padding: 10px 11px !important;
 }
 
+/* L1 区块外壳统一：折叠区块与实体区块同一卡壳；外汇正式区改由 `.market-data-main > section` 通配卡壳承接。 */
 .market-data-series-category-card,
 .market-data-formal-rates-board,
 .market-data-main > .market-data-lower-deck-section,
-.market-data-main > .market-data-desk-bridge-band {
+.market-data-extended-terminal-collapse.ant-collapse {
   border: 1px solid var(--imd-border) !important;
   border-radius: var(--imd-radius) !important;
   background: var(--imd-card) !important;
   box-shadow: var(--imd-shadow-soft) !important;
 }
 
-.market-data-formal-rates-head,
-.market-data-lower-deck-section .market-data-section-lead--compact,
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header,
-[data-testid="market-data-tushare-collapse"] .ant-collapse-header {
+[data-testid="market-data-tushare-collapse"] .ant-collapse-header,
+.market-data-fx-formal-head,
+.market-data-extended-terminal-collapse.ant-collapse > .ant-collapse-item > .ant-collapse-header {
   min-height: auto !important;
   padding: 13px 16px !important;
   border-bottom: 1px solid var(--imd-border-soft) !important;
@@ -5560,46 +3635,22 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   color: var(--imd-ink) !important;
 }
 
-.market-data-formal-rates-head h2,
-.market-data-lower-deck-section h2,
-.market-data-lower-deck-section h3,
-.market-data-section-lead--compact h2,
-.market-data-section-lead--compact h3,
+/* L1 区块标题：15px/800。lower-deck 泛选择器已移除，避免误伤区内 L2 卡标题（14px/700）。 */
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header,
 [data-testid="market-data-tushare-collapse"] .ant-collapse-header {
   color: var(--imd-ink) !important;
   font-size: 15px !important;
-  font-weight: 800 !important;
+  font-weight: 600 !important;
   letter-spacing: 0 !important;
   line-height: 1.25 !important;
 }
 
-.market-data-formal-rates-head span {
-  color: var(--imd-blue) !important;
-  font-size: 11px !important;
-  font-weight: 800 !important;
-  letter-spacing: 0 !important;
-  text-transform: none !important;
-}
-
-.market-data-formal-rates-head small,
-.market-data-lower-deck-section .market-data-section-lead--compact p,
-.market-data-section-lead--compact p {
-  display: block !important;
-  max-width: 920px;
-  color: var(--imd-muted) !important;
-  font-size: 12px !important;
-  font-weight: 600 !important;
-  line-height: 1.45 !important;
-}
-
 .market-data-formal-rates-grid {
   gap: 12px !important;
-  padding: 14px 16px 16px !important;
+  padding: 6px 16px 16px !important;
 }
 
 .market-data-formal-rate-panel,
-.market-data-desk-bridge-metric,
 .market-data-series-category-card__body > .market-data-terminal-embedded {
   border: 1px solid var(--imd-border-soft) !important;
   border-radius: var(--imd-radius-sm) !important;
@@ -5607,84 +3658,9 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   box-shadow: none !important;
 }
 
-.market-data-chart-shell,
-.market-data-rate-quote-card .market-data-chart-shell {
-  position: relative;
-  overflow: hidden;
-  min-height: 236px;
-  padding: 12px 12px 8px !important;
-  border: 1px solid var(--imd-border-soft) !important;
-  border-radius: var(--imd-radius-sm) !important;
-  background: var(--dh-api-panel) !important;
-  box-shadow: none !important;
-}
-
-.market-data-chart-shell > * {
-  position: relative;
-  z-index: 1;
-}
-
-.market-data-rate-quote-card .market-data-chart-shell {
-  min-height: 260px;
-}
-
-/* 三态收敛为安静深色空态：panel-2 深井底 + 发丝边（继承基类 hairline），
-   muted 12px 居中（flex/字号/颜色由 2258 行附近的基础空态规则提供）。 */
-.market-data-chart-shell--loading,
-.market-data-chart-shell--empty,
-.market-data-chart-shell--error {
-  background: var(--dh-api-panel-2) !important;
-  font-weight: 400;
-  text-align: center;
-}
-
 .market-data-rail > * {
   border-radius: var(--imd-radius) !important;
   box-shadow: var(--imd-shadow-soft) !important;
-}
-
-.market-data-rail > .market-data-supply-evidence-rail,
-.market-data-rail > .market-data-macro-evidence-rail {
-  border-color: var(--imd-border) !important;
-  background: var(--dh-api-panel) !important;
-}
-
-@media (max-width: 719px) {
-  .market-data-overview-card__value {
-    font-size: 20px !important;
-  }
-
-  .market-data-chart-shell,
-.market-data-rate-quote-card .market-data-chart-shell {
-    min-height: 220px;
-  }
-}
-
-/* Supervisor acceptance fix: PagePrimitives KPI strip has an older important card rule. */
-.market-data-page .dashboard-overview-hero-strip > article.market-data-overview-card,
-.market-data-page .market-data-overview-strip > article.market-data-overview-card,
-.market-data-page .market-data-terminal-kpi-strip > article.market-data-terminal-kpi-card {
-  border: 1px solid var(--dh-api-line) !important;
-  border-left: 3px solid var(--market-kpi-tone, var(--dh-api-blue)) !important;
-  border-radius: var(--imd-radius, 10px) !important;
-  background: linear-gradient(180deg, var(--dh-api-panel) 0%, var(--market-kpi-tint, var(--dh-api-blue-soft)) 100%) !important;
-  box-shadow: none !important;
-}
-
-.market-data-page .dashboard-overview-hero-strip > article.market-data-overview-card:hover,
-.market-data-page .market-data-overview-strip > article.market-data-overview-card:hover,
-.market-data-page .market-data-terminal-kpi-strip > article.market-data-terminal-kpi-card:hover {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 32%, var(--dh-api-line)) !important;
-  border-left-color: var(--market-kpi-tone, var(--dh-api-blue)) !important;
-  box-shadow: var(--imd-shadow-soft, none) !important;
-  transform: translateY(-1px);
-}
-
-.market-data-page .dashboard-overview-hero-strip > article.market-data-overview-card .market-data-overview-card__bar,
-.market-data-page .market-data-overview-strip > article.market-data-overview-card .market-data-overview-card__bar,
-.market-data-page .market-data-terminal-kpi-strip > article.market-data-terminal-kpi-card .market-data-overview-card__bar {
-  display: block !important;
-  background: var(--market-kpi-tone, var(--dh-api-blue)) !important;
 }
 
 /* Product Design option 3: institutional morning market sheet. */
@@ -5701,8 +3677,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 
 .market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-rail,
 .market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > [data-testid="market-data-formal-rates-board"],
-.market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > .market-data-desk-bridge-band,
-.market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > [data-testid="market-data-macro-depth-card"],
 .market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > .market-data-lower-deck-section,
 .market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > [data-lazy-mount],
 .market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > .ant-collapse,
@@ -5712,10 +3686,6 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 
 section[data-page-key="market-data"] > section[data-density],
 section[data-page-key="market-data"] > details[data-testid="market-workbench-audit-footer"],
-.market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > [data-testid="market-data-livermore-section"],
-.market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > [data-testid="market-data-linkage-collapse"],
-.market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > .market-data-section-block:has([data-testid="market-data-linkage-collapse"]),
-.market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > .market-data-section-block:has([data-testid="market-data-livermore-collapse"]),
 .market-data-page[data-layout-rev="2026-06-23-reflow"] .market-data-main > .market-data-section-block:has([data-testid="market-data-fx-formal-collapse"]) {
   display: none !important;
 }
@@ -5766,132 +3736,6 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
 
 /* Ralph pass: API-first institutional board. */
 
-.market-data-overview-card {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 2px);
-  background: var(--dh-api-bg);
-  box-shadow: none;
-}
-
-.market-data-overview-card > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-  min-height: 34px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--dh-api-line);
-  background: color-mix(in srgb, var(--dh-api-panel-2) 62%, var(--dh-api-bg));
-}
-
-.market-data-overview-card > header strong,
-.market-data-overview-card > header span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.market-data-overview-card > header strong {
-  color: var(--dh-api-ink);
-  font-size: 12.5px;
-  font-weight: 840;
-}
-
-.market-data-overview-card > header span {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 680;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Institutional status band: keep the API counts, remove the legacy KPI-card treatment. */
-.market-data-page .market-data-pipeline-kpi-section {
-  margin-top: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: var(--dh-api-panel-2);
-}
-
-.market-data-page .market-data-pipeline-kpi-section-head {
-  display: none;
-}
-
-.market-data-page .market-data-pipeline-kpi-strip {
-  display: grid;
-  grid-template-columns: minmax(136px, 0.95fr) repeat(8, minmax(108px, 1fr));
-  gap: 0;
-  padding: 0;
-  border-top: 1px solid var(--dh-api-line);
-  border-bottom: 1px solid var(--dh-api-line);
-  background: var(--dh-api-panel-2);
-}
-
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card {
-  display: grid !important;
-  align-content: center;
-  justify-items: center;
-  min-height: 66px !important;
-  padding: 10px 12px 9px !important;
-  border: 0 !important;
-  border-left: 1px solid var(--dh-api-line) !important;
-  border-radius: 0 !important;
-  background: var(--dh-api-panel-2) !important;
-  box-shadow: none !important;
-  text-align: center;
-  transform: none !important;
-}
-
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card:first-child {
-  justify-items: start;
-  border-left: 0 !important;
-  background: var(--dh-api-panel-2) !important;
-  text-align: left;
-}
-
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card:hover {
-  border-color: var(--dh-api-line) !important;
-  border-left-color: var(--dh-api-line) !important;
-  box-shadow: none !important;
-  transform: none !important;
-}
-
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card .market-data-overview-card__bar {
-  inset: 0 0 auto 0;
-  width: auto;
-  height: 2px;
-  background: color-mix(in srgb, var(--market-kpi-tone, var(--dh-api-blue)) 78%, var(--dh-api-panel)) !important;
-}
-
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card:first-child .market-data-overview-card__bar {
-  height: 0;
-}
-
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card .market-data-overview-card__label,
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card .market-data-overview-card__detail {
-  color: var(--dh-api-soft) !important;
-  font-size: 11px !important;
-  font-weight: 650 !important;
-  line-height: 1.22;
-}
-
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card .market-data-overview-card__value {
-  color: var(--dh-api-ink) !important;
-  font-size: 19px !important;
-  font-weight: 760 !important;
-  line-height: 1.05;
-}
-
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card:first-child .market-data-overview-card__value {
-  font-size: 13px !important;
-  font-weight: 760 !important;
-  line-height: 1.2;
-}
-
 /* Premium pass: quieter institutional worksheet, fewer template-card signals. */
 .market-data-page {
   --market-premium-ink: var(--dh-api-ink);
@@ -5903,36 +3747,343 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
   --market-premium-panel: var(--dh-api-panel);
 }
 
-.market-data-page .market-data-pipeline-kpi-strip {
-  border-top-color: var(--dh-api-line);
-  border-bottom-color: var(--dh-api-line);
+/* ============================================================
+ * 2026-08-27 信息架构减法（仅追加，不改上方既有规则）：
+ * 1) 右栏收成可折叠"数据状态"入口条（原生 details，DOM 常驻）
+ * 2) 降级链路组目录（组级 details 默认收起）
+ * 3) 序列行时效分档（>365 天历史存量折叠，90-365 天淡化）
+ * ============================================================ */
+
+/* --- 1) 右栏折叠：收起（默认）时布局退为单列，入口条横置于主内容上方 --- */
+.market-data-layout[data-rail-expanded="false"] {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.market-data-layout[data-rail-expanded="false"] > .market-data-rail {
+  order: -1;
+  position: static;
+  max-height: none;
+  overflow-y: visible;
+}
+
+.market-data-rail-disclosure {
+  min-width: 0;
+}
+
+.market-data-rail-disclosure > .market-data-rail-disclosure__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  border: 1px solid var(--imd-border);
+  border-radius: var(--imd-radius);
+  background: var(--imd-card);
+  box-shadow: var(--imd-shadow-soft);
+  color: var(--imd-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.market-data-rail-disclosure > .market-data-rail-disclosure__summary::marker {
+  content: "";
+}
+
+.market-data-rail-disclosure > .market-data-rail-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.market-data-rail-disclosure__hint {
+  color: var(--imd-ink-2);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.market-data-rail-disclosure__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 12px;
+  min-width: 0;
+}
+
+/* 原 .market-data-rail > 直接子选择器在包入 details 后不再命中，此处等效补回；
+ * 同时覆盖基础规则遗留的 grid-column: 2 / grid-row: 3 定位。 */
+.market-data-rail-disclosure__body > .market-data-supply-evidence-rail,
+.market-data-rail-disclosure__body > .market-data-macro-evidence-rail {
+  grid-column: auto !important;
+  grid-row: auto !important;
+  width: 100% !important;
+  min-width: 0;
+  border-color: var(--imd-border) !important;
+  background: var(--dh-api-panel) !important;
+}
+
+/* --- 2) 降级链路组目录 --- */
+.market-data-macro-fallback-directory {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.market-data-macro-fallback-group > .market-data-macro-fallback-group__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--imd-border-soft);
+  border-radius: var(--imd-radius);
+  background: var(--dh-api-panel);
+  color: var(--imd-ink);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.market-data-macro-fallback-group > .market-data-macro-fallback-group__summary::marker {
+  content: "";
+}
+
+.market-data-macro-fallback-group > .market-data-macro-fallback-group__summary::-webkit-details-marker {
+  display: none;
+}
+
+.market-data-macro-fallback-group__summary span {
+  color: var(--imd-ink-2);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.market-data-macro-fallback-group[open] > .market-data-macro-fallback-group__summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.market-data-macro-fallback-group__body {
+  padding-top: 8px;
+}
+
+/* 组条（summary）已展示组名/条数/最新日期，展开体内卡片头不再重复这三样，仅保留 caption 说明。 */
+.market-data-macro-fallback-group__body .market-data-series-category-card__kicker,
+.market-data-macro-fallback-group__body .market-data-series-category-card__title,
+.market-data-macro-fallback-group__body .market-data-series-category-card__head-side {
+  display: none;
+}
+
+/* --- 3) 序列行时效分档 --- */
+.market-data-series-compact-table tr[data-age="stale"] > td {
+  opacity: 0.62;
+}
+
+.market-data-series-compact-cutoff {
+  display: block;
+  font-size: 11px;
+  color: var(--imd-ink-2);
+}
+
+.market-data-series-compact-historical {
+  margin-top: 8px;
+}
+
+.market-data-series-compact-historical > summary {
+  padding: 6px 10px;
+  border: 1px dashed var(--imd-border-soft);
+  border-radius: var(--imd-radius);
+  color: var(--imd-ink-2);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.market-data-series-compact-historical > summary::marker {
+  content: "";
+}
+
+.market-data-series-compact-historical > summary::-webkit-details-marker {
+  display: none;
+}
+
+.market-data-series-compact-historical[open] > summary {
+  margin-bottom: 6px;
+}
+
+/* ============================================================
+ * 2026-08-27 阶段1 治理面板三组化（仅追加）：
+ * 线路状态九行 + L1 灰列不告警 / L2 黄红分层 + 运维错误行着色
+ * ============================================================ */
+.market-data-rail-line-list {
+  display: grid;
+  margin: 0;
+  padding: 4px 14px 10px;
+  list-style: none;
+}
+
+.market-data-rail-line-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 3px 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--imd-border-soft);
+}
+
+.market-data-rail-line-list > li:last-child { border-bottom: 0; }
+
+.market-data-rail-line-list > li > span {
+  color: var(--imd-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.market-data-rail-line-list > li > em {
+  color: var(--imd-muted);
+  font-family: var(--imd-mono);
+  font-size: 11px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.market-data-rail-line-list > li[data-layer="l1"] > span { color: var(--imd-muted); }
+
+.market-data-rail-line-list > li[data-layer="l1"] .status-pill {
+  border-color: var(--imd-border);
+  background: var(--imd-card-subtle);
+  color: var(--imd-muted);
+}
+
+.market-data-rail-line-list > li[data-layer="l2"] > span { color: var(--imd-amber); }
+
+.market-data-rail-line-list > li > .diagnostic-disclosure { grid-column: 1 / -1; }
+
+.market-data-supply-meta > div[data-tone="error"] strong { color: var(--imd-red) !important; }
+
+/* 外汇正式区上提（2026-08-27 IA 裁决 #6）：简表常显 + 原生 details 明细；表格样式复用 formal-rate-panel。 */
+.market-data-fx-formal-body { display: grid; gap: 10px; padding: 12px 16px 16px; }
+.market-data-fx-formal-summary th, .market-data-fx-formal-summary td { text-align: left; }
+.market-data-fx-formal-summary th:nth-child(2), .market-data-fx-formal-summary td:nth-child(2) { text-align: right; }
+
+/* 序列浏览器入口卡（2026-08-27 IA 裁决 #8）：04 区退场后的单行入口；浏览器视图样式在 MarketDataExplorerView.css 分包。 */
+.market-data-series-library-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--moss-space-3);
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: 8px;
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.market-data-series-library-entry:hover {
   background: var(--dh-api-panel-2);
 }
 
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card {
-  min-height: 62px !important;
-  padding: 9px 12px 8px !important;
-  border-left-color: var(--market-premium-line) !important;
-  background: var(--dh-api-panel-2) !important;
+.market-data-series-library-entry__kicker {
+  display: block;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card:first-child {
-  background: var(--market-premium-panel) !important;
+.market-data-series-library-entry__title {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card .market-data-overview-card__bar {
-  height: 1px;
+.market-data-series-library-entry__meta {
+  flex: none;
+  color: var(--dh-api-muted);
+  font-size: 12px;
 }
 
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card .market-data-overview-card__label,
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card .market-data-overview-card__detail {
-  color: var(--market-premium-muted) !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
+/* 退役换卡后的两张单行摘要/导航卡（联动摘要、策略证据）共用一套卡壳。 */
+.market-data-summary-nav-card {
+  padding: 10px 16px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: 8px;
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
 }
 
-.market-data-page .market-data-pipeline-kpi-strip > article.market-data-overview-card .market-data-overview-card__value {
-  color: var(--dh-api-ink) !important;
-  font-size: 18px !important;
-  font-weight: 720 !important;
+.market-data-summary-nav-card__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--moss-space-2) var(--moss-space-4);
+}
+
+.market-data-summary-nav-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.market-data-summary-nav-card__badge {
+  padding: 1px 7px;
+  border-radius: var(--dh-api-radius, 2px);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.market-data-summary-nav-card__metric,
+.market-data-summary-nav-card__date {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.market-data-summary-nav-card__metric strong {
+  margin-left: 4px;
+  color: var(--dh-api-ink);
+  font-weight: 600;
+}
+
+.market-data-summary-nav-card__link {
+  margin-left: auto;
+  color: var(--dh-api-blue);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.market-data-summary-nav-card__caveat {
+  margin: 6px 0 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.market-data-summary-nav-card__state {
+  margin: 6px 0 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.market-data-summary-nav-card__state[data-tone="error"] {
+  color: var(--dh-api-red);
+}
+
+.market-data-summary-nav-card__state button {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dh-api-blue);
+  font: inherit;
+  cursor: pointer;
 }

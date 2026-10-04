@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -20,6 +20,8 @@ from backend.app.repositories.governance_repo import (
     SOURCE_MANIFEST_STREAM,
     GovernanceRepository,
 )
+from backend.app.repositories.object_store_repo import read_local_archive_bytes, resolve_local_archive_path
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.schemas.source_preview import (
     PreviewColumn,
     PreviewRowPage,
@@ -88,6 +90,7 @@ def materialize_source_previews(
     source_families: list[str] | None = None,
     archive_root: str | None = None,
 ) -> list[dict[str, object]]:
+    require_repository_task_write_scope("materialize_source_previews")
     manifest_rows = _load_manifest_rows(governance_dir) if governance_dir is not None else []
     selected = _select_manifest_rows(
         manifest_rows,
@@ -101,13 +104,15 @@ def materialize_source_previews(
     _source_preview_batch_version_cached.cache_clear()
 
     for manifest_row in selected:
-        path = Path(str(manifest_row["archived_path"]))
+        historical_path = str(manifest_row["archived_path"])
+        path = Path(historical_path)
         metadata = describe_source_file(str(manifest_row.get("source_file") or path.name))
         family, report_date, parsed_rows, parsed_traces = parse_source_file(
             path=path,
             ingest_batch_id=str(manifest_row["ingest_batch_id"]),
             source_version=str(manifest_row["source_version"]),
             source_file_name=str(manifest_row.get("source_file") or path.name),
+            file_bytes=read_local_archive_bytes(historical_path, archive_root) if archive_root else None,
         )
         summaries.append(
             _summarize_rows(
@@ -131,6 +136,7 @@ def materialize_source_previews(
 
 
 def snapshot_preview_tables(duckdb_path: str) -> None:
+    require_repository_task_write_scope("snapshot_preview_tables")
     _source_preview_batch_version_cached.cache_clear()
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
@@ -146,6 +152,7 @@ def snapshot_preview_tables(duckdb_path: str) -> None:
 
 
 def restore_preview_tables(duckdb_path: str) -> None:
+    require_repository_task_write_scope("restore_preview_tables")
     _source_preview_batch_version_cached.cache_clear()
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
@@ -161,6 +168,7 @@ def restore_preview_tables(duckdb_path: str) -> None:
 
 
 def cleanup_preview_backups(duckdb_path: str) -> None:
+    require_repository_task_write_scope("cleanup_preview_backups")
     _source_preview_batch_version_cached.cache_clear()
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
@@ -171,6 +179,7 @@ def cleanup_preview_backups(duckdb_path: str) -> None:
 
 
 def clear_preview_tables(duckdb_path: str) -> None:
+    require_repository_task_write_scope("clear_preview_tables")
     _source_preview_batch_version_cached.cache_clear()
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
@@ -720,7 +729,12 @@ def _select_manifest_rows(
 
 
 def _is_eligible_archived_path(archived_path: str, archive_root: Path | None) -> bool:
-    path = Path(archived_path).resolve()
+    try:
+        path = resolve_local_archive_path(archived_path, archive_root) if archive_root is not None else Path(archived_path).resolve()
+    except ValueError as exc:
+        if str(exc).startswith("archived_path is outside local archive root"):
+            raise ValueError(f"manifest archived_path is outside archive root: {archived_path}") from exc
+        raise
     if not path.exists():
         return False
     if archive_root is None:
@@ -774,6 +788,25 @@ def _group_label(source_family: str, row: dict[str, object]) -> str:
 def ensure_source_preview_schema_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
     apply_pending_migrations_on_connection(conn)
+
+
+def _insert_preview_rows(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+    rows: Sequence[tuple[object, ...]],
+) -> None:
+    """Bind bounded multi-row inserts without a Python/SQL round trip per row."""
+    if table_name not in PREVIEW_TABLES:
+        raise ValueError(f"Unsupported source preview table: {table_name}")
+    if not rows:
+        return
+    placeholders = "(" + ", ".join("?" for _ in rows[0]) + ")"
+    for offset in range(0, len(rows), 500):
+        batch = rows[offset : offset + 500]
+        conn.execute(
+            f"insert into {table_name} values " + ", ".join([placeholders] * len(batch)),
+            [value for row in batch for value in row],
+        )
 
 
 def _write_preview_tables(
@@ -833,8 +866,9 @@ def _write_preview_tables(
                     "delete from phase1_nonstd_pnl_rule_traces where ingest_batch_id = ?",
                     [ingest_batch_id],
                 )
-            conn.executemany(
-                "insert into phase1_source_preview_summary values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            _insert_preview_rows(
+                conn,
+                "phase1_source_preview_summary",
                 [
                     (
                         summary["ingest_batch_id"],
@@ -866,8 +900,9 @@ def _write_preview_tables(
                 for group_label, row_count in summary["group_counts"].items()
             ]
             if group_rows:
-                conn.executemany(
-                    "insert into phase1_source_preview_groups values (?, ?, ?, ?, ?)",
+                _insert_preview_rows(
+                    conn,
+                    "phase1_source_preview_groups",
                     group_rows,
                 )
         else:
@@ -893,8 +928,9 @@ def _write_preview_tables(
             if "asset_group" in row
         ]
         if zqtz_rows:
-            conn.executemany(
-                "insert into phase1_zqtz_preview_rows values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            _insert_preview_rows(
+                conn,
+                "phase1_zqtz_preview_rows",
                 zqtz_rows,
             )
 
@@ -917,8 +953,9 @@ def _write_preview_tables(
             if "product_group" in row
         ]
         if tyw_rows:
-            conn.executemany(
-                "insert into phase1_tyw_preview_rows values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            _insert_preview_rows(
+                conn,
+                "phase1_tyw_preview_rows",
                 tyw_rows,
             )
 
@@ -941,8 +978,9 @@ def _write_preview_tables(
             if "invest_type_raw" in row
         ]
         if pnl_rows:
-            conn.executemany(
-                "insert into phase1_pnl_preview_rows values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            _insert_preview_rows(
+                conn,
+                "phase1_pnl_preview_rows",
                 pnl_rows,
             )
 
@@ -966,8 +1004,9 @@ def _write_preview_tables(
             if "journal_type" in row
         ]
         if nonstd_pnl_rows:
-            conn.executemany(
-                "insert into phase1_nonstd_pnl_preview_rows values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            _insert_preview_rows(
+                conn,
+                "phase1_nonstd_pnl_preview_rows",
                 nonstd_pnl_rows,
             )
 
@@ -985,8 +1024,9 @@ def _write_preview_tables(
             if trace.get("source_family") == "zqtz"
         ]
         if zqtz_traces:
-            conn.executemany(
-                "insert into phase1_zqtz_rule_traces values (?, ?, ?, ?, ?, ?, ?)",
+            _insert_preview_rows(
+                conn,
+                "phase1_zqtz_rule_traces",
                 zqtz_traces,
             )
 
@@ -1004,8 +1044,9 @@ def _write_preview_tables(
             if trace.get("source_family") == "tyw"
         ]
         if tyw_traces:
-            conn.executemany(
-                "insert into phase1_tyw_rule_traces values (?, ?, ?, ?, ?, ?, ?)",
+            _insert_preview_rows(
+                conn,
+                "phase1_tyw_rule_traces",
                 tyw_traces,
             )
 
@@ -1024,8 +1065,9 @@ def _write_preview_tables(
             if trace.get("source_family") == "pnl"
         ]
         if pnl_traces:
-            conn.executemany(
-                "insert into phase1_pnl_rule_traces values (?, ?, ?, ?, ?, ?, ?, ?)",
+            _insert_preview_rows(
+                conn,
+                "phase1_pnl_rule_traces",
                 pnl_traces,
             )
 
@@ -1044,8 +1086,9 @@ def _write_preview_tables(
             if trace.get("source_family") in {"pnl_514", "pnl_516", "pnl_517"}
         ]
         if nonstd_pnl_traces:
-            conn.executemany(
-                "insert into phase1_nonstd_pnl_rule_traces values (?, ?, ?, ?, ?, ?, ?, ?)",
+            _insert_preview_rows(
+                conn,
+                "phase1_nonstd_pnl_rule_traces",
                 nonstd_pnl_traces,
             )
         conn.execute("commit")

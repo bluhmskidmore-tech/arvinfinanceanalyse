@@ -89,6 +89,7 @@ export const liveRouteReadinessContracts = {
   "/balance-movement-analysis": {
     sourceFiles: [
       "src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx",
+      "src/features/balance-movement-analysis/components/BalanceMovementDecisionOverview.tsx",
     ],
     sourceAnchors: ["balance-movement-analysis-page", "balance-movement-analysis-conclusion"],
     verificationFiles: ["src/test/BalanceMovementAnalysisPage.test.tsx"],
@@ -109,7 +110,7 @@ export const liveRouteReadinessContracts = {
     ],
     sourceAnchors: [
       "module-workbench-home",
-      "module-home-market-subpage-nav",
+      "module-home-market-chapter-nav",
       "module-home-market-dense",
       "module-home-market-financial-charts",
       "module-home-market-backend-data",
@@ -147,7 +148,7 @@ export const liveRouteReadinessContracts = {
   },
   "/macro-toolkit": {
     sourceFiles: ["src/features/macro-toolkit/pages/MacroToolkitPage.tsx"],
-    sourceAnchors: ["macro-toolkit-page", "macro-toolkit-tailwind-cockpit"],
+    sourceAnchors: ["macro-toolkit-page", "macro-toolkit-cockpit"],
     verificationFiles: ["src/test/MacroToolkitPage.test.tsx"],
   },
   "/stock-analysis": {
@@ -155,7 +156,7 @@ export const liveRouteReadinessContracts = {
       "src/features/stock-analysis/pages/StockAnalysisPage.tsx",
       "src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
     ],
-    sourceAnchors: ["stock-analysis-toolbar", "stock-analysis-first-screen-main"],
+    sourceAnchors: ["stock-analysis-page-toolbar-owner", "stock-analysis-first-screen-main"],
     verificationFiles: ["src/test/StockAnalysisPage.test.tsx"],
   },
   "/platform-config": {
@@ -235,7 +236,10 @@ export const liveRouteReadinessContracts = {
     verificationFiles: ["src/test/NewsEventsPage.test.tsx"],
   },
   "/product-category-pnl": {
-    sourceFiles: ["src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx"],
+    sourceFiles: [
+      "src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
+      "src/features/product-category-pnl/pages/ProductCategoryFormalReportTable.tsx",
+    ],
     sourceAnchors: ["product-category-page", "product-category-table"],
     verificationFiles: ["src/test/ProductCategoryPnlPage.test.tsx"],
   },

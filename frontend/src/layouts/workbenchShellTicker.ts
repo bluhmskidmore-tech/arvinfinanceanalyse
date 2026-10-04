@@ -11,6 +11,7 @@ export type ShellTickerItem = {
   key: string;
   label: string;
   value: string;
+  tradeDate: string;
   delta: string;
   /** delta 省略的完整变动串（含文本单位，如 CNY/USD）收进 title，不在正文重复。 */
   deltaTitle?: string;
@@ -19,16 +20,7 @@ export type ShellTickerItem = {
 
 export type ShellTickerModel = {
   items: ShellTickerItem[];
-  /** true 表示行情接口未返回可用序列，items 是演示兜底行情，UI 必须加「演示」标识。 */
-  isFallback: boolean;
 };
-
-const fallbackShellTickerItems: ShellTickerItem[] = [
-  { key: "cgb10y", label: "10年国债", value: "1.94%", delta: "+2bp", tone: "up" },
-  { key: "dr007", label: "DR007", value: "1.82%", delta: "-6bp", tone: "down" },
-  { key: "omo7d", label: "7天逆回购", value: "1.75%", delta: "+1bp", tone: "up" },
-  { key: "usd-cny", label: "美元/人民币", value: "7.21", delta: "+0.02", tone: "up" },
-];
 
 const shellTickerSeriesSpecs = [
   {
@@ -143,12 +135,13 @@ export function buildShellTickerItems(
   keys: ShellTickerKey[] = shellTickerDisplayKeys,
 ): ShellTickerModel {
   const resolved: ShellTickerItem[] = [];
+  const availableSeries = series.filter((point) => Number.isFinite(point.value_numeric));
 
   for (const spec of shellTickerSeriesSpecs.filter((item) => keys.includes(item.key))) {
     const stableSeriesIds = shellTickerSeriesIdsByKey[spec.key] ?? [];
     const point =
-      series.find((candidate) => stableSeriesIds.includes(candidate.series_id)) ??
-      series.find((candidate) =>
+      availableSeries.find((candidate) => stableSeriesIds.includes(candidate.series_id)) ??
+      availableSeries.find((candidate) =>
         spec.matchers.some((matcher) => candidate.series_name.includes(matcher)),
       );
 
@@ -160,11 +153,10 @@ export function buildShellTickerItems(
       key: spec.key,
       label: spec.label,
       value: formatShellTickerValue(point),
+      tradeDate: point.trade_date,
       ...buildShellTickerDelta(point),
     });
   }
 
-  return resolved.length > 0
-    ? { items: resolved, isFallback: false }
-    : { items: fallbackShellTickerItems, isFallback: true };
+  return { items: resolved };
 }

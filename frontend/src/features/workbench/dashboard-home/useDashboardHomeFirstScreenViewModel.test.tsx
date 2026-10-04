@@ -1,20 +1,37 @@
 import { act, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../../../api/client";
 import type { Numeric, ResultMeta } from "../../../api/contracts";
 
-const boundaryMock = vi.hoisted(() => ({ current: null as unknown }));
+const boundaryMock = vi.hoisted(() => ({ current: null as unknown, read: vi.fn() }));
 
 vi.mock("../pages/useDashboardSnapshotBoundary", () => ({
-  useDashboardSnapshotBoundary: () => boundaryMock.current,
+  useDashboardSnapshotBoundary: (options: unknown) => {
+    boundaryMock.read(options);
+    return boundaryMock.current;
+  },
 }));
 
 vi.mock("./useMockHomeFirstScreenView", () => ({
   useMockHomeFirstScreenView: () => null,
 }));
 
+// 候选营业收入走独立的补充查询，这里只验报告日/治理状态，避免给每个用例套 QueryClientProvider。
+// 合并逻辑本身在 dashboardHomeSnapshotAdapter.test.ts 覆盖。
+vi.mock("./useHomeOperatingRevenueCandidate", () => ({
+  useHomeOperatingRevenueCandidate: () => null,
+}));
+
 import { useDashboardHomeFirstScreenViewModel } from "./useDashboardHomeFirstScreenViewModel";
+
+function createRouterWrapper(initialEntries = ["/"]) {
+  return function RouterWrapper({ children }: { children: ReactNode }) {
+    return <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>;
+  };
+}
 
 function numeric(
   raw: number | null,
@@ -54,6 +71,7 @@ function homeSnapshotMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
 
 describe("useDashboardHomeFirstScreenViewModel report date", () => {
   beforeEach(() => {
+    boundaryMock.read.mockClear();
     boundaryMock.current = {
       dataClient: { ...createApiClient({ mode: "mock" }), mode: "real" },
       isLiveDataFallback: false,
@@ -79,7 +97,9 @@ describe("useDashboardHomeFirstScreenViewModel report date", () => {
   });
 
   it("keeps an empty snapshot empty instead of backfilling today or the requested date", () => {
-    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel());
+    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel(), {
+      wrapper: createRouterWrapper(),
+    });
 
     expect(result.current.effectiveReportDate).toBe("");
     expect(result.current.view.reportDate).toBe("—");
@@ -95,6 +115,22 @@ describe("useDashboardHomeFirstScreenViewModel report date", () => {
     expect(result.current.view.reportDateContext.mode).toBe("empty");
     expect(result.current.view.headerStatus.formalUseAllowed).toBeNull();
     expect(result.current.view.headerStatus.governanceFeedAvailable).toBe(false);
+  });
+
+  it("reads a deep-linked report date and removes it when the user clears the filter", () => {
+    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel(), {
+      wrapper: createRouterWrapper(["/?report_date=2026-07-31"]),
+    });
+
+    expect(result.current.reportDate).toBe("2026-07-31");
+    expect(boundaryMock.read).toHaveBeenLastCalledWith({ reportDate: "2026-07-31", allowPartial: true });
+
+    act(() => {
+      result.current.setReportDate("");
+    });
+
+    expect(result.current.reportDate).toBe("");
+    expect(boundaryMock.read).toHaveBeenLastCalledWith({ reportDate: "", allowPartial: false });
   });
 
   it("keeps analytical usage separate from an otherwise healthy data-quality state", () => {
@@ -119,7 +155,9 @@ describe("useDashboardHomeFirstScreenViewModel report date", () => {
       },
     };
 
-    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel());
+    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel(), {
+      wrapper: createRouterWrapper(),
+    });
 
     expect(result.current.view.headerStatus.dataStatusKind).toBe("ok");
     expect(result.current.view.headerStatus.formalUseAllowed).toBe(false);
@@ -149,7 +187,9 @@ describe("useDashboardHomeFirstScreenViewModel report date", () => {
       },
     };
 
-    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel());
+    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel(), {
+      wrapper: createRouterWrapper(),
+    });
 
     expect(result.current.view.headerStatus.dataStatusKind).toBe("partial");
     expect(result.current.view.headerStatus.showRiskReview).toBe(false);
@@ -195,7 +235,9 @@ describe("useDashboardHomeFirstScreenViewModel report date", () => {
       snapshotMeta: homeSnapshotMeta(),
     };
 
-    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel());
+    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel(), {
+      wrapper: createRouterWrapper(),
+    });
     const aumKpi = result.current.view.terminalKpis.find((metric) => metric.id === "aum");
 
     expect(result.current.view.headerStatus.dataStatusKind).toBe("ok");
@@ -243,7 +285,9 @@ describe("useDashboardHomeFirstScreenViewModel report date", () => {
       }),
     };
 
-    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel());
+    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel(), {
+      wrapper: createRouterWrapper(),
+    });
 
     expect(result.current.view.headerStatus.dataStatusKind).toBe("partial");
     expect(result.current.view.headerStatus.marketStatus).toBe("来源需复核");

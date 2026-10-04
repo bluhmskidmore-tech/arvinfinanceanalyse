@@ -10,7 +10,10 @@ import { derivePnlDataSectionState } from "../adapters/pnlAttributionAdapter";
 import { AttributionWaterfallChart } from "./AttributionWaterfallChart";
 import { VolumeRateAnalysisChart } from "./VolumeRateAnalysisChart";
 import { cx } from "./pnlAttributionClassNames";
-import { formatYi, type VolumeRateBridgeSummary } from "./pnlAttributionViewModel";
+import {
+  formatYi,
+  type VolumeRateBridgeSummary,
+} from "./pnlAttributionViewModel";
 
 function valueToneClassName(value: number | undefined) {
   if (value === undefined) return "pnl-attribution-tone--neutral";
@@ -31,35 +34,57 @@ export function VolumeRateBridgePanel(props: {
   summary: VolumeRateBridgeSummary;
 }) {
   const { data, summary } = props;
-  const residualIsMaterial =
-    summary.unexplainedEffect !== undefined &&
-    Math.abs(summary.unexplainedEffect) > 10_000;
-  const denominator =
-    summary.pnlChange !== undefined && Math.abs(summary.pnlChange) > 10_000
-      ? summary.pnlChange
-      : undefined;
+  const residualIsMaterial = summary.status === "residual";
+  const residualFormula = residualIsMaterial
+    ? summary.includesDirectPnl ? "缺期末规模、未匹配利息或缺失字段" : "缺规模或未匹配分类"
+    : summary.status === "closed"
+      ? "闭合容差内"
+      : summary.status === "no-prior"
+        ? "无上期对比"
+        : "归因字段不完整";
+  const denominator = summary.effectSharesEligible ? summary.pnlChange : undefined;
   const bridgeRows = [
     {
-      label: "规模效应",
-      formula: "Δ规模 × 上期收益率",
+      label: summary.includesDirectPnl ? "利息规模效应" : "规模效应",
+      formula: summary.includesDirectPnl ? "Δ期末规模 × 上期利息收益率" : "Δ规模 × 上期收益率",
       value: summary.volumeEffect,
       accentClass: "pnl-attribution-bridge-table__dot--volume",
     },
     {
-      label: "利率效应",
-      formula: "上期规模 × Δ收益率",
+      label: summary.includesDirectPnl ? "利息收益率效应" : "利率效应",
+      formula: summary.includesDirectPnl ? "上期期末规模 × Δ利息收益率" : "上期规模 × Δ收益率",
       value: summary.rateEffect,
       accentClass: "pnl-attribution-bridge-table__dot--rate",
     },
     {
       label: "交叉效应",
-      formula: "Δ规模 × Δ收益率",
+      formula: summary.includesDirectPnl ? "Δ期末规模 × Δ利息收益率" : "Δ规模 × Δ收益率",
       value: summary.interactionEffect,
       accentClass: "pnl-attribution-bridge-table__dot--interaction",
     },
+    ...(summary.includesDirectPnl ? [
+      {
+        label: "公允价值变动",
+        formula: "当期公允价值损益 − 上期公允价值损益",
+        value: summary.fairValueEffect,
+        accentClass: "pnl-attribution-bridge-table__dot--neutral",
+      },
+      {
+        label: "投资收益变动",
+        formula: "当期投资收益 − 上期投资收益",
+        value: summary.capitalGainEffect,
+        accentClass: "pnl-attribution-bridge-table__dot--neutral",
+      },
+      {
+        label: "手工调整变动",
+        formula: "当期手工调整 − 上期手工调整",
+        value: summary.manualAdjustmentEffect,
+        accentClass: "pnl-attribution-bridge-table__dot--neutral",
+      },
+    ] : []),
     {
       label: "未解释差额",
-      formula: residualIsMaterial ? "缺规模或未匹配分类" : "闭合容差内",
+      formula: residualFormula,
       value: summary.unexplainedEffect,
       accentClass: residualIsMaterial
         ? "pnl-attribution-bridge-table__dot--residual"
@@ -80,7 +105,9 @@ export function VolumeRateBridgePanel(props: {
           className="pnl-attribution-bridge-panel__summary"
         >
           <div>
-            <div className="pnl-attribution-section-lead__eyebrow">规模 / 利率效应</div>
+            <div className="pnl-attribution-section-lead__eyebrow">
+              {summary.includesDirectPnl ? "利息量价与非利息变动" : "规模 / 利率效应"}
+            </div>
             <h3 className="pnl-attribution-bridge-panel__title">
               损益变动桥
             </h3>
@@ -107,12 +134,23 @@ export function VolumeRateBridgePanel(props: {
             data-status={summary.status}
           >
             <span>{summary.statusLabel}</span>
+            <span
+              className="pnl-attribution-collapsed-note"
+              data-testid="volume-rate-bridge-closure-disclosure"
+            >
+              {summary.closureDisclosure}
+            </span>
             <span className="pnl-attribution-tabular">
               解释覆盖 {formatPct(summary.coveragePct)}
             </span>
             <span data-testid="volume-rate-bridge-derived-note">
               解释覆盖与占变动为展示辅助计算（非正式指标）
             </span>
+            {summary.includesDirectPnl ? (
+              <span>
+                当月利息收益率 = 当月利息收入 ÷ 期末市值，非年化；非利息损益按两期变动单列。
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -192,10 +230,9 @@ export function VolumeRateBridgePanel(props: {
 
       <div className="pnl-attribution-bridge-panel__footer">
         <span>损益变动 = 当期损益 - 上期损益</span>
-        <span className="pnl-attribution-tabular">
-          {formatYi(summary.volumeEffect)} + {formatYi(summary.rateEffect)} +{" "}
-          {formatYi(summary.interactionEffect)} +{" "}
-          {formatYi(summary.unexplainedEffect)} = {formatYi(summary.pnlChange)}
+        <span className="pnl-attribution-tabular" title="金额以亿元四舍五入展示，精确差额保留在接口与明细中。">
+          已解释 {formatYi(summary.explainedEffect)} + 未解释差额{" "}
+          {formatYi(summary.unexplainedEffect)} ≈ {formatYi(summary.pnlChange)}
         </span>
       </div>
     </div>

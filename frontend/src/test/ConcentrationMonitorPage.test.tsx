@@ -250,7 +250,8 @@ describe("ConcentrationMonitorPage", () => {
       return panel as HTMLElement;
     });
 
-    expect(kpiGrid).toHaveTextContent("12.00%");
+    expect(kpiGrid).toHaveTextContent("0.1200");
+    expect(kpiGrid).not.toHaveTextContent("12.00%");
     expect(kpiGrid).toHaveTextContent("30.00%");
     expect(kpiGrid).toHaveTextContent("20.00%");
     expect(kpiGrid).toHaveTextContent("8.00%");
@@ -308,14 +309,21 @@ describe("ConcentrationMonitorPage", () => {
       "breach",
     ]);
 
-    // 限额列与当前值列同为百分比制；限额使用率列 = 当前值 / 限额。
+    // 占比行当前值/限额为百分比；HHI 行当前值与限额均为指数（如 0.1000 / 0.1500）。
+    // 限额使用率列 = 当前值 / 限额，计算逻辑不变。
     const limitRows = Array.from(
       document.querySelectorAll(".concentration-monitor-page__limit-cell"),
     ).map((cell) => (cell as HTMLElement).closest("tr") as HTMLTableRowElement);
+    expect(limitRows.map((row) => row.cells[1]?.textContent)).toEqual([
+      "12.00%",
+      "35.00%",
+      "0.1000",
+      "25.00%",
+    ]);
     expect(limitRows.map((row) => row.cells[2]?.textContent)).toEqual([
       "10.00%",
       "40.00%",
-      "15.00%",
+      "0.1500",
       "20.00%",
     ]);
     const usageCells = Array.from(

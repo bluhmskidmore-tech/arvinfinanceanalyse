@@ -3,7 +3,7 @@ import type { ResultMeta } from "./core";
 import type { BalancePageCalibration } from "./balanceLedger";
 
 // --- Cube 多维查询 (`/api/cube`) ---
-export type CubeBasis = "formal" | "scenario" | "analytical";
+export type CubeBasis = "formal" | "scenario" | "analytical" | "ledger";
 
 export type CubeQueryRequest = {
   report_date: string;
@@ -39,6 +39,9 @@ export type CubeDimensionsPayload = {
   dimensions: string[];
   measures: string[];
   measure_fields: string[];
+  /** 必选单值筛选及其允许值；余额和品类分析不能移除。 */
+  required_filters?: Record<string, string[]>;
+  analytical_only?: boolean;
 };
 
 /** 后端 `CubeQueryResponse`：业务字段与 `result_meta` 同层，非 `ApiEnvelope`。 */
@@ -95,6 +98,9 @@ export type ContributionSplitRow = {
   amount_yi: number | null;
   yield_or_cost: number | null;
   contribution_yi: number | null;
+  known_contribution_yi?: number | null;
+  missing_rate_amount_yi?: number;
+  rate_coverage_pct?: number;
 };
 
 export type ContributionSplitPayload = {
@@ -252,6 +258,7 @@ export type AdbMonthlyDataItem = {
 
 export type AdbMonthlyResponse = {
   result_meta?: ResultMeta;
+  calibration?: BalancePageCalibration | null;
   year: number;
   months: AdbMonthlyDataItem[];
   accounting_basis_daily_avg_trend?: AdbAccountingBasisDailyAvgTrendItem[];

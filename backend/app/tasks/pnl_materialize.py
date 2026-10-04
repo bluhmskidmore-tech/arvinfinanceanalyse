@@ -7,20 +7,22 @@ from calendar import monthrange
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any, cast
 
 import duckdb
 from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
 )
-from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
-from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
+from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate, validate_formal_fx_observation
 from backend.app.core_finance.pnl import (
+    JournalType,
     PNL_FORMAL_FACT_RULE_VERSION,
     build_formal_pnl_fi_fact_rows,
     build_nonstd_pnl_bridge_rows,
     normalize_fi_pnl_records,
     normalize_nonstd_journal_entries,
 )
+from backend.app.core_finance.pnl_by_business_insights import prior_year_same_period_date
 from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
@@ -35,15 +37,25 @@ from backend.app.repositories.governance_repo import (
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
+from backend.app.repositories.pnl_precompute_state import (
+    invalidate_pnl_by_business_precompute_on_connection,
+)
 from backend.app.repositories.pnl_repo import (
     PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
     PnlRepository,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
 from backend.app.tasks.pnl_by_business_precompute import (
+    confirm_pnl_by_business_adjustment_handoffs_under_writer,
+    pnl_by_business_insight_dependencies_are_current,
     precompute_pnl_by_business_payloads,
+)
+from backend.app.tasks.pnl_by_business_resource_scope import (
+    PnlByBusinessResourceBudgetExceeded,
+    pnl_by_business_resource_failure_for_run,
 )
 
 logger = logging.getLogger(__name__)
@@ -118,7 +130,10 @@ def _materialize_pnl_facts(
     failure_context = {"source_version": source_version}
 
     try:
-        with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+        with repository_task_write_scope(__name__), acquire_lock(
+            writer_lock,
+            base_dir=duckdb_file.parent,
+        ):
             return _materialize_pnl_facts_under_writer_lock(
                 report_date=report_date,
                 is_month_end=is_month_end,
@@ -148,6 +163,9 @@ def _materialize_pnl_facts(
         ).model_dump()
         failed_record["error_message"] = str(exc)
         failed_record["report_date"] = report_date
+        if isinstance(exc, PnlByBusinessResourceBudgetExceeded):
+            failed_record["failure_category"] = "resource_over_budget"
+            failed_record["resource_limits"] = exc.receipt
         repo.append(CACHE_BUILD_RUN_STREAM, failed_record)
         raise
 
@@ -162,6 +180,8 @@ def _rebuild_pnl_by_business_precompute(
     run_id: str | None = None,
     queued_at: str | None = None,
     trigger_reason: str = "automatic_refresh",
+    dependency_revision: int | None = None,
+    adjustment_handoff_ids: list[str] | None = None,
 ) -> dict[str, object]:
     """Rebuild the page-local read model through the latest available cutoff in ``year``."""
     if not 2000 <= int(year) <= 2100:
@@ -171,6 +191,13 @@ def _rebuild_pnl_by_business_precompute(
     governance_path = Path(governance_dir or settings.governance_path)
     governance_repo = GovernanceRepository(base_dir=governance_path)
     active_run_id = run_id or f"{PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME}:{datetime.now(UTC).isoformat()}"
+    durable_resource_failure = pnl_by_business_resource_failure_for_run(
+        governance_path,
+        run_id=active_run_id,
+        job_name=PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
+    )
+    if durable_resource_failure is not None:
+        return durable_resource_failure
     writer_lock = resolve_duckdb_writer_lock(
         duckdb_file,
         ttl_seconds=PNL_MATERIALIZE_LOCK.ttl_seconds,
@@ -196,20 +223,82 @@ def _rebuild_pnl_by_business_precompute(
         report_date=as_of_date,
         queued_at=queued_at,
         started_at=started_at,
+        dependency_revision=dependency_revision,
     )
     if target_as_of_dates is not None:
         running_record["target_as_of_dates"] = target_as_of_dates
         running_record["cutoff_count"] = len(target_as_of_dates)
+    if adjustment_handoff_ids:
+        running_record["adjustment_handoff_ids"] = list(adjustment_handoff_ids)
     governance_repo.append(CACHE_BUILD_RUN_STREAM, running_record)
+
+    def persist_resource_budget_latch(resource_limits: dict[str, object]) -> None:
+        latched_record = _pnl_by_business_precompute_run_record(
+            run_id=active_run_id,
+            status="failed",
+            lock_key=writer_lock.key,
+            source_version=PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION,
+            year=year,
+            trigger_reason=trigger_reason,
+            report_date=as_of_date,
+            queued_at=queued_at,
+            started_at=started_at,
+            finished_at=datetime.now(UTC).isoformat(),
+            error_message="PnL-by-business worker process tree exceeded its memory budget.",
+            failure_category="resource_over_budget",
+            dependency_revision=active_dependency_revision,
+        )
+        if target_as_of_dates is not None:
+            latched_record["target_as_of_dates"] = target_as_of_dates
+            latched_record["cutoff_count"] = len(target_as_of_dates)
+        if adjustment_handoff_ids:
+            latched_record["adjustment_handoff_ids"] = list(adjustment_handoff_ids)
+        latched_record["resource_limits"] = resource_limits
+        governance_repo.append(CACHE_BUILD_RUN_STREAM, latched_record)
+
     logger.info("starting pnl_by_business precompute rebuild for year=%s", year)
+    active_dependency_revision = dependency_revision
     try:
         with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+            if adjustment_handoff_ids:
+                handoff_target_dates = (
+                    list(target_as_of_dates)
+                    if target_as_of_dates is not None
+                    else ([as_of_date] if as_of_date is not None else [])
+                )
+                handoff_receipt = confirm_pnl_by_business_adjustment_handoffs_under_writer(
+                    duckdb_path=str(duckdb_file),
+                    governance_dir=str(governance_path),
+                    handoff_ids=list(adjustment_handoff_ids),
+                    year=int(year),
+                    target_dates=handoff_target_dates,
+                )
+                active_dependency_revision = int(
+                    cast(Any, handoff_receipt["dependency_revision"])
+                )
+                governance_repo.append(
+                    CACHE_BUILD_RUN_STREAM,
+                    {
+                        **running_record,
+                        "dependency_revision": active_dependency_revision,
+                        "adjustment_handoff_ids": list(adjustment_handoff_ids),
+                        "adjustment_handoffs_acknowledged": bool(
+                            handoff_receipt.get("acknowledged")
+                        ),
+                    },
+                )
             if target_as_of_dates is None:
                 summary = precompute_pnl_by_business_payloads(
                     duckdb_path=str(duckdb_file),
                     governance_dir=str(governance_path),
                     year=int(year),
                     as_of_date=as_of_date,
+                    on_resource_budget_exceeded=persist_resource_budget_latch,
+                    **(
+                        {"expected_dependency_revision": active_dependency_revision}
+                        if active_dependency_revision is not None
+                        else {}
+                    ),
                 )
             else:
                 results: list[dict[str, object]] = []
@@ -233,6 +322,12 @@ def _rebuild_pnl_by_business_precompute(
                         governance_dir=str(governance_path),
                         year=int(year),
                         as_of_date=cutoff,
+                        on_resource_budget_exceeded=persist_resource_budget_latch,
+                        **(
+                            {"expected_dependency_revision": active_dependency_revision}
+                            if active_dependency_revision is not None
+                            else {}
+                        ),
                     )
                     resolved_as_of_date = str(result.get("as_of_date") or "")
                     if (
@@ -249,12 +344,22 @@ def _rebuild_pnl_by_business_precompute(
                     "year": int(year),
                     "as_of_dates": target_as_of_dates,
                     "cutoff_count": len(target_as_of_dates),
-                    "records": sum(int(item.get("records") or 0) for item in results),
+                    "records": sum(int(cast(Any, item.get("records") or 0)) for item in results),
                     "results": results,
                     "source_version": str(results[-1].get("source_version") or ""),
                     "generated_at": str(results[-1].get("generated_at") or ""),
+                    "dependency_revision": active_dependency_revision,
                 }
     except Exception as exc:
+        if isinstance(exc, PnlByBusinessResourceBudgetExceeded) and (
+            pnl_by_business_resource_failure_for_run(
+                governance_path,
+                run_id=active_run_id,
+                job_name=PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
+            )
+            is not None
+        ):
+            raise
         failed_record = _pnl_by_business_precompute_run_record(
             run_id=active_run_id,
             status="failed",
@@ -267,11 +372,22 @@ def _rebuild_pnl_by_business_precompute(
             started_at=started_at,
             finished_at=datetime.now(UTC).isoformat(),
             error_message=str(exc),
-            failure_category="lock_timeout" if isinstance(exc, TimeoutError) else "materialize_failure",
+            failure_category=(
+                "resource_over_budget"
+                if isinstance(exc, PnlByBusinessResourceBudgetExceeded)
+                else "lock_timeout"
+                if isinstance(exc, TimeoutError)
+                else "materialize_failure"
+            ),
+            dependency_revision=active_dependency_revision,
         )
         if target_as_of_dates is not None:
             failed_record["target_as_of_dates"] = target_as_of_dates
             failed_record["cutoff_count"] = len(target_as_of_dates)
+        if adjustment_handoff_ids:
+            failed_record["adjustment_handoff_ids"] = list(adjustment_handoff_ids)
+        if isinstance(exc, PnlByBusinessResourceBudgetExceeded):
+            failed_record["resource_limits"] = exc.receipt
         governance_repo.append(CACHE_BUILD_RUN_STREAM, failed_record)
         raise
     _clear_pnl_page_runtime_caches()
@@ -290,13 +406,24 @@ def _rebuild_pnl_by_business_precompute(
         queued_at=queued_at,
         started_at=started_at,
         finished_at=datetime.now(UTC).isoformat(),
+        dependency_revision=active_dependency_revision,
     )
-    completed_record["record_count"] = int(summary.get("records") or 0)
+    completed_record["record_count"] = int(cast(Any, summary.get("records") or 0))
     completed_record["generated_at"] = str(summary.get("generated_at") or "") or None
+    if isinstance(summary.get("resource_limits"), dict):
+        completed_record["resource_limits"] = dict(cast(Any, summary["resource_limits"]))
     if target_as_of_dates is not None:
         completed_record["target_as_of_dates"] = target_as_of_dates
         completed_record["cutoff_count"] = len(target_as_of_dates)
-        completed_record["cutoff_results"] = list(summary.get("results") or [])
+        completed_record["cutoff_results"] = list(cast(Any, summary.get("results") or []))
+        completed_record["resource_limits"] = [
+            dict(item["resource_limits"])
+            for item in cast(Any, summary.get("results") or [])
+            if isinstance(item, dict) and isinstance(item.get("resource_limits"), dict)
+        ]
+    if adjustment_handoff_ids:
+        completed_record["adjustment_handoff_ids"] = list(adjustment_handoff_ids)
+        completed_record["adjustment_handoffs_acknowledged"] = True
     governance_repo.append(CACHE_BUILD_RUN_STREAM, completed_record)
     logger.info(
         "completed pnl_by_business precompute rebuild for year=%s as_of_date=%s records=%s",
@@ -335,6 +462,112 @@ def _normalize_pnl_by_business_precompute_target_dates(
     return sorted(normalized)
 
 
+def _pnl_by_business_insight_dependency_cutoffs(
+    repo: PnlRepository,
+    *,
+    report_date: str,
+) -> list[tuple[int, str]]:
+    """Resolve the exact prior-year cutoffs consumed by the insights endpoint."""
+    baseline_date = prior_year_same_period_date(report_date)
+    baseline_year = int(baseline_date[:4])
+    resolved_baseline = repo.max_formal_or_nonstd_report_date_in_year(
+        year=baseline_year,
+        as_of_cap=baseline_date,
+    )
+    latest_prior_year = repo.max_formal_or_nonstd_report_date_in_year(
+        year=baseline_year,
+        as_of_cap=None,
+    )
+    cutoffs: set[str] = set()
+    if resolved_baseline:
+        cutoffs.add(str(resolved_baseline))
+    if latest_prior_year:
+        cutoffs.add(str(latest_prior_year))
+    return [(baseline_year, cutoff) for cutoff in sorted(cutoffs)]
+
+
+def _materialize_pnl_by_business_insight_dependencies(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+) -> list[dict[str, object]]:
+    repo = PnlRepository(duckdb_path)
+    results: list[dict[str, object]] = []
+    for dependency_year, cutoff in _pnl_by_business_insight_dependency_cutoffs(
+        repo,
+        report_date=report_date,
+    ):
+        try:
+            is_current = pnl_by_business_insight_dependencies_are_current(
+                duckdb_path=duckdb_path,
+                governance_dir=governance_dir,
+                year=dependency_year,
+                as_of_date=cutoff,
+            )
+        except (RuntimeError, ValueError) as exc:
+            logger.warning(
+                "pnl_by_business insight dependency validation failed for %s: %s",
+                cutoff,
+                exc,
+            )
+            results.append(
+                {
+                    "year": dependency_year,
+                    "as_of_date": cutoff,
+                    "status": "failed",
+                    "failure_stage": "validation",
+                    "error_message": str(exc),
+                    "records": 0,
+                }
+            )
+            continue
+        if is_current:
+            results.append(
+                {
+                    "year": dependency_year,
+                    "as_of_date": cutoff,
+                    "status": "current",
+                    "records": 0,
+                }
+            )
+            continue
+        try:
+            summary = precompute_pnl_by_business_payloads(
+                duckdb_path=duckdb_path,
+                governance_dir=governance_dir,
+                year=dependency_year,
+                as_of_date=cutoff,
+            )
+        except (RuntimeError, ValueError) as exc:
+            logger.warning(
+                "pnl_by_business insight dependency rebuild failed for %s: %s",
+                cutoff,
+                exc,
+            )
+            results.append(
+                {
+                    "year": dependency_year,
+                    "as_of_date": cutoff,
+                    "status": "failed",
+                    "failure_stage": "rebuild",
+                    "error_message": str(exc),
+                    "records": 0,
+                }
+            )
+            continue
+        results.append(
+            {
+                "year": dependency_year,
+                "as_of_date": cutoff,
+                "status": "rebuilt",
+                "records": int(cast(Any, summary.get("records") or 0)),
+                "rule_version": PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+            }
+        )
+    return results
+
+
 def _pnl_by_business_precompute_run_record(
     *,
     run_id: str,
@@ -349,6 +582,7 @@ def _pnl_by_business_precompute_run_record(
     finished_at: str | None = None,
     error_message: str | None = None,
     failure_category: str | None = None,
+    dependency_revision: int | None = None,
 ) -> dict[str, object]:
     record = CacheBuildRunRecord(
         run_id=run_id,
@@ -370,7 +604,19 @@ def _pnl_by_business_precompute_run_record(
     ).model_dump()
     record["target_year"] = int(year)
     record["trigger_reason"] = trigger_reason
+    if dependency_revision is not None:
+        record["dependency_revision"] = int(dependency_revision)
     return record
+
+
+def compose_formal_pnl_source_version(formal_fi_rows, bridge_rows) -> str:
+    source_versions = sorted(
+        {
+            *(row.source_version for row in formal_fi_rows if row.source_version),
+            *(row.source_version for row in bridge_rows if row.source_version),
+        }
+    )
+    return "__".join(source_versions) or "sv_pnl_empty"
 
 
 def _materialize_pnl_facts_under_writer_lock(
@@ -406,7 +652,7 @@ def _materialize_pnl_facts_under_writer_lock(
         normalized_nonstd.extend(
             normalize_nonstd_journal_entries(
                 rows,
-                journal_type=journal_type,
+                journal_type=cast(JournalType, journal_type),
                 fx_rates_by_currency=fx_rates_by_currency,
             )
         )
@@ -423,6 +669,11 @@ def _materialize_pnl_facts_under_writer_lock(
 
     target_report_date = date.fromisoformat(report_date)
     _assert_partition_matches(report_date=target_report_date, fi_rows=normalized_fi, nonstd_rows=normalized_nonstd)
+    supported_cutoffs = (
+        (report_date,)
+        if target_report_date.day == monthrange(target_report_date.year, target_report_date.month)[1]
+        else ()
+    )
 
     bridge_rows = build_nonstd_pnl_bridge_rows(
         normalized_nonstd,
@@ -431,13 +682,7 @@ def _materialize_pnl_facts_under_writer_lock(
     )
     formal_fi_rows = build_formal_pnl_fi_fact_rows(normalized_fi)
 
-    source_versions = sorted(
-        {
-            *(row.source_version for row in formal_fi_rows if row.source_version),
-            *(row.source_version for row in bridge_rows if row.source_version),
-        }
-    )
-    source_version = "__".join(source_versions) or "sv_pnl_empty"
+    source_version = compose_formal_pnl_source_version(formal_fi_rows, bridge_rows)
     failure_context["source_version"] = source_version
 
     formal_fi_values = [
@@ -487,6 +732,13 @@ def _materialize_pnl_facts_under_writer_lock(
     try:
         _ensure_tables(conn)
 
+        existing_nonstd_rows = bool(
+            conn.execute(
+                "select 1 from fact_nonstd_pnl_bridge where report_date = ? limit 1",
+                [report_date],
+            ).fetchone()
+        )
+
         # Purge and commit before re-inserting. DuckDB 1.5.1 holds deleted keys
         # in a unique index until the deleting transaction commits, so once
         # uq_fact_nonstd_pnl_bridge_natural_key exists the old single-transaction
@@ -494,10 +746,19 @@ def _materialize_pnl_facts_under_writer_lock(
         # rows it just removed. fact_formal_pnl_fi below stays inside the
         # transaction because it never deletes and reinserts the same key: it
         # upserts, then removes only the keys the new batch dropped.
+        def invalidate_before_purge(active_conn: duckdb.DuckDBPyConnection) -> None:
+            invalidate_pnl_by_business_precompute_on_connection(
+                active_conn,
+                changed_report_dates=(report_date,),
+                reason="fact_nonstd_pnl_bridge_purge",
+                supported_cutoffs=supported_cutoffs,
+            )
+
         commit_report_date_purge(
             conn,
             tables=(NONSTD_PNL_BRIDGE_TABLE,),
             report_date=report_date,
+            before_commit=invalidate_before_purge if existing_nonstd_rows else None,
         )
 
         conn.execute("begin transaction")
@@ -573,6 +834,14 @@ def _materialize_pnl_facts_under_writer_lock(
                 ],
             )
 
+        if formal_fi_values or stale_formal_fi_keys or bridge_rows:
+            invalidate_pnl_by_business_precompute_on_connection(
+                conn,
+                changed_report_dates=(report_date,),
+                reason="fact_formal_pnl_fi_and_nonstd_replace",
+                supported_cutoffs=supported_cutoffs,
+            )
+
         conn.execute("commit")
         transaction_started = False
     except Exception:
@@ -588,7 +857,12 @@ def _materialize_pnl_facts_under_writer_lock(
         year=target_report_date.year,
         as_of_date=report_date,
     )
-    pnl_by_business_precompute_records = int(precompute_summary.get("records") or 0)
+    pnl_by_business_precompute_records = int(cast(Any, precompute_summary.get("records") or 0))
+    insight_dependency_results = _materialize_pnl_by_business_insight_dependencies(
+        duckdb_path=str(duckdb_file),
+        governance_dir=str(governance_path),
+        report_date=report_date,
+    )
 
     _clear_pnl_page_runtime_caches()
 
@@ -604,6 +878,7 @@ def _materialize_pnl_facts_under_writer_lock(
         rule_version=RULE_VERSION,
     ).model_dump()
     completed_run["report_date"] = report_date
+    completed_run["pnl_by_business_insight_dependencies"] = insight_dependency_results
 
     repo.append_many_atomic(
         [
@@ -643,10 +918,46 @@ def _materialize_pnl_facts_under_writer_lock(
         "pnl_by_business_precompute_records": pnl_by_business_precompute_records,
     }
 
+def _rebuild_pnl_by_business_precompute_actor(
+    *,
+    year: int,
+    as_of_date: str | None = None,
+    as_of_dates: list[str] | None = None,
+    duckdb_path: str | None = None,
+    governance_dir: str | None = None,
+    run_id: str | None = None,
+    queued_at: str | None = None,
+    trigger_reason: str = "automatic_refresh",
+    dependency_revision: int | None = None,
+    adjustment_handoff_ids: list[str] | None = None,
+) -> dict[str, object]:
+    try:
+        return _rebuild_pnl_by_business_precompute(
+            year=year,
+            as_of_date=as_of_date,
+            as_of_dates=as_of_dates,
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            run_id=run_id,
+            queued_at=queued_at,
+            trigger_reason=trigger_reason,
+            dependency_revision=dependency_revision,
+            adjustment_handoff_ids=adjustment_handoff_ids,
+        )
+    except PnlByBusinessResourceBudgetExceeded as exc:
+        return {
+            "status": "failed",
+            "run_id": run_id,
+            "failure_category": "resource_over_budget",
+            "error_message": str(exc),
+            "resource_limits": exc.receipt,
+        }
+
+
 materialize_pnl_facts = register_actor_once("materialize_pnl_facts", _materialize_pnl_facts)
 rebuild_pnl_by_business_precompute = register_actor_once(
     "rebuild_pnl_by_business_precompute",
-    _rebuild_pnl_by_business_precompute,
+    _rebuild_pnl_by_business_precompute_actor,
 )
 run_pnl_materialize_sync = _materialize_pnl_facts
 run_pnl_by_business_precompute_sync = _rebuild_pnl_by_business_precompute
@@ -742,36 +1053,14 @@ def _load_pnl_fx_rates(
                 f"Invalid formal fx rate for base_currency={base} report_date={report_date}: "
                 "mid_rate must be finite and greater than zero."
             )
-        business_day = bool(is_business_day)
-        carry_forward = bool(is_carry_forward)
         observed_trade_date_str = str(observed_trade_date) if observed_trade_date is not None else None
-        if business_day:
-            if carry_forward:
-                raise ValueError(
-                    f"Invalid formal fx metadata for base_currency={base} report_date={report_date}: "
-                    "business-day row cannot be carry-forward."
-                )
-            rates[base] = (rate, str(source_version or ""))
-            continue
-        if not carry_forward or observed_trade_date_str is None:
-            raise ValueError(
-                f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
-                "non-business-day row must carry forward an observed prior trade date."
-            )
-        if date.fromisoformat(observed_trade_date_str) >= date.fromisoformat(report_date):
-            raise ValueError(
-                f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
-                f"observed_trade_date={observed_trade_date_str} must be before report_date."
-            )
-        if not is_cfets_fx_non_business_day(
-            report_date,
+        validate_formal_fx_observation(
+            target_date=report_date,
+            observed_date=observed_trade_date_str,
             base_currency=base,
-            quote_currency="CNY",
-        ):
-            raise ValueError(
-                f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
-                "carry-forward is only allowed for confirmed non-business-day rows."
-            )
+            is_business_day=is_business_day,
+            is_carry_forward=is_carry_forward,
+        )
         rates[base] = (rate, str(source_version or ""))
 
     missing = [code for code in required_fx if code not in rates]

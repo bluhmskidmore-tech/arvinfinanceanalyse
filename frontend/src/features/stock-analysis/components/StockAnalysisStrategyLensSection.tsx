@@ -23,11 +23,16 @@ export function StockAnalysisStrategyLensSection({
   }, 0);
   const candidateItems = items.filter((item) => item.candidates.length > 0);
   const emptyCandidateItems = items.filter((item) => item.candidates.length === 0);
-  const visibleItems = candidateItems.length > 0 ? candidateItems.slice(0, STRATEGY_LENS_DEFAULT_CARD_COUNT) : items;
+  // 样本外削弱的池不占首屏主卡位；只有当没有其他有候选的池时才回退展示它，
+  // 否则首屏会宁可空着也不展示已有候选。items 已按判定强弱排序（见 buildStrategyLensItems）。
+  const promotableCandidateItems = candidateItems.filter((item) => item.verdict?.key !== "weakened");
+  const primaryCandidateItems =
+    promotableCandidateItems.length > 0 ? promotableCandidateItems : candidateItems;
+  const visibleItems =
+    primaryCandidateItems.length > 0 ? primaryCandidateItems.slice(0, STRATEGY_LENS_DEFAULT_CARD_COUNT) : items;
+  const visibleKeys = new Set(visibleItems.map((item) => item.key));
   const deferredCandidateItems =
-    candidateItems.length > STRATEGY_LENS_DEFAULT_CARD_COUNT
-      ? candidateItems.slice(STRATEGY_LENS_DEFAULT_CARD_COUNT)
-      : [];
+    candidateItems.length > 0 ? candidateItems.filter((item) => !visibleKeys.has(item.key)) : [];
   const backgroundItems = candidateItems.length > 0 ? emptyCandidateItems : [];
   const deferredStrategyItems = [...deferredCandidateItems, ...backgroundItems];
 
@@ -48,6 +53,16 @@ export function StockAnalysisStrategyLensSection({
         </div>
         <span className="stock-analysis-page__strategy-lens-card-actions">
           <span className="stock-analysis-page__strategy-lens-status">{item.statusLabel}</span>
+          {item.verdict ? (
+            <span
+              className="stock-analysis-page__strategy-lens-verdict"
+              data-verdict={item.verdict.key}
+              data-testid={`stock-analysis-strategy-lens-${item.key}-verdict`}
+              title={item.verdict.detail}
+            >
+              {item.verdict.label}
+            </span>
+          ) : null}
           <button
             aria-label={`前往${item.label}复核区`}
             className="stock-analysis-page__strategy-lens-action"
@@ -90,6 +105,12 @@ export function StockAnalysisStrategyLensSection({
             <dt>入口</dt>
             <dd>{item.actionLabel}</dd>
           </div>
+          {item.verdict ? (
+            <div>
+              <dt>样本外</dt>
+              <dd title={item.verdict.detail}>{item.verdict.detail}</dd>
+            </div>
+          ) : null}
         </dl>
         <span className="stock-analysis-page__strategy-lens-version" title={`${item.dateLabel} · ${item.formulaLabel}`}>
           <strong>{item.dateLabel}</strong>

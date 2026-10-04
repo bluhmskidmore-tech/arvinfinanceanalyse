@@ -100,6 +100,7 @@ export type BondDashboardHeadlinePayload = {
     total_market_value: Numeric;
     unrealized_pnl: Numeric;
     weighted_ytm: Numeric;
+    weighted_ytm_coverage_ratio?: Numeric | null;
     weighted_duration: Numeric;
     weighted_coupon: Numeric;
     credit_spread_median: Numeric;
@@ -110,6 +111,7 @@ export type BondDashboardHeadlinePayload = {
     total_market_value: Numeric;
     unrealized_pnl: Numeric;
     weighted_ytm: Numeric;
+    weighted_ytm_coverage_ratio?: Numeric | null;
     weighted_duration: Numeric;
     weighted_coupon: Numeric;
     credit_spread_median: Numeric;
@@ -142,12 +144,14 @@ export type YieldDistributionPayload = {
   report_date: string;
   items: YieldDistributionItem[];
   weighted_ytm: Numeric;
+  weighted_ytm_coverage_ratio?: Numeric | null;
 };
 
 export type PortfolioComparisonItem = {
   portfolio_name: string;
   total_market_value: Numeric;
   weighted_ytm: Numeric;
+  weighted_ytm_coverage_ratio?: Numeric | null;
   weighted_duration: Numeric;
   total_dv01: Numeric;
   bond_count: number;
@@ -193,6 +197,11 @@ export type IndustryDistItem = {
 export type IndustryDistPayload = {
   report_date: string;
   items: IndustryDistItem[];
+  /**
+   * 后端返回的 items（按 top_n 截断、剔除空行业名）市值之和，即各项 percentage 的分母；
+   * 不是组合总市值。前端不得再对 items 求和补算（2026-09-02 审计 C3）。
+   */
+  total_market_value: Numeric;
 };
 
 export type RiskIndicatorsPayload = {
@@ -333,7 +342,13 @@ export type DailyChangesPayload = ApiEnvelope<DailyChangesResult>;
 export type BondBusinessTypeMetricItem = {
   name: string;
   market_value: string;
-  weighted_avg_ytm_pct: string;
+  /**
+   * Governed Numeric（unit="pct", raw 为 0-1 比率），与 Headline `weighted_ytm` 同口径。
+   * 缺覆盖时输出 `raw: null`；兼容用的旧百分点字符串另由 deprecated 字段输出。
+   */
+  weighted_avg_ytm: Numeric;
+  /** @deprecated 旧百分点字符串，固定八位小数，缺覆盖为空串；使用 weighted_avg_ytm。 */
+  weighted_avg_ytm_pct?: string;
   weighted_avg_duration: string;
   duration_source: string;
   /**

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import type { EChartsOption } from "../../../lib/echarts";
 import type {
   CampisiAttributionPayload,
@@ -8,10 +8,13 @@ import type {
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
-import { EM_DASH } from "../../../utils/format";
+import { EM_DASH, formatYi as formatYiShared } from "../../../utils/format";
+import { buildCurveAvailabilityNotices } from "../../pnl/pnlBridgePageSupport";
 import {
   EFFECT_UNAVAILABLE_TEXT,
   buildCampisiAvailabilityNotices,
+  buildCampisiBridgeQualityNotice,
+  buildCampisiTreasuryCurveDateNotice,
   buildEffectRows,
   campisiReasonLabel,
   normalizeCampisiData,
@@ -28,12 +31,20 @@ import "./campisiPanels.css";
 // 动态值保留内联。ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用
 // nocturneTokens 静态镜像 token。
 
-// 金额一律走域内统一 formatYi（pnlAttributionViewModel → utils/format，signed 恒真）。
+// 既有金额走域内统一 formatYi（pnlAttributionViewModel → utils/format，signed 恒真）。
 // 本面板输入经 support 层 finiteOrNull 归一化，恒为有限数或 null，输出与原实现逐字一致。
 function formatOptionalYi(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value)
     ? formatYi(value)
     : "不可用";
+}
+
+// 新增质量披露与首页一致：非零金额不足 0.005 亿时按元显示，避免四舍五入成 0.00 亿。
+function formatMaturityQualityAmount(value: number, signed: boolean): string {
+  if (value !== 0 && Math.abs(value) < 500_000) {
+    return `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US")} 元`;
+  }
+  return formatYiShared(value, signed && value !== 0);
 }
 
 type Props = {
@@ -119,14 +130,87 @@ function quietEffectLabels(effects: CampisiEffect[], totalReturn: number | null)
 
 export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
   const normalized = useMemo(() => normalizeCampisiData(data), [data]);
+  const formalBridgePayload = data && "totals" in data &&
+    data.basis === "formal_report_pnl_bridge" ? data : null;
   const effectRows = useMemo(
     () => (normalized ? buildEffectRows(normalized) : []),
     [normalized],
   );
   const availabilityNotices = useMemo(
-    () => buildCampisiAvailabilityNotices(normalized?.effect_availability),
-    [normalized?.effect_availability],
+    () => {
+      const availability = normalized?.effect_availability;
+      if (!formalBridgePayload) return buildCampisiAvailabilityNotices(availability);
+      const bridgeNotices = buildCurveAvailabilityNotices(availability);
+      return [
+        { key: "roll_down", label: "骑乘效应", block: availability?.roll_down_availability },
+        { key: "treasury_curve", label: "国债曲线效应", block: availability?.treasury_curve_availability },
+        { key: "credit_spread", label: "信用利差效应", block: availability?.credit_spread_availability },
+      ].map(({ key, label, block }) => {
+        if (!block || !Number.isSafeInteger(block.applicable_rows) || block.applicable_rows < 0 ||
+          !Number.isSafeInteger(block.unavailable_rows) || block.unavailable_rows < 0 ||
+          block.unavailable_rows > block.applicable_rows ||
+          !["ok", "partial", "unavailable", "not_applicable"].includes(block.status) ||
+          (block.status === "ok" && block.unavailable_rows !== 0) ||
+          (block.status === "not_applicable" && block.applicable_rows !== 0)) {
+          return { key, text: `${label}覆盖未确认：缺少适用会计行覆盖证据，不能判断全覆盖。` };
+        }
+        const notice = bridgeNotices.find((item) => item.key === key);
+        return {
+          key,
+          text: notice
+            ? `${label}${notice.statusText}：${notice.text}`
+            : `${label}可用：${block.unavailable_rows}/${block.applicable_rows} 个适用行不可用。`,
+        };
+      });
+    },
+    [formalBridgePayload, normalized?.effect_availability],
   );
+  const formalBridgeCoverage = formalBridgePayload?.input_quality?.formal_bridge_coverage;
+  let formalBridgeCoverageNotice: string | null = null;
+  if (formalBridgePayload) {
+    if (formalBridgeCoverage?.source === "pnl.bridge.rows" &&
+      formalBridgeCoverage.basis === "formal_report_pnl_bridge" &&
+      formalBridgeCoverage.status === "unavailable" && formalBridgeCoverage.bridge_rows === null &&
+      Number.isSafeInteger(formalBridgeCoverage.attributed_rows) && formalBridgeCoverage.attributed_rows >= 0) {
+      formalBridgeCoverageNotice = `正式桥会计行纳入覆盖不可用：已纳入 ${formalBridgeCoverage.attributed_rows} 个会计记录行，正式桥总行数未提供，不能判断全覆盖。`;
+    } else if (!formalBridgeCoverage || formalBridgeCoverage.source !== "pnl.bridge.rows" ||
+      formalBridgeCoverage.basis !== "formal_report_pnl_bridge" ||
+      formalBridgeCoverage.bridge_rows === null ||
+      !Number.isSafeInteger(formalBridgeCoverage.bridge_rows) || formalBridgeCoverage.bridge_rows < 0 ||
+      !Number.isSafeInteger(formalBridgeCoverage.attributed_rows) || formalBridgeCoverage.attributed_rows < 0 ||
+      formalBridgeCoverage.attributed_rows > formalBridgeCoverage.bridge_rows ||
+      !["ok", "partial", "unavailable"].includes(formalBridgeCoverage.status) ||
+      (formalBridgeCoverage.status === "ok" &&
+        formalBridgeCoverage.attributed_rows !== formalBridgeCoverage.bridge_rows)) {
+      formalBridgeCoverageNotice = "正式桥会计行纳入覆盖未确认：缺少完整的会计行纳入证据，不能判断全覆盖。";
+    } else {
+      const statusText = formalBridgeCoverage.status === "ok"
+        ? formalBridgeCoverage.bridge_rows === 0 ? "本期无会计记录行" : "已全部纳入"
+        : formalBridgeCoverage.status === "partial" ? "部分纳入" : "纳入覆盖不可用";
+      formalBridgeCoverageNotice = `正式桥会计行${statusText}：已纳入 ${formalBridgeCoverage.attributed_rows}/${formalBridgeCoverage.bridge_rows} 个会计记录行。`;
+    }
+    formalBridgeCoverageNotice += "会计行纳入不代表市场效应输入完整或本金变化检查通过。";
+  }
+  const hasExcludedPositions = !formalBridgePayload &&
+    (normalized?.effect_availability?.position_change?.status === "partial" ||
+      normalized?.effect_availability?.position_change?.status === "unavailable");
+  const curveDateNotice = buildCampisiTreasuryCurveDateNotice(
+    data && "totals" in data ? data : null,
+  );
+  const isModelFourEffects = data && "totals" in data &&
+    data.basis !== "formal_report_pnl_bridge";
+  const includedMaturityUnavailable = data && "totals" in data
+    ? data.input_quality?.included_maturity_unavailable
+    : null;
+  const maturityNotice = isModelFourEffects && includedMaturityUnavailable &&
+    Number.isInteger(includedMaturityUnavailable.positions) &&
+    includedMaturityUnavailable.positions > 0 &&
+    Number.isFinite(includedMaturityUnavailable.market_value_start_abs) &&
+    includedMaturityUnavailable.market_value_start_abs >= 0 &&
+    Number.isFinite(includedMaturityUnavailable.model_residual)
+    ? includedMaturityUnavailable
+    : null;
+  const bridgeQualityNotice = buildCampisiBridgeQualityNotice(normalized?.formal_closure);
   const primaryEffect = useMemo(
     () =>
       comparableEffects(effectRows).sort(
@@ -163,7 +247,6 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
         left: 100,
         right: designTokens.space[6],
         top: designTokens.space[4],
-        bottom: designTokens.space[6],
       },
       xAxis: {
         type: "value",
@@ -190,12 +273,6 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
             value,
             itemStyle: {
               color: effectChartColor(value === null ? null : effectRows[index]?.amount ?? null),
-              borderRadius: [
-                0,
-                designTokens.radius.sm,
-                designTokens.radius.sm,
-                0,
-              ],
             },
           })),
         },
@@ -205,7 +282,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
 
   return (
     <PageDataSection
-      title="Campisi 四效应归因（组合）"
+      title={hasExcludedPositions ? "Campisi 四效应归因（可归因持仓小计）" : "Campisi 四效应归因（组合）"}
       state={state}
       onRetry={onRetry}
     >
@@ -224,41 +301,73 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
               分解口径：{normalized.decomposition_basis}
             </div>
           ) : null}
-          {availabilityNotices.length > 0 ? (
+          {formalBridgeCoverageNotice ? (
+            <div
+              data-testid="campisi-formal-bridge-coverage"
+              className="campisi-panel__note"
+            >
+              {formalBridgeCoverageNotice}
+            </div>
+          ) : null}
+          {availabilityNotices.length > 0 || curveDateNotice ? (
             <div
               data-testid="campisi-effect-availability"
               className="campisi-panel__note"
             >
+              {curveDateNotice ? (
+                <div data-testid="campisi-treasury-curve-dates">{curveDateNotice}</div>
+              ) : null}
               {availabilityNotices.map((notice) => (
-                <div key={notice.key} data-testid={`campisi-effect-availability-${notice.key}`}>
+                <div key={notice.key} data-testid={formalBridgePayload
+                  ? `campisi-bridge-effect-availability-${notice.key}`
+                  : `campisi-effect-availability-${notice.key}`}>
                   {notice.text}
                 </div>
               ))}
             </div>
           ) : null}
           <div data-testid="campisi-capability-boundary" className="campisi-panel__note">
-            当前实现边界：本页已做到正式 PnL 闭合、票息/利率/利差/剩余拆分和到期桶查看；尚未实现交易员能力评价、FVOCI/FVTPL 浮盈浮亏专项解释、曲线形态策略归因、个券跑赢同类基准和估值噪音诊断。
+            当前实现边界：
+            {isModelFourEffects
+              ? "本入口展示持仓模型四效应和输入覆盖；正式损益核对以返回状态为准；"
+              : "本页提供正式 PnL 金额闭合核对、票息/利率/利差/剩余拆分和到期桶查看；"}
+            尚未实现交易员能力评价、FVOCI/FVTPL 浮盈浮亏专项解释、曲线形态策略归因、个券跑赢同类基准和估值噪音诊断。
           </div>
+          {bridgeQualityNotice ? (
+            <div
+              role="alert"
+              data-testid="campisi-bridge-quality-warning"
+              className="campisi-callout--warning"
+            >
+              <div className="campisi-callout__title">来源质量需复核</div>
+              <div>{bridgeQualityNotice}</div>
+            </div>
+          ) : null}
           {normalized.formal_closure &&
           normalized.formal_closure.status !== "closed" ? (
             <div
               data-testid="campisi-formal-closure-warning"
               className="campisi-callout--warning"
             >
-              <div className="campisi-callout__title">未闭合到正式 PnL</div>
-              <div>
-                Campisi{" "}
-                {formatOptionalYi(
-                  normalized.formal_closure.campisi_total_return,
-                )}
-                ，正式 PnL{" "}
-                {formatOptionalYi(normalized.formal_closure.formal_actual_pnl)}
-                ，需要残差{" "}
-                {formatOptionalYi(
-                  normalized.formal_closure.residual_to_formal_pnl,
-                )}{" "}
-                才能闭合。
-              </div>
+              {normalized.formal_closure.status === "unavailable" ? (
+                <>
+                  <div className="campisi-callout__title">正式损益核对不可用</div>
+                  <div>正式 PnL 与残差尚无可比数值，当前 Campisi 金额不能据此判断是否闭合。</div>
+                </>
+              ) : (
+                <>
+                  <div className="campisi-callout__title">未闭合到正式 PnL</div>
+                  <div>
+                    Campisi{" "}
+                    {formatOptionalYi(normalized.formal_closure.campisi_total_return)}
+                    ，正式 PnL{" "}
+                    {formatOptionalYi(normalized.formal_closure.formal_actual_pnl)}
+                    ，需要残差{" "}
+                    {formatOptionalYi(normalized.formal_closure.residual_to_formal_pnl)}{" "}
+                    才能闭合。
+                  </div>
+                </>
+              )}
             </div>
           ) : null}
           {primaryEffect ? (
@@ -273,7 +382,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                   {primaryEffect.share === null
                     ? EM_DASH
                     : Math.abs(primaryEffect.share).toFixed(1)}
-                  % 的本期 Campisi PnL 来自这里。{primaryEffect.role}
+                  % 的{isModelFourEffects ? "本期模型回报" : "本期 Campisi PnL"} 来自这里。{primaryEffect.role}
                 </div>
               </div>
               <div className="campisi-insight-box">
@@ -281,7 +390,10 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                 <div className="campisi-insight-box__body">
                   几乎没有影响：
                   {quietEffectLabels(effectRows, normalized.total_return)}。
-                  看金额时先看正负，再看占比；“剩余/选券”在当前正式闭合口径中不能直接等同交易员主动选券能力。
+                  看金额时先看正负，再看占比；
+                  {isModelFourEffects
+                    ? "当前模型归因中，剩余项不能直接等同主动选券能力。"
+                    : "“剩余/选券”在当前正式闭合口径中不能直接等同交易员主动选券能力。"}
                 </div>
               </div>
             </div>
@@ -292,6 +404,16 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
               className="campisi-derived-note"
             >
               占比为展示辅助计算（非正式指标）：按各效应金额 / 本期 Campisi 总回报折算。
+            </div>
+          ) : null}
+          {maturityNotice ? (
+            <div
+              data-testid="campisi-included-maturity-unavailable"
+              className="campisi-panel__note"
+            >
+              已纳入且到期日不可用：{maturityNotice.positions} 项持仓；期初绝对市值{" "}
+              {formatMaturityQualityAmount(maturityNotice.market_value_start_abs, false)}；计入“剩余/选券”的带符号模型剩余项{" "}
+              {formatMaturityQualityAmount(maturityNotice.model_residual, true)}。国债曲线可用不代表逐券久期可用；这笔模型剩余项不代表主动选券能力。
             </div>
           ) : null}
           <div className="campisi-effect-grid">
@@ -326,7 +448,16 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
               </div>
             ))}
           </div>
-          {barOption && <BaseChart option={barOption} height={220} />}
+          {barOption && (
+            <ChartCard
+              flat
+              ariaLabel="Campisi 四效应归因"
+              unit="亿元"
+              height={220}
+              option={barOption}
+              legend="none"
+            />
+          )}
           {normalized.items.length > 0 && (
             <div className="campisi-table-wrap">
               <table className="campisi-table">

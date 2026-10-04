@@ -18,7 +18,7 @@
   margin: 2px 0 0;
   color: var(--dh-api-ink);
   font-size: clamp(26px, 3vw, 38px);
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: -0.035em;
 }
 
@@ -32,9 +32,10 @@
 
 .agent-lab-header__eyebrow {
   color: var(--dh-api-blue);
-  font-family: var(--moss-font-mono, ui-monospace, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -57,7 +58,7 @@
   color: var(--dh-api-soft);
   font: inherit;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -119,7 +120,6 @@
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   background: color-mix(in srgb, var(--dh-api-panel) 92%, var(--dh-api-bg));
-  box-shadow: var(--dh-api-shadow-sm);
   overflow: hidden;
 }
 
@@ -154,9 +154,10 @@
   border: 1px solid color-mix(in srgb, var(--dh-api-blue) 36%, var(--dh-api-line));
   border-radius: var(--dh-api-radius);
   color: var(--dh-api-blue);
-  font-family: var(--moss-font-mono, ui-monospace, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.1em;
 }
 
@@ -216,9 +217,10 @@
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono, ui-monospace, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.08em;
 }
 
@@ -297,7 +299,6 @@
   background: var(--dh-api-panel);
   color: var(--dh-api-blue);
   cursor: pointer;
-  box-shadow: var(--dh-api-shadow-sm);
   transform: translateX(-50%);
 }
 
@@ -326,7 +327,6 @@
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel);
-  box-shadow: var(--dh-api-shadow-md);
 }
 
 .agent-lab-composer:focus-within {
@@ -371,7 +371,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .agent-lab-composer__action:hover:not(:disabled) {

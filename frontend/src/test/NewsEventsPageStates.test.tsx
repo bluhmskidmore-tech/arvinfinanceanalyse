@@ -1,3 +1,4 @@
+import { MemoryRouter } from "react-router-dom";
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -11,7 +12,7 @@ import { EM_DASH } from "../utils/format";
 
 const PAGE_SIZE = 50;
 
-function renderNewsPage(client: ApiClient) {
+function renderNewsPage(client: ApiClient, initialEntry = "/news-events") {
   function Wrapper({ children }: { children: ReactNode }) {
     const [queryClient] = useState(
       () =>
@@ -31,7 +32,7 @@ function renderNewsPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <NewsEventsPage />
+      <MemoryRouter initialEntries={[initialEntry]}><NewsEventsPage /></MemoryRouter>
     </Wrapper>,
   );
 }

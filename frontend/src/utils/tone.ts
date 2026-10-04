@@ -10,7 +10,7 @@ import { designTokens } from "../theme/designSystem";
 
 export type Tone = "positive" | "neutral" | "warning" | "negative";
 
-/** 与 `designSystem` 语义色一致，供点、标签、图表注记等复用 */
+/** 浅色语义色镜像；深色 canvas / 图表使用 nocturneTokens 或 nocturneChartTheme。 */
 export const TONE_COLOR: Record<Tone, string> = {
   positive: designTokens.color.semantic.profit,
   neutral: designTokens.color.neutral[600],
@@ -19,11 +19,10 @@ export const TONE_COLOR: Record<Tone, string> = {
 };
 
 /**
- * 主题感知 tone 色（CSS 变量入口）。深色路由（`.theme-dh-api` 等）会在
- * `src/styles/tokens.css` 里重映射 `--ib-*`，因此深色页的盈亏着色必须走本入口，
- * 禁止把浅色 `semantic.profit/loss` 十六进制直灌深色页。
- * 仅适用于能解析 CSS 变量的场景（DOM style / CSS）；canvas/ECharts 等无法解析
- * CSS 变量的代码仍使用 `TONE_COLOR` 或页面主题 TS 镜像 token。
+ * IB 浅色及既有兼容消费者的 CSS 变量入口，仅供 DOM style / CSS 使用。
+ * canonical 深色 boundary 已将 --ib-* 映射为 Nocturne；深色路由新代码仍统一
+ * 使用 TONE_DH_CSS_VAR，直接表达深色主题语义，见 DESIGN.md §4.1。
+ * canvas / ECharts 不使用 CSS 变量，按主题选择对应的 TS 镜像。
  */
 export const TONE_CSS_VAR: Record<Tone, string> = {
   positive: "var(--ib-up)",
@@ -33,10 +32,9 @@ export const TONE_CSS_VAR: Record<Tone, string> = {
 };
 
 /**
- * Nocturne scope 页面的 tone 入口。`--ib-*` 在 ThemedRouteBoundary 上被算成
- * dh-api 钢蓝字面值再继承，页根的 Nocturne scope 翻不动它们；挂了
- * `data-moss-theme-scope` Nocturne 别名的页面必须走 `--dh-api-*` 家族，
- * scope 内会解析为 `--nct-*` 色板（避免同页同语义出现两种绿/红，DESIGN.md §4）。
+ * 深色路由的 DOM tone 入口。已登记的 Nocturne scope 通过 --dh-api-* 解析
+ * 为 --nct-* 色板；未登记 scope 仍使用既有兼容回退。
+ * 业务方向如何映射 tone 遵守 DESIGN.md §4.1；本表不推导业务含义。
  */
 export const TONE_DH_CSS_VAR: Record<Tone, string> = {
   positive: "var(--dh-api-green)",

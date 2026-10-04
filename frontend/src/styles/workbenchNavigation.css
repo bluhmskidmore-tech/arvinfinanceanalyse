@@ -1,0 +1,186 @@
+/* Global navigation owns the homepage rail on every route. The existing unique
+ * landmark ID also keeps lazy page styles from changing this shared surface.
+ * Position, drawer visibility and publication capture remain in workbenchShell.css. */
+#workbench-primary-navigation {
+  box-sizing: border-box;
+  padding: 18px 14px !important;
+  gap: 14px !important;
+  align-content: start;
+  min-width: 0 !important;
+  background: var(--nct-rail) !important;
+  border-color: var(--nct-line) !important;
+  box-shadow: none !important;
+  color: var(--moss-shell-navigation-text);
+  font-family: var(--moss-shell-font);
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: normal;
+}
+
+#workbench-primary-navigation * {
+  font-family: inherit !important;
+}
+
+#workbench-primary-navigation .workbench-shell-rail-brand-wrap {
+  height: 39px !important;
+  min-height: 39px !important;
+  margin: 0 0 4px !important;
+  padding: 0 0 8px 7px !important;
+  border-bottom: 1px solid var(--nct-line) !important;
+}
+
+#workbench-primary-navigation .workbench-shell-rail-brand-row {
+  gap: 9px !important;
+}
+
+#workbench-primary-navigation .workbench-shell-rail-mark {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  border: 1px solid var(--nct-ring) !important;
+  border-radius: var(--dh-api-radius) !important;
+  background: var(--nct-surface) !important;
+  box-shadow: none !important;
+  color: var(--nct-accent-300) !important;
+  font-size: 11px !important;
+  font-weight: 500;
+  line-height: 1.5 !important;
+}
+
+#workbench-primary-navigation .workbench-shell-rail-product-name {
+  color: var(--nct-ink) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: normal !important;
+  line-height: 1.5 !important;
+}
+
+#workbench-primary-navigation .workbench-shell-nav-section,
+#workbench-primary-navigation .workbench-shell-agent-nav,
+#workbench-primary-navigation .workbench-shell-rail-section {
+  gap: 2px !important;
+  margin: 0 !important;
+}
+
+#workbench-primary-navigation .workbench-shell-nav-section {
+  margin-top: 5px !important;
+}
+
+#workbench-primary-navigation .workbench-shell-agent-nav,
+#workbench-primary-navigation .workbench-shell-rail-section {
+  padding-top: 8px;
+  border-top: 1px solid var(--nct-line);
+}
+
+#workbench-primary-navigation .workbench-shell-section-label--rail {
+  padding: 7px 6px 4px !important;
+  color: var(--nct-muted) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  line-height: 1.5 !important;
+  letter-spacing: 0;
+}
+
+#workbench-primary-navigation .workbench-shell-nav-section > .workbench-shell-section-label--rail,
+#workbench-primary-navigation .workbench-shell-group-count,
+#workbench-primary-navigation .workbench-shell-agent-nav__badge,
+#workbench-primary-navigation .workbench-shell-agent-nav__hint {
+  display: none !important;
+}
+
+#workbench-primary-navigation .workbench-group-nav-shell {
+  gap: 4px !important;
+}
+
+#workbench-primary-navigation :is(.workbench-shell-group-link, .workbench-shell-support-link, .workbench-shell-agent-nav__link, .workbench-shell-secondary-link) {
+  box-sizing: border-box;
+  width: 114px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  margin: 0 0 0 1px !important;
+  padding: 0 8px !important;
+  gap: 8px !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--dh-api-radius) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 13px;
+  line-height: 18px !important;
+  letter-spacing: normal !important;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+  font-weight: 500;
+}
+
+#workbench-primary-navigation .workbench-shell-agent-nav__link {
+  width: auto !important;
+  margin: 0 !important;
+  padding: 8px 10px !important;
+  gap: 6px !important;
+}
+
+#workbench-primary-navigation .workbench-shell-agent-nav__main {
+  gap: 9px !important;
+  width: 100%;
+}
+
+#workbench-primary-navigation :is(.workbench-shell-group-link, .workbench-shell-support-link, .workbench-shell-agent-nav__link, .workbench-shell-secondary-link):hover {
+  background: color-mix(in srgb, var(--nct-accent) 9%, transparent) !important;
+}
+
+#workbench-primary-navigation a[data-active="true"] {
+  background: color-mix(in srgb, var(--nct-accent) 13%, transparent) !important;
+  color: var(--nct-ink);
+}
+
+#workbench-primary-navigation .workbench-shell-group-label {
+  color: inherit !important;
+  font-size: 13px;
+  font-weight: 500 !important;
+  letter-spacing: normal !important;
+  line-height: 16px !important;
+}
+
+#workbench-primary-navigation [data-active="true"] .workbench-shell-group-label {
+  font-weight: 500;
+}
+
+#workbench-primary-navigation .workbench-shell-support-label {
+  font-weight: 500 !important;
+  letter-spacing: normal !important;
+}
+
+#workbench-primary-navigation .workbench-shell-support-unavailable,
+#workbench-primary-navigation .workbench-shell-support-availability {
+  color: var(--nct-muted) !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+}
+
+#workbench-primary-navigation :is(.workbench-shell-group-icon, .workbench-shell-support-icon, .workbench-shell-agent-nav__icon) {
+  color: var(--nct-muted);
+  font-size: 11px !important;
+}
+
+#workbench-primary-navigation .workbench-shell-group-icon {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+}
+
+#workbench-primary-navigation [data-active="true"] .workbench-shell-group-icon {
+  color: var(--nct-ink);
+}
+
+@media (max-width: 1180px) {
+  #workbench-primary-navigation :is(.workbench-shell-group-link, .workbench-shell-support-link, .workbench-shell-agent-nav__link, .workbench-shell-secondary-link) {
+    width: auto !important;
+    height: 44px !important;
+    min-height: 44px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #workbench-primary-navigation a {
+    transition: none !important;
+  }
+}

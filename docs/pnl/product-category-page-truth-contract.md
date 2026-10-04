@@ -73,9 +73,12 @@ Any edit that changes page meaning must trace through that full chain.
 - Do not add `qtd` or `year_to_report_month_end` to the main page selector without updating this contract, the closure checklist, and page-level tests.
 - Allowed scenario path: explicit `scenario_rate_pct`
 - Baseline FTP policy is report-year based: 2024 uses `2.00%`; 2025 uses `1.75%`; 2026 uses `1.60%`.
+- Formal detail and attribution must share the read-model rule-version check and report-year FTP policy. Attribution applies that policy independently to its current and comparison periods; an incompatible rule version fails closed, including when the comparison period is absent.
 - Analytical overlay is not the default interpretation of this page
 - Mock data must not masquerade as governed truth
 - `ytd` and `year_to_report_month_end` are natural-year views: PnL fields must sum monthly `monthly_pnl` from January through the requested report month. They must not add prior-month `ending_balance` values or switch to ending-balance cash. Scale-sensitive calculations use each included month’s monthly scale basis weighted by calendar days, and return `quality_flag=warning` when prior months in the year are unavailable for coverage evidence.
+- Ledger flow periods must be read from the workbook's accounting-period header. A full-year ledger cannot be treated as the December monthly flow merely because its filename ends in `YYYY12`; its monthly flow must be recovered from the verified preceding monthly ledgers, with missing or inconsistent periods rejected. Balance and average-balance fields retain their source meaning.
+- `qtd` requires coverage from the quarter's first month through the requested month. Missing months must return `quality_flag=warning`, consistently with the existing partial-YTD policy; the warning does not substitute invented source values.
 
 ## 7. Row Authority
 
@@ -143,9 +146,9 @@ This is a page-level field freeze for detail semantics. It is also the source fi
 | `result.available_views` | backend governed detail API view surface | enum string list | comes from backend payload | do not use as current main-page selector source |
 | `result.rows[].category_id` | governed product-category row identity | string id | scenario must preserve baseline row identity | do not infer from holdings or research buckets |
 | `result.rows[].side` | row side for asset/liability presentation | `asset` / `liability` | scenario must preserve row side | may drive display-only liability sign normalization |
-| `result.rows[].business_net_income` | row-level business net income contribution | page display uses two decimals in yi yuan | scenario may change value, not row identity | do not re-aggregate in frontend |
+| `result.rows[].business_net_income` | row-level business net income contribution | page display uses two decimals in yi yuan | scenario may change value, not row identity | preserve backend profit/loss sign; do not re-aggregate in frontend |
 | `result.asset_total.business_net_income` | asset-side total business net income | page display uses two decimals in yi yuan | scenario may change value through scenario payload | display backend total; do not recompute from rows |
-| `result.liability_total.business_net_income` | liability-side total business net income | page display uses two decimals in yi yuan | scenario may change value through scenario payload | display backend total; sign normalization is display-only |
+| `result.liability_total.business_net_income` | liability-side total business net income | page display uses two decimals in yi yuan | scenario may change value through scenario payload | display backend total and preserve its profit/loss sign |
 | `result.grand_total.business_net_income` | page headline/footer total | page display uses two decimals in yi yuan | scenario grand total wins only when scenario payload exists | display backend total; do not recompute asset + liability in frontend |
 | `result.scenario_rate_pct` | applied FTP scenario rate | percent value | null for formal baseline; populated for scenario payload | scenario display changes only after explicit apply |
 | `result_meta.basis` | payload basis | `formal` / `scenario` | formal baseline uses `formal`; scenario request uses `scenario` | surface as metadata; do not reinterpret |
@@ -156,6 +159,12 @@ First-stage prohibitions:
 - do not invent row-level detail `metric_id` numbers beyond active `MTR-PCP-004` through `MTR-PCP-012`;
   payload-section metrics `MTR-PCP-013` through `MTR-PCP-029` are governed separately below
 - do not treat liability sign normalization as backend truth
+- do not apply liability balance/cash/FTP display normalization to `cny_net`, `foreign_net`, or `business_net_income`; net income retains the backend sign in tables, cards, diagnostics, and scenario comparisons
+- percent-valued spread levels must be multiplied by 100 when the label is bp, consistently with spread changes
+- the interest-earning spread three-line chart must retain supplied report periods when a metric is missing, preserve valid values and true zero, and leave only the missing series value null; an entirely missing chart keeps its explicit empty state
+- the interest-earning asset / interest-bearing liability scale bar chart must include zero on its value axis so bar heights preserve scale comparisons
+- the interest-earning spread and scale charts must display the selected monthly / cumulative period basis, consistently with the first-screen spread readout
+- operating-action backtests described as formal must use formal monthly payloads for both the signal period and the validation period; selected FTP scenarios must not substitute historical inputs
 - do not use `available_views` to add first-screen controls
 - do not recompute `grand_total` in frontend
 - do not change row identity during scenario display
@@ -218,6 +227,7 @@ This section documents existing tested surfaces; it does not change endpoint pol
 This is a documentation freeze of existing tested behavior, not a new product approval.
 
 - `report_date` is carried from the selected/current row and stays read-only in the form.
+- The backend also rejects changes to an existing adjustment's `report_date` with HTTP 422, without appending an event; an unknown adjustment remains HTTP 404. Task reads reduce all versions of an adjustment before filtering by report month, so historical edits cannot leave an old-month amount active.
 - `operator`, `approval_status`, `account_code`, `currency`, `account_name`, `beginning_balance`, `ending_balance`, `monthly_pnl`, `daily_avg_balance`, and `annual_avg_balance` are the current editable draft fields.
 - `approval_status` controls revoke/restore availability only as already tested: approved -> revoke enabled, pending -> neither, rejected -> restore enabled.
 - Edit remains enabled for approved, pending, and rejected rows in the existing tests; do not infer this as final product policy for every edge case.
@@ -334,6 +344,9 @@ Before the page can be treated as stable truth, these must remain true:
 - partial YTD payloads are allowed, but must surface `result_meta.quality_flag=warning`
 - approved manual adjustments can change governed output through the same API path
 - scenario requests change scenario-owned fields without changing baseline row identity
+- differences, scenario sensitivities, and backtest decisions use unrounded API values; currency conversion and display rounding must not decide whether a change is positive or negative
+- a scenario first-screen summary labels scenario current values and formal comparison values individually; formal closure must not be presented as a scenario attribution result
+- currency-specific liability structure tables label `weighted_yield` as a composite cost rate; they do not present it as a governed currency-specific yield
 
 ## 13. Current Evidence
 

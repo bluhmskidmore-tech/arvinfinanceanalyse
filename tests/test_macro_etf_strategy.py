@@ -4,6 +4,7 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -13,6 +14,8 @@ from backend.app.core_finance.macro.macro_etf_strategy import (
     DEFAULT_MACRO_STATE,
     build_macro_etf_strategy_snapshot,
     compute_macro_score,
+    compute_total_position,
+    deep_merge,
 )
 from backend.app.governance.settings import get_settings
 from backend.app.services import macro_etf_strategy_service
@@ -62,6 +65,19 @@ def test_order_draft_uses_quotes_and_stays_manual_review_only() -> None:
     assert {order["side"] for order in draft["orders"]} == {"BUY"}
     assert draft["orders"][0]["shares"] == 34800
     assert all(order["notional"] <= DEFAULT_CONFIG["max_single_order_pct"] * draft["nav"] for order in draft["orders"])
+
+
+def test_total_position_event_scaling_does_not_breach_min_position() -> None:
+    """审计回归：修复前先 _clip 到 [min_position, max_position] 再乘
+    event_position_scaler，min_position=0.30 遇上 event_position_scaler=0.9
+    会得到 0.27，击穿声明下限。"""
+    config = deep_merge(DEFAULT_CONFIG, {"base_position": 0.30, "macro_sensitivity": 0.0})
+    as_of_date = date(2026, 7, 29)  # DEFAULT_CONFIG risk_events 中的事件日，触发事件缩放
+
+    position = compute_total_position(config, macro_score=0.0, as_of_date=as_of_date)
+
+    assert position >= config["min_position"]
+    assert position == pytest.approx(config["min_position"])
 
 
 def test_provenance_source_script_is_machine_independent_identifier() -> None:
@@ -211,8 +227,8 @@ def test_service_embeds_read_only_dual_frequency_without_changing_orders(
     assert result["data_status"]["dual_frequency_status"] == "degraded"
     assert result["data_status"]["status"] != "ready"
     assert envelope["result_meta"]["quality_flag"] == "warning"
-    assert envelope["result_meta"]["rule_version"] == "rv_macro_etf_strategy_observation_v2"
-    assert envelope["result_meta"]["cache_version"] == "cv_macro_etf_strategy_observation_v2"
+    assert envelope["result_meta"]["rule_version"] == "rv_macro_etf_strategy_observation_v3"
+    assert envelope["result_meta"]["cache_version"] == "cv_macro_etf_strategy_observation_v3"
     assert (
         envelope["result_meta"]["source_version"]
         == "sv_macro_etf_strategy_config_choice_history_v2"
@@ -431,7 +447,9 @@ def test_macro_etf_strategy_endpoint_returns_standard_envelope(monkeypatch, tmp_
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_etf_strategy_router)
-    client = TestClient(app)
+    # dev fallback 额外要求 loopback 客户端（P1 安全收紧）；TestClient 默认
+    # client host 是非 IP 的 "testclient"，显式设置为 127.0.0.1 以满足该判定。
+    client = TestClient(app, client=("127.0.0.1", 12345))
 
     response = client.get("/ui/market-data/macro-etf-strategy", params={"as_of_date": "2026-07-03"})
 

@@ -42,7 +42,7 @@ export function StockAnalysisFactorCandidatesCard({
     >
       <header className="stock-analysis-page__fs-card-head">
         <div className="stock-analysis-page__fs-card-head-main">
-          <h2>因子初筛候选</h2>
+          <h3>因子初筛候选</h3>
           <small
             className="stock-analysis-page__fs-factor-meta stock-analysis-page__tabular"
             title={model?.coverageLabel ?? undefined}
@@ -100,7 +100,8 @@ export function StockAnalysisFactorCandidatesCard({
                     <button
                       type="button"
                       className="stock-analysis-page__fs-factor-stock"
-                      aria-label={`查看${row.stock_name}（${row.stock_code}）详情`}
+                      data-testid={`stock-analysis-factor-open-${row.stock_code}`}
+                      title={`查看${row.stock_name}（${row.stock_code}）详情`}
                       onClick={() => onOpenDetail(row)}
                     >
                       <span>{row.stock_name}</span>

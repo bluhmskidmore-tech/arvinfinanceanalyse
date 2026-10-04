@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 
 import type { Numeric } from "../../../api/contracts";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
-import { BaseChart } from "../../../components/charts/BaseChart";
 import { type EChartsOption } from "../../../lib/echarts";
 import { EM_DASH } from "../../../utils/format";
 import { counterpartyTypeLabel, unsignedNumericDisplay } from "../utils/labels";
@@ -114,8 +115,7 @@ export function LiabilityCounterpartyBlock({
   const barOption: EChartsOption = useMemo(
     () =>
       nocturneChartTheme.createBarChartOption({
-        legend: { show: false },
-        grid: { left: 120, right: 24, top: 16, bottom: 16 },
+        grid: { left: 120, right: 24, top: 8 },
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "shadow" },
@@ -129,7 +129,9 @@ export function LiabilityCounterpartyBlock({
             return `${row.name}<br/>余额：${balanceDisplay}<br/>占比：${shareDisplay}<br/>加权负债成本：${weightedCostDisplay}<br/>类型：${counterpartyTypeLabel(row.type) || EM_DASH}`;
           },
         },
-        xAxis: { type: "value" },
+        // 主题给柱图 xAxis 预置 boundaryGap: true（类目轴语义）；横向柱图的 x 是数值轴，
+        // 布尔值会触发 ECharts 警告并被当作 [0, 0]，这里显式写等价的数值轴写法。
+        xAxis: { type: "value", boundaryGap: [0, 0] },
         yAxis: {
           type: "category",
           data: reversedTop10.map((row) => truncateName(row.name)),
@@ -143,7 +145,7 @@ export function LiabilityCounterpartyBlock({
               value: numericToYiNumeric(row.value)?.raw ?? null,
               row,
             })),
-            itemStyle: { color: BAR_COLOR, borderRadius: [0, 2, 2, 0] },
+            itemStyle: { color: BAR_COLOR },
           },
         ],
       }),
@@ -153,7 +155,6 @@ export function LiabilityCounterpartyBlock({
   const pieOption: EChartsOption = useMemo(
     () =>
       nocturneChartTheme.createBaseChartOption({
-        legend: { show: false },
         tooltip: {
           trigger: "item",
           formatter: (params: unknown) => {
@@ -189,50 +190,50 @@ export function LiabilityCounterpartyBlock({
     [donut, totalValue],
   );
 
+  /*
+   * 2026-09-02 迁入 ChartCard：Top10 横柱 hero 档（原 320），环形图 hero 档；四项权威读数
+   * 留在标题行动作区（窄列自动落到第二行），口径句进 footnote，行内错误保留红色语义放画布下方。
+   */
+  const cpStats = (
+    <div className="liability-cp-extra">
+      <span className="liability-cp-extra__line">
+        总规模：{numericToYiNumeric(totalValue)?.display ?? EM_DASH}
+      </span>
+      <span className="liability-cp-extra__line" data-testid="liability-cp-top10-share">
+        Top10 占比：{authoritativeTop10Share?.display ?? EM_DASH}
+      </span>
+      <span className="liability-cp-extra__line" data-testid="liability-cp-hhi">
+        HHI: {authoritativeHhi?.display ?? EM_DASH}
+      </span>
+      <span className="liability-cp-extra__line" data-testid="liability-cp-population">
+        样本覆盖：{populationSummary(populationCount, isTruncated)}
+      </span>
+    </div>
+  );
+
   return (
     <div className="liability-analytics-page__grid liability-analytics-page__grid--cp">
-      <div className="liability-panel">
-        <div className="liability-panel__head">
-          <h3 className="liability-panel__title">{title}</h3>
-          <div className="liability-cp-extra">
-            <span className="liability-cp-extra__line">
-              总规模：{numericToYiNumeric(totalValue)?.display ?? EM_DASH}
-            </span>
-            <span className="liability-cp-extra__line" data-testid="liability-cp-top10-share">
-              Top10 占比：{authoritativeTop10Share?.display ?? EM_DASH}
-            </span>
-            <span className="liability-cp-extra__line" data-testid="liability-cp-hhi">
-              HHI: {authoritativeHhi?.display ?? EM_DASH}
-            </span>
-            <span className="liability-cp-extra__line" data-testid="liability-cp-population">
-              样本覆盖：{populationSummary(populationCount, isTruncated)}
-            </span>
-          </div>
-        </div>
-        <p className="liability-caption">{subtitle}</p>
+      <ChartCard
+        title={title}
+        unit="亿元"
+        height={CHART_CARD_HEIGHTS.hero}
+        legend="none"
+        option={reversedTop10.length === 0 ? null : barOption}
+        state={loading ? "loading" : undefined}
+        actions={cpStats}
+        footnote={subtitle}
+      >
         {errorText ? <p className="liability-inline-error">{errorText}</p> : null}
-        <div className="liability-chart-frame liability-chart-frame--bar">
-          {loading ? (
-            <div className="liability-chart-loading">读取中…</div>
-          ) : (
-            <BaseChart option={barOption} height={320} />
-          )}
-        </div>
-      </div>
-      <div className="liability-panel">
-        <h3 className="liability-panel__title">机构类型结构</h3>
-        <p className="liability-caption">银行 vs 非银行（稳定性视角）。</p>
-        <div className="liability-chart-frame liability-chart-frame--pie">
-          {loading ? (
-            <div className="liability-chart-loading">读取中…</div>
-          ) : (
-            <BaseChart option={pieOption} height={280} />
-          )}
-        </div>
-        <p className="liability-caption">
-          银行占比越高，通常资金稳定性更强；非银行占比上升需关注期限错配与流动性压力。
-        </p>
-      </div>
+      </ChartCard>
+      <ChartCard
+        title="机构类型结构"
+        question="银行 vs 非银行（稳定性视角）"
+        height={CHART_CARD_HEIGHTS.hero}
+        legendRows={1}
+        option={donut.length === 0 ? null : pieOption}
+        state={loading ? "loading" : undefined}
+        footnote="银行占比越高，通常资金稳定性更强；非银行占比上升需关注期限错配与流动性压力。"
+      />
     </div>
   );
 }

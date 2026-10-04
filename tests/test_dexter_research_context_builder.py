@@ -398,6 +398,29 @@ def test_missing_research_context_records_limitations_without_tables(tmp_path):
     assert "DuckDB database is not available" in context["limitations"][0]
 
 
+def test_research_context_budget_drops_full_keys_when_rows_are_not_enough():
+    context = {
+        "domain": "stock",
+        "as_of_date": "2026-04-29",
+        "tables_used": ["choice_stock_daily_observation"],
+        "filters_applied": {"research_domain": "stock", "stock_code": "000001.SZ"},
+        "sql_executed": [],
+        "evidence_rows": 1,
+        "quality_flag": "ok",
+        "limitations": [],
+        "stock": {"daily_observation": {"payload": "z" * 40_000}},
+        "macro": {},
+    }
+
+    from backend.app.services import dexter_research_context_builder as builder
+
+    builder._enforce_context_budget(context)
+
+    assert "daily_observation" not in context["stock"]
+    assert builder._serialized_context_chars(context) <= builder.MAX_CONTEXT_SERIALIZED_CHARS
+    assert any("full-key drops" in item for item in context["limitations"])
+
+
 def test_stock_research_context_normalizes_tushare_amount_and_volume_units(tmp_path):
     duckdb_path = tmp_path / "mixed-units.duckdb"
     conn = _connect(duckdb_path)

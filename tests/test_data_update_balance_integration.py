@@ -17,6 +17,7 @@ from backend.app.services import data_update_service
 from backend.app.tasks import balance_analysis_materialize, data_update_center
 from backend.app.tasks import formal_balance_pipeline
 from tests.test_balance_analysis_materialize_flow import _seed_snapshot_and_fx_tables
+from tests.test_snapshot_materialize_flow import _write_synthetic_snapshot_inputs
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.materialize]
@@ -81,9 +82,8 @@ def test_balance_daily_request_materializes_same_date_and_serves_amounts(
             [REPORT_DATE],
         ).fetchone()[0] == Decimal("7.2")
 
-    for name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        source_path = input_dir / name
-        source_path.write_bytes(b"synthetic source boundary; snapshots are preloaded")
+    _write_synthetic_snapshot_inputs(input_dir, REPORT_DATE)
+    for source_path in input_dir.glob("*.xls"):
         settled = time.time() - 120
         os.utime(source_path, (settled, settled))
 
@@ -98,8 +98,9 @@ def test_balance_daily_request_materializes_same_date_and_serves_amounts(
             user_id="daily-operator", role=None, resource=resource, action=action
         )
 
-    # Only external file/scheduler boundaries are replaced. The real pipeline
-    # still calls formal balance, bond analytics and risk materialization.
+    # Valid synthetic XLS inputs exercise the content guard. The downstream
+    # ingest/snapshot boundaries retain the preloaded two-position fixture;
+    # formal balance, bond analytics and risk materialization stay real.
     source_calls: list[tuple[str, str | None]] = []
 
     def supplied_source(**kwargs):

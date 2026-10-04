@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from backend.app.schemas.bond_analytics import (
     AccountingClassAuditItem,
@@ -27,6 +28,14 @@ from backend.app.schemas.common_numeric import Numeric
 
 
 class TestReturnDecompositionNumericMigration:
+    def test_large_decimal_amount_serializes_lossless_raw_text(self) -> None:
+        raw = Decimal("12345678901234567890.12345678")
+        item = AssetClassBreakdown(asset_class="rates", carry=raw)
+
+        dumped = item.model_dump(mode="json")
+
+        assert dumped["carry"]["raw_text"] == str(raw)
+
     def test_asset_class_breakdown_accepts_legacy_str(self) -> None:
         item = AssetClassBreakdown(
             asset_class="rates",

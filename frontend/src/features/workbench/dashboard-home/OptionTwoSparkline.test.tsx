@@ -4,9 +4,15 @@ import { describe, expect, it } from "vitest";
 import { OptionTwoSparkline } from "./OptionTwoSparkline";
 
 function pathOf(container: HTMLElement): string {
-  const path = container.querySelector("path");
+  const path = container.querySelector('[data-spark-line="true"]');
   if (!path) throw new Error("expected sparkline path");
   return path.getAttribute("d") ?? "";
+}
+
+function dotX(dot: Element | null): number {
+  const match = /^M([\d.]+) /.exec(dot?.getAttribute("d") ?? "");
+  if (!match) throw new Error("expected a dot path with a leading move-to");
+  return Number(match[1]);
 }
 
 describe("OptionTwoSparkline", () => {
@@ -54,16 +60,16 @@ describe("OptionTwoSparkline", () => {
     const { container } = render(
       <OptionTwoSparkline values={[1, 2, null]} endDot />,
     );
-    const circle = container.querySelector("circle");
-    expect(circle).not.toBeNull();
-    expect(Number(circle?.getAttribute("cx"))).toBeCloseTo(50, 1);
+    const endDot = container.querySelector('[data-end-dot="true"]');
+    expect(endDot).not.toBeNull();
+    expect(dotX(endDot)).toBeCloseTo(50, 1);
   });
 
   it("renders a dot per valid point when pointDots is enabled", () => {
     const { container } = render(
       <OptionTwoSparkline values={[1, null, 3, 4]} pointDots />,
     );
-    const dots = container.querySelectorAll('circle[data-point-dot="true"]');
+    const dots = container.querySelectorAll('[data-point-dot="true"]');
     expect(dots).toHaveLength(3);
   });
 
@@ -71,7 +77,28 @@ describe("OptionTwoSparkline", () => {
     const { container } = render(
       <OptionTwoSparkline values={[1, 2, 3]} pointDots endDot />,
     );
-    expect(container.querySelectorAll('circle[data-point-dot="true"]')).toHaveLength(3);
-    expect(container.querySelectorAll('circle[data-end-dot="true"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-point-dot="true"]')).toHaveLength(3);
+    expect(container.querySelectorAll('[data-end-dot="true"]')).toHaveLength(1);
+  });
+
+  it("draws dots with non-scaling round caps so they stay circular when stretched", () => {
+    const { container } = render(
+      <OptionTwoSparkline values={[1, 2, 3]} pointDots endDot />,
+    );
+
+    // preserveAspectRatio="none" 会把用户坐标里的半径压成椭圆，点必须靠
+    // 非缩放描边的圆端点成形，不能回退到 <circle r="...">。
+    expect(container.querySelectorAll("circle")).toHaveLength(0);
+    for (const dot of container.querySelectorAll(
+      '[data-point-dot="true"], [data-end-dot="true"]',
+    )) {
+      expect(dot.getAttribute("stroke-linecap")).toBe("round");
+      expect(dot.getAttribute("vector-effect")).toBe("non-scaling-stroke");
+      const d = dot.getAttribute("d") ?? "";
+      const [, moveX, moveY, lineX, lineY] =
+        /^M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)$/.exec(d) ?? [];
+      expect(moveX).toBe(lineX);
+      expect(moveY).toBe(lineY);
+    }
   });
 });

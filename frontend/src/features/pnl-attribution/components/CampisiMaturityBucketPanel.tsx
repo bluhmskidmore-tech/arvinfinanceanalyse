@@ -1,6 +1,8 @@
 import type { CampisiMaturityBucketsPayload } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
+import { EM_DASH } from "../../../utils/format";
+import { buildCampisiAvailabilityNotices } from "./campisiAttributionPanelSupport";
 import "./campisiPanels.css";
 
 // 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下：
@@ -19,6 +21,8 @@ type Props = {
 
 export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
   const rows = Object.entries(data?.buckets ?? {});
+  const excluded = data?.effect_availability?.position_change?.status === "unavailable";
+  const amount = (value: number) => excluded ? EM_DASH : toYi(value);
 
   return (
     <PageDataSection title="Campisi 到期桶拆解" state={state} onRetry={onRetry}>
@@ -26,6 +30,9 @@ export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
         <p className="campisi-panel__intro">
           按剩余期限桶查看票息、国债曲线、利差和选券效应的分布，便于和久期结构联读。
         </p>
+        {buildCampisiAvailabilityNotices(data?.effect_availability).map((notice) => (
+          <p key={notice.key} className="campisi-panel__note">{notice.text}</p>
+        ))}
         <table className="campisi-table">
           <thead>
             <tr>
@@ -42,19 +49,19 @@ export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
               <tr key={bucket}>
                 <td>{bucket}</td>
                 <td className="campisi-table__numeric-cell">
-                  {toYi(metrics.income_return)}
+                  {amount(metrics.income_return)}
                 </td>
                 <td className="campisi-table__numeric-cell">
-                  {toYi(metrics.treasury_effect)}
+                  {amount(metrics.treasury_effect)}
                 </td>
                 <td className="campisi-table__numeric-cell">
-                  {toYi(metrics.spread_effect)}
+                  {amount(metrics.spread_effect)}
                 </td>
                 <td className="campisi-table__numeric-cell">
-                  {toYi(metrics.selection_effect)}
+                  {amount(metrics.selection_effect)}
                 </td>
                 <td className="campisi-table__numeric-cell">
-                  {toYi(metrics.total_return)}
+                  {amount(metrics.total_return)}
                 </td>
               </tr>
             ))}

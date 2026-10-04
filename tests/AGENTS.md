@@ -2,61 +2,32 @@
 
 ## Default Test Boundary
 
-Tests under `tests/` and `backend/tests/` default to validating the repo-wide `Phase 2` formal-compute mainline.
+For `tests/` and `backend/tests/`, use DOCUMENT_AUTHORITY.md for [scope authorization](../docs/DOCUMENT_AUTHORITY.md#阶段边界规则) and [current surface boundaries](../docs/DOCUMENT_AUTHORITY.md#current-surface-boundaries). Development scope and CI selection are separate. Markers classify tests; neither existing suites nor green results establish formalization.
 
-### Allowed default scope (no extra marker required)
+Open cube-query and liability-analytics endpoints retain their access, response, and basis disclosure contracts. Do not restore a historical blanket 503 or reclassify their existing suites merely because the endpoints are open.
 
-- formal balance
-- formal PnL
-- formal FX
-- formal yield curve
-- PnL bridge
-- risk tensor
-- core bond-analytics formal read surfaces
-- outward `result_meta` / `basis` / lineage semantics for the above
+## Test selection
 
-### Scoped allowance inside an otherwise excluded surface
+The following entry points were checked on 2026-09-20. Read their current selectors before claiming gate coverage; configured selection alone is not a successful execution record.
 
-These are not part of the formal-compute mainline, but existing tests are allowed as landed-surface regression guards:
-
-- **Executive E1 stable surfaces** only (per `docs/V3_CUTOFF_EXIT_CRITERIA.md`):
-  - golden/release contracts for GS-EXEC-OVERVIEW-A / GS-EXEC-PNL-ATTR-A / GS-EXEC-SUMMARY-A
-  - included E1 route contracts and `formal_use_allowed=false` semantics
-  - reserved/excluded executive routes that must stay 503 fail-closed
-- **Fail-closed / contract-only tests** on excluded surfaces (404/503 guards, schema/envelope contracts, disclosure drift, governance compaction) when they do not assert new business behavior beyond the currently landed surface.
-
-All other behavior on excluded surfaces requires an explicit scoped marker.
-
-## Excluded surfaces — inventory reality (2026-08 audit)
-
-The repo contains substantial legacy suites on excluded surfaces. They exist; they are not reinterpreted as Phase 2 formalization.
-
-| Prefix / surface | Files (`tests/`) | Collected cases | Default CI |
-| --- | ---: | ---: | --- |
-| `agent*` (+ dexter/hermes agent) | 27 | 395 | excluded |
-| `livermore*` / market-data livermore | 32 | 431 | excluded |
-| `macro_toolkit*` | 16 | 287 | excluded |
-| `qdb_gl*` | 6 | 91 | excluded |
-| `liability_analytics*` | 6 | 56 | excluded |
-| `source_preview*` | 5 | 70 | excluded |
-| `choice_news*` | 5 | 53 | excluded |
-| `executive*` (+ 1 backend reserved test) | 12 | 151 | partially scoped |
-| `macro_vendor*` / non-livermore `market_data*` | 5 | 43 | excluded |
-| frontend excluded-surface tests | ~150+ files | (vitest; not pytest) | excluded |
-
-Total excluded-surface pytest inventory: about 1,577 cases. This inventory is regression debt, not evidence that these surfaces are repo-wide formalized.
+- **Bounded backend release gate:** [`scripts/backend_release_suite.py`](../scripts/backend_release_suite.py) owns the explicit file lists and the default `not excluded_surface_acceptance` filter. Mainline classification alone does not add a file to this gate.
+- **Other PR checks:** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) also has a `Run agent harness tests` step with its own explicit list. Agent tests are not categorically excluded from PR CI.
+- **Frontend CI:** the workflow runs `npm test`; [`frontend/package.json`](../frontend/package.json), [`vitest-safe.mjs`](../frontend/scripts/vitest-safe.mjs), and [`vitest.config.ts`](../frontend/vitest.config.ts) define execution. There is no business-surface exclusion in the current Vitest selector.
+- **Full backend CI:** the workflow's `backend-full-pytest` job runs on schedule and pushes to `main`, using full pytest collection without the bounded gate's marker filter. This does not promote excluded surfaces.
+- **Local task verification:** choose the smallest relevant files and, where applicable, markers. Interpreter and command guidance lives in [`tests/CLAUDE.md`](CLAUDE.md); full CI collection is not a requirement for every task.
 
 ## Three enforcement tiers
 
-1. **Default mainline (allowed).** Phase 2 formal-compute tests run in default PR/local loops without special markers.
+1. **Default mainline (allowed).** Formal-compute tests and their `result_meta` / `basis` / lineage contracts need no excluded-surface marker; execution depends on the selected files and gate.
 2. **Legacy regression protection on excluded surfaces (allowed, frozen).**
    - Existing fail-closed, schema/envelope, disclosure-drift, governance, and E1 executive guard tests may remain.
+   - Preserve E1 golden/release contracts (GS-EXEC-OVERVIEW-A / GS-EXEC-PNL-ATTR-A / GS-EXEC-SUMMARY-A), `formal_use_allowed=false`, and reserved executive 503 guards.
    - They carry `@pytest.mark.excluded_surface_regression` plus one surface tag.
    - Do not add new cases unless the task explicitly enters that excluded surface and the test proves fail-closed behavior, contract stability, or non-expanding regression of already-landed behavior.
 3. **Excluded-surface feature acceptance (restricted).**
    - Tests that enable excluded features (`MOSS_AGENT_ENABLED=true`, source-preview HTTP, choice-news routes, livermore/materialize pipelines, qdb_gl analytical compute, macro_toolkit script/ETL expansion, liability compat compute expansion) are not default-boundary work.
-   - Existing suites are grandfathered only if marked; new acceptance tests are forbidden unless the surface receives an explicit repo-wide boundary promotion in governance docs.
-   - Default selection should use `-m "not excluded_surface_acceptance"`.
+   - New acceptance tests require task authorization or an applicable scoped override. An existing user instruction covering the workflow satisfies task authorization; do not ask again solely because the surface is excluded. Keep `excluded_surface_acceptance` plus the surface tag; scoped authorization does not imply repo-wide promotion.
+   - Do not expand default gates as a side effect of scoped acceptance work. The bounded release gate excludes acceptance by default; the separate full-CI selector above remains unchanged.
 
 ## Required markers
 
@@ -68,22 +39,10 @@ Registered in `pytest.ini`:
 
 Module-level `pytestmark` is preferred over per-test duplication.
 
-## Directory convention (recommended follow-up)
+## Directory convention
 
-Grandfathered excluded-surface suites should migrate to `tests/excluded_surfaces/<surface>/`. Default pytest `testpaths` stays `tests/` + `backend/tests/`, but release/PR fast loops should exclude that directory unless the task scope explicitly includes the surface.
-
-## Explicitly excluded from default scope (unchanged intent)
-
-- `executive.*` governed rollout beyond landed E1 stable surfaces and reserved-route fail-closed guards
-- Agent MVP / real `/api/agent/query` production enablement
-- `source_preview` / `macro-data` / `choice-news` / `market-data` preview-vendor-analytical expansion
-- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块的范围扩张
-- broad frontend rollout on excluded pages/workflows
-
-Historical scoped overrides remain relevant for legacy streams, but must not reinterpret excluded surfaces as Phase 2 formal-compute mainline.
+Keep existing test paths unless the task requires a move. If suites move to `tests/excluded_surfaces/<surface>/`, update their explicit selectors and references in the same change; directory placement alone does not exclude them. Current pytest `testpaths` remains `tests/` + `backend/tests/`.
 
 ## Authoring rules
 
-- Respect this file before adding tests.
 - If a change touches an excluded surface, run only the smallest marked subset for that surface; do not widen default gates.
-- Never use excluded-surface green tests as evidence of formalization unless matching governance docs promote the surface.

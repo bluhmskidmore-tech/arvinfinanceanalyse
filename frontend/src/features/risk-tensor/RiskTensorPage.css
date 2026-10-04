@@ -32,7 +32,6 @@
   --moss-color-success-600: var(--dh-api-green);
   --moss-color-text-muted: var(--dh-api-soft);
   --moss-color-text-primary: var(--dh-api-ink);
-  --moss-color-warning-200: var(--dh-api-line);
   --moss-color-warning-300: var(--dh-api-line-soft);
   --moss-color-warning-50: var(--dh-api-amber-soft);
   --moss-color-warning-600: var(--dh-api-amber);
@@ -53,9 +52,6 @@
  */
 .risk-tensor-page .formal-result-meta-panel {
   --formal-result-meta-border-soft: var(--dh-api-line-soft);
-  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
-  --formal-meta-badge-ok-ink: var(--dh-api-green);
-  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
   --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
   --formal-meta-badge-warn-ink: var(--dh-api-amber);
   --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
@@ -81,6 +77,40 @@
   margin-bottom: 18px;
 }
 
+.risk-tensor-disclosure {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.risk-tensor-disclosure > summary {
+  cursor: pointer;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.risk-tensor-disclosure > summary:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 4px;
+}
+
+.risk-tensor-disclosure[open] > summary {
+  margin-bottom: 12px;
+}
+
+.risk-tensor-disclosure:not([open]) {
+  display: block;
+}
+
+.risk-tensor-brief__badges:empty,
+.risk-tensor-report-date-status:empty {
+  display: none;
+}
+
 .risk-tensor-report-date-select {
   display: grid;
   gap: 5px;
@@ -90,18 +120,19 @@
 .risk-tensor-report-date-select span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-report-date-select select {
-  min-height: 40px;
-  padding: 8px 34px 8px 11px;
+  min-height: 36px;
+  padding: 7px 34px 7px 11px;
   border: 1px solid var(--moss-color-border-default);
-  border-radius: var(--ib-radius, 2px);
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-primary);
-  font-size: 14px;
-  font-weight: 650;
+  font-family: var(--moss-font-tabular);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .risk-tensor-error-context {
@@ -130,7 +161,7 @@
   display: grid;
   gap: 8px;
   padding: 14px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-left: 4px solid var(--moss-color-warning-600);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
@@ -155,7 +186,7 @@
   gap: 7px;
   margin: 0 0 18px;
   padding: 12px 14px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-left: 4px solid var(--moss-color-warning-600);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
@@ -204,14 +235,14 @@
 .risk-tensor-brief__tile span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-brief__lead h2 {
   margin: 0;
   color: var(--moss-color-text-primary);
   font-size: 20px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0;
 }
@@ -263,7 +294,7 @@
   color: var(--moss-color-danger-600);
   cursor: pointer;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
   text-align: left;
 }
@@ -291,7 +322,7 @@
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-quality-detail__evidence {
@@ -305,12 +336,12 @@
 .risk-tensor-quality-detail__evidence span {
   min-width: 0;
   padding: 5px 8px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -326,7 +357,7 @@
   min-width: 0;
   margin: 0 0 10px;
   padding: 10px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
 }
@@ -340,12 +371,12 @@
   width: fit-content;
   max-width: 100%;
   padding: 4px 8px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-600);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -367,7 +398,7 @@
 .risk-tensor-quality-detail__trace li span {
   display: block;
   color: var(--moss-color-warning-600);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .risk-tensor-quality-detail__trace li p {
@@ -384,13 +415,13 @@
 
 .risk-tensor-quality-detail__trace-action {
   padding: 4px 9px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-600);
   cursor: pointer;
   font: inherit;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -409,7 +440,7 @@
   margin-top: 5px;
   color: var(--moss-color-success-600);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .risk-tensor-quality-detail__manual-copy {
@@ -420,11 +451,12 @@
   margin: 7px 0 0;
   padding: 8px;
   overflow: auto;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-muted);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -471,12 +503,12 @@
 .risk-tensor-quality-detail__evidence-checklist li span {
   display: inline;
   color: inherit;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-quality-detail__evidence-checklist li b {
   color: var(--moss-color-success-600);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .risk-tensor-quality-detail__evidence-checklist li[data-status="missing"] b {
@@ -495,7 +527,7 @@
   gap: 6px;
   margin-top: 7px;
   padding: 8px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
 }
@@ -533,13 +565,13 @@
 }
 
 .risk-tensor-quality-detail__payload-checklist li span {
-  font-weight: 700;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .risk-tensor-quality-detail__payload-checklist li b {
   color: var(--moss-color-warning-600);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .risk-tensor-quality-detail__blocked {
@@ -568,7 +600,7 @@
 }
 
 .risk-tensor-page__hero {
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 .risk-tensor-page__hero h1 {
@@ -593,7 +625,7 @@
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .risk-tensor-report-date-status {
@@ -625,33 +657,12 @@
   max-width: 100%;
 }
 
-.risk-tensor-radar-card {
-  height: 100%;
-  min-height: 400px;
-  padding: 20px;
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
-  box-shadow: var(--ib-shadow);
-}
-
-.risk-tensor-radar-card__title {
-  margin-bottom: 8px;
-  color: var(--ib-ink);
-  font-size: 15px;
-  font-weight: 600;
-}
-
 .risk-tensor-chart {
   width: 100%;
 }
 
-.risk-tensor-chart--radar {
-  height: 400px;
-}
-
 .risk-tensor-chart--krd {
-  height: 320px;
+  height: 280px;
 }
 
 .risk-tensor-tenor-drill {
@@ -696,7 +707,7 @@
 .risk-tensor-chip-button {
   padding: 8px 12px;
   border: 1px solid var(--ib-hairline);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--ib-surface);
   color: var(--ib-ink);
   cursor: pointer;
@@ -707,7 +718,7 @@
 .risk-tensor-chip-button[aria-pressed="true"] {
   border-color: var(--ib-accent);
   background: var(--ib-accent-surface);
-  color: var(--ib-accent);
+  color: var(--dh-api-ink);
 }
 
 .risk-tensor-chip-button:focus-visible {
@@ -743,21 +754,18 @@
   color: var(--ib-ink-secondary);
 }
 
+.risk-tensor-page [aria-label="risk tensor warnings"] {
+  color: var(--dh-api-amber);
+}
+
 .risk-tensor-brief__tiles {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
 }
 
-.risk-tensor-section-heading {
-  margin: 24px 0 12px;
-  color: var(--ib-ink);
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.risk-tensor-section-heading--flush {
-  margin-top: 0;
+.risk-tensor-section-head-gap {
+  margin-top: 24px;
 }
 
 .risk-tensor-summary-grid {
@@ -784,7 +792,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -801,12 +809,12 @@
 .risk-tensor-radar-quality {
   margin: 0 0 10px;
   padding: 8px 10px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-600);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -814,12 +822,12 @@
 .risk-tensor-tenor-drill__quality {
   margin-top: 8px;
   padding: 8px 10px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-600);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -854,19 +862,23 @@ button.risk-tensor-brief__tile:focus-visible {
   outline-offset: 2px;
 }
 
+.risk-tensor-brief__tile[data-tone="warning"],
+.risk-tensor-brief__tile[data-tone="danger"],
+.risk-tensor-brief__tile[data-tone="ok"] {
+  background: var(--moss-color-card-bg);
+  border-left-width: 3px;
+}
+
 .risk-tensor-brief__tile[data-tone="warning"] {
-  border-color: var(--moss-color-warning-200);
-  background: var(--moss-color-warning-50);
+  border-left-color: var(--dh-api-amber);
 }
 
 .risk-tensor-brief__tile[data-tone="danger"] {
-  border-color: var(--moss-color-danger-200);
-  background: var(--moss-color-danger-50);
+  border-left-color: var(--dh-api-red);
 }
 
 .risk-tensor-brief__tile[data-tone="ok"] {
-  border-color: var(--moss-color-success-200);
-  background: var(--moss-color-success-50);
+  border-left-color: var(--dh-api-green);
 }
 
 .risk-tensor-brief__tile strong {
@@ -913,14 +925,14 @@ button.risk-tensor-brief__tile:focus-visible {
 .risk-tensor-duration-scope__header span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-duration-scope__header h2 {
   margin: 0;
   color: var(--moss-color-text-primary);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -961,14 +973,14 @@ button.risk-tensor-brief__tile:focus-visible {
 .risk-tensor-prior-change__metric-label {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-prior-change__header h2 {
   margin: 4px 0 0;
   color: var(--moss-color-text-primary);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -979,7 +991,7 @@ button.risk-tensor-brief__tile:focus-visible {
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-prior-change__summary {
@@ -1074,7 +1086,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
   margin-bottom: 5px;
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -1083,7 +1095,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
   margin: 0;
   color: var(--moss-color-text-primary);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -1092,7 +1104,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
   gap: 2px;
   min-width: 124px;
   padding: 8px 10px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-text-muted);
@@ -1134,7 +1146,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
 .risk-tensor-dv01-controls__scenario span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-dv01-controls__primary strong,
@@ -1189,7 +1201,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
 .risk-tensor-dv01-controls__empty span {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-dv01-controls__empty p {
@@ -1213,7 +1225,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
 .risk-tensor-dv01-controls__action-card span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-dv01-controls__judgement p {
@@ -1288,14 +1300,14 @@ button.risk-tensor-prior-change__metric:focus-visible {
 .risk-tensor-scenario-stress__card-head span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .risk-tensor-scenario-stress__header h2 {
   margin: 4px 0 0;
   color: var(--moss-color-text-primary);
   font-size: 18px;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -1309,12 +1321,12 @@ button.risk-tensor-prior-change__metric:focus-visible {
 
 .risk-tensor-scenario-stress__header > strong {
   padding: 7px 10px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-600);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .risk-tensor-scenario-stress__summary,
@@ -1361,7 +1373,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
 .risk-tensor-scenario-stress__warning,
 .risk-tensor-scenario-stress__empty {
   padding: 10px 12px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid var(--dh-api-line);
   border-left: 4px solid var(--moss-color-warning-600);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
@@ -1373,7 +1385,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
 .risk-tensor-scenario-stress__empty span {
   color: var(--moss-color-warning-600);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .risk-tensor-scenario-stress__grid {
@@ -1388,11 +1400,11 @@ button.risk-tensor-prior-change__metric:focus-visible {
 
 .risk-tensor-scenario-stress__card[data-tone="danger"] {
   border-color: var(--moss-color-danger-200);
-  background: var(--moss-color-danger-50);
+  background: color-mix(in srgb, var(--dh-api-red) 8%, var(--dh-api-panel));
 }
 
 .risk-tensor-scenario-stress__card[data-tone="warning"] {
-  border-color: var(--moss-color-warning-200);
+  border-color: var(--dh-api-line);
   background: var(--moss-color-warning-50);
 }
 
@@ -1411,14 +1423,14 @@ button.risk-tensor-prior-change__metric:focus-visible {
 .risk-tensor-scenario-stress__card-head strong {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .risk-tensor-scenario-stress__card h3 {
   margin: 0;
   color: var(--moss-color-text-primary);
   font-size: 15px;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0;
   line-height: 1.35;
 }
@@ -1426,7 +1438,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
 .risk-tensor-scenario-stress__impact {
   color: var(--moss-color-text-primary);
   font-size: 18px;
-  font-weight: 760;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }

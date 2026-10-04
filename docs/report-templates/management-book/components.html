@@ -1,0 +1,323 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="utf-8">
+<title>MOSS 管理层决策册 · 合成组件示例</title>
+<link rel="stylesheet" href="template.css">
+<link rel="stylesheet" href="brand.css">
+<!--
+  components.html — 6 类标准页骨架。
+  用法：生成报告时按页型复制对应 <section>，替换占位内容；正式产出须将两个 CSS 内联进 <style>。
+  警告：本文件所有数字均为排版占位示例（部分取自历史报告、部分虚构），
+  不得直接复用进正式报告；每个数字必须替换为当期经核对的数据。
+  每页容量上限（超出必须拆页，不得缩小字号）：
+    封面页   核心结论 1 条 + KPI ≤3 个
+    摘要页   结论 ≤4 条 + 立场表 ≤6 行
+    决策页   决策卡 ≤3 张 + 仪表盘 ≤4 格
+    图表页   主图 1 幅 + 右栏注释 ≤4 条
+    表格页   单表 ≤14 行
+    监管页   事实/判断/建议三栏，每栏 ≤4 条
+-->
+</head>
+<body>
+
+<!-- ================= 1. 封面页 ================= -->
+<section class="page cover">
+  <div class="chrome">
+    <span class="l">01 / MANAGEMENT BOOK</span>
+    <span class="conf">合成示例 · 可公开</span>
+    <span aria-label="青岛银行" class="bank-brand" role="img"><span aria-hidden="true" class="bank-logo bank-logo-light-bg"></span><span aria-hidden="true" class="bank-logo bank-logo-dark-bg"></span></span>
+  </div>
+  <div class="cover-grid">
+    <div class="cover-title">
+      <div class="kicker">2026 CHINA MACRO &amp; RATES</div>
+      <h1>2026 中国宏观与利率策略</h1>
+      <h2>管理层决策主册</h2>
+      <div class="desc">宏观环境 · 收益率曲线 · 本行风险容量 · 损益执行 · 监管动向</div>
+      <div class="cover-hv">
+        <div class="tag">核心结论</div>
+        <p>弱内需和较宽松的资金环境仍支持短中端配置；新增久期以资金成本、DV01 和损益承受能力为前提。</p>
+      </div>
+    </div>
+    <div class="cover-kpis">
+      <div class="ckpi"><div class="lb">10Y 国债 · 08-07</div><div class="v">1.71<span class="u">%</span></div><div class="note">30Y 2.18% · 10s30s 47bp</div></div>
+      <div class="ckpi"><div class="lb">7月 制造业 PMI</div><div class="v">49.2</div><div class="note">新订单 48.5</div></div>
+      <div class="ckpi"><div class="lb">7月末 管理资产</div><div class="v">4,000<span class="u">亿</span></div><div class="note">合成环比 −20.00 亿</div></div>
+    </div>
+  </div>
+  <div class="foot">
+    <span class="disclaimer"><span class="department-mark">模板示例，数字均为合成排版占位，不代表实际业务。</span></span>
+    <span class="report-date">REPORT EXAMPLE</span>
+    <span class="pn">01</span>
+  </div>
+</section>
+
+<!-- ================= 2. 摘要页 ================= -->
+<section class="page">
+  <div class="chrome">
+    <span class="l">02 / EXECUTIVE</span>
+    <span class="conf">合成示例 · 可公开</span>
+    <span aria-label="青岛银行" class="bank-brand" role="img"><span aria-hidden="true" class="bank-logo bank-logo-light-bg"></span><span aria-hidden="true" class="bank-logo bank-logo-dark-bg"></span></span>
+  </div>
+  <div class="headline">
+    <h1>维持短中端配置，暂不增加超长端</h1>
+    <div class="deck">合成组合DV01环比下降4.00%；收益率位置、资本成本与损益承受力限制可执行仓位。</div>
+  </div>
+  <div class="body layout-exec">
+    <div>
+      <div class="sec-label">四项结论<span class="en">MACRO → CURVE → CAPACITY → RETURN</span></div>
+      <div class="es-item"><div class="no">01</div><div>
+        <h3>宏观：内需仍弱，长端下行空间受限</h3>
+        <p>7月制造业 PMI 49.2，新订单 48.5，内需与信用仍偏弱。低利率环境延续，但长端还受供给、价格和政策节奏约束。</p>
+        <div class="src">资料来源：人工合成排版数据；报告日为示例。</div>
+      </div></div>
+      <div class="es-item"><div class="no">02</div><div>
+        <h3>曲线：短中端需求稳定，超长端以交易盘为主</h3>
+        <p>7月保险和基金增配超长债，银行净卖出规模下降但未转向。3–5年仍是主要配置期限，30年暂不增加。</p>
+        <div class="src">资料来源：人工合成排版数据；报告日为示例。</div>
+      </div></div>
+      <div class="es-item"><div class="no">03</div><div>
+        <h3>容量：组合利率敏感度回落</h3>
+        <p>7月末合成管理资产4,000亿元。正式组合DV01环比减少400万元/bp；期限结构向7年样例迁移，需单独复核。</p>
+        <div class="src">资料来源：人工合成排版数据；报告日为示例。</div>
+      </div></div>
+      <div class="es-item"><div class="no">04</div><div>
+        <h3>回报：FTP 后收益改善，但质量分化</h3>
+        <p>7月合成FTP后收益2.00亿元。同业存单收益率为示范数据；新增资产应同时核对收益、资本与流动性要求。</p>
+        <div class="src">资料来源：人工合成排版数据；报告日为示例。</div>
+      </div></div>
+    </div>
+    <div>
+      <div class="sec-label">当前执行立场</div>
+      <table class="pos-table">
+        <tbody><tr><th>期限 / 工具</th><th>定位</th><th style="text-align:right">执行</th></tr>
+        <tr><td class="t">NCD / 1–3Y</td><td>流动性与票息配置</td><td class="stance pos">持有</td></tr>
+        <tr><td class="t">3–5Y 利率债</td><td>主要配置期限</td><td class="stance pos">偏多</td></tr>
+        <tr><td class="t">7–10Y 利率债</td><td>安全边际收窄</td><td class="stance att">择机</td></tr>
+        <tr><td class="t">30Y</td><td>交易需求为主</td><td class="stance neg">暂缓增加</td></tr>
+        <tr><td class="t">AAA 信用</td><td>利差已低，逐券精选</td><td class="stance ref">精选</td></tr>
+        <tr><td class="t">流动性缓冲</td><td>覆盖 12 月与次年 1 月到期窗口</td><td class="stance">保留</td></tr>
+      </tbody></table>
+      <div class="note-box" style="margin-top:16px;">
+        <div class="t">重新评估条件</div>
+        <p>资金利率持续上行、内需与信用同步改善，或正式 DV01 重新显著上升时，重估期限配置。</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <span class="disclaimer"><span class="department-mark">模板示例，数字均为合成排版占位，不代表实际业务。</span></span>
+    <span class="report-date">REPORT EXAMPLE</span>
+    <span class="pn">02</span>
+  </div>
+</section>
+
+<!-- ================= 3. 决策页 ================= -->
+<section class="page">
+  <div class="chrome">
+    <span class="l">03 / DECISION ASK</span>
+    <span class="conf">合成示例 · 可公开</span>
+    <span aria-label="青岛银行" class="bank-brand" role="img"><span aria-hidden="true" class="bank-logo bank-logo-light-bg"></span><span aria-hidden="true" class="bank-logo bank-logo-dark-bg"></span></span>
+  </div>
+  <div class="headline">
+    <h1>提请审议三项风险复核动作</h1>
+    <div class="deck">存单定价、负债稳定性与 7Y 期限迁移；监管专项与 RAROC 口径另页列示（P50、P37）。</div>
+  </div>
+  <div class="body layout-decision">
+    <div>
+      <div class="sec-label">提请审议事项<span class="en">全部为建议 · 待审批</span></div>
+      <div class="ask-cards">
+        <div class="ask-card">
+          <div class="head"><span class="no">01</span><b>复核同业存单定价与规模</b></div>
+          <p>合成同业存单收益率4.00%，FTP后收益率0.10%。示例规模100亿元，年化机会成本0.50亿元。</p>
+          <div class="meta">责任：FTP 定价与同业发行 · 时限：月内 · 依据 P44/P46</div>
+        </div>
+        <div class="ask-card">
+          <div class="head"><span class="no">02</span><b>把负债稳定性纳入久期决策</b></div>
+          <p>合成负债一年内到期占比90%，加权期限0.50年。成本3.00%；示例本金1,000亿元。成本上行50bp，年化增量为5亿元。</p>
+          <div class="meta">责任：资产负债与投资决策 · 时限：下期起 · 依据 P44/P48</div>
+        </div>
+        <div class="ask-card">
+          <div class="head"><span class="no">03</span><b>单独复核 7Y 风险迁移</b></div>
+          <p>合成总DV01环比下降4.00%，风险桶样例增量200万元/bp。平行上移25bp，对应市值影响约−0.50亿元。</p>
+          <div class="meta">责任：风险计量与组合管理 · 时限：月内 · 依据 P44/P49</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="sec-label">风险仪表盘<span class="en">31 JUL 2026</span></div>
+      <div class="dash">
+        <div class="cell kpi"><span class="tag-status ok">正常</span><div class="k">正式组合 DV01</div><div class="v">9,600<span class="u">万元/bp</span></div><div class="n">合成环比 −4.00%，总敏感度下降</div></div>
+        <div class="cell kpi"><span class="tag-status warn">关注</span><div class="k">7Y KRD 环比增量</div><div class="v">+200<span class="u">万元/bp</span></div><div class="n">期限结构在迁移</div></div>
+        <div class="cell kpi"><span class="tag-status warn">关注</span><div class="k">30 日流动性缺口</div><div class="v">−50.0<span class="u">亿元</span></div><div class="n">90日合成缺口 −75.0 亿元</div></div>
+        <div class="cell kpi"><span class="tag-status ok">正常</span><div class="k">净浮盈缓冲</div><div class="v">20.0<span class="u">亿元</span></div><div class="n">OCI+TPL 毛浮盈扣负浮盈后净额</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <span class="disclaimer"><span class="department-mark">模板示例，数字均为合成排版占位，不代表实际业务。</span></span>
+    <span class="report-date">REPORT EXAMPLE</span>
+    <span class="pn">03</span>
+  </div>
+</section>
+
+<!-- ================= 4. 图表页 ================= -->
+<section class="page">
+  <div class="chrome">
+    <span class="l">09 / POLICY &amp; CURVE</span>
+    <span class="chapter-context"><span class="chapter-chip">第一部分 · 宏观</span><span class="conf">合成示例 · 可公开</span></span>
+    <span aria-label="青岛银行" class="bank-brand" role="img"><span aria-hidden="true" class="bank-logo bank-logo-light-bg"></span><span aria-hidden="true" class="bank-logo bank-logo-dark-bg"></span></span>
+  </div>
+  <div class="headline">
+    <h1>短中端相对价值仍高于超长端</h1>
+    <div class="deck">10 年期收益率 1.71%，10s30s 利差 47bp；分期限执行建议见右栏。</div>
+  </div>
+  <div class="body layout-chart">
+    <div class="exhibit">
+      <div class="exhibit-head">
+        <span class="t"><span class="no">图表 9-1</span>财政部中国国债收益率曲线</span>
+        <span class="unit">%，2026-08-07 收盘</span>
+      </div>
+      <svg viewBox="0 0 640 320" style="width:100%;height:320px;">
+        <!-- 横向网格线：只留网格，底部基线略重 -->
+        <line class="grid" x1="50" y1="215" x2="580" y2="215"></line>
+        <line class="grid" x1="50" y1="150" x2="580" y2="150"></line>
+        <line class="grid" x1="50" y1="85" x2="580" y2="85"></line>
+        <line class="grid" x1="50" y1="20" x2="580" y2="20"></line>
+        <line class="grid-base" x1="50" y1="280" x2="580" y2="280"></line>
+        <text x="42" y="284" text-anchor="end">1.1</text>
+        <text x="42" y="219" text-anchor="end">1.4</text>
+        <text x="42" y="154" text-anchor="end">1.7</text>
+        <text x="42" y="89" text-anchor="end">2.0</text>
+        <text x="42" y="24" text-anchor="end">2.3</text>
+        <!-- 10s30s 利差注释 -->
+        <line class="annot-line" x1="560" y1="46" x2="560" y2="148"></line>
+        <line class="annot-line" x1="460" y1="148" x2="560" y2="148"></line>
+        <text class="annot" x="572" y="95">10s30s</text>
+        <text class="annot" x="572" y="110">+47bp</text>
+        <!-- 面积填充：曲线闭合到基线 -->
+        <polygon class="area" points="80,241 175,243 270,213 365,185 460,148 560,46 560,280 80,280"></polygon>
+        <!-- 曲线与数据点：终值光环 + 药丸标签，其余空心直标 -->
+        <polyline class="series" points="80,241 175,243 270,213 365,185 460,148 560,46"></polyline>
+        <circle class="pt" cx="80" cy="241" r="4"></circle>
+        <circle class="pt" cx="175" cy="243" r="4"></circle>
+        <circle class="pt" cx="270" cy="213" r="4"></circle>
+        <circle class="pt" cx="365" cy="185" r="4"></circle>
+        <circle class="pt" cx="460" cy="148" r="4"></circle>
+        <circle class="halo" cx="560" cy="46" r="10"></circle>
+        <circle class="pt pt-last" cx="560" cy="46" r="4.5"></circle>
+        <text class="lbl" x="80" y="227" text-anchor="middle">1.28</text>
+        <text class="lbl" x="175" y="229" text-anchor="middle">1.27</text>
+        <text class="lbl" x="270" y="199" text-anchor="middle">1.41</text>
+        <text class="lbl" x="365" y="171" text-anchor="middle">1.54</text>
+        <text class="lbl" x="460" y="134" text-anchor="middle">1.71</text>
+        <rect class="pill" x="536" y="14" width="48" height="19" rx="9.5"></rect>
+        <text class="pill-txt" x="560" y="27.5" text-anchor="middle">2.18</text>
+        <text x="80" y="302" text-anchor="middle">1Y</text><text x="175" y="302" text-anchor="middle">3Y</text>
+        <text x="270" y="302" text-anchor="middle">5Y</text><text x="365" y="302" text-anchor="middle">7Y</text>
+        <text x="460" y="302" text-anchor="middle">10Y</text><text x="560" y="302" text-anchor="middle">30Y</text>
+      </svg>
+      <div class="exhibit-src">资料来源：人工合成排版数据；报告日为示例。</div>
+    </div>
+    <div>
+      <div class="sec-label">分期限建议</div>
+      <div class="chart-notes">
+        <div class="cn-item"><span class="k">1–3Y <span class="pos">持有</span></span><p>资金稳定时保留配置，兼顾流动性和票息。</p></div>
+        <div class="cn-item"><span class="k">3–5Y <span class="pos">偏多</span></span><p>当前主要配置期限，风险收益优于更长久期。</p></div>
+        <div class="cn-item"><span class="k">7–10Y <span class="att">择机</span></span><p>基本面有支持，但当前收益率的安全边际已收窄。</p></div>
+        <div class="cn-item"><span class="k">30Y <span class="neg">暂缓增加</span></span><p>当前 2.18% 附近暂缓增配，收益率接近 2.30% 时重新评估。</p></div>
+      </div>
+      <div class="houseview warn" style="margin-top:18px;">
+        <span class="tag">失效条件</span>
+        <span class="txt">资金利率持续上行，或内需、信用和价格同步改善时，重新评估短中端的相对优势。</span>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <span class="disclaimer"><span class="department-mark">模板示例，数字均为合成排版占位，不代表实际业务。</span></span>
+    <span class="report-date">REPORT EXAMPLE</span>
+    <span class="pn">09</span>
+  </div>
+</section>
+
+<!-- ================= 5. 表格页 ================= -->
+<section class="page">
+  <div class="chrome">
+    <span class="l">17 / BALANCE SHEET</span>
+    <span class="chapter-context"><span class="chapter-chip">第二部分 · 资负</span><span class="conf">合成示例 · 可公开</span></span>
+    <span aria-label="青岛银行" class="bank-brand" role="img"><span aria-hidden="true" class="bank-logo bank-logo-light-bg"></span><span aria-hidden="true" class="bank-logo bank-logo-dark-bg"></span></span>
+  </div>
+  <div class="headline">
+    <h1>7月配置向买入返售和地方债迁移</h1>
+    <div class="deck">管理账逐月月末余额，单位亿元；仅一级项目参与合计，"其中项"不再加总。</div>
+  </div>
+  <div class="body layout-table">
+    <div class="exhibit">
+      <div class="exhibit-head">
+        <span class="t"><span class="no">图表 17-1</span>管理账一级项目月末余额与环比变动</span>
+        <span class="unit">亿元</span>
+      </div>
+      <table class="data-table">
+        <tbody><tr><th>一级项目</th><th>6月末</th><th>7月末</th><th>环比变动</th><th>变动说明</th></tr>
+        <tr><td>买入返售</td><td class="num">100.0</td><td class="num">120.0</td><td class="num pos">+20.0</td><td style="text-align:left">短期资金运用增加</td></tr>
+        <tr><td>地方政府债</td><td class="num">300.0</td><td class="num">330.0</td><td class="num pos">+30.0</td><td style="text-align:left">承接三季度发行放量</td></tr>
+        <tr><td>政策性金融债</td><td class="num">400.0</td><td class="num">360.0</td><td class="num neg">−40.0</td><td style="text-align:left">到期未续与主动压降</td></tr>
+        <tr><td>非底层投资</td><td class="num">200.0</td><td class="num">180.0</td><td class="num neg">−20.0</td><td style="text-align:left">压降委外与资管计划</td></tr>
+        <tr><td>国债</td><td class="num">250.0</td><td class="num">240.0</td><td class="num neg">−10.0</td><td style="text-align:left">正常到期</td></tr>
+        <tr><td>同业存单投资</td><td class="num">350.0</td><td class="num">340.0</td><td class="num neg">−10.0</td><td style="text-align:left">到期集中于 8–9 月</td></tr>
+        <tr class="total"><td>zqtz 控制合计<sup>1</sup></td><td class="num">1,600.0</td><td class="num">1,570.0</td><td class="num neg">−30.0</td><td style="text-align:left">压降主要来自政金债与非底层</td></tr>
+      </tbody></table>
+      <div class="exhibit-src">资料来源：人工合成排版数据；报告日为示例。</div>
+      <div class="footnotes">
+        <span class="fn"><sup>1</sup>zqtz（债券投资控制口径）不含合成长期股权金额20.00亿元；辅助项目不参加主项目加总。</span>
+      </div>
+    </div>
+    <div class="houseview" style="margin-top:18px;">
+      <span class="tag">本页判断</span>
+      <span class="txt">规模压降集中在低票息政金债与非底层投资，期限向 1–3 年迁移，与短中端配置立场一致。</span>
+    </div>
+  </div>
+  <div class="foot">
+    <span class="disclaimer"><span class="department-mark">模板示例，数字均为合成排版占位，不代表实际业务。</span></span>
+    <span class="report-date">REPORT EXAMPLE</span>
+    <span class="pn">17</span>
+  </div>
+</section>
+
+<!-- ================= 6. 监管页 ================= -->
+<section class="page">
+  <div class="chrome">
+    <span class="l">51 / REGULATORY</span>
+    <span class="chapter-context"><span class="chapter-chip">第五部分 · 监管</span><span class="conf">合成示例 · 可公开</span></span>
+    <span aria-label="青岛银行" class="bank-brand" role="img"><span aria-hidden="true" class="bank-logo bank-logo-light-bg"></span><span aria-hidden="true" class="bank-logo bank-logo-dark-bg"></span></span>
+  </div>
+  <div class="headline">
+    <h1>监管重心转向限制业务与追责个人</h1>
+    <div class="deck">基于 2026 年公开处罚与新规的综合观察；事实、判断和建议分栏列示。</div>
+  </div>
+  <div class="body layout-reg">
+    <div class="reg-col fact">
+      <div class="col-head">事实（公开信息）</div>
+      <div class="reg-item"><b>处罚形式扩展</b>代表性样本罚没金额接近 0.9 亿元，处罚同时出现业务暂停、市场禁入与刑事移送。<div class="src">资料来源：人工合成排版数据；报告日为示例。</div></div>
+      <div class="reg-item"><b>个人追责常态化</b>责任覆盖审批、执行、监督和信息披露，岗位退出不再阻断追责。<div class="src">资料来源：人工合成排版数据；报告日为示例。</div></div>
+      <div class="reg-item"><b>新规密集落地</b>交易人员信息登记等规程处于征求意见阶段，反馈截止 8 月 14 日。<div class="src">资料来源：人工合成排版数据；报告日为示例。</div></div>
+    </div>
+    <div class="reg-col judge">
+      <div class="col-head">判断（本行视角）</div>
+      <div class="reg-item"><b>监管逻辑变化</b>关注点从制度条款是否齐备，转向业务事实、系统监测和报告结果是否一致。</div>
+      <div class="reg-item"><b>与本行的相关性</b>银行处罚集中在资产质量、交易真实性、理财穿透和个人责任四条链，均与本行业务链直接相关。</div>
+    </div>
+    <div class="reg-col action">
+      <div class="col-head">建议（待审批）</div>
+      <div class="reg-item"><b>按业务链组织专项复核</b>不逐案复制整改；先完成事实与样本验证，再调整制度与系统。</div>
+      <div class="reg-item"><b>8 月 14 日前提交反馈</b>就交易人员信息登记规程完成征求意见反馈。</div>
+      <div class="reg-item"><b>建立月度监测机制</b>由合规牵头，保持事实、判断和建议的边界。</div>
+    </div>
+  </div>
+  <div class="foot">
+    <span class="disclaimer"><span class="department-mark">模板示例，数字均为合成排版占位，不代表实际业务。</span></span>
+    <span class="report-date">REPORT EXAMPLE</span>
+    <span class="pn">51</span>
+  </div>
+</section>
+
+
+
+</body></html>

@@ -29,6 +29,14 @@ from backend.app.core_finance.campisi import (
     maturity_bucket_attribution,
 )
 from backend.app.core_finance.campisi_decision_grade import compute_decision_grade_row
+from backend.app.schemas.campisi_attribution_read import CampisiFourEffectsReadEnvelope
+from backend.app.services import campisi_attribution_service as campisi_svc
+from tests.test_campisi_attribution_service import (
+    _bond_row,
+    _clear_four_effects_cache,
+    _flat_treasury,
+    _install_full_service_fakes,
+)
 
 START_DATE = date(2026, 1, 1)
 END_DATE = date(2026, 1, 31)
@@ -338,3 +346,101 @@ def test_missing_and_present_years_share_identical_fixed_components() -> None:
 
     assert present["rate_level_effect"] == Decimal("-1.000")
     assert present["curve_shape_effect"] == Decimal("-1.000")
+
+
+def test_four_effects_discloses_included_unusable_maturity_in_full_and_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """仅统计模型已纳入的 UNKNOWN 行，负市值取绝对值，剩余项保留符号。"""
+    _clear_four_effects_cache()
+    start_rows = [
+        _bond_row(code="MISSING", market_value=Decimal("1000"), face_value=Decimal("1000"), maturity_date=None, asset_class="国债", coupon_rate=Decimal("0")),
+        {**_bond_row(code="VALID_DEGRADED", market_value=Decimal("500"), face_value=Decimal("500"), maturity_date=date(2027, 1, 1), asset_class="国债", coupon_rate=Decimal("0")), "duration_quality_flag": "fallback"},
+        _bond_row(code="INVALID", market_value=Decimal("200"), face_value=Decimal("200"), maturity_date="invalid", asset_class="国债", coupon_rate=Decimal("0")),
+        _bond_row(code="ZERO", market_value=Decimal("0"), face_value=Decimal("0"), maturity_date=None, asset_class="国债", coupon_rate=Decimal("0")),
+        _bond_row(code="NEGATIVE", market_value=Decimal("-50"), face_value=Decimal("-50"), maturity_date=None, asset_class="国债", coupon_rate=Decimal("0")),
+        _bond_row(code="EXCLUDED", market_value=Decimal("400"), face_value=Decimal("400"), maturity_date=None, asset_class="国债", coupon_rate=Decimal("0")),
+    ]
+    end_rows = [
+        {**row, "market_value": end_market_value}
+        for row, end_market_value in zip(
+            start_rows[:-1],
+            (Decimal("990"), Decimal("500"), Decimal("195"), Decimal("0"), Decimal("-40")),
+            strict=True,
+        )
+    ]
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={"2026-01-01": start_rows, "2026-01-31": end_rows},
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("2")),
+        },
+    )
+    monkeypatch.setattr(campisi_svc, "_try_fetch_cached_formal_bridge", lambda **_kwargs: None)
+
+    full_envelope = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01", end_date="2026-01-31"
+    )
+    full = full_envelope["result"]
+    summary = campisi_svc.campisi_four_effects_summary_envelope(
+        start_date="2026-01-01", end_date="2026-01-31"
+    )["result"]
+
+    assert full["effect_availability"]["bonds"] == 6
+    assert full["effect_availability"]["position_change"]["unavailable_bonds"] == 1
+    assert full["effect_availability"]["treasury_effect"]["status"] == "ok"
+    assert len(full["by_bond"]) == 5
+    assert full["totals"]["selection_effect"] == pytest.approx(-5.0)
+    assert full["totals"]["market_value_start"] == pytest.approx(1650.0)
+    assert full["input_quality"]["included_maturity_unavailable"] == {
+        "positions": 4,
+        "market_value_start_abs": 1250.0,
+        "model_residual": -5.0,
+    }
+    assert summary["by_bond"] == []
+    assert summary["input_quality"] == full["input_quality"]
+    assert summary["totals"] == full["totals"]
+    assert summary["effect_availability"] == full["effect_availability"]
+    serialized = CampisiFourEffectsReadEnvelope.model_validate(full_envelope).model_dump(
+        exclude_unset=True
+    )
+    assert serialized["result"]["input_quality"]["included_maturity_unavailable"] == (
+        full["input_quality"]["included_maturity_unavailable"]
+    )
+    assert any(
+        "仅为模型剩余项" in warning and "不代表选券能力" in warning
+        for warning in full["warnings"]
+    )
+
+
+def test_four_effects_omits_maturity_quality_when_all_included_dates_are_usable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_four_effects_cache()
+    start = _bond_row(
+        code="VALID", market_value=Decimal("100"), face_value=Decimal("100"),
+        maturity_date=date(2027, 1, 1), asset_class="国债", coupon_rate=Decimal("0"),
+    )
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={"2026-01-01": [start], "2026-01-31": [start]},
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("2")),
+        },
+    )
+    monkeypatch.setattr(campisi_svc, "_try_fetch_cached_formal_bridge", lambda **_kwargs: None)
+
+    envelope = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01", end_date="2026-01-31"
+    )
+    result = envelope["result"]
+
+    assert "included_maturity_unavailable" not in result["input_quality"]
+    serialized = CampisiFourEffectsReadEnvelope.model_validate(envelope).model_dump(
+        exclude_unset=True
+    )
+    assert "included_maturity_unavailable" not in serialized["result"]["input_quality"]

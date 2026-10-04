@@ -1,21 +1,19 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { LightIcon } from "../../../components/LightIcon";
 import { mapStatusEntry } from "../../../components/StatusContract";
 import type {
   DashboardHomeFirstScreenView,
-  HomeDataStateKind,
   HomeDecisionAction,
   HomeTerminalKpi,
 } from "./dashboardHomeFirstScreenTypes";
+import { VERDICT_REASON_SEPARATOR } from "./dashboardHomeFirstScreenView";
 import {
   type HomeStatusKind,
   reportDatePath,
   stateLabel,
   statusTone,
 } from "./dashboardHomeOptionTwoShared";
-import { formatKpiNumeric, parseKpiNumeric } from "./kpiCountUpFormat";
 import { OptionTwoSparkline } from "./OptionTwoSparkline";
 import styles from "./dashboardHomeOptionTwo.module.css";
 
@@ -77,17 +75,27 @@ function primaryAction(view: DashboardHomeFirstScreenView): HomeDecisionAction |
   );
 }
 
-function decisionTitle(value: string): string {
-  const source = value.trim().replace(/[。；;]+$/u, "");
-  const clauses = source
-    .split(/[；;]+/u)
-    .map((part) => part.trim().replace(/[。；;]+$/u, ""))
+/** 结论标题只做修剪，不补「趋势判断」前缀：读数事实不能被包装成判断（§7）。 */
+function conclusionHeadline(value: string): string {
+  return value.trim().replace(/[。；;]+$/u, "") || "暂无观察结论";
+}
+
+/**
+ * 依据行「标签 · 数值 · 溯源说明」：正文只留前两段业务事实（单行 ≤1 个「·」，§7），
+ * 溯源说明连同全文由 title 承载（§6 来源细节不占正文）。
+ */
+function splitReasonForDisplay(reason: string): { visible: string; full: string } {
+  const segments = reason
+    .split(VERDICT_REASON_SEPARATOR)
+    .map((segment) => segment.trim())
     .filter(Boolean);
-  const title = source.length > 28 && clauses.length > 1
-    ? (clauses.at(-1) ?? source)
-    : source;
-  if (!title) return "趋势判断待复核";
-  return /^趋势判断/.test(title) ? title : `趋势判断：${title}`;
+  if (segments.length <= 2) {
+    return { visible: reason, full: reason };
+  }
+  return {
+    visible: segments.slice(0, 2).join(VERDICT_REASON_SEPARATOR),
+    full: reason,
+  };
 }
 
 /** 演示数据披露文案统一取自状态契约（dataSource.mock），避免另造词汇。 */
@@ -102,84 +110,6 @@ function foldReportDateMention(text: string, reportDate: string): string {
   const date = reportDate.trim();
   if (!date || !text.includes(date)) return text;
   return text.replaceAll(`在 ${date} 的`, "在报告日的").replaceAll(date, "报告日");
-}
-
-const KPI_COUNT_UP_MS = 900;
-
-function isTestRuntime(): boolean {
-  return (
-    import.meta.env.MODE === "test" ||
-    (import.meta.env as Record<string, unknown>).VITEST != null
-  );
-}
-
-function canAnimateKpiValue(): boolean {
-  return (
-    !isTestRuntime() &&
-    typeof window !== "undefined" &&
-    typeof window.requestAnimationFrame === "function" &&
-    !(
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    )
-  );
-}
-
-/**
- * 数字滚动（交接包 Interactions 规范）：900ms ease-out；测试与 reduced-motion 直接落定。
- * 动画帧对读屏隐藏，最终值以 sr-only 常驻，避免辅助技术连读中间帧。
- */
-function AnimatedKpiValue({
-  value,
-  state,
-}: {
-  value: string;
-  state: HomeDataStateKind;
-}) {
-  const parsed = state === "ready" ? parseKpiNumeric(value) : null;
-  const animatable = parsed != null && canAnimateKpiValue();
-  const [display, setDisplay] = useState(() =>
-    animatable && parsed ? formatKpiNumeric(parsed, 0) : value,
-  );
-
-  useEffect(() => {
-    if (!animatable || !parsed) {
-      setDisplay(value);
-      return undefined;
-    }
-    let frame = 0;
-    let active = true;
-    const start = performance.now();
-    setDisplay(formatKpiNumeric(parsed, 0));
-    const tick = (now: number) => {
-      if (!active) return;
-      const k = Math.min((now - start) / KPI_COUNT_UP_MS, 1);
-      if (k >= 1) {
-        setDisplay(value);
-        return;
-      }
-      const eased = 1 - (1 - k) ** 3;
-      setDisplay(formatKpiNumeric(parsed, parsed.abs * eased));
-      frame = window.requestAnimationFrame(tick);
-    };
-    frame = window.requestAnimationFrame(tick);
-    return () => {
-      active = false;
-      window.cancelAnimationFrame(frame);
-    };
-    // parsed 由 value/state 派生，依赖以两个源为准。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animatable, state, value]);
-
-  if (!animatable) {
-    return <>{display}</>;
-  }
-  return (
-    <>
-      <span aria-hidden="true">{display}</span>
-      <span className={styles.srOnly}>{value}</span>
-    </>
-  );
 }
 
 function kpiDisplay(
@@ -206,16 +136,6 @@ export function DashboardHomeOptionTwoOverview({
   view,
 }: DashboardHomeOptionTwoOverviewProps) {
   const action = primaryAction(view);
-  const decisionReasons = [
-    action?.reason,
-    view.decisionRail.keyRisk,
-    view.decisionRail.suggestions[0]?.text,
-    view.decisionRail.pendingSummary,
-  ]
-    .map((value) => value?.trim() ?? "")
-    .filter(Boolean);
-  const decisionReason = [...new Set(decisionReasons)].slice(0, 2).join("；") ||
-    "当前结论暂无补充说明";
   const dataKind = governanceKind(view.headerStatus.dataStatusKind);
   const productKind = productHeadlineKind(view);
   const governanceFeedAvailable = view.headerStatus.governanceFeedAvailable === true;
@@ -235,25 +155,40 @@ export function DashboardHomeOptionTwoOverview({
   const governedCount = governanceFeedAvailable
     ? view.headerStatus.riskReviewCount
     : 0;
-  const attentionSummary =
-    view.decisionRail.keyRisk?.trim() ||
-    view.decisionRail.pendingSummary?.trim() ||
-    decisionReason;
-  const attentionTitle = decisionTitle(view.decisionRail.conclusion);
+  const attentionTitle = conclusionHeadline(view.decisionRail.conclusion);
   const reportDateValue = view.reportDateContext.actualDataDate.trim();
-  const attentionSummaryDisplay = foldReportDateMention(attentionSummary, reportDateValue);
-  const decisionReasonDisplay = foldReportDateMention(decisionReason, reportDateValue);
+  // 依据行由视图模型去重后给出；没有可用依据时不渲染，也不用填充语占位（§7）。
+  const keyRisk = view.decisionRail.keyRisk.trim();
+  const attentionReason =
+    keyRisk && keyRisk !== EM_DASH ? splitReasonForDisplay(keyRisk) : null;
+  const attentionReasonDisplay = attentionReason
+    ? foldReportDateMention(attentionReason.visible, reportDateValue)
+    : null;
   const dataAsOfText = view.reportDateContext.dataAsOfDate.trim() || "无";
   // 分域截至日与报告日一致时正文折叠为「同报告日」（§6 卡片内不重复全局报告日），
   // 日期分叉时保持显式；dd 的 title 恒为全文日期。
   const dataAsOfSegments = dataAsOfText.split(" · ").map((segment) => {
-    const matched = /^(.+?)\s*(\d{4}-\d{2}-\d{2})$/.exec(segment.trim());
+    const matched = /^(.*?)\s*(\d{4}-\d{2}-\d{2})$/.exec(segment.trim());
     return matched && reportDateValue && matched[2] === reportDateValue
       ? `${matched[1]}同报告日`
-      : segment;
+      : segment.trim();
   });
+  const coreDomainsOnReportDate =
+    dataAsOfText !== "无" && dataAsOfSegments.every((segment) => segment.endsWith("同报告日"));
   const missingDomainText =
     view.missingDomains.map((domain) => domain.label.trim()).filter(Boolean).join("、") || "无";
+  // 结论 17「常态收声」：质量 ok、估值完成、无缺失域时只留一行 muted 事实 + 暗点，
+  // 明细全部进 title；任一异常态沿用两行语义色呈现。
+  const statusQuiet =
+    dataKind === "ready" &&
+    view.headerStatus.valuationTone === "ok" &&
+    view.missingDomains.length === 0;
+  const statusQuietDetail = [
+    `数据质量 ${stateLabel(dataKind)}`,
+    `核心域截至 ${dataAsOfText}`,
+    `估值数据 ${view.headerStatus.valuationLabel}`,
+    `缺失域 ${missingDomainText}`,
+  ].join("；");
   const productStateText = stateLabel(productKind);
 
   return (
@@ -306,7 +241,9 @@ export function DashboardHomeOptionTwoOverview({
           <div className={styles.overviewAttention}>
             <span>观察与数据状态 · 不计入治理待办</span>
             <strong title={attentionTitle}>{attentionTitle}</strong>
-            <small title={attentionSummary}>{attentionSummaryDisplay}</small>
+            {attentionReason ? (
+              <small title={attentionReason.full}>{attentionReasonDisplay}</small>
+            ) : null}
           </div>
 
           <aside className={styles.overviewStatus} aria-label="首页数据状态">
@@ -324,29 +261,51 @@ export function DashboardHomeOptionTwoOverview({
               </strong>
             </div>
             <dl className={styles.statusRows}>
-              <div>
-                <dt>数据质量</dt>
-                <dd title={`数据质量 ${stateLabel(dataKind)} · 核心域截至 ${dataAsOfText}`}>
-                  <span>{stateLabel(dataKind)}</span>
-                  <small>
-                    {"核心域截至 "}
-                    {/* 每个「域 日期」分段 nowrap，换行只落在分段间，避免日期被拆断。 */}
-                    {dataAsOfSegments.flatMap((segment, index) => [
-                      index > 0 ? " · " : null,
-                      <span key={`${index}-${segment}`}>{segment}</span>,
-                    ])}
-                  </small>
-                </dd>
-              </div>
-              <div>
-                <dt>估值数据</dt>
-                <dd
-                  title={`估值数据 ${view.headerStatus.valuationLabel} · 缺失域 ${missingDomainText}`}
-                >
-                  <span>{view.headerStatus.valuationLabel}</span>
-                  <small>{`缺失域 ${missingDomainText}`}</small>
-                </dd>
-              </div>
+              {statusQuiet ? (
+                <div data-quiet="true">
+                  <dt>数据质量</dt>
+                  <dd title={statusQuietDetail}>
+                    <i aria-hidden="true" />
+                    {coreDomainsOnReportDate ? (
+                      "核心域同报告日"
+                    ) : (
+                      <>
+                        {"核心域截至 "}
+                        {dataAsOfSegments.flatMap((segment, index) => [
+                          index > 0 ? " · " : null,
+                          <span key={`${index}-${segment}`}>{segment}</span>,
+                        ])}
+                      </>
+                    )}
+                  </dd>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <dt>数据质量</dt>
+                    <dd title={`数据质量 ${stateLabel(dataKind)} · 核心域截至 ${dataAsOfText}`}>
+                      <span>{stateLabel(dataKind)}</span>
+                      <small>
+                        {"核心域截至 "}
+                        {/* 每个「域 日期」分段 nowrap，换行只落在分段间，避免日期被拆断。 */}
+                        {dataAsOfSegments.flatMap((segment, index) => [
+                          index > 0 ? " · " : null,
+                          <span key={`${index}-${segment}`}>{segment}</span>,
+                        ])}
+                      </small>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>估值数据</dt>
+                    <dd
+                      title={`估值数据 ${view.headerStatus.valuationLabel} · 缺失域 ${missingDomainText}`}
+                    >
+                      <span>{view.headerStatus.valuationLabel}</span>
+                      <small>{`缺失域 ${missingDomainText}`}</small>
+                    </dd>
+                  </div>
+                </>
+              )}
             </dl>
           </aside>
         </div>
@@ -404,11 +363,10 @@ export function DashboardHomeOptionTwoOverview({
             data-testid="dashboard-home-morning-hero"
             className={styles.overviewNarrative}
           >
+            {/* 结论与依据只在 01 区出现一次（§6 状态去重、§9.2 hero 承载判断）；本格只留归因独有内容。 */}
             <div className={styles.overviewEyebrow}>
-              <strong>观察结论</strong>
+              <strong>归因要点</strong>
             </div>
-            <h3>{decisionTitle(view.decisionRail.conclusion)}</h3>
-            <p title={decisionReason}>{decisionReasonDisplay}</p>
             {view.decisionRail.hasContribution || view.decisionRail.hasDrag ? (
               <div
                 className={styles.attributionHints}
@@ -431,7 +389,9 @@ export function DashboardHomeOptionTwoOverview({
                   </span>
                 ) : null}
               </div>
-            ) : null}
+            ) : (
+              <p className={styles.attributionEmpty}>暂无经营贡献拆解</p>
+            )}
             <Link
               to={narrativeActionTo}
               className={styles.overviewLink}
@@ -466,7 +426,7 @@ export function DashboardHomeOptionTwoOverview({
                 >
                   <span title={kpi.label}>{kpi.label || spec.label}</span>
                   <strong>
-                    <AnimatedKpiValue value={display.value} state={kpi.state} />
+                    {display.value}
                     {display.unit ? <small>{display.unit}</small> : null}
                   </strong>
                   <em data-tone={kpi.deltaTone}>{kpi.delta || EM_DASH}</em>

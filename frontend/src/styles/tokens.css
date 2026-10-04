@@ -1,3 +1,5 @@
+@import "./fonts.css";
+
 :root {
   color-scheme: light;
 
@@ -142,6 +144,27 @@
   --moss-space-9: 48px;
   --moss-space-10: 64px;
 
+  /* DESIGN §3: six workbench steps; homepage keeps its approved local sizes. */
+  --moss-font-size-11: 11px;
+  --moss-font-size-12: 12px;
+  --moss-font-size-13: 13px;
+  --moss-font-size-14: 14px;
+  --moss-font-size-20: 20px;
+  --moss-font-size-24: 24px;
+  --moss-font-weight-regular: 400;
+  --moss-font-weight-medium: 500;
+  --moss-font-weight-semibold: 600;
+  --moss-page-gutter: 16px;
+  --moss-table-row-h: 32px;
+  --moss-table-row-h-compact: 28px;
+  --moss-table-font-size: 12px;
+  --moss-table-line-height: 1.35;
+  --moss-table-header-weight: 500;
+  --moss-table-cell-weight: 400;
+  --moss-table-header-color: var(--ib-ink-secondary);
+  --moss-table-cell-color: var(--ib-ink);
+  --moss-table-border: var(--ib-hairline);
+
   --moss-radius-sm: 2px;
   --moss-radius-md: 12px;
   --moss-radius-lg: 18px;
@@ -160,7 +183,12 @@
   --moss-motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --moss-motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
 
-  --moss-font-sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --moss-font-sans: "Noto Sans SC", "Noto Sans SC Latin Fallback", "Noto Sans SC CJK Fallback", "PingFang SC", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --moss-shell-font: var(--moss-font-sans);
+  --moss-shell-navigation-text: var(--ib-rail-text);
+  /* 数字/金额/KPI：比例字体配合 tabular-nums，与界面字体共用自托管分片。 */
+  --moss-font-tabular: "Noto Sans SC", "Noto Sans SC Latin Fallback", "Noto Sans SC CJK Fallback", "PingFang SC", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  /* 代码/证券代码/日志等需要逐字符对齐的场景；金额与 KPI 不用此栈。 */
   --moss-font-mono: ui-monospace, "Cascadia Mono", "Microsoft YaHei UI", Menlo, Monaco, Consolas, monospace;
   --moss-font-serif: Georgia, "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
 
@@ -213,6 +241,29 @@
   box-sizing: border-box;
 }
 
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+strong,
+b {
+  font-weight: var(--moss-font-weight-medium);
+}
+
+@media (max-width: 991px) {
+  :root {
+    --moss-page-gutter: 12px;
+  }
+}
+
+/* Resolve semantic table colors at the same boundary as the page palette. */
+.theme-dh-api,
+[data-moss-theme-scope] {
+  --moss-table-header-color: var(--nct-soft, var(--dh-api-soft));
+  --moss-table-cell-color: var(--nct-ink, var(--dh-api-ink));
+  --moss-table-border: var(--nct-line, var(--dh-api-line-soft));
+}
+
 /*
  * Legacy dh-api steel-blue compatibility baseline.
  * `theme-dh-api` establishes dark semantic aliases and the fallback for
@@ -254,6 +305,17 @@
   color-scheme: dark;
 }
 
+/*
+ * 视口原生滚动条只看根元素（documentElement）的 color-scheme，子元素上的
+ * color-scheme 不影响文档级滚动条颜色。深色路由（.themed-route-boundary
+ * .theme-dh-api）走文档级滚动，:root 需要跟随该 boundary 出现而声明 dark，
+ * 否则右侧滚动条仍是浅色原生控件。IB 浅色存量页没有该 boundary，:has()
+ * 不命中即零效果，不影响 :root 顶部 color-scheme: light 的默认基线。
+ */
+:root:has(.themed-route-boundary.theme-dh-api) {
+  color-scheme: dark;
+}
+
 .themed-route-boundary.theme-dh-api,
 .workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) {
   --ib-paper: var(--dh-api-bg);
@@ -278,6 +340,12 @@
   --ib-rail-active-bg: rgba(16, 26, 42, 0.88);
   --ib-rail-section-label: var(--dh-api-muted);
   --ib-gold: var(--dh-api-amber);
+  /* 桥接空白补齐（DESIGN §12 结论 17 ①②）：--ib-serif / --ib-radius / --moss-color-neutral-900
+     此前从未被本块覆盖，页面各自重声明且取值 100% 一致（普查 2026-09-02）。在 boundary 上求值：
+     canonical scope 因主色板 boundary 分列得 8px / Nocturne 墨色，未登记 scope 得钢蓝 6px；
+     IB 浅色页无本类不受影响。深色终端页不用衬线（§3），刊头字体落回 sans。 */
+  --ib-serif: var(--moss-font-sans);
+  --ib-radius: var(--dh-api-radius);
 
   --moss-institutional-bg: var(--dh-api-bg);
   --moss-institutional-bg-deep: var(--dh-api-bg);
@@ -301,6 +369,36 @@
   --moss-color-surface-base: var(--dh-api-bg);
   --moss-color-card-bg: var(--dh-api-panel);
   --moss-color-border-default: var(--dh-api-line);
+  /*
+   * warning / danger 色阶在深色路由的 Nocturne 映射。
+   *
+   * 必须整组映射，不能只补边框那一档：共享的警示组件是「底 + 边 + 字」三件套
+   * （DataQualityBanner 用 50/200/900，StatusPill 用 50/200/600 与 50/300/700），
+   * 只映射 200 会让它们变成「浅黄底 + 深色系琥珀边 + 深色字」的混搭，比原先
+   * 一致的浅色组更不协调——而这些组件恰恰在数据质量出问题时才出现。
+   *
+   * 底/边走透明度混合复用既有语义 token（-soft 本身就是 13%）；文字档 600/700/900
+   * 全部落到同一个 --dh-api-amber：浅色色阶靠越深越强调，深色主题没有这个维度
+   * （§2.2 层级靠 panel 递进 + 细边线，不靠明度阶梯）。
+   *
+   * 有意不映射 400/500：AlertList 用它们做小圆点纯色背景，小面积高饱和是合理
+   * 强调，且不参与三件套组合，不会产生混搭。
+   *
+   * 浓度 34% 取自 8 个已自行重映射页面中出现频率最高的值（ledger-pnl /
+   * pnl-attribution 先例）。theme.test.ts 锁定本组的完整性。
+   */
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-200: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --moss-color-warning-300: color-mix(in srgb, var(--dh-api-amber) 46%, transparent);
+  --moss-color-warning-600: var(--dh-api-amber);
+  --moss-color-warning-700: var(--dh-api-amber);
+  --moss-color-warning-900: var(--dh-api-amber);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-200: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+  --moss-color-danger-600: var(--dh-api-red);
+  --moss-color-danger-800: var(--dh-api-red);
+  /* 十阶中性色仅补 900（结论 17 ②）：全部 121 处消费都是文字 color，无底色/边框用法，15 个文件一致映射 ink。 */
+  --moss-color-neutral-900: var(--dh-api-ink);
   --moss-color-text-primary: var(--dh-api-ink);
   --moss-color-text-secondary: var(--dh-api-soft);
   --moss-color-text-muted: var(--dh-api-muted);
@@ -427,7 +525,54 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]),
+/* ThemedRouteBoundary 自身：boundary 带 theme-dh-api 类，钢蓝基准块（0-1-0）
+   在 boundary 上把 --dh-api-* 定义成钢蓝字面值，下方深色重映射块随即在同一个
+   元素上把 --ib-* / --moss-* 算成钢蓝并以字面量继承给整棵子树——自定义属性的
+   var() 替换发生在声明它的元素上，页根 scope 再翻 --dh-api-* 也追不回来
+   （29 个页面各自重声明 --ib-* 即为绕行此缺陷）。此列表让 boundary 也拿到
+   Nocturne --dh-api-*（0-3-0 胜基准块 0-1-0），重映射块在 boundary 上即解析
+   为 Nocturne，页根与全部后代自动跟随，无需复制任何映射声明。
+   与主色板列表同构全量；无 boundary 或未登记 scope 的路由 :has() 不命中，
+   钢蓝 fallback 原样保留。 */
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="dashboard-home"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="macro-toolkit"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="ledger-pnl"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="average-balance"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="positions"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bond-dashboard"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="liability-analytics"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bank-ledger-dashboard"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="portfolio-home"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-overview"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-data"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="stock-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="risk-overview"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-by-business"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-attribution"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-by-business-insights"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bond-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="module-workbench-home"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="risk-tensor"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="concentration-monitor"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="cashflow-projection"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="operations-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-finance"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="balance-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="balance-movement-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="decision-items"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-bridge"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="product-category-pnl"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bond-trading-desk"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="cross-asset"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="cube-query"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="news-events"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="kpi"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="team-performance"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="platform-config"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="agent"]),
+#workbench-primary-navigation {
   --nct-bg: #161826;
   --nct-rail: #131522;
   --nct-surface: #232532;
@@ -483,15 +628,12 @@
 }
 
 /*
- * ThemedRouteBoundary 兜底底色跟随 scope 色板：boundary 自带 theme-dh-api
- * 类，上方 .theme-dh-api 钢蓝基准块在 boundary 自己身上定义 --dh-api-bg，
- * 后代页根的 scope 翻转够不到（变量继承不回流），boundary 的
- * `background: var(--dh-api-bg)` 一直解析为钢蓝 #070a12（frame/卡片
- * 缝隙处透出）。此块以 :has() 命中含 Nocturne scope 页根的 boundary，
- * 底色/文字直引 --nct-*（值从外壳 grid 的 :has 块继承；boundary 不在
- * Nocturne 外壳内时回退钢蓝基准）。0-3-0 胜过基准块 0-2-0，无需
- * !important。列表与主色板块同构全量（无 boundary 的路由 :has() 不
- * 命中即零效果），theme.test.ts 有 parity 断言。
+ * ThemedRouteBoundary 兜底底色直引 scope 色板。主色板块的 boundary 分列
+ * 已让 boundary 的 --dh-api-bg/-ink 解析为 Nocturne，此块因而与深色重映射
+ * 块的 `background: var(--dh-api-bg)` 等值；保留为显式护栏：底色/文字直引
+ * --nct-*，不依赖 --dh-api-* 这一层别名是否被后续改动重新指向。0-3-0 胜过
+ * 基准块 0-2-0，无需 !important。列表与主色板块同构全量（无 boundary 的
+ * 路由 :has() 不命中即零效果），theme.test.ts 有 parity 断言。
  */
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="dashboard-home"]),
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="macro-toolkit"]),
@@ -643,7 +785,6 @@
 [data-moss-theme-scope="kpi"],
 [data-moss-theme-scope="team-performance"],
 [data-moss-theme-scope="platform-config"],
-[data-moss-theme-scope="agent"],
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
@@ -670,6 +811,27 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) {
+[data-moss-theme-scope="balance-analysis"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]),
+[data-moss-theme-scope="balance-movement-analysis"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]),
+[data-moss-theme-scope="bond-analysis"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]),
+[data-moss-theme-scope="macro-toolkit"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
+[data-moss-theme-scope="market-overview"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]),
+[data-moss-theme-scope="module-workbench-home"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]),
+[data-moss-theme-scope="portfolio-home"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]),
+[data-moss-theme-scope="risk-overview"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) {
+  --moss-shell-terminal-bg: var(--nct-rail);
+}
+
+/* 首页窄屏导航是页根的兄弟节点，终端背景同时落在外壳上。 */
+[data-moss-theme-scope="dashboard-home"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) {
   --moss-shell-terminal-bg: var(--nct-rail);
 }

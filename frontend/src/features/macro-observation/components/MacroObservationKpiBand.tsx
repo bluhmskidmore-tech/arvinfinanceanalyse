@@ -1,3 +1,4 @@
+import KpiStrip, { type KpiCell } from "../../../components/layout/KpiStrip";
 import type { MacroObservationKpiItem } from "../model/macroObservationPageModel";
 
 /**
@@ -13,26 +14,16 @@ export default function MacroObservationKpiBand({
   items: MacroObservationKpiItem[];
   testId: string;
 }) {
-  return (
-    <div className="macro-observation-view__kpi-band" data-testid={testId}>
-      {items.map((item) => (
-        <div
-          key={item.key}
-          className="macro-observation-view__kpi-cell"
-          data-status={item.status}
-          data-tone={item.tone ?? "neutral"}
-        >
-          <span className="macro-observation-view__kpi-label" title={item.label}>
-            {item.label}
-          </span>
-          <strong className="macro-observation-view__kpi-value">{item.value}</strong>
-          {item.note ? (
-            <span className="macro-observation-view__kpi-note" title={item.note}>
-              {item.note}
-            </span>
-          ) : null}
-        </div>
-      ))}
-    </div>
-  );
+  const cells: KpiCell[] = items.map((item) => ({
+    key: item.key,
+    label: item.label,
+    value: item.value,
+    unit: item.unit,
+    valueVariant: item.key === "stance" || item.key === "primary-signal" ? "text" : "metric",
+    valueTone: item.tone,
+    cellStatus: item.status,
+    note: item.note,
+  }));
+
+  return <KpiStrip cells={cells} cols={{ base: 1, md: 3, lg: 3, xl: 6 }} testId={testId} />;
 }

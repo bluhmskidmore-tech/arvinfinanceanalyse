@@ -1,18 +1,9 @@
 # MOSS Agent Analytics OS PRD
 
-> **副本状态提示（2026-08-13 复核）。** 本仓库存在两份 PRD：本文件（仓库根）与
-> [docs/prd-moss-agent-analytics-os.md](docs/prd-moss-agent-analytics-os.md)。
->
-> - [docs/DOCUMENT_AUTHORITY.md](docs/DOCUMENT_AUTHORITY.md) 的权威顺序第 2 位只指向**本文件（仓库根那份）**，
->   未提及 `docs/` 下的副本。
-> - 两份**已经漂移，不再一致**：差异集中在 §17。本文件标题为「首轮实施边界」，用条件式表述
->   （「如果进入真正编码阶段…」），并逐条列出 4 份 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09/10/11/12.md`
->   scoped override；`docs/` 副本标题为「当前执行边界」，用既成表述（「当前默认执行边界已切换为…」），
->   并把那 4 条 override 压缩成一句概述。其余章节当前一致。
-> - 需要注意：`docs/DOCUMENT_AUTHORITY.md`「阶段边界规则」与「当前有效 scoped override」两节的措辞，
->   分别更接近 `docs/` 副本和本文件——即**权威链指向的这一份并不在所有点上与治理文档同步**。
-> - **发生冲突时以本文件为准**（依据是权威链，不是内容新旧）。
-> - 「保留哪一份、是否合并或删除其一、§17 以哪个版本为准」属于 owner 决策，执行方不自行处置。
+> 本文件是仓库产品 PRD 的权威正文，权威顺序见
+> [docs/DOCUMENT_AUTHORITY.md](docs/DOCUMENT_AUTHORITY.md#权威顺序)。
+> [docs/prd-moss-agent-analytics-os.md](docs/prd-moss-agent-analytics-os.md) 保留为旧路径与章节锚点的兼容入口。
+> 本文件维护产品定义和阶段目标；已生效的局部范围与接口状态由 §17 引用的权威文档维护。
 
 ## 1. 项目定义
 
@@ -734,43 +725,10 @@ Choice / AkShare 断连导致热路径页面整体雪崩。
 
 ## 17. 首轮实施边界
 
-如果进入真正编码阶段，默认执行边界按 `repo-wide Phase 2（通用正式计算）` 解释，但仅对 formal-compute 主链生效。
+默认执行边界按 `repo-wide Phase 2（通用正式计算）` 解释，只对 formal-compute 主链生效。纳入的链路、历史 `Phase 1 closeout` 含义和局部授权规则统一见 [DOCUMENT_AUTHORITY.md 的阶段边界规则](docs/DOCUMENT_AUTHORITY.md#阶段边界规则)。
 
-边界解释如下：
+已生效的局部范围、读取接口状态与范围扩张排除项统一见 [Current Surface Boundaries](docs/DOCUMENT_AUTHORITY.md#current-surface-boundaries)。其中已落地接口的维护与正式金融口径晋升分别判断；接口开放不构成范围扩张或正式使用授权。本 PRD 不重复维护当前接口清单。
 
-- 本次 repo-wide `Phase 2` cutover 只覆盖：
-  - formal balance
-  - formal PnL
-  - formal FX
-  - formal yield curve
-  - PnL bridge
-  - risk tensor
-  - 核心 bond analytics formal read surfaces
-- `Phase 1 closeout` 仍属于历史收口概念；它只用于未纳入本次 cutover 的骨架、预览、占位、验证和治理欠账。
-- `.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 等文档属于计划与候选执行面，不是权限来源。
-- 上述计划文档只有在以下两种情况下才可执行：
-  - 明确属于 repo-wide `Phase 2` 已纳入的 formal-compute 主链；
-  - 被新的更高优先级指令或 dated execution update 明确授权。
-- scoped override 只对被点名的工作流生效；在当前口径下，它主要用于已排除模块、历史工作流或未来新增工作流，而不再是 formal-compute 主链的主要授权来源。
+`.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 等仍属于计划与候选执行面，不是权限来源。dated execution update 按工作流适用性选择，只授权被点名的范围；清单和适用原则见 [当前有效 scoped override](docs/DOCUMENT_AUTHORITY.md#当前有效-scoped-override)。
 
-当前保留的历史 scoped override（截至 2026-04-12）如下：
-
-- 见 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md`
-- 见 `docs/CURRENT_EXECUTION_UPDATE_2026-04-10.md`
-- 见 `docs/CURRENT_EXECUTION_UPDATE_2026-04-11.md`
-- 见 `docs/CURRENT_EXECUTION_UPDATE_2026-04-12.md`
-
-本次 cutover 明确不包含：
-
-- `executive.*`
-- Agent MVP / `/api/agent/query` / `/agent`
-- `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
-- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
-- cube-query、broad frontend rollout、以及其他 `Phase 3 / Phase 4` 风格扩张项
-
-默认输出要求如下：
-
-- 变更文件清单
-- 测试结果
-- 未完成项
-- 下一轮建议
+交付与验证要求遵循根 [AGENTS.md 的工作和验证协议](AGENTS.md#work-and-validation-protocol)，不因阶段名称自动扩大本次任务或验收范围。

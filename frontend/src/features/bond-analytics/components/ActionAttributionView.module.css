@@ -1,0 +1,65 @@
+.metaLine {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.metaSeparator {
+  margin: 0 0.5em;
+  opacity: 0.45;
+}
+
+.readinessBody {
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.summaryList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--moss-space-2);
+}
+
+.summaryRow {
+  display: flex;
+  gap: var(--moss-space-3);
+  align-items: center;
+}
+
+/* 比 antd `.ant-tag` 的 text-align: start 高一级，保证居中不被主题样式盖回。 */
+.summaryRow .typeTag {
+  width: 80px;
+  text-align: center;
+}
+
+.summaryCount {
+  width: 50px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.summaryTrack {
+  flex: 1;
+  height: 20px;
+  overflow: hidden;
+  background: var(--dh-api-panel-2);
+}
+
+.summaryPnl {
+  width: 200px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.tabularNums {
+  font-variant-numeric: tabular-nums;
+}
+
+.opportunityCostNote {
+  margin-bottom: var(--moss-space-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}

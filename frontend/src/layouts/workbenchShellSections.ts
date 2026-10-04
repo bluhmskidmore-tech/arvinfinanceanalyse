@@ -21,6 +21,14 @@ export const MODULE_HOME_SECTION_KEYS: readonly string[] = [
   "reports-center",
 ];
 
+/** 需要延迟加载 institutional console 皮肤的页面。 */
+export const INSTITUTIONAL_CONSOLE_SECTION_KEYS: readonly string[] = [
+  "cross-asset",
+  "ledger-pnl",
+  "product-category-pnl",
+  "pnl-attribution",
+];
+
 /**
  * 宏观工具 / 宏观观察（独立页面，共用 macro-toolkit 主题 scope）：
  * 两页自带页头是唯一标题带，
@@ -45,28 +53,16 @@ export const COCKPIT_SHELL_SECTION_KEYS: readonly string[] = [
   ]),
 ];
 
-/** showShellTerminalBar 为假（外壳终端条整块抑制）的 section。 */
-export const TERMINAL_BAR_EXCLUDED_SECTION_KEYS: readonly string[] = [
-  ...new Set([
-    ...DASHBOARD_COCKPIT_SECTION_KEYS,
-    "bond-analysis",
-    "stock-analysis",
-    "balance-analysis",
-    ...MACRO_TOOLKIT_SECTION_KEYS,
-    "balance-movement-analysis",
-    ...MODULE_HOME_SECTION_KEYS,
-  ]),
-];
+/**
+ * showShellTerminalBar 为假（外壳终端条整块抑制）的 section。
+ *
+ * 2026-09-02 铬件统一：终端条 / 组内子导航是全站唯一开场，原先 12 个 section 各自抑制
+ * 导致切页像换产品。当前保留以下例外：
+ * - dashboard：§9.2 锁定首页工具条职责（报告日 / 搜索 / 状态胶囊 / 刷新），并入终端条待决策 D1；
+ * - stock-analysis：参考终端重建在途、自带侧栏与页头，收口时点待决策 D5。
+ * - agent：独立对话由 Chat 页头和输入框承担开场，不加载无关行情与报表导航。
+ */
+export const TERMINAL_BAR_EXCLUDED_SECTION_KEYS: readonly string[] = ["dashboard", "stock-analysis", "agent"];
 
-/** 组内子导航被抑制的 section（对比终端条排除表：去掉宏观工具组、加 market-data 终端主布局）。 */
-export const SECTION_SUBNAV_EXCLUDED_SECTION_KEYS: readonly string[] = [
-  ...new Set([
-    ...DASHBOARD_COCKPIT_SECTION_KEYS,
-    "bond-analysis",
-    "stock-analysis",
-    "balance-analysis",
-    "balance-movement-analysis",
-    "market-data",
-    ...MODULE_HOME_SECTION_KEYS,
-  ]),
-];
+/** 组内子导航被抑制的 section（与终端条同一组例外）。 */
+export const SECTION_SUBNAV_EXCLUDED_SECTION_KEYS: readonly string[] = ["dashboard", "stock-analysis", "agent"];

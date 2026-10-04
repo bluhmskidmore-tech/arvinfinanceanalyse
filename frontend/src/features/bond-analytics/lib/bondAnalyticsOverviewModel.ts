@@ -163,10 +163,10 @@ function buildTruthStrip(
 ): BondAnalyticsTruthStrip {
   if (loading) {
     return {
-      title: "真值与证据",
+      title: "数据说明",
       items: [
         { key: "basis", label: "口径", value: "加载中", tone: "neutral" },
-        { key: "freshness", label: "新鲜度", value: "加载中", tone: "neutral" },
+        { key: "freshness", label: "更新时间", value: "加载中", tone: "neutral" },
         { key: "quality", label: "质量", value: "加载中", tone: "neutral" },
         { key: "coverage", label: "覆盖", value: "总览收窄", tone: "neutral" },
       ],
@@ -175,13 +175,13 @@ function buildTruthStrip(
 
   if (error) {
     return {
-      title: "真值与证据",
+      title: "数据说明",
       items: [
         { key: "basis", label: "口径", value: "驾驶舱快照", tone: "warning" },
         {
           key: "freshness",
-          label: "新鲜度",
-          value: "动作归因不可用",
+          label: "更新时间",
+          value: "动作归因读取失败",
           tone: "warning",
         },
         { key: "quality", label: "质量", value: "部分总览", tone: "warning" },
@@ -201,7 +201,7 @@ function buildTruthStrip(
         : "negative";
 
   return {
-    title: "真值与证据",
+    title: "数据说明",
     items: [
       {
         key: "basis",
@@ -211,7 +211,7 @@ function buildTruthStrip(
       },
       {
         key: "freshness",
-        label: "新鲜度",
+        label: "更新时间",
         value: formatIsoMoment(generatedAt),
         tone: freshnessTone,
       },

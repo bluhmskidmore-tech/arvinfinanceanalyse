@@ -1,8 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { AgentTurnResultView } from "../features/agent/components/AgentTurnResultView";
-import type { AgentConversationTurn } from "../features/agent/lib/agentWorkbenchModel";
+import type {
+  AgentConversationTurn,
+  AgentQueryResult,
+} from "../features/agent/lib/agentWorkbenchModel";
 
 
 describe("AgentTurnResultView", () => {
@@ -107,5 +110,76 @@ describe("AgentTurnResultView", () => {
     );
 
     expect(screen.getByRole("status", { name: "数据可信状态提示" })).toBeInTheDocument();
+  });
+
+  it("preserves zero and missing metric values while blocking unchecked formal use", () => {
+    const result = {
+      answer: "2026-03-31 的正式损益结果。",
+      cards: [
+        {
+          title: "利息收入",
+          type: "metric",
+          value: "0.00 元",
+          metric_id: "MTR-PNL-001",
+        },
+        { title: "正式总损益", type: "metric", value: null },
+      ],
+      evidence: {
+        tables_used: ["fact_formal_pnl_overview"],
+        filters_applied: { report_date: "2026-03-31" },
+        sql_executed: [],
+        evidence_rows: 1,
+        quality_flag: "warning",
+      },
+      result_meta: {
+        formal_use_allowed: true,
+        resolved_report_date: "2026-03-31",
+      },
+      semantic_context: {
+        status: "resolved",
+        result_check: "blocked",
+        references: [],
+      },
+      next_drill: [],
+      suggested_actions: [],
+    } satisfies AgentQueryResult;
+    const turn: AgentConversationTurn = {
+      id: "turn-ontology-zero-and-missing",
+      question: "2026-03-31 的利息收入是多少",
+      agentRun: null,
+      result,
+      error: null,
+      activeSuggestedActionPayload: null,
+    };
+
+    render(
+      <AgentTurnResultView
+        turn={turn}
+        isLatestResultTurn
+        isEmbedded={false}
+        readOnly={false}
+        loading={false}
+        latestConversationTurnId={turn.id}
+        copyFeedback={null}
+        pendingSuggestedActionConfirmation={null}
+        canRegenerate={false}
+        onRegenerate={() => undefined}
+        onCopyAnswer={() => undefined}
+        onApplyNextDrill={() => undefined}
+        onSuggestedAction={() => undefined}
+        onFocusComposerFromFollowUp={() => undefined}
+        onApplyFollowUpChip={() => undefined}
+        onFocusComposerFromEmptyResult={() => undefined}
+        onSideDrawerOpen={() => undefined}
+      />,
+    );
+
+    const missingCard = screen.getByText("正式总损益").closest(".agent-generic-cards__card");
+
+    expect(screen.getByText("0.00 元")).toBeInTheDocument();
+    expect(missingCard).not.toBeNull();
+    expect(within(missingCard as HTMLElement).getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("不可正式使用（结果未通过核对）")).toBeInTheDocument();
+    expect(screen.queryByText("允许正式使用")).not.toBeInTheDocument();
   });
 });

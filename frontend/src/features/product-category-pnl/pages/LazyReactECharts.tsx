@@ -2,35 +2,65 @@ import { useEffect, useState } from "react";
 import type { EChartsReactProps } from "echarts-for-react/lib/types";
 
 import {
+  ChartCard,
+  type ChartCardProps,
+} from "../../../components/charts/ChartCard";
+import {
   getLoadedReactECharts,
   loadReactECharts,
   type ReactEChartsComponent,
 } from "./lazyReactEChartsLoader";
+import styles from "./LazyReactECharts.module.css";
 
-export function LazyReactECharts(props: EChartsReactProps) {
-  const [ReactECharts, setReactECharts] = useState<ReactEChartsComponent | null>(
+type LazyChartCardProps = Omit<ChartCardProps, "chartRenderer"> & {
+  canvasClassName?: string;
+  onEvents?: EChartsReactProps["onEvents"];
+};
+
+export function LazyChartCard({
+  canvasClassName,
+  onEvents,
+  ...chartCardProps
+}: LazyChartCardProps) {
+  const [EChartRenderer, setEChartRenderer] = useState<ReactEChartsComponent | null>(
     () => getLoadedReactECharts(),
   );
 
   useEffect(() => {
-    if (ReactECharts) {
+    if (EChartRenderer) {
       return undefined;
     }
     let active = true;
     void loadReactECharts().then((component) => {
       if (active) {
-        setReactECharts(() => component);
+        setEChartRenderer(() => component);
       }
     });
     return () => {
       active = false;
     };
-  }, [ReactECharts]);
+  }, [EChartRenderer]);
 
-  if (!ReactECharts) {
-    // 复用画布自身的类名占位：高度逐主题、逐断点与真实画布一致，出图时不抖动。
-    return <div className={props.className} aria-hidden="true" />;
-  }
-
-  return <ReactECharts {...props} />;
+  return (
+    <ChartCard
+      {...chartCardProps}
+      chartRenderer={({ option, height }) => {
+        const className = [styles.canvas, styles[`height${height}`], canvasClassName]
+          .filter(Boolean)
+          .join(" ");
+        if (!EChartRenderer) {
+          return <div className={className} aria-hidden="true" />;
+        }
+        return (
+          <EChartRenderer
+            option={option}
+            className={className}
+            notMerge
+            lazyUpdate
+            onEvents={onEvents}
+          />
+        );
+      }}
+    />
+  );
 }

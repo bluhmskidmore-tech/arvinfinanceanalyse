@@ -56,27 +56,33 @@ def test_formal_canonical_usd_cny_rate_fails_closed_when_only_stale_rows_exist()
 
 def test_formal_canonical_usd_cny_rate_carries_forward_explicit_non_business_day() -> None:
     rate, observed_date, warnings = get_usd_cny_rate(
-        [(date(2026, 2, 16), "7.1100")],
+        [(date(2026, 2, 13), "7.1100")],
         date(2026, 2, 18),
         target_is_business_day=False,
     )
 
     assert rate == Decimal("7.1100")
-    assert observed_date == date(2026, 2, 16)
+    assert observed_date == date(2026, 2, 13)
     assert warnings
     assert "formal" in warnings[0]
 
 
-def test_formal_canonical_usd_cny_rate_uses_cfets_currency_holiday_calendar() -> None:
-    rate, observed_date, warnings = get_usd_cny_rate(
-        [(date(2026, 1, 16), "7.1100")],
-        date(2026, 1, 19),
-    )
+@pytest.mark.parametrize("explicit_business_day", [None, False])
+def test_formal_canonical_usd_cny_rate_requires_us_holiday_fixing(explicit_business_day) -> None:
+    with pytest.raises(FxRateUnavailableError):
+        get_usd_cny_rate(
+            [(date(2026, 1, 16), "7.1100")],
+            date(2026, 1, 19),
+            target_is_business_day=explicit_business_day,
+        )
 
-    assert rate == Decimal("7.1100")
-    assert observed_date == date(2026, 1, 16)
-    assert warnings
-    assert "observed_date=2026-01-16" in warnings[0]
+
+def test_formal_carry_forward_rejects_observation_on_non_publication_day() -> None:
+    with pytest.raises(FxRateUnavailableError):
+        get_usd_cny_rate(
+            [(date(2026, 2, 16), "7.1100")],
+            date(2026, 2, 18),
+        )
 
 
 def test_formal_carry_forward_spans_2026_spring_festival_long_holiday() -> None:

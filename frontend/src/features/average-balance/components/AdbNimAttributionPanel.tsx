@@ -2,9 +2,10 @@ import { Alert, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { AdbInsightsWindow, AdbNimAttribution, AdbNimSideAttribution } from "../../../api/contracts";
+import { SectionHead } from "../../../components/layout";
 import { EM_DASH, formatBp, formatPercent } from "../../../utils/format";
+import { ADB_SECTION_HEAD_NUMBERING } from "./adbSectionHeadNumbering";
 import AdbKpiStrip, { type AdbKpiStripItem } from "./AdbKpiStrip";
-import AdbSectionHead from "./AdbSectionHead";
 import { formatAlreadyPercent, kpiToneForSign, toneClassForSign } from "./adbDeepAnalysisFormat";
 
 import "./AverageBalanceView.css";
@@ -79,9 +80,17 @@ function unavailableMessage(reason: string | null): string {
 export default function AdbNimAttributionPanel({ nim, reason, qoqWindow }: AdbNimAttributionPanelProps) {
   return (
     <section className="adb-sec" data-testid="adb-nim-attribution-panel">
-      <AdbSectionHead
+      <SectionHead
         title="NIM 量价归因（环比）"
-        meta="rate+mix+residual=该侧总效应；nim_delta_bp=资产端效应−负债端效应"
+        numbered={ADB_SECTION_HEAD_NUMBERING}
+        actions={
+          <span
+            className="adb-sec-meta"
+            title="rate+mix+residual=该侧总效应；nim_delta_bp=资产端效应−负债端效应"
+          >
+            rate+mix+residual=该侧总效应；nim_delta_bp=资产端效应−负债端效应
+          </span>
+        }
       />
       <p className="adb-note">
         口径：利率效应=份额×利率变动，结构效应=份额变动×基准利率，残差原样披露（利率覆盖不足时残差会变大）。

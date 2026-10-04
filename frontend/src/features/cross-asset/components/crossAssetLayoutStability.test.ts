@@ -14,21 +14,16 @@ describe("cross-asset layout stability", () => {
     const statusCss = readFrontendCss(
       "src/features/cross-asset/components/CrossAssetStatusStrip.css",
     );
-    const kpiCss = readFrontendCss(
-      "src/features/cross-asset/components/CrossAssetKpiBand.css",
-    );
+    const kpiCss = readFrontendCss("src/components/layout/KpiStrip.module.css");
 
     expect(heroCss).toMatch(
-      /\.cross-asset-hero-panel__conclusion \{[\s\S]*?min-height: 3\.1em;[\s\S]*?\}/,
+      /\.cross-asset-hero-panel__conclusion \{[\s\S]*?min-height: 2\.8em;[\s\S]*?\}/,
     );
     expect(heroCss).toMatch(
-      /@media \(max-width: 1200px\) \{[\s\S]*?\.cross-asset-hero-panel__conclusion \{[\s\S]*?min-height: 4\.65em;/,
+      /@media \(max-width: 520px\) \{[\s\S]*?\.cross-asset-hero-panel__conclusion \{[\s\S]*?min-height: 4\.2em;/,
     );
     expect(heroCss).toMatch(
-      /@media \(max-width: 520px\) \{[\s\S]*?\.cross-asset-hero-panel__conclusion \{[\s\S]*?min-height: 6\.2em;/,
-    );
-    expect(heroCss).toMatch(
-      /@media \(max-width: 400px\) \{[\s\S]*?\.cross-asset-hero-panel__conclusion \{[\s\S]*?min-height: 12\.4em;/,
+      /@media \(max-width: 400px\) \{[\s\S]*?\.cross-asset-hero-panel__conclusion \{[\s\S]*?min-height: 5\.6em;/,
     );
 
     expect(statusCss).toMatch(
@@ -38,7 +33,10 @@ describe("cross-asset layout stability", () => {
       /@media \(max-width: 400px\) \{[\s\S]*?\.cross-asset-status-strip \{[\s\S]*?min-height: 72px;/,
     );
     expect(kpiCss).toMatch(
-      /\.cross-asset-kpi-band__foot \{[\s\S]*?min-height: 24px;[\s\S]*?\}/,
+      /\.cell \{[\s\S]*?min-height: 120px;[\s\S]*?\}/,
+    );
+    expect(kpiCss).toMatch(
+      /\.sparkRow \{[\s\S]*?min-height: 20px;[\s\S]*?\}/,
     );
   });
 

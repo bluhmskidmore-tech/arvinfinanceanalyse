@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
 
 import duckdb
+from backend.app.core_finance.product_category_pnl import CanonicalFactRow, ManualAdjustment
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
+from backend.app.repositories.governance_repo import GovernanceRepository
+
+PRODUCT_CATEGORY_ADJUSTMENT_STREAM = "product_category_pnl_adjustments"
 
 # 正式读模型行查询：fetch_rows 执行与外部证据披露（如 agent sql_executed）共用同一份常量。
 PRODUCT_CATEGORY_PNL_ROWS_SQL = """
@@ -45,9 +54,65 @@ class ProductCategoryPnlStorageError(RuntimeError):
 class ProductCategoryPnlRepository:
     path: str
 
+    def fetch_canonical_ytd_facts(self, anchor: date) -> dict[date, list[CanonicalFactRow]] | None:
+        """Load already-adjusted canonical facts through an existing same-year anchor."""
+        report_date = anchor.isoformat()
+        try:
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
+        except (OSError, duckdb.Error):
+            return None
+
+        try:
+            dates_rows = conn.execute(
+                """
+                select distinct report_date
+                from product_category_pnl_canonical_fact
+                where report_date <= ? and substr(report_date, 1, 4) = ?
+                order by report_date
+                """,
+                [report_date, str(anchor.year)],
+            ).fetchall()
+            date_strings = [str(row[0]) for row in dates_rows]
+            if report_date not in date_strings:
+                return None
+
+            facts_by: dict[date, list[CanonicalFactRow]] = {}
+            for date_string in date_strings:
+                rows = conn.execute(
+                    """
+                    select report_date, account_code, currency, account_name,
+                           beginning_balance, ending_balance, monthly_pnl,
+                           daily_avg_balance, annual_avg_balance, days_in_period
+                    from product_category_pnl_canonical_fact
+                    where report_date = ?
+                    order by account_code, currency
+                    """,
+                    [date_string],
+                ).fetchall()
+                facts_by[date.fromisoformat(date_string)] = [
+                    CanonicalFactRow(
+                        report_date=date.fromisoformat(str(row[0])),
+                        account_code=str(row[1]),
+                        currency=str(row[2]),
+                        account_name=str(row[3]),
+                        beginning_balance=Decimal(str(row[4])),
+                        ending_balance=Decimal(str(row[5])),
+                        monthly_pnl=Decimal(str(row[6])),
+                        daily_avg_balance=Decimal(str(row[7])),
+                        annual_avg_balance=Decimal(str(row[8])),
+                        days_in_period=int(row[9]),
+                    )
+                    for row in rows
+                ]
+            return facts_by
+        except duckdb.Error:
+            return None
+        finally:
+            conn.close()
+
     def list_report_dates(self) -> list[str]:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 """
                 select distinct report_date
@@ -68,7 +133,7 @@ class ProductCategoryPnlRepository:
 
     def latest_source_version(self) -> str:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             row = conn.execute(
                 """
                 select source_version
@@ -103,7 +168,7 @@ class ProductCategoryPnlRepository:
         view_placeholders = ", ".join(["?"] * len(requested_views))
         category_placeholders = ", ".join(["?"] * len(categories))
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 f"""
                 select view, category_id, business_net_income
@@ -131,7 +196,7 @@ class ProductCategoryPnlRepository:
     def fetch_rows(self, report_date: str, view: str) -> list[dict[str, object]]:
         """Load persisted formal read-model rows only. Scenario FTP is overlaid in analysis_adapters, not stored here."""
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 PRODUCT_CATEGORY_PNL_ROWS_SQL,
                 [report_date, view],
@@ -177,6 +242,55 @@ class ProductCategoryPnlRepository:
             item["children"] = json.loads(str(item.pop("children_json") or "[]"))
             parsed_rows.append(item)
         return parsed_rows
+
+
+def load_product_category_manual_adjustments(
+    governance_path: Path, report_date: date,
+    *, events: Sequence[dict[str, object]] | None = None,
+) -> list[ManualAdjustment]:
+    """Read the latest event per adjustment before selecting the requested month."""
+    rows = (
+        GovernanceRepository(base_dir=governance_path).read_all(PRODUCT_CATEGORY_ADJUSTMENT_STREAM)
+        if events is None else events
+    )
+    latest_by_id: dict[str, dict[str, object]] = {}
+    legacy_rows: list[dict[str, object]] = []
+    for index, row in enumerate(rows):
+        adjustment_id = str(row.get("adjustment_id") or "")
+        if not adjustment_id:
+            legacy_rows.append(row | {"adjustment_id": f"legacy-{index}"})
+            continue
+        existing = latest_by_id.get(adjustment_id)
+        if existing is None or str(row.get("created_at", "")) >= str(existing.get("created_at", "")):
+            latest_by_id[adjustment_id] = row
+
+    adjustments: list[ManualAdjustment] = []
+    for row in [*legacy_rows, *latest_by_id.values()]:
+        # A historical move must not retain its old-month event.
+        if str(row.get("report_date")) != report_date.isoformat():
+            continue
+        adjustments.append(
+            ManualAdjustment(
+                report_date=report_date,
+                operator=str(row.get("operator", "")),
+                approval_status=str(row.get("approval_status", "")),
+                account_code=str(row.get("account_code", "")),
+                currency=str(row.get("currency", "")),
+                account_name=str(row.get("account_name", "")),
+                beginning_balance=_decimal_or_none(row.get("beginning_balance")),
+                ending_balance=_decimal_or_none(row.get("ending_balance")),
+                monthly_pnl=_decimal_or_none(row.get("monthly_pnl")),
+                daily_avg_balance=_decimal_or_none(row.get("daily_avg_balance")),
+                annual_avg_balance=_decimal_or_none(row.get("annual_avg_balance")),
+            )
+        )
+    return adjustments
+
+
+def _decimal_or_none(value: object) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    return Decimal(str(value))
 
 
 def _is_missing_read_model_error(exc: duckdb.Error) -> bool:

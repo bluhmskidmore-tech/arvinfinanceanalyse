@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -301,5 +302,113 @@ describe("PositionsView business contract", () => {
     });
     // 首屏筛选状态条与主筛选保持一致
     expect(screen.getByTestId("positions-data-status")).toHaveTextContent("Gov");
+  });
+
+  it("blocks reversed date ranges across every interval query and resumes after correction", async () => {
+    const client = buildBondsClient([bondItem({ bond_code: "RANGE-001" })]);
+    client.getPositionsInterbankProductTypes = vi.fn(async () =>
+      envelope("positions.interbank.product_types", { product_types: [] }),
+    );
+    client.getPositionsInterbankList = vi.fn(async () =>
+      envelope("positions.interbank.list", { items: [], total: 0, page: 1, page_size: 20 }),
+    );
+    client.getPositionsCounterpartyInterbankSplit = vi.fn(async () =>
+      envelope("positions.counterparty.interbank.split", {
+        start_date: "2026-05-01",
+        end_date: "2026-05-02",
+        num_days: 2,
+        asset_total_amount: "0",
+        asset_total_avg_daily: "0",
+        asset_total_weighted_rate: null,
+        asset_customer_count: 0,
+        liability_total_amount: "0",
+        liability_total_avg_daily: "0",
+        liability_total_weighted_rate: null,
+        liability_customer_count: 0,
+        asset_items: [],
+        liability_items: [],
+      }),
+    );
+    renderPositionsWithClient(client);
+    await screen.findByText("RANGE-001");
+    await waitFor(() => expect(client.getPositionsStatsIndustry).toHaveBeenCalled());
+    vi.mocked(client.getPositionsCounterpartyBonds).mockClear();
+    vi.mocked(client.getPositionsStatsRating).mockClear();
+    vi.mocked(client.getPositionsStatsIndustry).mockClear();
+
+    fireEvent.change(screen.getByLabelText("持仓区间起始日期"), { target: { value: "2026-05-01" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("区间起始日期不能晚于结束日期");
+    expect(screen.getByLabelText("持仓区间起始日期")).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByTestId("positions-refresh"));
+    await waitFor(() => expect(client.getPositionsBondsList).toHaveBeenCalledTimes(2));
+    expect(client.getPositionsCounterpartyBonds).not.toHaveBeenCalled();
+    expect(client.getPositionsStatsRating).not.toHaveBeenCalled();
+    expect(client.getPositionsStatsIndustry).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("tab", { name: "同业持仓" }));
+    await waitFor(() => expect(client.getPositionsInterbankList).toHaveBeenCalled());
+    expect(client.getPositionsCounterpartyInterbankSplit).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("持仓区间结束日期"), { target: { value: "2026-05-02" } });
+    await waitFor(() => expect(client.getPositionsCounterpartyInterbankSplit).toHaveBeenCalledWith(
+      expect.objectContaining({ startDate: "2026-05-01", endDate: "2026-05-02" }),
+    ));
+    expect(screen.queryByText("区间起始日期不能晚于结束日期，请调整后查看区间统计。")).not.toBeInTheDocument();
+  });
+
+  it("opens a ranked customer with Tab and Enter and names the search scope in its empty state", async () => {
+    const user = userEvent.setup();
+    const client = buildBondsClient([bondItem({ bond_code: "KEYBOARD-001" })]);
+    client.getPositionsCounterpartyBonds = vi.fn(async () =>
+      envelope("positions.counterparty.bonds", counterpartyStats({
+        items: [{
+          customer_name: "键盘测试客户",
+          total_amount: "100000000",
+          avg_daily_balance: "1000000",
+          weighted_rate: "0.025",
+          weighted_coupon_rate: "0.03",
+          transaction_count: 1,
+        }],
+      })),
+    );
+    client.getPositionsCustomerDetails = vi.fn(async () =>
+      envelope("positions.customer.details", {
+        customer_name: "键盘测试客户",
+        report_date: "2026-04-30",
+        total_market_value: "100000000",
+        bond_count: 0,
+        items: [],
+      }),
+    );
+    client.getPositionsCustomerTrend = vi.fn(async () =>
+      envelope("positions.customer.trend", {
+        customer_name: "键盘测试客户",
+        start_date: "2026-04-01",
+        end_date: "2026-04-30",
+        days: 30,
+        items: [],
+      }),
+    );
+    renderPositionsWithClient(client);
+    const customerButton = await screen.findByRole("button", { name: "键盘测试客户" });
+    const search = screen.getByRole("textbox", { name: "筛选前 50 名客户" });
+    await user.click(search);
+    await user.tab();
+    expect(customerButton).toHaveFocus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeVisible();
+    await waitFor(() => expect(client.getPositionsCustomerDetails).toHaveBeenCalledWith({
+      customerName: "键盘测试客户",
+      reportDate: "2026-04-30",
+    }));
+    // rc-dialog 按 keyCode 识别 Esc；user-event 在 jsdom 只填写 key/code。
+    fireEvent.keyDown(dialog, { key: "Escape", keyCode: 27, which: 27 });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.change(search, { target: { value: "不存在客户" } });
+    expect(screen.getByText("前 50 名中无匹配客户，可清空搜索查看当前排名。")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "键盘测试客户" })).not.toBeInTheDocument();
+    expect(client.getPositionsCounterpartyBonds).toHaveBeenCalledTimes(1);
   });
 });

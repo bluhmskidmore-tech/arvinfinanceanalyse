@@ -10,12 +10,14 @@
 
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_analysis_service as macro_toolkit_analysis
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
 from datetime import date
 from decimal import Decimal
 
 import pandas as pd
 
-import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.core_finance.macro.leading_indicator import (
     _history_mean,
     _monthly_series,
@@ -117,7 +119,7 @@ def test_absent_calendar_month_is_disclosed_and_not_zero_filled() -> None:
 def test_api_loader_ffill_is_not_counted_as_a_new_monthly_observation() -> None:
     frames = {
         alias: pd.DataFrame(columns=["date", "value"])
-        for _, alias in macro_toolkit_route._WIDE_SERIES_ALIASES
+        for _, alias in macro_toolkit_support._WIDE_SERIES_ALIASES
     }
     frames["M0001385"] = pd.DataFrame(
         [
@@ -157,7 +159,7 @@ def test_api_loader_ffill_is_not_counted_as_a_new_monthly_observation() -> None:
         ]
     )
 
-    wide_rows = macro_toolkit_route._load_macro_wide_rows(
+    wide_rows = macro_toolkit_support._load_macro_wide_rows(
         "unused.duckdb",
         date(2026, 3, 31),
         [
@@ -275,10 +277,10 @@ def test_empty_result_has_no_neutral_score_and_keeps_governance_flags() -> None:
     assert result["formal_use_allowed"] is False
     assert result["as_of_month"] is None
     assert result["alignment_policy"] == "latest_common_computable_month"
-    assert macro_toolkit_route._capability_result_score("leading_indicator", result) is None
-    assert macro_toolkit_route._capability_primary_metric("leading_indicator", result) is None
+    assert macro_toolkit_analysis._capability_result_score("leading_indicator", result) is None
+    assert macro_toolkit_analysis._capability_primary_metric("leading_indicator", result) is None
     assert (
-        macro_toolkit_route._capability_result_headline("leading_indicator", result)
+        macro_toolkit_analysis._capability_result_headline("leading_indicator", result)
         == "暂无可用宏观数据，无法计算领先指标。"
     )
 

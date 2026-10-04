@@ -45,9 +45,9 @@ describe("BondAnalyticsFilterActionStrip", () => {
 
     expect(screen.getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
     expect(screen.getByText("复核入口")).toBeInTheDocument();
-    expect(screen.getByText("参数与下钻边界")).toBeInTheDocument();
+    expect(screen.getByText("分析设置")).toBeInTheDocument();
     expect(screen.getByText("高级筛选 / 参数调整")).toBeInTheDocument();
-    expect(screen.getByText("尚未捕获刷新运行。")).toBeInTheDocument();
+    expect(screen.getByText("本次尚未刷新。")).toBeInTheDocument();
     expect(screen.getByTestId("bond-analysis-refresh-state")).toHaveAttribute("data-state", "idle");
     expect(screen.queryByText("报告日期")).not.toBeInTheDocument();
     expect(screen.queryByText("统计区间")).not.toBeInTheDocument();
@@ -79,11 +79,11 @@ describe("BondAnalyticsFilterActionStrip", () => {
     );
 
     expect(screen.getByText("刷新中")).toBeInTheDocument();
-    expect(screen.getByText("正在刷新受治理总览状态...")).toBeInTheDocument();
+    expect(screen.getByText("正在刷新分析...")).toBeInTheDocument();
     expect(screen.getByTestId("bond-analysis-refresh-state")).toHaveAttribute("data-state", "running");
   });
 
-  it("shows latest run id when provided", () => {
+  it("keeps the latest run id in closed diagnostics while displaying refresh completion", () => {
     render(
       <BondAnalyticsFilterActionStrip
         {...mockAnalyticsFilterProps()}
@@ -94,8 +94,12 @@ describe("BondAnalyticsFilterActionStrip", () => {
       />,
     );
 
-    expect(screen.getByText("最近运行")).toBeInTheDocument();
-    expect(screen.getByText("最近运行 run-xyz")).toBeInTheDocument();
+    expect(screen.getByText("刷新完成")).toBeInTheDocument();
+    expect(screen.getByText("上次刷新已完成。")).toBeInTheDocument();
+    const diagnostics = screen.getByTestId("bond-analysis-refresh-diagnostics");
+    expect(diagnostics).not.toHaveAttribute("open");
+    expect(diagnostics).toHaveTextContent("run-xyz");
+    expect(screen.getByTestId("bond-analysis-refresh-state")).not.toHaveTextContent("run-xyz");
     expect(screen.getByTestId("bond-analysis-refresh-state")).toHaveAttribute("data-state", "complete");
   });
 

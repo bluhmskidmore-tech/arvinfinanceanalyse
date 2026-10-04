@@ -18,6 +18,27 @@ def _load_lineage_module():
     )
 
 
+@pytest.fixture
+def restored_formal_module_registry():
+    """Snapshot the live formal-module registry and put it back after the test.
+
+    The runtime tests below call ``clear_formal_modules()`` to register a mock
+    module. Without restoration, every later test in the same xdist worker that
+    still holds the real ``materialize_*`` actors (they are imported at collection
+    time) fails with "Formal compute module 'bond_analytics' is not registered".
+    """
+    import importlib
+
+    registry_mod = importlib.import_module("backend.app.core_finance.module_registry")
+    snapshot = registry_mod.list_formal_modules()
+    try:
+        yield registry_mod
+    finally:
+        registry_mod.clear_formal_modules()
+        for descriptor in snapshot:
+            registry_mod.ensure_formal_module(descriptor)
+
+
 def _append_jsonl(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -202,7 +223,9 @@ def test_resolve_formal_manifest_lineage_returns_latest_matching_record(tmp_path
     assert latest["rule_version"] == "rv_new"
 
 
-def test_formal_materialize_runtime_holds_global_duckdb_writer_lock(tmp_path, monkeypatch):
+def test_formal_materialize_runtime_holds_global_duckdb_writer_lock(
+    tmp_path, monkeypatch, restored_formal_module_registry
+):
     runtime_mod = load_module(
         "backend.app.tasks.formal_compute_runtime",
         "backend/app/tasks/formal_compute_runtime.py",
@@ -211,7 +234,8 @@ def test_formal_materialize_runtime_holds_global_duckdb_writer_lock(tmp_path, mo
         "backend.app.tasks.materialize",
         "backend/app/tasks/materialize.py",
     )
-    registry_mod = sys.modules["backend.app.core_finance.module_registry"]
+    registry_mod = restored_formal_module_registry
+    assert registry_mod is sys.modules["backend.app.core_finance.module_registry"]
     contracts_mod = sys.modules["backend.app.core_finance.module_contracts"]
     schema_mod = sys.modules["backend.app.schemas.formal_compute_runtime"]
     locks_mod = load_module(
@@ -267,13 +291,15 @@ def test_formal_materialize_runtime_holds_global_duckdb_writer_lock(tmp_path, mo
 def test_formal_materialize_runtime_records_failed_terminal_when_completed_write_fails(
     tmp_path,
     monkeypatch,
+    restored_formal_module_registry,
 ):
     runtime_mod = load_module(
         "backend.app.tasks.formal_compute_runtime",
         "backend/app/tasks/formal_compute_runtime.py",
     )
     governance_mod = sys.modules["backend.app.repositories.governance_repo"]
-    registry_mod = sys.modules["backend.app.core_finance.module_registry"]
+    registry_mod = restored_formal_module_registry
+    assert registry_mod is sys.modules["backend.app.core_finance.module_registry"]
     contracts_mod = sys.modules["backend.app.core_finance.module_contracts"]
     schema_mod = sys.modules["backend.app.schemas.formal_compute_runtime"]
 
@@ -652,6 +678,40 @@ def test_resolve_formal_facts_lineage_prefers_build_then_rows_then_manifest(tmp_
         "cache_version": "cv_build",
         "vendor_version": "vv_build",
     }
+
+
+def test_resolve_formal_facts_lineage_carries_build_finished_at(tmp_path):
+    lineage_mod = _load_lineage_module()
+    _append_jsonl(
+        tmp_path / "cache_build_run.jsonl",
+        {
+            "run_id": "run-1",
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "cache_key": "bond_analytics:materialize:formal",
+            "cache_version": "cv_build",
+            "source_version": "sv_build",
+            "vendor_version": "vv_build",
+            "rule_version": "rv_build",
+            "report_date": "2026-03-31",
+            "finished_at": "2026-04-01T03:20:00+00:00",
+        },
+    )
+
+    lineage = lineage_mod.resolve_formal_facts_lineage(
+        governance_dir=str(tmp_path),
+        cache_key="bond_analytics:materialize:formal",
+        job_name="bond_analytics_materialize",
+        report_date="2026-03-31",
+        has_rows=True,
+        row_source_versions=["sv_row_a"],
+        default_source_version="sv_empty",
+        default_rule_version="rv_default",
+        default_cache_version="cv_default",
+    )
+
+    assert lineage["finished_at"] == "2026-04-01T03:20:00+00:00"
+    assert lineage["source_version"] == "sv_build"
 
 
 def test_resolve_formal_facts_lineage_returns_defaults_when_no_rows_or_build_exist(tmp_path):

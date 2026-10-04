@@ -7,7 +7,11 @@ from typing import Annotated, Literal
 
 from backend.app.api.routes.data_health import _ensure_data_health_read_allowed
 from backend.app.governance.settings import get_settings
-from backend.app.schemas.data_updates import CoreDataUpdateRequest
+from backend.app.schemas.data_updates import (
+    ChoiceStockPitHistoryRequest,
+    ChoiceStockPitPreflightRequest,
+    CoreDataUpdateRequest,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import data_update_service as service
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -46,6 +50,8 @@ _PUBLIC_RUN_FIELDS = frozenset(
         "current_step",
         "global_run_id",
         "retry_after",
+        "recovery_mode",
+        "recovery_of_run_id",
     }
 )
 _PUBLIC_STEP_FIELDS = frozenset({"key", "label", "status", "started_at", "finished_at", "elapsed_seconds"})
@@ -79,6 +85,20 @@ def _public_preflight(run: dict[str, object], input_directory: str) -> dict[str,
     preflight = run.get("preflight")
     if not isinstance(preflight, dict):
         return None
+    if run.get("workflow") == service.CHOICE_STOCK_PIT_WORKFLOW:
+        return {
+            "workflow": service.CHOICE_STOCK_PIT_WORKFLOW,
+            "report_date": run.get("report_date"),
+            "ready": preflight.get("ready") is True,
+            "input_directory": input_directory,
+            "checks": [],
+            **{key: preflight[key] for key in (
+                "plan_sha256", "source_sha256", "source_stock_code_count",
+                "insert_counts", "identical_counts", "audit_insert_count",
+                "audit_identical_count", "target_missing_request_items_before",
+                "write_scope", "duckdb_written",
+            ) if key in preflight},
+        }
     checks = []
     raw_checks = preflight.get("checks")
     for check in raw_checks if isinstance(raw_checks, list) else []:
@@ -113,6 +133,11 @@ def _public_preflight(run: dict[str, object], input_directory: str) -> dict[str,
 def _public_run(run: dict[str, object], *, input_directory: str) -> dict[str, object]:
     public = {key: value for key, value in run.items() if key in _PUBLIC_RUN_FIELDS}
     public["message"] = _PUBLIC_STATUS_MESSAGES.get(str(run.get("status")), "更新状态待核验。")
+    if run.get("status") == "queued" and run.get("workflow") == service.CHOICE_STOCK_PIT_WORKFLOW:
+        public["message"] = "历史股票来源恢复已受理，须由受控维护主机执行。"
+    elif run.get("status") == "queued" and run.get("recovery_mode") == "publication_only":
+        public["message"] = "已受理仅恢复发布，后台将重新核验来源与已完成结果。"
+    public["publication_recovery"] = service.publication_recovery_eligibility(run)
     preflight = _public_preflight(run, input_directory)
     if preflight is not None:
         public["preflight"] = preflight
@@ -223,7 +248,8 @@ def cancel(run_id: str, auth: Annotated[AuthContext, Depends(get_auth_context)])
     run = next((item for item in runs if item["run_id"] == run_id), None)
     if run is None:
         raise HTTPException(status_code=404, detail="未找到该更新请求。")
-    _authorize(auth, workflow=str(run.get("workflow", "core_financial")))
+    workflow = str(run.get("workflow", "core_financial"))
+    _authorize(auth, market=workflow == service.CHOICE_STOCK_PIT_WORKFLOW, workflow=workflow)
     settings = get_settings()
     try:
         return _public_run(
@@ -243,3 +269,74 @@ def request_market(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> d
         return service.start_market_update()
     except Exception as exc:
         raise HTTPException(status_code=503, detail="市场更新未能启动，请检查计划任务状态后重试。") from exc
+
+
+@router.post("/choice-stock-pit/preflight")
+def preflight_choice_stock_pit(
+    body: ChoiceStockPitPreflightRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    _authorize(auth, market=True)
+    try:
+        settings = get_settings()
+        preflight = service.choice_stock_pit_preflight(
+            settings, report_date=body.report_date.isoformat(),
+            source_duckdb_path=body.source_duckdb_path,
+            expected_source_sha256=body.expected_source_sha256,
+        )
+        public = _public_preflight(
+            {"workflow": service.CHOICE_STOCK_PIT_WORKFLOW,
+             "report_date": body.report_date.isoformat(), "preflight": preflight},
+            str(settings.data_input_root),
+        )
+        if public is None:
+            raise RuntimeError("历史股票预检未返回可用回执。")
+        return public
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise HTTPException(status_code=409, detail="历史股票来源预检未通过，请核对来源和目标范围。") from exc
+
+
+@router.post("/choice-stock-pit", status_code=202)
+def request_choice_stock_pit(
+    body: ChoiceStockPitHistoryRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)],
+) -> dict[str, object]:
+    _authorize(auth, market=True)
+    try:
+        settings = get_settings()
+        run = service.request_choice_stock_pit_update(
+            settings, report_date=body.report_date.isoformat(),
+            source_duckdb_path=body.source_duckdb_path,
+            expected_source_sha256=body.expected_source_sha256,
+            expected_plan_sha256=body.expected_plan_sha256,
+            target_backup_path=body.target_backup_path,
+            requested_by=auth.user_id, idempotency_key=idempotency_key,
+        )
+        return _public_run(run, input_directory=str(settings.data_input_root))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="历史股票恢复参数冲突，请核对预检摘要与备份。") from exc
+    except (RuntimeError, TimeoutError, OSError) as exc:
+        raise HTTPException(status_code=503, detail="历史股票恢复请求未受理，请重新核对预检和后台状态。") from exc
+
+
+@router.post("/runs/{run_id}/recover-publication", status_code=202)
+def recover_publication(
+    run_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)],
+) -> dict[str, object]:
+    _ensure_data_health_read_allowed(auth)
+    _authorize(auth, workflow="core_financial")
+    try:
+        settings = get_settings()
+        run = service.request_publication_recovery(
+            settings, run_id, requested_by=auth.user_id, idempotency_key=idempotency_key,
+        )
+        return _public_run(run, input_directory=str(settings.data_input_root))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="未找到该更新请求。") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="该请求不满足发布恢复条件，或已有活跃更新。") from exc
+    except (RuntimeError, TimeoutError) as exc:
+        raise HTTPException(status_code=503, detail="暂时无法受理发布恢复，请检查后台状态后重试。") from exc

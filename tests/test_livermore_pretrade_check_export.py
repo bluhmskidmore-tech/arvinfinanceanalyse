@@ -4,15 +4,38 @@ import sys
 from pathlib import Path
 
 import duckdb
-
-from tests.helpers import load_module
-
 import pytest
+
+from backend.app.services import pretrade_qualification
+from tests.helpers import load_module
 
 pytestmark = [
     pytest.mark.excluded_surface_acceptance,
     pytest.mark.surface_livermore,
 ]
+
+
+@pytest.fixture(autouse=True)
+def _isolate_existing_export_formula_tests_from_qualification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """These legacy tests cover export calculations; qualification has its own real tests."""
+    monkeypatch.setattr(
+        pretrade_qualification,
+        "qualify_pretrade_read_view",
+        lambda *_args, **_kwargs: {
+            "status": "ready",
+            "producer_run_id": "test:qualified-export",
+            "evidence_sha256": "a" * 64,
+            "input_snapshot": {"sha256": "b" * 64},
+            "outputs": {"pretrade_export_sha256": "c" * 64},
+        },
+    )
+    monkeypatch.setattr(
+        pretrade_qualification,
+        "canonical_pretrade_export_projection_sha256",
+        lambda _value: "c" * 64,
+    )
 
 
 
@@ -83,6 +106,55 @@ def _create_pretrade_db(path: Path) -> duckdb.DuckDBPyConnection:
         """
     )
     return conn
+
+
+def test_write_outputs_stages_all_files_before_replacing_existing_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_pretrade_module()
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    base = "livermore_pretrade_2026-06-01"
+    final_paths = [
+        output_dir / f"{base}.csv",
+        output_dir / f"{base}.json",
+        output_dir / f"{base}.md",
+    ]
+    for path in final_paths:
+        path.write_text(f"old-{path.suffix}", encoding="utf-8")
+    original_write_text = Path.write_text
+
+    def fail_staged_json(path: Path, data: str, **kwargs: object) -> int:
+        if path.suffix == ".json" and path.parent.name.startswith(f".{base}-"):
+            raise OSError("staged json failed")
+        return original_write_text(path, data, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_staged_json)
+    payload = {
+        "as_of_date": "2026-06-01",
+        "signal_kind": "factor_screen",
+        "candidate_count": 0,
+        "top_n": 10,
+        "market_states": [],
+        "data_statuses": [],
+        "decision": {"action": "no_candidates", "reasons": []},
+        "rows": [],
+    }
+
+    with pytest.raises(OSError, match="staged json failed"):
+        module._write_outputs(
+            output_dir=output_dir,
+            as_of_date="2026-06-01",
+            rows=[],
+            payload=payload,
+        )
+
+    assert [path.read_text(encoding="utf-8") for path in final_paths] == [
+        "old-.csv",
+        "old-.json",
+        "old-.md",
+    ]
 
 
 def _seed_candidate(

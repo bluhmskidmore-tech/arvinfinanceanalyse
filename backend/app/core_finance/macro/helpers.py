@@ -9,7 +9,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import pandas as pd
-
+from backend.app.core_finance.decimal_utils import to_decimal as shared_to_decimal
 from backend.app.core_finance.safe_decimal import safe_decimal
 
 logger = logging.getLogger(__name__)
@@ -237,15 +237,12 @@ def enrich_wide_with_curve_market_fields(
 # ---------------------------------------------------------------------------
 
 def to_decimal_safe(v: Any) -> Decimal:
-    if v is None:
-        return Decimal("0")
-    if isinstance(v, Decimal):
-        return v
-    try:
-        return Decimal(str(v))
-    except (TypeError, ValueError, ArithmeticError):
-        logger.exception("to_decimal_safe: failed to convert %r", type(v).__name__)
-        return Decimal("0")
+    """宏观模块的宽松转换，返回语义与共享 ``decimal_utils.to_decimal`` 一致。
+
+    None/NaN/Inf/坏值仍归 ``Decimal("0")``；差异仅是保留本地函数名与签名，
+    实际转换委托共享实现，并由共享实现记录按调用点去重的一次性告警。
+    """
+    return shared_to_decimal(v)
 
 
 def to_decimal_or_none(v: Any) -> Decimal | None:
@@ -257,11 +254,12 @@ def to_decimal_or_none(v: Any) -> Decimal | None:
     if v is None:
         return None
     if isinstance(v, Decimal):
-        return v
+        return v if v.is_finite() else None
     try:
-        return Decimal(str(v))
+        result = Decimal(str(v))
     except (TypeError, ValueError, ArithmeticError):
         return None
+    return result if result.is_finite() else None
 
 
 def to_rounded_float(d: Decimal) -> float:

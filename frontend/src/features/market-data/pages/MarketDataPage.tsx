@@ -1,24 +1,33 @@
-﻿import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useQuery } from "@tanstack/react-query";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { UseQueryResult } from "@tanstack/react-query";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Collapse, DatePicker, Select } from "antd";
 import dayjs from "dayjs";
 import { flushSync } from "react-dom";
-import { useApiClient } from "../../../api/client";
 import {
   DataQualityPill,
   DiagnosticDisclosure,
 } from "../../../components/StatusPill";
-import { externalDataQueryOptions, nonCancellingRefetchOptions } from "../../../app/externalDataRefreshPolicy";
-import { PageSectionLead, type PageSectionLeadProps } from "../../../components/page/PagePrimitives";
+import { nonCancellingRefetchOptions } from "../../../app/externalDataRefreshPolicy";
+import { KpiStrip, SectionHead } from "../../../components/layout";
 import {
   DataStatusStrip,
-  KpiBand,
-  KpiBandMetric,
   PageDecisionHero,
 } from "../../../components/page/PagePrimitives";
-import { designTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import type {
+  ApiEnvelope,
+  ChoiceMacroLatestPayload,
+  ChoiceMacroLatestPoint,
+  ExternalDataWatermarkLedger,
   FxAnalyticalPayload,
   MarketDataCoverageSection,
   MarketDataCoverageSummaryPayload,
@@ -27,20 +36,21 @@ import type {
 import { BondFuturesTable } from "../components/BondFuturesTable";
 import { BondTradeDetail } from "../components/BondTradeDetail";
 import { CreditBondTradesTable } from "../components/CreditBondTradesTable";
+import { MacroLatestReadinessBanner } from "../components/MacroLatestReadinessBanner";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { MARKET_DATA_CHART_ERROR } from "../lib/charts/marketDataChartMessages";
 import { MarketDataExtendedTerminalSection } from "../components/MarketDataExtendedTerminalSection";
 import { MarketDataFxFormalSection } from "../components/MarketDataFxFormalSection";
-import { MarketDataFxSeriesDeck } from "../components/MarketDataFxSeriesDeck";
 import { MarketDataLiquidityDeck } from "../components/MarketDataLiquidityDeck";
-import { MarketDataMacroSeriesDeck } from "../components/MarketDataMacroSeriesDeck";
-import { MarketDataSupplementarySeriesSection } from "../components/MarketDataSupplementarySeriesSection";
-import { MarketDataLinkageSection } from "../components/MarketDataLinkageSection";
-import { MarketDataLivermoreSection } from "../components/MarketDataLivermoreSection";
+import { MarketDataNewsCalendarSummary } from "../components/MarketDataNewsCalendarSummary";
+import {
+  CROSS_ASSET_LINKAGE_PATH,
+  MarketDataLinkageSummaryCard,
+} from "../components/MarketDataLinkageSummaryCard";
 import { MoneyMarketTable } from "../components/MoneyMarketTable";
 import { NcdMatrix } from "../components/NcdMatrix";
-import { MarketDataSeriesCategoryCard } from "../components/MarketDataSeriesCategoryCard";
 import { MarketDataTushareSupplementSection } from "../components/MarketDataTushareSupplementSection";
 import { MarketDataTermStructureChart } from "../components/MarketDataTermStructureChart";
-import { marketCatalogRefreshTier } from "../lib/marketDataCategoryStore";
 import { formatGeneratedAtLocal } from "../lib/marketDataFormat";
 import {
   buildCatalogVendorNameMap,
@@ -49,51 +59,15 @@ import {
   type MarketDataRateQuoteSection,
 } from "../lib/marketDataTerminalModel";
 import { useMarketDataPageData } from "../hooks/useMarketDataPageData";
-import type { MarketOverviewMetric } from "./MarketDataHeroSection";
-import { MarketDataMacroDepthTabs } from "./MarketDataMacroDepthTabs";
-import { buildSpreadSlots, buildMarketDataBasisChipLabel, buildTerminalKpiMetricsFromTickerItems, formatMarketWorkbenchSourceSummary } from "./marketDataPageModel";
+import type { MarketDataEvidenceLines, MarketOverviewMetric } from "./marketDataPageModel";
+import { buildMarketDataBasisChipLabel, buildTerminalKpiMetricsFromTickerItems, formatMarketWorkbenchSourceSummary } from "./marketDataPageModel";
+import type { EChartsOption } from "../../../lib/echarts";
 import { useLazyMount } from "../lib/useLazyMount";
 import { MarketWorkbenchFrame } from "../../workbench/market-shell";
 import "./MarketDataPage.css";
 
-/** 展示已拉取的宏观稳定/降级序列（不含页尾目录运维面板）。 */
-const MARKET_DATA_SHOW_MACRO_SERIES_DECK = true;
-
-/** 展示已拉取的外汇分析序列分组。 */
-const MARKET_DATA_SHOW_FX_ANALYSIS_SECTION = true;
-
-const s = designTokens.space;
-
-const marketDataSectionLeadStyle: CSSProperties = {
-  marginTop: 0,
-  marginBottom: s[2],
-};
-
-function MarketSectionLead({
-  flushTop: _flushTop = false,
-  ...props
-}: Omit<PageSectionLeadProps, "style"> & { flushTop?: boolean }) {
-  return <PageSectionLead {...props} style={marketDataSectionLeadStyle} />;
-}
-
-function refreshTierLabel(tier: string) {
-  const labels: Record<string, string> = {
-    stable: "数据正常",
-    fallback: "数据延迟",
-    isolated: "单点观察",
-  };
-  return labels[tier] ?? tier;
-}
-
-function fxAnalyticalGroupTitle(title: string) {
-  const labels: Record<string, string> = {
-    "Analytical FX: middle-rates": "外汇分析：中间价",
-    "Analytical FX: indices": "外汇分析：指数",
-    "Analytical FX: swap curves": "外汇分析：掉期曲线",
-    "Analytical FX: event calendar": "外汇分析：事件日历",
-  };
-  return labels[title] ?? title;
-}
+/** 序列浏览器（?view=explorer）独立分包：宏观/外汇主题读面不进驾驶舱首包。 */
+const MarketDataExplorerView = lazy(() => import("./MarketDataExplorerView"));
 
 function fxAnalyticalObservationCount(groups: FxAnalyticalPayload["groups"]): number {
   return groups.reduce((total, group) => total + group.series.length + (group.events?.length ?? 0), 0);
@@ -145,6 +119,8 @@ function marketDataEvidenceLineLabel(line: string): string {
 }
 
 function coverageActionLabel(section: MarketDataCoverageSection): string {
+  if (section.status === "error") return "检查数据链路";
+  if (section.status === "stale") return "复核数据延迟";
   if (section.source_pending) return "接入数据源";
   if (section.proxy_only) return "确认正式口径";
   if (section.status === "deferred") return "按需展开";
@@ -177,33 +153,149 @@ function countCoverageSections(
   return sections.filter(predicate).length;
 }
 
+type MarketDataRailStatusCounts = {
+  formalCount: number;
+  analyticalCount: number;
+  proxyCount: number;
+  sourcePendingCount: number;
+  staleCount: number;
+  errorCount: number;
+};
+
+function computeRailStatusCounts(
+  summary: MarketDataCoverageSummaryPayload | null,
+  sections: MarketDataCoverageSection[],
+): MarketDataRailStatusCounts {
+  return {
+    formalCount: countCoverageSections(
+      sections,
+      (section) => section.basis === "formal" && section.formal_use_allowed,
+    ),
+    analyticalCount: countCoverageSections(
+      sections,
+      (section) => section.basis === "analytical" && !section.proxy_only && !section.source_pending,
+    ),
+    proxyCount:
+      summary?.headline.proxy_only_count ??
+      countCoverageSections(sections, (section) => section.proxy_only || section.status === "proxy_only"),
+    sourcePendingCount:
+      summary?.headline.source_pending_count ??
+      countCoverageSections(sections, (section) => section.source_pending || section.status === "source_pending"),
+    staleCount: countCoverageSections(sections, (section) => section.status === "stale"),
+    errorCount: countCoverageSections(sections, (section) => section.status === "error"),
+  };
+}
+
+/** 收起态入口条文案：延迟/不可用计数必须显式可见（stale/fallback 显式披露要求）。 */
+function buildRailEntrySummary(counts: MarketDataRailStatusCounts): string {
+  const parts = [
+    `正式 ${counts.formalCount}`,
+    `代理 ${counts.proxyCount}`,
+    `未接入 ${counts.sourcePendingCount}`,
+  ];
+  if (counts.staleCount > 0) {
+    parts.push(`延迟 ${counts.staleCount}`);
+  }
+  if (counts.errorCount > 0) {
+    parts.push(`不可用 ${counts.errorCount}`);
+  }
+  return `数据状态：${parts.join(" · ")}`;
+}
+
+/** “线路状态”组的九条链路（方案 §5）：业务标签 + 状态 + 最新日期，必要时展开诊断。 */
+const MARKET_DATA_RAIL_LINE_SPECS = [
+  { key: "formal_rates", label: "正式利率" },
+  { key: "money_market", label: "资金市场" },
+  { key: "fx_formal", label: "外汇正式" },
+  { key: "macro_latest", label: "宏观最新" },
+  { key: "fx_analytical", label: "外汇分析" },
+  { key: "ncd_proxy", label: "存单代理" },
+  { key: "bond_futures", label: "国债期货" },
+  { key: "cash_bond_trades", label: "现券成交" },
+  { key: "credit_trades", label: "信用成交" },
+] as const;
+
+type MarketDataRailLineLayer = "l0" | "l1" | "l2";
+
+type MarketDataRailLineRow = {
+  key: string;
+  label: string;
+  status: MarketDataCoverageSection["status"];
+  latestDate: string;
+  layer: MarketDataRailLineLayer;
+  diagnostic: {
+    basisLabel: string;
+    formalUseLabel: string;
+    message: string;
+  } | null;
+};
+
+/** 治理分层（方案 §5 矩阵）：L2=运行时异常（stale/error），L1=结构性（代理/未接入/按需），其余 L0。 */
+function railLineLayer(
+  section: Pick<MarketDataCoverageSection, "status" | "source_pending" | "proxy_only">,
+): MarketDataRailLineLayer {
+  if (section.status === "stale" || section.status === "error") return "l2";
+  if (
+    section.source_pending ||
+    section.proxy_only ||
+    section.status === "source_pending" ||
+    section.status === "proxy_only" ||
+    section.status === "deferred"
+  ) {
+    return "l1";
+  }
+  return "l0";
+}
+
+function buildRailLineRow(label: string, section: MarketDataCoverageSection): MarketDataRailLineRow {
+  const layer = railLineLayer(section);
+  return {
+    key: section.key,
+    label,
+    status: section.status,
+    latestDate: section.latest_trade_date ?? section.as_of_date ?? EM_DASH,
+    layer,
+    diagnostic:
+      layer !== "l0" || section.status !== "ready"
+        ? {
+            basisLabel: marketDataBasisLabel(section.basis),
+            formalUseLabel: section.formal_use_allowed ? "是" : "否",
+            message: section.message,
+          }
+        : null,
+  };
+}
+
 function MarketDataSupplyEvidenceRail({
   summary,
   sections,
   watchDate,
+  lineRows,
+  sourcePendingLabels,
+  evidenceLines,
+  basisLabel,
+  formalUseAllowedLabel,
+  refreshStatus,
+  refreshError,
+  isRefreshing,
 }: {
   summary: MarketDataCoverageSummaryPayload | null;
   sections: MarketDataCoverageSection[];
   watchDate: string;
+  lineRows: MarketDataRailLineRow[];
+  sourcePendingLabels: string;
+  evidenceLines: MarketDataEvidenceLines;
+  basisLabel: string;
+  formalUseAllowedLabel: string;
+  refreshStatus: string;
+  refreshError: string;
+  isRefreshing: boolean;
 }) {
-  const formalCount = countCoverageSections(
-    sections,
-    (section) => section.basis === "formal" && section.formal_use_allowed,
-  );
-  const analyticalCount = countCoverageSections(
-    sections,
-    (section) => section.basis === "analytical" && !section.proxy_only && !section.source_pending,
-  );
-  const proxyCount =
-    summary?.headline.proxy_only_count ??
-    countCoverageSections(sections, (section) => section.proxy_only || section.status === "proxy_only");
-  const sourcePendingCount =
-    summary?.headline.source_pending_count ??
-    countCoverageSections(sections, (section) => section.source_pending || section.status === "source_pending");
-  const staleCount = countCoverageSections(sections, (section) => section.status === "stale");
-  const errorCount = countCoverageSections(sections, (section) => section.status === "error");
+  const { formalCount, analyticalCount, proxyCount, sourcePendingCount, staleCount, errorCount } =
+    computeRailStatusCounts(summary, sections);
+  // L2 运行时异常置顶为“下一步动作”；结构性（代理/未接入）归 L1 灰列，不再进入该清单。
   const nextActions = sections
-    .filter((section) => section.source_pending || section.proxy_only || section.status === "source_pending")
+    .filter((section) => section.status === "stale" || section.status === "error")
     .slice(0, 3);
 
   if (sections.length === 0) {
@@ -221,10 +313,28 @@ function MarketDataSupplyEvidenceRail({
 
   return (
     <aside className="market-data-supply-evidence-rail" data-testid="market-data-supply-evidence-rail">
-      <section className="market-data-supply-panel">
+      {nextActions.length > 0 ? (
+        <section className="market-data-supply-panel" data-testid="market-data-rail-next-actions">
+          <header className="market-data-panel-head">
+            <span>运行时异常</span>
+            <strong>下一步动作</strong>
+          </header>
+          <ol className="market-data-next-action-list">
+            {nextActions.map((section) => (
+              <li key={section.key}>
+                <span>
+                  {coverageActionLabel(section)}：{section.label}
+                </span>
+                <DataQualityPill raw={section.status} label={coverageStatusLabel(section.status)} />
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+      <section className="market-data-supply-panel" data-testid="market-data-rail-group-line-status">
         <header className="market-data-panel-head">
-          <span>证据口径总览</span>
-          <strong>供给证据</strong>
+          <span>供给与未接入清单</span>
+          <strong>线路状态</strong>
         </header>
         <div className="market-data-supply-evidence-list">
           <article data-testid="market-data-coverage-bucket-formal-ready" data-tone="formal">
@@ -245,7 +355,9 @@ function MarketDataSupplyEvidenceRail({
           <article data-testid="market-data-coverage-bucket-source-pending" data-tone="pending">
             <span>未接入</span>
             <strong>{sourcePendingCount}</strong>
-            <small>数据源未闭合</small>
+            <small data-testid="market-data-rail-source-pending-summary">
+              {sourcePendingLabels || "无未接入契约"}
+            </small>
           </article>
           <article data-tone="stale">
             <span>数据延迟</span>
@@ -256,41 +368,101 @@ function MarketDataSupplyEvidenceRail({
             <strong>{errorCount}</strong>
           </article>
         </div>
-      </section>
-      <section className="market-data-supply-panel market-data-supply-meta">
-        <div>
-          <span>报告日期</span>
-          <strong>{summary?.as_of_date ?? watchDate}</strong>
-        </div>
-        <div>
-          <span>数据时间</span>
-          <strong>{summary?.as_of_date ?? watchDate}</strong>
-        </div>
-        <div>
-          <span>生成时间</span>
-          <strong title={summary?.generated_at ? `原始时间戳（UTC）${summary.generated_at}` : undefined}>
-            {formatGeneratedAtLocal(summary?.generated_at)}
-          </strong>
-        </div>
-      </section>
-      <section className="market-data-supply-panel">
-        <header className="market-data-panel-head">
-          <span>供给缺口</span>
-          <strong>下一步动作</strong>
-        </header>
-        <ol className="market-data-next-action-list">
-          {nextActions.map((section) => (
-            <li key={section.key}>
-              <span>
-                {coverageActionLabel(section)}：{section.label}
-              </span>
-              <DataQualityPill raw={section.status} label={coverageStatusLabel(section.status)} />
+        <ul className="market-data-rail-line-list" data-testid="market-data-rail-line-list">
+          {lineRows.map((row) => (
+            <li key={row.key} data-layer={row.layer} data-testid={`market-data-rail-line-${row.key}`}>
+              <span>{row.label}</span>
+              <DataQualityPill raw={row.status} label={coverageStatusLabel(row.status)} />
+              <em>{row.latestDate}</em>
+              {row.diagnostic ? (
+                <DiagnosticDisclosure summary="查看诊断">
+                  <dl>
+                    <div>
+                      <dt>口径</dt>
+                      <dd>{row.diagnostic.basisLabel}</dd>
+                    </div>
+                    <div>
+                      <dt>允许正式使用</dt>
+                      <dd>{row.diagnostic.formalUseLabel}</dd>
+                    </div>
+                    <div>
+                      <dt>说明</dt>
+                      <dd>{row.diagnostic.message}</dd>
+                    </div>
+                  </dl>
+                </DiagnosticDisclosure>
+              ) : null}
             </li>
           ))}
-        </ol>
+        </ul>
+      </section>
+      <section className="market-data-supply-panel" data-testid="market-data-rail-group-evidence">
+        <header className="market-data-panel-head">
+          <span>口径与时间语义</span>
+          <strong>口径证据</strong>
+        </header>
+        <div className="market-data-supply-meta">
+          <div>
+            <span>口径</span>
+            <strong>{basisLabel}</strong>
+          </div>
+          <div>
+            <span>允许正式使用</span>
+            <strong>{formalUseAllowedLabel}</strong>
+          </div>
+          <div>
+            <span>报告日期</span>
+            <strong>{summary?.as_of_date ?? watchDate}</strong>
+          </div>
+          <div>
+            <span>数据时间</span>
+            <strong>{summary?.as_of_date ?? watchDate}</strong>
+          </div>
+          <div>
+            <span>生成时间</span>
+            <strong title={summary?.generated_at ? `原始时间戳（UTC）${summary.generated_at}` : undefined}>
+              {formatGeneratedAtLocal(summary?.generated_at)}
+            </strong>
+          </div>
+        </div>
+        <section
+          className="market-data-macro-evidence-rail"
+          data-testid="market-data-macro-evidence-rail"
+          aria-label="证据口径"
+        >
+          <span>{marketDataEvidenceLineLabel(evidenceLines.formalRates)}</span>
+          <span>{marketDataEvidenceLineLabel(evidenceLines.macroLatest)}</span>
+          <span>{marketDataEvidenceLineLabel(evidenceLines.fxFormal)}</span>
+          <span>{marketDataEvidenceLineLabel(evidenceLines.fxAnalytical)}</span>
+          <span>{marketDataEvidenceLineLabel(evidenceLines.ncdProxy)}</span>
+          <span>{marketDataEvidenceLineLabel(evidenceLines.livermore)}</span>
+          <span>{marketDataEvidenceLineLabel(evidenceLines.linkage)}</span>
+        </section>
         <p className="market-data-supply-note">
           提示：本页为混合来源；正式使用以“允许正式使用”且“质量正常”的数据区块为准。
         </p>
+      </section>
+      <section className="market-data-supply-panel" data-testid="market-data-rail-group-ops">
+        <header className="market-data-panel-head">
+          <span>Choice 刷新链路</span>
+          <strong>数据运维</strong>
+        </header>
+        <div className="market-data-supply-meta">
+          <div>
+            <span>刷新范围</span>
+            <strong>Choice 宏观 · 回填 30 天</strong>
+          </div>
+          <div>
+            <span>最近刷新</span>
+            <strong>{isRefreshing && !refreshStatus ? "刷新中…" : refreshStatus || EM_DASH}</strong>
+          </div>
+          {refreshError ? (
+            <div data-tone="error">
+              <span>刷新错误</span>
+              <strong>{refreshError}</strong>
+            </div>
+          ) : null}
+        </div>
       </section>
     </aside>
   );
@@ -304,6 +476,10 @@ function MarketDataFormalRatesBoard({
   keyMetrics,
   ratesBasisLabel,
   formalUseBlocked,
+  rateTrendChartOption,
+  latestQuery,
+  latestSeries,
+  watermarksQuery,
 }: {
   model: MarketDataRateQuoteSection;
   curveFilter: "treasury" | "cdb" | "both";
@@ -312,23 +488,33 @@ function MarketDataFormalRatesBoard({
   keyMetrics: readonly MarketOverviewMetric[];
   ratesBasisLabel: string;
   formalUseBlocked: boolean;
+  rateTrendChartOption: EChartsOption | null;
+  latestQuery: UseQueryResult<ApiEnvelope<ChoiceMacroLatestPayload>, Error>;
+  latestSeries: readonly ChoiceMacroLatestPoint[];
+  watermarksQuery: UseQueryResult<ExternalDataWatermarkLedger, Error>;
 }) {
   const rows = filterRateQuoteRows(model.rows, curveFilter, sourceFilter, catalogVendorNames).slice(0, 8);
   const hasRows = model.status === "ready" && rows.length > 0;
+  const latestSeriesIds = latestSeries.map((point) => point.series_id);
   return (
     <section
       id="market-data-term-structure"
       className="market-data-formal-rates-board"
       data-testid="market-data-formal-rates-board"
+      aria-labelledby="market-data-formal-rates-title"
     >
-      <header className="market-data-formal-rates-head">
-        <div>
-          <span>利率行情</span>
-          <h2>01 正式利率</h2>
-          <small>利率曲线与宏观深度</small>
-        </div>
-        <a href="#market-data-evidence-gate">查看完整曲线</a>
-      </header>
+      <div className="market-data-section-head-shell">
+        <SectionHead
+          category="利率行情"
+          title="01 正式利率"
+          note="利率曲线与宏观深度"
+          actions={<a href="#market-data-evidence-gate">查看完整曲线</a>}
+          numbered={false}
+          contentGap="flush"
+          titleId="market-data-formal-rates-title"
+          testId="market-data-formal-rates-head"
+        />
+      </div>
       <div className="market-data-workbench-shared-meta" data-testid="market-data-workbench-shared-meta">
         <span>口径摘要 {marketDataBasisLabel(ratesBasisLabel)}</span>
         {formalUseBlocked ? <span>禁止作为正式口径</span> : null}
@@ -339,7 +525,10 @@ function MarketDataFormalRatesBoard({
         )}
       </div>
       <div className="market-data-formal-rates-grid" data-testid="market-data-rate-quote-card">
-        <section className="market-data-formal-rate-panel" data-testid="market-data-rate-quote-table">
+        <section
+          className="market-data-formal-rate-panel market-data-formal-rate-panel--quote"
+          data-testid="market-data-rate-quote-table"
+        >
           <header>
             <strong>国债收益率曲线（中债）</strong>
             <span data-testid="market-data-rate-quote-view-toggle">并列 / 表格 / 曲线</span>
@@ -378,21 +567,23 @@ function MarketDataFormalRatesBoard({
             </tbody>
           </table>
         </section>
-        <section className="market-data-formal-rate-panel" data-testid="market-data-formal-rates-curve">
-          <header>
-            <strong>国债收益率曲线（中债）</strong>
-            <span>单位：%</span>
-          </header>
+        <section
+          className="market-data-formal-rate-panel market-data-formal-rate-panel--curve"
+          data-testid="market-data-formal-rates-curve"
+        >
           <MarketDataTermStructureChart
             model={model}
             curveFilter={curveFilter}
             sourceFilter={sourceFilter}
             catalogVendorNames={catalogVendorNames}
             activeCurve={curveFilter}
-            height={210}
+            height={220}
           />
         </section>
-        <section className="market-data-formal-rate-panel" data-testid="market-data-key-rate-list">
+        <section
+          className="market-data-formal-rate-panel market-data-formal-rate-panel--key"
+          data-testid="market-data-key-rate-list"
+        >
           <header>
             <strong>关键利率 / 资金指标</strong>
             <span>最新</span>
@@ -413,33 +604,98 @@ function MarketDataFormalRatesBoard({
             )}
           </div>
         </section>
+        {/* 原 02 区曲线 Tab 的走势能力并入 01 区次行；macro latest 为分析口径，与正式片段显式分标。 */}
+        <section
+          className="market-data-formal-rate-panel market-data-formal-rate-panel--trend"
+          data-testid="market-data-rate-trend-panel"
+        >
+          <MacroLatestReadinessBanner
+            testId="market-data-macro-readiness"
+            isLoading={latestQuery.isLoading}
+            isError={latestQuery.isError}
+            hasSeries={latestSeries.length > 0}
+            meta={latestQuery.data?.result_meta}
+            watermarkLedger={watermarksQuery.data}
+            watermarkIsLoading={watermarksQuery.isLoading}
+            watermarkIsError={watermarksQuery.isError}
+            seriesIds={latestSeriesIds}
+          />
+          <ChartCard
+            flat
+            title="收益率走势"
+            question="近 30 日 · 分析口径"
+            unit="%"
+            option={rateTrendChartOption}
+            height={220}
+            legendRows={2}
+            state={latestQuery.isLoading ? "loading" : latestQuery.isError ? "error" : undefined}
+            errorMessage={MARKET_DATA_CHART_ERROR}
+            onRetry={() => void latestQuery.refetch()}
+            testId="market-data-rate-trend-chart"
+            emptyMessage="当前响应中缺少上述利率序列的近期点位，无法绘制走势图。"
+          />
+        </section>
+      </div>
+    </section>
+  );
+}
+
+/** Livermore 读面已迁 /cross-asset（方案裁决 #9）：本卡为纯导航证据卡，不挂任何策略查询。 */
+function MarketDataStrategyEvidenceCard() {
+  return (
+    <section
+      className="market-data-summary-nav-card"
+      data-testid="market-data-strategy-evidence-card"
+      aria-label="Livermore 策略读面入口"
+    >
+      <div className="market-data-summary-nav-card__row">
+        <span className="market-data-summary-nav-card__title">
+          Livermore 趋势门控
+          <span className="market-data-summary-nav-card__badge">分析口径</span>
+        </span>
+        <span className="market-data-summary-nav-card__metric">
+          策略读面已迁移，本页不再加载策略数据
+        </span>
+        <Link
+          className="market-data-summary-nav-card__link"
+          to={CROSS_ASSET_LINKAGE_PATH}
+          data-testid="market-data-strategy-evidence-link"
+        >
+          完整策略面见跨资产驱动页 →
+        </Link>
       </div>
     </section>
   );
 }
 
 export default function MarketDataPage() {
-  const client = useApiClient();
-  const [livermoreExpanded, setLivermoreExpanded] = useState(false);
-  const [linkageCollapseExpanded, setLinkageCollapseExpanded] = useState(false);
+  // 右栏治理元数据默认收起为"数据状态"入口条；details 内容常驻 DOM，保证契约 testid 折叠后仍可及。
+  const [railExpanded, setRailExpanded] = useState(false);
   const [deferredWorkspacesRequested, setDeferredWorkspacesRequested] = useState(false);
-  const [supplementarySectionRequested, setSupplementarySectionRequested] = useState(
-    () => typeof window !== "undefined" && window.location.hash === "#market-data-macro-series",
-  );
+  const navigate = useNavigate();
+  // 序列浏览器子视图由 URL query 驱动（?view=explorer）：可书签、可前进后退。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const seriesExplorerActive = searchParams.get("view") === "explorer";
+  const setSearchParamsRef = useRef(setSearchParams);
+  useEffect(() => {
+    setSearchParamsRef.current = setSearchParams;
+  });
+  const openSeriesExplorer = useCallback((options?: { replace?: boolean }) => {
+    setSearchParamsRef.current(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("view", "explorer");
+        return next;
+      },
+      { replace: options?.replace ?? false },
+    );
+  }, []);
   const lazyExtended = useLazyMount({ rootMargin: "300px", fallbackDelayMs: 0 });
-  const lazySupplementary = useLazyMount({ rootMargin: "300px", fallbackDelayMs: 0 });
-  // The delay only protects no-IntersectionObserver environments; normal browsers wait for viewport proximity.
-  const lazyLivermore = useLazyMount({ rootMargin: "400px", fallbackDelayMs: 2000 });
-  const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
+  // 联动摘要卡近视口才发 macro-bond-linkage 请求；较长的 fallback 只兜底无 IntersectionObserver 环境。
+  const lazyLinkage = useLazyMount({ rootMargin: "400px", fallbackDelayMs: 8000 });
   const [viewMode] = useState<"default" | "compact">("default");
   const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
-  const [creditSegment] = useState<"mtn" | "urban" | "both">("both");
   const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
-  const linkageFetchEnabled =
-    linkageCollapseExpanded ||
-    macroDepthTab === "spreads" ||
-    macroDepthTab === "linkage" ||
-    creditSegment !== "both";
   const {
     watchDate,
     setWatchDate,
@@ -450,68 +706,15 @@ export default function MarketDataPage() {
     pageModel,
     catalogQuery,
     latestQuery,
+    externalDataWatermarksQuery,
     fxAnalyticalQuery,
     fxFormalStatusQuery,
     ncdFundingProxyQuery,
-    livermoreStrategyQuery,
     macroBondLinkageQuery,
     ncdFundingProxy,
-    refreshGateSupplement,
   } = useMarketDataPageData({
-    // Defer the heavy Livermore strategy payload until the section approaches the viewport.
-    livermoreEnabled: lazyLivermore.shouldMount || livermoreExpanded,
-    linkageEnabled: linkageFetchEnabled,
-  });
-  // Warm-only queries: refresh still refetches them, but they must not fire on first paint.
-  const deferredWarmQueryOptions = {
-    enabled: false,
-    retry: false as const,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
-  };
-  const livermoreSignalConfluenceQuery = useQuery({
-    queryKey: ["market-data", "livermore-signal-confluence", client.mode, watchDate],
-    queryFn: () => client.getLivermoreSignalConfluence({ asOfDate: watchDate }),
-    ...deferredWarmQueryOptions,
-  });
-  const livermoreStrategyScoreQuery = useQuery({
-    queryKey: ["market-data", "livermore-strategy-score", client.mode],
-    queryFn: () => client.getLivermoreStrategyScore(),
-    ...deferredWarmQueryOptions,
-  });
-  const livermoreSectorRankSeriesQuery = useQuery({
-    queryKey: ["market-data", "livermore-sector-rank-series", client.mode, watchDate],
-    queryFn: () => client.getLivermoreSectorRankSeries({ asOfDate: watchDate, topK: 5 }),
-    ...deferredWarmQueryOptions,
-  });
-  const livermoreCandidateHistoryQuery = useQuery({
-    queryKey: ["market-data", "livermore-candidate-history", client.mode],
-    queryFn: () => client.getLivermoreCandidateHistory({ limit: 40 }),
-    ...deferredWarmQueryOptions,
-  });
-  const livermoreStrategyOptimizationQuery = useQuery({
-    queryKey: ["market-data", "livermore-strategy-optimization", client.mode],
-    queryFn: () => client.getLivermoreStrategyOptimization(),
-    ...deferredWarmQueryOptions,
-  });
-  const livermoreCycleProxyBacktestQuery = useQuery({
-    queryKey: ["market-data", "livermore-cycle-proxy-backtest", client.mode],
-    queryFn: () => client.getLivermoreCycleProxyBacktest(),
-    ...deferredWarmQueryOptions,
-  });
-  const livermorePortfolioBacktestQuery = useQuery({
-    queryKey: ["market-data", "livermore-portfolio-backtest", client.mode],
-    queryFn: () => client.getLivermoreCandidateHistoryPortfolioBacktest(),
-    ...deferredWarmQueryOptions,
-  });
-  const tushareSupplementQuery = useQuery({
-    queryKey: ["market-data", "tushare-supplement", client.mode],
-    queryFn: () => client.getTushareSupplement({ moneySupplyLimit: 12, ecoCalLimit: 30 }),
-    ...deferredWarmQueryOptions,
-  });
-  const macroToolkitAnalysisQuery = useQuery({
-    queryKey: ["market-data", "macro-toolkit-analysis-core", client.mode],
-    queryFn: () => client.getMacroToolkitAnalysis({ detail: "core" }),
-    ...deferredWarmQueryOptions,
+    // 联动摘要卡近视口才拉 macro-bond-linkage；Livermore 读面已迁 /cross-asset，本页不再拉取策略数据。
+    linkageEnabled: lazyLinkage.shouldMount,
   });
   const {
     catalog,
@@ -525,11 +728,9 @@ export default function MarketDataPage() {
     coverageSections,
     fxAnalyticalGroups,
     rateTrendChartOption,
-    livermoreStrategy,
     macroBondLinkage,
     macroBondLinkageWarnings,
     hasPortfolioImpact,
-    nonSpreadTopCorrelations,
     formalRatesMeta,
     rateQuotesSource,
     sourcePendingCount,
@@ -570,29 +771,6 @@ export default function MarketDataPage() {
     () => buildTerminalKpiMetricsFromTickerItems(filteredTickerItems),
     [filteredTickerItems],
   );
-  const spreadSlots = useMemo(
-    () =>
-      buildSpreadSlots(
-        macroBondLinkage.top_correlations,
-        creditSegment,
-        macroBondLinkage.spread_tenor_correlations,
-      ),
-    [macroBondLinkage.top_correlations, macroBondLinkage.spread_tenor_correlations, creditSegment],
-  );
-  const openSpreadsTab = useCallback(() => {
-    setMacroDepthTab("spreads");
-    requestAnimationFrame(() => {
-      document.getElementById("market-data-macro-tab-spreads")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    });
-  }, []);
-  useEffect(() => {
-    if (creditSegment !== "both") {
-      setMacroDepthTab("spreads");
-    }
-  }, [creditSegment]);
   const formalUseBlocked =
     formalRatesMeta?.basis === "formal" && formalRatesMeta.formal_use_allowed === false;
   const ratesBasisValue = formalRatesMeta?.basis ?? rateQuotesSource?.basis ?? "unknown";
@@ -766,6 +944,10 @@ export default function MarketDataPage() {
     terminalModel.rateQuotes.rows.length,
     watchDate,
   ]);
+  const railStatusCounts = useMemo(
+    () => computeRailStatusCounts(coverageSummary, displayedCoverageSections),
+    [coverageSummary, displayedCoverageSections],
+  );
   const sourcePendingLabels = useMemo(() => {
     const fallbackLabels: Record<string, string> = {
       bond_futures: "国债期货",
@@ -779,31 +961,90 @@ export default function MarketDataPage() {
       .filter(Boolean)
       .join(" / ");
   }, [displayedCoverageSections]);
-  const handleMarketDataRefresh = useCallback(async () => {
-    await handleRefresh();
-    await Promise.all([
-      livermoreSignalConfluenceQuery.refetch(nonCancellingRefetchOptions),
-      livermoreStrategyScoreQuery.refetch(nonCancellingRefetchOptions),
-      livermoreSectorRankSeriesQuery.refetch(nonCancellingRefetchOptions),
-      livermoreCandidateHistoryQuery.refetch(nonCancellingRefetchOptions),
-      livermoreStrategyOptimizationQuery.refetch(nonCancellingRefetchOptions),
-      livermoreCycleProxyBacktestQuery.refetch(nonCancellingRefetchOptions),
-      livermorePortfolioBacktestQuery.refetch(nonCancellingRefetchOptions),
-      tushareSupplementQuery.refetch(nonCancellingRefetchOptions),
-      macroToolkitAnalysisQuery.refetch(nonCancellingRefetchOptions),
-    ]);
+  const railLineRows = useMemo<MarketDataRailLineRow[]>(() => {
+    const sectionsByKey = new Map(displayedCoverageSections.map((section) => [section.key, section]));
+    return MARKET_DATA_RAIL_LINE_SPECS.map((spec): MarketDataRailLineRow => {
+      const section = sectionsByKey.get(spec.key);
+      if (section) {
+        return buildRailLineRow(spec.label, section);
+      }
+      if (spec.key === "money_market") {
+        // 资金市场无独立覆盖摘要节，由终端模型本地推导。
+        const moneyMarket = terminalModel.moneyMarket;
+        const latestDate = moneyMarket.rows.reduce<string | null>(
+          (max, row) => (max && max >= row.tradeDate ? max : row.tradeDate),
+          null,
+        );
+        const hasRows = moneyMarket.rows.length > 0;
+        return {
+          key: spec.key,
+          label: spec.label,
+          status: hasRows ? "ready" : "empty",
+          latestDate: latestDate ?? EM_DASH,
+          layer: "l0",
+          diagnostic: hasRows
+            ? null
+            : {
+                basisLabel: marketDataBasisLabel(moneyMarket.source?.basis),
+                formalUseLabel: "否",
+                message: moneyMarket.emptyReason,
+              },
+        };
+      }
+      if (spec.key === "fx_formal") {
+        // 覆盖摘要缺席时由正式外汇状态载荷本地推导。
+        const payload = pageModel.fxFormalStatus;
+        const meta = pageModel.fxFormalMeta;
+        const status: MarketDataCoverageSection["status"] = !payload
+          ? "empty"
+          : meta?.quality_flag === "stale"
+            ? "stale"
+            : meta?.quality_flag === "error"
+              ? "error"
+              : payload.materialized_count > 0
+                ? "ready"
+                : "empty";
+        const layer = railLineLayer({ status, source_pending: false, proxy_only: false });
+        return {
+          key: spec.key,
+          label: spec.label,
+          status,
+          latestDate: payload?.latest_trade_date ?? EM_DASH,
+          layer,
+          diagnostic:
+            layer !== "l0" || status !== "ready"
+              ? {
+                  basisLabel: marketDataBasisLabel(meta?.basis),
+                  formalUseLabel: meta?.formal_use_allowed ? "是" : "否",
+                  message: payload
+                    ? `正式外汇中间价已落地 ${payload.materialized_count}/${payload.candidate_count}。`
+                    : "正式外汇状态待返回。",
+                }
+              : null,
+        };
+      }
+      return {
+        key: spec.key,
+        label: spec.label,
+        status: "deferred",
+        latestDate: EM_DASH,
+        layer: "l1",
+        diagnostic: {
+          basisLabel: "待确认",
+          formalUseLabel: "否",
+          message: "覆盖摘要未返回该链路状态。",
+        },
+      };
+    });
   }, [
-    handleRefresh,
-    livermoreCandidateHistoryQuery,
-    livermoreCycleProxyBacktestQuery,
-    livermorePortfolioBacktestQuery,
-    livermoreSectorRankSeriesQuery,
-    livermoreSignalConfluenceQuery,
-    livermoreStrategyOptimizationQuery,
-    livermoreStrategyScoreQuery,
-    macroToolkitAnalysisQuery,
-    tushareSupplementQuery,
+    displayedCoverageSections,
+    pageModel.fxFormalMeta,
+    pageModel.fxFormalStatus,
+    terminalModel.moneyMarket,
   ]);
+  // 刷新只覆盖本页仍在挂载的查询：Livermore 六件套与 Tushare/宏观工具暖查询已随读面退役，
+  // 不再由本页 refetch（Tushare 折叠区自行拉数，策略读面由 /cross-asset 负责）。
+  const handleMarketDataRefresh = handleRefresh;
 
   useEffect(() => {
     const revealDeferredWorkspaces = () => {
@@ -827,23 +1068,13 @@ export default function MarketDataPage() {
     const applyHash = () => {
       const hash = window.location.hash.replace(/^#/, "");
       if (hash === "market-data-linkage-correlation") {
-        setMacroDepthTab("spreads");
-        requestAnimationFrame(() => {
-          document.getElementById("market-data-linkage-correlation")?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        });
+        // 旧锚点兼容：联动明细读面已由 /cross-asset 承接（方案裁决 #10）。
+        navigate(CROSS_ASSET_LINKAGE_PATH, { replace: true });
         return;
       }
       if (hash === "market-data-macro-series") {
-        setSupplementarySectionRequested(true);
-        requestAnimationFrame(() => {
-          document.getElementById("market-data-macro-series")?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        });
+        // 旧锚点兼容：04 区已迁入序列浏览器，以 replace 语义直接打开 ?view=explorer，不再滚动主列。
+        openSeriesExplorer({ replace: true });
         return;
       }
       if (hash === "market-data-term-structure" || hash === "market-data-liquidity-deck") {
@@ -855,16 +1086,17 @@ export default function MarketDataPage() {
     applyHash();
     window.addEventListener("hashchange", applyHash);
     return () => window.removeEventListener("hashchange", applyHash);
-  }, []);
+  }, [navigate, openSeriesExplorer]);
 
   const heroUsesTerminalMetrics = filteredTerminalKpiMetrics.length >= 4;
-  const heroKpiMetrics = useMemo(() => {
+  const heroKpiCells = useMemo(() => {
     const metrics = heroUsesTerminalMetrics ? filteredTerminalKpiMetrics : pipelineOverviewMetrics;
     return metrics.slice(0, 4).map((metric) => ({
+      key: metric.testId.replace(/^market-data-/, ""),
       label: metric.title,
-      value: <span className="market-data-hero-kpi-value">{metric.value}</span>,
-      footer: <span title={metric.detailTitle}>{metric.detail}</span>,
-      testId: metric.testId,
+      value: metric.value,
+      note: metric.detail,
+      noteTitle: metric.detailTitle,
     }));
   }, [heroUsesTerminalMetrics, filteredTerminalKpiMetrics, pipelineOverviewMetrics]);
   // 关键利率卡只列 KPI 带未含的序列（§6 去重）；KPI 带走管线回退时保留全部序列。
@@ -906,35 +1138,6 @@ export default function MarketDataPage() {
           eyebrow="市场数据终端"
           className="market-data-page__decision-hero-shell"
           testId="market-data-hero"
-          conclusion={
-            <DataStatusStrip testId="market-data-status-strip">
-              <span>{statusBadges.readinessVerdict}</span>
-              {statusBadges.overviewReadinessLabel !== statusBadges.readinessVerdict ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span>{statusBadges.overviewReadinessLabel}</span>
-                </>
-              ) : null}
-              {formalUseBlocked ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="market-data-hero-status-warn">{basisChipLabel}</span>
-                </>
-              ) : null}
-              {isRefreshing ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="market-data-hero-status-accent">{refreshStatus || "刷新中…"}</span>
-                </>
-              ) : null}
-              {refreshError ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="market-data-hero-status-danger">{refreshError}</span>
-                </>
-              ) : null}
-            </DataStatusStrip>
-          }
           actions={
             <div className="market-data-hero-actions">
               <span className="market-data-hero-date-note" data-testid="market-data-hero-date-note">
@@ -981,12 +1184,41 @@ export default function MarketDataPage() {
                 disabled={isRefreshing}
                 className="market-data-hero-refresh-btn"
                 data-testid="market-data-refresh-btn"
+                aria-label="刷新 Choice 宏观（回填 30 天）"
               >
-                {isRefreshing ? "刷新中…" : "刷新数据"}
+                {isRefreshing ? "刷新中…" : "刷新 Choice 宏观（回填 30 天）"}
               </button>
             </div>
           }
         >
+          <DataStatusStrip className="market-data-hero-status" testId="market-data-status-strip">
+            <span>{statusBadges.readinessVerdict}</span>
+            {statusBadges.overviewReadinessLabel !== statusBadges.readinessVerdict ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{statusBadges.overviewReadinessLabel}</span>
+              </>
+            ) : null}
+            {formalUseBlocked ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="market-data-hero-status-warn">{basisChipLabel}</span>
+              </>
+            ) : null}
+            {refreshStatus ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="market-data-hero-status-accent">{refreshStatus}</span>
+              </>
+            ) : null}
+            {refreshError ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="market-data-hero-status-danger">{refreshError}</span>
+              </>
+            ) : null}
+          </DataStatusStrip>
+
           {/* 快捷行情 chips 与 KPI 带/正式利率表同源同值，按 §6 状态去重删除；空态由 KPI 带与 01 区表格各自披露。 */}
           {filteredTickerItems.length === 0 ? (
             <div
@@ -997,20 +1229,59 @@ export default function MarketDataPage() {
             </div>
           ) : null}
 
-          <KpiBand testId="market-data-kpi-band">
-            {heroKpiMetrics.map((metric) => (
-              <KpiBandMetric
-                key={metric.testId}
-                label={metric.label}
-                value={metric.value}
-                footer={metric.footer}
-                testId={metric.testId}
-              />
-            ))}
-          </KpiBand>
+          <KpiStrip
+            className="market-data-hero-kpi-strip"
+            testId="market-data-kpi-band"
+            cellTestIdPrefix="market-data"
+            cells={heroKpiCells}
+            cols={{ base: 2, md: 4, lg: 4, xl: 4 }}
+          />
         </PageDecisionHero>
 
-        <div className="market-data-layout" data-testid="market-data-layout">
+        <div
+          className="market-data-layout"
+          data-testid="market-data-layout"
+          data-rail-expanded={railExpanded ? "true" : "false"}
+        >
+          {seriesExplorerActive ? (
+            <main
+              className="market-data-main"
+              data-testid="market-data-main"
+              data-active-view="explorer"
+            >
+              <Suspense
+                fallback={
+                  <div
+                    className="market-data-explorer-fallback"
+                    data-testid="market-data-explorer-skeleton"
+                  >
+                    <div className="market-data-rail-skeleton">
+                      <div className="market-data-rail-skeleton-item" />
+                      <div className="market-data-rail-skeleton-item" />
+                      <div className="market-data-rail-skeleton-item" />
+                      <div className="market-data-rail-skeleton-item" />
+                    </div>
+                  </div>
+                }
+              >
+                <MarketDataExplorerView
+                  stableSeries={stableSeries}
+                  fallbackSeries={fallbackSeries}
+                  missingStableSeries={missingStableSeries}
+                  catalog={catalog}
+                  fxGroups={fxAnalyticalGroups}
+                  observationDate={watchDate || undefined}
+                  macroLoading={macroSeriesLoading}
+                  macroError={macroSeriesError}
+                  macroEmpty={macroSeriesEmpty}
+                  onMacroRetry={refetchMacroSeries}
+                  fxLoading={fxAnalyticalQuery.isLoading}
+                  fxError={fxAnalyticalQuery.isError}
+                  onFxRetry={() => void fxAnalyticalQuery.refetch(nonCancellingRefetchOptions)}
+                />
+              </Suspense>
+            </main>
+          ) : (
           <main className="market-data-main" data-testid="market-data-main">
             <MarketDataFormalRatesBoard
               model={terminalModel.rateQuotes}
@@ -1020,35 +1291,25 @@ export default function MarketDataPage() {
               keyMetrics={keyRateSupplementMetrics}
               ratesBasisLabel={ratesBasisLabel}
               formalUseBlocked={formalUseBlocked}
+              rateTrendChartOption={rateTrendChartOption}
+              latestQuery={latestQuery}
+              latestSeries={latestSeries}
+              watermarksQuery={externalDataWatermarksQuery}
             />
 
-            <MarketDataSeriesCategoryCard
-              title="02 宏观深度读面"
-              caption="曲线走势、信用利差与压力背景均为分析口径观察，不替代正式指标。"
-              tone="analytical"
-              testId="market-data-macro-depth-card"
+            <section
+              className="market-data-lower-deck-section"
+              aria-labelledby="market-data-liquidity-title"
             >
-              <MarketDataMacroDepthTabs
-                embedded
-                macroDepthTab={macroDepthTab}
-                onMacroDepthTabChange={setMacroDepthTab}
-                latestQuery={latestQuery}
-                latestSeries={latestSeries}
-                rateTrendChartOption={rateTrendChartOption}
-                macroBondLinkageQuery={macroBondLinkageQuery}
-                spreadSlots={spreadSlots}
-                macroBondLinkage={macroBondLinkage}
-                nonSpreadTopCorrelations={nonSpreadTopCorrelations}
-              />
-            </MarketDataSeriesCategoryCard>
-
-            <div className="market-data-lower-deck-section">
-              <div className="market-data-section-lead--compact">
-                <MarketSectionLead
-                  flushTop
-                  eyebrow="资金读数"
+              <div className="market-data-section-head-shell">
+                <SectionHead
+                  category="资金读数"
                   title="03 资金市场与存单"
-                  description="DR007、回购与 Shibor 代理矩阵；正式口径摘要见右侧源门禁。"
+                  note="DR007、回购与 Shibor 代理矩阵；正式口径摘要见右侧源门禁。"
+                  numbered={false}
+                  contentGap="flush"
+                  titleId="market-data-liquidity-title"
+                  testId="market-data-liquidity-head"
                 />
               </div>
               <MarketDataLiquidityDeck
@@ -1075,7 +1336,7 @@ export default function MarketDataPage() {
                   />
                 }
               />
-            </div>
+            </section>
 
             <MarketDataFxFormalSection
               payload={pageModel.fxFormalStatus}
@@ -1084,6 +1345,9 @@ export default function MarketDataPage() {
               isError={fxFormalStatusQuery.isError}
               onRetry={() => void fxFormalStatusQuery.refetch(nonCancellingRefetchOptions)}
             />
+
+            {/* 分析上下文：PAGE-MKT-001 §C NewsAndCalendar 摘要位（组件内近视口才发请求）。 */}
+            <MarketDataNewsCalendarSummary reportDate={watchDate || linkageReportDate} />
 
             <div ref={lazyExtended.ref} data-lazy-mount="extended-terminal">
               {lazyExtended.shouldMount || deferredWorkspacesRequested ? (
@@ -1101,111 +1365,46 @@ export default function MarketDataPage() {
                   </div>
                 </MarketDataExtendedTerminalSection>
               ) : (
-                <div className="market-data-lazy-placeholder" />
+                <div
+                  className="market-data-lazy-placeholder"
+                  data-testid="market-data-extended-terminal-placeholder"
+                  role="status"
+                >
+                  <strong>扩展行情</strong>
+                  <span>滚动到此处时按需加载</span>
+                </div>
               )}
             </div>
 
-            <div ref={lazySupplementary.ref} data-lazy-mount="supplementary-series">
-              {(lazySupplementary.shouldMount || supplementarySectionRequested || deferredWorkspacesRequested) &&
-              (MARKET_DATA_SHOW_MACRO_SERIES_DECK || MARKET_DATA_SHOW_FX_ANALYSIS_SECTION) ? (
-                <MarketDataSupplementarySeriesSection
-                  macroSeriesCount={stableSeries.length + fallbackSeries.length}
-                  stableSeriesCount={stableSeries.length}
-                  fallbackSeriesCount={fallbackSeries.length}
-                  fxGroupCount={fxAnalyticalGroups.length}
-                  macroDeck={
-                    <MarketDataMacroSeriesDeck
-                      stableSeries={stableSeries}
-                      fallbackSeries={fallbackSeries}
-                      catalog={catalog}
-                    />
-                  }
-                  macroLoading={macroSeriesLoading}
-                  macroError={macroSeriesError}
-                  macroEmpty={macroSeriesEmpty}
-                  onMacroRetry={refetchMacroSeries}
-                  fxDeck={
-                    <MarketDataFxSeriesDeck
-                      groups={fxAnalyticalGroups}
-                      groupTitle={fxAnalyticalGroupTitle}
-                    />
-                  }
-                  fxLoading={fxAnalyticalQuery.isLoading}
-                  fxError={fxAnalyticalQuery.isError}
-                  fxEmpty={
-                    !fxAnalyticalQuery.isLoading &&
-                    !fxAnalyticalQuery.isError &&
-                    fxAnalyticalGroups.length === 0
-                  }
-                  onFxRetry={() => void fxAnalyticalQuery.refetch(nonCancellingRefetchOptions)}
-                  missingStableDeck={
-                    missingStableSeries.length > 0 ? (
-                      <Collapse
-                        bordered={false}
-                        defaultActiveKey={[]}
-                        data-testid="market-data-missing-stable-collapse"
-                        items={[
-                          {
-                            key: "missing",
-                            label: `待补齐稳定链路（${missingStableSeries.length}）`,
-                            children: (
-                              <section data-testid="market-data-missing-stable-section">
-                                <div className="market-data-stack-gap-3">
-                                  {missingStableSeries.map((series) => (
-                                    <div key={series.series_id} className="market-data-catalog-row">
-                                      <strong>{series.series_name}</strong>
-                                      <div className="market-data-catalog-meta">
-                                        {refreshTierLabel(marketCatalogRefreshTier(series))}
-                                      </div>
-                                      <DiagnosticDisclosure summary="查看数据诊断">
-                                        <dl>
-                                          <div>
-                                            <dt>序列编号</dt>
-                                            <dd>{series.series_id}</dd>
-                                          </div>
-                                        </dl>
-                                      </DiagnosticDisclosure>
-                                    </div>
-                                  ))}
-                                </div>
-                              </section>
-                            ),
-                          },
-                        ]}
-                      />
-                    ) : null
-                  }
-                />
-              ) : (
-                <div className="market-data-lazy-placeholder" />
-              )}
-            </div>
+            {/* 04 宏观与外汇序列已迁入序列浏览器（?view=explorer）：主列只保留单行入口卡。 */}
+            <button
+              type="button"
+              className="market-data-series-library-entry"
+              data-testid="market-data-series-library-entry"
+              onClick={() => openSeriesExplorer()}
+            >
+              <span className="market-data-series-library-entry__titles">
+                <span className="market-data-series-library-entry__kicker">更多读数</span>
+                <span className="market-data-series-library-entry__title">宏观与外汇序列</span>
+              </span>
+              <span className="market-data-series-library-entry__meta market-data-tabular">
+                稳定 {macroSeriesLoading || macroSeriesError ? EM_DASH : stableSeries.length} · 降级{" "}
+                {macroSeriesLoading || macroSeriesError ? EM_DASH : fallbackSeries.length} · 按需查看
+              </span>
+            </button>
 
-            <div ref={lazyLivermore.ref} data-lazy-mount="livermore-section">
-              <MarketDataLivermoreSection
-                model={livermoreStrategy}
-                isLoading={livermoreStrategyQuery.isLoading}
-                isError={livermoreStrategyQuery.isError}
-                fetchErrorDetail={
-                  livermoreStrategyQuery.error instanceof Error
-                    ? livermoreStrategyQuery.error.message
-                    : null
-                }
-                onRetry={() => void livermoreStrategyQuery.refetch(nonCancellingRefetchOptions)}
-                onRefreshGateSupplement={refreshGateSupplement}
-                onExpandedChange={setLivermoreExpanded}
+            {/* 联动明细与 Livermore 策略读面已由 /cross-asset 承接：本页只留摘要与导航证据卡。 */}
+            <div ref={lazyLinkage.ref} data-lazy-mount="linkage-summary">
+              <MarketDataLinkageSummaryCard
+                macroBondLinkageQuery={macroBondLinkageQuery}
+                macroBondLinkage={macroBondLinkage}
+                macroBondLinkageWarnings={macroBondLinkageWarnings}
+                hasPortfolioImpact={hasPortfolioImpact}
+                requestedReportDate={linkageReportDate || watchDate || null}
               />
             </div>
 
-            <MarketDataLinkageSection
-              macroBondLinkageQuery={macroBondLinkageQuery}
-              macroBondLinkage={macroBondLinkage}
-              macroBondLinkageWarnings={macroBondLinkageWarnings}
-              hasPortfolioImpact={hasPortfolioImpact}
-              spreadSlots={spreadSlots}
-              onExpandedChange={setLinkageCollapseExpanded}
-              onOpenSpreads={openSpreadsTab}
-            />
+            <MarketDataStrategyEvidenceCard />
 
             <Collapse
               bordered={false}
@@ -1229,26 +1428,42 @@ export default function MarketDataPage() {
               ]}
             />
           </main>
+          )}
 
           <aside className="market-data-rail" data-testid="market-data-rail">
-            <MarketDataSupplyEvidenceRail
-              summary={coverageSummary}
-              sections={displayedCoverageSections}
-              watchDate={watchDate}
-            />
-            <section
-              className="market-data-macro-evidence-rail"
-              data-testid="market-data-macro-evidence-rail"
-              aria-label="证据口径"
+            {/* 原生 details：收起时 children 仍在 DOM（契约 testid 可及），antd Collapse 懒挂载不满足该要求。 */}
+            <details
+              className="market-data-rail-disclosure"
+              data-testid="market-data-rail-disclosure"
+              onToggle={(event) => setRailExpanded(event.currentTarget.open)}
             >
-              <span>{marketDataEvidenceLineLabel(evidenceLines.formalRates)}</span>
-              <span>{marketDataEvidenceLineLabel(evidenceLines.macroLatest)}</span>
-              <span>{marketDataEvidenceLineLabel(evidenceLines.fxFormal)}</span>
-              <span>{marketDataEvidenceLineLabel(evidenceLines.fxAnalytical)}</span>
-              <span>{marketDataEvidenceLineLabel(evidenceLines.ncdProxy)}</span>
-              <span>{marketDataEvidenceLineLabel(evidenceLines.livermore)}</span>
-              <span>{marketDataEvidenceLineLabel(evidenceLines.linkage)}</span>
-            </section>
+              <summary
+                className="market-data-rail-disclosure__summary"
+                data-testid="market-data-rail-summary"
+              >
+                <span className="market-data-rail-disclosure__label">
+                  {buildRailEntrySummary(railStatusCounts)}
+                </span>
+                <span className="market-data-rail-disclosure__hint">
+                  {railExpanded ? "收起明细" : "展开明细"}
+                </span>
+              </summary>
+              <div className="market-data-rail-disclosure__body">
+                <MarketDataSupplyEvidenceRail
+                  summary={coverageSummary}
+                  sections={displayedCoverageSections}
+                  watchDate={watchDate}
+                  lineRows={railLineRows}
+                  sourcePendingLabels={sourcePendingLabels}
+                  evidenceLines={evidenceLines}
+                  basisLabel={ratesBasisLabel}
+                  formalUseAllowedLabel={formalUseAllowedLabel}
+                  refreshStatus={refreshStatus}
+                  refreshError={refreshError}
+                  isRefreshing={isRefreshing}
+                />
+              </div>
+            </details>
           </aside>
         </div>
       </section>

@@ -8,8 +8,8 @@
     "amount_currency_basis_note": null,
     "source_version": "fi-shared-v1__nonstd-shared-v1",
     "vendor_version": "vv_none",
-    "rule_version": "rv_pnl_phase2_materialize_v3",
-    "cache_version": "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v3__cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1",
+    "rule_version": "rv_pnl_phase2_materialize_v7",
+    "cache_version": "cv_pnl_bridge_formal_monthly_v5__cv_pnl_formal__rv_pnl_phase2_materialize_v7__cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1",
     "cache_key": null,
     "quality_flag": "error",
     "vendor_status": "ok",
@@ -21,7 +21,34 @@
     "date_basis": null,
     "fallback_date": null,
     "generated_at": "2026-08-12T18:23:39.474778Z",
-    "filters_applied": {},
+    "data_built_at": null,
+    "filters_applied": {
+      "pnl_window": {
+        "start": "2025-12-01",
+        "end": "2025-12-31",
+        "kind": "monthly_period"
+      },
+      "expected_balance_start": "2025-11-30",
+      "balance_window": {
+        "start": null,
+        "end": null
+      },
+      "window_aligned": false,
+      "curve_dates": {
+        "treasury": {
+          "start": null,
+          "end": null
+        },
+        "cdb": {
+          "start": null,
+          "end": null
+        },
+        "aaa_credit": {
+          "start": null,
+          "end": null
+        }
+      }
+    },
     "tables_used": [],
     "evidence_rows": null,
     "next_drill": [],
@@ -37,14 +64,16 @@
         "cost_center": "CC100",
         "accounting_basis": "FVTPL",
         "beginning_dirty_mv": {
-          "raw": 0.0,
+          "raw": 0,
+          "raw_text": "0",
           "unit": "yuan",
           "display": "0.00",
           "precision": 2,
           "sign_aware": false
         },
         "ending_dirty_mv": {
-          "raw": 0.0,
+          "raw": 0,
+          "raw_text": "0",
           "unit": "yuan",
           "display": "0.00",
           "precision": 2,
@@ -52,34 +81,39 @@
         },
         "carry": {
           "raw": 12.5,
+          "raw_text": "12.50000000",
           "unit": "yuan",
           "display": "+12.50",
           "precision": 2,
           "sign_aware": true
         },
         "roll_down": {
-          "raw": 0.0,
+          "raw": 0,
+          "raw_text": "0",
           "unit": "yuan",
           "display": "+0.00",
           "precision": 2,
           "sign_aware": true
         },
         "treasury_curve": {
-          "raw": 0.0,
+          "raw": 0,
+          "raw_text": "0",
           "unit": "yuan",
           "display": "+0.00",
           "precision": 2,
           "sign_aware": true
         },
         "credit_spread": {
-          "raw": 0.0,
+          "raw": 0,
+          "raw_text": "0",
           "unit": "yuan",
           "display": "+0.00",
           "precision": 2,
           "sign_aware": true
         },
         "fx_translation": {
-          "raw": 0.0,
+          "raw": 0,
+          "raw_text": "0",
           "unit": "yuan",
           "display": "+0.00",
           "precision": 2,
@@ -87,6 +121,7 @@
         },
         "realized_trading": {
           "raw": 1.75,
+          "raw_text": "1.75000000",
           "unit": "yuan",
           "display": "+1.75",
           "precision": 2,
@@ -94,6 +129,7 @@
         },
         "unrealized_fv": {
           "raw": -3.25,
+          "raw_text": "-3.25000000",
           "unit": "yuan",
           "display": "-3.25",
           "precision": 2,
@@ -101,6 +137,7 @@
         },
         "manual_adjustment": {
           "raw": 0.5,
+          "raw_text": "0.50000000",
           "unit": "yuan",
           "display": "+0.50",
           "precision": 2,
@@ -108,6 +145,7 @@
         },
         "explained_pnl": {
           "raw": 14.75,
+          "raw_text": "14.75000000",
           "unit": "yuan",
           "display": "+14.75",
           "precision": 2,
@@ -115,6 +153,7 @@
         },
         "actual_pnl": {
           "raw": 11.5,
+          "raw_text": "11.50000000",
           "unit": "yuan",
           "display": "+11.50",
           "precision": 2,
@@ -122,6 +161,7 @@
         },
         "residual": {
           "raw": -3.25,
+          "raw_text": "-3.25000000",
           "unit": "yuan",
           "display": "-3.25",
           "precision": 2,
@@ -129,6 +169,7 @@
         },
         "residual_ratio": {
           "raw": -0.2826086956521739,
+          "raw_text": "-0.2826086956521739130434782609",
           "unit": "ratio",
           "display": "-0.28",
           "precision": 2,
@@ -155,14 +196,16 @@
       "warning_count": 0,
       "error_count": 1,
       "total_beginning_dirty_mv": {
-        "raw": 0.0,
+        "raw": 0,
+        "raw_text": "0",
         "unit": "yuan",
         "display": "0.00",
         "precision": 2,
         "sign_aware": false
       },
       "total_ending_dirty_mv": {
-        "raw": 0.0,
+        "raw": 0,
+        "raw_text": "0",
         "unit": "yuan",
         "display": "0.00",
         "precision": 2,
@@ -170,34 +213,39 @@
       },
       "total_carry": {
         "raw": 12.5,
+        "raw_text": "12.50000000",
         "unit": "yuan",
         "display": "+12.50",
         "precision": 2,
         "sign_aware": true
       },
       "total_roll_down": {
-        "raw": 0.0,
+        "raw": 0,
+        "raw_text": "0",
         "unit": "yuan",
         "display": "+0.00",
         "precision": 2,
         "sign_aware": true
       },
       "total_treasury_curve": {
-        "raw": 0.0,
+        "raw": 0,
+        "raw_text": "0",
         "unit": "yuan",
         "display": "+0.00",
         "precision": 2,
         "sign_aware": true
       },
       "total_credit_spread": {
-        "raw": 0.0,
+        "raw": 0,
+        "raw_text": "0",
         "unit": "yuan",
         "display": "+0.00",
         "precision": 2,
         "sign_aware": true
       },
       "total_fx_translation": {
-        "raw": 0.0,
+        "raw": 0,
+        "raw_text": "0",
         "unit": "yuan",
         "display": "+0.00",
         "precision": 2,
@@ -205,6 +253,7 @@
       },
       "total_realized_trading": {
         "raw": 1.75,
+        "raw_text": "1.75000000",
         "unit": "yuan",
         "display": "+1.75",
         "precision": 2,
@@ -212,6 +261,7 @@
       },
       "total_unrealized_fv": {
         "raw": -3.25,
+        "raw_text": "-3.25000000",
         "unit": "yuan",
         "display": "-3.25",
         "precision": 2,
@@ -219,6 +269,7 @@
       },
       "total_manual_adjustment": {
         "raw": 0.5,
+        "raw_text": "0.50000000",
         "unit": "yuan",
         "display": "+0.50",
         "precision": 2,
@@ -226,6 +277,7 @@
       },
       "total_explained_pnl": {
         "raw": 14.75,
+        "raw_text": "14.75000000",
         "unit": "yuan",
         "display": "+14.75",
         "precision": 2,
@@ -233,6 +285,7 @@
       },
       "total_actual_pnl": {
         "raw": 11.5,
+        "raw_text": "11.50000000",
         "unit": "yuan",
         "display": "+11.50",
         "precision": 2,
@@ -240,6 +293,7 @@
       },
       "total_residual": {
         "raw": -3.25,
+        "raw_text": "-3.25000000",
         "unit": "yuan",
         "display": "-3.25",
         "precision": 2,
@@ -274,7 +328,8 @@
     "warnings": [
       "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available.",
       "Current balance rows unavailable; ending_dirty_mv defaults to 0 where balance data is missing.",
-      "No prior balance report date found; beginning_dirty_mv defaults to 0 where prior balance data is missing."
+      "No prior balance report date found; beginning_dirty_mv defaults to 0 where prior balance data is missing.",
+      "PNL_BRIDGE_WINDOW_MISMATCH: Monthly PnL covers 2025-12-01 through 2025-12-31; expected balance baseline 2025-11-30, resolved missing. Exact beginning and ending balance snapshots are required for an aligned monthly bridge."
     ]
   },
   "calibration": null

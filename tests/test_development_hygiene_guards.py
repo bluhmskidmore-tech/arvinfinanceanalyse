@@ -86,8 +86,13 @@ def test_frontend_debt_audit_protects_known_monoliths_and_self_tests() -> None:
         "scripts/mcp/moss_project_mcp.py",
         "tests/test_project_mcp_servers.py",
         "frontend/src/api/contracts.ts",
+        "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx",
         "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
         "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts",
+        "frontend/src/features/stock-analysis/lib/stockAnalysisPageModel.ts",
+        "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx",
+        "frontend/src/features/workbench/module-home/moduleHomeModel.ts",
+        "frontend/src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
         "backend/app/services/pnl_service.py",
     ):
         assert protected_path in script

@@ -62,10 +62,10 @@
 
 .kpiValue {
   color: var(--moss-color-neutral-900);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 20px;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -83,7 +83,7 @@
   margin: 0;
   color: var(--moss-color-primary-900);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .movementSummaryGrid {
@@ -102,7 +102,7 @@
   margin: 0;
   color: var(--moss-color-neutral-800);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .reconciliationHeader {
@@ -131,7 +131,7 @@
 .operatorLabel {
   color: var(--moss-color-neutral-700);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .operatorText {
@@ -146,7 +146,8 @@
   overflow-wrap: anywhere;
   white-space: normal;
   color: var(--moss-color-neutral-900);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   line-height: 1.5;
 }

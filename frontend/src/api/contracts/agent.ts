@@ -30,9 +30,28 @@ export type AgentRequestContext = {
   [key: string]: unknown;
 };
 
+export type AgentReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+
+export type AgentModelOption = {
+  id: string;
+  label: string;
+  reasoning_efforts: AgentReasoningEffort[];
+  default_reasoning_effort: AgentReasoningEffort | null;
+};
+
+export type AgentModelCatalog = {
+  provider: string;
+  default_model: string;
+  models: AgentModelOption[];
+  source: "live" | "cache" | "configured";
+};
+
 /** POST /api/agent/query — 字段缺省时由后端填入默认值（见 backend AgentQueryRequest）。 */
 export type AgentQueryRequest = {
   question: string;
+  routing_surface?: "standalone_workbench";
+  model?: string;
+  reasoning_effort?: AgentReasoningEffort;
   basis?: "formal" | "scenario" | "analytical";
   filters?: Record<string, unknown>;
   position_scope?: string;
@@ -59,12 +78,51 @@ export type AgentSuggestedAction = {
   confirmation_token?: string | null;
 };
 
+export type AgentSemanticStatus =
+  | "resolved"
+  | "clarification_required"
+  | "unsupported"
+  | "unavailable";
+
+export type AgentSemanticResultCheck = "matched" | "blocked" | "not_applicable";
+export type AgentOntologyEntityStatus = "approved" | "gap" | "candidate" | "deprecated";
+
+/** Controlled ontology definition snapshot captured when the Agent response is built. */
+export type AgentSemanticReference = {
+  entity_id: string;
+  name: string;
+  business_definition: string;
+  status: AgentOntologyEntityStatus;
+  unit?: string | null;
+  basis?: string | null;
+  time_semantics?: string | null;
+  authority: string[];
+};
+
+export type AgentSemanticContext = {
+  status: AgentSemanticStatus;
+  result_check: AgentSemanticResultCheck;
+  references: AgentSemanticReference[];
+  ontology_revision?: string | null;
+  binding_revision?: string | null;
+  reason_code?: string | null;
+  upstream_result_kind?: string | null;
+  upstream_trace_id?: string | null;
+};
+
+/**
+ * Mirrors backend `agent_response.py::AgentCard`: `value`/`data`/`spec`/`metric_id` are
+ * `str | None = None` / `... | None = None` — normal serialization (no
+ * `exclude_none`) emits an explicit `null`, not a missing key. Consumers must
+ * null-check, not just `undefined`-check.
+ */
 export type AgentCard = {
   type: string;
   title: string;
-  value?: string;
-  data?: Record<string, unknown> | Array<Record<string, unknown>>;
-  spec?: Record<string, unknown>;
+  value?: string | null;
+  data?: Record<string, unknown> | Array<Record<string, unknown>> | null;
+  spec?: Record<string, unknown> | null;
+  metric_id?: string | null;
 };
 
 export type AgentEvidence = {
@@ -92,6 +150,7 @@ export type AgentEnvelope = {
   result_meta: AgentResultMeta;
   next_drill: AgentDrill[];
   suggested_actions: AgentSuggestedAction[];
+  semantic_context?: AgentSemanticContext | null;
 };
 
 export type AgentDisabledResponse = {
@@ -139,6 +198,12 @@ export type AgentRunStatus =
   | "failed"
   | "cancelled";
 
+/** Mirrors backend `agent_run.py::AgentRunStopReason`。 */
+export type AgentRunStopReason =
+  | "completed"
+  | "provider_error"
+  | "cancel_requested_provider_stop_unconfirmed";
+
 /**
  * GET /api/agent/runs/{run_id}、SSE run_update 事件负载 — mirrors backend `AgentRunStatusResponse`。
  * 路由使用 `response_model_exclude_none=True`：值为 null 的字段会整体缺省，故可空字段均为可选。
@@ -159,10 +224,11 @@ export type AgentRunStatusResponse = {
   finished_at?: string | null;
   elapsed_seconds?: number | null;
   error_message?: string | null;
+  stop_reason?: AgentRunStopReason | null;
   result?: AgentEnvelope | null;
 };
 
-/** `/api/agent/runs/{run_id}/events?include_deltas=true` 的 Lab-only 增量事件。 */
+/** `/api/agent/runs/{run_id}/events?include_deltas=true` 的 Chat / Lab 增量事件。 */
 export type AgentRunDeltaEvent = {
   run_id: string;
   seq: number;

@@ -8,8 +8,8 @@ import re  # noqa: F401
 import time
 import uuid
 from calendar import monthrange  # noqa: F401
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from datetime import date, datetime  # noqa: F401
 from pathlib import Path
@@ -40,6 +40,7 @@ from backend.app.core_finance.fresh_trend_watchlist_candidates import (
     compute_fresh_trend_watchlist_candidates,
 )
 from backend.app.core_finance.gate_macro_overlay import (
+    MacroCycleComponentValue,
     MacroCycleObservation,
     apply_macro_gate_overlay,
 )
@@ -86,12 +87,15 @@ from backend.app.core_finance.position_sizing import (
     build_stock_candidate_position_size_hint,
 )
 from backend.app.core_finance.strategy_policy import POLICY
+from backend.app.core_finance.strategy_walk_forward_verdicts import walk_forward_verdict
 from backend.app.core_finance.uptrend_momentum_candidates import (
     UptrendMomentumSnapshot,
     compute_uptrend_momentum_candidates,
 )
 from backend.app.repositories.choice_stock_adapter import (
+    ChoiceStockCatalogAsset,
     ChoiceStockReadiness,
+    build_choice_stock_readiness,
     choice_stock_optional_input_status,
     choice_stock_readiness_missing,
     load_choice_stock_readiness,
@@ -206,6 +210,7 @@ from backend.app.services.market_data_livermore_service_support import (
     _vendor_status_for_state,
 )
 from backend.app.services.runtime_cache import get_runtime_cache
+from pydantic import ValidationError
 
 if TYPE_CHECKING:
     from backend.app.tasks.choice_stock_materialize import ChoiceStockMaterializationCoverage
@@ -364,14 +369,49 @@ def livermore_strategy_envelope(
     stock_candidate_policy: str | None = None,
     theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
 ) -> dict[str, object]:
-    requested_date = _parse_optional_date(as_of_date)
-    payload, meta = load_livermore_strategy_payload(
+    return _livermore_strategy_envelope(
         duckdb_path=duckdb_path,
-        as_of_date=requested_date,
+        as_of_date=as_of_date,
         stock_readiness=stock_readiness,
         stock_candidate_policy=stock_candidate_policy,
         theme_overlay_reader=theme_overlay_reader,
+        backfill_mode=False,
     )
+
+
+def _livermore_strategy_envelope(
+    *,
+    duckdb_path: str,
+    as_of_date: str | None,
+    stock_readiness: ChoiceStockReadiness | None,
+    stock_candidate_policy: str | None,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None,
+    backfill_mode: bool,
+    captured_external_inputs: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    requested_date = _parse_optional_date(as_of_date)
+    if captured_external_inputs is None:
+        payload, meta = load_livermore_strategy_payload(
+            duckdb_path=duckdb_path,
+            as_of_date=requested_date,
+            stock_readiness=stock_readiness,
+            backfill_mode=backfill_mode,
+            stock_candidate_policy=stock_candidate_policy,
+            theme_overlay_reader=theme_overlay_reader,
+        )
+    else:
+        payload, meta = _load_livermore_strategy_payload_uncached(
+            duckdb_path=duckdb_path,
+            as_of_date=requested_date,
+            stock_readiness=cast(
+                ChoiceStockReadiness,
+                captured_external_inputs["stock_readiness"],
+            ),
+            backfill_mode=backfill_mode,
+            stock_candidate_policy=stock_candidate_policy,
+            theme_overlay_reader=theme_overlay_reader,
+            captured_external_inputs=captured_external_inputs,
+        )
     filters_applied = {
         "requested_as_of_date": None if requested_date is None else requested_date.isoformat(),
         "as_of_date": payload["as_of_date"],
@@ -412,6 +452,88 @@ def livermore_strategy_envelope_from_catalog(
     if theme_overlay_reader is not None:
         strategy_kwargs["theme_overlay_reader"] = theme_overlay_reader
     return livermore_strategy_envelope(**strategy_kwargs)
+
+
+def livermore_attested_strategy_envelope_from_catalog(
+    *,
+    duckdb_path: str,
+    choice_stock_catalog_file: str | Path,
+    as_of_date: str | None = None,
+    stock_candidate_policy: str | None = None,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
+    captured_external_inputs: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Reproduce the completed producer's historical calculation mode for attestation."""
+    # The producer never injects the mutable current-theme reader into its
+    # backfill calculation.  Keep attested replay on that exact input mode so
+    # provenance-only overlay status cannot change the sealed payload digest.
+    return _livermore_strategy_envelope(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        stock_readiness=(
+            None
+            if captured_external_inputs is not None
+            else load_choice_stock_readiness(choice_stock_catalog_file)
+        ),
+        stock_candidate_policy=stock_candidate_policy,
+        theme_overlay_reader=None,
+        backfill_mode=True,
+        captured_external_inputs=captured_external_inputs,
+    )
+
+
+def livermore_strategy_envelope_from_catalog_from_connection(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    duckdb_path: str,
+    choice_stock_catalog_file: str | Path,
+    as_of_date: str | None = None,
+    stock_candidate_policy: str | None = None,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
+    backfill_mode: bool = False,
+    captured_external_inputs: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Build the standard strategy envelope from one caller-owned transaction."""
+    requested_date = _parse_optional_date(as_of_date)
+    payload, meta = load_livermore_strategy_payload_from_connection(
+        conn,
+        duckdb_path=duckdb_path,
+        as_of_date=requested_date,
+        stock_readiness=(
+            None
+            if captured_external_inputs is not None
+            else load_choice_stock_readiness(choice_stock_catalog_file)
+        ),
+        backfill_mode=backfill_mode,
+        stock_candidate_policy=stock_candidate_policy,
+        theme_overlay_reader=theme_overlay_reader,
+        captured_external_inputs=captured_external_inputs,
+    )
+    filters_applied = {
+        "requested_as_of_date": (
+            None if requested_date is None else requested_date.isoformat()
+        ),
+        "as_of_date": payload["as_of_date"],
+        "stock_candidate_policy": (
+            stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY
+        ),
+    }
+    return build_result_envelope(
+        basis="analytical",
+        trace_id=f"tr_livermore_{uuid.uuid4().hex[:12]}",
+        result_kind=RESULT_KIND,
+        cache_version=CACHE_VERSION,
+        source_version=cast(str, meta["source_version"]),
+        rule_version=RULE_VERSION,
+        quality_flag=cast(QualityFlag, meta["quality_flag"]),
+        vendor_version=cast(str, meta["vendor_version"]),
+        vendor_status=cast(VendorStatus, meta["vendor_status"]),
+        fallback_mode=cast(FallbackMode, meta["fallback_mode"]),
+        filters_applied=filters_applied,
+        tables_used=cast(list[str], meta["tables_used"]),
+        evidence_rows=cast(int, meta["evidence_rows"]),
+        result_payload=payload,
+    )
 
 
 def load_livermore_strategy_payload(
@@ -487,6 +609,34 @@ def load_livermore_strategy_payload(
     )
 
 
+def load_livermore_strategy_payload_from_connection(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    duckdb_path: str,
+    as_of_date: date | None,
+    stock_readiness: ChoiceStockReadiness | None = None,
+    backfill_mode: bool = False,
+    stock_candidate_policy: str | None = None,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
+    captured_external_inputs: Mapping[str, object] | None = None,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Uncached producer read using one caller-owned DuckDB transaction."""
+    return _load_livermore_strategy_payload_uncached(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        stock_readiness=(
+            cast(ChoiceStockReadiness, captured_external_inputs["stock_readiness"])
+            if captured_external_inputs is not None
+            else stock_readiness or choice_stock_readiness_missing("")
+        ),
+        backfill_mode=backfill_mode,
+        stock_candidate_policy=stock_candidate_policy,
+        theme_overlay_reader=theme_overlay_reader,
+        captured_external_inputs=captured_external_inputs,
+        conn=conn,
+    )
+
+
 def _load_livermore_strategy_payload_uncached(
     *,
     duckdb_path: str,
@@ -495,11 +645,16 @@ def _load_livermore_strategy_payload_uncached(
     backfill_mode: bool,
     stock_candidate_policy: str | None,
     theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
+    captured_external_inputs: Mapping[str, object] | None = None,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     resolved_stock_readiness = stock_readiness
     # Reuse one read-only connection for the macro history + cycle-evidence
     # loaders instead of opening the DuckDB file once per loader.
-    with _shared_read_only_connection(duckdb_path) as shared_conn:
+    connection_scope = (
+        nullcontext(conn) if conn is not None else _shared_read_only_connection(duckdb_path)
+    )
+    with connection_scope as shared_conn:
         history_rows, broad_index_tables = _load_broad_index_history(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
@@ -510,6 +665,16 @@ def _load_livermore_strategy_payload_uncached(
             duckdb_path=duckdb_path,
             as_of_date=latest_trade_date,
             conn=shared_conn,
+            availability_manifest_payload=(
+                captured_external_inputs.get("availability_manifest_payload")
+                if captured_external_inputs is not None
+                else _EXTERNAL_MANIFEST_NOT_CAPTURED
+            ),
+            official_releases_manifest_payload=(
+                captured_external_inputs.get("releases_manifest_payload")
+                if captured_external_inputs is not None
+                else _EXTERNAL_MANIFEST_NOT_CAPTURED
+            ),
         )
         supplement: MarketGateSupplement | None = None
         if latest_trade_date is not None:
@@ -519,41 +684,45 @@ def _load_livermore_strategy_payload_uncached(
                 conn=shared_conn,
             )
 
-    market_gate = evaluate_market_gate(cast(list[BroadIndexObservation], history_rows), supplement=supplement)
-    market_gate = apply_macro_gate_overlay(
-        market_gate,
-        gate_as_of_date=latest_trade_date.isoformat() if latest_trade_date is not None else None,
-        macro=MacroCycleObservation(
-            macro_score=cycle_input_evidence.macro_score,
-            component_dates=tuple(
-                row for row in cycle_input_evidence.input_business_dates if row[0] in _MACRO_CONTEXT_INPUT_FAMILIES
+        market_gate = evaluate_market_gate(cast(list[BroadIndexObservation], history_rows), supplement=supplement)
+        market_gate = apply_macro_gate_overlay(
+            market_gate,
+            gate_as_of_date=latest_trade_date.isoformat() if latest_trade_date is not None else None,
+            macro=MacroCycleObservation(
+                macro_score=cycle_input_evidence.macro_score,
+                component_dates=tuple(
+                    row
+                    for row in cycle_input_evidence.input_business_dates
+                    if row[0] in _MACRO_CONTEXT_INPUT_FAMILIES
+                ),
+                evidence=cycle_input_evidence.macro_score_evidence,
+                component_values=_macro_cycle_component_values(cycle_input_evidence),
             ),
-            evidence=cycle_input_evidence.macro_score_evidence,
-        ),
-    )
-    requested_text = None if as_of_date is None else as_of_date.isoformat()
-    resolved_as_of_date = history_rows[-1].trade_date.isoformat() if history_rows else None
-    effective_as_of_date = resolved_as_of_date or requested_text
-    theme_overlay_result = (
-        theme_overlay_reader.read(
-            requested_as_of_date=requested_text,
-            effective_as_of_date=resolved_as_of_date,
-            backfill_mode=backfill_mode,
         )
-        if theme_overlay_reader is not None
-        else None
-    )
-    stock_outputs = _load_choice_stock_outputs(
-        duckdb_path=duckdb_path,
-        as_of_date=effective_as_of_date,
-        market_state=str(market_gate["state"]),
-        market_gate_exposure=_safe_float(market_gate.get("exposure")),
-        stock_readiness=resolved_stock_readiness,
-        backfill_mode=backfill_mode,
-        stock_candidate_policy=stock_candidate_policy,
-        macro_score=cycle_input_evidence.macro_score,
-        theme_overlay_result=theme_overlay_result,
-    )
+        requested_text = None if as_of_date is None else as_of_date.isoformat()
+        resolved_as_of_date = history_rows[-1].trade_date.isoformat() if history_rows else None
+        effective_as_of_date = resolved_as_of_date or requested_text
+        theme_overlay_result = (
+            theme_overlay_reader.read(
+                requested_as_of_date=requested_text,
+                effective_as_of_date=resolved_as_of_date,
+                backfill_mode=backfill_mode,
+            )
+            if theme_overlay_reader is not None
+            else None
+        )
+        stock_outputs = _load_choice_stock_outputs(
+            duckdb_path=duckdb_path,
+            as_of_date=effective_as_of_date,
+            market_state=str(market_gate["state"]),
+            market_gate_exposure=_safe_float(market_gate.get("exposure")),
+            stock_readiness=resolved_stock_readiness,
+            backfill_mode=backfill_mode,
+            stock_candidate_policy=stock_candidate_policy,
+            macro_score=cycle_input_evidence.macro_score,
+            theme_overlay_result=theme_overlay_result,
+            conn=shared_conn,
+        )
     diagnostics = _build_diagnostics(
         requested_as_of_date=requested_text,
         resolved_as_of_date=resolved_as_of_date,
@@ -642,6 +811,7 @@ def _load_livermore_strategy_payload_uncached(
         payload["hybrid_fusion_candidates"] = stock_outputs.hybrid_fusion_payload
     if stock_outputs.risk_exit_payload is not None:
         payload["risk_exit"] = stock_outputs.risk_exit_payload
+    _attach_walk_forward_verdicts(payload)
     source_versions = [row.source_version for row in history_rows if row.source_version] + stock_outputs.source_versions
     vendor_versions = [row.vendor_version for row in history_rows if row.vendor_version] + stock_outputs.vendor_versions
     tables_used = [*broad_index_tables, *stock_outputs.tables_used]
@@ -664,6 +834,33 @@ def _load_livermore_strategy_payload_uncached(
         "evidence_rows": len(history_rows) + stock_outputs.evidence_rows + cycle_input_evidence.evidence_rows,
     }
     return payload, meta
+
+
+# Pool payload key -> walk-forward signal_kind. theme_breakout is disclosed on
+# its own payload; sector_rank / market_gate / risk_exit are not strategy pools.
+_WALK_FORWARD_POOL_SIGNAL_KINDS: dict[str, str] = {
+    "stock_candidates": "stock_candidate",
+    "uptrend_momentum_candidates": "uptrend_momentum",
+    "fresh_trend_watchlist": "fresh_trend_watchlist",
+    "mean_reversion_candidates": "mean_reversion",
+    "factor_screen_candidates": "factor_screen",
+    "hybrid_fusion_candidates": "hybrid_fusion",
+    "theme_breakout": "theme_breakout",
+}
+
+
+def _attach_walk_forward_verdicts(payload: dict[str, object]) -> None:
+    """Disclose the report-anchored out-of-sample verdict on each strategy pool.
+
+    setdefault keeps the call idempotent for cached pool payload objects.
+    """
+    for pool_key, signal_kind in _WALK_FORWARD_POOL_SIGNAL_KINDS.items():
+        pool_payload = payload.get(pool_key)
+        if not isinstance(pool_payload, dict):
+            continue
+        verdict = walk_forward_verdict(signal_kind)
+        if verdict is not None:
+            pool_payload.setdefault("walk_forward", verdict)
 
 
 def _livermore_strategy_payload_cache_key(
@@ -779,6 +976,33 @@ def _load_broad_index_history(
     return ordered, tables_used
 
 
+def latest_complete_stock_analysis_date(*, duckdb_path: str) -> str | None:
+    """Return the newest broad-index date with complete Choice stock inputs.
+
+    The generic Livermore surface may still resolve its default date from the
+    latest broad-index observation.  The stock workbench needs a stricter
+    default: its first screen is useful only when the exact-date Choice stock
+    inputs have landed and passed the existing coverage contract.
+    """
+
+    with _shared_read_only_connection(duckdb_path) as shared_conn:
+        history_rows, _ = _load_broad_index_history(
+            duckdb_path=duckdb_path,
+            as_of_date=None,
+            conn=shared_conn,
+        )
+        for observation in reversed(history_rows):
+            candidate_date = observation.trade_date.isoformat()
+            coverage = load_choice_stock_materialization_coverage(
+                duckdb_path=duckdb_path,
+                as_of_date=candidate_date,
+                conn=shared_conn,
+            )
+            if coverage.full_coverage:
+                return candidate_date
+    return None
+
+
 _OFFICIAL_AVAILABILITY_MANIFEST_PATH = (
     Path(__file__).resolve().parents[3]
     / "config"
@@ -789,6 +1013,108 @@ _OFFICIAL_RELEASES_MANIFEST_PATH = (
     / "config"
     / "cycle_rotation_macro_official_releases.json"
 )
+_EXTERNAL_MANIFEST_NOT_CAPTURED = object()
+
+
+def capture_livermore_external_inputs(
+    choice_stock_catalog_file: str | Path,
+    adversarial_output_dir: str | Path | None = None,
+) -> dict[str, object]:
+    """Capture the small external inputs once for one producer calculation."""
+    availability_payload, availability_profile = _read_external_json_artifact(
+        "cycle_rotation_macro_official_availability",
+        _OFFICIAL_AVAILABILITY_MANIFEST_PATH,
+    )
+    releases_payload, releases_profile = _read_external_json_artifact(
+        "cycle_rotation_macro_official_releases",
+        _OFFICIAL_RELEASES_MANIFEST_PATH,
+    )
+    catalog_path = Path(choice_stock_catalog_file)
+    catalog_payload, catalog_profile = _read_external_json_artifact(
+        "choice_stock_catalog",
+        catalog_path,
+    )
+    try:
+        stock_readiness = build_choice_stock_readiness(
+            catalog=ChoiceStockCatalogAsset.model_validate(catalog_payload),
+            catalog_path=str(catalog_path),
+        )
+    except ValidationError:
+        stock_readiness = choice_stock_readiness_missing(str(catalog_path))
+    from backend.app.services.livermore_signal_confluence_service import (
+        load_macro_adversarial_signal_payload,
+    )
+
+    adversarial_payload, adversarial_meta = load_macro_adversarial_signal_payload(
+        output_dir=adversarial_output_dir
+    )
+    adversarial_profile = {
+        "name": "macro_adversarial_signal_payload",
+        "present": bool(adversarial_payload or adversarial_meta),
+        "content_sha256": _canonical_external_sha256(
+            {"payload": adversarial_payload, "meta": adversarial_meta}
+        ),
+    }
+    return {
+        "identity_profiles": [
+            catalog_profile,
+            availability_profile,
+            releases_profile,
+            adversarial_profile,
+        ],
+        "stock_readiness": stock_readiness,
+        "availability_manifest_payload": availability_payload,
+        "releases_manifest_payload": releases_payload,
+        "adversarial_payload": adversarial_payload,
+        "adversarial_meta": adversarial_meta,
+    }
+
+
+def livermore_external_input_identities_match(
+    captured_external_inputs: Mapping[str, object],
+    *,
+    choice_stock_catalog_file: str | Path,
+    adversarial_output_dir: str | Path | None = None,
+) -> bool:
+    current = capture_livermore_external_inputs(
+        choice_stock_catalog_file,
+        adversarial_output_dir=adversarial_output_dir,
+    )
+    return current.get("identity_profiles") == captured_external_inputs.get(
+        "identity_profiles"
+    )
+
+
+def _read_external_json_artifact(
+    name: str,
+    path: Path,
+) -> tuple[object, dict[str, object]]:
+    try:
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None, {
+            "name": name,
+            "present": False,
+            "content_sha256": _canonical_external_sha256(None),
+        }
+    return payload, {
+        "name": name,
+        "present": True,
+        "content_sha256": hashlib.sha256(raw).hexdigest(),
+    }
+
+
+def _canonical_external_sha256(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _official_availability_binding_allows(
@@ -800,21 +1126,29 @@ def _official_availability_binding_allows(
     as_of_date: date,
     availability_manifest_path: str | Path | None,
     official_releases_manifest_path: str | Path | None,
+    availability_manifest_payload: object = _EXTERNAL_MANIFEST_NOT_CAPTURED,
+    official_releases_manifest_payload: object = _EXTERNAL_MANIFEST_NOT_CAPTURED,
 ) -> bool:
-    manifest_path = Path(availability_manifest_path or _OFFICIAL_AVAILABILITY_MANIFEST_PATH)
-    try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return False
-    releases_manifest_path = Path(
-        official_releases_manifest_path or _OFFICIAL_RELEASES_MANIFEST_PATH
-    )
-    try:
-        releases_payload = json.loads(
-            releases_manifest_path.read_text(encoding="utf-8")
+    if availability_manifest_payload is _EXTERNAL_MANIFEST_NOT_CAPTURED:
+        manifest_path = Path(availability_manifest_path or _OFFICIAL_AVAILABILITY_MANIFEST_PATH)
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return False
+    else:
+        payload = availability_manifest_payload
+    if official_releases_manifest_payload is _EXTERNAL_MANIFEST_NOT_CAPTURED:
+        releases_manifest_path = Path(
+            official_releases_manifest_path or _OFFICIAL_RELEASES_MANIFEST_PATH
         )
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return False
+        try:
+            releases_payload = json.loads(
+                releases_manifest_path.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return False
+    else:
+        releases_payload = official_releases_manifest_payload
     if not isinstance(payload, dict):
         return False
     if payload.get("manifest_version") != _OFFICIAL_AVAILABILITY_MANIFEST_VERSION:
@@ -915,6 +1249,8 @@ def _cycle_input_row_issue(
     rule_version: object = "",
     availability_manifest_path: str | Path | None = None,
     official_releases_manifest_path: str | Path | None = None,
+    availability_manifest_payload: object = _EXTERNAL_MANIFEST_NOT_CAPTURED,
+    official_releases_manifest_payload: object = _EXTERNAL_MANIFEST_NOT_CAPTURED,
 ) -> str | None:
     contract = _CYCLE_INPUT_ROW_CONTRACTS.get(series_id)
     if contract is None:
@@ -952,6 +1288,8 @@ def _cycle_input_row_issue(
             as_of_date=as_of_date,
             availability_manifest_path=availability_manifest_path,
             official_releases_manifest_path=official_releases_manifest_path,
+            availability_manifest_payload=availability_manifest_payload,
+            official_releases_manifest_payload=official_releases_manifest_payload,
         ):
             return None
         return (
@@ -968,6 +1306,8 @@ def _load_cycle_input_evidence(
     conn: duckdb.DuckDBPyConnection | None = None,
     availability_manifest_path: str | Path | None = None,
     official_releases_manifest_path: str | Path | None = None,
+    availability_manifest_payload: object = _EXTERNAL_MANIFEST_NOT_CAPTURED,
+    official_releases_manifest_payload: object = _EXTERNAL_MANIFEST_NOT_CAPTURED,
 ) -> _CycleInputEvidence:
     path = Path(duckdb_path)
     if as_of_date is None or not path.exists():
@@ -1050,6 +1390,8 @@ def _load_cycle_input_evidence(
                     rule_version=rule_version,
                     availability_manifest_path=availability_manifest_path,
                     official_releases_manifest_path=official_releases_manifest_path,
+                    availability_manifest_payload=availability_manifest_payload,
+                    official_releases_manifest_payload=official_releases_manifest_payload,
                 )
                 if issue is not None:
                     rejected_by_series.setdefault(series_key, []).append(issue)
@@ -1219,7 +1561,10 @@ def _load_cycle_input_evidence(
             ),
             credit_impulse_ready=macro_snapshot.credit_impulse_ready,
             credit_impulse_evidence=(
-                f"credit_impulse {macro_snapshot.credit_impulse_value:+.2f}ppt ({credit_series_id})"
+                (
+                    "credit_expansion_proxy "
+                    f"{macro_snapshot.credit_impulse_value:+.2f}ppt ({credit_series_id})"
+                )
                 if macro_snapshot.credit_impulse_ready and macro_snapshot.credit_impulse_value is not None
                 else credit_input_evidence
             ),
@@ -1305,6 +1650,48 @@ class _CycleInputEvidence:
     source_versions: tuple[str, ...] = ()
     vendor_versions: tuple[str, ...] = ()
     evidence_rows: int = 0
+
+
+def _macro_cycle_component_values(
+    evidence: _CycleInputEvidence,
+) -> tuple[MacroCycleComponentValue, ...]:
+    """Project values from the same PIT-safe snapshot used for the gate score."""
+
+    snapshot = evidence.macro_snapshot
+    if snapshot is None:
+        return ()
+    values: list[MacroCycleComponentValue] = []
+    if snapshot.pmi_ready and snapshot.pmi_value is not None:
+        values.append(
+            MacroCycleComponentValue(
+                input_family="PMI",
+                input_label=PMI_SERIES_ID,
+                value_numeric=snapshot.pmi_value,
+                unit="index",
+                value_kind="level",
+            )
+        )
+    credit_lineage = snapshot.lineage.get("credit_impulse")
+    credit_series_id = (
+        str(credit_lineage.get("series_id") or "")
+        if isinstance(credit_lineage, dict)
+        else ""
+    )
+    if (
+        snapshot.credit_impulse_ready
+        and snapshot.credit_impulse_value is not None
+        and credit_series_id in {SOCIAL_FINANCING_YOY_SERIES_ID, M2_YOY_SERIES_ID}
+    ):
+        values.append(
+            MacroCycleComponentValue(
+                input_family="credit_impulse",
+                input_label=credit_series_id,
+                value_numeric=snapshot.credit_impulse_value,
+                unit="ppt",
+                value_kind="yoy_delta_proxy",
+            )
+        )
+    return tuple(values)
 
 
 @dataclass(frozen=True)
@@ -1804,12 +2191,13 @@ def _load_choice_stock_outputs_on_conn(
             thresholds=load_hybrid_fusion_thresholds(),
         ).payload
 
-    # 观察位几何：五个观察候选源（动量/新趋势/超跌/多因子/融合）共用
+    # 观察位几何：主候选与五个观察候选源（动量/新趋势/超跌/多因子/融合）共用
     # core_finance.breakout_geometry 的同一 attach 公式，收盘历史与 Livermore
     # 候选同源同窗口（锚定策略 as_of_date），一次查询覆盖全部源的候选码。
     # 各源选股/评分/排序零变化；装载失败或缺 K 线时 attach 层保持字段
     # None（fail-closed），源自带的 close 等同名键不被覆盖。
     geometry_target_payloads: list[dict[str, object] | None] = [
+        stock_candidates_payload,
         uptrend_momentum_payload,
         fresh_trend_watchlist_payload,
         mean_reversion_payload,
@@ -1845,6 +2233,7 @@ def _load_choice_stock_outputs_on_conn(
             last_trade_date_by_code=geometry_last_dates,
         )
 
+    stock_candidates_payload = _with_breakout_geometry(stock_candidates_payload)
     uptrend_momentum_payload = _with_breakout_geometry(uptrend_momentum_payload)
     fresh_trend_watchlist_payload = _with_breakout_geometry(fresh_trend_watchlist_payload)
     mean_reversion_payload = _with_breakout_geometry(mean_reversion_payload)
@@ -2096,7 +2485,7 @@ def _load_stock_candidate_snapshots(
     if not path.exists():
         return [], [], [], []
     owns_conn = conn is None
-    if owns_conn:
+    if conn is None:
         conn = open_livermore_read_connection(str(path))
         if conn is None:
             _record_duckdb_query_failure(
@@ -2171,6 +2560,9 @@ def _load_stock_candidate_snapshots(
         has_obs_vendor_version = _table_has_columns(
             conn, "choice_stock_daily_observation", ["vendor_version"]
         )
+        has_factor_market_cap = _table_has_columns(
+            conn, "choice_stock_factor_snapshot", ["total_mv", "circ_mv"]
+        )
         current_rows = LIVERMORE_STRATEGY_READS.fetch_stock_candidate_current_rows(
             as_of_date=as_of_date,
             universe_snapshot_date=universe_snapshot_date,
@@ -2182,6 +2574,7 @@ def _load_stock_candidate_snapshots(
                 conn, "choice_stock_daily_observation", ["amount"]
             ),
             conn=conn,
+            has_factor_market_cap=has_factor_market_cap,
         )
         stock_codes = [str(row[0]) for row in current_rows if row[0]]
         if not stock_codes:
@@ -2275,7 +2668,7 @@ def _load_stock_candidate_snapshots(
                 close_value=row[7],
                 turnover_free=row[8],
                 limit_ratio=limit_ratio,
-                daily_amount=row[29],
+                daily_amount=row[31],
                 one_word_board=one_word_board,
                 closed_up_limit=closed_up_limit,
                 close_history=history["close"],
@@ -2289,6 +2682,8 @@ def _load_stock_candidate_snapshots(
                 twelve_month_return=row[26],
                 volatility=row[27],
                 dividend_yield=row[28],
+                total_mv=row[29],
+                circ_mv=row[30],
             )
         )
         source_versions.extend(str(value) for value in (row[12], row[14], row[16], row[18]) if value)
@@ -2302,7 +2697,7 @@ def _load_stock_candidate_snapshots(
                 as_of_date,
             )
     else:
-        null_vendor_amount_rows = sum(1 for row in current_rows if bool(row[30]))
+        null_vendor_amount_rows = sum(1 for row in current_rows if bool(row[32]))
         if null_vendor_amount_rows:
             logger.warning(
                 "choice_stock_daily_observation has %d rows with non-null amount but "
@@ -3117,7 +3512,7 @@ def _load_candidate_close_histories(
     stock_codes: list[str],
     conn: duckdb.DuckDBPyConnection | None = None,
 ) -> tuple[dict[str, list[float]], dict[str, str], list[str]]:
-    """装载观察候选（五源合并去重后的候选码）的收盘历史，供观察位几何推导（只读）。
+    """装载主候选及观察候选（六源合并去重后的候选码）的收盘历史，供观察位几何推导（只读）。
 
     口径与 Livermore 候选完全同源：复用 fetch_stock_candidate_history_rows
     （窗口 CHOICE_STOCK_HISTORY_WINDOW，锚定策略 as_of_date，不过滤 tradestatus），
@@ -4213,7 +4608,9 @@ def _build_cycle_rotation_framework(
                         else (
                             cycle_input_evidence.price_spread_evidence
                             if cycle_input_evidence.price_spread_ready
-                            else "PMI, credit impulse and price spread are not landed for this framework."
+                            else (
+                                "PMI, credit-expansion proxy and price spread are not landed for this framework."
+                            )
                         )
                     )
                 ),
@@ -4482,8 +4879,9 @@ def _build_data_gaps(
             "status": "ready" if cycle_input_evidence.credit_impulse_ready else "missing",
             "evidence": cycle_input_evidence.credit_impulse_evidence
             or (
-                f"Social financing YoY delta ({SOCIAL_FINANCING_YOY_SERIES_ID} or {M2_YOY_SERIES_ID}) "
-                "requires at least two monthly observations."
+                "Credit-expansion proxy (social-financing-stock YoY delta proxy; "
+                f"{SOCIAL_FINANCING_YOY_SERIES_ID} or {M2_YOY_SERIES_ID}) requires at least two "
+                "monthly observations."
             ),
         }
     )
@@ -4492,7 +4890,7 @@ def _build_data_gaps(
             "input_family": "macro_score",
             "status": "ready" if cycle_input_evidence.macro_score_ready else "missing",
             "evidence": cycle_input_evidence.macro_score_evidence
-            or "MacroScore cannot be computed until PMI, credit impulse and/or price spread inputs land.",
+            or "MacroScore cannot be computed until PMI, credit-expansion proxy and/or price spread inputs land.",
         }
     )
     gaps.append(

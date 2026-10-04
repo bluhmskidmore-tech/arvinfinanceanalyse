@@ -281,7 +281,7 @@ describe("BondDashboard bundle client", () => {
       "portfolio-comparison": ["report_date", "items"],
       "spread-analysis": ["report_date", "items"],
       "maturity-structure": ["report_date", "items", "total_market_value"],
-      "industry-distribution": ["report_date", "items"],
+      "industry-distribution": ["report_date", "items", "total_market_value"],
       "risk-indicators": [
         "report_date",
         "total_market_value",
@@ -342,8 +342,35 @@ describe("BondDashboard bundle client", () => {
     ).toBe("tenor_bucket");
 
     const industry = bundle.result.sections["industry-distribution"]?.result.items ?? [];
+    const industryTotal = bundle.result.sections["industry-distribution"]?.result.total_market_value;
     expect(industry).toHaveLength(2);
+    expect(industryTotal).toMatchObject({
+      raw: 143_000_000_000,
+      unit: "yuan",
+      sign_aware: false,
+    });
+    expect(industry.reduce((sum, item) => sum + (item.total_market_value.raw ?? 0), 0)).toBe(
+      industryTotal?.raw,
+    );
     expect(industry.reduce((sum, item) => sum + (item.percentage?.raw ?? 0), 0)).toBeCloseTo(1, 8);
+
+    const fullIndustryBundle = await client.fetchBondDashboardBundle(
+      reportDate,
+      ["industry-distribution"],
+      { industryTopN: 10 },
+    );
+    const fullIndustry = fullIndustryBundle.result.sections["industry-distribution"]?.result;
+    expect(fullIndustry?.total_market_value).toMatchObject({
+      raw: 328_709_000_000,
+      unit: "yuan",
+      sign_aware: false,
+    });
+    expect(
+      fullIndustry?.items.reduce((sum, item) => sum + (item.total_market_value.raw ?? 0), 0),
+    ).toBe(fullIndustry?.total_market_value.raw);
+    expect(
+      fullIndustry?.items.reduce((sum, item) => sum + (item.percentage?.raw ?? 0), 0),
+    ).toBeCloseTo(1, 8);
 
     const risk = bundle.result.sections["risk-indicators"]?.result;
     expect(risk?.weighted_convexity_coverage_ratio).toMatchObject({
@@ -362,7 +389,7 @@ describe("BondDashboard bundle client", () => {
     });
     expect(businessItems.find((item) => item.name === "无覆盖样例")).toMatchObject({
       market_value: "0.00000000",
-      weighted_avg_ytm_pct: "",
+      weighted_avg_ytm: { unit: "pct", raw: null },
       weighted_avg_duration: "",
       duration_source: "",
       weighted_avg_ytm_coverage_ratio: null,

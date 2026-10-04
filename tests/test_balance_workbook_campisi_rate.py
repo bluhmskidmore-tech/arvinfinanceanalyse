@@ -1,11 +1,10 @@
 # 回归（余额 H-1，2026-07-19 审计）：fact_formal_zqtz_balance_daily 的 coupon_rate/ytm_value
 # 落库单位裁决为百分数（2.85 = 2.85%）。Campisi 票息/利差收入必须显式 ÷100；
-# spread_bp 为百分数差 ×100。单体版与包版双实现输出必须一致。
+# spread_bp 为百分数差 ×100。历史包路径必须复用单体权威实现。
 #
-# 测试对象说明（2026-08-12）：生产权威实现是单体 balance_analysis_workbook.py；
-# `balance_workbook/` 包的 `_analysis_tables` / `_utils` 是不在生产调用路径上的拆分
-# 副本（包级公开入口 builder.py 仅为委托壳）。本文件对包版的直测属于"双实现等价性"
-# 断言，目的是防止休眠副本与权威实现漂移，不代表包版是生产入口。
+# 测试对象说明（2026-08-19）：生产权威实现是单体 balance_analysis_workbook.py；
+# `balance_workbook/` 包只提供兼容导出。本文件继续通过两条 import 路径调用，
+# 证明兼容入口保留，但不再维护第二套 Campisi 公式。
 from __future__ import annotations
 
 from datetime import date
@@ -111,7 +110,7 @@ def test_campisi_monolith_and_package_rows_are_identical() -> None:
 
 def test_campisi_benchmark_missing_monolith_and_package_rows_are_identical() -> None:
     # B10-2 口径：在册无政策性金融债时 spread_bp / spread_income_amount 显式 None，
-    # 不允许把基准静默降级为 0。双实现（单体权威 + 休眠副本）必须同口径。
+    # 不允许把基准静默降级为 0；权威与兼容 import 路径必须同口径。
     rows = [
         _asset_row(code="B2", bond_type="企业债", face=Decimal("200000000"), coupon=Decimal("3.20")),
         _asset_row(code="B3", bond_type="中期票据", face=Decimal("150000000"), coupon=Decimal("2.55")),

@@ -157,6 +157,46 @@ def test_summary_builds_ytd_periods_with_missing_compare_month():
     assert jan_cells["delta_pct"] is None
 
 
+def test_percent_quantize_uses_round_half_up_not_bankers_rounding():
+    from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP
+
+    from backend.app.core_finance.ledger_financial_indicator_summary import (
+        PERCENT_QUANTUM,
+    )
+
+    raw = Decimal("0.0000005")
+    assert raw.quantize(PERCENT_QUANTUM, rounding=ROUND_HALF_UP) == Decimal("0.000001")
+    assert raw.quantize(PERCENT_QUANTUM, rounding=ROUND_HALF_EVEN) == Decimal("0.000000")
+
+    components = compute_ledger_indicator_components(
+        [
+            _bal("50101001", "-1"),
+            _bal("52901001", "0.000000005"),
+        ]
+    )
+    assert components["cost_income_ratio_pct"] == Decimal("0.000001")
+
+
+def test_yi_quantize_uses_round_half_up_not_bankers_rounding():
+    from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP
+
+    from backend.app.core_finance.ledger_financial_indicator_summary import (
+        MONEY_YI_QUANTUM,
+        ONE_HUNDRED_MILLION,
+    )
+
+    raw = Decimal("0.005") / ONE_HUNDRED_MILLION
+    assert raw.quantize(MONEY_YI_QUANTUM, rounding=ROUND_HALF_UP) == Decimal(
+        "0.0000000001"
+    )
+    assert raw.quantize(MONEY_YI_QUANTUM, rounding=ROUND_HALF_EVEN) == Decimal(
+        "0.0000000000"
+    )
+
+    components = compute_ledger_indicator_components([_bal("12201001", "0.005")])
+    assert components["loan_balance"] == Decimal("0.0000000001")
+
+
 def test_summary_keeps_unavailable_rows_null_with_reasons():
     payload = build_ledger_financial_indicator_summary(
         report_month="202601",

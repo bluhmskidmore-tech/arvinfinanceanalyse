@@ -4,11 +4,10 @@ import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import type { ResultMeta } from "../../../api/contracts";
+import { KpiStrip, SectionHead, type KpiCell } from "../../../components/layout";
 import {
   DataStatusStrip,
   EvidencePanel,
-  KpiBand,
-  KpiBandMetric,
   PageDecisionHero,
   PageFilterTray,
   PageStateSurface,
@@ -360,27 +359,6 @@ function metaDateEvidence(meta: ResultMeta | undefined): string {
 
 function valueWithUnit(value: string, unit: string): string {
   return value === MISSING_VALUE ? MISSING_VALUE : `${value} ${unit}`;
-}
-
-function MetricValue({
-  value,
-  unit,
-}: {
-  value: string;
-  unit?: string;
-}) {
-  return (
-    <span className="market-finance-workbench__metric-value">
-      <span>{value}</span>
-      {value !== MISSING_VALUE && unit && unit !== MISSING_VALUE ? (
-        <span className="market-finance-workbench__metric-unit">{unit}</span>
-      ) : null}
-    </span>
-  );
-}
-
-function PanelHeading({ children }: { children: string }) {
-  return <h2 className="market-finance-workbench__panel-heading">{children}</h2>;
 }
 
 /**
@@ -976,6 +954,35 @@ export default function MarketFinanceWorkbenchPage() {
       : null,
     balanceReportDate ? `资产负债报告日 ${balanceReportDate}` : null,
   ]);
+  const marketFinanceKpiCells: KpiCell[] = [
+    {
+      key: "market",
+      label: governmentTenYearSlot?.label ?? "市场证据状态",
+      value: marketKpiValue,
+      note: marketFooterLines.join("；") || undefined,
+    },
+    {
+      key: "ftp",
+      label: "基准 FTP 率",
+      value: ftpValue,
+      unit: "%",
+      note: ftpFooterLines.join("；") || undefined,
+    },
+    {
+      key: "net-income",
+      label: "经营净收入",
+      value: netIncomeValue,
+      unit: "亿元",
+      note: netIncomeFooterLines.join("；") || undefined,
+    },
+    {
+      key: "asset-market-value",
+      label: "资产端市值",
+      value: assetMarketValue,
+      unit: "亿元",
+      note: assetFooterLines.join("；") || undefined,
+    },
+  ];
 
   function retryFailedQueries() {
     if (isRetrying || failedRetryTargets.length === 0) {
@@ -1100,13 +1107,14 @@ export default function MarketFinanceWorkbenchPage() {
           className="market-finance-workbench__spine"
           aria-labelledby="market-finance-spine-heading"
         >
-          <div className="market-finance-workbench__section-heading">
-            <div>
-              <p>传导脊柱</p>
-              <h2 id="market-finance-spine-heading">从市场观察到管理复核</h2>
-            </div>
-            <span>仅陈列已有读数、状态与下钻，不计算综合评分</span>
-          </div>
+          <SectionHead
+            category="传导脊柱"
+            title="从市场观察到管理复核"
+            note="仅陈列已有读数、状态与下钻，不计算综合评分"
+            titleId="market-finance-spine-heading"
+            numbered={false}
+            contentGap="flush"
+          />
           <div
             className="market-finance-workbench__spine-grid"
             data-testid="market-finance-transmission-spine"
@@ -1151,77 +1159,22 @@ export default function MarketFinanceWorkbenchPage() {
             {kpiBandNote}
           </p>
         ) : null}
-        <KpiBand
+        <KpiStrip
           testId="market-finance-kpis"
-          className="market-finance-workbench__kpis"
-        >
-          <KpiBandMetric
-            testId="market-finance-kpi-market"
-            label={governmentTenYearSlot?.label ?? "市场证据状态"}
-            value={<MetricValue value={marketKpiValue} />}
-            footer={
-              marketFooterLines.length > 0 ? (
-                <div className="market-finance-workbench__metric-footer">
-                  {marketFooterLines.map((line) => (
-                    <span key={line}>{line}</span>
-                  ))}
-                </div>
-              ) : undefined
-            }
-          />
-          <KpiBandMetric
-            testId="market-finance-kpi-ftp"
-            label="基准 FTP 率"
-            value={<MetricValue value={ftpValue} unit="%" />}
-            footer={
-              ftpFooterLines.length > 0 ? (
-                <div className="market-finance-workbench__metric-footer">
-                  {ftpFooterLines.map((line) => (
-                    <span key={line}>{line}</span>
-                  ))}
-                </div>
-              ) : undefined
-            }
-          />
-          <KpiBandMetric
-            testId="market-finance-kpi-net-income"
-            label="经营净收入"
-            value={<MetricValue value={netIncomeValue} unit="亿元" />}
-            footer={
-              netIncomeFooterLines.length > 0 ? (
-                <div className="market-finance-workbench__metric-footer">
-                  {netIncomeFooterLines.map((line) => (
-                    <span key={line}>{line}</span>
-                  ))}
-                </div>
-              ) : undefined
-            }
-          />
-          <KpiBandMetric
-            testId="market-finance-kpi-asset-market-value"
-            label="资产端市值"
-            value={<MetricValue value={assetMarketValue} unit="亿元" />}
-            footer={
-              assetFooterLines.length > 0 ? (
-                <div className="market-finance-workbench__metric-footer">
-                  {assetFooterLines.map((line) => (
-                    <span key={line}>{line}</span>
-                  ))}
-                </div>
-              ) : undefined
-            }
-          />
-        </KpiBand>
+          cellTestIdPrefix="market-finance-kpi"
+          cells={marketFinanceKpiCells}
+          cols={{ base: 2, md: 2, lg: 4, xl: 4 }}
+        />
 
         <div className="market-finance-workbench__body-grid">
           <section className="market-finance-workbench__matrix-panel">
-            <div className="market-finance-workbench__panel-header">
-              <div>
-                <p>核心对照</p>
-                <PanelHeading>市场信号 × 财务约束</PanelHeading>
-              </div>
-              <span>不生成一致性、冲突或影响评分</span>
-            </div>
+            <SectionHead
+              category="核心对照"
+              title="市场信号 × 财务约束"
+              note="不生成一致性、冲突或影响评分"
+              numbered={false}
+              contentGap="flush"
+            />
             <div
               className="market-finance-workbench__table-wrap"
               role="region"
@@ -1271,15 +1224,20 @@ export default function MarketFinanceWorkbenchPage() {
               className="market-finance-workbench__rail-panel"
               data-testid="market-finance-decision-items"
             >
-              <div className="market-finance-workbench__rail-panel-heading">
-                <PanelHeading>待协调事项</PanelHeading>
-                <span>
-                  报告日{" "}
-                  {decisionItemsQuery.data?.result.report_date ??
-                    balanceDate ??
-                    MISSING_VALUE}
-                </span>
-              </div>
+              <SectionHead
+                title="待协调事项"
+                meta={[
+                  {
+                    label: "报告日",
+                    value:
+                      decisionItemsQuery.data?.result.report_date ??
+                      balanceDate ??
+                      MISSING_VALUE,
+                  },
+                ]}
+                numbered={false}
+                contentGap="flush"
+              />
               {decisionItemsAssessment.usable ? (
                 <ol className="market-finance-workbench__coordination-list">
                   {pendingDecisionItems.map((item, index) => (
@@ -1340,7 +1298,7 @@ export default function MarketFinanceWorkbenchPage() {
             </section>
 
             <section className="market-finance-workbench__rail-panel">
-              <PanelHeading>数据状态</PanelHeading>
+              <SectionHead title="数据状态" numbered={false} contentGap="flush" />
               <PageStateSurface
                 testId="market-finance-state-surface"
                 variant={stateVariant}
@@ -1362,7 +1320,7 @@ export default function MarketFinanceWorkbenchPage() {
             </section>
 
             <section className="market-finance-workbench__rail-panel">
-              <PanelHeading>快捷入口</PanelHeading>
+              <SectionHead title="快捷入口" numbered={false} contentGap="flush" />
               <nav className="market-finance-workbench__quick-links" aria-label="协同台快捷入口">
                 <Link to="/market-data" aria-label="进入市场数据">
                   <span>市场证据</span>

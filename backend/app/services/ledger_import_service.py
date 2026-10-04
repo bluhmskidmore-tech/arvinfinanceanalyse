@@ -7,7 +7,7 @@ import json
 import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 from uuid import uuid4
 
@@ -398,7 +398,7 @@ def _cell_text(value: object) -> str:
         return ""
     if isinstance(value, Decimal):
         if value == value.to_integral_value():
-            return str(value.quantize(Decimal("1")))
+            return str(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         return format(value, "f")
     if isinstance(value, float) and value.is_integer():
         return str(int(value))

@@ -16,10 +16,12 @@ import type {
   ResultMeta,
   RiskIndicatorsPayload,
 } from "../../../api/contracts";
+import { numericDecimalOrNull } from "../../../api/numeric";
 import { EM_DASH, numericRaw } from "../../../pageModel";
 import { BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS } from "../bondDashboardBundleModel";
 import {
   formatDv01Wan,
+  formatEvidenceTimestamp,
   formatMomChange,
   formatRatePercent,
   formatYears,
@@ -98,8 +100,15 @@ export function buildDashboardConclusion(
 
   const totalMarketValue = numericRaw(headline.kpis.total_market_value);
   const creditRatio = numericRaw(risk.credit_ratio);
+  const exactCreditRatio = numericDecimalOrNull(risk.credit_ratio);
   const creditTone =
-    creditRatio === null
+    exactCreditRatio !== null
+      ? exactCreditRatio.greaterThanOrEqualTo("0.5")
+        ? "信用仓位偏高"
+        : exactCreditRatio.greaterThanOrEqualTo("0.3")
+          ? "信用仓位适中"
+          : "利率债占比更高"
+      : creditRatio === null
       ? `信用仓位 ${EM_DASH}`
       : creditRatio >= 0.5
         ? "信用仓位偏高"
@@ -266,11 +275,22 @@ export function buildBondDashboardCaliberItems(input: {
   prevReportDate: string | null;
   /** dates 信封顶层 data_source 字段。 */
   dataSource: string | undefined;
+  /**
+   * result_meta.data_built_at：数据物化完成时刻。与报告日回答不同问题——
+   * 报告日是数据覆盖到哪天，物化时刻是这份数据什么时候被算出来的。
+   */
+  dataBuiltAt?: string | null;
 }): string[] {
   const items: string[] = [
     `报告日：${input.reportDate || EM_DASH}`,
     `环比基准：${input.prevReportDate || EM_DASH}`,
   ];
+  const builtAt = input.dataBuiltAt?.trim();
+  if (builtAt) {
+    // 未解析到已完成构建终态时整项省略：口径行是逐项列举，多一个破折号项
+    // 只增噪音，不增信息（与 dataSource 缺失时的处理一致）。
+    items.push(`数据物化：${formatEvidenceTimestamp(builtAt)}`);
+  }
   if (input.dataSource === "bond_analytics_facts") {
     // 现有页面标题 Tooltip 的原文披露。
     items.push("数据来源：债券分析事实表（与余额分析页可能存在口径差异）");

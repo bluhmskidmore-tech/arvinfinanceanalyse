@@ -25,6 +25,55 @@ LEDGER_HEADERS = [
 
 AVERAGE_BLOCK_HEADER = ["币种", "科目", "科目日均余额", None]
 
+@pytest.mark.parametrize("column", ["D", "E", "F", "G"])
+@pytest.mark.parametrize("invalid_amount", ["BROKEN", "NaN", "Infinity", "-Infinity", None, ""])
+def test_ledger_amount_cells_require_finite_numbers(tmp_path, column, invalid_amount):
+    module = load_module(
+        "backend.app.services.qdb_gl_input_validation_service",
+        "backend/app/services/qdb_gl_input_validation_service.py",
+    )
+    path = tmp_path / "总账对账202602.xlsx"
+    _write_qdb_gl_ledger_workbook(path)
+    workbook = load_workbook(path)
+    worksheet = workbook["综本"]
+    for cell, value in {"D7": 100_000_000, "E7": 0, "F7": 0, "G7": 100_000_000}.items():
+        worksheet[cell] = value
+    worksheet[f"{column}7"] = invalid_amount
+    workbook.save(path)
+    workbook.close()
+
+    evidence = module.validate_qdb_gl_baseline_source(path)
+    checks = {check.check_id: check for check in evidence.checks}
+
+    assert evidence.admissible is False
+    assert checks["required_raw_fields"].status_label == "fail"
+    assert any(
+        item.sheet_name == "综本" and item.row_locator == 7 and item.cell_ref == f"{column}7"
+        for item in checks["required_raw_fields"].findings
+    )
+
+
+@pytest.mark.parametrize("invalid_amount", ["NaN", "Infinity", "-Infinity"])
+def test_average_balance_cells_require_finite_numbers(tmp_path, invalid_amount):
+    module = load_module(
+        "backend.app.services.qdb_gl_input_validation_service",
+        "backend/app/services/qdb_gl_input_validation_service.py",
+    )
+    path = tmp_path / "日均202602.xlsx"
+    _write_qdb_gl_average_workbook(path)
+    workbook = load_workbook(path)
+    workbook["年"]["C4"] = invalid_amount
+    workbook.save(path)
+    workbook.close()
+
+    evidence = module.validate_qdb_gl_baseline_source(path)
+    checks = {check.check_id: check for check in evidence.checks}
+
+    assert evidence.admissible is False
+    assert checks["required_raw_fields"].status_label == "fail"
+    assert any(item.sheet_name == "年" and item.cell_ref == "C4" for item in checks["required_raw_fields"].findings)
+
+
 def test_discover_qdb_gl_baseline_bindings_groups_ledger_and_average_sources(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_input_validation_service",
@@ -287,6 +336,60 @@ def test_validate_qdb_gl_ledger_source_flags_required_field_account_code_currenc
     assert any(item.sheet_name == "综本" and item.row_locator == 7 for item in checks["account_code_text_preserved"].findings)
     assert any(item.sheet_name == "综本" and item.row_locator == 7 for item in checks["currency_grouping"].findings)
     assert any(item.sheet_name == "综本" and item.row_locator == 7 for item in checks["reconciliation_contract"].findings)
+
+@pytest.mark.parametrize("column", ["D", "E", "F", "G"])
+@pytest.mark.parametrize("invalid_value", ["N/A", "not-a-number", "NaN", "Infinity", "-Infinity"])
+def test_ledger_rejects_non_numeric_or_non_finite_amounts(tmp_path, column, invalid_value):
+    module = load_module(
+        "backend.app.services.qdb_gl_input_validation_service",
+        "backend/app/services/qdb_gl_input_validation_service.py",
+    )
+    path = tmp_path / "总账对账202602.xlsx"
+    _write_qdb_gl_ledger_workbook(path)
+    workbook = load_workbook(path)
+    workbook["综本"][f"{column}7"] = invalid_value
+    workbook.save(path)
+    workbook.close()
+
+    evidence = module.validate_qdb_gl_baseline_source(path)
+    checks = {check.check_id: check for check in evidence.checks}
+
+    assert evidence.admissible is False
+    assert checks["row_shape"].status_label == "fail"
+    assert any(item.cell_ref == f"{column}7" for item in checks["row_shape"].findings)
+
+
+@pytest.mark.parametrize("invalid_value", ["NaN", "Infinity", "-Infinity"])
+def test_average_rejects_non_finite_amounts(tmp_path, invalid_value):
+    module = load_module(
+        "backend.app.services.qdb_gl_input_validation_service",
+        "backend/app/services/qdb_gl_input_validation_service.py",
+    )
+    path = tmp_path / "日均202602.xlsx"
+    _write_qdb_gl_average_workbook(path)
+    workbook = load_workbook(path)
+    workbook["年"]["C4"] = invalid_value
+    workbook.save(path)
+    workbook.close()
+
+    evidence = module.validate_qdb_gl_baseline_source(path)
+    assert evidence.admissible is False
+
+
+def test_ledger_accepts_observed_zero_amounts(tmp_path):
+    module = load_module(
+        "backend.app.services.qdb_gl_input_validation_service",
+        "backend/app/services/qdb_gl_input_validation_service.py",
+    )
+    path = tmp_path / "总账对账202602.xlsx"
+    _write_qdb_gl_ledger_workbook(path)
+    workbook = load_workbook(path)
+    for column in "DEFG":
+        workbook["综本"][f"{column}7"] = 0
+    workbook.save(path)
+    workbook.close()
+    assert module.validate_qdb_gl_baseline_source(path).admissible is True
+
 
 def test_gl_rules_spec_exists_and_stays_assembly_only():
     path = ROOT / "docs" / "gl_rules_spec.md"

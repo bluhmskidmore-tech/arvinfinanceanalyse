@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import {
+  parseHtmlJavaScriptResources,
+  parseRouteDeps,
+  parseViteDependencyManifest,
+  stripViteDependencyManifest,
+} from "./startupBundleParsing.mjs";
 
 const frontendRoot = process.cwd();
 const distDir = resolve(frontendRoot, "dist");
@@ -25,38 +31,8 @@ function readAssetText(assetPath) {
   return readText(absolutePath);
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function findAsset(pattern) {
   return assetFiles.filter((file) => pattern.test(file));
-}
-
-function stripViteDependencyManifest(source) {
-  return source.replace(/const __vite__mapDeps=.*?;\s*/s, "");
-}
-
-function parseHtmlJavaScriptResources(indexHtml) {
-  const resources = new Set();
-
-  for (const match of indexHtml.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)) {
-    const tag = match[0];
-    const src = match[1];
-    if (/type=["']module["']/i.test(tag) && src.startsWith("/assets/") && src.endsWith(".js")) {
-      resources.add(src.slice(1));
-    }
-  }
-
-  for (const match of indexHtml.matchAll(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/gi)) {
-    const tag = match[0];
-    const href = match[1];
-    if (/rel=["']modulepreload["']/i.test(tag) && href.startsWith("/assets/") && href.endsWith(".js")) {
-      resources.add(href.slice(1));
-    }
-  }
-
-  return [...resources];
 }
 
 function parseHtmlStylesheetResources(indexHtml) {
@@ -71,39 +47,6 @@ function parseHtmlStylesheetResources(indexHtml) {
   }
 
   return [...resources];
-}
-
-function parseViteDependencyManifest(entrySource) {
-  const match = /m\.f\s*=\s*(\[[^\]]*\])/.exec(entrySource);
-  if (!match) {
-    addFailure("Could not locate Vite dependency manifest in the production entry chunk.");
-    return [];
-  }
-
-  try {
-    return JSON.parse(match[1]);
-  } catch (error) {
-    addFailure(`Could not parse Vite dependency manifest: ${error.message}`);
-    return [];
-  }
-}
-
-function parseRouteDeps(entrySource, manifest, routeChunk) {
-  const routePattern = new RegExp(
-    `import\\((["'\`])\\.\\/${escapeRegExp(routeChunk)}\\1\\)[\\s\\S]{0,800}?__vite__mapDeps\\(\\[([^\\]]*)\\]\\)`,
-  );
-  const match = routePattern.exec(entrySource);
-  if (!match) {
-    addFailure(`Could not locate dependency preload list for ${routeChunk}.`);
-    return [];
-  }
-
-  return match[2]
-    .split(",")
-    .map((value) => Number.parseInt(value.trim(), 10))
-    .filter(Number.isInteger)
-    .map((index) => manifest[index])
-    .filter(Boolean);
 }
 
 function isFullClientAsset(assetPath) {
@@ -237,6 +180,9 @@ const htmlInitialStyleAssets = parseHtmlStylesheetResources(indexHtml);
 const entryAsset = htmlInitialAssets.find((asset) => /^assets\/index-[^/]+\.js$/.test(asset));
 const dashboardChunks = findAsset(/^DashboardHomePage-[^/]+\.js$/);
 const fullClientChunks = findAsset(/^client-[^/]+\.js$/);
+const candidateFinancialIndicatorsChunks = findAsset(
+  /^candidateFinancialIndicatorsClient-[^/]+\.js$/,
+);
 const homeSnapshotFetchChunks = findAsset(/^executiveHomeSnapshotFetch-[^/]+\.js$/);
 const homeExecutiveChunks = findAsset(/^homeExecutiveClient-[^/]+\.js$/);
 const homeMarketTickerChunks = findAsset(/^homeMarketTickerClient-[^/]+\.js$/);
@@ -251,6 +197,11 @@ if (dashboardChunks.length !== 1) {
 }
 if (fullClientChunks.length !== 1) {
   addFailure(`Expected exactly one deferred full client chunk, found ${fullClientChunks.length}.`);
+}
+if (candidateFinancialIndicatorsChunks.length !== 1) {
+  addFailure(
+    `Expected exactly one candidate financial indicators fast-path chunk, found ${candidateFinancialIndicatorsChunks.length}.`,
+  );
 }
 if (homeExecutiveChunks.length !== 1) {
   addFailure(`Expected exactly one home executive fast-path chunk, found ${homeExecutiveChunks.length}.`);
@@ -310,8 +261,8 @@ assertNoAgGridImplementation("dist/index.html eager CSS", htmlInitialStyleAssets
 let homeRouteAssets = [];
 if (entryAsset && dashboardChunks.length === 1) {
   const entrySource = readText(join(distDir, entryAsset));
-  const manifest = parseViteDependencyManifest(entrySource);
-  homeRouteAssets = parseRouteDeps(entrySource, manifest, dashboardChunks[0]);
+  const manifest = parseViteDependencyManifest(entrySource, addFailure);
+  homeRouteAssets = parseRouteDeps(entrySource, manifest, dashboardChunks[0], addFailure);
 
   assertNoBlockedAssets("DashboardHomePage preload deps", homeRouteAssets, isFullClientAsset, "full ApiClient chunk");
   assertNoBlockedAssets("DashboardHomePage preload deps", homeRouteAssets, isEChartsAsset, "ECharts chunk");
@@ -388,6 +339,20 @@ if (homeSnapshotFetchChunks.length === 1) {
   }
 }
 
+if (candidateFinancialIndicatorsChunks.length === 1) {
+  const candidateSource = readText(join(assetsDir, candidateFinancialIndicatorsChunks[0]));
+  if (!candidateSource.includes("/api/ledger-pnl/candidate-financial-indicators")) {
+    addFailure(
+      `${candidateFinancialIndicatorsChunks[0]} does not contain the lightweight candidate indicator endpoint.`,
+    );
+  }
+  if (candidateSource.includes("createApiClient")) {
+    addFailure(
+      `${candidateFinancialIndicatorsChunks[0]} should not import or compose the full ApiClient.`,
+    );
+  }
+}
+
 if (homeSupplementalChunks.length === 1) {
   const homeSupplementalSource = readText(join(assetsDir, homeSupplementalChunks[0]));
   if (!homeSupplementalSource.includes("/api/dashboard/core_metrics")) {
@@ -440,5 +405,11 @@ console.log("[home-startup] Bundle guard passed.");
 console.log(`- HTML eager JS: ${htmlInitialAssets.map((asset) => basename(asset)).join(", ")}`);
 console.log(`- HTML eager CSS: ${htmlInitialStyleAssets.map((asset) => basename(asset)).join(", ")}`);
 console.log(`- DashboardHomePage deps: ${homeRouteAssets.map((asset) => basename(asset)).join(", ")}`);
-console.log(`- Fast path chunks: ${[...homeSnapshotFetchChunks, ...homeExecutiveChunks, ...homeMarketTickerChunks, ...homeSupplementalChunks].join(", ")}`);
+console.log(`- Fast path chunks: ${[
+  ...homeSnapshotFetchChunks,
+  ...candidateFinancialIndicatorsChunks,
+  ...homeExecutiveChunks,
+  ...homeMarketTickerChunks,
+  ...homeSupplementalChunks,
+].join(", ")}`);
 console.log(`- Deferred chart chunks: ${chartChunks.join(", ")}`);

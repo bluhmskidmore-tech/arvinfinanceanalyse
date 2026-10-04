@@ -178,6 +178,10 @@ def livermore_sector_rank_series_envelope(
                 cum_by_date_sector[(d_iso, code)] = round(running_cum[code], 6)
 
         latest_iso = latest_td.isoformat()
+        requested_iso = None if as_of_date is None else as_of_date.isoformat()
+        uses_latest_snapshot = as_of_date is not None and latest_td < as_of_date
+        fallback_date = latest_iso if uses_latest_snapshot else None
+        lag_days = (as_of_date - latest_td).days if as_of_date is not None else None
         series: list[dict[str, object]] = []
         for td, _, _, _ in daily_results:
             d_iso = td.isoformat()
@@ -217,7 +221,11 @@ def livermore_sector_rank_series_envelope(
         result_payload: dict[str, object] = {
             "basis": "analytical",
             "state": "ok",
+            "requested_as_of_date": requested_iso,
             "as_of_date": latest_iso,
+            "fallback_date": fallback_date,
+            "stale": uses_latest_snapshot,
+            "lag_days": lag_days,
             "window_days": window_days,
             "top_k": top_k,
             "sector_code_filter": sector_filter,
@@ -235,12 +243,12 @@ def livermore_sector_rank_series_envelope(
             cache_version=CACHE_VERSION,
             source_version=lineage_src,
             rule_version=RULE_VERSION,
-            quality_flag=cast(QualityFlag, "ok"),
+            quality_flag=cast(QualityFlag, "warning" if uses_latest_snapshot else "ok"),
             vendor_version=lineage_vend,
             vendor_status=cast(VendorStatus, "ok"),
-            fallback_mode=cast(FallbackMode, "none"),
+            fallback_mode=cast(FallbackMode, "latest_snapshot" if uses_latest_snapshot else "none"),
             filters_applied={
-                "requested_as_of_date": None if as_of_date is None else as_of_date.isoformat(),
+                "requested_as_of_date": requested_iso,
                 "as_of_date": latest_iso,
                 "window_days": window_days,
                 "top_k": top_k,
@@ -248,6 +256,8 @@ def livermore_sector_rank_series_envelope(
             },
             tables_used=[TABLE_MEMBERSHIP, TABLE_OBS],
             evidence_rows=evidence_rows,
+            as_of_date=latest_iso,
+            fallback_date=fallback_date,
             result_payload=result_payload,
         )
 

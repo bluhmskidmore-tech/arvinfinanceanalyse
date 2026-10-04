@@ -6,8 +6,14 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, TypedDict
 
+from backend.app.core_finance.accounting_asset_movement import classify_accounting_maturity
+from backend.app.core_finance.bond_analytics.engine import (
+    DURATION_QUALITY_COUPON_UNAVAILABLE,
+    DURATION_QUALITY_YTM_PAR_FALLBACK,
+    DURATION_QUALITY_YTM_UNAVAILABLE,
+)
 from backend.app.core_finance.cashflow_projection import (
     project_bond_cashflows,
     project_liability_cashflows,
@@ -33,6 +39,13 @@ SUPPORTED_KRD_BUCKETS = {
     "10Y": "krd_10y",
     "30Y": "krd_30y",
 }
+ASSUMPTION_BASED_DURATION_QUALITY_FLAGS = frozenset(
+    {
+        DURATION_QUALITY_YTM_PAR_FALLBACK,
+        DURATION_QUALITY_YTM_UNAVAILABLE,
+        DURATION_QUALITY_COUPON_UNAVAILABLE,
+    }
+)
 
 # Non-standard tenors mapped to nearest supported KRD bucket.
 KRD_BUCKET_FALLBACK: dict[str, str] = {
@@ -99,12 +112,30 @@ class PortfolioRiskTensor:
     duration_excluded_count: int = 0
     missing_maturity_market_value: Decimal = ZERO
     missing_maturity_count: int = 0
+    fund_no_maturity_market_value: Decimal = ZERO
+    fund_no_maturity_count: int = 0
+    unknown_maturity_market_value: Decimal = ZERO
+    unknown_maturity_count: int = 0
+    matured_outstanding_market_value: Decimal = ZERO
+    matured_outstanding_count: int = 0
+    nonpositive_duration_market_value: Decimal = ZERO
+    nonpositive_duration_count: int = 0
+    missing_liability_maturity_principal_amount: Decimal = ZERO
+    missing_liability_maturity_count: int = 0
     floating_rate_proxy_market_value: Decimal = ZERO
     floating_rate_proxy_count: int = 0
     payment_frequency_fallback_market_value: Decimal = ZERO
     payment_frequency_fallback_count: int = 0
     bullet_value_date_fallback_market_value: Decimal = ZERO
     bullet_value_date_fallback_count: int = 0
+    assumption_value_row_count: int = 0
+
+    @property
+    def input_quality_metadata(self) -> dict[str, int]:
+        return {
+            "assumption_value_row_count": self.assumption_value_row_count,
+            "total_row_count": self.bond_count,
+        }
 
 
 def compute_portfolio_risk_tensor(
@@ -116,6 +147,12 @@ def compute_portfolio_risk_tensor(
     rows = list(bond_analytics_rows or [])
     liabilities = list(liability_rows or [])
     warnings: list[str] = []
+    assumption_value_row_count = sum(
+        1
+        for row in rows
+        if str(row.get("duration_quality_flag") or "").strip()
+        in ASSUMPTION_BASED_DURATION_QUALITY_FLAGS
+    )
     scope_rules = (
         DEFAULT_REGULATORY_DV01_SCOPE_RULES
         if regulatory_scope_rules is None
@@ -133,9 +170,10 @@ def compute_portfolio_risk_tensor(
         (_safe_decimal(row.get("spread_dv01")) for row in rows if _is_credit(row.get("is_credit"))),
         ZERO,
     )
-    _warn_duration_exclusion_inputs(rows, report_date, warnings)
     duration_rows = _duration_denominator_rows(rows, report_date)
     duration_excluded_rows = _duration_excluded_rows(rows, report_date)
+    exclusion_breakdown = _duration_exclusion_breakdown(duration_excluded_rows, report_date)
+    _warn_duration_exclusion_inputs(duration_excluded_rows, exclusion_breakdown, report_date, warnings)
     missing_maturity_rows = [row for row in rows if _coerce_date(row.get("maturity_date")) is None]
     duration_market_value = _sum_field(duration_rows, "market_value")
     rate_risk_dv01 = _sum_field(duration_rows, "dv01")
@@ -168,6 +206,11 @@ def compute_portfolio_risk_tensor(
         warnings.append("No bond analytics rows available for risk tensor.")
     elif total_market_value == ZERO:
         warnings.append("Total market value is zero; weighted metrics default to 0.")
+    if assumption_value_row_count:
+        warnings.append(
+            f"{assumption_value_row_count} of {len(rows)} bond analytics rows use "
+            "assumption-based duration inputs; existing numeric aggregation is unchanged."
+        )
 
     quality_flag = "warning" if warnings else "ok"
     return PortfolioRiskTensor(
@@ -203,12 +246,27 @@ def compute_portfolio_risk_tensor(
         duration_excluded_count=len(duration_excluded_rows),
         missing_maturity_market_value=_sum_field(missing_maturity_rows, "market_value"),
         missing_maturity_count=len(missing_maturity_rows),
+        fund_no_maturity_market_value=_sum_field(exclusion_breakdown["fund_no_maturity"], "market_value"),
+        fund_no_maturity_count=len(exclusion_breakdown["fund_no_maturity"]),
+        unknown_maturity_market_value=_sum_field(exclusion_breakdown["unknown_maturity"], "market_value"),
+        unknown_maturity_count=len(exclusion_breakdown["unknown_maturity"]),
+        matured_outstanding_market_value=_sum_field(exclusion_breakdown["matured_outstanding"], "market_value"),
+        matured_outstanding_count=len(exclusion_breakdown["matured_outstanding"]),
+        nonpositive_duration_market_value=_sum_field(exclusion_breakdown["nonpositive_duration"], "market_value"),
+        nonpositive_duration_count=len(exclusion_breakdown["nonpositive_duration"]),
+        missing_liability_maturity_principal_amount=projection_quality[
+            "missing_liability_maturity_principal_amount"
+        ],
+        missing_liability_maturity_count=int(
+            projection_quality["missing_liability_maturity_count"]
+        ),
         floating_rate_proxy_market_value=projection_quality["floating_rate_proxy_market_value"],
         floating_rate_proxy_count=int(projection_quality["floating_rate_proxy_count"]),
         payment_frequency_fallback_market_value=projection_quality["payment_frequency_fallback_market_value"],
         payment_frequency_fallback_count=int(projection_quality["payment_frequency_fallback_count"]),
         bullet_value_date_fallback_market_value=projection_quality["bullet_value_date_fallback_market_value"],
         bullet_value_date_fallback_count=int(projection_quality["bullet_value_date_fallback_count"]),
+        assumption_value_row_count=assumption_value_row_count,
     )
 
 
@@ -219,12 +277,14 @@ def _aggregate_krd_values(
     """Aggregate per-row DV01 into the 6 standard KRD buckets.
 
     Non-standard tenor buckets (2Y, 15Y, 20Y, etc.) are remapped to the nearest
-    supported bucket via ``KRD_BUCKET_FALLBACK``.  Truly unknown buckets with
-    non-zero DV01 are excluded and reported in ``warnings``.
+    supported bucket via ``KRD_BUCKET_FALLBACK``. Truly unknown or missing
+    buckets with non-zero DV01 are excluded and reported in ``warnings``.
     """
     krd_values = {field_name: ZERO for field_name in SUPPORTED_KRD_BUCKETS.values()}
     unsupported_buckets: set[str] = set()
     remapped_buckets: set[str] = set()
+    missing_tenor_bucket_count = 0
+    missing_tenor_bucket_dv01 = ZERO
 
     for row in rows:
         tenor_bucket = str(row.get("tenor_bucket") or "")
@@ -236,8 +296,12 @@ def _aggregate_krd_values(
             if field_name is not None:
                 if dv01 != ZERO:
                     remapped_buckets.add(tenor_bucket)
-            elif tenor_bucket and dv01 != ZERO:
-                unsupported_buckets.add(tenor_bucket)
+            elif dv01 != ZERO:
+                if tenor_bucket:
+                    unsupported_buckets.add(tenor_bucket)
+                else:
+                    missing_tenor_bucket_count += 1
+                    missing_tenor_bucket_dv01 += dv01
                 continue
             else:
                 continue
@@ -253,16 +317,21 @@ def _aggregate_krd_values(
             "Unsupported tenor buckets excluded from minimal KRD tensor: "
             + ", ".join(sorted(unsupported_buckets))
         )
+    if missing_tenor_bucket_count:
+        warnings.append(
+            f"{missing_tenor_bucket_count} rows with missing tenor_bucket and non-zero DV01 "
+            f"excluded from minimal KRD tensor (net_dv01={missing_tenor_bucket_dv01})."
+        )
 
     return krd_values
 
 
 def _warn_duration_exclusion_inputs(
-    rows: list[dict[str, Any]],
+    excluded_rows: list[dict[str, Any]],
+    breakdown: dict[str, list[dict[str, Any]]],
     report_date: date,
     warnings: list[str],
 ) -> None:
-    excluded_rows = _duration_excluded_rows(rows, report_date)
     if not excluded_rows:
         return
     excluded_market_value = sum(
@@ -288,12 +357,53 @@ def _warn_duration_exclusion_inputs(
         "excluded from portfolio duration denominator: "
         f"{len(no_maturity_rows)} without maturity_date "
         f"(market_value={_sum_field(no_maturity_rows, 'market_value')}); "
+        f"within that scope {len(breakdown['fund_no_maturity'])} fund_no_maturity "
+        f"(market_value={_sum_field(breakdown['fund_no_maturity'], 'market_value')}, "
+        "underlying rate risk not modelled) and "
+        f"{len(breakdown['unknown_maturity'])} unknown_maturity "
+        f"(market_value={_sum_field(breakdown['unknown_maturity'], 'market_value')}); "
         f"{len(matured_outstanding_rows)} matured on or before report_date with outstanding "
         f"market_value (market_value={_sum_field(matured_outstanding_rows, 'market_value')}); "
         f"{len(non_positive_duration_rows)} future-dated with non-positive modified_duration "
         f"(market_value={_sum_field(non_positive_duration_rows, 'market_value')}). "
-        "DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated."
+        "DV01 totals remain sourced from row dv01; duration is limited to the covered subset. "
+        "Fund underlying rate risk remains unmodelled; unknown dates and other input-quality rows require review."
     )
+
+
+def _duration_exclusion_breakdown(
+    excluded_rows: list[dict[str, Any]], report_date: date,
+) -> dict[str, list[dict[str, Any]]]:
+    breakdown: dict[str, list[dict[str, Any]]] = {
+        "fund_no_maturity": [],
+        "unknown_maturity": [],
+        "matured_outstanding": [],
+        "nonpositive_duration": [],
+    }
+    for row in excluded_rows:
+        maturity_date = _coerce_date(row.get("maturity_date"))
+        if maturity_date is None:
+            raw_maturity = row.get("maturity_date")
+            is_fund_without_date = (
+                "maturity_date" in row
+                and (
+                    raw_maturity is None
+                    or (isinstance(raw_maturity, str) and not raw_maturity.strip())
+                )
+                and classify_accounting_maturity(
+                    maturity_date=None,
+                    report_date=report_date,
+                    instrument_code=str(row.get("instrument_code") or ""),
+                    bond_type=str(row.get("bond_type") or ""),
+                ) == "fund_no_maturity"
+            )
+            key = "fund_no_maturity" if is_fund_without_date else "unknown_maturity"
+        elif maturity_date <= report_date:
+            key = "matured_outstanding"
+        else:
+            key = "nonpositive_duration"
+        breakdown[key].append(row)
+    return breakdown
 
 
 def _duration_denominator_rows(
@@ -360,13 +470,25 @@ def _calc_hhi_for_group(values: Any, total_market_value: Decimal) -> Decimal:
     return sum((_ratio(_safe_decimal(value), total_market_value) ** 2 for value in values), ZERO)
 
 
+class _ProjectionQuality(TypedDict):
+    missing_liability_maturity_count: int
+    missing_liability_maturity_principal_amount: Decimal
+    floating_rate_proxy_count: int
+    floating_rate_proxy_market_value: Decimal
+    payment_frequency_fallback_count: int
+    payment_frequency_fallback_market_value: Decimal
+    bullet_value_date_fallback_count: int
+    bullet_value_date_fallback_market_value: Decimal
+
+
 def _compute_liquidity_gaps(
     rows: list[dict[str, Any]],
     report_date: date,
     liability_rows: list[dict[str, Any]] | None = None,
-) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal, Decimal, list[str], dict[str, Decimal | int]]:
+) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal, Decimal, list[str], _ProjectionQuality]:
     missing_maturity_dates = 0
     missing_liability_maturity_dates = 0
+    missing_liability_maturity_principal_amount = ZERO
     unsupported_interest_modes: set[str] = set()
     optionality_warning_needed = False
     floating_rate_proxy_count = 0
@@ -455,12 +577,6 @@ def _compute_liquidity_gaps(
         end_date=report_date + timedelta(days=90),
     )
     for row in liability_rows or []:
-        maturity_date = _coerce_date(row.get("maturity_date"))
-        if maturity_date is None:
-            missing_liability_maturity_dates += 1
-            continue
-        if maturity_date < report_date:
-            continue
         # 余额为 0 是合法业务值（fact_formal_tyw_balance_daily 中约 10.9% 的行），
         # 而 ``principal_native`` 是换汇前的原币口径：用 ``or`` 会在余额为 0 时静默
         # 改用原币金额，既凭空造出敞口又混淆币种口径。只有字段缺失才回退到原币。
@@ -468,6 +584,15 @@ def _compute_liquidity_gaps(
         principal_amount = row.get("principal_amount")
         if principal_amount is None:
             principal_amount = row.get("principal_native")
+        maturity_date = _coerce_date(row.get("maturity_date"))
+        if maturity_date is None:
+            missing_liability_maturity_dates += 1
+            missing_liability_maturity_principal_amount += _safe_decimal(
+                principal_amount
+            )
+            continue
+        if maturity_date < report_date:
+            continue
         liability_projection_rows.append(
             {
                 "position_id": str(row.get("position_id") or ""),
@@ -482,8 +607,9 @@ def _compute_liquidity_gaps(
 
     projected_liability_events = project_liability_cashflows(
         liability_projection_rows,
-        projection_report_date,
+        report_date,
         horizon_months=4,
+        include_report_date=True,
     )
     liability_gap_30d = _sum_window_cashflows(
         projected_liability_events,
@@ -509,7 +635,9 @@ def _compute_liquidity_gaps(
         )
     if missing_liability_maturity_dates:
         warnings.append(
-            f"Excluded {missing_liability_maturity_dates} liability rows without maturity_date from liquidity gap calculation."
+            f"Excluded {missing_liability_maturity_dates} liability rows without maturity_date "
+            f"with principal_amount={missing_liability_maturity_principal_amount} CNY yuan "
+            "from liquidity gap calculation."
         )
     if unsupported_interest_modes:
         warnings.append(
@@ -548,6 +676,10 @@ def _compute_liquidity_gaps(
         liability_cashflow_90d,
         warnings,
         {
+            "missing_liability_maturity_count": missing_liability_maturity_dates,
+            "missing_liability_maturity_principal_amount": (
+                missing_liability_maturity_principal_amount
+            ),
             "floating_rate_proxy_count": floating_rate_proxy_count,
             "floating_rate_proxy_market_value": floating_rate_proxy_market_value,
             "payment_frequency_fallback_count": payment_frequency_fallback_count,

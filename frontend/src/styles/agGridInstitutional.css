@@ -34,7 +34,7 @@
 .moss-ag-grid__cell--numeric,
 .moss-ag-grid .ag-right-aligned-cell {
   font-variant-numeric: tabular-nums;
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   text-align: right;
 }
 

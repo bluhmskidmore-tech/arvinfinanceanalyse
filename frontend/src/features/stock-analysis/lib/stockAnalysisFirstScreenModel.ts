@@ -1,52 +1,32 @@
 import type {
   FactorScreenCandidatesPayload,
-  LivermoreDataGap,
-  LivermoreMarketGate,
   LivermoreModuleState,
   LivermoreStrategyPayload,
 } from "../../../api/contracts";
-import { cycleInputLabel, dataGapFamilyLabel } from "./stockAnalysisPageLabels";
-import { stockStatusLabel } from "./stockAnalysisPageCopy";
 import {
   localizeImplementationStage,
-  localizeMarketDataStatus,
   localizeStockBackendText,
 } from "./stockAnalysisPageModel";
+import type { StockClosedLoopSummary, StockDecisionReferenceRatingCode } from "./stockAnalysisPageModel";
 import { EM_DASH } from "../../../utils/format";
 
 export type StockFirstScreenTone = "positive" | "neutral" | "warning" | "negative";
 
-export type StockFirstScreenKpi = {
-  key: string;
-  label: string;
-  value: string;
-  unit?: string;
-  detail?: string;
-  tone: StockFirstScreenTone;
-};
+export type StockFirstScreenDecisionStatus =
+  | "unresolved"
+  | "pretrade_unavailable"
+  | "workbench_blocked"
+  | StockDecisionReferenceRatingCode
+  | "no_valid_candidate";
 
-export type StockFirstScreenHeroModel = {
-  headline: string;
-  lead: string;
-  kpis: StockFirstScreenKpi[];
-};
-
-export type StockActiveDataGap = LivermoreDataGap & {
-  blocksReview: boolean;
-  familyLabel: string;
-  shortLabel: string;
+export type StockFirstScreenDecisionGate = {
+  status: StockFirstScreenDecisionStatus;
   statusLabel: string;
-};
-
-export type StockDataGapOverview = {
-  activeGaps: StockActiveDataGap[];
-  blockingGaps: StockActiveDataGap[];
-  missingCount: number;
-  partialCount: number;
-  countLabel: string;
-  primaryGapLabel: string;
-  maxStaleAgeDays: number | null;
-  maxStaleAgeFamilyLabel: string | null;
+  reviewAllowed: boolean;
+  candidateProgressionAllowed: boolean;
+  executionAllowed: false;
+  effectiveCandidateCount: number | null;
+  primaryReason: string;
 };
 
 export type StockMacroCycleLayerRow = {
@@ -58,12 +38,24 @@ export type StockMacroCycleLayerRow = {
   evidence: string;
 };
 
+export type StockMacroCycleInputRow = {
+  key: "pmi" | "credit_impulse";
+  label: string;
+  valueLabel: string;
+  seriesLabel: string;
+  dateLabel: string;
+  freshnessLabel: string;
+  basisLabel: string;
+  tone: StockFirstScreenTone;
+};
+
 export type StockMacroCycleCardModel = {
   statusLabel: string;
   tone: StockFirstScreenTone;
   macroScoreLabel: string;
   cycleStateLabel: string;
   evidence: string;
+  inputs: StockMacroCycleInputRow[];
   layers: StockMacroCycleLayerRow[];
 };
 
@@ -77,193 +69,135 @@ export type StockFactorScreenCardModel = {
   coverageLabel: string | null;
 };
 
-const REQUIRED_WORKBENCH_GAP_FAMILIES = new Set([
-  "broad_index_history",
-  "breadth",
-  "limit_up_quality",
-  "sector_strength",
-  "stock_universe",
-  "position_risk",
-]);
+export function buildStockFirstScreenDecisionGate({
+  pretradeQualificationStatus,
+  pretradeQualificationReason,
+  workbenchReviewAllowed,
+  strategyAsOf,
+  confluenceAsOf,
+  confluenceLoading,
+  confluenceError,
+  confluenceFreshnessIssue,
+  workbenchBlockerReason,
+  closedLoopSummary,
+  entryObservationCount,
+}: {
+  pretradeQualificationStatus: "ready" | "ready_empty" | "unavailable" | null;
+  pretradeQualificationReason: string | null;
+  workbenchReviewAllowed: boolean;
+  strategyAsOf: string | null;
+  confluenceAsOf: string | null;
+  confluenceLoading: boolean;
+  confluenceError: boolean;
+  confluenceFreshnessIssue: string | null;
+  workbenchBlockerReason: string | null;
+  closedLoopSummary: StockClosedLoopSummary | null;
+  entryObservationCount: number;
+}): StockFirstScreenDecisionGate {
+  const unresolvedGate = (primaryReason: string): StockFirstScreenDecisionGate =>
+    ({
+      status: "unresolved",
+      statusLabel: "待确认",
+      reviewAllowed: false,
+      candidateProgressionAllowed: false,
+      executionAllowed: false,
+      effectiveCandidateCount: null,
+      primaryReason,
+    });
 
-type WorkbenchGapInput = LivermoreDataGap & { blocks_review?: boolean };
-
-function gapBlocksReview(gap: WorkbenchGapInput): boolean {
-  if (typeof gap.blocks_review === "boolean") {
-    return gap.blocks_review;
+  if (pretradeQualificationStatus !== "ready") {
+    if (pretradeQualificationStatus === "ready_empty") {
+      return {
+        status: "no_valid_candidate",
+        statusLabel: "资格就绪，无候选",
+        reviewAllowed: false,
+        candidateProgressionAllowed: false,
+        executionAllowed: false,
+        effectiveCandidateCount: 0,
+        primaryReason: "盘前来源资格已闭合，但本次没有可进入复核的候选",
+      };
+    }
+    return {
+      status: "pretrade_unavailable",
+      statusLabel: "来源资格未就绪",
+      reviewAllowed: false,
+      candidateProgressionAllowed: false,
+      executionAllowed: false,
+      effectiveCandidateCount: 0,
+      primaryReason: pretradeQualificationReason ?? "盘前来源资格证据未闭合",
+    };
   }
-  return (
-    (REQUIRED_WORKBENCH_GAP_FAMILIES.has(gap.input_family) && gap.status !== "ready") ||
-    gap.tier === "stale" ||
-    gap.tier === "expired" ||
-    ["stale", "look_ahead", "blocked", "error", "unsupported"].includes(
-      String(gap.status).trim().toLowerCase(),
-    ) ||
-    (typeof gap.age_days === "number" && gap.age_days < 0)
-  );
-}
 
-function gapDisplayStatus(gap: WorkbenchGapInput): string {
-  return gap.tier === "stale" || gap.tier === "expired" ? "stale" : String(gap.status);
-}
+  if (confluenceError) {
+    return unresolvedGate("信号闭环读取失败");
+  }
+  if (confluenceLoading || !confluenceAsOf || !closedLoopSummary) {
+    return unresolvedGate("结论核对中");
+  }
+  if (strategyAsOf !== confluenceAsOf) {
+    return unresolvedGate(
+      `闭环日期不一致（策略 ${strategyAsOf ?? "待确认"} / 闭环 ${confluenceAsOf}）`,
+    );
+  }
+  if (confluenceFreshnessIssue) {
+    return {
+      status: "insufficient_data",
+      statusLabel: "数据不足",
+      reviewAllowed: false,
+      candidateProgressionAllowed: false,
+      executionAllowed: false,
+      effectiveCandidateCount: 0,
+      primaryReason: confluenceFreshnessIssue,
+    };
+  }
 
-/**
- * 缺口行标签：登记过的输入族用中文名；未登记时改用后端数据源字段
- * (gap.input，如系列号/表名)作证据引用，避免多行同文"输入待确认"不可分辨。
- * 未登记且无数据源字段时保持"输入待确认"——原始 input_family(如
- * external_vendor_* 技术 token)不得直出业务叙述位(§7)。
- */
-function gapShortLabel(gap: WorkbenchGapInput): string {
-  const label = cycleInputLabel(gap.input_family);
-  if (label !== "输入待确认") return label;
-  return gap.input?.trim() || label;
-}
+  const resolvedClosedLoopSummary = closedLoopSummary;
+  const rating = resolvedClosedLoopSummary.referenceRating;
+  if (rating.code !== "reviewable") {
+    return {
+      status: rating.code,
+      statusLabel: rating.label,
+      reviewAllowed: false,
+      candidateProgressionAllowed: false,
+      executionAllowed: false,
+      effectiveCandidateCount: 0,
+      primaryReason: resolvedClosedLoopSummary.verdict.primaryReason,
+    };
+  }
 
-export function buildStockDataGapOverview(gaps: WorkbenchGapInput[]): StockDataGapOverview {
-  const activeRaw = gaps.filter(
-    (gap) => gap.status !== "ready" || gap.tier === "stale" || gap.tier === "expired",
-  );
-  const decorated = activeRaw.map((gap) => ({
-    ...gap,
-    blocksReview: gapBlocksReview(gap),
-    familyLabel: dataGapFamilyLabel(gap.input_family),
-    shortLabel: gapShortLabel(gap),
-    statusLabel: stockStatusLabel(gapDisplayStatus(gap)),
-  }));
-  const ordered = [...decorated].sort(
-    (left, right) =>
-      Number(right.blocksReview) - Number(left.blocksReview) ||
-      decorated.indexOf(left) - decorated.indexOf(right),
-  );
-  const blockingGaps = ordered.filter((gap) => gap.blocksReview);
-  const missingCount = decorated.filter((gap) =>
-    ["missing", "blocked", "error", "unsupported"].includes(String(gap.status)),
-  ).length;
-  const partialCount = decorated.filter(
-    (gap) =>
-      ["partial", "stale", "warning", "degraded", "deferred"].includes(String(gap.status)) ||
-      gap.tier === "stale" ||
-      gap.tier === "expired",
-  ).length;
-  const countLabel =
-    missingCount > 0 && partialCount > 0
-      ? `${missingCount}+${partialCount}`
-      : `${decorated.length}`;
-  const primaryGapLabel =
-    ordered
-      .slice(0, 3)
-      .map((gap) => gap.shortLabel)
-      .join(" / ") || "无新增缺口";
+  if (!workbenchReviewAllowed) {
+    return {
+      status: "workbench_blocked",
+      statusLabel: "复核门禁未放行",
+      reviewAllowed: false,
+      candidateProgressionAllowed: false,
+      executionAllowed: false,
+      effectiveCandidateCount: 0,
+      primaryReason: workbenchBlockerReason ?? "工作台复核门禁未放行",
+    };
+  }
 
-  let maxStaleAgeDays: number | null = null;
-  let maxStaleAgeFamilyLabel: string | null = null;
-  for (const gap of gaps) {
-    const isStale = gap.tier === "stale" || gap.tier === "expired" || gap.status === "stale";
-    if (!isStale) continue;
-    if (typeof gap.age_days !== "number" || !Number.isFinite(gap.age_days) || gap.age_days <= 0) {
-      continue;
-    }
-    if (maxStaleAgeDays == null || gap.age_days > maxStaleAgeDays) {
-      maxStaleAgeDays = gap.age_days;
-      maxStaleAgeFamilyLabel = cycleInputLabel(gap.input_family);
-    }
+  if (entryObservationCount === 0) {
+    return {
+      status: "no_valid_candidate",
+      statusLabel: "无有效候选",
+      reviewAllowed: false,
+      candidateProgressionAllowed: false,
+      executionAllowed: false,
+      effectiveCandidateCount: 0,
+      primaryReason: "闭环检查已通过，但没有逐项有效的入场观察候选",
+    };
   }
 
   return {
-    activeGaps: ordered,
-    blockingGaps,
-    missingCount,
-    partialCount,
-    countLabel,
-    primaryGapLabel,
-    maxStaleAgeDays,
-    maxStaleAgeFamilyLabel,
+    status: "reviewable",
+    statusLabel: "可复核",
+    reviewAllowed: true,
+    candidateProgressionAllowed: true,
+    executionAllowed: false,
+    effectiveCandidateCount: entryObservationCount,
+    primaryReason: resolvedClosedLoopSummary.verdict.primaryReason,
   };
-}
-
-export function buildStockFirstScreenHero({
-  marketGate,
-  reviewBlocked,
-  reviewQueueCount,
-  primaryBlockerLabel,
-  factorScreen,
-  gapOverview,
-}: {
-  marketGate: LivermoreMarketGate;
-  reviewBlocked: boolean;
-  reviewQueueCount: number;
-  primaryBlockerLabel: string | null;
-  factorScreen: StockFactorScreenCardModel | null;
-  gapOverview: StockDataGapOverview;
-}): StockFirstScreenHeroModel {
-  const availability = `${marketGate.available_conditions}/${marketGate.required_conditions}`;
-  const stateLabel = localizeMarketDataStatus(marketGate.state);
-  const lagClause =
-    gapOverview.maxStaleAgeDays != null ? `，源数据滞后 ${gapOverview.maxStaleAgeDays} 天` : "";
-
-  let headline: string;
-  let lead: string;
-  if (reviewBlocked) {
-    headline = `复核门禁未放行：${marketGate.required_conditions} 项条件仅 ${marketGate.available_conditions} 项可评估${lagClause}`;
-    const factorClause =
-      factorScreen && factorScreen.candidateCount > 0
-        ? `因子初筛 ${factorScreen.candidateCount} 只候选可先行只读观察，截面 ${factorScreen.asOfLabel}。`
-        : "观察池暂无可先行浏览的候选。";
-    lead = `首要阻断：${primaryBlockerLabel ?? "阻断原因待确认"}。${factorClause}`;
-  } else if (reviewQueueCount > 0) {
-    headline = `复核可以继续：门禁${stateLabel}，待复核候选 ${reviewQueueCount} 只`;
-    lead =
-      gapOverview.blockingGaps.length > 0
-        ? `仍有 ${gapOverview.blockingGaps.length} 项阻断缺口待补，复核结论仅供观察。`
-        : "候选与证据已返回，可按队列顺序只读复核。";
-  } else {
-    headline = `暂无复核候选：门禁${stateLabel}，等待观察池补充证据`;
-    lead =
-      factorScreen && factorScreen.candidateCount > 0
-        ? `因子初筛 ${factorScreen.candidateCount} 只候选可先行只读观察，截面 ${factorScreen.asOfLabel}。`
-        : "各策略观察池均无输出，请关注数据缺口修复进度。";
-  }
-
-  const kpis: StockFirstScreenKpi[] = [
-    {
-      key: "gate-availability",
-      label: "可评估条件",
-      value: availability,
-      detail: `通过 ${marketGate.passed_conditions}/${marketGate.required_conditions}`,
-      tone:
-        marketGate.available_conditions >= marketGate.required_conditions
-          ? marketGate.passed_conditions >= marketGate.required_conditions
-            ? "positive"
-            : "neutral"
-          : "warning",
-    },
-    {
-      key: "factor-candidates",
-      label: "因子初筛候选",
-      value: factorScreen ? `${factorScreen.candidateCount}` : EM_DASH,
-      unit: factorScreen ? "只" : undefined,
-      detail: factorScreen ? `截面 ${factorScreen.asOfLabel}` : "接口未提供",
-      tone: factorScreen && factorScreen.candidateCount > 0 ? "neutral" : "warning",
-    },
-    {
-      key: "blocking-gaps",
-      label: "阻断缺口",
-      value: `${gapOverview.blockingGaps.length}`,
-      unit: "项",
-      detail: gapOverview.primaryGapLabel,
-      tone: gapOverview.blockingGaps.length > 0 ? "negative" : "positive",
-    },
-    {
-      key: "source-lag",
-      label: "源数据滞后",
-      value: gapOverview.maxStaleAgeDays != null ? `${gapOverview.maxStaleAgeDays}` : EM_DASH,
-      unit: gapOverview.maxStaleAgeDays != null ? "天" : undefined,
-      detail: gapOverview.maxStaleAgeFamilyLabel ?? "无陈旧输入",
-      tone: gapOverview.maxStaleAgeDays != null ? "warning" : "positive",
-    },
-  ];
-
-  return { headline, lead, kpis };
 }
 
 function cycleStateLabel(state: string | null | undefined): string {
@@ -284,6 +218,67 @@ function macroLayerTone(status: string): StockFirstScreenTone {
   return "warning";
 }
 
+function macroInputFreshness(
+  tier: string | null | undefined,
+  ageDays: number | null | undefined,
+): Pick<StockMacroCycleInputRow, "freshnessLabel" | "tone"> {
+  const normalized = tier?.trim().toLowerCase();
+  const ageLabel = typeof ageDays === "number" && Number.isFinite(ageDays) ? ` · ${ageDays} 天` : "";
+  if (normalized === "fresh") return { freshnessLabel: `新鲜${ageLabel}`, tone: "positive" };
+  if (normalized === "stale") return { freshnessLabel: `陈旧${ageLabel}`, tone: "warning" };
+  if (normalized === "expired") return { freshnessLabel: `已过期${ageLabel}`, tone: "negative" };
+  if (normalized) return { freshnessLabel: `待确认${ageLabel}`, tone: "warning" };
+  return { freshnessLabel: "新鲜度待补", tone: "warning" };
+}
+
+function buildMacroInputRow(
+  macroContext: LivermoreStrategyPayload["market_gate"]["macro_context"],
+  key: StockMacroCycleInputRow["key"],
+): StockMacroCycleInputRow {
+  const component = macroContext?.components?.find(
+    (item) => item.input_family.trim().toLowerCase() === key,
+  );
+  const freshness = macroInputFreshness(component?.tier, component?.age_days);
+  const seriesLabel = component?.input?.trim() || "序列待补";
+  const isM2Proxy = key === "credit_impulse" && seriesLabel.toUpperCase() === "M0001385";
+  const valueNumeric =
+    typeof component?.value_numeric === "number" && Number.isFinite(component.value_numeric)
+      ? component.value_numeric
+      : null;
+  const rawUnit = component?.unit?.trim() || null;
+  const unit = rawUnit?.toLowerCase() || null;
+  const valueKind = component?.value_kind?.trim().toLowerCase() || null;
+  const valueLabel =
+    valueNumeric == null
+      ? "数值待补"
+      : valueKind === "ppt" || unit === "ppt"
+        ? `${valueNumeric >= 0 ? "+" : ""}${valueNumeric.toFixed(2)} ppt`
+        : valueKind === "index" || unit === "index"
+          ? `${valueNumeric.toFixed(1)} index`
+          : unit
+            ? `${valueNumeric.toFixed(2)} ${rawUnit}`
+            : `${valueNumeric.toFixed(2)}`;
+  return {
+    key,
+    label: key === "pmi" ? "PMI" : "信用扩张代理",
+    valueLabel,
+    seriesLabel,
+    dateLabel: component?.business_date?.trim() || "日期待补",
+    freshnessLabel: freshness.freshnessLabel,
+    basisLabel:
+      key === "pmi"
+        ? component
+          ? "PMI 原序列"
+          : "口径待补"
+        : !component
+          ? "代理口径待补"
+          : isM2Proxy
+          ? "M2 同比月差代理"
+            : "社融存量同比月差代理",
+    tone: component ? freshness.tone : "warning",
+  };
+}
+
 export function buildStockMacroCycleCard(
   payload: LivermoreStrategyPayload,
 ): StockMacroCycleCardModel | null {
@@ -295,9 +290,6 @@ export function buildStockMacroCycleCard(
   }
 
   const macroScore = macroContext?.macro_score ?? macroLayer?.macro_score ?? null;
-  const ready =
-    macroLayer?.ready === true || String(macroContext?.status ?? "").toLowerCase() === "ready";
-
   const layers: StockMacroCycleLayerRow[] = (framework?.layers ?? []).map((layer) => ({
     key: layer.key,
     label: cycleLayerLabel(layer.key, layer.title),
@@ -309,6 +301,15 @@ export function buildStockMacroCycleCard(
     tone: macroLayerTone(layer.status),
     evidence: localizeStockBackendText(layer.evidence ?? "", layer.key),
   }));
+  const inputs: StockMacroCycleInputRow[] = [
+    buildMacroInputRow(macroContext, "pmi"),
+    buildMacroInputRow(macroContext, "credit_impulse"),
+  ];
+  const requiredInputsFresh = inputs.every(
+    (item) => item.seriesLabel !== "序列待补" && item.tone === "positive",
+  );
+  const ready =
+    String(macroContext?.status ?? "").toLowerCase() === "ready" && requiredInputsFresh;
 
   return {
     statusLabel: ready ? "已落地" : "部分就绪",
@@ -320,6 +321,7 @@ export function buildStockMacroCycleCard(
       macroContext?.evidence ?? macroLayer?.evidence ?? "宏观层证据待补",
       "macro_score",
     ),
+    inputs,
     layers,
   };
 }

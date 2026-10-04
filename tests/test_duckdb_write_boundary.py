@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# Keep historical explicit imports usable without collecting these aliases a
+# second time during full pytest discovery.
+__test__ = False
+
 from tests.test_service_storage_boundaries import (
     test_api_and_service_layers_do_not_call_repository_replace_writers,
     test_api_and_service_layers_do_not_open_repository_task_write_scope,

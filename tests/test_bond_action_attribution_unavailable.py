@@ -68,7 +68,7 @@ def test_bond_action_attribution_computation_failure_discloses_computation_faile
     monkeypatch.setattr(
         service_module,
         "_fetch_action_attribution_snapshots",
-        lambda *, repo, period_end: ([{"stub": "end-row"}], [], None),
+        lambda *, repo, period_start, period_end: ([{"stub": "end-row"}], [], None),
     )
     monkeypatch.setattr(
         service_module,

@@ -84,7 +84,10 @@ def _raise_workbench_http_error(exc: Exception) -> None:
     if isinstance(exc, kpi_workbench_service.KpiInvalidDateError):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if isinstance(exc, kpi_workbench_service.KpiStorageError):
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=kpi_workbench_service.KPI_STORAGE_UNAVAILABLE_MESSAGE,
+        ) from exc
     raise exc
 
 
@@ -98,6 +101,30 @@ def _ensure_kpi_read_allowed(auth: AuthContext) -> None:
         allow_dev_fallback=True,
         authorize=ensure_user_allowed,
     )
+
+
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+# Free-text columns only; numeric columns are Decimal-formatted and a leading "-" there is a sign.
+_CSV_TEXT_FIELDS = frozenset(
+    {
+        "owner_name",
+        "org_unit",
+        "major_category",
+        "indicator_category",
+        "metric_name",
+        "target_text",
+        "unit",
+        "scoring_text",
+        "remarks",
+    }
+)
+
+
+def _neutralize_csv_formula(value: object) -> object:
+    # Spreadsheet apps treat cells starting with these characters as formulas/DDE.
+    if isinstance(value, str) and value.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + value
+    return value
 
 
 def _render_report_csv(*, rows: list[dict[str, object]], year: int, as_of_date: str | None) -> PlainTextResponse:
@@ -121,7 +148,13 @@ def _render_report_csv(*, rows: list[dict[str, object]], year: int, as_of_date: 
     ]
     writer = csv.DictWriter(buffer, fieldnames=fieldnames)
     writer.writeheader()
-    writer.writerows(rows)
+    writer.writerows(
+        {
+            key: _neutralize_csv_formula(value) if key in _CSV_TEXT_FIELDS else value
+            for key, value in row.items()
+        }
+        for row in rows
+    )
     suffix = as_of_date or "latest"
     return PlainTextResponse(
         buffer.getvalue(),

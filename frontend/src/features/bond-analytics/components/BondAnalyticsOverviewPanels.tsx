@@ -1,3 +1,4 @@
+import { SectionGrid } from "../../../components/layout";
 import type { CalendarItem } from "../../../components/CalendarList";
 import type { BondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
@@ -28,6 +29,7 @@ export interface BondAnalyticsOverviewPanelsProps {
   onSpreadScenariosChange: (value: string) => void;
   actionAttributionResult?: ActionAttributionResponse | null;
   actionAttributionPending?: boolean;
+  actionAttributionError?: string | null;
   overviewModel: BondAnalyticsOverviewModel;
   onOpenModuleDetail: (key: BondAnalyticsModuleKey) => void;
   onRefreshAnalytics?: () => void;
@@ -55,6 +57,7 @@ export function BondAnalyticsOverviewPanels({
   onSpreadScenariosChange,
   actionAttributionResult = null,
   actionAttributionPending = false,
+  actionAttributionError = null,
   overviewModel,
   onOpenModuleDetail,
   onRefreshAnalytics,
@@ -73,25 +76,32 @@ export function BondAnalyticsOverviewPanels({
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    /*
+     * DESIGN.md §9.1 区块顺序锁：宏观市场条 → 本日判断 → 组合 KPI 横带 → 三列
+     * （曲线与波动｜四象策略｜收益归因）→ 三列（结构/风险/今日焦点）→ 双列
+     * （事件日历｜重点券表）。本次只把两层裸 grid/flex 包装换成 SectionGrid，
+     * 子节点顺序逐字不动。
+     */
+    <SectionGrid gap={8}>
+      {/* 治理标识属证据层（DESIGN §6/§7）：叙述位只留中文结论，契约编号与状态码收进 title。 */}
       <div
         data-testid="bond-analysis-candidate-boundary"
         style={{ fontSize: 12, lineHeight: 1.6, color: "var(--dh-api-muted)" }}
       >
-        PAGE-BOND-ANALYSIS-001 · candidate · formal_use_allowed=false · owner approval pending；
-        页面结果仅供候选分析，不代表公式或正式批准。
+        本页尚未获得业主正式批准，结果仅供分析参考。
       </div>
       <BondAnalyticsMarketContextStrip
         leadModuleLabel={overviewModel.activeModuleContext.label}
-        leadPromotionLabel="candidate"
+        leadPromotionLabel="候选分析"
         truthStrip={overviewModel.truthStrip}
       />
-      <div style={{ display: "grid", gap: 8 }} data-testid="bond-analysis-top-cockpit">
+      <SectionGrid gap={8} testId="bond-analysis-top-cockpit">
         <BondAnalyticsInstitutionalCockpit
           reportDate={reportDate}
           periodType={periodType}
           actionAttribution={actionAttributionResult}
           actionAttributionPending={actionAttributionPending}
+          actionAttributionError={actionAttributionError}
           topAnomalies={overviewModel.topAnomalies}
           decisionRail={{
             activeModuleContext: overviewModel.activeModuleContext,
@@ -118,7 +128,7 @@ export function BondAnalyticsOverviewPanels({
           analyticsRefreshError={analyticsRefreshError}
           lastAnalyticsRefreshRunId={lastAnalyticsRefreshRunId}
         />
-      </div>
-    </div>
+      </SectionGrid>
+    </SectionGrid>
   );
 }

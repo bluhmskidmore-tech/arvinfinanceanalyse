@@ -31,6 +31,7 @@ const deferredEvidenceCssPath = resolve(
   featureRoot,
   "dashboardHomeOptionTwoDeferred.module.css",
 );
+const deferredEvidenceCss = readFileSync(deferredEvidenceCssPath, "utf8");
 const holdingDrawerCssPath = resolve(
   featureRoot,
   "dashboardHomeHoldingDrawer.module.css",
@@ -93,7 +94,8 @@ describe("dashboard home option two visual contracts", () => {
       return;
     }
 
-    const deferredEvidenceCss = readFileSync(deferredEvidenceCssPath, "utf8");
+    expect(optionTwoCss).not.toMatch(/\.extendedEvidence\s*:\s*global/);
+    expect(deferredEvidenceCss).not.toContain(".extendedEvidence");
     const styleAccesses = new Set(
       [bondNewsSource, researchCalendarSource].flatMap((source) =>
         [...source.matchAll(/styles\.([A-Za-z0-9_]+)/g)].map(
@@ -107,6 +109,27 @@ describe("dashboard home option two visual contracts", () => {
     for (const className of styleAccesses) {
       expect(deferredEvidenceCss).toContain(`.${className}`);
     }
+  });
+
+  it("keeps the opening decision band action-first without decorative card noise", () => {
+    expect(optionTwoCss).toMatch(
+      /\.overviewSectionHeader\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto;/s,
+    );
+    expect(optionTwoCss).toMatch(
+      /\.overviewSectionHeader\s*>\s*span\s*\{[^}]*display:\s*none;/s,
+    );
+    expect(optionTwoCss).toMatch(
+      /\.decisionStrip\s*\{[^}]*minmax\(160px, 0\.72fr\)[^}]*minmax\(0, 1\.8fr\)[^}]*minmax\(220px, 0\.88fr\);/s,
+    );
+    expect(optionTwoCss).toMatch(
+      /\.overviewAttention\s*\{[^}]*border-left:\s*2px solid var\(--option-two-blue\);[^}]*background:\s*var\(--option-two-panel-2\);/s,
+    );
+    expect(optionTwoCss).toMatch(
+      /\.portfolioSummaryBody\s*\{[^}]*grid-template-columns:\s*200px minmax\(0, 1fr\);/s,
+    );
+    expect(optionTwoCss).toMatch(
+      /\.overviewNarrative\s*\{[^}]*border-radius:\s*0;[^}]*background:\s*transparent;/s,
+    );
   });
 
   it("fits KPI values and removes stretched empty cards at the 1280px breakpoint", () => {
@@ -155,7 +178,36 @@ describe("dashboard home option two visual contracts", () => {
       /\[data-testid="dashboard-home-toolbar"\]\s*\{[^}]*flex-direction:\s*row\s*!important;/s,
     );
     expect(mobileCss).toMatch(
-      /\[data-role="dashboard-home-date-control"\]\s*\{[^}]*width:\s*92px\s*!important;/s,
+      /\[data-role="dashboard-home-date-control"\]\s*\{[^}]*width:\s*auto\s*!important;[^}]*gap:\s*8px;/s,
+    );
+    expect(tabletCss).toMatch(
+      /\[data-role="dashboard-home-toolbar-left"\]\s*\{[^}]*flex-wrap:\s*wrap;/s,
+    );
+  });
+
+  it("moves toolbar controls into separate rows on narrow desktop widths", () => {
+    const narrowDesktopStart = optionTwoCss.indexOf(
+      "@media (min-width: 1025px) and (max-width: 1399px)",
+    );
+    const narrowDesktopEnd = optionTwoCss.indexOf(
+      "@media (max-width: 1280px)",
+      narrowDesktopStart,
+    );
+    const narrowDesktopCss = optionTwoCss.slice(
+      narrowDesktopStart,
+      narrowDesktopEnd,
+    );
+
+    expect(narrowDesktopStart).toBeGreaterThanOrEqual(0);
+    expect(narrowDesktopEnd).toBeGreaterThan(narrowDesktopStart);
+    expect(narrowDesktopCss).toMatch(
+      /\[data-testid="dashboard-home-toolbar"\]\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*54px;/s,
+    );
+    expect(narrowDesktopCss).toMatch(
+      /\[data-role="dashboard-home-toolbar-left"\]\s*\{[^}]*width:\s*100%;[^}]*flex:\s*1 1 100%;/s,
+    );
+    expect(narrowDesktopCss).toMatch(
+      /\[data-role="dashboard-home-toolbar-right"\]\s*\{[^}]*width:\s*100%;[^}]*margin-left:\s*0;/s,
     );
   });
 
@@ -181,7 +233,7 @@ describe("dashboard home option two visual contracts", () => {
       /\.holdingsChangesBody\s*\{[^}]*grid-template-columns:\s*minmax\(0, 62fr\) minmax\(280px, 38fr\);/s,
     );
     expect(intermediateCss).toMatch(
-      /\.extendedEvidence\s*\{[^}]*grid-template-columns:\s*minmax\(0, 42fr\) minmax\(0, 58fr\);/s,
+      /\.extendedEvidence\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s,
     );
     expect(intermediateCss).toMatch(
       /\.tableScroller\s*\{[^}]*height:\s*auto;[^}]*overflow:\s*visible;/s,
@@ -212,10 +264,10 @@ describe("dashboard home option two visual contracts", () => {
     );
   });
 
-  it("reserves breathing room for the desktop evidence rows without clipping their content", () => {
-    expect(optionTwoCss).toMatch(
-      /\.riskTasks\s*\{[^}]*height:\s*186px;[^}]*min-height:\s*186px;/s,
-    );
+  it("uses natural height for desktop evidence rows without clipping their content", () => {
+    const riskPanel = optionTwoCss.match(/\.riskTasks\s*\{(?=[^}]*grid-column:)([^}]+)\}/s)?.[1];
+    expect(riskPanel).toContain("min-height: 0;");
+    expect(riskPanel).not.toMatch(/(?:^|;)\s*(?:height|max-height):\s*\d+px/s);
     expect(optionTwoCss).toMatch(
       /\.marketResearchPanel\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*height:\s*220px;[^}]*min-height:\s*220px;/s,
     );
@@ -223,7 +275,25 @@ describe("dashboard home option two visual contracts", () => {
       /\.trustFooter\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s,
     );
     expect(optionTwoCss).toMatch(
-      /\.extendedEvidence\s*>\s*section\s*\{[^}]*height:\s*358px;[^}]*min-height:\s*358px;/s,
+      /\.extendedEvidence\s*>\s*section\s*\{[^}]*display:\s*flex;[^}]*height:\s*auto;[^}]*min-height:\s*0;[^}]*flex-direction:\s*column;[^}]*align-self:\s*start;[^}]*overflow:\s*visible;/s,
+    );
+    expect(deferredEvidenceCss).toMatch(
+      /\.(?:dhCalendarSection|dhBondNewsSection)\s*:\s*global\(\[data-layout-role="research-calendar-card"\]\),\s*\.(?:dhCalendarSection|dhBondNewsSection)\s*:\s*global\(\[data-layout-role="bond-news-card"\]\)\s*\{[^}]*height:\s*auto\s*!important;[^}]*min-height:\s*0\s*!important;[^}]*max-height:\s*none\s*!important;[^}]*flex:\s*1\s+1\s+auto;/s,
+    );
+    expect(optionTwoCss).toMatch(
+      /\.extendedEvidence\s*\{[^}]*align-items:\s*start;[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s,
+    );
+    expect(deferredEvidenceCss).toMatch(
+      /\.dhCalendarSection\s+\.dhMacroBriefingGrid\s*\{[^}]*grid-template-columns:\s*minmax\(520px, 0\.9fr\) minmax\(700px, 1\.1fr\)\s*!important;/s,
+    );
+    expect(deferredEvidenceCss).toMatch(
+      /\.(?:dhCalendarSection|dhBondNewsSection)\s*:\s*global\(\[data-layout-role="bond-news-grid"\]\)\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1\.7fr\) minmax\(340px, 0\.7fr\)\s*!important;/s,
+    );
+    expect(deferredEvidenceCss).not.toContain(
+      '[data-layout-role="bond-news-item"]:nth-child(n + 2)',
+    );
+    expect(deferredEvidenceCss).toMatch(
+      /@media \(max-width:\s*1600px\)\s*\{[^}]*\.dhMacroBriefingGrid[^}]*\[data-layout-role="bond-news-grid"\][^}]*grid-template-columns:\s*minmax\(0, 1fr\)\s*!important;/s,
     );
     expect(optionTwoCss).toMatch(
       /\.extendedEvidenceHeader\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s,
@@ -237,10 +307,10 @@ describe("dashboard home option two visual contracts", () => {
     expect(optionTwoCss).toMatch(
       /\.page\s*\{[^}]*font-family:\s*var\(--option-two-font-ui\);[^}]*font-synthesis:\s*none;[^}]*font-variant-numeric:\s*tabular-nums lining-nums;/s,
     );
-    expect(optionTwoCss).toMatch(
+    expect(deferredEvidenceCss).toMatch(
       /\[data-layout-role="bond-news-body"\]\s*>\s*strong\)\s*\{[^}]*font-family:\s*var\(--option-two-font-ui\)\s*!important;[^}]*font-weight:\s*500\s*!important;[^}]*line-height:\s*17px\s*!important;/s,
     );
-    expect(optionTwoCss).toMatch(
+    expect(deferredEvidenceCss).toMatch(
       /\[data-layout-role="bond-news-internal-header"\]\s*>\s*time\)[^{]*\{[^}]*font-family:\s*var\(--option-two-font-data\)\s*!important;/s,
     );
   });

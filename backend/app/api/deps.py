@@ -5,6 +5,7 @@ route modules only declare *which* resource they read.
 """
 from __future__ import annotations
 
+import ipaddress
 from collections.abc import Callable
 
 from backend.app.governance.settings import get_settings
@@ -51,9 +52,31 @@ def ensure_read_allowed(
 
 
 def _allows_development_fallback_read(*, auth: AuthContext, environment: object) -> bool:
+    """Allow the anonymous/viewer dev fallback read only for a loopback caller.
+
+    Known residual risk (not fixed by this check, registered rather than
+    resolved): a reverse proxy or gateway running on the same host as the API
+    process makes every proxied request appear to originate from
+    127.0.0.1/::1 to this process, which defeats this loopback test. Do not
+    place a same-host proxy in front of a development-mode deployment that
+    relies on this guard to keep dev fallback local-only.
+    """
     return (
         str(environment).strip().lower() == "development"
         and auth.identity_source == "fallback"
         and auth.user_id == "anonymous"
         and auth.role == "viewer"
+        and _client_host_is_loopback(auth.client_host)
     )
+
+
+def _client_host_is_loopback(host: object) -> bool:
+    normalized = str(host or "").strip()
+    if normalized.startswith("[") and normalized.endswith("]"):
+        normalized = normalized[1:-1]
+    if not normalized:
+        return False
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False

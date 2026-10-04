@@ -29,6 +29,48 @@ def test_missing_duckdb_fails_closed(tmp_path: Path) -> None:
     assert report["issues"][0]["code"] == "duckdb_unavailable"
 
 
+def test_livermore_breadth_readiness_allows_signed_count_values(tmp_path: Path) -> None:
+    duckdb_path = tmp_path / "breadth.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        conn.execute(
+            """
+            create table fact_livermore_gate_supplement_daily (
+                trade_date varchar,
+                breadth_5d double,
+                limit_up_quality_ok boolean,
+                source_version varchar,
+                vendor_version varchar,
+                rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into fact_livermore_gate_supplement_daily values (?, ?, ?, 'sv', 'vv', 'rv')",
+            [
+                ("2026-06-05", -120.0, False),
+                ("2026-06-06", 42.0, True),
+            ],
+        )
+    finally:
+        conn.close()
+
+    gate_spec = next(
+        spec
+        for spec in DEFAULT_TABLE_SPECS
+        if spec.table == "fact_livermore_gate_supplement_daily"
+    )
+    report = build_data_readiness_report(
+        duckdb_path,
+        specs=[gate_spec],
+        as_of_date="2026-06-06",
+    )
+
+    issue_codes = {issue["code"] for issue in report["issues"]}
+    assert "numeric_value_below_min" not in issue_codes
+    assert "numeric_value_above_max" not in issue_codes
+
+
 def test_report_flags_core_data_quality_blockers(tmp_path: Path) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     conn = _connect(duckdb_path)

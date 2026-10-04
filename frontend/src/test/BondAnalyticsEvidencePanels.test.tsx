@@ -16,9 +16,10 @@ describe("BondAnalytics evidence panels", () => {
 
     expect(root.tagName).toBe("SECTION");
     expect(title.parentElement).toBe(root);
-    expect(root.style.border).toBe("1px solid var(--ib-hairline)");
+    // 深色路由先取 --dh-api-* 语义链，--ib-* 只作未登记 scope 的回退（DESIGN 结论 6/15）。
+    expect(root.style.border).toBe("1px solid var(--dh-api-line-soft, var(--ib-hairline))");
     expect(root.style.borderRadius).toBe("var(--dh-api-radius, 6px)");
-    expect(root.style.background).toBe("var(--ib-surface)");
+    expect(root.style.background).toBe("var(--dh-api-panel-2, var(--ib-surface))");
     expect(root.style.boxShadow).toBe("none");
     expect(root.getAttribute("style")).not.toMatch(/rgb\(|24px/);
   });

@@ -1,25 +1,22 @@
 import type { PnlByBusinessUntracedTrendRow } from "../../api/contracts";
-import { BaseChart } from "../../components/charts/BaseChart";
+import { ChartCard } from "../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../components/charts/chartCardScale";
 import { buildUntracedReconciliationTrendOption } from "./untracedReconciliationTrendOption";
 
 export type UntracedReconciliationTrendPanelProps = {
   rows: PnlByBusinessUntracedTrendRow[];
-  height?: number;
 };
 
-export function UntracedReconciliationTrendPanel({ rows, height = 260 }: UntracedReconciliationTrendPanelProps) {
-  if (rows.length === 0) {
-    return (
-      <div className="pnl-by-business-insights-trend-empty" data-testid="untraced-reconciliation-trend-empty">
-        暂无可用的历史对账诊断数据
-      </div>
-    );
-  }
-
-  const option = buildUntracedReconciliationTrendOption(rows);
+export function UntracedReconciliationTrendPanel({ rows }: UntracedReconciliationTrendPanelProps) {
   return (
-    <div data-testid="untraced-reconciliation-trend-panel">
-      <BaseChart option={option} height={height} />
-    </div>
+    <ChartCard
+      testId="untraced-reconciliation-trend-panel"
+      title="未追溯占比趋势"
+      unit="%"
+      height={CHART_CARD_HEIGHTS.hero}
+      legend="none"
+      option={rows.length ? buildUntracedReconciliationTrendOption(rows) : null}
+      emptyMessage="暂无可用的历史对账诊断数据"
+    />
   );
 }

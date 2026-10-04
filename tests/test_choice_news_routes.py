@@ -340,6 +340,10 @@ def test_choice_events_latest_returns_deterministic_research_compare(
         "review_needed",
         "candidate_scenarios",
     }
+    # 前端 ChoiceNewsComparePayload 读取 basis / rule_version；2026-09-02 之前缺这两个键，
+    # /news-events 的分区头拿到 undefined 直接崩到错误边界。
+    assert first_compare["basis"] == "analytical"
+    assert first_compare["rule_version"] == "rv_research_radar_compare_v1"
     assert all(
         row["human_review_required"] is True
         for row in first_compare["candidate_scenarios"]

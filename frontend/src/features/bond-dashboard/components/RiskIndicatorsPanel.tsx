@@ -1,6 +1,8 @@
 import type { Numeric, RiskIndicatorsPayload } from "../../../api/contracts";
 import { EM_DASH } from "../../../pageModel";
+import type { BondSectionDataState } from "../sectionStatus";
 import { formatDv01Wan, formatRatePercent, nativeToNumber } from "../utils/format";
+import { BondSectionSurface } from "./BondSectionSurface";
 
 function withUnit(value: string, unit: string): string {
   const separator = unit === "%" ? "" : " ";
@@ -47,24 +49,28 @@ const ROWS: {
   { label: "1年内再投资占比", key: "reinvestment_ratio_1y", format: (v) => withUnit(formatRatePercent(v), "%") },
 ];
 
+/**
+ * 载入骨架高度按固定行数推算（行高 30px + 面板头），逼近真实列表高度，
+ * 数据到达时不产生高度跳变（DESIGN.md §11.10）。
+ */
+const RISK_LIST_MIN_HEIGHT = ROWS.length * 30;
+
 export function RiskIndicatorsPanel({
   data,
-  loading,
+  state,
 }: {
   data: RiskIndicatorsPayload | undefined;
-  loading: boolean;
+  state: BondSectionDataState;
 }) {
   return (
     <div
       data-testid="bond-dashboard-risk-indicators-panel"
-      className="bond-dashboard-page__panel bond-dashboard-table-panel"
+      className="bond-dashboard-page__panel"
     >
-      <h3 className="bond-dashboard-table-panel__title">风险指标</h3>
-      {loading ? (
-        <p className="bond-dashboard-page__surface bond-dashboard-page__surface--loading">
-          载入中…
-        </p>
-      ) : (
+      <div className="bond-dashboard-page__panel-head">
+        <h3 className="bond-dashboard-page__panel-head-title">风险指标</h3>
+      </div>
+      <BondSectionSurface state={state} loadingMinHeight={RISK_LIST_MIN_HEIGHT}>
         <div className="bond-dashboard-risk-list">
           {ROWS.map((r) => {
             const value = data ? (data[r.key] as Numeric | null | undefined) : undefined;
@@ -85,7 +91,7 @@ export function RiskIndicatorsPanel({
             );
           })}
         </div>
-      )}
+      </BondSectionSurface>
     </div>
   );
 }

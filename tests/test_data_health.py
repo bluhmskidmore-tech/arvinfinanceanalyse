@@ -23,6 +23,7 @@ from backend.app.core_finance.matched_baseline import (
     FORMULA_VERSION as MATCHED_BASELINE_FORMULA_VERSION,
 )
 from backend.app.governance.settings import get_settings
+from backend.app.observability.response_cache import TTLResponseCache
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.services import data_health_service
 from backend.app.services.data_health_service import data_health_envelope
@@ -55,6 +56,19 @@ SCHTASKS_CSV_FAILING = (
     '"HOST","\\MOSS-DailyDataRefresh","2026-08-13 17:30:00","Ready","Background","2026-08-12 17:30:00","1","u","y"\n'
     '"HOST","\\MOSS-MonthlyWalkForward","2026-09-05 09:00:00","Ready","Background","N/A","267011","u","z"\n'
 )
+
+SCHTASKS_CSV_NEVER_RUN = (
+    '"HostName","TaskName","Next Run Time","Status","Logon Mode","Last Run Time","Last Result","Author","Task To Run"\n'
+    '"HOST","\\MOSS-DailyDataRefresh","2026-08-13 17:30:00","Ready","Background","N/A","267011","u","y"\n'
+    '"HOST","\\MOSS-MonthlyWalkForward","2026-09-05 09:00:00","Ready","Background","N/A","267011","u","z"\n'
+)
+
+
+@pytest.fixture(autouse=True)
+def _reset_scheduled_tasks_cache() -> None:
+    cache = getattr(data_health_service, "_SCHEDULED_TASKS_CACHE", None)
+    if cache is not None:
+        cache.invalidate()
 
 
 def _create_tables(conn: duckdb.DuckDBPyConnection) -> None:
@@ -194,6 +208,7 @@ def test_healthy_db_reports_all_sections_ok(tmp_path: Path, monkeypatch: pytest.
         "market_breadth_freshness",
         "gate_supplement_freshness",
         "adjustment_factor_gap",
+        "adjustment_factor_freshness",
         "stale_formula_rows",
         "concept_interval_staleness",
         "limit_price_backfill",
@@ -209,6 +224,11 @@ def test_healthy_db_reports_all_sections_ok(tmp_path: Path, monkeypatch: pytest.
     adjustment = sections["adjustment_factor_gap"]
     assert adjustment["metric"] == "0 行缺复权"
     assert adjustment["as_of"] == FRESH_DATE
+
+    adjustment_freshness = sections["adjustment_factor_freshness"]
+    assert adjustment_freshness["status"] == "ok"
+    assert adjustment_freshness["metric"] == f"{FRESH_DATE} · 落后 1 天"
+    assert adjustment_freshness["as_of"] == FRESH_DATE
 
     formula = sections["stale_formula_rows"]
     assert formula["metric"] == "0 行旧版"
@@ -231,6 +251,70 @@ def test_healthy_db_reports_all_sections_ok(tmp_path: Path, monkeypatch: pytest.
 
 
 @pytest.mark.unit
+def test_scheduled_tasks_section_is_cached_within_ttl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "health.duckdb"
+    _build_healthy_db(db_path)
+    clock = [0.0]
+    cache = TTLResponseCache(default_ttl_seconds=120.0, clock=lambda: clock[0])
+    calls: list[None] = []
+
+    def _run_schtasks() -> str:
+        calls.append(None)
+        return SCHTASKS_CSV_HEALTHY
+
+    monkeypatch.setattr(data_health_service, "_SCHEDULED_TASKS_CACHE", cache, raising=False)
+    monkeypatch.setattr(data_health_service, "_run_schtasks_query", _run_schtasks)
+
+    first = data_health_envelope(duckdb_path=db_path, today=TODAY_FRESH)
+    second = data_health_envelope(duckdb_path=db_path, today=TODAY_FRESH)
+
+    assert first is not None
+    assert second is not None
+    assert len(calls) == 1
+
+    clock[0] += 120.1
+    third = data_health_envelope(duckdb_path=db_path, today=TODAY_FRESH)
+
+    assert third is not None
+    assert len(calls) == 2
+
+    monkeypatch.setenv("MOSS_DATA_HEALTH_SCHTASKS_TTL_SECONDS", "0")
+    data_health_envelope(duckdb_path=db_path, today=TODAY_FRESH)
+    data_health_envelope(duckdb_path=db_path, today=TODAY_FRESH)
+
+    assert len(calls) == 4
+
+
+@pytest.mark.unit
+def test_scheduled_tasks_section_does_not_cache_probe_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = TTLResponseCache(default_ttl_seconds=120.0)
+    calls = 0
+
+    def _run_schtasks() -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TimeoutError("transient schtasks timeout")
+        return SCHTASKS_CSV_HEALTHY
+
+    monkeypatch.setattr(data_health_service, "_SCHEDULED_TASKS_CACHE", cache, raising=False)
+    monkeypatch.setattr(data_health_service, "_run_schtasks_query", _run_schtasks)
+
+    first = data_health_service._scheduled_tasks_section()
+    second = data_health_service._scheduled_tasks_section()
+
+    assert first["status"] == "error"
+    assert "transient schtasks timeout" in str(first["detail"])
+    assert second["status"] == "ok"
+    assert calls == 2
+
+
+@pytest.mark.unit
 def test_freshness_thresholds_step_ok_warn_stale(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     db_path = tmp_path / "health.duckdb"
     _build_healthy_db(db_path)
@@ -238,10 +322,12 @@ def test_freshness_thresholds_step_ok_warn_stale(tmp_path: Path, monkeypatch: py
 
     warn_sections = _sections_by_key(data_health_envelope(duckdb_path=db_path, today=TODAY_WARN))
     assert warn_sections["observation_freshness"]["status"] == "warn"  # 落后 3 天
+    assert warn_sections["adjustment_factor_freshness"]["status"] == "warn"
     assert warn_sections["concept_interval_staleness"]["status"] == "warn"
 
     stale_sections = _sections_by_key(data_health_envelope(duckdb_path=db_path, today=TODAY_STALE))
     assert stale_sections["observation_freshness"]["status"] == "stale"  # 落后 9 天
+    assert stale_sections["adjustment_factor_freshness"]["status"] == "stale"
     assert stale_sections["market_breadth_freshness"]["status"] == "stale"
     assert stale_sections["limit_price_backfill"]["status"] == "stale"
 
@@ -267,6 +353,11 @@ def test_sick_db_reports_gaps_and_worst_status(tmp_path: Path, monkeypatch: pyte
     assert "20d 视角 2" in adjustment["detail"]
     assert adjustment["as_of"] == "2026-08-01"
 
+    adjustment_freshness = sections["adjustment_factor_freshness"]
+    assert adjustment_freshness["status"] == "stale"
+    assert adjustment_freshness["metric"] == "2026-08-01 · 落后 11 天"
+    assert adjustment_freshness["as_of"] == "2026-08-01"
+
     formula = sections["stale_formula_rows"]
     assert formula["status"] == "stale"
     assert formula["metric"] == "3 行旧版"  # execution 1 + matched_baseline 2
@@ -284,8 +375,8 @@ def test_sick_db_reports_gaps_and_worst_status(tmp_path: Path, monkeypatch: pyte
     assert "未交易 1" in vocabulary["detail"]
 
     scheduled = sections["scheduled_tasks"]
-    assert scheduled["status"] == "warn"  # LastResult 1 与 267011 均不健康
-    assert scheduled["metric"] == "0/2 正常"
+    assert scheduled["status"] == "missing"  # 从未首跑比已跑失败更严重
+    assert scheduled["metric"] == "1/2 已跑"
 
     # 最差项决定整体：missing(3) > stale(2) > warn(1)。
     assert payload["overall_status"] == "missing"
@@ -333,9 +424,48 @@ def test_schtasks_failure_and_empty_results_degrade(tmp_path: Path, monkeypatch:
         "_run_schtasks_query",
         lambda: '"HostName","TaskName","Next Run Time"\n',
     )
+    cache = getattr(data_health_service, "_SCHEDULED_TASKS_CACHE", None)
+    if cache is not None:
+        cache.invalidate()
     section = data_health_service._scheduled_tasks_section()
     assert section["status"] == "missing"
     assert section["metric"] == "0 个任务"
+
+
+@pytest.mark.unit
+def test_scheduled_tasks_marks_first_run_missing_when_receipts_have_never_landed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        data_health_service,
+        "_run_schtasks_query",
+        lambda: SCHTASKS_CSV_NEVER_RUN,
+    )
+
+    section = data_health_service._scheduled_tasks_section()
+
+    assert section["status"] == "missing"
+    assert section["metric"] == "0/2 已跑"
+    assert "首跑证据缺失" in str(section["detail"])
+    assert "267011" in str(section["detail"])
+
+
+@pytest.mark.unit
+def test_scheduled_tasks_marks_partial_first_run_gap_missing_before_all_tasks_have_landed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    partial_csv = (
+        '"HostName","TaskName","Next Run Time","Status","Logon Mode","Last Run Time","Last Result","Author","Task To Run"\n'
+        '"HOST","\\MOSS-DailyDataRefresh","2026-08-13 17:30:00","Ready","Background","2026-08-12 17:30:00","0","u","y"\n'
+        '"HOST","\\MOSS-MonthlyWalkForward","2026-09-05 09:00:00","Ready","Background","N/A","267011","u","z"\n'
+    )
+    monkeypatch.setattr(data_health_service, "_run_schtasks_query", lambda: partial_csv)
+
+    section = data_health_service._scheduled_tasks_section()
+
+    assert section["status"] == "missing"
+    assert section["metric"] == "1/2 已跑"
+    assert "首跑证据缺失" in str(section["detail"])
 
 
 @pytest.mark.unit
@@ -403,7 +533,58 @@ def test_data_health_route_returns_overview_envelope(
 
     result = payload["result"]
     assert result["overall_status"] in {"ok", "warn", "stale", "missing", "error"}
-    assert len(result["sections"]) == 9
+    assert len(result["sections"]) == 10
     # 路由级只断言结构（状态随 date.today() 推移漂移，阈值行为由 service 测试用显式 today 钉住）。
     for section in result["sections"]:
         assert {"key", "label", "status", "metric", "detail", "as_of"} <= set(section)
+
+
+@pytest.mark.unit
+def test_data_health_reports_stale_adjustment_factor_even_when_gap_count_is_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "health.duckdb"
+    _build_healthy_db(db_path)
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("delete from stock_adjustment_factor")
+        conn.execute("insert into stock_adjustment_factor values ('600001.SH', '2026-08-01', 1.23)")
+    finally:
+        conn.close()
+    monkeypatch.setattr(data_health_service, "_run_schtasks_query", lambda: SCHTASKS_CSV_HEALTHY)
+
+    sections = _sections_by_key(data_health_envelope(duckdb_path=db_path, today=TODAY_FRESH))
+
+    assert sections["adjustment_factor_gap"]["status"] == "ok"
+    assert sections["adjustment_factor_gap"]["metric"] == "0 行缺复权"
+    assert sections["adjustment_factor_freshness"]["status"] == "stale"
+    assert sections["adjustment_factor_freshness"]["metric"] == "2026-08-01 · 落后 11 天"
+
+
+@pytest.mark.unit
+def test_data_health_freshness_ignores_newer_invalid_adjustment_factor_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "health.duckdb"
+    _build_healthy_db(db_path)
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.executemany(
+            "insert into stock_adjustment_factor values (?, ?, ?)",
+            [
+                ("600002.SH", "2026-08-12", None),
+                ("600003.SH", "2026-08-12", 0.0),
+                ("600004.SH", "2026-08-12", float("nan")),
+            ],
+        )
+    finally:
+        conn.close()
+    monkeypatch.setattr(data_health_service, "_run_schtasks_query", lambda: SCHTASKS_CSV_HEALTHY)
+
+    sections = _sections_by_key(data_health_envelope(duckdb_path=db_path, today=TODAY_FRESH))
+
+    assert sections["adjustment_factor_freshness"]["status"] == "ok"
+    assert sections["adjustment_factor_freshness"]["as_of"] == FRESH_DATE
+    assert sections["adjustment_factor_freshness"]["metric"] == f"{FRESH_DATE} · 落后 1 天"

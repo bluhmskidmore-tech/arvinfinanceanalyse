@@ -108,6 +108,7 @@ function buildLedgerClient(): ApiClient {
             monthly_pnl: { yuan: reportDate === "2025-11-30" ? "6.00" : "10.00", yi: "0.00", wan: "0.00" },
             daily_avg_balance: { yuan: "105.00", yi: "0.00", wan: "0.01" },
             days_in_period: 31,
+            source_presence: "ledger" as const,
           },
         ],
         summary: {
@@ -115,6 +116,8 @@ function buildLedgerClient(): ApiClient {
           total_pnl_cny: { yuan: "0.00", yi: "0.00", wan: "0.00" },
           total_pnl: { yuan: reportDate === "2025-11-30" ? "6.00" : "10.00", yi: "0.00", wan: "0.00" },
           count: 1,
+          ledger_evidence_rows: 1,
+          average_only_row_count: 0,
         },
       },
     })),

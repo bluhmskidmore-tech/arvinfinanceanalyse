@@ -35,6 +35,7 @@ dev = [
   "httpx>=0.28,<1",
   "pytest>=9.0.3,<10",
   "pytest-xdist>=3.6,<4",
+  "types-requests==2.33.0.20260503",
 ]
 # macro toolkit 脚本经 macro_toolkit_service 以子进程方式在运行时执行；
 # 这些包是那条链路的真实运行依赖，声明在此让它们进 uv.lock 与 OSV 扫描面。

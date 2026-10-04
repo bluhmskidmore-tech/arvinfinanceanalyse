@@ -3,11 +3,18 @@ import type {
   ChoiceMacroLatestPoint,
 } from "../../../api/contracts";
 import type { EChartsOption } from "../../../lib/echarts";
+import { designTokens } from "../../../theme/designSystem";
 import {
   MARKET_CHART_STATIC_PALETTE,
   type MarketChartPalette,
 } from "./marketChartPalette";
-import type { MarketFinancialChartSpec } from "./marketFinancialChartsModel";
+import {
+  innerGapNotes,
+  innerGapRanges,
+  orphanSymbolSize,
+  sharedDateAxis,
+  type MarketFinancialChartSpec,
+} from "./marketFinancialChartsModel";
 
 import { EM_DASH } from "../../../utils/format";
 export type DenseLiquidityPoint = {
@@ -69,7 +76,9 @@ const LIQUIDITY_SERIES = [
     key: "repo-7d",
     label: "7D逆回购",
     role: "政策操作利率",
-    readingHint: "观察公开市场操作7天中标利率",
+    // 中标利率仅产生于操作日：无操作区间无观测（Choice 实测 2026-08-11–08-20
+    // 供应商亦无数据），断线是序列语义而非链路故障。
+    readingHint: "观察公开市场操作7天中标利率；中标利率仅产生于操作日",
     matches: (point: ChoiceMacroLatestPoint) =>
       point.series_id === "EMM00088132" ||
       /逆回购.*7天|7天.*逆回购/i.test(point.series_name),
@@ -175,20 +184,40 @@ export function buildDenseLiquidityChartSpec(
   const insufficientSeriesCount =
     liquiditySeries.length - plottableSeries.length;
   const unit = sharedLiquidityUnit(liquiditySeries);
-  const dates = [
+  const observedDates = [
     ...new Set(
       liquiditySeries.flatMap((series) =>
         series.points.map((point) => point.date),
       ),
     ),
   ].sort();
+  // 日轴只取已绘制序列并对齐到共同起点：停更序列的陈旧窗口否则会把日轴向左拉宽，
+  // 让数据齐全的序列在左侧留出整段空白。窗口内的真实缺口仍然保持为空。
+  const dates = sharedDateAxis(
+    plottableSeries.map((series) => series.points.map((point) => point.date)),
+  );
+  const axisEnd = dates.at(-1);
+  const laggingNotes = axisEnd
+    ? plottableSeries.flatMap((series) => {
+        const latestDate = series.points.at(-1)?.date;
+        return latestDate && latestDate < axisEnd
+          ? [`${series.label} 最新观测 ${latestDate}`]
+          : [];
+      })
+    : [];
+  const gapNotes = innerGapNotes(
+    plottableSeries.map((series) => ({
+      name: series.label,
+      dates: series.points.map((point) => point.date),
+    })),
+    dates,
+  );
   const colors = [
     palette.accent,
     palette.amber,
     palette.green,
     palette.red,
   ];
-  const lineTypes = ["solid", "dashed", "solid", "solid"] as const;
   const status: DenseLiquidityChartStatus =
     liquiditySeries.length === 0
       ? "no-data"
@@ -199,9 +228,14 @@ export function buildDenseLiquidityChartSpec(
           : insufficientSeriesCount > 0
             ? "partial"
             : "ready";
-  const dateRange = `${dates[0] ?? "日期未返回"}–${
-    dates.at(-1) ?? "日期未返回"
+  const labelDates = dates.length > 0 ? dates : observedDates;
+  const dateRange = `${labelDates[0] ?? "日期未返回"}–${
+    labelDates.at(-1) ?? "日期未返回"
   }`;
+  const laggingSuffix =
+    laggingNotes.length > 0 ? `${laggingNotes.join("；")}，其后留空。` : "";
+  const gapSuffix =
+    gapNotes.length > 0 ? `${gapNotes.join("；")}，缺口段留空。` : "";
   const readingHint =
     "DR007 看市场资金利率；7D逆回购看政策操作利率；SHIBOR 看期限报价。";
   const seriesRoles = liquiditySeries.map(
@@ -235,7 +269,7 @@ export function buildDenseLiquidityChartSpec(
             textStyle: {
               color: palette.ink,
               fontSize: 10,
-              fontFamily: '"Cascadia Mono", monospace',
+              fontFamily: designTokens.fontFamily.tabular,
             },
             valueFormatter: (value: unknown) =>
               typeof value === "number" && Number.isFinite(value)
@@ -306,30 +340,47 @@ export function buildDenseLiquidityChartSpec(
             const byDate = new Map(
               series.points.map((point) => [point.date, point.value]),
             );
-            const hasVisibleLineSegment = dates.some(
-              (date, dateIndex) =>
-                dateIndex > 0 &&
-                byDate.has(dates[dateIndex - 1]) &&
-                byDate.has(date),
+            const data = dates.map((date) => byDate.get(date) ?? null);
+            const gaps = innerGapRanges(
+              series.points.map((point) => point.date),
+              dates,
             );
             return {
               name: series.label,
               type: "line",
               connectNulls: false,
-              showSymbol: !hasVisibleLineSegment,
+              // 只给前后皆缺的孤立观测画点，替换原「整条序列无线段才显示所有点」
+              // 的粗粒度开关，避免「连续段+孤点」时孤点不可见。
+              showSymbol: true,
               symbol: "circle",
-              symbolSize: 5,
+              symbolSize: orphanSymbolSize(data, 5),
               smooth: false,
               lineStyle: {
                 width: 1.5,
-                type: lineTypes[displayIndex] ?? "solid",
+                type: "solid",
                 color,
               },
               itemStyle: { color },
               emphasis: {
                 focus: "series",
               },
-              data: dates.map((date) => byDate.get(date) ?? null),
+              data,
+              // 窗口内缺口的图内标注：低透明度纵带跟随序列色。
+              ...(gaps.length > 0
+                ? {
+                    markArea: {
+                      silent: true,
+                      itemStyle: { color, opacity: 0.1 },
+                      data: gaps.map(
+                        (gap) =>
+                          [{ xAxis: gap.start }, { xAxis: gap.end }] as [
+                            { xAxis: string },
+                            { xAxis: string },
+                          ],
+                      ),
+                    },
+                  }
+                : {}),
             };
           }),
         };
@@ -354,8 +405,8 @@ export function buildDenseLiquidityChartSpec(
           : status === "no-data"
             ? "后端暂未返回可绘制的利率序列。"
             : status === "partial"
-              ? `共 ${liquiditySeries.length} 条正式序列，已绘制 ${plottableSeries.length} 条、观测不足 ${insufficientSeriesCount} 条；直接使用 recent_points，空值不插值、不派生利差。`
-              : `共 ${liquiditySeries.length} 条正式序列；直接使用 recent_points，空值不插值、不派生利差。`,
+              ? `共 ${liquiditySeries.length} 条正式序列，已绘制 ${plottableSeries.length} 条、观测不足 ${insufficientSeriesCount} 条；直接使用 recent_points，空值不插值、不派生利差。${gapSuffix}${laggingSuffix}`
+              : `共 ${liquiditySeries.length} 条正式序列；直接使用 recent_points，空值不插值、不派生利差。${gapSuffix}${laggingSuffix}`,
     option,
     height: 232,
     status,

@@ -228,8 +228,8 @@ def test_pnl_bridge_envelope_marks_required_curve_conversion_failure_unavailable
         ],
     )
     # 互斥分解后（审计 PNL-01），带非零 516 且曲线转换失败的 FVTPL 行会诚实产生
-    # 残差与 error。本测试只验证 vendor_unavailable 标记与告警文案，需要健康
-    # summary 背景，故把共享夹具行的 516 清零（等价于"本期无待解释的公允变动"）。
+    # 残差与 error。清零 516 只消除这项残差；必需曲线不可用仍须产生 warning，
+    # 不能因为本期无待解释的公允变动，就把未观测的曲线效应当作健康解释。
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -264,7 +264,7 @@ def test_pnl_bridge_envelope_marks_required_curve_conversion_failure_unavailable
         report_date="2025-12-31",
     )
 
-    assert envelope["result"]["summary"]["quality_flag"] == "ok"
+    assert envelope["result"]["summary"]["quality_flag"] == "warning"
     assert envelope["result_meta"]["vendor_status"] == "vendor_unavailable"
     assert envelope["result_meta"]["quality_flag"] == "warning"
     assert (
@@ -358,9 +358,21 @@ def test_pnl_bridge_curve_effects_match_core_and_do_not_leak_into_campisi_select
     direct_row = direct_rows[0]
 
     for field in ("roll_down", "treasury_curve", "credit_spread"):
-        service_value = float(service_row[field]["raw"])
+        service_numeric = service_row[field]
+        service_value = float(service_numeric["raw"])
+        direct_value = getattr(direct_row, field)
         assert service_value != 0.0
-        assert service_value == pytest.approx(float(getattr(direct_row, field)))
+        assert service_value == pytest.approx(float(direct_value))
+        assert service_numeric["raw_text"] == format(direct_value, "f")
+
+    expected_total_actual_pnl = sum(
+        (row.actual_pnl for row in direct_rows),
+        Decimal("0"),
+    )
+    assert envelope["result"]["summary"]["total_actual_pnl"]["raw_text"] == format(
+        expected_total_actual_pnl,
+        "f",
+    )
 
     campisi_row = _formal_bridge_bond_rows(
         bridge_envelope=envelope,
@@ -512,7 +524,10 @@ def test_pnl_bridge_keeps_fresh_metadata_when_missing_credit_curve_is_irrelevant
     payload = response.json()
     assert payload["result_meta"]["vendor_status"] == "ok"
     assert payload["result_meta"]["fallback_mode"] == "none"
-    assert not any("Phase 3 partial delivery" in warning for warning in payload["result"]["warnings"])
+    # The fixture has only an October baseline for December monthly PnL. This
+    # now carries a window warning independently of irrelevant credit curves.
+    assert payload["result_meta"]["filters_applied"]["window_aligned"] is False
+    assert any("PNL_BRIDGE_WINDOW_MISMATCH" in warning for warning in payload["result"]["warnings"])
     assert not any("aaa_credit" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 

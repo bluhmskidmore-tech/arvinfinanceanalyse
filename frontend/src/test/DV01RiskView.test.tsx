@@ -578,6 +578,22 @@ function renderView(
 }
 
 describe("DV01RiskView", () => {
+  it("labels the attribution count as positions when two portfolios hold one bond", async () => {
+    const movement = movementPayload();
+    // Backend attribution counts the two matched portfolio positions; anomaly rows aggregate by bond.
+    movement.attribution = [{ ...movement.attribution[0], driver_label: "same-bond portfolio changes", position_count: 2 }];
+    movement.anomaly_bonds = [movement.anomaly_bonds[0]];
+    movement.methodology_checks = [];
+    const getMovement = vi.fn(async () => ({ result_meta: movementMeta(), result: movement }));
+    renderView(vi.fn(async () => ({ result_meta: resultMeta(), result: payload() })), undefined, getMovement);
+    const table = await screen.findByTestId("dv01-movement-attribution-table");
+    expect(within(table).getByRole("columnheader", { name: "涉及持仓" })).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "涉及债券" })).not.toBeInTheDocument();
+    const row = within(table).getByRole("row", { name: /same-bond portfolio changes/ });
+    expect(within(row).getByText("2", { exact: true })).toBeInTheDocument();
+    expect(within(screen.getByTestId("dv01-movement-anomaly-table")).getAllByText("BOND-2")).toHaveLength(1);
+  });
+
   it("defaults to OCI and renders KPI, shock, tenor, bond, and issuer sections", async () => {
     const getDv01Risk = vi.fn(async () => ({
       result_meta: resultMeta(),
@@ -713,13 +729,20 @@ describe("DV01RiskView", () => {
     const panel = await screen.findByTestId("dv01-action-plan-panel");
     expect(panel).toHaveTextContent("DV01 风险动作");
     expect(panel).toHaveTextContent("当前动作口径");
-    expect(panel).toHaveTextContent("页面预警阈值 fallback");
-    expect(panel).toHaveTextContent("正式限额未接入，风险动作仅用于预警排查");
+    expect(panel).toHaveTextContent("参考预警阈值");
+    expect(panel).toHaveTextContent("正式限额尚未配置，风险动作仅供预警排查");
     expect(panel).toHaveTextContent("超限");
     expect(panel).toHaveTextContent("需压降 DV01");
     expect(panel).toHaveTextContent("250,000");
     expect(panel).toHaveTextContent("限额来源");
     expect(panel).toHaveTextContent("page_threshold");
+    const diagnostics = within(panel).getByTestId("dv01-action-plan-diagnostics");
+    const source = within(diagnostics).getByText("page_threshold");
+    expect(diagnostics).not.toHaveAttribute("open");
+    expect(source).not.toBeVisible();
+    await userEvent.setup().click(within(diagnostics).getByText("技术诊断"));
+    expect(source).toBeVisible();
+    expect(panel).toHaveTextContent("通过业务审批并完成限额核验后，才能判定是否正式超限");
     expect(panel).toHaveTextContent("使用率");
     expect(panel).toHaveTextContent("1.15");
     expect(panel).toHaveTextContent("剩余额度");
@@ -756,7 +779,7 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("正式配置流");
     expect(panel).toHaveTextContent("bond_dv01_limit_config");
     expect(panel).toHaveTextContent("待补分类");
-    expect(panel).toHaveTextContent("AC、TPL、all");
+    expect(panel).toHaveTextContent("AC、TPL、全部");
     expect(panel).toHaveTextContent("必填字段");
     expect(panel).toHaveTextContent("limit_dv01");
     expect(panel).toHaveTextContent("验收结论");
@@ -792,6 +815,17 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("--dry-run");
     expect(panel).toHaveTextContent("check_status_command");
     expect(panel).toHaveTextContent("--check-status");
+    const diagnostics = within(panel).getByTestId("dv01-limit-config-diagnostics");
+    expect(diagnostics).not.toHaveAttribute("open");
+    expect(diagnostics).toHaveTextContent("--check-status");
+    expect(diagnostics).toHaveTextContent("limit_effective_date");
+    const commands = within(diagnostics).getByTestId("dv01-limit-config-operator-commands");
+    expect(commands).not.toBeVisible();
+    await userEvent.setup().click(within(diagnostics).getByText("技术诊断"));
+    expect(commands).toBeVisible();
+    expect(within(panel).getByText("待补分类").closest("details")).toBeNull();
+    expect(within(panel).getByText("生效日").closest("details")).toBeNull();
+    expect(panel).toHaveTextContent("缺失或无效分类不能据此判定超限或提供减仓、对冲建议");
   });
 
   it("renders fallback business review commands for legacy DV01 limit status payloads", async () => {
@@ -891,7 +925,7 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("无需补充配置");
     expect(panel).toHaveTextContent("待补分类");
     expect(panel).toHaveTextContent("无");
-    expect(panel).toHaveTextContent("AC、OCI、TPL、all");
+    expect(panel).toHaveTextContent("AC、OCI、TPL、全部");
   });
 
   it("renders formal DV01 limit source version and effective date", async () => {
@@ -979,7 +1013,7 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("本页不判定限额突破、不输出减仓或对冲建议");
     // The fallback wording claims a page threshold is still monitoring the book,
     // which is the opposite of what "no limit configured" means.
-    expect(panel).not.toHaveTextContent("页面预警阈值 fallback");
+    expect(panel).not.toHaveTextContent("参考预警阈值");
     expect(panel).not.toHaveTextContent("正式限额未接入，风险动作仅用于预警排查");
     expect(panel).not.toHaveTextContent("正式限额口径");
     expect(panel).not.toHaveTextContent("可接受");
@@ -1071,7 +1105,7 @@ describe("DV01RiskView", () => {
     );
     const panel = await screen.findByTestId("dv01-reconciliation-panel");
     expect(panel).toHaveTextContent("单券明细对账");
-    expect(panel).toHaveTextContent("后端合计");
+    expect(panel).toHaveTextContent("组合合计");
     expect(panel).toHaveTextContent("面值 30.00 亿");
     expect(panel).toHaveTextContent("市值 30.80 亿");
     expect(panel).toHaveTextContent("久期 3.20 年");
@@ -1083,7 +1117,15 @@ describe("DV01RiskView", () => {
     const table = within(panel).getByTestId("dv01-reconciliation-table");
     expect(within(table).getByText("BOND-1")).toBeInTheDocument();
     expect(within(table).getByText("BOND-2")).toBeInTheDocument();
-    expect(within(table).getByText("trace_bond_1")).toBeInTheDocument();
+    expect(within(table).queryByText("trace_bond_1")).not.toBeInTheDocument();
+    const diagnostics = within(panel).getByTestId("dv01-reconciliation-diagnostics");
+    expect(diagnostics).not.toHaveAttribute("open");
+    expect(diagnostics).toHaveTextContent("trace_bond_1");
+    expect(diagnostics).toHaveTextContent("sv_bond_1");
+    const trace = within(diagnostics).getByText("trace_bond_1");
+    expect(trace).not.toBeVisible();
+    await user.click(within(diagnostics).getByText("技术诊断"));
+    expect(trace).toBeVisible();
 
     await user.type(screen.getByTestId("dv01-reconciliation-search"), "Beta");
 

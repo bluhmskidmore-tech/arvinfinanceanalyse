@@ -1,6 +1,9 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
 
+const WORKBENCH_AXE_SHELL_SELECTOR =
+  '[data-testid="workbench-group-nav"], [data-testid="workbench-main-content"]';
+
 async function probeServer(baseURL) {
   if (!baseURL) {
     return { ok: false, reason: "Playwright baseURL is not configured." };
@@ -117,7 +120,7 @@ const smokePages = [
   {
     slug: "macro-toolkit",
     path: "/macro-toolkit",
-    readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
+    readySelector: '[data-testid="macro-toolkit-cockpit"]',
     screenshotFullPage: false,
   },
   {
@@ -136,6 +139,20 @@ const smokePages = [
     slug: "stock-analysis",
     path: "/stock-analysis",
     readySelector: '[data-testid="stock-analysis-page"]',
+    minimumControlViewport: { width: 390, height: 844 },
+    minimumControlTargetSize: 24,
+    minimumControlPrep: expandStockAnalysisMinimumControlSurfaces,
+    minimumControlSelectors: [
+      '[data-testid="stock-analysis-queue-search"]',
+      '[data-testid="stock-analysis-agent-open"]',
+      '[data-testid="stock-analysis-refresh"]',
+      '[data-testid^="stock-analysis-factor-open-"]',
+      '[data-testid^="stock-analysis-price-chart-range-"]',
+    ],
+    requiredMinimumControlSelectors: [
+      '[data-testid^="stock-analysis-factor-open-"]',
+      '[data-testid^="stock-analysis-price-chart-range-"]',
+    ],
     screenshotFullPage: false,
   },
   {
@@ -205,7 +222,7 @@ const flagshipKeyboardPages = [
   {
     slug: "macro-toolkit",
     path: "/macro-toolkit",
-    readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
+    readySelector: '[data-testid="macro-toolkit-cockpit"]',
     // 913db8d0/63ccb747 信息架构重构后 cockpit 是只读结论卡；
     // 业务控件（刷新动作、治理与证据入口）现位于路由工具栏与治理证据栏。
     businessFocusSelector:
@@ -274,7 +291,7 @@ const gateHControlContextPages = [
   {
     slug: "macro-toolkit",
     path: "/macro-toolkit",
-    readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
+    readySelector: '[data-testid="macro-toolkit-cockpit"]',
     controls: [
       {
         label: "toolbar refresh action",
@@ -374,6 +391,125 @@ async function gotoVisiblePage(page, smokePage) {
   await expect(pageRoot).toBeVisible({ timeout: smokePage.readyTimeout ?? 60_000 });
   await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
   return pageRoot;
+}
+
+function resolveAxeScopeSelector(smokePage) {
+  return smokePage.axeSelector
+    ? `${WORKBENCH_AXE_SHELL_SELECTOR}, ${smokePage.axeSelector}`
+    : `${WORKBENCH_AXE_SHELL_SELECTOR}, ${smokePage.readySelector}`;
+}
+
+async function collectUndersizedControls(page, smokePage) {
+  if (!smokePage.minimumControlTargetSize) {
+    return [];
+  }
+
+  if (smokePage.minimumControlViewport) {
+    await page.setViewportSize(smokePage.minimumControlViewport);
+    await page.waitForTimeout(150);
+  }
+
+  if (smokePage.minimumControlPrep) {
+    await smokePage.minimumControlPrep(page);
+  }
+
+  const selector = smokePage.minimumControlSelectors?.length
+    ? smokePage.minimumControlSelectors.join(", ")
+    : `${smokePage.readySelector} button, ${smokePage.readySelector} a[href], ${smokePage.readySelector} select, ${smokePage.readySelector} input, ${smokePage.readySelector} textarea, ${smokePage.readySelector} summary`;
+
+  return page.locator(selector).evaluateAll((controls, minimumSize) =>
+    controls.flatMap((control) => {
+      const box = control.getBoundingClientRect();
+      const style = window.getComputedStyle(control);
+      const visible =
+        box.width > 0 &&
+        box.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden";
+      if (!visible || (box.width >= minimumSize && box.height >= minimumSize)) {
+        return [];
+      }
+      return [
+        {
+          name: (
+            control.getAttribute("aria-label") ||
+            control.textContent ||
+            control.getAttribute("title") ||
+            control.getAttribute("placeholder") ||
+            ""
+          )
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 120),
+          testId: control.getAttribute("data-testid"),
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+        },
+      ];
+    }),
+  smokePage.minimumControlTargetSize);
+}
+
+async function collectMinimumControlCoverage(page, smokePage) {
+  if (!smokePage.requiredMinimumControlSelectors?.length) {
+    return [];
+  }
+
+  if (smokePage.minimumControlPrep) {
+    await smokePage.minimumControlPrep(page);
+  }
+
+  const missingSelectors = [];
+  for (const selector of smokePage.requiredMinimumControlSelectors) {
+    const locator = page.locator(selector);
+    const visibleCount = await locator.evaluateAll((controls) =>
+      controls.filter((control) => {
+        const box = control.getBoundingClientRect();
+        const style = window.getComputedStyle(control);
+        return (
+          box.width > 0 &&
+          box.height > 0 &&
+          style.display !== "none" &&
+          style.visibility !== "hidden"
+        );
+      }).length,
+    );
+    if (visibleCount === 0) {
+      missingSelectors.push(selector);
+    }
+  }
+  return missingSelectors;
+}
+
+async function expandStockAnalysisMinimumControlSurfaces(page) {
+  const deepResearchSummary = page.getByTestId("stock-analysis-deep-research-summary");
+  if (
+    (await deepResearchSummary.isVisible().catch(() => false)) &&
+    (await deepResearchSummary.evaluate((element) => {
+      const details = element.closest("details");
+      return !(details instanceof HTMLDetailsElement) || !details.open;
+    }).catch(() => false))
+  ) {
+    await deepResearchSummary.click();
+    await page.waitForTimeout(300);
+  }
+
+  const reviewQueueJump = page.getByTestId("stock-analysis-rail-queue-jump");
+  if (await reviewQueueJump.isVisible().catch(() => false)) {
+    await reviewQueueJump.click();
+    await page.waitForTimeout(300);
+  }
+
+  const reviewQueueDetailsButton = page
+    .locator('[data-testid="stock-analysis-review-queue-details"] button')
+    .first();
+  if (
+    (await reviewQueueDetailsButton.isVisible().catch(() => false)) &&
+    ((await reviewQueueDetailsButton.getAttribute("aria-expanded")) ?? "false") !== "true"
+  ) {
+    await reviewQueueDetailsButton.click();
+    await page.waitForTimeout(300);
+  }
 }
 
 async function describeActiveElement(page, targetSelector) {
@@ -522,7 +658,7 @@ test.describe("frontend accessibility + visual smoke", () => {
 
       await gotoVisiblePage(page, smokePage);
 
-      let axeBuilder = new AxeBuilder({ page }).include(smokePage.axeSelector ?? smokePage.readySelector);
+      let axeBuilder = new AxeBuilder({ page }).include(resolveAxeScopeSelector(smokePage));
       for (const selector of smokePage.excludeSelectors ?? []) {
         axeBuilder = axeBuilder.exclude(selector);
       }
@@ -530,39 +666,8 @@ test.describe("frontend accessibility + visual smoke", () => {
       const blockedViolations = violations.filter((violation) =>
         blockedAxeImpacts.includes(violation.impact),
       );
-      const undersizedControls = smokePage.minimumControlTargetSize
-        ? await page.locator(
-            `${smokePage.readySelector} button, ${smokePage.readySelector} a[href], ${smokePage.readySelector} select, ${smokePage.readySelector} input, ${smokePage.readySelector} textarea, ${smokePage.readySelector} summary`,
-          ).evaluateAll((controls, minimumSize) =>
-            controls.flatMap((control) => {
-              const box = control.getBoundingClientRect();
-              const style = window.getComputedStyle(control);
-              const visible =
-                box.width > 0 &&
-                box.height > 0 &&
-                style.display !== "none" &&
-                style.visibility !== "hidden";
-              if (!visible || (box.width >= minimumSize && box.height >= minimumSize)) {
-                return [];
-              }
-              return [
-                {
-                  name: (
-                    control.getAttribute("aria-label") ||
-                    control.textContent ||
-                    control.getAttribute("title") ||
-                    ""
-                  )
-                    .replace(/\s+/g, " ")
-                    .trim()
-                    .slice(0, 120),
-                  width: Math.round(box.width),
-                  height: Math.round(box.height),
-                },
-              ];
-            }),
-          smokePage.minimumControlTargetSize)
-        : [];
+      const undersizedControls = await collectUndersizedControls(page, smokePage);
+      const missingMinimumControlCoverage = await collectMinimumControlCoverage(page, smokePage);
 
       await page.screenshot({
         path: testInfo.outputPath(`${smokePage.slug}.png`),
@@ -578,6 +683,10 @@ test.describe("frontend accessibility + visual smoke", () => {
       expect(
         undersizedControls,
         `Controls smaller than ${smokePage.minimumControlTargetSize}px: ${JSON.stringify(undersizedControls)}`,
+      ).toEqual([]);
+      expect(
+        missingMinimumControlCoverage,
+        `Missing minimum-size smoke coverage for selectors: ${JSON.stringify(missingMinimumControlCoverage)}`,
       ).toEqual([]);
     });
   }

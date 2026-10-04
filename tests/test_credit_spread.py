@@ -6,6 +6,24 @@ from decimal import Decimal
 from backend.app.core_finance.credit_spread import compute_credit_spread_profile, get_credit_spread
 
 
+def test_observed_zero_ytm_and_missing_ytm_use_distinct_spread_durations() -> None:
+    report_date = date(2026, 1, 1)
+    bond = {
+        "bond_code": "ZERO-YTM", "market_value": Decimal("1000000"),
+        "face_value": Decimal("1000000"), "coupon_rate": Decimal("0.03"),
+        "yield_to_maturity": Decimal("0"), "maturity_date": date(2036, 1, 1),
+        "report_date": report_date, "sub_type": "企业债", "agency_rating": "AAA",
+    }
+    def duration(row):
+        return compute_credit_spread_profile([row], report_date=report_date)["position_metrics"][0]["spread_duration"]
+
+    observed = duration(bond)
+    missing = duration({**bond, "yield_to_maturity": None})
+    par = duration({**bond, "yield_to_maturity": Decimal("0.03")})
+    assert observed > missing
+    assert missing == par
+
+
 def test_credit_spread_dv01_uses_face_value_when_available() -> None:
     report_date = date(2026, 1, 1)
     payload = compute_credit_spread_profile(

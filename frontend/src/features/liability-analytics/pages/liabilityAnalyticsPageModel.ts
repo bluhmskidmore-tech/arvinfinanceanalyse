@@ -63,8 +63,9 @@ export type BuildLiabilityAnalyticsPageReadModelInput = {
   liabilityTotalYi: number | null;
   firstYearPressureYi: number | null;
   topCounterpartyShare: string;
-  warningCount: number;
-  alertCount: number;
+  /** `null` = 预警读面未成功返回（error / 报告日缺失未启用），与「返回空数组 = 0」区分。 */
+  warningCount: number | null;
+  alertCount: number | null;
   resultMetas: LiabilityResultMetaInput[];
   syntheticSections: LiabilitySyntheticEvidenceInput[];
 };
@@ -96,6 +97,29 @@ function toneForMeta(meta: ResultMeta): LiabilityPageBadgeTone {
   return meta.formal_use_allowed ? "ok" : "info";
 }
 
+function describeEnvelopeDates(meta: ResultMeta | null | undefined): string {
+  const requested = meta?.requested_report_date?.trim() || "";
+  const resolved = meta?.resolved_report_date?.trim() || "";
+  if (requested && resolved) {
+    return `请求日 ${requested}，实际日 ${resolved}`;
+  }
+  if (!requested && resolved) {
+    return `未指定请求日，实际日 ${resolved}`;
+  }
+  if (requested) {
+    return `请求日 ${requested}`;
+  }
+  return "";
+}
+
+function formatSourceStatusLine(
+  source: LiabilityResultMetaInput,
+  status: string,
+): string {
+  const dates = describeEnvelopeDates(source.meta);
+  return dates ? `${source.title}: ${status}（${dates}）` : `${source.title}: ${status}`;
+}
+
 function basisLabel(meta: ResultMeta) {
   if (meta.basis === "formal" && meta.formal_use_allowed) {
     return "正式可用";
@@ -125,7 +149,7 @@ function buildEvidenceCard(source: LiabilityResultMetaInput): LiabilityPageEvide
     basisLabel: basisLabel(meta),
     qualityLabel: meta.quality_flag,
     fallbackLabel: meta.fallback_mode,
-    asOfDate: meta.as_of_date ?? EM_DASH,
+    asOfDate: meta.as_of_date ?? meta.resolved_report_date ?? EM_DASH,
     traceId: meta.trace_id || EM_DASH,
     sourceVersion: meta.source_version || EM_DASH,
     ruleVersion: meta.rule_version || EM_DASH,
@@ -155,11 +179,21 @@ export function buildLiabilityAnalyticsPageReadModel(
   const requested = input.requestedReportDate || input.resolvedReportDate || EM_DASH;
   const resolved = input.resolvedReportDate || EM_DASH;
   const isMock = input.mode !== "real";
+  const envelopeMismatchSource = input.resultMetas.find((source) => {
+    const envelopeRequested = source.meta?.requested_report_date?.trim() || "";
+    const envelopeResolved = source.meta?.resolved_report_date?.trim() || "";
+    return Boolean(envelopeRequested && envelopeResolved && envelopeRequested !== envelopeResolved);
+  });
   const hasDateMismatch =
-    input.activeTab === "daily" &&
-    Boolean(input.requestedReportDate) &&
-    Boolean(input.resolvedReportDate) &&
-    input.requestedReportDate !== input.resolvedReportDate;
+    (input.activeTab === "daily" &&
+      Boolean(input.requestedReportDate) &&
+      Boolean(input.resolvedReportDate) &&
+      input.requestedReportDate !== input.resolvedReportDate) ||
+    Boolean(envelopeMismatchSource);
+  const mismatchRequested =
+    envelopeMismatchSource?.meta?.requested_report_date?.trim() || requested;
+  const mismatchResolved =
+    envelopeMismatchSource?.meta?.resolved_report_date?.trim() || resolved;
   const resultMetas = input.resultMetas.map(buildEvidenceCard).filter(Boolean) as LiabilityPageEvidenceCard[];
   const missingMetaInputs = input.resultMetas.filter((source) => source.required && !source.meta);
   const evidenceCards = input.resultMetas.flatMap((source) => {
@@ -170,10 +204,16 @@ export function buildLiabilityAnalyticsPageReadModel(
     return source.required ? [buildMissingEvidenceCard(source)] : [];
   });
   const fallbackCards = resultMetas.filter((card) => card.fallbackLabel !== "none");
+  const fallbackSources = input.resultMetas.filter(
+    (source) => Boolean(source.meta) && source.meta?.fallback_mode !== "none",
+  );
   const staleCards = input.resultMetas.filter(
     (source) => source.meta?.vendor_status === "vendor_stale" || source.meta?.vendor_status === "vendor_unavailable",
   );
   const qualityCards = resultMetas.filter((card) => card.qualityLabel !== "ok");
+  const qualitySources = input.resultMetas.filter(
+    (source) => Boolean(source.meta) && source.meta?.quality_flag !== "ok",
+  );
 
   const statusBadges: LiabilityPageStatusBadge[] = [
     {
@@ -196,7 +236,7 @@ export function buildLiabilityAnalyticsPageReadModel(
       label:
         input.activeTab === "daily"
           ? hasDateMismatch
-            ? `请求 ${requested} · 返回 ${resolved}`
+            ? `请求 ${mismatchRequested} · 返回 ${mismatchResolved}`
             : `报告日 ${resolved}`
           : `月份 ${input.selectedMonthLabel ?? EM_DASH}`,
       tone: input.activeTab === "daily" && hasDateMismatch ? "warning" : "ok",
@@ -237,17 +277,16 @@ export function buildLiabilityAnalyticsPageReadModel(
       ? [
           {
             key: "liability-total",
-            label: "市场负债",
+            label: "负债总额",
             value: fixedOrDash(input.liabilityTotalYi, 2),
             unit: "亿",
-            // 口径：TYWL 同业对手方总额（不含发行负债）；缺失时回退期限桶合计。
-            detail: "同业对手方口径（不含发行负债）；缺失时回退期限桶合计",
+            detail: "同业负债 + 发行负债，与结构图同口径",
           },
           {
             key: "liability-cost",
-            label: "负债成本",
+            label: "整体负债成本",
             value: input.yieldKpi?.liability_cost?.display ?? EM_DASH,
-            detail: "后端收益指标",
+            detail: "同业负债 + 全部发行负债",
           },
           {
             key: "nim",
@@ -260,10 +299,7 @@ export function buildLiabilityAnalyticsPageReadModel(
             label: "1年内到期",
             value: fixedOrDash(input.firstYearPressureYi, 2),
             unit: "亿",
-            // 口径经后端 compute_liability_risk_buckets 确证：同业负债 + 发行负债的
-            // 1 年内到期桶合计（含已到期/逾期桶），比「市场负债」的同业对手方口径宽，
-            // 因此本格可以大于「市场负债」。
-            detail: "同业+发行负债到期合计（含已到期），口径宽于「市场负债」",
+            detail: "同业 + 发行；含已到期，不含到期日未提供部分",
           },
           {
             key: "top-counterparty",
@@ -274,8 +310,14 @@ export function buildLiabilityAnalyticsPageReadModel(
           {
             key: "warnings",
             label: "异常预警",
-            value: `${input.warningCount + input.alertCount}条`,
-            detail: `${input.warningCount} 关注 · ${input.alertCount} 预警`,
+            value:
+              input.warningCount === null || input.alertCount === null
+                ? EM_DASH
+                : `${input.warningCount + input.alertCount}条`,
+            detail:
+              input.warningCount === null || input.alertCount === null
+                ? "预警读面未返回"
+                : `${input.warningCount} 关注 · ${input.alertCount} 预警`,
           },
         ]
       : [
@@ -307,14 +349,25 @@ export function buildLiabilityAnalyticsPageReadModel(
         key: "date-mismatch",
         variant: "fallback-date",
         title: "请求报告日与返回报告日不一致",
-        description: `请求 ${requested}，当前返回 ${resolved}，需要在下钻前确认是否为兜底或最新快照。`,
+        description: `请求 ${mismatchRequested}，当前返回 ${mismatchResolved}，需要在下钻前确认是否为兜底或最新快照。`,
       },
       {
         when: fallbackCards.length > 0,
         key: "fallback",
         variant: "fallback-date",
         title: "存在兜底结果",
-        description: fallbackCards.map((card) => `${card.title}: ${card.fallbackLabel}`).join("；"),
+        description: fallbackSources
+          .map((source) => formatSourceStatusLine(source, source.meta?.fallback_mode ?? EM_DASH))
+          .join("；"),
+      },
+      {
+        when: qualitySources.length > 0,
+        key: "quality",
+        variant: "stale",
+        title: "存在质量未通过结果",
+        description: qualitySources
+          .map((source) => formatSourceStatusLine(source, source.meta?.quality_flag ?? EM_DASH))
+          .join("；"),
       },
       {
         when: staleCards.length > 0,

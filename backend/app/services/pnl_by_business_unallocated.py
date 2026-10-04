@@ -7,6 +7,7 @@ from backend.app.schemas.pnl import (
     PnlByBusinessYtdUnallocatedBreakdownRow,
     PnlByBusinessYtdUnallocatedItem,
 )
+from backend.app.services.pnl_service_shared_utils import _decimal_value, _norm_text
 
 TWOPLACES = Decimal("0.01")
 
@@ -131,14 +132,6 @@ def pnl_by_business_unallocated_breakdown(
             row.cost_center,
         ),
     )
-
-
-def _decimal_value(value: object) -> Decimal:
-    return Decimal(str(value or "0"))
-
-
-def _norm_text(value: object) -> str:
-    return str(value or "").strip()
 
 
 def _quantize_decimal(value: Decimal) -> Decimal:

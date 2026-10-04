@@ -450,6 +450,58 @@ def test_parse_sources_reads_and_hashes_each_source_from_one_snapshot(
     assert parsed.daily_sha256 == expected_hashes[daily.resolve()]
 
 
+def test_parse_sources_reuses_only_identical_validated_snapshots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import os
+    from dataclasses import FrozenInstanceError
+
+    module = _module()
+    ledger, daily = _write_source_pair(tmp_path)
+    original_parse = module._read_xlsx_payload
+    calls = []
+
+    def tracked_parse(*args, **kwargs):
+        calls.append(args[1])
+        return original_parse(*args, **kwargs)
+
+    monkeypatch.setattr(module, "_read_xlsx_payload", tracked_parse)
+    first = module.parse_finance_metric_sources(ledger, daily, requested_month="202606")
+    second = module.parse_finance_metric_sources(ledger, daily, requested_month="202606")
+    assert second == first
+    assert len(calls) == 2  # The second request must not parse both workbooks again.
+    with pytest.raises(FrozenInstanceError):
+        second.ledger[0].ending = Decimal("999")
+
+    # Restoring the timestamp cannot make changed bytes reuse old source hashes.
+    stat = ledger.stat()
+    with ZipFile(ledger, "a") as archive:
+        archive.comment = b"changed source bytes"
+    os.utime(ledger, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    changed = module.parse_finance_metric_sources(ledger, daily, requested_month="202606")
+    assert changed.ledger_sha256 != first.ledger_sha256
+    assert changed.ledger_sha256 == hashlib.sha256(ledger.read_bytes()).hexdigest()
+    assert len(calls) == 4
+
+
+def test_parse_sources_cache_keeps_month_limits_and_file_errors(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    ledger, daily = _write_source_pair(tmp_path)
+    module.parse_finance_metric_sources(ledger, daily, requested_month="202606")
+    with pytest.raises(module.FinanceMetricXlsxError):
+        module.parse_finance_metric_sources(ledger, daily, requested_month="202605")
+    with pytest.raises(module.FinanceMetricXlsxError):
+        module.parse_finance_metric_sources(
+            ledger, daily, requested_month="202606", limits=module.XlsxLimits(max_cells=1),
+        )
+    daily.unlink()
+    with pytest.raises(module.FinanceMetricXlsxError) as exc_info:
+        module.parse_finance_metric_sources(ledger, daily, requested_month="202606")
+    assert exc_info.value.code == "file_read_error"
+
+
 @pytest.mark.parametrize("missing", ["ledger_sheet", "daily_sheet", "header"])
 def test_parse_sources_requires_canonical_sheets_and_headers(tmp_path: Path, missing: str) -> None:
     module = _module()

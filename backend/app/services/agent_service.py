@@ -1,16 +1,33 @@
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import uuid4
 
+from backend.app.agent.runtime.local_request_resolution import (
+    SEMANTIC_EXECUTION_CONTEXT_KEY,
+    LocalRequestResolution,
+    _semantic_report_date,
+    ontology_request_scope_errors,
+    resolve_local_request,
+    validate_semantic_execution_request,
+)
+from backend.app.agent.runtime.ontology_bindings import (
+    ONTOLOGY_BINDING_REVISION,
+    OntologyMetricBinding,
+    get_bound_metric_entity,
+    get_ontology_metric_binding,
+    ontology_content_revision,
+    ontology_reference_payload,
+)
 from backend.app.agent.runtime.tool_registry import ToolRegistry
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentDisabledResponse, AgentEnvelope
+from backend.app.core_finance.field_normalization import normalize_currency_basis_value
 from backend.app.governance.agent_audit import AgentAuditPayload, append_agent_audit
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.choice_news_repo import (
@@ -24,6 +41,8 @@ from backend.app.repositories.product_category_pnl_repo import (
     ProductCategoryPnlRepository,
 )
 from backend.app.repositories.risk_tensor_repo import RiskTensorRepository
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed
+from backend.app.services.dexter_research_context_builder import resolve_dexter_research_read_resources
 from backend.app.services.explicit_numeric import is_numeric_json
 from backend.app.services.gitnexus_service import build_gitnexus_status_payload
 from backend.app.services.research_radar_service import research_radar_brief_payload
@@ -31,6 +50,27 @@ from backend.app.services.research_radar_service import research_radar_brief_pay
 RULE_VERSION = "rv_agent_mvp_v1"
 BalanceAnalysisRepository = None
 _PORTFOLIO_AMOUNT_QUANTUM = Decimal("0.00000001")
+
+# intent -> 该 intent 处理器实际读取的正式资源。资源名与对应 REST 路由的 read 授权保持一致
+# （balance_analysis.py / pnl.py / risk_tensor.py / bond_analytics.py / product_category_pnl.py /
+# macro_vendor.py / choice_news.py / pretrade_checklist.py / strategy_reports.py / cube_query.py），
+# 使 agent 入口不能绕过这些路由各自的 read 权限。未列出的 intent（analysis_chat、gitnexus_status、
+# 工作流 plan 卡、unknown）不读取受治理业务数据，仅受路由层 agent:read 约束。
+INTENT_READ_RESOURCES: dict[str, str] = {
+    "portfolio_overview": "balance_analysis",
+    "pnl_summary": "pnl",
+    "pnl_bridge": "pnl",
+    "duration_risk": "risk_tensor",
+    "risk_tensor": "risk_tensor",
+    "credit_exposure": "bond_analytics",
+    "product_pnl": "product_category_pnl",
+    "market_data": "macro_vendor",
+    "news": "choice_news.data",
+    "research_radar_brief": "choice_news.data",
+    "pretrade_checklist": "pretrade_checklist",
+    "walk_forward_verdict": "strategy_reports",
+    "cube_query": "cube",
+}
 
 # 仅用于证据披露（sql_executed）：与 repository 实际执行语句等价的只读 SELECT 模板，
 # `?` 为参数占位符；实际绑定值见 evidence.filters_applied。服务端从不执行客户端传入 SQL。
@@ -239,6 +279,86 @@ def execute_agent_query(
     return envelope
 
 
+def resolve_agent_intent_read_resources(
+    request: AgentQueryRequest,
+    *,
+    provider: str = "local",
+) -> list[str]:
+    """按 AnalysisViewTool.execute 的分派规则，列出本次请求将实际读取的正式资源。
+
+    与执行链路同源使用 resolve_local_request：provider 路由不经本地 intent 处理器；
+    金融工作流仅在 workflow_mode=execute 时逐个执行 mapped_intents（plan 卡不读数据）；
+    研究工作流在 execute 模式或显式 context.intent 命中时执行其处理器。
+    """
+    resolution = resolve_local_request(request)
+    if resolution.route != "local":
+        if provider == "dexter":
+            return resolve_dexter_research_read_resources(request)
+        return []
+    workflow_mode = str(request.context.get("workflow_mode") or "").strip().lower()
+    intents: list[str] = []
+    if resolution.financial_workflow is not None:
+        if workflow_mode == "execute":
+            intents.extend(resolution.financial_workflow.mapped_intents)
+    elif resolution.research_workflow is not None:
+        explicit_intent = (
+            str(request.context.get("intent") or "").strip().lower().replace("-", "_")
+        )
+        if workflow_mode == "execute" or explicit_intent == resolution.research_workflow.workflow_id:
+            intents.append(resolution.research_workflow.workflow_id)
+    elif resolution.intent:
+        intents.append(resolution.intent)
+    resources: list[str] = []
+    for intent in intents:
+        resource = INTENT_READ_RESOURCES.get(intent)
+        if resource is not None and resource not in resources:
+            resources.append(resource)
+    return resources
+
+
+def ensure_agent_intent_resources_allowed(
+    request: AgentQueryRequest,
+    *,
+    auth: AuthContext,
+    settings: Any,
+    authorize: Callable[..., None] = ensure_user_allowed,
+    provider: str | None = None,
+) -> None:
+    """S-H2：agent:read 仅授权使用 Agent 入口；intent 实际读取的业务资源按其正式路由的 read 权限再校验。
+
+    PermissionError / RuntimeError 原样上抛，由路由层映射为 403 / 503。``authorize`` 允许
+    路由层传入自身命名空间的 ensure_user_allowed，以便测试替身仍能拦截（同 deps.ensure_read_allowed）。
+    """
+    resolved_provider = str(provider or getattr(settings, "agent_provider", "local")).strip().lower()
+    for resource in resolve_agent_intent_read_resources(request, provider=resolved_provider):
+        authorize(auth=auth, settings=settings, resource=resource, action="read")
+
+
+def ensure_agent_execution_resources_allowed(
+    request: AgentQueryRequest,
+    *,
+    settings: Any,
+    resources: list[str],
+) -> None:
+    """Recheck reads against the server-bound identity before provider/recovery execution.
+
+    HTTP entrypoints replace these identity fields; queued runs retain that request.
+    A provider invoked without a server-bound user may chat, but cannot read business data.
+    """
+    if not resources:
+        return
+    user_id = str(request.context.get("user_id") or "").strip()
+    if not user_id:
+        raise PermissionError("Agent business reads require a server-bound user.")
+    auth = AuthContext(
+        user_id=user_id,
+        role=str(request.context.get("user_role") or "viewer").strip(),
+        identity_source=str(request.context.get("identity_source") or "fallback"),
+    )
+    for resource in resources:
+        ensure_user_allowed(auth=auth, settings=settings, resource=resource, action="read")
+
+
 def audit_disabled_agent_query(
     request: AgentQueryRequest,
     governance_dir: str,
@@ -278,14 +398,26 @@ def _build_intent_handlers(
         # gitnexus_status 非 DuckDB 查询（读 GitNexus 索引/MCP），sql_executed 保持 []。
         "gitnexus_status": lambda request: build_gitnexus_status_payload(request),
         "research_radar_brief": lambda request: research_radar_brief_payload(request, duckdb_path),
-        "portfolio_overview": lambda request: _portfolio_overview_payload(request, duckdb_path),
-        "pnl_summary": lambda request: _pnl_summary_payload(request, duckdb_path),
+        "portfolio_overview": lambda request: _portfolio_overview_payload(
+            request,
+            duckdb_path,
+            governance_dir,
+        ),
+        "pnl_summary": lambda request: _pnl_summary_payload(
+            request,
+            duckdb_path,
+            governance_dir,
+        ),
         "duration_risk": lambda request: _duration_risk_payload(
             request,
             duckdb_path,
             governance_dir,
         ),
-        "credit_exposure": lambda request: _credit_exposure_payload(request, duckdb_path),
+        "credit_exposure": lambda request: _credit_exposure_payload(
+            request,
+            duckdb_path,
+            governance_dir,
+        ),
         "product_pnl": lambda request: _product_pnl_payload(request, duckdb_path),
         "pnl_bridge": lambda request: _pnl_bridge_payload(request, duckdb_path, governance_dir),
         "risk_tensor": lambda request: _risk_tensor_payload(request, duckdb_path, governance_dir),
@@ -297,7 +429,76 @@ def _build_intent_handlers(
     }
 
 
-def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
+# Agent payload 可以从上游正式 envelope 的 result_meta 继承的字段白名单。
+# 治理版本串每个都必须有 handler 提供的缺省值；上下文字段只有沿用上游日期/金额口径的
+# handler 才继承；可选字段仅在上游存在时透传。禁止直接合并整个上游 result_meta：
+# 那会把上游新增字段无审查地带进 Agent 契约。
+_UPSTREAM_META_GOVERNANCE_FIELDS: tuple[str, ...] = (
+    "basis",
+    "source_version",
+    "vendor_version",
+    "rule_version",
+    "cache_version",
+    "vendor_status",
+    "fallback_mode",
+)
+_UPSTREAM_META_CONTEXT_FIELDS: tuple[str, ...] = (
+    "requested_report_date",
+    "resolved_report_date",
+    "as_of_date",
+    "date_basis",
+    "fallback_date",
+    "source_surface",
+    "amount_currency_basis",
+    "amount_currency_basis_note",
+    "generated_at",
+)
+_UPSTREAM_META_PASSTHROUGH_FIELDS: tuple[str, ...] = (
+    "cache_key",
+    "data_built_at",
+)
+
+
+def _upstream_meta_projection(
+    meta: Mapping[str, Any],
+    *,
+    agent_formal_gate: bool,
+    governance_defaults: Mapping[str, str],
+    inherit_context: bool = False,
+    context_defaults: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """按白名单把上游正式 envelope 的 result_meta 投影为 Agent payload 的 meta 字段。
+
+    ``agent_formal_gate`` 是 handler 自身的 fail-closed 判定，正式口径取它与上游
+    ``formal_use_allowed`` 的合取，所以上游为 false 时 Agent 不可能升级为 true。
+    ``quality_flag`` 不在白名单内：各 handler 的降级规则不同，仍由 handler 自行判定。
+    """
+    projected: dict[str, Any] = {
+        "formal_use_allowed": (
+            bool(meta.get("formal_use_allowed", False)) and bool(agent_formal_gate)
+        ),
+        "scenario_flag": bool(meta.get("scenario_flag", False)),
+    }
+    for field_name in _UPSTREAM_META_GOVERNANCE_FIELDS:
+        projected[field_name] = str(meta.get(field_name) or governance_defaults[field_name])
+    if inherit_context:
+        defaults = context_defaults or {}
+        for field_name in _UPSTREAM_META_CONTEXT_FIELDS:
+            projected[field_name] = meta.get(field_name) or defaults.get(field_name)
+    for field_name in _UPSTREAM_META_PASSTHROUGH_FIELDS:
+        value = meta.get(field_name)
+        if value is not None:
+            projected[field_name] = value
+    return projected
+
+
+def _portfolio_overview_payload(
+    request: AgentQueryRequest,
+    duckdb_path: str,
+    governance_dir: str,
+) -> dict[str, Any]:
+    from backend.app.services.balance_analysis_service import balance_analysis_overview_envelope
+
     repo_cls = BalanceAnalysisRepository
     if repo_cls is None:
         balance_analysis_repo_module = importlib.import_module("backend.app.repositories.balance_analysis_repo")
@@ -307,17 +508,25 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
     if report_date is None:
         raise ValueError("No balance-analysis report date is available.")
     currency_basis = _balance_analysis_currency_basis(request)
-    overview = repo.fetch_formal_overview(
+    # The balance service retains responsibility for rejecting invalid filters.
+    upstream = balance_analysis_overview_envelope(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
+        position_scope=cast(Literal["asset", "liability", "all"], request.position_scope),
+        currency_basis=cast(Literal["native", "CNY"], currency_basis),
+    )
+    overview = dict(cast(Mapping[str, Any], upstream.get("result") or {}))
+    meta = dict(cast(Mapping[str, Any], upstream.get("result_meta") or {}))
+    lineage_overview = repo.fetch_formal_overview(
         report_date=report_date,
         position_scope=request.position_scope,
         currency_basis=currency_basis,
     )
     detail_row_count = int(overview["detail_row_count"])
-    lineage_row_count = int(overview.get("lineage_row_count") or detail_row_count or 0)
-    source_version_missing_count = int(overview.get("source_version_missing_count") or 0)
-    rule_version_missing_count = int(overview.get("rule_version_missing_count") or 0)
-    source_version = str(overview.get("source_version") or "").strip()
-    rule_version = str(overview.get("rule_version") or "").strip()
+    lineage_row_count = int(lineage_overview.get("lineage_row_count") or detail_row_count or 0)
+    source_version_missing_count = int(lineage_overview.get("source_version_missing_count") or 0)
+    rule_version_missing_count = int(lineage_overview.get("rule_version_missing_count") or 0)
     requested_report_date = _requested_report_date(request)
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if requested_report_date else "latest_default"
@@ -329,7 +538,10 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
         and rule_version_missing_count == 0
     )
     formal_use_allowed = detail_row_count > 0 and cny_amount_contract and lineage_complete
+    upstream_quality = str(meta.get("quality_flag") or "warning")
     quality_flag: Literal["ok", "warning"] = "ok" if formal_use_allowed else "warning"
+    if upstream_quality in {"error", "stale"}:
+        quality_flag = "warning"
 
     if detail_row_count <= 0:
         answer = (
@@ -363,8 +575,8 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
             missing_lineage_parts.append("rule_version")
         missing_lineage_text = ", ".join(missing_lineage_parts)
         answer = (
-            f"{report_date} 的组合记录已返回，但受治理 lineage 缺少 {missing_lineage_text}；"
-            "系统已 fail-closed，未生成正式金额或 Numeric 指标。"
+            f"{report_date} 的组合记录已返回，但 Agent 侧行级受治理 lineage 缺少 {missing_lineage_text}；"
+            "系统已按 Agent 附加检查 fail-closed，未生成正式金额或 Numeric 指标。"
         )
         cards = [
             {
@@ -372,7 +584,7 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
                 "title": "Governed Lineage Incomplete",
                 "value": (
                     "Formal portfolio amount cards were suppressed because governed "
-                    f"lineage is missing {missing_lineage_text}."
+                    f"row-level lineage is missing {missing_lineage_text} in the Agent-side check."
                 ),
             }
         ]
@@ -429,33 +641,42 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
         "row_count": detail_row_count,
         "sql_executed": _PORTFOLIO_OVERVIEW_SQL_DISCLOSURE,
         "quality_flag": quality_flag,
-        "basis": "formal",
-        "formal_use_allowed": formal_use_allowed,
-        "scenario_flag": False,
-        "source_version": source_version or "sv_balance_analysis_unavailable",
-        "rule_version": rule_version or "rv_balance_analysis_unavailable",
-        "cache_version": "cv_agent_portfolio_overview_v1",
+        **_upstream_meta_projection(
+            meta,
+            agent_formal_gate=formal_use_allowed,
+            governance_defaults={
+                "basis": "formal",
+                "source_version": "sv_balance_analysis_unavailable",
+                "vendor_version": "vv_none",
+                "rule_version": "rv_balance_analysis_unavailable",
+                "cache_version": "cv_agent_portfolio_overview_v1",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+            },
+            inherit_context=True,
+            context_defaults={
+                "requested_report_date": (
+                    _coerce_iso_report_date(requested_report_date)
+                    if requested_report_date is not None
+                    else None
+                ),
+                "resolved_report_date": report_date,
+                "as_of_date": report_date,
+                "date_basis": "balance_analysis_report_date",
+                "fallback_date": None,
+                "source_surface": "formal_balance",
+                "amount_currency_basis": currency_basis,
+            },
+        ),
         "result_kind": "agent.portfolio_overview",
-        "vendor_status": "ok",
-        "fallback_mode": "none",
         "amount_currency_basis": currency_basis,
         "amount_currency_basis_note": (
             "原币口径可能包含多币种，未生成金额型 Numeric 卡片。"
             if not cny_amount_contract
-            else "受治理 lineage 缺少 source_version 或 rule_version，已抑制正式金额型 Numeric 卡片。"
+            else "Agent 侧行级治理 lineage 缺少 source_version 或 rule_version，已抑制正式金额型 Numeric 卡片。"
             if not lineage_complete
             else "金额卡沿用正式 Balance Analysis 原始单位 yuan，未做前端换算。"
         ),
-        "requested_report_date": (
-            _coerce_iso_report_date(requested_report_date)
-            if requested_report_date is not None
-            else None
-        ),
-        "resolved_report_date": report_date,
-        "as_of_date": report_date,
-        "date_basis": "balance_analysis_report_date",
-        "fallback_date": None,
-        "source_surface": "formal_balance",
         "next_drill": [
             {"dimension": "portfolio", "label": "按组合查看"},
             {"dimension": "cost_center", "label": "按成本中心查看"},
@@ -568,67 +789,361 @@ def _portfolio_count_card(
     }
 
 
-def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
+def _pnl_summary_payload(
+    request: AgentQueryRequest,
+    duckdb_path: str,
+    governance_dir: str,
+) -> dict[str, Any]:
+    from backend.app.services.pnl_service import pnl_overview_envelope
+
+    resolution = resolve_local_request(request)
     repo = PnlRepository(duckdb_path)
-    report_date = _latest_or_requested(request, repo.list_union_report_dates())
+    report_date = resolution.report_date or _latest_or_requested(
+        request, repo.list_union_report_dates()
+    )
     if report_date is None:
         raise ValueError("No PnL report date is available.")
-    overview = repo.overview_totals(report_date)
+    upstream = pnl_overview_envelope(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
+    )
+    overview = dict(cast(Mapping[str, Any], upstream.get("result") or {}))
+    meta = dict(cast(Mapping[str, Any], upstream.get("result_meta") or {}))
     rd_mode: Literal["explicit", "latest_default"] = (
-        "explicit" if _requested_report_date(request) else "latest_default"
+        "explicit"
+        if resolution.report_date or _requested_report_date(request)
+        else "latest_default"
     )
-    formal_fi_row_count = int(overview["formal_fi_row_count"])
-    nonstd_bridge_row_count = int(overview["nonstd_bridge_row_count"])
+    formal_fi_row_count = int(overview.get("formal_fi_row_count") or 0)
+    nonstd_bridge_row_count = int(overview.get("nonstd_bridge_row_count") or 0)
     # fail-closed：没有正式 FI 明细时（仅剩非标桥接行），不得宣称正式口径。
-    formal_use_allowed = formal_fi_row_count > 0
-    quality_flag: Literal["ok", "warning"] = "ok" if formal_use_allowed else "warning"
-    answer = (
-        f"{report_date} 的损益汇总已返回，正式 FI {formal_fi_row_count} 行，"
-        f"非标桥接 {nonstd_bridge_row_count} 行，总损益 {overview['total_pnl']}。"
+    formal_use_allowed = bool(meta.get("formal_use_allowed", False)) and formal_fi_row_count > 0
+    upstream_quality = str(meta.get("quality_flag") or "warning")
+    quality_flag = (
+        upstream_quality
+        if upstream_quality in {"error", "stale"}
+        else "ok"
+        if upstream_quality == "ok" and formal_use_allowed
+        else "warning"
     )
-    if not formal_use_allowed:
-        answer += (
-            "当前日期没有正式 FI 明细，汇总仅由非标桥接数据构成；"
-            "系统已 fail-closed，本结果按非正式口径返回（formal_use_allowed=false）。"
+
+    binding = (
+        get_ontology_metric_binding(resolution.metric_id)
+        if resolution.semantic_operation == "value"
+        else None
+    )
+    binding_block_reason = (
+        _pnl_ontology_binding_block_reason(
+            binding=binding,
+            overview=overview,
+            meta=meta,
+            report_date=report_date,
+            formal_fi_row_count=formal_fi_row_count,
+            request=request,
         )
-    return {
+        if binding is not None
+        else None
+    )
+    if binding is not None and binding_block_reason is None:
+        metric_entity = get_bound_metric_entity(binding.metric_id)
+        assert metric_entity is not None
+        metric_value = overview[binding.result_field]
+        cards = [
+            _pnl_metric_card(
+                title=metric_entity.name,
+                metric_id=binding.metric_id,
+                source_field=binding.result_field,
+                value=metric_value,
+                unit=metric_entity.unit or "yuan",
+                precision=metric_entity.precision if metric_entity.precision is not None else 2,
+            )
+        ]
+        answer = (
+            f"{report_date} 的{metric_entity.name}为 {_pnl_metric_display(metric_value, metric_entity.precision or 2)}。"
+        )
+        semantic_context: dict[str, Any] | None = _pnl_semantic_context(
+            resolution=resolution,
+            meta=meta,
+            result_check="matched",
+            reason_code="metric_value_resolved",
+        )
+    elif binding is not None:
+        formal_use_allowed = False
+        if quality_flag == "ok":
+            quality_flag = "warning"
+        upstream_diagnostics = _pnl_upstream_block_diagnostics(overview)
+        cards = [
+            {
+                "type": "status",
+                "title": "Metric Result Blocked",
+                "value": (
+                    "正式 overview 返回与已核对指标绑定不一致，系统未展示该指标数值。"
+                ),
+                "metric_id": binding.metric_id,
+                "data": {
+                    "reason_code": binding_block_reason,
+                    "upstream_diagnostics": upstream_diagnostics,
+                },
+            }
+        ]
+        answer = (
+            f"{report_date} 的指标结果未通过绑定检查（{binding_block_reason}），"
+            "系统未将上游事实值标记为该指标答案。"
+        )
+        if upstream_diagnostics:
+            answer += f"上游降级原因：{'；'.join(upstream_diagnostics)}。"
+        semantic_context = _pnl_semantic_context(
+            resolution=resolution,
+            meta=meta,
+            result_check="blocked",
+            reason_code=cast(str, binding_block_reason),
+        )
+    else:
+        cards = [
+            {"type": "metric", "title": "Total PnL", "value": str(overview.get("total_pnl"))},
+            {
+                "type": "metric",
+                "title": "Interest 514",
+                "value": str(overview.get("interest_income_514")),
+            },
+            {
+                "type": "metric",
+                "title": "Fair Value 516",
+                "value": str(overview.get("fair_value_change_516")),
+            },
+            {
+                "type": "metric",
+                "title": "Capital Gain 517",
+                "value": str(overview.get("capital_gain_517")),
+            },
+        ]
+        answer = (
+            f"{report_date} 的损益汇总已返回，正式 FI {formal_fi_row_count} 行，"
+            f"非标桥接 {nonstd_bridge_row_count} 行，总损益 {overview.get('total_pnl')}。"
+        )
+        semantic_context = None
+    if not formal_use_allowed:
+        if formal_fi_row_count <= 0:
+            answer += (
+                "当前日期没有正式 FI 明细，汇总仅由非标桥接数据构成；"
+                "系统已 fail-closed，本结果按非正式口径返回（formal_use_allowed=false）。"
+            )
+        else:
+            answer += "上游正式服务不允许本结果正式使用（formal_use_allowed=false）。"
+
+    pnl_filter_disclosure = (
+        {
+            "requested_position_scope": request.position_scope,
+            "requested_currency_basis": request.currency_basis,
+        }
+        if binding is not None
+        else {
+            "position_scope": request.position_scope,
+            "currency_basis": request.currency_basis,
+        }
+    )
+    payload: dict[str, Any] = {
         "answer": answer,
-        "cards": [
-            {"type": "metric", "title": "Total PnL", "value": str(overview["total_pnl"])},
-            {"type": "metric", "title": "Interest 514", "value": str(overview["interest_income_514"])},
-            {"type": "metric", "title": "Fair Value 516", "value": str(overview["fair_value_change_516"])},
-            {"type": "metric", "title": "Capital Gain 517", "value": str(overview["capital_gain_517"])},
-        ],
+        "cards": cards,
         "tables_used": ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"],
-        "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
+        "filters_applied": _audit_filters(
+            request,
+            report_date,
+            resolution=rd_mode,
+            extra=pnl_filter_disclosure,
+        ),
         "row_count": formal_fi_row_count + nonstd_bridge_row_count,
         "sql_executed": _PNL_SUMMARY_SQL_DISCLOSURE,
         "quality_flag": quality_flag,
-        "basis": "formal",
-        "formal_use_allowed": formal_use_allowed,
-        "scenario_flag": False,
-        "source_version": "sv_agent_pnl_summary",
-        "rule_version": RULE_VERSION,
-        "cache_version": "cv_agent_pnl_summary_v1",
+        **_upstream_meta_projection(
+            meta,
+            agent_formal_gate=formal_use_allowed,
+            governance_defaults={
+                "basis": "formal",
+                "source_version": "sv_pnl_overview_missing",
+                "vendor_version": "vv_none",
+                "rule_version": RULE_VERSION,
+                "cache_version": "cv_pnl_overview_missing",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+            },
+            inherit_context=True,
+            context_defaults={
+                "requested_report_date": report_date,
+                "resolved_report_date": report_date,
+                "as_of_date": report_date,
+            },
+        ),
+        # 保留既有 Agent 消费契约；上游 kind/trace 写入 semantic_context。
         "result_kind": "agent.pnl_summary",
-        "vendor_status": "ok",
-        "fallback_mode": "none",
-        "next_drill": [
-            {"dimension": "instrument", "label": "按券查看"},
-            {"dimension": "portfolio", "label": "按组合查看"},
-        ],
-        "suggested_actions": [
-            {
-                "type": "inspect_lineage",
-                "label": "查看损益来源",
-                "payload": {"metric_key": "total_pnl", "report_date": report_date},
+        "next_drill": (
+            [
+                {"dimension": "instrument", "label": "按券查看"},
+                {"dimension": "portfolio", "label": "按组合查看"},
+            ]
+            if resolution.semantic_operation != "value"
+            else []
+        ),
+        "suggested_actions": (
+            [
+                {
+                    "type": "inspect_lineage",
+                    "label": "查看损益来源",
+                    "payload": {"metric_key": "total_pnl", "report_date": report_date},
+                },
+                {
+                    "type": "inspect_drill",
+                    "label": "查看PnL桥接",
+                    "payload": {"intent": "pnl_bridge", "report_date": report_date},
+                },
+            ]
+            if resolution.semantic_operation != "value"
+            else []
+        ),
+    }
+    if semantic_context is not None:
+        payload["semantic_context"] = semantic_context
+    return payload
+
+
+def _pnl_ontology_binding_block_reason(
+    *,
+    binding: OntologyMetricBinding | None,
+    overview: dict[str, Any],
+    meta: dict[str, Any],
+    report_date: str,
+    formal_fi_row_count: int,
+    request: AgentQueryRequest,
+) -> str | None:
+    if binding is None or get_bound_metric_entity(binding.metric_id) is None:
+        return "metric_binding_unavailable"
+    if str(overview.get("report_date") or "") != report_date:
+        return "result_report_date_mismatch"
+    if str(meta.get("requested_report_date") or "") != report_date:
+        return "requested_report_date_mismatch"
+    if str(meta.get("resolved_report_date") or "") != report_date:
+        return "resolved_report_date_mismatch"
+    if str(meta.get("basis") or "") != "formal":
+        return "upstream_basis_mismatch"
+    if str(meta.get("source_surface") or "") != "formal_pnl":
+        return "upstream_source_surface_mismatch"
+    if str(meta.get("result_kind") or "") != binding.upstream_result_kind:
+        return "upstream_result_kind_mismatch"
+    if str(meta.get("fallback_mode") or "") != "none":
+        return "upstream_fallback_not_allowed"
+    if ontology_request_scope_errors(request):
+        return "request_scope_not_supported"
+    upstream_currency_basis = str(meta.get("amount_currency_basis") or "").strip()
+    if not upstream_currency_basis:
+        return "upstream_amount_currency_basis_missing"
+    try:
+        normalized_upstream_currency = normalize_currency_basis_value(
+            upstream_currency_basis
+        )
+        normalized_request_currency = normalize_currency_basis_value(
+            request.currency_basis
+        )
+    except ValueError:
+        return "upstream_amount_currency_basis_mismatch"
+    if normalized_upstream_currency != normalized_request_currency:
+        return "upstream_amount_currency_basis_mismatch"
+    if "formal_use_allowed" not in meta:
+        return "upstream_formal_use_marker_missing"
+    if meta.get("formal_use_allowed") is not True:
+        return "upstream_formal_use_not_allowed"
+    for field_name in ("trace_id", "source_version", "rule_version", "cache_version"):
+        if not str(meta.get(field_name) or "").strip():
+            return f"upstream_{field_name}_missing"
+    if binding.result_field not in overview or overview.get(binding.result_field) is None:
+        return "metric_value_missing"
+    if formal_fi_row_count <= 0:
+        return "formal_fi_source_missing"
+    return None
+
+
+def _pnl_upstream_block_diagnostics(overview: dict[str, Any]) -> list[str]:
+    checks = overview.get("reconciliation_checks")
+    if not isinstance(checks, dict):
+        return []
+    diagnostics: list[str] = []
+    for check_name, raw_check in checks.items():
+        if not isinstance(raw_check, dict):
+            continue
+        status = str(raw_check.get("status") or "").strip().lower()
+        breached = raw_check.get("breached") is True
+        reason = str(raw_check.get("reason") or "").strip()
+        if not breached and status not in {"fail", "failed", "error", "stale"} and not reason:
+            continue
+        label = str(raw_check.get("check_kind") or check_name).strip()
+        state = status or ("breached" if breached else "warning")
+        detail = f"{label}:{state}"
+        if reason:
+            detail += f"（{reason[:240]}）"
+        diagnostics.append(detail)
+    return diagnostics
+
+
+def _pnl_semantic_context(
+    *,
+    resolution: LocalRequestResolution,
+    meta: dict[str, Any],
+    result_check: Literal["matched", "blocked"],
+    reason_code: str,
+) -> dict[str, Any]:
+    assert resolution.metric_id is not None
+    return {
+        "status": "resolved",
+        "result_check": result_check,
+        "references": [ontology_reference_payload(resolution.metric_id)],
+        "ontology_revision": ontology_content_revision(),
+        "binding_revision": ONTOLOGY_BINDING_REVISION,
+        "reason_code": reason_code,
+        "upstream_result_kind": str(meta.get("result_kind") or "") or None,
+        "upstream_trace_id": str(meta.get("trace_id") or "") or None,
+    }
+
+
+def _pnl_metric_display(value: Any, precision: int) -> str:
+    decimal_value = Decimal(str(value)).quantize(
+        Decimal("1").scaleb(-precision),
+        rounding=ROUND_HALF_UP,
+    )
+    return f"{decimal_value:,.{precision}f} 元"
+
+
+def _pnl_metric_card(
+    *,
+    title: str,
+    metric_id: str,
+    source_field: str,
+    value: Any,
+    unit: str,
+    precision: int,
+) -> dict[str, Any]:
+    display = _pnl_metric_display(value, precision)
+    decimal_value = Decimal(str(value)).quantize(
+        Decimal("1").scaleb(-precision),
+        rounding=ROUND_HALF_UP,
+    )
+    return {
+        "type": "metric",
+        "title": title,
+        "value": display,
+        "metric_id": metric_id,
+        "spec": {
+            "source_field": source_field,
+            "raw_value": format(decimal_value, f".{precision}f"),
+            "raw_unit": unit,
+            "raw_precision": precision,
+            "numeric": {
+                "raw": float(decimal_value),
+                "unit": unit,
+                "display": display,
+                "precision": precision,
+                "sign_aware": True,
             },
-            {
-                "type": "inspect_drill",
-                "label": "查看PnL桥接",
-                "payload": {"intent": "pnl_bridge", "report_date": report_date},
-            },
-        ],
+        },
     }
 
 
@@ -818,9 +1333,20 @@ def _duration_risk_payload(
         "row_count": bond_count,
         "sql_executed": _RISK_TENSOR_SQL_DISCLOSURE,
         "quality_flag": quality_flag,
-        "basis": str(meta.get("basis") or "formal"),
-        "formal_use_allowed": formal_use_allowed,
-        "scenario_flag": bool(meta.get("scenario_flag", False)),
+        **_upstream_meta_projection(
+            meta,
+            agent_formal_gate=formal_use_allowed,
+            governance_defaults={
+                "basis": "formal",
+                "source_version": "sv_agent_duration_risk",
+                "vendor_version": "vv_none",
+                "rule_version": RULE_VERSION,
+                "cache_version": "cv_agent_duration_risk_v1",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+            },
+        ),
+        # 久期风险卡固定披露 CNY 口径与张量快照日期，不继承上游日期/金额上下文。
         "amount_currency_basis": "CNY",
         "amount_currency_basis_note": (
             (
@@ -838,13 +1364,7 @@ def _duration_risk_payload(
         "date_basis": "formal_snapshot",
         "fallback_date": None,
         "source_surface": "risk_tensor",
-        "source_version": str(meta.get("source_version") or "sv_agent_duration_risk"),
-        "vendor_version": str(meta.get("vendor_version") or "vv_none"),
-        "rule_version": str(meta.get("rule_version") or RULE_VERSION),
-        "cache_version": str(meta.get("cache_version") or "cv_agent_duration_risk_v1"),
         "result_kind": "agent.duration_risk",
-        "vendor_status": str(meta.get("vendor_status") or "ok"),
-        "fallback_mode": str(meta.get("fallback_mode") or "none"),
         "next_drill": [
             {"dimension": "tenor_bucket", "label": "按期限桶查看"},
             {"dimension": "duration_exclusions", "label": "查看久期排除项"},
@@ -921,12 +1441,25 @@ def _duration_numeric_display(value: Any) -> str:
     return str(value.get("display") or "—")
 
 
-def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
+def _credit_exposure_payload(
+    request: AgentQueryRequest,
+    duckdb_path: str,
+    governance_dir: str,
+) -> dict[str, Any]:
+    from backend.app.services.bond_analytics_service import (
+        bond_analytics_credit_exposure_governance_meta,
+    )
+
     repo = BondAnalyticsRepository(duckdb_path)
     report_date = _latest_or_requested(request, repo.list_report_dates())
     if report_date is None:
         raise ValueError("No bond-analytics report date is available.")
     summary = repo.fetch_credit_summary(report_date=report_date)
+    governance_meta = bond_analytics_credit_exposure_governance_meta(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
+    )
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if _requested_report_date(request) else "latest_default"
     )
@@ -937,7 +1470,11 @@ def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> di
         summary.get(field) is not None
         for field in ("credit_market_value", "spread_dv01", "oci_credit_exposure")
     )
-    formal_use_allowed = credit_bond_count > 0 and summary_values_complete
+    formal_use_allowed = (
+        bool(governance_meta.get("formal_use_allowed", False))
+        and credit_bond_count > 0
+        and summary_values_complete
+    )
     quality_flag: Literal["ok", "warning"] = "ok" if formal_use_allowed else "warning"
     if credit_bond_count <= 0:
         answer = (
@@ -954,6 +1491,12 @@ def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> di
             f"{report_date} 的信用暴露摘要已返回，信用债 {credit_bond_count} 只，"
             f"信用市值 {summary['credit_market_value']}。"
         )
+    if credit_bond_count > 0 and summary_values_complete and not governance_meta.get("formal_use_allowed"):
+        reason = str(governance_meta.get("fallback_reason") or "bond analytics governance lineage unavailable")
+        answer += (
+            "Bond Analytics 正式治理 run 或 lineage 不完整；"
+            f"系统已 fail-closed，本结果按非正式口径返回（formal_use_allowed=false）。原因：{reason}"
+        )
     return {
         "answer": answer,
         "cards": [
@@ -967,15 +1510,29 @@ def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> di
         "row_count": credit_bond_count,
         "sql_executed": _CREDIT_EXPOSURE_SQL_DISCLOSURE,
         "quality_flag": quality_flag,
-        "basis": "formal",
-        "formal_use_allowed": formal_use_allowed,
-        "scenario_flag": False,
-        "source_version": "sv_agent_credit_exposure",
-        "rule_version": RULE_VERSION,
-        "cache_version": "cv_agent_credit_exposure_v1",
+        **_upstream_meta_projection(
+            governance_meta,
+            agent_formal_gate=formal_use_allowed,
+            governance_defaults={
+                "basis": "formal",
+                "source_version": "sv_bond_analytics_empty",
+                "vendor_version": "vv_none",
+                "rule_version": RULE_VERSION,
+                "cache_version": "cv_agent_credit_exposure_v1",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+            },
+            inherit_context=True,
+            context_defaults={
+                "requested_report_date": _requested_report_date(request),
+                "resolved_report_date": report_date,
+                "as_of_date": report_date,
+                "date_basis": "bond_analytics_report_date",
+                "source_surface": "bond_analytics",
+            },
+        ),
+        "fallback_reason": governance_meta.get("fallback_reason"),
         "result_kind": "agent.credit_exposure",
-        "vendor_status": "ok",
-        "fallback_mode": "none",
         "next_drill": [
             {"dimension": "issuer", "label": "按发行人查看"},
             {"dimension": "rating", "label": "按评级查看"},
@@ -984,47 +1541,55 @@ def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> di
 
 
 def _product_pnl_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
+    from backend.app.services.product_category_pnl_service import product_category_pnl_envelope
+
     repo = ProductCategoryPnlRepository(duckdb_path)
     report_date = _latest_or_requested(request, repo.list_report_dates())
     if report_date is None:
         raise ValueError("No product-category report date is available.")
     view = str(request.filters.get("view") or "monthly")
-    rows = repo.fetch_rows(report_date, view)
+    upstream = product_category_pnl_envelope(
+        duckdb_path,
+        report_date=report_date,
+        view=view,
+    )
+    result = dict(cast(Mapping[str, Any], upstream.get("result") or {}))
+    meta = dict(cast(Mapping[str, Any], upstream.get("result_meta") or {}))
+    rows = list(result.get("rows") or [])
     if not rows:
         raise ValueError(f"No product-category rows for report_date={report_date} view={view}.")
     # fail-closed：grand_total 行缺失时不得静默用首行冒充总计。
+    upstream_grand_total = result.get("grand_total")
     grand_total_row: dict[str, Any] | None = next(
         (row for row in rows if str(row.get("category_id")) == "grand_total"),
-        None,
+        upstream_grand_total if isinstance(upstream_grand_total, dict) and upstream_grand_total else None,
     )
-    grand_total: dict[str, Any] = grand_total_row or {}
-    asset_total: dict[str, Any] = next(
-        (row for row in rows if str(row.get("category_id")) == "asset_total"),
-        {},
-    )
-    liability_total: dict[str, Any] = next(
-        (row for row in rows if str(row.get("category_id")) == "liability_total"),
-        {},
-    )
+    grand_total: dict[str, Any] = dict(grand_total_row or {})
+    asset_total = dict(result.get("asset_total") or {})
+    if not asset_total:
+        asset_total = next(
+            (row for row in rows if str(row.get("category_id")) == "asset_total"),
+            {},
+        )
+    liability_total = dict(result.get("liability_total") or {})
+    if not liability_total:
+        liability_total = next(
+            (row for row in rows if str(row.get("category_id")) == "liability_total"),
+            {},
+        )
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if _requested_report_date(request) else "latest_default"
     )
-    source_version = (
-        str(rows[0].get("source_version") or "").strip()
-        or str(repo.latest_source_version() or "").strip()
+    formal_use_allowed = grand_total_row is not None
+    upstream_quality = str(meta.get("quality_flag") or "warning")
+    quality_flag: Literal["ok", "warning"] = (
+        "ok" if upstream_quality == "ok" and formal_use_allowed else "warning"
     )
-    formal_use_allowed = grand_total_row is not None and bool(source_version)
-    quality_flag: Literal["ok", "warning"] = "ok" if formal_use_allowed else "warning"
     answer = f"{report_date} 的产品损益视图已返回，当前 view={view}。"
     if grand_total_row is None:
         answer += (
             "读模型缺少 grand_total 汇总行；"
             "系统已 fail-closed，未生成正式总计指标（formal_use_allowed=false）。"
-        )
-    elif not source_version:
-        answer += (
-            "受治理 lineage 缺少 source_version；"
-            "系统已 fail-closed，本结果按非正式口径返回（formal_use_allowed=false）。"
         )
     return {
         "answer": answer,
@@ -1048,15 +1613,26 @@ def _product_pnl_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
         "row_count": len(rows),
         "sql_executed": _PRODUCT_PNL_SQL_DISCLOSURE,
         "quality_flag": quality_flag,
-        "basis": "formal",
-        "formal_use_allowed": formal_use_allowed,
-        "scenario_flag": False,
-        "source_version": source_version or "sv_product_pnl_lineage_unavailable",
-        "rule_version": str(rows[0].get("rule_version") or RULE_VERSION),
-        "cache_version": "cv_agent_product_pnl_v1",
+        **_upstream_meta_projection(
+            meta,
+            agent_formal_gate=formal_use_allowed,
+            governance_defaults={
+                "basis": "formal",
+                "source_version": "sv_product_pnl_lineage_unavailable",
+                "vendor_version": "vv_none",
+                "rule_version": RULE_VERSION,
+                "cache_version": "cv_agent_product_pnl_v1",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+            },
+            inherit_context=True,
+            context_defaults={
+                "requested_report_date": _requested_report_date(request),
+                "resolved_report_date": report_date,
+                "as_of_date": report_date,
+            },
+        ),
         "result_kind": "agent.product_pnl",
-        "vendor_status": "ok",
-        "fallback_mode": "none",
         "next_drill": [{"dimension": "product_category", "label": "按产品分类查看"}],
     }
 
@@ -1112,15 +1688,19 @@ def _pnl_bridge_payload(
         "row_count": int(summary.get("row_count", 0)),
         "sql_executed": _PNL_BRIDGE_SQL_DISCLOSURE,
         "quality_flag": quality_flag,
-        "basis": str(meta.get("basis") or "formal"),
-        "formal_use_allowed": formal_use_allowed,
-        "scenario_flag": bool(meta.get("scenario_flag", False)),
-        "source_version": str(meta.get("source_version") or "sv_agent_pnl_bridge"),
-        "vendor_version": str(meta.get("vendor_version") or "vv_none"),
-        "rule_version": str(meta.get("rule_version") or RULE_VERSION),
-        "cache_version": str(meta.get("cache_version") or "cv_agent_pnl_bridge_v1"),
-        "vendor_status": str(meta.get("vendor_status") or "ok"),
-        "fallback_mode": str(meta.get("fallback_mode") or "none"),
+        **_upstream_meta_projection(
+            meta,
+            agent_formal_gate=formal_use_allowed,
+            governance_defaults={
+                "basis": "formal",
+                "source_version": "sv_agent_pnl_bridge",
+                "vendor_version": "vv_none",
+                "rule_version": RULE_VERSION,
+                "cache_version": "cv_agent_pnl_bridge_v1",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+            },
+        ),
         "result_kind": "agent.pnl_bridge",
         "next_drill": [{"dimension": "instrument", "label": "按券桥接查看"}],
     }
@@ -1197,15 +1777,19 @@ def _risk_tensor_payload(
         "row_count": int(result.get("bond_count", 0)),
         "sql_executed": _RISK_TENSOR_SQL_DISCLOSURE,
         "quality_flag": quality_flag,
-        "basis": str(meta.get("basis") or "formal"),
-        "formal_use_allowed": formal_use_allowed,
-        "scenario_flag": bool(meta.get("scenario_flag", False)),
-        "source_version": str(meta.get("source_version") or "sv_agent_risk_tensor"),
-        "vendor_version": str(meta.get("vendor_version") or "vv_none"),
-        "rule_version": str(meta.get("rule_version") or RULE_VERSION),
-        "cache_version": str(meta.get("cache_version") or "cv_agent_risk_tensor_v1"),
-        "vendor_status": str(meta.get("vendor_status") or "ok"),
-        "fallback_mode": str(meta.get("fallback_mode") or "none"),
+        **_upstream_meta_projection(
+            meta,
+            agent_formal_gate=formal_use_allowed,
+            governance_defaults={
+                "basis": "formal",
+                "source_version": "sv_agent_risk_tensor",
+                "vendor_version": "vv_none",
+                "rule_version": RULE_VERSION,
+                "cache_version": "cv_agent_risk_tensor_v1",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+            },
+        ),
         "result_kind": "agent.risk_tensor",
         "next_drill": [{"dimension": "krd_bucket", "label": "按KRD桶查看"}],
     }
@@ -1339,6 +1923,13 @@ def _pretrade_checklist_payload(request: AgentQueryRequest, duckdb_path: str) ->
     门控敞口轻读不在披露中展开。服务返回 None（库/候选历史表缺失、无信号日）
     时降级为「数据未生成」文案，不抛错、不编造清单。
     """
+    from backend.app.governance.settings import get_settings
+    from backend.app.repositories.duckdb_read_context import DuckDBReadSelectionError
+    from backend.app.repositories.financial_result_publication_repo import FinancialPublicationError
+    from backend.app.repositories.system_read_publication_repo import (
+        current_system_read_context,
+        system_read_scope,
+    )
     from backend.app.services.pretrade_checklist_service import pretrade_checklist_envelope
 
     raw_as_of = str(request.filters.get("as_of_date") or "").strip()
@@ -1346,21 +1937,46 @@ def _pretrade_checklist_payload(request: AgentQueryRequest, duckdb_path: str) ->
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if requested_as_of else "latest_default"
     )
-    upstream = pretrade_checklist_envelope(
-        duckdb_path=duckdb_path,
-        as_of_date=requested_as_of,
+    page_filters = (
+        request.page_context.current_filters
+        if request.page_context is not None
+        else {}
     )
+    selected_generation = str(page_filters.get("system_read_generation") or "").strip()
+    unavailable_reason: str | None = None
+    upstream: dict[str, object] | None = None
+    if not selected_generation:
+        unavailable_reason = "system_read_generation_missing"
+    else:
+        try:
+            with system_read_scope(get_settings(), generation=selected_generation):
+                selected_context = current_system_read_context()
+                if (
+                    selected_context is None
+                    or selected_context.generation != selected_generation
+                ):
+                    unavailable_reason = "system_read_generation_unavailable"
+                else:
+                    upstream = pretrade_checklist_envelope(
+                        duckdb_path=duckdb_path,
+                        as_of_date=requested_as_of,
+                    )
+        except (DuckDBReadSelectionError, FinancialPublicationError):
+            unavailable_reason = "system_read_generation_unavailable"
     if upstream is None:
+        detail = unavailable_reason or (
+            "livermore_candidate_history 无 factor_screen 信号日或数据面不可用。"
+        )
         return {
             "answer": (
-                "盘前操作清单数据未生成：当前库中没有可用的因子筛选候选信号日"
-                "（或候选历史表缺失），本轮未产出可买/拦截判定。"
+                f"盘前操作清单不可用：{detail}"
+                "本轮未产出可买、复核或仓位提示。"
             ),
             "cards": [
                 {
                     "type": "status",
                     "title": "Pretrade Checklist Unavailable",
-                    "value": "livermore_candidate_history 无 factor_screen 信号日或数据面不可用。",
+                    "value": detail,
                 }
             ],
             "tables_used": ["livermore_candidate_history"],
@@ -1368,7 +1984,11 @@ def _pretrade_checklist_payload(request: AgentQueryRequest, duckdb_path: str) ->
                 request,
                 requested_as_of,
                 resolution=rd_mode,
-                extra={"signal_kind": "factor_screen"},
+                extra={
+                    "signal_kind": "factor_screen",
+                    "system_read_generation": selected_generation or None,
+                    "pretrade_unavailable_reason": unavailable_reason,
+                },
             ),
             "row_count": 0,
             "sql_executed": _PRETRADE_CHECKLIST_SQL_DISCLOSURE,
@@ -1393,6 +2013,59 @@ def _pretrade_checklist_payload(request: AgentQueryRequest, duckdb_path: str) ->
     gate = dict(result.get("gate", {}))
     as_of = str(result.get("as_of_date") or "")
     checklist_status = str(result.get("checklist_status") or "empty")
+    qualification = dict(
+        result.get("qualification")
+        or result.get("pretrade_qualification")
+        or {}
+    )
+    if checklist_status == "unavailable" or qualification.get("status") == "unavailable":
+        qualification_reason = str(
+            qualification.get("reason")
+            or "completed_pretrade_provenance_missing"
+        )
+        return {
+            "answer": (
+                f"盘前操作清单不可用：{qualification_reason}。"
+                "本轮未产出可买、复核或仓位提示。"
+            ),
+            "cards": [
+                {
+                    "type": "status",
+                    "title": "Pretrade Checklist Unavailable",
+                    "value": qualification_reason,
+                }
+            ],
+            "tables_used": list(meta.get("tables_used") or ["livermore_candidate_history"]),
+            "filters_applied": _audit_filters(
+                request,
+                as_of or requested_as_of,
+                resolution=rd_mode,
+                extra={
+                    "signal_kind": result.get("signal_kind"),
+                    "checklist_status": "unavailable",
+                    "system_read_generation": selected_generation,
+                    "pretrade_unavailable_reason": qualification_reason,
+                },
+            ),
+            "row_count": 0,
+            "sql_executed": _PRETRADE_CHECKLIST_SQL_DISCLOSURE,
+            "quality_flag": "warning",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "scenario_flag": False,
+            "source_version": str(meta.get("source_version") or "sv_pretrade_checklist_unavailable"),
+            "vendor_version": str(meta.get("vendor_version") or "vv_none"),
+            "rule_version": str(meta.get("rule_version") or "rv_pretrade_checklist_v1"),
+            "cache_version": str(meta.get("cache_version") or "cv_agent_pretrade_checklist_v1"),
+            "result_kind": "agent.pretrade_checklist",
+            "vendor_status": str(meta.get("vendor_status") or "ok"),
+            "fallback_mode": str(meta.get("fallback_mode") or "none"),
+            "requested_report_date": requested_as_of,
+            "resolved_report_date": as_of or None,
+            "as_of_date": str(meta.get("as_of_date") or as_of or "") or None,
+            "date_basis": "livermore_signal_snapshot_as_of_date",
+            "next_drill": [],
+        }
 
     buyable_items = [item for item in items if str(item.get("buyable_status")) == "buyable"]
     blocked_items = [
@@ -1515,6 +2188,7 @@ def _pretrade_checklist_payload(request: AgentQueryRequest, duckdb_path: str) ->
                 "signal_kind": result.get("signal_kind"),
                 "top_n": result.get("top_n"),
                 "checklist_status": checklist_status,
+                "system_read_generation": selected_generation,
             },
         ),
         "row_count": len(items),
@@ -1752,11 +2426,42 @@ def _walk_forward_report_reference(report_path: Path) -> str:
         return str(report_path)
 
 
+def _semantic_query_audit_fields(request: AgentQueryRequest) -> dict[str, Any]:
+    """Audit only the validated server pin; never copy arbitrary request context."""
+    if SEMANTIC_EXECUTION_CONTEXT_KEY not in request.context:
+        return {}
+    try:
+        snapshot = validate_semantic_execution_request(
+            request,
+            require_current_versions=True,
+        )
+    except (TypeError, ValueError):
+        # Invalid pins can cause the query failure being audited. Preserve that
+        # failure without promoting their claimed versions or execution scope.
+        return {"semantic_execution_validation": "invalid"}
+    return {
+        "semantic_operation": snapshot["operation"],
+        "semantic_metric_id": snapshot["metric_id"],
+        "semantic_intent": snapshot["intent"],
+        "semantic_reason": snapshot["reason"],
+        "semantic_reason_code": snapshot["reason_code"],
+        "semantic_required_resources": snapshot["required_resources"],
+        "semantic_request_scope": snapshot["request_scope"],
+        "semantic_ontology_revision": snapshot["ontology_revision"],
+        "semantic_binding_revision": snapshot["binding_revision"],
+        "semantic_parser_revision": snapshot["parser_revision"],
+    }
+
+
 def _append_envelope_audit(
     request: AgentQueryRequest,
     governance_dir: str,
     envelope: AgentEnvelope,
 ) -> None:
+    result_meta = envelope.result_meta.model_dump(mode="json")
+    if envelope.semantic_context is not None:
+        result_meta["semantic_context"] = envelope.semantic_context.model_dump(mode="json")
+    result_meta.update(_semantic_query_audit_fields(request))
     _append_audit(
         request=request,
         governance_dir=governance_dir,
@@ -1764,7 +2469,7 @@ def _append_envelope_audit(
         tools_used=_envelope_tools_used(envelope),
         tables_used=list(envelope.evidence.tables_used),
         filters_applied=dict(envelope.evidence.filters_applied),
-        result_meta=envelope.result_meta.model_dump(mode="json"),
+        result_meta=result_meta,
     )
 
 
@@ -1802,6 +2507,7 @@ def _append_failed_query_audit(
             "scenario_flag": request.basis == "scenario",
             "provider": "local",
             "error_type": error.__class__.__name__,
+            **_semantic_query_audit_fields(request),
         },
     )
 
@@ -1846,12 +2552,22 @@ def _requested_report_date(request: AgentQueryRequest) -> str | None:
     if not isinstance(current_filters, dict):
         current_filters = {}
     page_current_filters = request.page_context.current_filters if request.page_context else {}
-    for key in ("report_date", "date"):
-        for container in (request.filters, request.context, current_filters, page_current_filters):
-            value = container.get(key)
-            if value is not None and str(value).strip():
-                return str(value).strip()
-    return None
+    selected = next((
+        container[key]
+        for key in ("report_date", "date")
+        for container in (request.filters, request.context, current_filters, page_current_filters)
+        if container.get(key) is not None and str(container[key]).strip()
+    ), None)
+    # Preserve structured-filter precedence; only the effective date may be
+    # compared with dates explicitly written in the question.
+    date_request = AgentQueryRequest(
+        question=request.question,
+        filters={"report_date": selected} if selected is not None else {},
+    )
+    report_date, error = _semantic_report_date(date_request, request.question)
+    if error is not None:
+        raise ValueError(error)
+    return report_date
 
 
 def _coerce_iso_report_date(raw: str) -> str:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import date
 
 import duckdb
 import pytest
@@ -397,6 +398,13 @@ def test_choice_news_pull_snapshot_prefers_eitime_when_datetime_is_future(
 
     monkeypatch.setattr(task_module, "_init_runtime", lambda: None)
     monkeypatch.setattr(task_module, "ChoiceClient", lambda: FakeChoiceClient())
+    # 钉住"今天"：pull 路径不接受 as_of_date，若按真实时钟判定，夹具里的 DATETIME
+    # 会在日历过了那天之后不再是"未来"，用例就变成时间炸弹。
+    monkeypatch.setattr(
+        task_module,
+        "_choice_news_as_of_date",
+        lambda as_of_date=None: date(2026, 4, 10),
+    )
 
     payload = task_module.pull_choice_sectornews_snapshot.fn(
         duckdb_path=str(duckdb_path),
@@ -904,3 +912,45 @@ def test_choice_news_source_health_empty_table_stays_healthy(tmp_path) -> None:
     assert meta["vendor_status"] == "ok"
     assert meta["fallback_mode"] == "none"
     assert result["total_rows"] == 0
+
+def test_choice_news_latest_includes_same_day_timestamped_rows(tmp_path, monkeypatch) -> None:
+    """received_to 是日期口径：as_of 当天带时间戳的行必须进结果且不算未来行。"""
+    class MockDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 4, 20)
+
+    monkeypatch.setattr("backend.app.services.choice_news_service.date", MockDate)
+
+    duckdb_path = tmp_path / "same-day.duckdb"
+    _create_empty_choice_news_table(duckdb_path)
+    today = date(2026, 4, 20).isoformat()
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute(
+            "insert into choice_news_event values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                "evt-same-day",
+                f"{today} 10:20:00+00:00",
+                "news_cmd1",
+                "sectornews",
+                1,
+                10002,
+                0,
+                "success",
+                "C000022",
+                0,
+                "headline-today",
+                None,
+            ],
+        )
+    finally:
+        conn.close()
+
+    payload = choice_news_latest_envelope(str(duckdb_path))
+    result = payload["result"]
+
+    assert isinstance(result, dict)
+    assert result["total_rows"] == 1
+    assert [event["event_key"] for event in result["events"]] == ["evt-same-day"]
+    assert result["excluded_future_rows"] == 0

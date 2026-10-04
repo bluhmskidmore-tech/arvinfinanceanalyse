@@ -2,8 +2,9 @@ import { Alert, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { AdbAnomalyItem, AdbVolatilityBlock, AdbVolatilitySeries } from "../../../api/contracts";
+import { SectionHead } from "../../../components/layout";
 import { EM_DASH, formatYi } from "../../../utils/format";
-import AdbSectionHead from "./AdbSectionHead";
+import { ADB_SECTION_HEAD_NUMBERING } from "./adbSectionHeadNumbering";
 import { formatAlreadyPercent, toneClassForSign } from "./adbDeepAnalysisFormat";
 
 import "./AverageBalanceView.css";
@@ -83,7 +84,15 @@ function buildAnomalyColumns(): ColumnsType<AdbAnomalyItem> {
 export default function AdbVolatilityPanel({ volatility }: AdbVolatilityPanelProps) {
   return (
     <section className="adb-sec" data-testid="adb-volatility-panel">
-      <AdbSectionHead title="波动与异常" meta="z-score 基于当期日变动序列自身均值/标准差" />
+      <SectionHead
+        title="波动与异常"
+        numbered={ADB_SECTION_HEAD_NUMBERING}
+        actions={
+          <span className="adb-sec-meta" title="z-score 基于当期日变动序列自身均值/标准差">
+            z-score 基于当期日变动序列自身均值/标准差
+          </span>
+        }
+      />
       <p className="adb-note">
         口径：仅统计本期观测日（缺失日不补0）；|z|≥2.5 判定为异常日；月末效应=月末余额相对月中均值的偏离。
       </p>

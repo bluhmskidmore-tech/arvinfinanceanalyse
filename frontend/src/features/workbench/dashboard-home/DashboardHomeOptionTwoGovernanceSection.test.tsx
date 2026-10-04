@@ -164,6 +164,70 @@ describe("DashboardHomeOptionTwoGovernanceSection", () => {
     expect(ledger).not.toHaveTextContent("审计已闭合");
   });
 
+  it("keeps ready rows quiet: no completion badge word, label only in title and screen-reader text", () => {
+    render(<DashboardHomeOptionTwoGovernanceSection view={populatedView()} />);
+
+    const source = screen.getByTestId("dashboard-home-source-gate");
+    // 上游 ready 文案「已接入」不进台账（§12 结论 17 常态收声）。
+    expect(source).not.toHaveTextContent("已接入");
+    expect(source).not.toHaveTextContent("已就绪");
+    const holdingsRow = source.querySelector('[data-source-id="holdings"]');
+    const status = holdingsRow?.querySelector('[data-tone="ok"]');
+    expect(status).toHaveAttribute("title", "正常");
+    expect(status?.textContent).toBe("正常");
+    // 异常态仍可见发声：stale 行保留原文与琥珀 tone。
+    const incomeRow = source.querySelector('[data-source-id="income"]');
+    expect(incomeRow?.querySelector('[data-tone="warn"]')).toHaveTextContent("收益数据偏旧");
+  });
+
+  it("maps news source status by meaning: 正常 is a quiet ok dot, 兜底/偏旧 stay amber", () => {
+    const base = populatedView();
+    render(
+      <DashboardHomeOptionTwoGovernanceSection
+        view={makeView({
+          ...base,
+          bondNews: {
+            ...base.bondNews,
+            marketNews: [
+              {
+                id: "bn-1",
+                title: "利率债一级招标结果",
+                timeLabel: "09-02 10:00",
+                sourceLabel: "Choice",
+                topicLabel: "债券市场",
+                hitLabel: null,
+              },
+            ],
+            statusLabel: "来源状态：正常",
+          },
+          macroBriefing: {
+            ...base.macroBriefing,
+            newsItems: [
+              {
+                id: "mn-1",
+                timeLabel: "09-02 13:36",
+                topicLabel: "央行/公开市场",
+                title: "央行开展逆回购操作",
+                freshnessLabel: "今日更新",
+              },
+            ],
+            newsStale: false,
+            newsStatusLabel: "来源状态：Tushare 兜底",
+          },
+        })}
+      />,
+    );
+
+    const source = screen.getByTestId("dashboard-home-source-gate");
+    const bondRow = source.querySelector('[data-source-id="bond-news"]');
+    const bondStatus = bondRow?.querySelector('[data-tone="ok"]');
+    expect(bondStatus).toHaveAttribute("title", "正常");
+    expect(bondRow).not.toHaveTextContent("来源状态");
+    const macroRow = source.querySelector('[data-source-id="macro-news"]');
+    expect(macroRow?.querySelector('[data-tone="warn"]')).toHaveTextContent("Tushare 兜底");
+    expect(macroRow).not.toHaveTextContent("来源状态：");
+  });
+
   it("shows empty, error and stale states without inventing dates", () => {
     const base = makeView();
     render(

@@ -77,7 +77,7 @@ export function buildNcdProxyHeatmapOption(
         return `${label} · ${tenor}<br/>${value == null ? EM_DASH : value.toFixed(3)}`;
       },
     }),
-    grid: { left: 96, right: 12, top: 18, bottom: 28, containLabel: true },
+    grid: { left: 96, right: 12, top: 18 },
     xAxis: {
       type: "category",
       data: [...TENORS],

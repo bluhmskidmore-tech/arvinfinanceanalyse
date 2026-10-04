@@ -6,6 +6,7 @@ from calendar import monthrange
 from datetime import date
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
+from backend.app.core_finance.cashflow_projection import _add_months, _coupon_dates_between
 from backend.app.core_finance.config.classification_rules import infer_invest_type
 from backend.app.core_finance.field_normalization import (
     ACCOUNTING_BASIS_AC,
@@ -14,6 +15,7 @@ from backend.app.core_finance.field_normalization import (
     derive_accounting_basis_value,
 )
 from backend.app.core_finance.safe_decimal import safe_decimal as _core_safe_decimal
+from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +64,20 @@ CREDIT_KEYWORDS = (
     "中票",
     "短融",
     "超短融",
-    "PPN",
-    "ABS",
+    "ppn",
+    "abs",
     "corporate",
     "credit",
+) + tuple(
+    keyword.lower()
+    for definition in ZQTZ_ASSET_BOND_ROWS
+    if definition["row_key"] in {
+        "asset_zqtz_commercial_financial_bond",
+        "asset_zqtz_interbank_cd",
+        "asset_zqtz_nonfinancial_enterprise_bond",
+        "asset_zqtz_abs",
+    }
+    for keyword in definition["match_keywords"]
 )
 CDB_KEYWORDS = ("国开", "政策性", "政金", "cdb", "policy bank")
 
@@ -240,23 +252,23 @@ def resolve_missing_maturity_duration(
 
 def resolve_ytm_with_par_fallback(
     coupon_rate: Decimal,
-    ytm: Decimal,
+    ytm: Decimal | None,
 ) -> tuple[Decimal, bool]:
-    """解析久期/修正久期/凸性估计所用的生效 ytm；有票息缺 ytm 时用 par 假设。
+    """解析久期/修正久期/凸性生效 YTM；缺失时才用 par 假设。
 
-    W-fi-2026-08 P1：有票息但 ytm 缺失/非正的债此前落入零息回退
+    W-fi-2026-08 P1：有票息但 ytm 缺失的债此前落入零息回退
     （Macaulay=剩余年限），10Y/3% 票息券回退值 10 年 vs par 口径 ≈8.79 年，
     久期与 DV01 被系统性高估。与 bond_duration._estimate_macaulay_duration_years
     的既有口径对齐：按 ytm=coupon_rate（par 假设）走 Macaulay。
 
-    返回 ``(生效 ytm, 是否使用 par 回退)``。ytm>0 正常路径与零票息路径
-    （零息债 Macaulay=剩余年限本就正确）行为不变。
+    返回 ``(生效 ytm, 是否使用 par 回退)``。所有有限观测值（包括 0 与合法
+    负收益率）保留原值；调用方必须以 ``None`` 表示缺失/脏值，不得先折成 0。
     """
-    if ytm > 0:
+    if ytm is not None and ytm.is_finite():
         return ytm, False
     if coupon_rate > 0:
         return coupon_rate, True
-    return ytm, False
+    return Decimal("0"), False
 
 
 # 收益率复利惯例：源字段「到期收益率」是**名义年利率、按付息频率复利**
@@ -295,6 +307,34 @@ def _single_cashflow_convexity(
     return numerator / (base**2)
 
 
+_DAYS_PER_YEAR = Decimal("365")
+
+
+def whole_period_calendar_merge_tolerance_days(
+    nearest_whole_years: Decimal,
+    coupon_frequency: int,
+) -> Decimal:
+    """无日期调用的历史 0.01 期兼容阈值；不能据此推断真实付息日。
+
+    阈值不随期限增长。已知日期的正式路径必须用票息日历，不能用闰日预算吞掉未来票息。
+    ``nearest_whole_years`` 保留供既有调用方使用，已不影响阈值。
+    """
+    frequency = Decimal(str(coupon_frequency)) if coupon_frequency > 0 else Decimal("1")
+    return Decimal("0.01") * _DAYS_PER_YEAR / frequency
+
+
+def whole_period_calendar_merge_applies(
+    years_to_maturity: Decimal,
+    nearest_periods: int,
+    coupon_frequency: int,
+) -> bool:
+    """仅无日期调用使用的历史小碎期归并；真实日期路径不使用该猜测窗口。"""
+    frequency = Decimal(str(coupon_frequency)) if coupon_frequency > 0 else Decimal("1")
+    # 直接以期数判定，保持历史精确边界；量化成微天会误判月付的 0.01 期端点。
+    fractional_period = years_to_maturity * frequency - Decimal(nearest_periods)
+    return Decimal("0") <= fractional_period <= Decimal("0.01")
+
+
 def compute_macaulay_duration_and_convexity(
     coupon_rate: Decimal,
     ytm: Decimal,
@@ -302,6 +342,8 @@ def compute_macaulay_duration_and_convexity(
     coupon_frequency: int = 1,
     *,
     single_cashflow_at_maturity: bool = False,
+    report_date: date | None = None,
+    maturity_date: date | None = None,
 ) -> tuple[Decimal, Decimal]:
     """一次遍历现金流，同时产出 Macaulay 久期（年）与标准现金流凸性（年²）。
 
@@ -316,8 +358,10 @@ def compute_macaulay_duration_and_convexity(
     验证。实现里按年单位写作 ``C = Σ t_k(t_k + 1/f)·PV_k / P / (1+y/f)²``，与上式等价
     （``k(k+1)/f² = t_k(t_k + 1/f)``）。
 
-    ``coupon_frequency`` 同时决定现金流时点（每 1/f 年一笔，末笔落在到期日，首期为
-    残期）与折现除数，这与源 ytm 的报价惯例一致，不拆分。
+    日期齐全且频率能整除 12 时，复用到期日锚定的票息日历，报告日当天已付票息不再计入。
+    保留既有混合时间口径：报告日严格落在票息网格时用 k/f 年；其余日期用实际票息日距
+    报告日的 ACT/365 年数。所有分支仍按 (1+y/f)^(t*f) 折现。无日期或不能按月建模的
+    频率保留历史等间隔碎期口径，不用随期限增长的容差猜测真实票息日期。
 
     ``single_cashflow_at_maturity=True`` 声明该券的全部现金流（本金+利息）一次性落在
     到期日（bullet / 到期一次还本付息）：即使票息为正也不得虚构中途付息现金流，
@@ -328,49 +372,67 @@ def compute_macaulay_duration_and_convexity(
     if years_to_maturity <= 0:
         return Decimal("0"), Decimal("0")
     # 零息/无票息：唯一现金流落在到期日，D 恒等于剩余年限，C 有闭式解。
-    # ytm <= 0 时同样走这里：与 ``estimate_duration`` 的零息代理口径一致
-    # （久期退化为剩余年限），凸性随之取同一时点的标准值而非 D² 特判。
     # bullet（到期一次还本付息）与零息同构：唯一现金流在到期日。
-    if single_cashflow_at_maturity or coupon_rate <= 0 or ytm <= 0:
+    if single_cashflow_at_maturity or coupon_rate <= 0:
         return years_to_maturity, _single_cashflow_convexity(
             years_to_maturity, ytm, coupon_frequency
         )
 
-    raw_periods = years_to_maturity * Decimal(str(coupon_frequency))
-    full_periods = int(raw_periods)
-    fractional_period = raw_periods - Decimal(str(full_periods))
-    if full_periods > 0 and Decimal("0") < fractional_period <= Decimal("0.01"):
-        n_periods = full_periods
-        cashflow_years = Decimal(str(full_periods)) / Decimal(str(coupon_frequency))
+    if coupon_frequency <= 0:
+        return years_to_maturity, _single_cashflow_convexity(
+            years_to_maturity, ytm, coupon_frequency
+        )
+
+    frequency = Decimal(str(coupon_frequency))
+    one_plus_y = Decimal("1") + ytm / frequency
+    if one_plus_y <= 0:
+        return years_to_maturity, _single_cashflow_convexity(
+            years_to_maturity, ytm, coupon_frequency
+        )
+
+    if report_date is not None and maturity_date is not None and 12 % coupon_frequency == 0:
+        interval_months = 12 // coupon_frequency
+        payment_dates = _coupon_dates_between(
+            report_date=report_date,
+            horizon_end=maturity_date,
+            maturity_date=maturity_date,
+            interval_months=interval_months,
+        )
+        n_periods = len(payment_dates)
+        on_coupon_grid = _add_months(maturity_date, -n_periods * interval_months) == report_date
+        payment_times = [
+            Decimal(index + 1) / frequency
+            if on_coupon_grid
+            else Decimal((payment_date - report_date).days) / _DAYS_PER_YEAR
+            for index, payment_date in enumerate(payment_dates)
+        ]
     else:
-        n_periods = int(raw_periods.to_integral_value(rounding=ROUND_CEILING))
-        cashflow_years = years_to_maturity
+        raw_periods = years_to_maturity * frequency
+        nearest_periods = int(raw_periods.to_integral_value(rounding=ROUND_HALF_UP))
+        if nearest_periods > 0 and whole_period_calendar_merge_applies(
+            years_to_maturity, nearest_periods, coupon_frequency
+        ):
+            n_periods = nearest_periods
+            cashflow_years = Decimal(nearest_periods) / frequency
+        else:
+            n_periods = int(raw_periods.to_integral_value(rounding=ROUND_CEILING))
+            cashflow_years = years_to_maturity
+        first_period_years = cashflow_years - Decimal(n_periods - 1) / frequency
+        payment_times = [first_period_years + Decimal(index) / frequency for index in range(n_periods)]
     if n_periods <= 0:
         # coupon_frequency <= 0 也落在这里（raw_periods <= 0）。
         return years_to_maturity, _single_cashflow_convexity(
             years_to_maturity, ytm, coupon_frequency
         )
 
-    frequency = Decimal(str(coupon_frequency))
     c = coupon_rate / coupon_frequency if coupon_frequency > 0 else coupon_rate
-    y = ytm / coupon_frequency if coupon_frequency > 0 else ytm
-    one_plus_y = Decimal("1") + y
 
     pv_sum = Decimal("0")
     convexity_sum = Decimal("0")
     price = Decimal("0")
 
-    first_period_years = (
-        cashflow_years
-        - (Decimal(str(n_periods - 1)) / Decimal(str(coupon_frequency)))
-    )
-    first_period_number = first_period_years * Decimal(str(coupon_frequency))
-
-    for t in range(1, n_periods + 1):
-        payment_time_years = first_period_years + (
-            Decimal(str(t - 1)) / Decimal(str(coupon_frequency))
-        )
-        period_number = first_period_number + Decimal(str(t - 1))
+    for t, payment_time_years in enumerate(payment_times, start=1):
+        period_number = payment_time_years * frequency
         discount = one_plus_y**period_number
         cf = c if t < n_periods else c + Decimal("1")
         pv = cf / discount
@@ -393,6 +455,9 @@ def compute_macaulay_duration(
     ytm: Decimal,
     years_to_maturity: Decimal,
     coupon_frequency: int = 1,
+    *,
+    report_date: date | None = None,
+    maturity_date: date | None = None,
 ) -> Decimal:
     """Macaulay 久期（年）。与凸性共用同一次现金流遍历，见上。
 
@@ -405,6 +470,8 @@ def compute_macaulay_duration(
         ytm=ytm,
         years_to_maturity=years_to_maturity,
         coupon_frequency=coupon_frequency,
+        report_date=report_date,
+        maturity_date=maturity_date,
     )[0]
 
 
@@ -412,7 +479,7 @@ def estimate_duration_with_status(
     maturity_date: date | None,
     report_date: date | None,
     coupon_rate: Decimal = Decimal("0"),
-    ytm: Decimal = Decimal("0"),
+    ytm: Decimal | None = None,
     bond_code: str = "",
     coupon_frequency: int = 1,
 ) -> tuple[Decimal | None, str]:
@@ -433,13 +500,16 @@ def estimate_duration_with_status(
     years = Decimal(str(remaining_days)) / Decimal("365")
 
     effective_ytm, _par_fallback_used = resolve_ytm_with_par_fallback(coupon_rate, ytm)
-    if coupon_rate > 0 and effective_ytm > 0:
+    frequency = Decimal(str(coupon_frequency)) if coupon_frequency > 0 else Decimal("1")
+    if coupon_rate > 0 and coupon_frequency > 0 and Decimal("1") + effective_ytm / frequency > 0:
         return (
             compute_macaulay_duration(
                 coupon_rate,
                 effective_ytm,
                 years,
                 coupon_frequency=coupon_frequency,
+                report_date=report_date,
+                maturity_date=maturity_date,
             ),
             DURATION_TERM_OBSERVED,
         )
@@ -451,7 +521,7 @@ def estimate_duration(
     maturity_date: date | None,
     report_date: date | None,
     coupon_rate: Decimal = Decimal("0"),
-    ytm: Decimal = Decimal("0"),
+    ytm: Decimal | None = None,
     bond_code: str = "",
     coupon_frequency: int = 1,
 ) -> Decimal:
@@ -487,14 +557,16 @@ def estimate_modified_duration(
 
     par 假设路径（estimate_duration 对有票息缺 ytm 的债按 ytm=coupon 计算）
     的调用方需传入该生效 ytm（见 ``resolve_ytm_with_par_fallback``），否则
-    ytm<=0 时保持既有语义：不折算、原样返回 Macaulay。
-
     除数 ``1 + ytm/f`` 与源 ytm 的按付息频率复利报价惯例一致
-    （见 ``YIELD_COMPOUNDING_CONVENTION``），本次凸性标准化不改动它。
+    （见 ``YIELD_COMPOUNDING_CONVENTION``）。合法负收益率同样按标准公式折算；
+    仅当频率无效或折现基数非正时保守返回 Macaulay。
     """
-    if ytm <= 0 or coupon_frequency <= 0:
+    if coupon_frequency <= 0:
         return macaulay_duration
-    return macaulay_duration / (Decimal("1") + ytm / Decimal(str(coupon_frequency)))
+    divisor = Decimal("1") + ytm / Decimal(str(coupon_frequency))
+    if divisor <= 0:
+        return macaulay_duration
+    return macaulay_duration / divisor
 
 
 def estimate_convexity(
@@ -504,6 +576,8 @@ def estimate_convexity(
     *,
     coupon_rate: Decimal | None = None,
     years_to_maturity: Decimal | None = None,
+    report_date: date | None = None,
+    maturity_date: date | None = None,
 ) -> Decimal:
     """标准现金流凸性（年²）。
 
@@ -523,20 +597,23 @@ def estimate_convexity(
     ``ytm <= 0`` 不再特判：标准式在 ``y = 0`` 处连续（旧实现在 ``y=0`` 有 ``D``
     大小的跳变——live 库 1,829 个合并持仓里 155 个、期初市值 529.1 亿落在该分支）。
     """
-    # 只有「有票息 + 正收益率」才真的有多笔现金流可遍历；其余情形（零息、ytm 缺失或
-    # 非正）唯一现金流落在调用方给定的 ``duration`` 上，闭式解与遍历同值，且能沿用
+    # 只有「有票息 + 折现基数为正」才真的有多笔现金流可遍历；其余情形唯一现金流落在
+    # 调用方给定的 ``duration`` 上，闭式解与遍历同值，且能沿用
     # 调用方对久期的口径选择（例如 KRD 的 par 回退久期），不会 D / C 各用一套时点。
     if (
         coupon_rate is not None
         and years_to_maturity is not None
         and coupon_rate > 0
-        and ytm > 0
+        and coupon_frequency > 0
+        and Decimal("1") + ytm / Decimal(str(coupon_frequency)) > 0
     ):
         return compute_macaulay_duration_and_convexity(
             coupon_rate=coupon_rate,
             ytm=ytm,
             years_to_maturity=years_to_maturity,
             coupon_frequency=coupon_frequency,
+            report_date=report_date,
+            maturity_date=maturity_date,
         )[1]
     return _single_cashflow_convexity(duration, ytm, coupon_frequency)
 
@@ -638,7 +715,10 @@ def build_full_curve(raw_curve: dict[str, Decimal]) -> dict[str, Decimal]:
     if not raw_curve:
         return {}
     points = build_curve_points(raw_curve)
+    if not points:
+        return {}
     all_tenors = ["3M", "6M", "9M", "1Y", "2Y", "3Y", "4Y", "5Y", "6Y", "7Y", "10Y", "20Y", "30Y"]
+    all_tenors.extend(tenor for tenor in raw_curve if tenor not in all_tenors and tenor_to_years_or_none(tenor) is not None)
     full: dict[str, Decimal] = {}
     for tenor in all_tenors:
         if tenor in raw_curve:

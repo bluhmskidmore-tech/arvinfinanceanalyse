@@ -382,32 +382,38 @@ def build_dv01_movement_bond_payloads(
     current_all_rows: list[dict[str, object]],
     previous_all_rows: list[dict[str, object]],
 ) -> list[dict[str, object]]:
-    current_by_code = _rows_by_instrument(current_rows)
-    previous_by_code = _rows_by_instrument(previous_rows)
-    current_all_by_code = _rows_by_instrument(current_all_rows)
-    previous_all_by_code = _rows_by_instrument(previous_all_rows)
-    instrument_codes = sorted((set(current_by_code) | set(previous_by_code)) - {""})
-
-    items: list[dict[str, object]] = []
-    for instrument_code in instrument_codes:
-        current_row = current_by_code.get(instrument_code)
-        previous_row = previous_by_code.get(instrument_code)
+    current_positions = _rows_by_position(current_rows)
+    previous_positions = _rows_by_position(previous_rows)
+    current_all = {**current_positions, **_rows_by_position(current_all_rows)}
+    previous_all = {**previous_positions, **_rows_by_position(previous_all_rows)}
+    by_bond: dict[str, list[dict[str, object]]] = {}
+    for current_key, previous_key in _pair_movement_positions(current_all, previous_all):
+        current_row = current_positions.get(current_key) if current_key is not None else None
+        previous_row = previous_positions.get(previous_key) if previous_key is not None else None
+        if current_row is None and previous_row is None:
+            continue
+        current_all_row = current_all.get(current_key) if current_key is not None else None
+        previous_all_row = previous_all.get(previous_key) if previous_key is not None else None
         row = current_row or previous_row or {}
+        instrument_code = str(row["instrument_code"])
         current_dv01 = safe_decimal((current_row or {}).get("dv01"))
         previous_dv01 = safe_decimal((previous_row or {}).get("dv01"))
-        estimated_dv01 = estimated_dv01_from_face_duration(current_row)
-        items.append(
+        estimated_dv01 = safe_decimal((current_row or {}).get("_estimated_dv01"))
+        by_bond.setdefault(instrument_code, []).append(
             {
                 "instrument_code": instrument_code,
+                "portfolio_name": _optional_text(row.get("portfolio_name")),
+                "cost_center": _optional_text(row.get("cost_center")),
+                "currency_code": _optional_text(row.get("currency_code")),
                 "instrument_name": _optional_text(row.get("instrument_name")),
                 "issuer_name": _optional_text(row.get("issuer_name")),
                 "rating": _optional_text(row.get("rating")),
                 "tenor_bucket": str(row.get("tenor_bucket") or ""),
                 "previous_accounting_class": _optional_text(
-                    (previous_row or previous_all_by_code.get(instrument_code) or {}).get("accounting_class")
+                    (previous_row or previous_all_row or {}).get("accounting_class")
                 ),
                 "current_accounting_class": _optional_text(
-                    (current_row or current_all_by_code.get(instrument_code) or {}).get("accounting_class")
+                    (current_row or current_all_row or {}).get("accounting_class")
                 ),
                 "previous_face_value": safe_decimal((previous_row or {}).get("face_value")),
                 "current_face_value": safe_decimal((current_row or {}).get("face_value")),
@@ -415,17 +421,41 @@ def build_dv01_movement_bond_payloads(
                 "current_modified_duration": safe_decimal((current_row or {}).get("modified_duration")),
                 "previous_dv01": previous_dv01,
                 "current_dv01": current_dv01,
+                "_previous_position_exists": previous_row is not None,
+                "_current_position_exists": current_row is not None,
                 "dv01_delta": current_dv01 - previous_dv01,
                 "estimated_dv01_from_face_duration": estimated_dv01,
                 "dv01_estimate_gap": current_dv01 - estimated_dv01,
                 "reason_label": dv01_movement_reason(
                     current_row=current_row,
                     previous_row=previous_row,
-                    current_all_row=current_all_by_code.get(instrument_code),
-                    previous_all_row=previous_all_by_code.get(instrument_code),
+                    current_all_row=current_all_row,
+                    previous_all_row=previous_all_row,
                 ),
             }
         )
+    items: list[dict[str, object]] = []
+    for _instrument_code, positions in sorted(by_bond.items()):
+        item = dict(positions[0])
+        for field in (
+            "previous_face_value", "current_face_value", "previous_dv01", "current_dv01",
+            "dv01_delta", "estimated_dv01_from_face_duration", "dv01_estimate_gap",
+        ):
+            item[field] = sum((safe_decimal(position[field]) for position in positions), ZERO)
+        for period in ("previous", "current"):
+            item[f"{period}_modified_duration"] = face_weighted_modified_duration([
+                {"face_value": position[f"{period}_face_value"],
+                 "modified_duration": position[f"{period}_modified_duration"]}
+                for position in positions
+            ])
+            classes = sorted({str(position[f"{period}_accounting_class"]) for position in positions
+                              if position[f"{period}_accounting_class"]})
+            item[f"{period}_accounting_class"] = ", ".join(classes) or None
+        item["reason_label"] = "、".join(sorted({str(position["reason_label"]) for position in positions}))
+        # Attribution must use the paired holdings, never the weighted bond summary.
+        # This private field is ignored by the outward DV01MovementBondItem schema.
+        item["_position_movements"] = positions
+        items.append(item)
     return items
 
 
@@ -445,7 +475,11 @@ def build_dv01_movement_attribution_payloads(
         key: {"label": label, "dv01_delta": value, "position_count": count}
         for key, label, value, count in driver_order
     }
+    position_rows: list[dict[str, object]] = []
     for row in movement_rows:
+        positions = row.get("_position_movements")
+        position_rows.extend(positions if isinstance(positions, list) else [row])
+    for row in position_rows:
         current_dv01 = safe_decimal(row.get("current_dv01"))
         previous_dv01 = safe_decimal(row.get("previous_dv01"))
         current_face = safe_decimal(row.get("current_face_value"))
@@ -459,10 +493,12 @@ def build_dv01_movement_attribution_payloads(
             delta = current_dv01 - previous_dv01
             _add_driver_delta(totals, "classification_change", delta)
             continue
-        if previous_dv01 == ZERO and current_dv01 != ZERO:
+        previous_exists = bool(row.get("_previous_position_exists", previous_dv01 != ZERO))
+        current_exists = bool(row.get("_current_position_exists", current_dv01 != ZERO))
+        if not previous_exists and current_exists:
             _add_driver_delta(totals, "new_position", current_dv01)
             continue
-        if previous_dv01 != ZERO and current_dv01 == ZERO:
+        if previous_exists and not current_exists:
             _add_driver_delta(totals, "exited_position", -previous_dv01)
             continue
 
@@ -538,8 +574,53 @@ def movement_share(value: Decimal, denominator: Decimal) -> Decimal:
     return value / denominator.copy_abs()
 
 
-def _rows_by_instrument(rows: list[dict[str, object]]) -> dict[str, dict[str, object]]:
-    return {key: row for row in rows if (key := str(row.get("instrument_code") or "").strip())}
+def _rows_by_position(rows: list[dict[str, object]]) -> dict[tuple[str, ...], dict[str, object]]:
+    # Match the formal repository's holding grain. Source/trace IDs vary by date.
+    fields = ("instrument_code", "portfolio_name", "cost_center", "currency_code", "accounting_class")
+    grouped: dict[tuple[str, ...], list[dict[str, object]]] = {}
+    for row in rows:
+        key = tuple(str(row.get(field) or "").strip() for field in fields)
+        if key[0]:
+            grouped.setdefault(key, []).append(row)
+    result: dict[tuple[str, ...], dict[str, object]] = {}
+    def description_key(row: dict[str, object]) -> tuple[str, ...]:
+        return tuple(str(row.get(field) or "") for field in ("instrument_name", "issuer_name", "rating", "tenor_bucket"))
+
+    for key, holdings in sorted(grouped.items()):
+        # Duplicate holding rows are additive, just as they are in the scope total.
+        # Choose descriptive fields deterministically when source rows disagree.
+        item = dict(sorted(holdings, key=description_key)[0])
+        item.update(zip(fields, key, strict=True))
+        item["face_value"] = sum((safe_decimal(row.get("face_value")) for row in holdings), ZERO)
+        item["dv01"] = sum((safe_decimal(row.get("dv01")) for row in holdings), ZERO)
+        item["modified_duration"] = face_weighted_modified_duration(holdings)
+        item["_estimated_dv01"] = sum((estimated_dv01_from_face_duration(row) for row in holdings), ZERO)
+        result[key] = item
+    return result
+
+
+def _pair_movement_positions(
+    current: dict[tuple[str, ...], dict[str, object]],
+    previous: dict[tuple[str, ...], dict[str, object]],
+) -> list[tuple[tuple[str, ...] | None, tuple[str, ...] | None]]:
+    pairs: list[tuple[tuple[str, ...] | None, tuple[str, ...] | None]] = []
+    groups: dict[tuple[str, ...], tuple[set[tuple[str, ...]], set[tuple[str, ...]]]] = {}
+    for index, rows in enumerate((current, previous)):
+        for key in rows:
+            groups.setdefault(key[:-1], (set(), set()))[index].add(key)
+    for _, (current_keys, previous_keys) in sorted(groups.items()):
+        common = current_keys & previous_keys
+        pairs.extend((key, key) for key in sorted(common))
+        current_keys -= common
+        previous_keys -= common
+        # A category transfer is identifiable only within the same holding and
+        # with a unique unmatched category on each date; never cross portfolios.
+        if len(current_keys) == len(previous_keys) == 1:
+            pairs.append((next(iter(current_keys)), next(iter(previous_keys))))
+        else:
+            pairs.extend((key, None) for key in sorted(current_keys))
+            pairs.extend((None, key) for key in sorted(previous_keys))
+    return pairs
 
 
 def _add_driver_delta(

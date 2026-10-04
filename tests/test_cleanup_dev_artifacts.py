@@ -53,6 +53,8 @@ def test_cleanup_dev_artifacts_dry_run_lists_candidates_without_deleting(tmp_pat
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     old_pytest = _make_dir(repo_root / ".codex-tmp" / "pytest-old")
+    old_cache = _make_dir(repo_root / ".pytest_cache")
+    recent_cache = _make_dir(repo_root / ".ruff_cache", days_old=1)
     recent_pytest = _make_dir(repo_root / ".codex-tmp" / "pytest-new", days_old=1)
     old_log = _write_file(repo_root / "api.log")
     recent_log = _write_file(repo_root / "recent.log", days_old=1)
@@ -60,11 +62,15 @@ def test_cleanup_dev_artifacts_dry_run_lists_candidates_without_deleting(tmp_pat
     output = _run_cleanup(repo_root)
 
     assert "DRY-RUN cleanup-dev-artifacts" in output
-    assert ".codex-tmp/pytest-old" in output
+    assert ".codex-tmp/pytest-old" not in output
+    assert ".pytest_cache" in output
+    assert ".ruff_cache" not in output
     assert "api.log" in output
     assert ".codex-tmp/pytest-new" not in output
     assert "recent.log" not in output
     assert old_pytest.exists()
+    assert old_cache.exists()
+    assert recent_cache.exists()
     assert recent_pytest.exists()
     assert old_log.exists()
     assert recent_log.exists()
@@ -87,16 +93,20 @@ def test_cleanup_dev_artifacts_apply_respects_protected_paths_and_extensions(tmp
     output = _run_cleanup(repo_root, "-Apply")
 
     assert "APPLY cleanup-dev-artifacts" in output
-    assert not removable_pytest.exists()
-    assert not protected_pytest.exists()
+    assert ".codex-tmp/pytest-remove" not in output
+    assert ".codex-tmp/pytest-with-csv" not in output
+    assert "backend/app/__pycache__" in output.replace("\\", "/")
+    assert "backend/.mypy_cache" not in output.replace("\\", "/")
+    assert removable_pytest.exists()
+    assert protected_pytest.exists()
     assert not removable_cache.exists()
-    assert not backend_mypy_cache.exists()
+    assert backend_mypy_cache.exists()
     assert protected_git_cache.exists()
     assert protected_data_cache.exists()
     assert "Skipped protected" in output
 
 
-def test_cleanup_dev_artifacts_apply_removes_known_test_output_with_duckdb_artifacts(tmp_path):
+def test_cleanup_dev_artifacts_apply_preserves_unverified_test_output_with_duckdb_artifacts(tmp_path):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     pytest_duckdb = _make_dir(repo_root / ".codex-tmp" / "pytest-db-run")
@@ -111,11 +121,13 @@ def test_cleanup_dev_artifacts_apply_removes_known_test_output_with_duckdb_artif
     output = _run_cleanup(repo_root, "-Apply")
 
     assert "APPLY cleanup-dev-artifacts" in output
-    assert not pytest_duckdb.exists()
-    assert not test_output.exists()
+    assert ".codex-tmp/pytest-db-run" not in output
+    assert "test_output/accounting_asset_movement/run-001" not in output.replace("\\", "/")
+    assert pytest_duckdb.exists()
+    assert test_output.exists()
 
 
-def test_cleanup_dev_artifacts_apply_removes_formal_balance_pipeline_generated_duckdb_artifacts(tmp_path):
+def test_cleanup_dev_artifacts_apply_preserves_formal_balance_pipeline_generated_duckdb_artifacts(tmp_path):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     generated_root = _make_dir(repo_root / "test_output" / "formal_balance_pipeline" / "run-001")
@@ -126,10 +138,11 @@ def test_cleanup_dev_artifacts_apply_removes_formal_balance_pipeline_generated_d
     output = _run_cleanup(repo_root, "-Apply")
 
     assert "APPLY cleanup-dev-artifacts" in output
-    assert not generated_root.exists()
+    assert "test_output/formal_balance_pipeline/run-001" not in output.replace("\\", "/")
+    assert generated_root.exists()
 
 
-def test_cleanup_dev_artifacts_apply_removes_old_test_output_children_when_root_was_touched_recently(tmp_path):
+def test_cleanup_dev_artifacts_apply_preserves_old_test_output_children_when_root_was_touched_recently(tmp_path):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     recent_test_output_root = repo_root / "test_output"
@@ -142,7 +155,8 @@ def test_cleanup_dev_artifacts_apply_removes_old_test_output_children_when_root_
     output = _run_cleanup(repo_root, "-Apply")
 
     assert "APPLY cleanup-dev-artifacts" in output
-    assert not old_child.exists()
+    assert "test_output/formal_balance_pipeline/run-001" not in output.replace("\\", "/")
+    assert old_child.exists()
     assert recent_test_output_root.exists()
 
 
@@ -161,7 +175,8 @@ def test_cleanup_dev_artifacts_apply_keeps_recent_descendants_under_old_test_out
     output = _run_cleanup(repo_root, "-Apply")
 
     assert "APPLY cleanup-dev-artifacts" in output
-    assert not old_file.exists()
+    assert "test_output/accounting_asset_movement/run-001" not in output.replace("\\", "/")
+    assert old_file.exists()
     assert recent_file.exists()
     assert old_run_dir.exists()
     assert test_output_root.exists()
@@ -178,6 +193,7 @@ def test_cleanup_dev_artifacts_apply_keeps_unknown_test_output_subtrees_even_whe
     output = _run_cleanup(repo_root, "-Apply")
 
     assert "APPLY cleanup-dev-artifacts" in output
+    assert "test_output/manual-evidence" not in output.replace("\\", "/")
     assert manual_evidence.exists()
     assert protected_file.exists()
 
@@ -204,7 +220,7 @@ def test_cleanup_dev_artifacts_apply_keeps_business_and_governance_roots_even_wh
     assert protected_governance.exists()
 
 
-def test_cleanup_dev_artifacts_apply_removes_legacy_root_pytest_basetemp_with_db_artifacts(tmp_path):
+def test_cleanup_dev_artifacts_apply_preserves_legacy_root_pytest_basetemp_with_db_artifacts(tmp_path):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     legacy_basetemp = _make_dir(repo_root / ".pytest-basetemp")
@@ -215,8 +231,8 @@ def test_cleanup_dev_artifacts_apply_removes_legacy_root_pytest_basetemp_with_db
     output = _run_cleanup(repo_root, "-Apply")
 
     assert "APPLY cleanup-dev-artifacts" in output
-    assert ".pytest-basetemp" in output
-    assert not legacy_basetemp.exists()
+    assert ".pytest-basetemp" not in output
+    assert legacy_basetemp.exists()
 
 
 def test_cleanup_dev_artifacts_screenshots_require_explicit_flag(tmp_path):
@@ -233,6 +249,7 @@ def test_cleanup_dev_artifacts_screenshots_require_explicit_flag(tmp_path):
 
     second_output = _run_cleanup(repo_root, "-Apply", "-IncludeScreenshots")
 
+    assert "APPLY cleanup-dev-artifacts" in second_output
     assert "page.png" in second_output
     assert not root_screenshot.exists()
     assert not frontend_screenshot.exists()

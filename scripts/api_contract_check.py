@@ -17,10 +17,13 @@ itself reviewable.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
 import json
+import re
 import subprocess
 import sys
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +45,8 @@ MAX_SCHEMA_DEPTH = 12
 
 BREAKING = "breaking"
 ADDITIVE = "additive"
+_GIT_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # The flattener collapses a schema that names no field at all -- `response_model=dict`
 # rendering as `{"additionalProperties": true, "type": "object"}`, or a missing
@@ -73,6 +78,31 @@ def _load_openapi(surface: str) -> dict[str, Any]:
 def _canonical_json(payload: dict[str, Any]) -> str:
     """Key-sorted rendering so committed snapshots diff on meaning, not dict ordering."""
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def _canonical_receipt_json(payload: dict[str, Any]) -> str:
+    """Compact canonical form used only for stable receipt digests."""
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest().upper()
+
+
+def _spec_sha256(payload: dict[str, Any]) -> str:
+    return _sha256_bytes(_canonical_json(payload).encode("utf-8"))
+
+
+def _receipt_sha256(report: dict[str, Any]) -> str:
+    canonical = dict(report)
+    canonical.pop("receipt_sha256", None)
+    return _sha256_bytes(_canonical_receipt_json(canonical).encode("utf-8"))
 
 
 def baseline_relative_path(surface: str) -> str:
@@ -819,18 +849,64 @@ def diff_contracts(
 # --------------------------------------------------------------------------------------
 
 
-def _read_baseline_from_ref(ref: str, relative_path: str) -> dict[str, Any] | None:
-    completed = subprocess.run(
-        ["git", "show", f"{ref}:{relative_path}"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
+class BaselineGitError(RuntimeError):
+    """A sanitized git-baseline failure safe to surface in CLI reports."""
+
+
+def _run_git(args: list[str], *, failure_message: str) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            args,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+    except OSError as error:
+        raise BaselineGitError(failure_message) from error
+
+
+def _resolve_baseline_ref(ref: str) -> str:
+    """Resolve a moving ref once so every surface compares against one commit."""
+    completed = _run_git(
+        ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+        failure_message="baseline ref could not be resolved",
+    )
+    resolved = completed.stdout.strip()
+    if completed.returncode != 0 or _GIT_COMMIT_RE.fullmatch(resolved) is None:
+        raise BaselineGitError("baseline ref could not be resolved")
+    return resolved.lower()
+
+
+def _read_baseline_from_ref(resolved_commit: str, relative_path: str) -> dict[str, Any] | None:
+    """Read one baseline from an already-resolved commit.
+
+    ``git ls-tree`` distinguishes a legitimately absent first baseline from a
+    lower-level git failure without exposing stderr or local filesystem paths.
+    """
+    listed = _run_git(
+        ["git", "ls-tree", "-r", "--name-only", resolved_commit, "--", relative_path],
+        failure_message="baseline could not be read from resolved commit",
+    )
+    if listed.returncode != 0:
+        raise BaselineGitError("baseline could not be read from resolved commit")
+    if relative_path not in {line.strip() for line in listed.stdout.splitlines()}:
+        return None
+
+    completed = _run_git(
+        ["git", "show", f"{resolved_commit}:{relative_path}"],
+        failure_message="baseline could not be read from resolved commit",
     )
     if completed.returncode != 0:
-        return None
-    return json.loads(completed.stdout)
+        raise BaselineGitError("baseline could not be read from resolved commit")
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise BaselineGitError("baseline at resolved commit is not valid JSON") from error
+    if not isinstance(payload, dict):
+        raise BaselineGitError("baseline at resolved commit is not a JSON object")
+    return payload
 
 
 def _read_baseline_from_disk(surface: str) -> dict[str, Any] | None:
@@ -851,13 +927,20 @@ def acknowledgement_candidate_ids(finding: dict[str, str]) -> tuple[str, str]:
 
 
 def load_acknowledgements() -> tuple[dict[str, dict[str, Any]], list[str]]:
-    """Return `{finding_id: entry}` plus any structural problems in the file."""
+    """Return entries plus structural problems without rejecting legacy unused entries.
+
+    The strict owner/consumer/migration/expiry policy is applied only when an
+    entry actually matches a breaking finding. This keeps historical unused
+    entries visible without letting their legacy shape authorize a release.
+    """
     if not ACKNOWLEDGEMENTS_PATH.exists():
         return {}, []
     try:
         payload = json.loads(ACKNOWLEDGEMENTS_PATH.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
         return {}, [f"{ACKNOWLEDGEMENTS_NAME} is not valid JSON: {error}"]
+    except OSError:
+        return {}, [f"{ACKNOWLEDGEMENTS_NAME} could not be read"]
 
     problems: list[str] = []
     entries = payload.get("acknowledgements") if isinstance(payload, dict) else None
@@ -865,6 +948,8 @@ def load_acknowledgements() -> tuple[dict[str, dict[str, Any]], list[str]]:
         return {}, [f"{ACKNOWLEDGEMENTS_NAME} must contain an 'acknowledgements' array"]
 
     resolved: dict[str, dict[str, Any]] = {}
+    seen_ids: set[str] = set()
+    duplicate_ids: set[str] = set()
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
             problems.append(f"acknowledgement #{index} is not an object")
@@ -873,12 +958,60 @@ def load_acknowledgements() -> tuple[dict[str, dict[str, Any]], list[str]]:
         if not isinstance(finding_id, str) or not finding_id.strip():
             problems.append(f"acknowledgement #{index} is missing a non-empty 'id'")
             continue
-        for required_field in ("reason", "approved_by"):
-            value = entry.get(required_field)
-            if not isinstance(value, str) or not value.strip():
-                problems.append(f"acknowledgement '{finding_id}' is missing a non-empty '{required_field}'")
+        finding_id = finding_id.strip()
+        if finding_id in seen_ids:
+            if finding_id not in duplicate_ids:
+                problems.append(f"duplicate acknowledgement id {finding_id!r}")
+            duplicate_ids.add(finding_id)
+            resolved.pop(finding_id, None)
+            continue
+        seen_ids.add(finding_id)
         resolved[finding_id] = entry
     return resolved, problems
+
+
+def _validate_used_acknowledgement(
+    finding_id: str,
+    entry: dict[str, Any],
+    *,
+    today: date,
+) -> list[str]:
+    """Validate the full governance record only when it would authorize a finding."""
+    problems: list[str] = []
+    for required_field in ("owner", "reason", "approved_by", "migration_plan"):
+        value = entry.get(required_field)
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"acknowledgement {finding_id!r} is missing a non-empty {required_field!r}")
+
+    consumers = entry.get("affected_consumers")
+    if (
+        not isinstance(consumers, list)
+        or not consumers
+        or any(not isinstance(consumer, str) or not consumer.strip() for consumer in consumers)
+    ):
+        problems.append(
+            f"acknowledgement {finding_id!r} must contain a non-empty 'affected_consumers' string list"
+        )
+
+    expires_at = entry.get("expires_at")
+    expiry: date | None = None
+    if not isinstance(expires_at, str) or _ISO_DATE_RE.fullmatch(expires_at) is None:
+        problems.append(f"acknowledgement {finding_id!r} must contain expires_at as YYYY-MM-DD")
+    else:
+        try:
+            expiry = date.fromisoformat(expires_at)
+        except ValueError:
+            problems.append(f"acknowledgement {finding_id!r} must contain a valid expires_at date")
+    if expiry is not None and expiry < today:
+        problems.append(f"acknowledgement {finding_id!r} expired before this gate evaluation")
+    return problems
+
+
+def _acknowledgements_sha256() -> str | None:
+    try:
+        return _sha256_bytes(ACKNOWLEDGEMENTS_PATH.read_bytes())
+    except OSError:
+        return None
 
 
 # --------------------------------------------------------------------------------------
@@ -915,13 +1048,27 @@ def _baseline_update(surfaces: tuple[str, ...]) -> int:
 def _render_report(report: dict[str, Any]) -> str:
     lines: list[str] = ["OpenAPI contract gate", "=" * 21, ""]
     lines.append(f"baseline source: {report['baseline_source']}")
+    lines.append(f"receipt status: {report['status']}")
+    lines.append(f"release gate eligible: {'yes' if report['release_gate_eligible'] else 'no'}")
     lines.append("")
+
+    if report["baseline_problems"]:
+        lines.append("Baseline problems:")
+        for problem in report["baseline_problems"]:
+            surface = f" ({problem['surface']})" if problem.get("surface") else ""
+            lines.append(f"  - {problem['code']}{surface}")
+        lines.append("")
 
     for surface_report in report["surfaces"]:
         surface = surface_report["surface"]
         lines.append(f"[{surface}] {surface_report['operation_count']} operations")
         if surface_report["baseline_missing"]:
-            lines.append(f"  - no baseline found at {baseline_relative_path(surface)} on the compared ref (bootstrap)")
+            if report["allow_bootstrap_baseline"]:
+                lines.append("  - compared commit has no baseline; diagnostic bootstrap was explicitly allowed")
+            else:
+                lines.append(
+                    "  ! compared commit has no baseline; rerun only with --allow-bootstrap-baseline to diagnose"
+                )
         if surface_report["stale_baseline"]:
             lines.append(
                 f"  ! committed snapshot {baseline_relative_path(surface)} does not match the current code; "
@@ -958,12 +1105,18 @@ def _render_report(report: dict[str, Any]) -> str:
         lines.extend(f"  - {entry}" for entry in report["unused_acknowledgements"])
         lines.append("")
 
-    lines.append(f"RESULT: {'PASS' if report['passed'] else 'FAIL'}")
-    if not report["passed"]:
+    result_label = {
+        "passed": "PASS",
+        "diagnostic": "DIAGNOSTIC",
+        "failed": "FAIL",
+    }.get(report["status"], "FAIL")
+    lines.append(f"RESULT: {result_label}")
+    if report["status"] == "failed":
         lines.append("")
         lines.append(
             "A breaking change needs an explicit, reviewable acknowledgement entry in "
-            f"{BASELINE_DIR_NAME}/{ACKNOWLEDGEMENTS_NAME} (id / reason / approved_by), plus an updated snapshot."
+            f"{BASELINE_DIR_NAME}/{ACKNOWLEDGEMENTS_NAME} with owner, reason, approved_by, affected_consumers, "
+            "migration_plan, and an unexpired expires_at, plus an updated snapshot."
         )
     return "\n".join(lines)
 
@@ -973,34 +1126,79 @@ def _baseline_check(
     baseline_ref: str | None,
     allow_stale_baseline: bool,
     json_output: str | None,
+    allow_bootstrap_baseline: bool = False,
+    *,
+    today: date | None = None,
 ) -> int:
     acknowledgements, acknowledgement_problems = load_acknowledgements()
+    acknowledgement_digest = _acknowledgements_sha256()
     used_acknowledgements: set[str] = set()
-    passed = not acknowledgement_problems
+    matched_acknowledgements: set[str] = set()
+    command_succeeded = not acknowledgement_problems
+    evaluation_date = today or datetime.now(timezone.utc).date()
+    baseline_problems: list[dict[str, str]] = []
     surface_reports: list[dict[str, Any]] = []
+
+    resolved_baseline_commit: str | None = None
+    if baseline_ref:
+        try:
+            resolved_baseline_commit = _resolve_baseline_ref(baseline_ref)
+        except BaselineGitError:
+            command_succeeded = False
+            baseline_problems.append({"code": "baseline_ref_unresolved"})
 
     for surface in surfaces:
         head_spec = _load_openapi(surface)
         head_text = _canonical_json(head_spec)
         relative_path = baseline_relative_path(surface)
+        baseline_error: str | None = None
 
         if baseline_ref:
-            base_spec = _read_baseline_from_ref(baseline_ref, relative_path)
+            if resolved_baseline_commit is None:
+                base_spec = None
+                baseline_error = "baseline_ref_unresolved"
+            else:
+                try:
+                    base_spec = _read_baseline_from_ref(resolved_baseline_commit, relative_path)
+                except BaselineGitError:
+                    base_spec = None
+                    baseline_error = "baseline_read_failed"
+                    command_succeeded = False
+                    baseline_problems.append({"code": baseline_error, "surface": surface})
         else:
             base_spec = _read_baseline_from_disk(surface)
 
         disk_text = baseline_path(surface).read_text(encoding="utf-8") if baseline_path(surface).exists() else None
         stale_baseline = disk_text != head_text
+        baseline_missing = base_spec is None and baseline_error is None
+        if baseline_ref and resolved_baseline_commit is not None and baseline_missing:
+            baseline_problems.append({"code": "baseline_missing", "surface": surface})
+            if not allow_bootstrap_baseline:
+                command_succeeded = False
 
         findings = diff_contracts(surface, base_spec, head_spec) if base_spec is not None else []
         for finding in findings:
             if finding["severity"] != BREAKING:
                 continue
             for candidate in acknowledgement_candidate_ids(finding):
-                if candidate in acknowledgements:
+                entry = acknowledgements.get(candidate)
+                if entry is None:
+                    continue
+                matched_acknowledgements.add(candidate)
+                entry_problems = _validate_used_acknowledgement(
+                    candidate,
+                    entry,
+                    today=evaluation_date,
+                )
+                if entry_problems:
+                    acknowledgement_problems.extend(entry_problems)
+                    finding["acknowledgement_rejected"] = True
+                    command_succeeded = False
+                else:
                     finding["acknowledged"] = True
+                    finding["acknowledgement_id"] = candidate
                     used_acknowledgements.add(candidate)
-                    break
+                break
 
         unacknowledged = [
             finding
@@ -1008,14 +1206,17 @@ def _baseline_check(
             if finding["severity"] == BREAKING and not finding.get("acknowledged")
         ]
         if unacknowledged or (stale_baseline and not allow_stale_baseline):
-            passed = False
+            command_succeeded = False
 
         surface_reports.append(
             {
                 "surface": surface,
                 "operation_count": len(extract_contract(head_spec)),
-                "baseline_missing": base_spec is None,
+                "baseline_missing": baseline_missing,
+                "baseline_error": baseline_error,
                 "stale_baseline": stale_baseline,
+                "baseline_sha256": _spec_sha256(base_spec) if base_spec is not None else None,
+                "head_sha256": _spec_sha256(head_spec),
                 "counts": {
                     "breaking": len(unacknowledged),
                     "acknowledged": sum(1 for finding in findings if finding.get("acknowledged")),
@@ -1028,22 +1229,50 @@ def _baseline_check(
             }
         )
 
+    acknowledgement_problems = list(dict.fromkeys(acknowledgement_problems))
+    release_gate_eligible = (
+        command_succeeded
+        and baseline_ref is not None
+        and resolved_baseline_commit is not None
+        and not allow_stale_baseline
+        and not allow_bootstrap_baseline
+        and acknowledgement_digest is not None
+        and not baseline_problems
+        and not any(surface_report["baseline_missing"] for surface_report in surface_reports)
+    )
+    status = "passed" if release_gate_eligible else ("diagnostic" if command_succeeded else "failed")
     report = {
-        "schema_version": 1,
-        "baseline_source": f"git ref {baseline_ref}" if baseline_ref else "working tree",
+        "schema_version": 2,
+        "receipt_kind": "openapi_contract_gate",
+        "status": status,
+        "outcome": status,
+        "evaluated_on": evaluation_date.isoformat(),
+        "baseline_source": (
+            f"git commit {resolved_baseline_commit}"
+            if resolved_baseline_commit is not None
+            else ("unresolved git ref" if baseline_ref else "working tree")
+        ),
+        "resolved_baseline_commit": resolved_baseline_commit,
         "allow_stale_baseline": allow_stale_baseline,
+        "allow_bootstrap_baseline": allow_bootstrap_baseline,
+        "baseline_problems": baseline_problems,
         "surfaces": surface_reports,
+        "acknowledgements_sha256": acknowledgement_digest,
         "acknowledgement_problems": acknowledgement_problems,
-        "unused_acknowledgements": sorted(set(acknowledgements) - used_acknowledgements),
-        "passed": passed,
+        "used_acknowledgements": sorted(used_acknowledgements),
+        "unused_acknowledgements": sorted(set(acknowledgements) - matched_acknowledgements),
+        "release_gate_eligible": release_gate_eligible,
+        "command_succeeded": command_succeeded,
+        "passed": release_gate_eligible,
     }
+    report["receipt_sha256"] = _receipt_sha256(report)
 
     print(_render_report(report))
     if json_output:
         target = Path(json_output)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return 0 if passed else 1
+    return 0 if command_succeeded else 1
 
 
 def schemathesis_command(schema_path: str = ".codex-tmp/openapi.json", base_url: str = "http://127.0.0.1:7888") -> str:
@@ -1105,6 +1334,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Report, but do not fail on, a committed snapshot that no longer matches the code.",
     )
+    check_parser.add_argument(
+        "--allow-bootstrap-baseline",
+        action="store_true",
+        help=(
+            "Allow a diagnostic run when a valid compared commit has no baseline file. "
+            "The resulting receipt is never release-gate eligible."
+        ),
+    )
     check_parser.add_argument("--json", dest="json_output", default=None, help="Write the machine-readable report here.")
 
     subparsers.add_parser(
@@ -1128,6 +1365,7 @@ def main(argv: list[str] | None = None) -> int:
             args.baseline_ref,
             args.allow_stale_baseline,
             args.json_output,
+            args.allow_bootstrap_baseline,
         )
     if args.command == "schemathesis-command":
         return _print_schemathesis_command()

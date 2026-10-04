@@ -111,7 +111,10 @@ def test_research_slash_command_returns_plan_envelope_by_default(tmp_path):
         intent_handlers={"research_radar_brief": _stub_research_handler(calls)},
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="/research-radar")
+        request_module.AgentQueryRequest(
+            question="/research-radar",
+            context={"user_id": "user_a"},
+        )
     )
 
     assert calls == []
@@ -142,7 +145,10 @@ def test_research_keyword_returns_plan_envelope_by_default(tmp_path):
         intent_handlers={"research_radar_brief": _stub_research_handler(calls)},
     )
     envelope = tool.execute(
-        request_module.AgentQueryRequest(question="帮我做一份研究速读")
+        request_module.AgentQueryRequest(
+            question="帮我做一份研究速读",
+            context={"user_id": "user_a"},
+        )
     )
 
     assert calls == []

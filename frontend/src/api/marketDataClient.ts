@@ -16,6 +16,7 @@ import type {
   MarketDataBondFuturesRankingsPayload,
   MarketDataCatalogPayload,
   MarketDataCoverageSummaryPayload,
+  MarketOverviewSnapshotPayload,
   LivermoreCandidateHistoryHorizonKey,
   LivermoreCandidateHistoryPortfolioBacktestPayload,
   LivermoreManualPositionInput,
@@ -38,6 +39,7 @@ import type {
   SourcePreviewRefreshPayload,
   SourcePreviewRowsPayload,
   SourcePreviewTracesPayload,
+  StockPortfolioConstructionPayload,
   StockAnalysisWorkbenchPayload,
   StockHeavyweightTrendsPayload,
   StockKlineAnalysisPayload,
@@ -112,6 +114,9 @@ export type MarketDataClientMethods = {
    */
   getMacroFoundation: () => Promise<ApiEnvelope<MarketDataCatalogPayload>>;
   getChoiceMacroLatest: () => Promise<ApiEnvelope<ChoiceMacroLatestPayload>>;
+  getMarketOverviewSnapshot: (options?: {
+    include?: string[];
+  }) => Promise<ApiEnvelope<MarketOverviewSnapshotPayload>>;
   getExternalDataWatermarks: () => Promise<ExternalDataWatermarkLedger>;
   getMacroBondLinkageAnalysis: (options: {
     reportDate: string;
@@ -140,6 +145,10 @@ export type MarketDataClientMethods = {
     sectorWindowDays?: number;
     topK?: number;
   }) => Promise<ApiEnvelope<StockAnalysisWorkbenchPayload>>;
+  getStockAnalysisPortfolioConstruction: (options: {
+    portfolioId: string;
+    asOfDate?: string;
+  }) => Promise<ApiEnvelope<StockPortfolioConstructionPayload>>;
   getLivermoreStockDetail: (options: {
     stockCode: string;
     asOfDate?: string;
@@ -251,6 +260,13 @@ function buildLivermoreQuery(options?: { asOfDate?: string }) {
   return `?as_of_date=${encodeURIComponent(asOfDate)}`;
 }
 
+function buildMarketOverviewSnapshotQuery(options?: { include?: string[] }) {
+  const include = options?.include?.map((item) => item.trim()).filter(Boolean);
+  if (!include?.length) return "";
+  const params = new URLSearchParams({ include: include.join(",") });
+  return `?${params.toString()}`;
+}
+
 function buildStockAnalysisWorkbenchQuery(options?: {
   asOfDate?: string;
   include?: string[];
@@ -274,6 +290,19 @@ function buildStockAnalysisWorkbenchQuery(options?: {
   }
   const q = params.toString();
   return q ? `?${q}` : "";
+}
+
+function buildStockAnalysisPortfolioConstructionQuery(options: {
+  portfolioId: string;
+  asOfDate?: string;
+}) {
+  const params = new URLSearchParams();
+  params.set("portfolio_id", options.portfolioId.trim());
+  const asOfDate = options.asOfDate?.trim();
+  if (asOfDate) {
+    params.set("as_of_date", asOfDate);
+  }
+  return `?${params.toString()}`;
 }
 
 function buildBondFuturesRankingsQuery(options?: {
@@ -492,6 +521,12 @@ export function createRealMarketDataClient({
       requestJson<MarketDataCatalogPayload>(fetchImpl, baseUrl, "/ui/market-data/catalog"),
     getChoiceMacroLatest: () =>
       requestJson<ChoiceMacroLatestPayload>(fetchImpl, baseUrl, "/ui/macro/choice-series/latest"),
+    getMarketOverviewSnapshot: (options) =>
+      requestJson<MarketOverviewSnapshotPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-overview/snapshot${buildMarketOverviewSnapshotQuery(options)}`,
+      ),
     getExternalDataWatermarks: () =>
       requestPlainJson<ExternalDataWatermarkLedger>(
         fetchImpl,
@@ -580,6 +615,15 @@ export function createRealMarketDataClient({
         fetchImpl,
         baseUrl,
         `/ui/market-data/stock-analysis/workbench${buildStockAnalysisWorkbenchQuery(options)}`,
+      ),
+    getStockAnalysisPortfolioConstruction: (options: {
+      portfolioId: string;
+      asOfDate?: string;
+    }) =>
+      requestJson<StockPortfolioConstructionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/stock-analysis/portfolio-construction${buildStockAnalysisPortfolioConstructionQuery(options)}`,
       ),
     getLivermoreStockDetail: (options: { stockCode: string; asOfDate?: string; lookback?: number }) =>
       requestJson<LivermoreStockDetailPayload>(

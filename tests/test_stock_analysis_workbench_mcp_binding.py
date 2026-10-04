@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from scripts.mcp.moss_project_mcp import (
     LineageEvidenceProvider,
     MetricContractsProvider,
@@ -7,6 +9,11 @@ from scripts.mcp.moss_project_mcp import (
     page_trace_bundle,
     product_page_trace_bundles,
 )
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_livermore,
+]
 
 
 WORKBENCH_ENDPOINT = "/ui/market-data/stock-analysis/workbench"
@@ -50,7 +57,11 @@ def test_metric_contract_provider_exposes_the_implemented_observational_contract
     assert WORKBENCH_CONTRACT_URI in resource_uris
     resource = provider.read_resource(WORKBENCH_CONTRACT_URI)
     contract_text = resource["text"]
-    assert "Status: implemented, observational only; governance closure pending" in contract_text
+    assert (
+        "Status: implemented, observational only; current-rule replay read closure "
+        "implemented, live cohort activation pending"
+        in contract_text
+    )
     assert f"Primary endpoint: `GET {WORKBENCH_ENDPOINT}`" in contract_text
     assert "formal_use_allowed=false" in contract_text
 
@@ -59,8 +70,8 @@ def test_stock_analysis_lineage_queries_expand_to_the_workbench_identity() -> No
     expected = {
         WORKBENCH_ENDPOINT,
         WORKBENCH_RESULT_KIND,
-        "rv_stock_analysis_workbench_v1",
-        "cv_stock_analysis_workbench_v1",
+        "rv_stock_analysis_workbench_v2",
+        "cv_stock_analysis_workbench_v2",
     }
 
     for query in ("gap-stock-analysis-page", "stock-analysis", "/stock-analysis"):

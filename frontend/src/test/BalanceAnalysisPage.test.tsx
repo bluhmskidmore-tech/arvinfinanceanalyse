@@ -1,4 +1,5 @@
-﻿import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ComponentType } from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -12,6 +13,7 @@ const { balanceAnalysisEchartsOptions } = vi.hoisted(() => ({
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
+import { BALANCE_ANALYSIS_METRIC_DEFINITIONS } from "../mocks/balanceAnalysisMockClient";
 import type {
   AdbComparisonResponse,
   ApiEnvelope,
@@ -32,6 +34,7 @@ import type {
 } from "../api/contracts";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 import { routerFuture } from "../router/routerFuture";
+import { SystemReadInteractionContext } from "../router/systemReadInteractionContext";
 import {
   buildBalanceDetailGridRows,
   getBalanceDetailGridRowId,
@@ -55,8 +58,12 @@ vi.mock("../lib/echarts", () => ({
   },
 }));
 
+let BalanceAnalysisPageComponent: ComponentType;
+
 beforeAll(async () => {
-  await import("../features/balance-analysis/pages/BalanceAnalysisPage");
+  BalanceAnalysisPageComponent = (
+    await import("../features/balance-analysis/pages/BalanceAnalysisPage")
+  ).default;
 }, 60_000);
 
 function renderBalanceAnalysisWithClient(
@@ -81,6 +88,34 @@ function renderBalanceAnalysisWithClient(
     </ApiClientProvider>,
   );
   return { router, queryClient, ...renderResult };
+}
+
+function renderBalanceAnalysisWithFixedGeneration(
+  client: ReturnType<typeof createApiClient>,
+  initialEntry = "/balance-analysis?report_date=2025-12-31&position_scope=asset",
+) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: 0,
+        refetchOnWindowFocus: false,
+      },
+    },
+  });
+  const renderResult = render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <ApiClientProvider client={client}>
+        <QueryClientProvider client={queryClient}>
+          <SystemReadInteractionContext.Provider
+            value={{ generation: "full-gen-a", coverageDates: {}, refresh: vi.fn() }}
+          >
+            <BalanceAnalysisPageComponent />
+          </SystemReadInteractionContext.Provider>
+        </QueryClientProvider>
+      </ApiClientProvider>
+    </MemoryRouter>,
+  );
+  return { queryClient, ...renderResult };
 }
 
 async function expandDetails(testId: string) {
@@ -874,6 +909,7 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "0.00",
         asset_total_accrued_interest_amount: "0.00",
         liability_total_accrued_interest_amount: "0.00",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
       },
     });
     workbookDeferred.resolve(buildWorkbookResponse());
@@ -1047,7 +1083,7 @@ describe("BalanceAnalysisPage", () => {
     const emptyState = await screen.findByTestId("balance-analysis-report-date-empty");
     expect(emptyState).toHaveTextContent("报告日暂未接入");
     expect(emptyState).toHaveTextContent("重新读取报告日");
-    expect(screen.getByText("等待业务读面")).toBeInTheDocument();
+    expect(screen.getByText("等待业务数据")).toBeInTheDocument();
     expect(screen.queryByTestId("balance-analysis-endpoint-matrix")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "资产负债缺口判断" })).not.toBeInTheDocument();
     expect(screen.queryByText("待返回")).not.toBeInTheDocument();
@@ -1079,6 +1115,7 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "185222389626.26",
         asset_total_accrued_interest_amount: "212240408.23",
         liability_total_accrued_interest_amount: "13996586.21",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
       },
     }));
     const getWorkbookSpy = vi.fn(() => workbookDeferred.promise);
@@ -1178,6 +1215,7 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "0.00",
         asset_total_accrued_interest_amount: "0.00",
         liability_total_accrued_interest_amount: "0.00",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
       },
       data_source: "balance_analysis",
       calibration: {
@@ -1397,10 +1435,11 @@ describe("BalanceAnalysisPage", () => {
       "净头寸",
     );
     expect(screen.queryByTestId("portfolio-workbench-light-hint")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
+    // 2026-09-02 铬件统一：组内子导航是全站唯一开场的一部分，本页不再抑制；导读 hint 仍不渲染。
+    expect(screen.getByTestId("workbench-section-subnav")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "正式状态摘要" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "正式汇总驾驶舱" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "治理闭环与工作簿底稿" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "资产负债汇总与明细" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "待处理事项与工作簿" })).toBeInTheDocument();
     const pageTitle = screen.getByTestId("balance-analysis-page-title");
     const cockpitKpis = screen.getByTestId("balance-analysis-cockpit-kpis");
     const workbenchGrid = screen.getByTestId("balance-analysis-workbench-grid");
@@ -1408,7 +1447,10 @@ describe("BalanceAnalysisPage", () => {
     const evidenceDetails = screen.getByTestId("balance-analysis-evidence-details");
     expect(cockpitKpis).toBeVisible();
     expect(cockpitKpis).toHaveTextContent("资产市值");
-    expect(cockpitKpis).toHaveTextContent("总市值");
+    expect(cockpitKpis).toHaveTextContent("负债市值");
+    expect(cockpitKpis).toHaveTextContent("资产摊余成本");
+    expect(cockpitKpis).toHaveTextContent("负债摊余成本");
+    expect(cockpitKpis).not.toHaveTextContent("总市值");
     expect(cockpitKpis).not.toHaveTextContent("MTR-BAL");
     expect(Boolean(pageTitle.compareDocumentPosition(cockpitKpis) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(Boolean(cockpitKpis.compareDocumentPosition(workbenchGrid) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
@@ -1611,7 +1653,7 @@ describe("BalanceAnalysisPage", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByTestId("balance-analysis-stage-details")).not.toHaveAttribute("open");
-    expect(screen.getByText("完整场景阅读（与首屏同源）")).toBeInTheDocument();
+    expect(screen.getByText("数据日期与口径")).toBeInTheDocument();
     expect(screen.queryByText("情景演示与静态参考")).not.toBeInTheDocument();
     expect(screen.getByTestId("balance-analysis-summary-row")).toHaveTextContent(
       "资产端合计 3,287.80 亿元",
@@ -1668,11 +1710,11 @@ describe("BalanceAnalysisPage", () => {
     expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("日均分析预览");
     expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("期末时点与日均偏离对比");
     expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("日均月度结构预览");
-    expect(
-      within(screen.getByTestId("balance-analysis-adb-preview")).getAllByTestId(
-        "balance-analysis-echarts-stub",
-      ),
-    ).toHaveLength(3);
+    const adbPreview = within(screen.getByTestId("balance-analysis-adb-preview"));
+    expect(adbPreview.getByRole("figure", { name: "资产端偏离对比" })).toBeInTheDocument();
+    expect(adbPreview.getByRole("figure", { name: "负债端偏离对比" })).toBeInTheDocument();
+    expect(adbPreview.getByRole("figure", { name: "当前区间资产负债结构" })).toBeInTheDocument();
+    expect(adbPreview.getAllByTestId("balance-analysis-echarts-stub")).toHaveLength(1);
     expect(
       within(screen.getByTestId("balance-analysis-adb-preview")).getAllByTestId(
         "adb-monthly-breakdown-table",
@@ -1685,6 +1727,67 @@ describe("BalanceAnalysisPage", () => {
     expect(getAdbComparisonSpy).toHaveBeenCalledWith("2025-01-01", "2025-12-31");
   });
 
+  it.each(["ok", "stale", "warning", "error", "other-month", "failed", "missing"] as const)(
+    "keeps distribution values and their movement evidence together for %s",
+    async (scenario) => {
+      const baseClient = createApiClient({ mode: "mock" });
+      const workbook = buildWorkbookResponse();
+      const movement = buildBalanceMovementResponse();
+      if (["stale", "warning", "error"].includes(scenario)) {
+        movement.result_meta.quality_flag = scenario as "stale" | "warning" | "error";
+      }
+      if (scenario === "other-month") {
+        movement.result.report_date = "2025-11-30";
+        movement.result.business_trend_months![0].report_date = "2025-11-30";
+        movement.result.zqtz_concentration_analysis!.meta.report_date = "2025-11-30";
+      }
+      const getMovement = vi.fn(async () => {
+        if (scenario === "failed") throw new Error("movement unavailable");
+        return movement;
+      });
+      renderBalanceAnalysisWithClient({
+        ...baseClient,
+        getBalanceAnalysisDates: vi.fn(async () => ({
+          result_meta: buildMeta("dates", "distribution-dates"),
+          result: { report_dates: ["2025-12-31"] },
+        })),
+        getBalanceAnalysisWorkbook: vi.fn(async () => workbook),
+        getBalanceMovementDates: vi.fn(async () => ({
+          result_meta: buildMeta("movement-dates", "distribution-movement-dates"),
+          result: { report_dates: scenario === "missing" ? [] : ["2025-12-31"], currency_basis: "CNX" },
+        })),
+        getBalanceMovementAnalysis: getMovement,
+      });
+      const usesMovement = scenario !== "failed" && scenario !== "missing";
+      const bondEvidence = await screen.findByTestId("balance-analysis-distribution-evidence-bond_business_types");
+      const industryEvidence = await screen.findByTestId("balance-analysis-distribution-evidence-industry_distribution");
+      await waitFor(() => {
+        expect(bondEvidence).toHaveTextContent(`来源：${usesMovement ? "余额变动" : "工作簿"}`);
+        expect(bondEvidence).not.toHaveTextContent("加载中");
+      });
+      for (const evidence of [bondEvidence, industryEvidence]) {
+        expect(evidence).toHaveTextContent(`实际报告日：${scenario === "other-month" ? "2025-11-30" : "2025-12-31"}`);
+        if (scenario === "stale") expect(within(evidence).getAllByText("分布数据陈旧")).toHaveLength(1);
+        if (scenario === "warning") expect(evidence).toHaveTextContent("分布质量需复核");
+        if (scenario === "error") expect(evidence).toHaveTextContent("分布质量异常");
+        if (scenario === "other-month") expect(evidence).toHaveTextContent("分布报告日不一致");
+        if (scenario === "failed") expect(evidence).toHaveTextContent("余额变动联动读取失败");
+        if (scenario === "missing") expect(evidence).toHaveTextContent("余额变动联动缺失");
+      }
+      if (usesMovement) {
+        expect(screen.getByTestId("balance-analysis-workbook-table-industry_distribution")).toHaveTextContent("1,994.51 亿元");
+        expect(screen.getByTestId("balance-analysis-workbook-panel-bond_business_types")).toHaveTextContent("movement");
+        expect(within(screen.getByTestId("balance-analysis-evidence-details")).getByText("余额变动")).toBeInTheDocument();
+        expect(within(screen.getByTestId("balance-analysis-result-meta")).getByText("余额变动")).toBeInTheDocument();
+      } else {
+        expect(screen.getByTestId("balance-analysis-workbook-panel-bond_business_types")).toHaveTextContent("workbook");
+        expect(screen.getByTestId("balance-analysis-workbook-table-bond_business_types")).toHaveTextContent("648.22 亿元");
+        expect(within(screen.getByTestId("balance-analysis-evidence-details")).queryByText("余额变动")).not.toBeInTheDocument();
+        expect(within(screen.getByTestId("balance-analysis-result-meta")).queryByText("余额变动")).not.toBeInTheDocument();
+      }
+    },
+  );
+
   it("renders a reconciliation link from workbook metrics to balance movement controls", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const workbook = buildWorkbookResponse();
@@ -1693,7 +1796,7 @@ describe("BalanceAnalysisPage", () => {
       { key: "interbank_assets", label: "同业资产", value: "1000000" },
       { key: "interbank_liabilities", label: "同业负债", value: "3000000" },
       { key: "issuance_liabilities", label: "发行类负债", value: "2000000" },
-      { key: "net_position", label: "净头寸", value: "8000000" },
+      { key: "net_position", label: "全口径余额净头寸", value: "6000000" },
     ];
     workbook.result.tables = workbook.result.tables.map((table) => {
       if (table.key === "bond_business_types" || table.key === "rating_analysis") {
@@ -1830,6 +1933,7 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "0.00",
         asset_total_accrued_interest_amount: "0.00",
         liability_total_accrued_interest_amount: "0.00",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
       },
     }));
     const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({
@@ -1953,6 +2057,7 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "0.00",
         asset_total_accrued_interest_amount: "0.00",
         liability_total_accrued_interest_amount: "0.00",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
       },
     }));
     const getDetailSpy = vi.fn(async ({ reportDate, positionScope, currencyBasis }): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({
@@ -1967,6 +2072,7 @@ describe("BalanceAnalysisPage", () => {
     }));
     const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
     const getWorkbookSpy = vi.fn(async () => buildWorkbookResponse());
+    const getDecisionItemsSpy = vi.fn(async () => buildDecisionItemsResponse());
     const client = {
       ...baseClient,
       getBalanceAnalysisDates: getDatesSpy,
@@ -1974,6 +2080,7 @@ describe("BalanceAnalysisPage", () => {
       getBalanceAnalysisDetail: getDetailSpy,
       getBalanceAnalysisSummary: getSummarySpy,
       getBalanceAnalysisWorkbook: getWorkbookSpy,
+      getBalanceAnalysisDecisionItems: getDecisionItemsSpy,
     };
 
     const rendered = renderBalanceAnalysisWithClient(
@@ -2004,7 +2111,21 @@ describe("BalanceAnalysisPage", () => {
         positionScope: "asset",
         currencyBasis: "CNY",
       });
+      expect(getWorkbookSpy).toHaveBeenLastCalledWith({
+        reportDate: "2025-12-31",
+        positionScope: "all",
+        currencyBasis: "CNY",
+      });
+      expect(getDecisionItemsSpy).toHaveBeenLastCalledWith({
+        reportDate: "2025-12-31",
+        positionScope: "all",
+        currencyBasis: "CNY",
+      });
     });
+    expect(screen.getByText("明细范围")).toBeInTheDocument();
+    expect(screen.getByTestId("balance-analysis-position-scope-note")).toHaveTextContent(
+      "工作簿固定为全口径",
+    );
   });
 
   it("keeps in-page scope switches effective and locks aggregate currency to CNY after a deep link", async () => {
@@ -2033,6 +2154,7 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "0.00",
         asset_total_accrued_interest_amount: "0.00",
         liability_total_accrued_interest_amount: "0.00",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
       },
     }));
     const getDetailSpy = vi.fn(async ({ reportDate, positionScope, currencyBasis }): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({
@@ -2126,7 +2248,9 @@ describe("BalanceAnalysisPage", () => {
         expect(csvExportButton).toBeEnabled();
       });
       await user.selectOptions(screen.getByLabelText("balance-position-scope"), "asset");
-      await user.click(csvExportButton);
+      const currentCsvExportButton = await screen.findByTestId("balance-analysis-export-button");
+      await waitFor(() => expect(currentCsvExportButton).toBeEnabled());
+      await user.click(currentCsvExportButton);
 
       await waitFor(() => {
         expect(exportSpy).toHaveBeenCalledWith({
@@ -2188,12 +2312,16 @@ describe("BalanceAnalysisPage", () => {
         expect(workbookExportButton).toBeEnabled();
       });
       await user.selectOptions(screen.getByLabelText("balance-position-scope"), "asset");
-      await user.click(workbookExportButton);
+      const currentWorkbookExportButton = await screen.findByTestId(
+        "balance-analysis-workbook-export-button",
+      );
+      await waitFor(() => expect(currentWorkbookExportButton).toBeEnabled());
+      await user.click(currentWorkbookExportButton);
 
       await waitFor(() => {
         expect(exportSpy).toHaveBeenCalledWith({
           reportDate: "2025-12-31",
-          positionScope: "asset",
+          positionScope: "all",
           currencyBasis: "CNY",
         });
         expect(createObjectUrl).toHaveBeenCalledWith(workbookBlob);
@@ -2247,6 +2375,54 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("14.40");
       expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("1,202.00");
     });
+  });
+
+  it("shows missing-rate balances separately from observed zero in the workbook rate preview", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const workbook = buildWorkbookResponse();
+    const rateTable = workbook.result.tables.find((table) => table.key === "rate_distribution")!;
+    rateTable.rows = [
+      {
+        bucket: "利率缺失",
+        bond_count: 1,
+        bond_amount: "10000",
+        interbank_asset_count: 1,
+        interbank_asset_amount: "3000",
+        interbank_liability_count: 1,
+        interbank_liability_amount: "5000",
+      },
+      {
+        bucket: "零息/无息",
+        bond_count: 1,
+        bond_amount: "20000",
+        interbank_asset_count: 1,
+        interbank_asset_amount: "6000",
+        interbank_liability_count: 1,
+        interbank_liability_amount: "7000",
+      },
+      ...["0%以下", "1.5%以下", "1.5%-2.0%", "2.0%-2.5%", "2.5%-3.0%", "3.0%-3.5%"].map((bucket) => ({
+        bucket,
+        bond_amount: "0",
+        interbank_asset_amount: "0",
+        interbank_liability_amount: "0",
+      })),
+    ];
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisWorkbook: vi.fn(async () => workbook),
+    });
+    const panel = await screen.findByTestId("balance-analysis-workbook-panel-rate_distribution");
+    await userEvent.click(screen.getByText("资产负债结构与分布"));
+    const missingCard = within(panel).getByText("利率缺失").closest("article");
+    expect(missingCard).toBeVisible();
+    expect(missingCard).toHaveTextContent("1.00 亿元");
+    expect(missingCard).toHaveTextContent("0.30 亿元");
+    expect(missingCard).toHaveTextContent("0.50 亿元");
+    const zeroCard = within(panel).getByText("零息/无息").closest("article");
+    expect(zeroCard).toBeVisible();
+    expect(zeroCard).toHaveTextContent("2.00 亿元");
+    expect(zeroCard).toHaveTextContent("0.60 亿元");
+    expect(zeroCard).toHaveTextContent("0.70 亿元");
   });
 
   it("shows a contract mismatch warning when workbook primary fields are missing", async () => {
@@ -2690,6 +2866,7 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "0.00",
         asset_total_accrued_interest_amount: "0.00",
         liability_total_accrued_interest_amount: "0.00",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
       },
     }));
     const getDetailSpy = vi.fn(async () => ({
@@ -2741,7 +2918,7 @@ describe("BalanceAnalysisPage", () => {
     await waitFor(() => {
       expect(refreshSpy).toHaveBeenCalledWith("2025-12-31");
       expect(statusSpy).toHaveBeenCalledWith("balance_analysis_materialize:test-run");
-      expect(screen.getAllByText(/刷新结果已生成|刷新任务进行中/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/计算任务已完成|刷新任务进行中/).length).toBeGreaterThan(0);
       expect(screen.queryByText(/balance_analysis_materialize:test-run/)).not.toBeInTheDocument();
       expect(getDatesSpy.mock.calls.length).toBeGreaterThan(1);
       expect(getOverviewSpy.mock.calls.length).toBeGreaterThan(1);
@@ -2749,6 +2926,105 @@ describe("BalanceAnalysisPage", () => {
       expect(getSummarySpy.mock.calls.length).toBeGreaterThan(1);
       expect(getAdbComparisonSpy.mock.calls.length).toBeGreaterThan(1);
     });
+  });
+
+  it.each([true, false])("keeps publication diagnostics in existing details when available=%s", async (available) => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const publicationGeneration = "balance-business-copy-generation";
+    const publicationReason = "current generation was revoked";
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisPublicationStatus: vi.fn(async () => ({
+        enabled: true,
+        available,
+        generation: available ? publicationGeneration : null,
+        report_dates: available ? ["2025-12-31"] : [],
+        manifest_sha256: available ? "a".repeat(64) : null,
+        quality_flag: available ? "ok" as const : "stale" as const,
+        reason: available ? null : publicationReason,
+      })),
+    }, ["/balance-analysis?report_date=2025-12-31"]);
+
+    expect(await screen.findByText(available
+      ? "总览采用已发布数据，其他分析结果请按各自数据日期核对。"
+      : "所选报告日暂无可用的已发布总览数据",
+    )).toBeVisible();
+    if (!available) {
+      const attention = screen.getByTestId("balance-analysis-abnormal-sentinels");
+      expect(attention).toHaveTextContent("2025-12-31");
+      expect(attention).toHaveTextContent("请联系数据负责人核对");
+      expect(attention).not.toHaveTextContent(publicationReason);
+    }
+    const diagnostics = await screen.findByText(available
+      ? `发布代次：${publicationGeneration}`
+      : `原始发布诊断：${publicationReason}`,
+    );
+    expect(diagnostics).not.toBeVisible();
+    await user.click(screen.getByText("技术诊断"));
+    await waitFor(() => expect(diagnostics).toBeVisible());
+  });
+
+  it("keeps published balance data and filters visible after a fixed-generation refresh completes", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDatesSpy = vi.fn(baseClient.getBalanceAnalysisDates);
+    const getOverviewSpy = vi.fn(baseClient.getBalanceAnalysisOverview);
+    const exportSpy = vi.fn(async () => {
+      throw new Error("export unavailable");
+    });
+    const refreshSpy = vi.fn(async () => ({
+      status: "queued",
+      run_id: "balance-run-after-publication",
+      job_name: "balance_analysis_materialize",
+      trigger_mode: "async",
+      cache_key: "balance_analysis:materialize:formal",
+      report_date: "2025-12-31",
+    }));
+    const statusSpy = vi.fn(async () => ({
+      status: "completed",
+      run_id: "balance-run-after-publication",
+      job_name: "balance_analysis_materialize",
+      trigger_mode: "terminal",
+      cache_key: "balance_analysis:materialize:formal",
+      report_date: "2025-12-31",
+    }));
+
+    renderBalanceAnalysisWithFixedGeneration({
+      ...baseClient,
+      getBalanceAnalysisDates: getDatesSpy,
+      getBalanceAnalysisOverview: getOverviewSpy,
+      refreshBalanceAnalysis: refreshSpy,
+      getBalanceAnalysisRefreshStatus: statusSpy,
+      exportBalanceAnalysisSummaryCsv: exportSpy,
+    });
+
+    await screen.findByRole("heading", { name: "资产负债分析" });
+    await waitFor(() =>
+      expect(screen.getByLabelText("balance-report-date")).toHaveValue("2025-12-31"),
+    );
+    expect(screen.getByLabelText("balance-position-scope")).toHaveValue("asset");
+    await waitFor(() => expect(getOverviewSpy).toHaveBeenCalled());
+    const datesReadsBeforeRefresh = getDatesSpy.mock.calls.length;
+    const overviewReadsBeforeRefresh = getOverviewSpy.mock.calls.length;
+
+    await user.click(screen.getByTestId("balance-analysis-refresh-button"));
+
+    const state = await screen.findByTestId("balance-analysis-refresh-state");
+    await waitFor(() => expect(state).toHaveAttribute("data-state-variant", "stale"));
+    expect(state).toHaveTextContent("计算任务完成");
+    expect(state).toHaveTextContent(
+      "当前页面仍显示已发布的数据。请在数据中心完成发布后重新进入本页。",
+    );
+    expect(screen.getByLabelText("balance-report-date")).toHaveValue("2025-12-31");
+    expect(screen.getByLabelText("balance-position-scope")).toHaveValue("asset");
+    expect(getDatesSpy).toHaveBeenCalledTimes(datesReadsBeforeRefresh);
+    expect(getOverviewSpy).toHaveBeenCalledTimes(overviewReadsBeforeRefresh);
+
+    await user.click(screen.getByTestId("balance-analysis-export-button"));
+    await waitFor(() => expect(state).toHaveAttribute("data-state-variant", "error"));
+    expect(state).toHaveTextContent("汇总表暂未导出，请稍后重试。");
+    expect(state).not.toHaveTextContent("当前页面仍显示已发布的数据");
   });
 
   it("surfaces invalid overview amounts as text and does not show a minimum-width bar for invalid workbook magnitudes", async () => {
@@ -2774,6 +3050,7 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "0.00",
         asset_total_accrued_interest_amount: "0.00",
         liability_total_accrued_interest_amount: "0.00",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
       },
     }));
     const getDetailSpy = vi.fn(async () => ({
@@ -2847,6 +3124,25 @@ describe("BalanceAnalysisPage", () => {
     expect(bar1).toHaveStyle({ width: "0%" });
   });
 
+  it("surfaces a workbook quality warning on the first-screen status strip", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const warningWorkbook = buildWorkbookResponse();
+    warningWorkbook.result_meta = {
+      ...warningWorkbook.result_meta,
+      quality_flag: "warning",
+    };
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisWorkbook: vi.fn(async () => warningWorkbook),
+    });
+
+    expect(await screen.findByTestId("balance-analysis-data-status")).toHaveTextContent(
+      "数据质量需复核",
+    );
+    expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveAttribute("open");
+  });
+
   it("keeps headline KPI on the governed overview chain while surfacing stale fallback status", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const getDatesSpy = vi.fn(async () => ({
@@ -2874,6 +3170,7 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "7200000000.00",
         asset_total_accrued_interest_amount: "3600000000.00",
         liability_total_accrued_interest_amount: "1440000000.00",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
       },
     }));
     const getDetailSpy = vi.fn(async () => ({
@@ -2948,18 +3245,18 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("债券资产(剔除发行类)");
       expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("1,000.00");
       const attentionStrip = screen.getByTestId("balance-analysis-data-status");
-      expect(attentionStrip).toHaveTextContent("降级日期");
-      expect(attentionStrip).toHaveTextContent("陈旧数据");
+      expect(attentionStrip).toHaveTextContent("使用替代日期");
+      expect(attentionStrip).toHaveTextContent("数据已过期");
       const sentinels = screen.getByTestId("balance-analysis-abnormal-sentinels");
       expect(sentinels).toBeVisible();
-      expect(sentinels).toHaveTextContent("陈旧");
-      expect(sentinels).toHaveTextContent("降级");
-      expect(sentinels).toHaveTextContent("总览结果元信息 标记为陈旧");
-      expect(sentinels).toHaveTextContent("总览结果元信息 使用最新快照降级");
+      expect(sentinels).toHaveTextContent("已过期");
+      expect(sentinels).toHaveTextContent("替代日期");
+      expect(sentinels).toHaveTextContent("总览数据已过期，请核对后使用");
+      expect(sentinels).toHaveTextContent("总览使用最近可用日期的数据");
     });
     expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveAttribute("open");
     expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveTextContent("质量需复核");
-    expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveTextContent("存在降级");
+    expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveTextContent("存在替代日期");
   });
 
   it("shows negative maturity gap amounts in text while bar width uses absolute magnitude", async () => {
@@ -2985,6 +3282,7 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "0.00",
         asset_total_accrued_interest_amount: "0.00",
         liability_total_accrued_interest_amount: "0.00",
+        metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
       },
     }));
     const getDetailSpy = vi.fn(async () => ({

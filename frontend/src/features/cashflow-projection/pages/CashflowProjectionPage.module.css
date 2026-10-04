@@ -14,7 +14,6 @@
   --ib-ink-muted: var(--dh-api-muted);
   --ib-accent: var(--dh-api-blue);
   --ib-accent-surface: var(--dh-api-blue-soft);
-  --ib-radius: var(--dh-api-radius);
   --ib-shadow: none;
   --ib-warn: var(--dh-api-amber);
   --ib-up: var(--dh-api-green);
@@ -26,7 +25,6 @@
   --moss-color-danger-200: var(--dh-api-line);
   --moss-color-danger-50: var(--dh-api-red-soft);
   --moss-color-danger-800: var(--dh-api-red);
-  --moss-color-warning-200: var(--dh-api-line);
   --moss-color-warning-50: var(--dh-api-amber-soft);
   --moss-color-warning-900: var(--dh-api-amber);
 
@@ -77,24 +75,19 @@
   margin-bottom: 8px;
 }
 
-.sectionEyebrow,
 .conclusionLabel,
 .filterLabel {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
   color: var(--cf-muted);
-}
-
-.sectionEyebrow {
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .title {
   margin: 0 !important;
   color: var(--cf-text) !important;
-  font-weight: 700 !important;
+  font-size: 24px !important;
+  font-weight: 600 !important;
 }
 
 .subtitle {
@@ -132,7 +125,6 @@
 
 .decisionDeck,
 .panel,
-.chartPanel,
 .sidePanel,
 .tablePanel {
   border: 1px solid var(--cf-border);
@@ -214,7 +206,7 @@
   margin: 6px 0;
   color: var(--cf-text);
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -237,7 +229,7 @@
 .decisionMetric span {
   color: var(--cf-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .decisionMetric strong {
@@ -265,7 +257,7 @@
 .decisionFacts span {
   color: var(--cf-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .decisionFacts strong {
@@ -309,7 +301,7 @@
 .contractStatusTitle {
   color: var(--cf-text);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .contractStatusGrid {
@@ -340,7 +332,7 @@
   gap: 12px;
   color: var(--cf-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .railBars {
@@ -383,35 +375,10 @@
 }
 
 .panel,
-.chartPanel,
 .sidePanel,
 .tablePanel {
   padding: 16px;
   box-shadow: 0 8px 18px color-mix(in srgb, var(--cf-text) 4%, transparent);
-}
-
-.sectionHeader {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: start;
-  margin-bottom: 16px;
-}
-
-.sectionHeader h2 {
-  margin: 3px 0 0;
-  color: var(--cf-text);
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.sectionHeader p {
-  max-width: 430px;
-  margin: 0;
-  color: var(--cf-subtle);
-  font-size: 13px;
-  line-height: 1.65;
 }
 
 .metricStrip {
@@ -459,7 +426,7 @@
   overflow: hidden;
   color: var(--cf-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -469,7 +436,7 @@
   overflow-wrap: anywhere;
   color: var(--cf-text);
   font-size: 19px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -507,20 +474,6 @@
   align-items: stretch;
 }
 
-.chart {
-  width: 100%;
-  height: 360px;
-}
-
-.emptyChart {
-  display: grid;
-  min-height: 260px;
-  place-items: center;
-  border-radius: var(--ib-radius);
-  background: var(--cf-paper-muted);
-  color: var(--cf-muted);
-}
-
 .sidePanel {
   display: grid;
   gap: 12px;
@@ -551,7 +504,7 @@
 .sideMetric span {
   color: var(--cf-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .sideMetric strong {
@@ -577,7 +530,7 @@
 .riskHeader span {
   color: var(--cf-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .riskHeader strong {
@@ -621,7 +574,7 @@
 .riskRow span {
   color: var(--cf-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .riskRow strong {
@@ -652,29 +605,6 @@
 .datePanel :global(.ant-select-arrow),
 .datePanel :global(.ant-select-selection-placeholder) {
   color: var(--cf-muted) !important;
-}
-
-.tablePanel :global(.ant-table) {
-  background: var(--cf-paper) !important;
-  color: var(--cf-text);
-}
-
-.tablePanel :global(.ant-table-wrapper) {
-  overflow: hidden;
-  border: 1px solid var(--cf-border);
-  border-radius: var(--ib-radius);
-}
-
-.tablePanel :global(.ant-table-thead > tr > th) {
-  background: var(--cf-paper-muted) !important;
-  color: var(--cf-subtle) !important;
-  font-size: 12px;
-  font-weight: 700 !important;
-}
-
-.tablePanel :global(.ant-table-tbody > tr > td) {
-  color: var(--cf-text);
-  font-size: 13px;
 }
 
 .warningBody {
@@ -752,7 +682,6 @@
 
   .hero,
   .panel,
-  .chartPanel,
   .sidePanel,
   .tablePanel,
   .decisionDeck {
@@ -793,10 +722,6 @@
   .metricCell_primary {
     min-height: auto;
     grid-column: span 1;
-  }
-
-  .chart {
-    height: 300px;
   }
 
   .riskRow {

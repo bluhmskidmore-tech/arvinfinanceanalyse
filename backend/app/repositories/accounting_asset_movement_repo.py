@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
 import duckdb
+from backend.app.core_finance.accounting_asset_movement import (
+    GlAccountingAssetBalance,
+    reconcile_chain_fx_adjustments,
+)
 from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS as _ZQTZ_ASSET_ROWS
-from backend.app.repositories.duckdb_repo import read_only_connection
+from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
 
 _LEDGER_BUSINESS_ROWS = [
     {
@@ -123,8 +128,61 @@ _MOVEMENT_FACT_TABLE = "fact_accounting_asset_movement_monthly"
 _MOVEMENT_CONTROL_COLUMNS = ("chain_status", "position_source_basis")
 
 
+def load_movement_chain_fx_evidence(
+    conn: duckdb.DuckDBPyConnection, *, report_date: str, currency_basis: str,
+) -> dict[str, Any]:
+    """读取本页单一外币折算证据；缺源、混合外币或非相邻月不解释差额。"""
+    if currency_basis != "CNX":
+        return {}
+    prior_date = (date.fromisoformat(report_date).replace(day=1) - timedelta(days=1)).isoformat()
+    try:
+        currencies = conn.execute(
+            """select report_date, currency_code, count(*) from fact_formal_zqtz_balance_daily
+               where report_date in (?, ?) and position_scope = 'asset'
+               group by report_date, currency_code""", [prior_date, report_date],
+        ).fetchall()
+        by_date = {d: {str(ccy or '').upper() for rd, ccy, _ in currencies if str(rd) == d}
+                   for d in (prior_date, report_date)}
+        foreign = by_date[prior_date] - {"CNY"}
+        if len(foreign) != 1 or not next(iter(foreign)) or by_date[report_date] != by_date[prior_date]:
+            return {}
+        currency = next(iter(foreign))
+        rates = conn.execute(
+            """select cast(trade_date as varchar), mid_rate, source_version from fx_daily_mid
+               where cast(trade_date as varchar) in (?, ?) and base_currency = ? and quote_currency = 'CNY'""",
+            [prior_date, report_date, currency],
+        ).fetchall()
+        if len(rates) != 2 or {str(r[0]) for r in rates} != {prior_date, report_date} or any(r[1] is None for r in rates):
+            return {}
+        rate_map = {str(d): Decimal(str(rate)) for d, rate, _ in rates}
+        raw = conn.execute(
+            """select report_date, account_code, currency, beginning_balance, ending_balance
+               from product_category_pnl_canonical_fact
+               where report_date in (?, ?) and currency in ('CNX', 'CNY')
+                 and (account_code like '141%' or account_code like '142%'
+                      or account_code like '143%' or account_code like '1440101%')""",
+            [prior_date, report_date],
+        ).fetchall()
+        if any(beginning is None or ending is None for _, _, _, beginning, ending in raw):
+            return {}
+        gl = [GlAccountingAssetBalance(date.fromisoformat(str(d)), str(code), Decimal(str(beginning)),
+                                      Decimal(str(ending)), currency_basis=str(ccy))
+              for d, code, ccy, beginning, ending in raw]
+        adjustments = reconcile_chain_fx_adjustments(
+            current_gl=[r for r in gl if r.report_date.isoformat() == report_date],
+            prior_gl=[r for r in gl if r.report_date.isoformat() == prior_date],
+            prior_rate=rate_map[prior_date], current_rate=rate_map[report_date],
+        )
+        return {"adjustments": adjustments, "prior_report_date": prior_date,
+                "currency": currency, "prior_rate": rate_map[prior_date], "current_rate": rate_map[report_date],
+                "source_versions": sorted({str(sv) for _, _, sv in rates if sv})}
+    except (duckdb.CatalogException, duckdb.BinderException):
+        # 旧库/测试库未提供证据字段时保留原始断点，绝不自动放行。
+        return {}
+
+
 @dataclass
-class AccountingAssetMovementRepository:
+class AccountingAssetMovementRepository(DuckDBRepository):
     path: str
     _table_exists_cache: dict[str, bool] = field(
         default_factory=dict,
@@ -138,6 +196,11 @@ class AccountingAssetMovementRepository:
     )
 
     def _connect(self) -> duckdb.DuckDBPyConnection:
+        scoped = getattr(self._scope, "conn", None)
+        if scoped is not None:
+            self._assert_scoped_path_matches_context()
+            # Each helper closes its cursor; the request scope owns the database.
+            return scoped.cursor()
         return duckdb.connect(self.path, read_only=True)
 
     def list_report_dates(self, *, currency_basis: str = "CNX") -> list[str]:
@@ -188,6 +251,48 @@ class AccountingAssetMovementRepository:
                 conn.close()
         return [str(row[0]) for row in rows]
 
+    def fetch_gl144_family_rows(
+        self,
+        *,
+        report_date: str,
+        currency_basis: str = "CNX",
+    ) -> list[dict[str, object]]:
+        """读取 144 家族全部科目行，供未映射披露分类；不影响控制科目日期判定。"""
+        try:
+            conn = self._connect()
+            if not self._table_exists_with_connection(conn, "product_category_pnl_canonical_fact"):
+                return []
+            rows = conn.execute(
+                """
+                select
+                  account_code,
+                  coalesce(sum(beginning_balance), 0) as beginning_balance,
+                  coalesce(sum(ending_balance), 0) as ending_balance
+                from product_category_pnl_canonical_fact
+                where cast(report_date as varchar) = ?
+                  and currency = ?
+                  and account_code like '144%'
+                group by account_code
+                order by account_code
+                """,
+                [report_date, currency_basis],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
+            return []
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return [
+            {
+                "account_code": str(row[0] or ""),
+                "beginning_balance": Decimal(str(row[1] or "0")),
+                "ending_balance": Decimal(str(row[2] or "0")),
+            }
+            for row in rows
+        ]
+
     def fetch_missing_control_dates(
         self,
         *,
@@ -204,7 +309,7 @@ class AccountingAssetMovementRepository:
             return []
         try:
             with read_only_connection(self.path) as conn:
-                if not self._table_exists(conn, "product_category_pnl_canonical_fact"):
+                if not self._table_exists_with_connection(conn, "product_category_pnl_canonical_fact"):
                     return report_dates
                 rows = conn.execute(
                     """
@@ -357,7 +462,7 @@ class AccountingAssetMovementRepository:
             params.append(report_dates)
         try:
             with read_only_connection(self.path) as conn:
-                if not self._table_exists(conn, _MOVEMENT_FACT_TABLE):
+                if not self._table_exists_with_connection(conn, _MOVEMENT_FACT_TABLE):
                     return []
                 control_columns = ", ".join(
                     column
@@ -424,7 +529,7 @@ class AccountingAssetMovementRepository:
         """
         try:
             with read_only_connection(self.path) as conn:
-                if not self._table_exists(conn, "fact_accounting_asset_movement_monthly"):
+                if not self._table_exists_with_connection(conn, "fact_accounting_asset_movement_monthly"):
                     return []
                 rows = conn.execute(
                     """
@@ -504,7 +609,7 @@ class AccountingAssetMovementRepository:
         }
         try:
             with read_only_connection(self.path) as conn:
-                if not self._table_exists(conn, table):
+                if not self._table_exists_with_connection(conn, table):
                     return coverage
                 rows = conn.execute(
                     f"""
@@ -651,7 +756,7 @@ class AccountingAssetMovementRepository:
         table = "product_category_pnl_canonical_fact"
         try:
             conn = self._connect()
-            if not self._table_exists(conn, table):
+            if not self._table_exists_with_connection(conn, table):
                 return {
                     "status": "unsupported_missing_columns",
                     "missing_columns": [table],
@@ -763,7 +868,7 @@ class AccountingAssetMovementRepository:
             }
         try:
             conn = self._connect()
-            if not self._table_exists(conn, table):
+            if not self._table_exists_with_connection(conn, table):
                 return {
                     "status": "unsupported_missing_columns",
                     "missing_columns": [table],
@@ -793,6 +898,11 @@ class AccountingAssetMovementRepository:
                 }
             concentration_columns = ("maturity_date", "issuer_name", "rating", "industry_name")
             descriptor_columns = (
+                "instrument_code",
+                "portfolio_name",
+                "accounting_basis",
+                "overdue_principal_days",
+                "overdue_interest_days",
                 "bond_type",
                 "business_type_primary",
                 "business_type_final",
@@ -818,6 +928,11 @@ class AccountingAssetMovementRepository:
                 select
                   cast(report_date as varchar) as report_date,
                   {amount_expr} as amount,
+                  {select_exprs["instrument_code"]},
+                  {select_exprs["portfolio_name"]},
+                  {select_exprs["accounting_basis"]},
+                  {select_exprs["overdue_principal_days"]},
+                  {select_exprs["overdue_interest_days"]},
                   {select_exprs["maturity_date"]},
                   {select_exprs["issuer_name"]},
                   {select_exprs["rating"]},
@@ -851,6 +966,11 @@ class AccountingAssetMovementRepository:
         keys = [
             "report_date",
             "amount",
+            "instrument_code",
+            "portfolio_name",
+            "accounting_basis",
+            "overdue_principal_days",
+            "overdue_interest_days",
             "maturity_date",
             "issuer_name",
             "rating",
@@ -919,6 +1039,12 @@ class AccountingAssetMovementRepository:
                 """,
                 [report_dates, currency_basis],
             ).fetchall()
+            fx_by_date = {
+                day: load_movement_chain_fx_evidence(
+                    conn, report_date=day, currency_basis=currency_basis,
+                )
+                for day in {str(row[0]) for row in rows if row[-2] == "fx_adjusted"}
+            }
         except duckdb.Error as exc:
             if not _is_missing_table_error(exc):
                 raise
@@ -946,7 +1072,20 @@ class AccountingAssetMovementRepository:
             "rule_version",
             *_MOVEMENT_CONTROL_COLUMNS,
         ]
-        return [dict(zip(keys, row, strict=True)) for row in rows]
+        result = [dict(zip(keys, row, strict=True)) for row in rows]
+        for item in result:
+            if item.get("chain_status") != "fx_adjusted":
+                continue
+            evidence = fx_by_date.get(str(item["report_date"]), {})
+            amount = evidence.get("adjustments", {}).get(item["basis_bucket"])
+            if amount is None:
+                item["chain_status"] = "broken"
+                if item["reconciliation_status"] == "matched":
+                    item["reconciliation_status"] = "chain_broken"
+                continue
+            item.update(chain_fx_adjustment=amount, chain_fx_currency=evidence["currency"],
+                        chain_fx_prior_rate=evidence["prior_rate"], chain_fx_current_rate=evidence["current_rate"])
+        return result
 
     def _fetch_recent_report_dates(
         self,
@@ -984,7 +1123,7 @@ class AccountingAssetMovementRepository:
         report_date: str,
         currency_basis: str,
     ) -> list[dict[str, object]]:
-        if not self._table_exists(conn, "product_category_pnl_canonical_fact"):
+        if not self._table_exists_with_connection(conn, "product_category_pnl_canonical_fact"):
             return [
                 self._business_row(
                     report_date=report_date,
@@ -1034,7 +1173,7 @@ class AccountingAssetMovementRepository:
     ) -> dict[str, object]:
         row_def = _ZQTZ_NCD_ROW
         zqtz_currency_basis = "CNY" if currency_basis.upper() == "CNX" else currency_basis
-        if not self._table_exists(conn, "fact_formal_zqtz_balance_daily"):
+        if not self._table_exists_with_connection(conn, "fact_formal_zqtz_balance_daily"):
             return self._business_row(
                 report_date=report_date,
                 currency_basis=currency_basis,
@@ -1125,7 +1264,7 @@ class AccountingAssetMovementRepository:
             return []
 
         table = "fact_formal_zqtz_balance_daily"
-        table_exists = self._table_exists(conn, table)
+        table_exists = self._table_exists_with_connection(conn, table)
         zqtz_currency_basis = "CNY" if currency_basis.upper() == "CNX" else currency_basis
         amount_expr = self._zqtz_amount_expression(conn) if table_exists else "0"
         rows_by_date: dict[str, list[dict[str, object]]] = {
@@ -1193,7 +1332,7 @@ class AccountingAssetMovementRepository:
         full_row_def = {**row_def, "side": "asset"}
         source_note = str(row_def.get("source_note", "ZQTZSHOW asset classification"))
         zqtz_currency_basis = "CNY" if currency_basis.upper() == "CNX" else currency_basis
-        if not self._table_exists(conn, "fact_formal_zqtz_balance_daily"):
+        if not self._table_exists_with_connection(conn, "fact_formal_zqtz_balance_daily"):
             return self._business_row(
                 report_date=report_date,
                 currency_basis=currency_basis,
@@ -1284,15 +1423,20 @@ class AccountingAssetMovementRepository:
             params.extend(exclude_bond_types)
 
         instrument_prefixes = tuple(str(value) for value in row_def.get("instrument_prefixes", ()))
-        if instrument_prefixes:
+        additional_instrument_codes = tuple(
+            str(value) for value in row_def.get("additional_instrument_codes", ())
+        )
+        if instrument_prefixes or additional_instrument_codes:
             if not self._column_exists(conn, table, "instrument_code"):
                 return "false", []
-            parts.append(
-                "("
-                + " or ".join("upper(instrument_code) like ?" for _ in instrument_prefixes)
-                + ")"
-            )
+            # 统一代码前后空格及大小写；正式快照解析已 strip 源代码。
+            code_parts = ["upper(trim(instrument_code)) like ?" for _ in instrument_prefixes]
             params.extend(f"{prefix.upper()}%" for prefix in instrument_prefixes)
+            if additional_instrument_codes:
+                placeholders = ", ".join("?" for _ in additional_instrument_codes)
+                code_parts.append(f"upper(trim(instrument_code)) in ({placeholders})")
+                params.extend(code.upper() for code in additional_instrument_codes)
+            parts.append("(" + " or ".join(code_parts) + ")")
 
         exclude_instrument_prefixes = tuple(
             str(value) for value in row_def.get("exclude_instrument_prefixes", ())
@@ -1301,7 +1445,7 @@ class AccountingAssetMovementRepository:
             if not self._column_exists(conn, table, "instrument_code"):
                 return "false", []
             for prefix in exclude_instrument_prefixes:
-                parts.append("(instrument_code is null or upper(instrument_code) not like ?)")
+                parts.append("(instrument_code is null or upper(trim(instrument_code)) not like ?)")
                 params.append(f"{prefix.upper()}%")
 
         instrument_codes = tuple(str(value) for value in row_def.get("instrument_codes", ()))
@@ -1309,7 +1453,7 @@ class AccountingAssetMovementRepository:
             if not self._column_exists(conn, table, "instrument_code"):
                 return "false", []
             placeholders = ", ".join("?" for _ in instrument_codes)
-            parts.append(f"upper(instrument_code) in ({placeholders})")
+            parts.append(f"upper(trim(instrument_code)) in ({placeholders})")
             params.extend(code.upper() for code in instrument_codes)
 
         exclude_instrument_codes = tuple(
@@ -1320,7 +1464,7 @@ class AccountingAssetMovementRepository:
                 return "false", []
             placeholders = ", ".join("?" for _ in exclude_instrument_codes)
             parts.append(
-                f"(instrument_code is null or upper(instrument_code) not in ({placeholders}))"
+                f"(instrument_code is null or upper(trim(instrument_code)) not in ({placeholders}))"
             )
             params.extend(code.upper() for code in exclude_instrument_codes)
 
@@ -1413,7 +1557,7 @@ class AccountingAssetMovementRepository:
                 terms.append(f"{column} like ?")
                 params.append(f"%{keyword}%")
 
-        if self._table_exists(conn, "phase1_zqtz_preview_rows") and self._column_exists(
+        if self._table_exists_with_connection(conn, "phase1_zqtz_preview_rows") and self._column_exists(
             conn,
             table,
             "instrument_code",
@@ -1539,7 +1683,7 @@ class AccountingAssetMovementRepository:
             return {}
         try:
             conn = self._connect()
-            if not self._table_exists(conn, "product_category_pnl_canonical_fact"):
+            if not self._table_exists_with_connection(conn, "product_category_pnl_canonical_fact"):
                 return {}
             rows = conn.execute(
                 """
@@ -1598,7 +1742,7 @@ class AccountingAssetMovementRepository:
         }
         try:
             conn = self._connect()
-            if self._table_exists(conn, "product_category_pnl_canonical_fact"):
+            if self._table_exists_with_connection(conn, "product_category_pnl_canonical_fact"):
                 ledger = conn.execute(
                     """
                     select
@@ -1615,7 +1759,7 @@ class AccountingAssetMovementRepository:
                     str(ledger[1] if ledger else "0")
                 )
 
-            if self._table_exists(conn, "fact_formal_zqtz_balance_daily"):
+            if self._table_exists_with_connection(conn, "fact_formal_zqtz_balance_daily"):
                 zqtz_currency_basis = "CNY" if currency_basis.upper() == "CNX" else currency_basis
                 voucher_predicates: list[str] = []
                 voucher_params: list[str] = []
@@ -1726,7 +1870,7 @@ class AccountingAssetMovementRepository:
             "rule_version": rule_version,
         }
 
-    def _table_exists(self, conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    def _table_exists_with_connection(self, conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
         if table_name in self._table_exists_cache:
             return self._table_exists_cache[table_name]
         row = conn.execute(

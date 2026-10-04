@@ -17,8 +17,8 @@
 - `result_meta.result_kind == "bond_analytics.action_attribution"`.
 - `result_meta.formal_use_allowed == false`.
 - `result_meta.source_version == "sv_bond_analysis_action_attr_gs_a"`.
-- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v2"`.
-- `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2"`.
+- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v6__rv_action_attribution_calendar_coverage_v2"`.
+- `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v6__cv_action_attribution_calendar_coverage_v2"`.
 - `result_meta.quality_flag == "warning"`.
 - `result_meta.fallback_mode == "none"`.
 - `result_meta.source_surface == "bond_analytics"`.
@@ -50,3 +50,10 @@
 - It does not approve fixed-income action-attribution, DV01, duration, KRD, yield/YTM, credit-spread, holdings, or accounting-class values as formal metric truth.
 - It preserves `formal_use_allowed=false`; page-level governance validation, manual audit review, and business-owner approval remain required before closure.
 - The sample remains `captured-awaiting-approval`; these corrections do not constitute approval.
+
+## Calendar and coverage disclosure
+
+- `result.snapshot_window.requested_start == "2026-03-01"`, `resolved_start == "2026-02-28"`, and `start_gap_days == 1`.
+- `result.snapshot_window.staleness_limit_status == "PENDING"`; this capture does not approve a staleness threshold.
+- `result.pnl_coverage.status == "complete"`, `period_status == "complete"`, `missing_months == []`, and `reconciliation_difference == 0`.
+- `result.pnl_coverage.input_pnl == 1250000`, `identified_pnl == 1250000`, and `key_coverage_ratio == 1`; these coverage disclosures do not remove the existing independent-accounting-PnL limitation.

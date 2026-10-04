@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import "./LedgerPnlSectionNav.css";
 
@@ -44,6 +44,7 @@ export function LedgerPnlSectionNav(props: {
     stickyOffset = 0,
     onBeforeNavigate,
   } = props;
+  const navRef = useRef<HTMLElement>(null);
   const [availableIds, setAvailableIds] = useState<Set<string>>(() => new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -71,9 +72,23 @@ export function LedgerPnlSectionNav(props: {
         else visibleTargets.delete(target[0]);
       }
 
-      const nextActive = [...visibleTargets.entries()]
-        .sort(([, first], [, second]) => first.getBoundingClientRect().top - second.getBoundingClientRect().top)
-        .at(0)?.[0] ?? null;
+      const focusedTarget = targets.find(
+        ([id, element]) => element === document.activeElement && visibleTargets.has(id),
+      )?.[0];
+      const activationLine = stickyOffset + (navRef.current?.getBoundingClientRect().height ?? 0) + 16;
+      const positionedTargets = [...visibleTargets.entries()].map(([id, element]) => ({
+        id,
+        top: element.getBoundingClientRect().top,
+      }));
+      const latestStartedTarget = positionedTargets
+        .filter(({ top }) => top <= activationLine)
+        .sort((first, second) => second.top - first.top)
+        .at(0)?.id;
+      const nextUpcomingTarget = positionedTargets
+        .filter(({ top }) => top > activationLine)
+        .sort((first, second) => first.top - second.top)
+        .at(0)?.id;
+      const nextActive = focusedTarget ?? latestStartedTarget ?? nextUpcomingTarget ?? null;
 
       setActiveId(nextActive);
     }, {
@@ -83,7 +98,7 @@ export function LedgerPnlSectionNav(props: {
 
     targets.forEach(([, element]) => observer.observe(element));
     return () => observer.disconnect();
-  }, [items]);
+  }, [items, stickyOffset]);
 
   if (items.length === 0) return null;
 
@@ -93,6 +108,7 @@ export function LedgerPnlSectionNav(props: {
 
   return (
     <nav
+      ref={navRef}
       className="ledger-pnl-section-nav"
       aria-label="页面章节导航"
       data-testid={testId}

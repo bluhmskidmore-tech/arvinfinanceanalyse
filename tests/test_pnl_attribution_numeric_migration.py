@@ -208,6 +208,9 @@ class TestSpread:
         item = SpreadAttributionItem(
             category="CD",
             category_type="asset",
+            matched_start_market_value=100.0,
+            attribution_duration=3.0,
+            attributed_position_count=1,
             market_value=100.0,
             duration=3.0,
             weight=0.3,
@@ -359,6 +362,9 @@ def test_spread_weight_numeric_uses_pct_contract() -> None:
     item = SpreadAttributionItem(
         category="rate",
         category_type="asset",
+        matched_start_market_value=100.0,
+        attribution_duration=3.0,
+        attributed_position_count=1,
         market_value=100.0,
         duration=3.0,
         weight=0.4,

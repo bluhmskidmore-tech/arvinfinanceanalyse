@@ -5,7 +5,9 @@ from typing import Any, cast
 
 from backend.app.core_finance.breakout_geometry import (
     BREAKOUT_GEOMETRY_MIN_HISTORY,
+    PATTERN_BREAKOUT_CODE,
     PATTERN_BREAKOUT_LABEL,
+    PATTERN_PULLBACK_CODE,
     PATTERN_PULLBACK_LABEL,
     attach_breakout_geometry,
 )
@@ -37,12 +39,13 @@ def _flat_history(prior_close: float, last_close: float) -> list[float]:
     return [prior_close] * (BREAKOUT_GEOMETRY_MIN_HISTORY - 1) + [last_close]
 
 
-def _geometry_tuple(item: dict[str, Any]) -> tuple[Any, Any, Any, Any]:
+def _geometry_tuple(item: dict[str, Any]) -> tuple[Any, Any, Any, Any, Any]:
     return (
         item["close"],
         item["breakout_level"],
         item["distance_to_breakout_pct"],
         item["pattern"],
+        item["pattern_code"],
     )
 
 
@@ -76,7 +79,7 @@ def _computed_fusion_payload(stock_codes: list[str]) -> dict[str, Any]:
 
 
 def test_hybrid_fusion_breakout_geometry_golden_fills_fields_and_keeps_missing_none() -> None:
-    """golden：融合候选补几何（突破档）；缺 K 线候选四字段保持 None(而非 0)；
+    """golden：融合候选补几何（突破档）；缺 K 线候选五字段保持 None(而非 0)；
     融合自身评分字段不被改写；原 payload 不被回写。"""
     payload = _computed_fusion_payload(["600100.SH", "600200.SH"])
     assert payload["candidate_count"] == 2
@@ -97,6 +100,7 @@ def test_hybrid_fusion_breakout_geometry_golden_fills_fields_and_keeps_missing_n
     assert filled["breakout_level"] == 100.0
     assert filled["distance_to_breakout_pct"] == 3.0
     assert filled["pattern"] == PATTERN_BREAKOUT_LABEL
+    assert filled["pattern_code"] == PATTERN_BREAKOUT_CODE
     assert "price_as_of_date" not in filled
     assert "price_stale" not in filled
 
@@ -105,6 +109,7 @@ def test_hybrid_fusion_breakout_geometry_golden_fills_fields_and_keeps_missing_n
     assert missing["breakout_level"] is None
     assert missing["distance_to_breakout_pct"] is None
     assert missing["pattern"] is None
+    assert missing["pattern_code"] is None
 
     for code, item in by_code.items():
         assert item["fusion_score"] == original_scores[code]
@@ -153,6 +158,7 @@ def test_hybrid_fusion_breakout_geometry_golden_discloses_stale_price_anchor() -
     assert suspended_item["price_stale"] is True
     assert suspended_item["close"] == 98.0
     assert suspended_item["pattern"] == PATTERN_PULLBACK_LABEL
+    assert suspended_item["pattern_code"] == PATTERN_PULLBACK_CODE
 
     missing_item = by_code["600400.SH"]
     assert missing_item["close"] is None
@@ -324,11 +330,14 @@ def test_breakout_geometry_is_bitwise_identical_across_candidate_sources() -> No
     }
     assert set(growth_tuples) == {"uptrend_momentum", "fresh_trend_watchlist", "hybrid_fusion"}
     assert len(set(growth_tuples.values())) == 1
-    growth_close, growth_breakout, growth_distance, growth_pattern = next(iter(growth_tuples.values()))
+    growth_close, growth_breakout, growth_distance, growth_pattern, growth_pattern_code = next(
+        iter(growth_tuples.values())
+    )
     assert growth_close == round(growth_closes[-1], 6)
     assert growth_breakout == round(growth_closes[-2], 6)
     assert growth_distance == round((growth_close - growth_breakout) / growth_breakout * 100.0, 4)
     assert growth_pattern == PATTERN_BREAKOUT_LABEL
+    assert growth_pattern_code == PATTERN_BREAKOUT_CODE
 
     reversion_tuples = {
         source: _geometry_tuple(items[reversion_code])
@@ -337,7 +346,13 @@ def test_breakout_geometry_is_bitwise_identical_across_candidate_sources() -> No
     }
     assert set(reversion_tuples) == {"mean_reversion", "hybrid_fusion"}
     assert len(set(reversion_tuples.values())) == 1
-    assert next(iter(reversion_tuples.values())) == (74.0, 100.0, -26.0, PATTERN_PULLBACK_LABEL)
+    assert next(iter(reversion_tuples.values())) == (
+        74.0,
+        100.0,
+        -26.0,
+        PATTERN_PULLBACK_LABEL,
+        PATTERN_PULLBACK_CODE,
+    )
 
     livermore_tuples = {
         source: _geometry_tuple(items[livermore_code])
@@ -346,10 +361,13 @@ def test_breakout_geometry_is_bitwise_identical_across_candidate_sources() -> No
     }
     assert set(livermore_tuples) == {"uptrend_momentum", "hybrid_fusion"}
     assert len(set(livermore_tuples.values())) == 1
-    close_value, breakout_level, distance, pattern = next(iter(livermore_tuples.values()))
+    close_value, breakout_level, distance, pattern, pattern_code = next(
+        iter(livermore_tuples.values())
+    )
     assert close_value == livermore_item["close"]
     assert breakout_level == livermore_item["breakout_level"]
     livermore_close = cast(float, livermore_item["close"])
     livermore_breakout = cast(float, livermore_item["breakout_level"])
     assert distance == round((livermore_close - livermore_breakout) / livermore_breakout * 100.0, 4)
     assert pattern == PATTERN_BREAKOUT_LABEL
+    assert pattern_code == PATTERN_BREAKOUT_CODE

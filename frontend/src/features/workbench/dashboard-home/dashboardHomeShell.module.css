@@ -138,7 +138,7 @@
 .dhDateLabel {
   color: var(--dh-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .dhDateSelect {
@@ -151,7 +151,6 @@
   height: 30px;
   padding: 0 8px;
   position: relative;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .dhDateSelect:focus-within {
@@ -173,7 +172,7 @@
   font-family: var(--dh-font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.02em;
   pointer-events: none;
   white-space: nowrap;
@@ -186,8 +185,9 @@
   color: var(--dh-blue-deep);
   cursor: pointer;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   left: 0;
   opacity: 0;
   outline: 0;
@@ -216,7 +216,8 @@
   height: 30px;
   padding: 0 10px;
   position: relative;
-  transition: border-color 120ms ease, background 120ms ease;
+  /* 焦点环不淡入（DESIGN §8）：只过渡背景，border/outline 即时切换 */
+  transition: background-color 120ms ease;
   width: min(340px, 34vw);
 }
 
@@ -268,6 +269,21 @@
 
 .dhDateContextDivergent .dhDateContextDot {
   background: var(--dh-amber);
+}
+
+/* ── 报告日滞后提示「距今 N 天」──
+   常态 muted；达到阈值走警示琥珀而非涨跌色（DESIGN §12 结论 5），
+   首屏直接回答「数据是否可信」（§9.2）。 */
+.dhDateAge {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.dhDateAgeWarn {
+  color: var(--dh-api-amber);
 }
 
 /* ── 搜索候选下拉（combobox listbox） ── */
@@ -546,14 +562,14 @@
 .dhDeferredIndexHead span {
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.25;
 }
 
 .dhDeferredIndexHead strong {
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
   min-width: 0;
   overflow: hidden;
@@ -580,7 +596,7 @@
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .dhDeferredIndexItem small {
@@ -616,7 +632,7 @@
   color: var(--dh-ink);
   display: inline-flex;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.03em;
   gap: 8px;
   margin: 0;
@@ -708,7 +724,7 @@
 .dhDataNote h3 {
   color: var(--dh-ink);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0;
   margin: 0 0 10px;
 }
@@ -895,7 +911,7 @@
   --dh-radius: 6px;
   --dh-radius-lg: var(--dh-api-radius, 6px);
   --dh-font-sans: var(--moss-font-sans);
-  --dh-font-mono: var(--moss-font-mono);
+  --dh-font-mono: var(--moss-font-tabular);
   --ib-paper: var(--dh-bg);
   --ib-surface: var(--dh-card);
   --ib-surface-muted: var(--dh-card-soft);
@@ -1005,7 +1021,9 @@
   padding: 0;
 }
 
-:global([data-testid="dashboard-home-page"]) .dhTopbar {
+/* 旧 shell 页面外框只在旧根类与首页 testid 同时存在时生效。
+   当前 DashboardHomePage 只挂 optionTwo 的 page 类，外框与断点排布由其页面表负责。 */
+.dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   border-radius: 0;
   margin: 0;
@@ -1015,7 +1033,7 @@
 :global([data-testid="dashboard-home-page"]) .dhTitle {
   color: var(--dh-api-ink);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .dhApiBackedHome .dhLayout {
@@ -1080,15 +1098,16 @@
 .dhApiBackedHome .dhRailCardHeader > span:first-child {
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.25;
 }
 
 .dhApiBackedHome .dhRailCardKicker {
   color: var(--dh-api-muted);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -1112,7 +1131,7 @@
   color: var(--dh-api-ink);
   display: block;
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -1159,12 +1178,13 @@
 .dhApiTopRail strong {
   color: var(--dh-hex-eef4ff);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .dhApiTopRail span {
   color: var(--dh-api-muted);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1243,7 +1263,7 @@ i.dhApiStateMuted {
    `.workbench-shell-grid--cockpit:has(.theme-dh-api)` 变体（页根挂 theme-dh-api 即生效），
    此处不再保留页级 :global 壳层覆盖。 */
 
-:global([data-testid="dashboard-home-page"]) .dhTopbar {
+.dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   background: linear-gradient(180deg, rgba(16, 26, 42, 0.98), rgba(7, 12, 20, 0.98)), var(--dh-api-rail);
   border-color: rgba(126, 157, 194, 0.2);
@@ -1252,7 +1272,7 @@ i.dhApiStateMuted {
   padding-top: 12px;
 }
 
-:global([data-testid="dashboard-home-page"]) .dhTopbar::before {
+.dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar::before {
   background:
     linear-gradient(90deg, rgba(201, 165, 101, 0.34), rgba(114, 167, 220, 0.22), transparent 64%),
     repeating-linear-gradient(90deg, rgba(232, 238, 247, 0.08) 0 1px, transparent 1px 28px);
@@ -1316,14 +1336,14 @@ i.dhApiStateMuted {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   background: rgba(107, 120, 148, 0.08);
   border: 1px solid rgba(126, 157, 194, 0.14);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   padding: 4px 9px;
 }
 
 :global([data-testid="dashboard-home-page"]) .dhPartialToggle {
   background: rgba(107, 120, 148, 0.08);
   border: 1px solid rgba(126, 157, 194, 0.14);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   color: var(--dh-api-soft);
   min-height: 30px;
   padding: 0 10px;
@@ -1458,11 +1478,12 @@ i.dhApiStateMuted {
 
 .dhDeferredIndexItem span {
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   line-height: 1;
   align-items: center;
   background: rgba(114, 167, 220, 0.12);
   border: 1px solid rgba(114, 167, 220, 0.2);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   display: inline-flex;
   height: 20px;
   justify-content: center;
@@ -1490,7 +1511,7 @@ i.dhApiStateMuted {
 }
 
 @media (max-width: 720px) {
-  :global([data-testid="dashboard-home-page"]) .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     min-height: 0;
   }
@@ -1534,7 +1555,7 @@ i.dhApiStateMuted {
 }
 
 /* Dashboard home refinement pass: mobile density, evidence scanning, and rail ledgers. */
-:global([data-testid="dashboard-home-page"]) .dhTopbar {
+.dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
   box-shadow: none;
   display: grid;
   gap: 10px 14px;
@@ -1577,7 +1598,7 @@ i.dhApiStateMuted {
 :global([data-testid="dashboard-home-page"]) .dhStatusRow {
   background: rgba(7, 12, 20, 0.18);
   border: 1px solid rgba(126, 157, 194, 0.1);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   padding: 3px;
 }
 
@@ -1633,7 +1654,7 @@ i.dhApiStateMuted {
 
 .dhDeferredIndexItem strong {
   color: var(--dh-hex-eef4ff);
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.25;
   min-width: 0;
   font-size: 12.5px;
@@ -1654,7 +1675,7 @@ i.dhApiStateMuted {
 }
 
 @media (max-width: 1080px) {
-  :global([data-testid="dashboard-home-page"]) .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1664,13 +1685,13 @@ i.dhApiStateMuted {
 }
 
 @media (max-width: 720px) {
-  :global([data-testid="dashboard-home-page"]) .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     padding-bottom: 8px;
     padding-top: 8px;
   }
 
-  :global([data-testid="dashboard-home-page"]) .dhTopbar::before {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar::before {
     inset-inline: 14px;
   }
 
@@ -1894,7 +1915,7 @@ i.dhApiStateMuted {
 }
 
 @media (min-width: 721px) and (max-width: 1560px) {
-  :global([data-testid="dashboard-home-page"]) .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2107,14 +2128,14 @@ i.dhApiStateMuted {
 .dhApiBackedHome .dhRailCardHeader > h2 {
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.25;
   margin: 0;
 }
 
 /* Mobile toolbar closure: three compact rows with full-size touch targets. */
 @media (max-width: 720px) {
-  :global([data-testid="dashboard-home-page"]) .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     gap: 6px;
     padding: 8px 12px;
   }
@@ -2245,6 +2266,7 @@ i.dhApiStateMuted {
   color: var(--dh-api-muted);
   content: "\6b63\5728\8f7d\5165\6df1\5ea6\8bc1\636e";
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -2319,7 +2341,7 @@ i.dhApiStateMuted {
 
   :global([data-testid="dashboard-home-page"]) .dhTitle {
     font-size: 22px;
-    font-weight: 750;
+    font-weight: 600;
   }
 
   :global([data-testid="dashboard-home-page"]) .dhTitleBrand {
@@ -2416,6 +2438,7 @@ i.dhApiStateMuted {
   color: var(--dh-api-ink);
   display: grid;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   font-weight: 600;
   height: 26px;
@@ -2440,6 +2463,7 @@ i.dhApiStateMuted {
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-section-label--rail) {
   color: var(--dh-home-nocturne-muted);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.22em;
@@ -2490,6 +2514,7 @@ i.dhApiStateMuted {
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-agent-nav__badge) {
   color: #595d6c;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   margin-left: auto;
 }
@@ -2507,7 +2532,7 @@ i.dhApiStateMuted {
   display: none;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
+.dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
   align-items: center;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.012), rgba(255, 255, 255, 0)),
     var(--dh-api-bg);
@@ -2525,15 +2550,15 @@ i.dhApiStateMuted {
 }
 
 @media (min-width: 1181px) {
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     position: sticky;
     top: 0;
     z-index: 30;
   }
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft,
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
+:global([data-testid="dashboard-home-page"]) .dhTopbarLeft,
+:global([data-testid="dashboard-home-page"]) .dhTopbarRight {
   align-items: center;
   display: flex;
   flex-wrap: nowrap;
@@ -2541,19 +2566,19 @@ i.dhApiStateMuted {
   width: auto;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft {
+:global([data-testid="dashboard-home-page"]) .dhTopbarLeft {
   flex: 1 1 auto;
   gap: 14px;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
+:global([data-testid="dashboard-home-page"]) .dhTopbarRight {
   flex: 0 0 auto;
   gap: 8px;
   justify-content: flex-end;
   margin-left: auto;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitleBrand {
+:global([data-testid="dashboard-home-page"]) .dhTitleBrand {
   display: grid;
   flex: 0 0 152px;
   gap: 0;
@@ -2563,7 +2588,8 @@ i.dhApiStateMuted {
 
 :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitle {
   color: var(--dh-home-nocturne-ink);
-  font-size: 17px;
+  /* 页标题下限 18px（DESIGN §3 Scale） */
+  font-size: 18px;
   font-weight: 600;
   grid-row: 2;
   letter-spacing: 0.01em;
@@ -2572,7 +2598,7 @@ i.dhApiStateMuted {
   white-space: nowrap;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
+:global([data-testid="dashboard-home-page"]) .dhToolbarControl {
   align-items: center;
   display: flex;
   flex: 0 0 auto;
@@ -2581,14 +2607,14 @@ i.dhApiStateMuted {
   min-width: 0;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateLabel,
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
+:global([data-testid="dashboard-home-page"]) .dhDateLabel,
+:global([data-testid="dashboard-home-page"]) .dhDateContext {
   color: var(--dh-api-muted);
   font-size: 11.5px;
   white-space: nowrap;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
+:global([data-testid="dashboard-home-page"]) .dhDateContext {
   max-width: 94px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2598,7 +2624,7 @@ i.dhApiStateMuted {
   display: none;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelect {
+:global([data-testid="dashboard-home-page"]) .dhDateSelect {
   align-items: center;
   background: color-mix(in srgb, var(--dh-api-panel-2) 88%, transparent);
   border: 1px solid color-mix(in srgb, var(--dh-api-blue) 24%, var(--dh-api-line));
@@ -2620,6 +2646,7 @@ i.dhApiStateMuted {
   border: 0;
   color: var(--dh-api-blue);
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   height: 30px;
   min-width: 108px;
@@ -2630,7 +2657,7 @@ i.dhApiStateMuted {
   display: none;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
+:global([data-testid="dashboard-home-page"]) .dhSearch {
   align-items: center;
   background: color-mix(in srgb, var(--dh-api-panel-2) 88%, var(--dh-api-blue) 12%);
   border: 1px solid var(--dh-api-line);
@@ -2651,6 +2678,7 @@ i.dhApiStateMuted {
   content: "⌘K";
   flex: 0 0 auto;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   line-height: 16px;
   margin-left: 6px;
@@ -2667,7 +2695,7 @@ i.dhApiStateMuted {
   font-size: 13px;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch input {
+:global([data-testid="dashboard-home-page"]) .dhSearch input {
   background: transparent;
   border: 0;
   color: var(--dh-home-nocturne-ink);
@@ -2685,7 +2713,7 @@ i.dhApiStateMuted {
   opacity: 1;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow {
+:global([data-testid="dashboard-home-page"]) .dhStatusRow {
   display: flex;
   flex: 0 0 auto;
   width: auto;
@@ -2699,7 +2727,7 @@ i.dhApiStateMuted {
   align-items: center;
   background: color-mix(in srgb, #62b98b 8%, transparent);
   border: 1px solid color-mix(in srgb, #62b98b 38%, transparent);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   color: #62b98b;
   display: inline-flex;
   font-size: 11px;
@@ -2713,6 +2741,7 @@ i.dhApiStateMuted {
 :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusPill .dhNum {
   color: inherit;
   font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDot {
@@ -2721,12 +2750,12 @@ i.dhApiStateMuted {
   width: 4px;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhPartialToggle {
+:global([data-testid="dashboard-home-page"]) .dhPartialToggle {
   display: none;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhRefreshBtn,
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhAgentEntryBtn {
+:global([data-testid="dashboard-home-page"]) .dhRefreshBtn,
+:global([data-testid="dashboard-home-page"]) .dhAgentEntryBtn {
   align-items: center;
   background: transparent;
   border: 1px solid var(--dh-api-line);
@@ -2743,7 +2772,7 @@ i.dhApiStateMuted {
   white-space: nowrap;
 }
 
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhAgentEntryBtn {
+:global([data-testid="dashboard-home-page"]) .dhAgentEntryBtn {
   border-color: color-mix(in srgb, var(--dh-api-blue) 30%, var(--dh-api-line));
   color: var(--dh-api-blue);
   padding-inline: 12px;
@@ -2772,26 +2801,26 @@ i.dhApiStateMuted {
     padding: 0;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     height: auto;
     min-height: 55px;
   }
 }
 
 @media (max-width: 900px) {
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     align-items: stretch;
     flex-direction: column;
     gap: 8px;
     padding: 10px 14px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft,
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarLeft,
+:global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     width: 100%;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"]) .dhSearch {
     max-width: none;
   }
 
@@ -2799,7 +2828,7 @@ i.dhApiStateMuted {
 
 @media (max-width: 720px) {
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
+  :global([data-testid="dashboard-home-page"]) .dhDateContext {
     display: none;
   }
 }
@@ -2810,7 +2839,7 @@ i.dhApiStateMuted {
 
 @media (min-width: 961px) {
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     justify-content: space-between;
     width: 100%;
@@ -2820,14 +2849,14 @@ i.dhApiStateMuted {
     background: var(--dh-api-bg);
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarLeft {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     flex: 1 1 auto;
     gap: 18px;
     min-width: 0;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     display: flex;
     flex-direction: row;
@@ -2835,16 +2864,16 @@ i.dhApiStateMuted {
     gap: 10px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"]) .dhTitleBrand {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     flex: 0 0 auto;
   }
 
   :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitle {
     margin: 0;
-    color: #eaf2f7;
-    font-size: 17px;
-    font-weight: 700;
+    color: var(--dh-api-ink);
+    font-size: 18px;
+    font-weight: 600;
     line-height: 1;
     letter-spacing: 0.01em;
   }
@@ -2852,26 +2881,26 @@ i.dhApiStateMuted {
   :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelectIcon,
 :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContextDot,
 :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow > :not(:first-child),
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhPartialToggle,
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhAgentEntryBtn {
+:global([data-testid="dashboard-home-page"]) .dhPartialToggle,
+:global([data-testid="dashboard-home-page"]) .dhAgentEntryBtn {
     display: none;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"]) .dhToolbarControl {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     display: flex;
     gap: 8px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateLabel,
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
+  :global([data-testid="dashboard-home-page"]) .dhDateLabel,
+:global([data-testid="dashboard-home-page"]) .dhDateContext {
     color: #8ea0ae;
     font-size: 11px;
     line-height: 1;
     white-space: nowrap;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelect {
+  :global([data-testid="dashboard-home-page"]) .dhDateSelect {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     position: relative;
     display: inline-flex;
@@ -2881,6 +2910,7 @@ i.dhApiStateMuted {
   :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelectValue {
     color: #d8e2e9;
     font-family: var(--dh-font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 11px;
     font-weight: 600;
   }
@@ -2893,12 +2923,12 @@ i.dhApiStateMuted {
     cursor: pointer;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"]) .dhSearch {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     min-width: 220px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow {
+  :global([data-testid="dashboard-home-page"]) .dhStatusRow {
     display: flex;
     align-items: center;
   }
@@ -2910,14 +2940,14 @@ i.dhApiStateMuted {
     height: 29px;
     padding: 0 11px;
     border: 1px solid color-mix(in srgb, #5bc489 38%, var(--dh-home-nocturne-rule));
-    border-radius: 999px;
+    border-radius: var(--dh-api-radius, 8px);
     background: color-mix(in srgb, #5bc489 8%, transparent);
     color: #5bc489;
     font-size: 11px;
     white-space: nowrap;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhRefreshBtn {
+  :global([data-testid="dashboard-home-page"]) .dhRefreshBtn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2967,7 +2997,7 @@ i.dhApiStateMuted {
     padding: 0;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     box-sizing: border-box;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -2979,7 +3009,7 @@ i.dhApiStateMuted {
     padding: 9px 10px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarLeft {
     display: grid;
     grid-template-columns: auto minmax(0, auto) minmax(180px, 1fr);
     align-items: center;
@@ -2987,24 +3017,24 @@ i.dhApiStateMuted {
     min-width: 0;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"]) .dhTitleBrand {
     grid-column: 1;
     grid-row: 1;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"]) .dhToolbarControl {
     grid-column: 2;
     grid-row: 1;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"]) .dhSearch {
     box-sizing: border-box;
     align-self: center;
     width: 100%;
@@ -3017,40 +3047,40 @@ i.dhApiStateMuted {
     grid-row: 1;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
+  :global([data-testid="dashboard-home-page"]) .dhDateContext {
     display: none;
   }
 }
 
 @media (max-width: 720px) {
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarLeft {
     flex-wrap: wrap;
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"]) .dhTitleBrand {
     flex-basis: 100%;
     grid-column: 1;
     grid-row: 1;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"]) .dhToolbarControl {
     max-width: 100%;
     grid-column: 2;
     grid-row: 1;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"]) .dhSearch {
     grid-column: 1 / -1;
     grid-row: 2;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     flex-direction: row;
     justify-content: flex-end;
     height: auto;
@@ -3214,21 +3244,7 @@ i.dhApiStateMuted {
     display: none;
   }
 
-  /* 皮肤统一批量迁移：worksheet id254 由 DELETE 改判 DEPREFIX（锚点复合版）。
-     原 DELETE 依据的摘类零 diff 证据已过期——optionTwo .page 的
-     grid-template-rows 后被并行会话改为 54px minmax(0,1fr)，删除本规则会让
-     54px 上位（toolbar 行 +12px 连锁位移）。锚点版保持 (0,2,0) 特异性，
-     挂类与摘类下均维持 42px 轨道。 */
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] {
-    display: grid;
-    height: 100vh;
-    min-height: 0;
-    overflow: hidden;
-    background: var(--dh-api-bg);
-    grid-template-rows: 42px minmax(0, 1fr);
-  }
-
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     box-sizing: border-box;
     align-items: center;
     box-shadow: none;
@@ -3240,25 +3256,26 @@ i.dhApiStateMuted {
     padding: 8px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarLeft {
     align-items: center;
     display: contents;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"]) .dhTitleBrand {
     display: none;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"]) .dhToolbarControl {
     align-items: center;
     flex: 0 0 auto;
     min-width: 0;
     grid-column: 1;
     width: auto;
-    max-width: 280px;
+    /* 报告日 + 日期 + 「距今 N 天」+ 更新戳 单行不裁切 */
+    max-width: 340px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelect {
+  :global([data-testid="dashboard-home-page"]) .dhDateSelect {
     align-items: center;
     min-width: 84px;
     height: 26px;
@@ -3268,14 +3285,14 @@ i.dhApiStateMuted {
     background: var(--dh-api-panel);
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
+  :global([data-testid="dashboard-home-page"]) .dhDateContext {
     max-width: 190px;
     color: #5bc489;
     text-overflow: ellipsis;
     display: none;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"]) .dhSearch {
     flex: 0 1 324px;
     margin-left: clamp(30px, 13.5vw, 200px);
     grid-column: 2;
@@ -3286,7 +3303,7 @@ i.dhApiStateMuted {
     margin: 0;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     align-items: center;
     box-sizing: border-box;
     grid-column: 2;
@@ -3298,22 +3315,22 @@ i.dhApiStateMuted {
 }
 
 @media (min-width: 961px) and (max-width: 1180px) {
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
+  .dhApiBackedHome:global([data-testid="dashboard-home-page"]) .dhTopbar {
     grid-template-columns: minmax(220px, 260px) minmax(220px, 1fr) auto;
     gap: 8px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
-    max-width: 260px;
+  :global([data-testid="dashboard-home-page"]) .dhToolbarControl {
+    max-width: 320px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"]) .dhSearch {
     width: 100%;
     min-width: 0;
     max-width: 300px;
   }
 
-  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     width: auto;
     padding-left: 0;
   }
@@ -3328,7 +3345,7 @@ i.dhApiStateMuted {
  * ============================================================ */
 
 /* 状态行去容器铬件：不再叠一层暗底圆角框，避免与内部胶囊形成双重描边。 */
-:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRowPlain {
+:global([data-testid="dashboard-home-page"]) .dhStatusRowPlain {
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -3367,4 +3384,37 @@ i.dhApiStateMuted {
   color: var(--dh-api-red);
   display: inline-flex;
   text-decoration: none;
+}
+
+/* 常态收声（DESIGN §12 结论 17）：快照与估值均正常时，两颗「已更新 / 已完成」
+   徽标合为一枚 6px 暗点 + muted 短句，两条原文进 title；异常态仍走上方语义色胶囊。 */
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow > .dhStatusQuietNote {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--dh-api-muted);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 400;
+  gap: 6px;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
+.dhStatusQuietDot {
+  background: var(--dh-api-muted);
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
+}
+
+/* 键盘焦点环落在输入外壳上：日期原生 input 以 opacity:0 覆盖在外壳内、搜索 input 自身去 outline，
+   两者的 :focus-visible 环都不可见。outline 不在任何 transition 列表里，环即时出现（DESIGN §8）。 */
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelect:focus-within,
+:global([data-testid="dashboard-home-page"]) .dhSearch:focus-within {
+  outline: 2px solid var(--dh-api-blue);
+  /* 外壳距 42px 工具条下沿仅 2px 且工具条 overflow:hidden，offset 0 保证环整圈可见 */
+  outline-offset: 0;
 }

@@ -9,7 +9,7 @@ import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
 import { DataSourceBadge } from "../../components/StatusPill";
 import { PageAsyncSection } from "../../components/page/PageAsyncSection";
-import { SectionLead } from "../../components/page/SectionLead";
+import { SECTION_HEAD_STACK_CLASSNAME, SectionHead } from "../../components/layout";
 import { EM_DASH } from "../../utils/format";
 import {
   buildTeamPerformanceQ1CaliberModel,
@@ -387,7 +387,7 @@ export default function TeamPerformancePage() {
     <section
       data-testid="team-performance-page"
       data-moss-theme-scope="team-performance"
-      className="team-performance-page"
+      className={`team-performance-page ${SECTION_HEAD_STACK_CLASSNAME}`}
     >
       <div className="team-performance-page__hero">
         <div className="team-performance-page__hero-copy">
@@ -437,10 +437,10 @@ export default function TeamPerformancePage() {
         </label>
       </FilterBar>
 
-      <SectionLead
-        eyebrow="考核总览"
+      <SectionHead
+        category="考核总览"
         title="2025 部室考核矩阵"
-        description="首屏先看各部室总分、映射证据覆盖情况和正式读链路状态。所有损益都明确标为“映射分析”，不替代正式中心归属口径。"
+        note="首屏先看各部室总分、映射证据覆盖情况和正式读链路状态。所有损益都明确标为“映射分析”，不替代正式中心归属口径。"
       />
 
       <div>
@@ -496,19 +496,12 @@ export default function TeamPerformancePage() {
       </div>
 
       <section data-testid="team-performance-q1-caliber" className="team-performance-page__q1-panel">
-        <div className="team-performance-page__q1-header">
-          <div>
-            <div className="team-performance-page__meta-eyebrow">季度实际</div>
-            <h2 className="team-performance-page__q1-title">2026 Q1实际口径拆解</h2>
-            <p className="team-performance-page__q1-copy">
-              只展示实际证据、来源行和口径状态；年度目标、达成判断和 Excel 外推数均不进入本区汇总。
-            </p>
-          </div>
-          <div className="team-performance-page__q1-date-card">
-            <span>证据期间</span>
-            <strong>{q1CaliberModel.periodLabel}</strong>
-          </div>
-        </div>
+        <SectionHead
+          category="季度实际"
+          title="2026 Q1实际口径拆解"
+          note="只展示实际证据、来源行和口径状态；年度目标、达成判断和 Excel 外推数均不进入本区汇总。"
+          meta={[{ label: "证据期间", value: q1CaliberModel.periodLabel }]}
+        />
 
         <div className="team-performance-page__q1-source-row">
           <span>{q1CaliberModel.sourceLabel}</span>
@@ -753,10 +746,10 @@ export default function TeamPerformancePage() {
         {selectedCenter ? (
         <div className="team-performance-page__section-stack">
           <section className="team-performance-page__panel">
-            <SectionLead
-              eyebrow="部室对照"
+            <SectionHead
+              category="部室对照"
               title="部室矩阵"
-              description="按部室汇总显示 Excel 得分、映射损益、映射规模和覆盖状态。点击任一部室，下方查看对应的底稿指标和映射证据。"
+              note="按部室汇总显示 Excel 得分、映射损益、映射规模和覆盖状态。点击任一部室，下方查看对应的底稿指标和映射证据。"
             />
 
             <div>
@@ -885,10 +878,10 @@ export default function TeamPerformancePage() {
           </section>
 
           <section data-testid="team-performance-detail" className="team-performance-page__panel">
-            <SectionLead
-              eyebrow="部室下钻"
+            <SectionHead
+              category="部室下钻"
               title={`${selectedCenter.centerName} 明细`}
-              description="左侧保留 Excel 底稿指标，右侧展示正式接口中的映射分析证据。页面不会重算得分，只显示方案底稿中的分值和完成情况。"
+              note="左侧保留 Excel 底稿指标，右侧展示正式接口中的映射分析证据。页面不会重算得分，只显示方案底稿中的分值和完成情况。"
             />
 
             <div className="team-performance-page__detail-summary-grid">
@@ -1103,15 +1096,11 @@ export default function TeamPerformancePage() {
 
         {visibleResultMetaSections.length > 0 ? (
           <section data-testid="team-performance-result-meta" className="team-performance-page__meta-shell">
-            <div className="team-performance-page__meta-header">
-              <div>
-                <div className="team-performance-page__meta-eyebrow">溯源证据</div>
-                <h3 className="team-performance-page__meta-title">结果元信息摘要</h3>
-              </div>
-              <p className="team-performance-page__meta-copy">
-                先看考核底稿（静态·非正式）与两条正式读链路的质量、降级和更新时间；完整口径、版本和追踪编号收在下方折叠区。
-              </p>
-            </div>
+            <SectionHead
+              category="溯源证据"
+              title="结果元信息摘要"
+              note="先看考核底稿（静态·非正式）与两条正式读链路的质量、降级和更新时间；完整口径、版本和追踪编号收在下方折叠区。"
+            />
 
             <div className="team-performance-page__meta-grid">
               {visibleResultMetaSections.map((section) => (

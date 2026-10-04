@@ -3,11 +3,11 @@ import {
   ClockCircleOutlined,
   DatabaseOutlined,
   LineChartOutlined,
+  SafetyCertificateOutlined,
   ThunderboltOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
 import { Alert } from "antd";
-import { cardVariants } from "@heroui/styles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/clientContext";
@@ -80,7 +80,38 @@ const EMPTY_SCRIPTS: MacroToolkitScriptRecord[] = [];
 const MACRO_TOOLKIT_READ_STALE_MS = 60_000;
 const MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS = 1_500;
 
-const MACRO_TOOLKIT_HERO_CARD_SLOTS = cardVariants({ variant: "default" });
+const MACRO_TOOLKIT_ANALYSIS_KIND = "macro_toolkit.analysis";
+const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
+
+// House View 位于业务段首屏：结论性披露（正式可用 / 非正式口径）留在正文，
+// 端点 kind 与规则版本是系统标识，收进 title 悬浮查看，不占业务版面。
+// 共享的 MacroToolkitContractBoundary 保持原样，继续服务治理闸门、失败态与 /macro-observation。
+function MacroToolkitHouseViewContractBoundary({
+  formalUseAllowed,
+  resultKind,
+  ruleVersion,
+}: {
+  formalUseAllowed?: boolean;
+  resultKind?: string;
+  ruleVersion?: string;
+}) {
+  return (
+    <div
+      className="macro-toolkit-contract-boundary"
+      data-testid="macro-toolkit-house-view-contract-boundary"
+      aria-label="宏观工具口径边界"
+      title={`结果口径 ${resultKind ?? MACRO_TOOLKIT_ANALYSIS_KIND} · 规则版本 ${
+        ruleVersion ?? MACRO_TOOLKIT_UI_RULE_VERSION
+      }`}
+    >
+      <span>
+        <SafetyCertificateOutlined />
+        分析/工具口径
+      </span>
+      <strong>{formalUseAllowed ? "正式可用" : "非正式口径"}</strong>
+    </div>
+  );
+}
 
 export default function MacroToolkitPage() {
   const client = useApiClient();
@@ -269,6 +300,9 @@ export default function MacroToolkitPage() {
   const visibleSignalCards = analyticalSignalCards;
   // 主信号由后端风险优先规则声明；Crisis z-score 与 0-100 分不可比较，前端不排序。
   const primarySignal = pickPrimarySignal(analysisSignalCards, analysis?.primary_signal);
+  const directionalJudgmentClosed = analysis?.primary_signal
+    ? analysis.primary_signal.selection_status !== "selected"
+    : analysis?.conclusion.tone === "missing";
   const isCoreAnalysis = analysis?.runtime_status?.analysis_scope === "core";
   const queryErrors = [analysisQuery.error, scriptsQuery.error, strategyQuery.error];
   const queryErrorText = queryErrors
@@ -300,6 +334,7 @@ export default function MacroToolkitPage() {
     fullAnalysisError,
     isCoreAnalysis,
     loadFullAnalysis,
+    modelChainQuery,
     payload,
     scriptsQuery,
     selectedScript,
@@ -415,15 +450,12 @@ export default function MacroToolkitPage() {
   );
   const cockpitSection = (
     <section
-      data-testid="macro-toolkit-tailwind-cockpit"
-      className={MACRO_TOOLKIT_HERO_CARD_SLOTS.base({
-        className:
-          "macro-toolkit-cockpit macro-toolkit-cockpit--toolkit border border-default-200 bg-background/95 text-foreground shadow-sm",
-      })}
+      data-testid="macro-toolkit-cockpit"
+      className="macro-toolkit-cockpit macro-toolkit-cockpit--toolkit"
       data-slot="card"
     >
       <div
-        className={MACRO_TOOLKIT_HERO_CARD_SLOTS.content({ className: "macro-toolkit-cockpit__body p-0" })}
+        className="macro-toolkit-cockpit__body"
         data-slot="card-content"
       >
         <div
@@ -433,7 +465,7 @@ export default function MacroToolkitPage() {
         >
           <div className="macro-toolkit-panel-kicker">
             <span>投研结论</span>
-            <strong>可执行宏观判断</strong>
+            <strong>观察结论，须经复核后使用</strong>
           </div>
           <div className="macro-toolkit-cockpit__conclusion">
             <div className="macro-toolkit-cockpit__label">
@@ -451,24 +483,54 @@ export default function MacroToolkitPage() {
                 className="macro-toolkit-cockpit__limits"
                 title={analysis.warnings.join(" ")}
               >
-                {analysis.warnings.length} 项输入受限，不影响已展示结论
+                {directionalJudgmentClosed
+                  ? `${analysis.warnings.length} 项输入受限，方向性判断已关闭`
+                  : `${analysis.warnings.length} 项输入受限，请先复核证据再解读方向`}
               </small>
             ) : null}
+            <MacroToolkitHouseViewContractBoundary
+              formalUseAllowed={analysisMeta?.formal_use_allowed}
+              resultKind={analysisMeta?.result_kind}
+              ruleVersion={analysisMeta?.rule_version}
+            />
+            <small className="macro-toolkit-cockpit__boundary-note">
+              {analysisMeta?.formal_use_allowed ? "正式可用" : "禁止正式使用"}
+            </small>
           </div>
           <div className="macro-toolkit-brief-metrics">
             <MetricTile
               icon={<LineChartOutlined />}
               label="主信号"
-              value={primarySignal ? `${primarySignal.title} · ${primarySignal.stance}` : EM_DASH}
+              value={
+                primarySignal
+                  ? `${primarySignal.title} · ${primarySignal.stance}`
+                  : directionalJudgmentClosed
+                    ? "方向性判断已关闭"
+                    : EM_DASH
+              }
               detail={
                 primarySignal?.score == null
-                  ? "尚无可排序信号"
+                  ? directionalJudgmentClosed
+                    ? (analysis?.conclusion.recommended_action ?? "等待数据回执后再恢复方向性判断")
+                    : "尚无可排序信号"
                   : `评分 ${primarySignal.score.toFixed(1)}`
               }
               detailTitle={
-                primarySignal?.evidence.length ? primarySignal.evidence.join(" / ") : undefined
+                primarySignal?.evidence.length
+                  ? primarySignal.evidence.join(" / ")
+                  : directionalJudgmentClosed
+                    ? analysis?.conclusion.summary
+                    : undefined
               }
-              tone={primarySignal?.tone === "positive" ? "positive" : primarySignal ? "neutral" : "missing"}
+              tone={
+                primarySignal?.tone === "positive"
+                  ? "positive"
+                  : primarySignal
+                    ? "neutral"
+                    : directionalJudgmentClosed
+                      ? "missing"
+                      : "missing"
+              }
             />
           </div>
         </div>
@@ -614,22 +676,24 @@ export default function MacroToolkitPage() {
           <div className={MT_SHELL_TITLE_BRAND}>
             <h1 className={MT_SHELL_TITLE}>宏观工具</h1>
           </div>
-          <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__badge`}>工具控制台</span>
-          <div className={`${MT_SHELL_STATUS_ROW} macro-toolkit-page__toolbar-info`} aria-label="宏观工具状态">
-            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
-              <ClockCircleOutlined aria-hidden="true" />
-              观察日{" "}
-              <span className={MT_SHELL_NUM}>{analysis?.as_of_date ?? EM_DASH}</span>
-            </span>
-            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
-              <DatabaseOutlined aria-hidden="true" />
-              缺口 {repairItemCount}
-            </span>
-            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
-              <ThunderboltOutlined aria-hidden="true" />
-              能力 {readyCapabilityCount}/{capabilityItems.length || 0}
-            </span>
-          </div>
+          <p className="macro-toolkit-page__header-summary">
+            先看结论、信号和指标结果；数据核对与脚本执行收在页面后段。
+          </p>
+        </div>
+        <div className={`${MT_SHELL_STATUS_ROW} macro-toolkit-page__toolbar-info`} aria-label="宏观工具状态">
+          <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+            <ClockCircleOutlined aria-hidden="true" />
+            观察日{" "}
+            <span className={MT_SHELL_NUM}>{analysis?.as_of_date ?? EM_DASH}</span>
+          </span>
+          <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+            <DatabaseOutlined aria-hidden="true" />
+            缺口 {repairItemCount}
+          </span>
+          <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+            <ThunderboltOutlined aria-hidden="true" />
+            已接线能力 {readyCapabilityCount}/{capabilityItems.length || 0}
+          </span>
         </div>
         <MacroToolkitHeaderControls
           clearFullAnalysisCache={clearFullAnalysisCache}
@@ -641,9 +705,6 @@ export default function MacroToolkitPage() {
           receiptTechnicalDetailsExpanded={deferredContent.receiptTechnicalDetailsExpanded}
           revealAllDeferredContent={deferredContent.revealAllDeferredContent}
         />
-        <p className="macro-toolkit-page__header-summary">
-          先看结论、信号和指标结果；数据核对与脚本执行收在页面后段。
-        </p>
       </header>
 
       <MacroToolkitOperationsView

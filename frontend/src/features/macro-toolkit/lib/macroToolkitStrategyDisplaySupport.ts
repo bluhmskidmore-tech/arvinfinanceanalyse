@@ -188,7 +188,7 @@ export function commodityFuturesPermissionDetail(permission: MacroToolkitChoiceS
     return "商品期货刷新授权待确认";
   }
   const actions = permission.actions?.length ? permission.actions.join(" / ") : "dry_run / refresh";
-  const user = permission.user_id || "anonymous";
+  const user = permission.user_id || "身份已脱敏";
   return `${permission.allowed ? "可刷新" : "未授权"} · ${actions} · ${user}`;
 }
 
@@ -199,8 +199,8 @@ export function commodityFuturesPermissionNoticeTitle(permission: MacroToolkitCh
 export function commodityFuturesPermissionNotice(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
   const resource = permission?.resource ?? "macro_toolkit.commodity_futures";
   const actions = permission?.actions?.length ? permission.actions.join(" / ") : "dry_run / refresh";
-  const user = permission?.user_id || "anonymous";
-  const role = permission?.role || "unknown";
+  const user = permission?.user_id || "身份已脱敏";
+  const role = permission?.role || "身份已脱敏";
   return `请在 scope store 授予 ${resource} 的 action refresh；dry_run / refresh 都需要这条授权。当前用户 ${user}，角色 ${role}，动作 ${actions}。`;
 }
 
@@ -346,16 +346,19 @@ export function shadowPortfolioPeriodWinLossText(rows: MacroToolkitShadowPortfol
   if (!rows.length) {
     return "周期缺失";
   }
-  const wins = rows.filter((row) => row.excess_return > 0).length;
+  if (rows.some((row) => row.excess_return == null)) {
+    return "收益覆盖不完整，胜负待确认";
+  }
+  const wins = rows.filter((row) => row.excess_return != null && row.excess_return > 0).length;
   return `${wins}赢 / ${rows.length - wins}输`;
 }
 
 export function shadowPortfolioPeriodRangeText(rows: MacroToolkitShadowPortfolioPeriodReturn[]) {
-  if (!rows.length) {
+  if (!rows.length || rows.some((row) => row.excess_return == null)) {
     return "最佳缺失 / 最差缺失";
   }
-  const best = rows.reduce((winner, row) => (row.excess_return > winner.excess_return ? row : winner), rows[0]!);
-  const worst = rows.reduce((loser, row) => (row.excess_return < loser.excess_return ? row : loser), rows[0]!);
+  const best = rows.reduce((winner, row) => (row.excess_return! > winner.excess_return! ? row : winner), rows[0]!);
+  const worst = rows.reduce((loser, row) => (row.excess_return! < loser.excess_return! ? row : loser), rows[0]!);
   return `最佳 ${formatSignedRatio(best.excess_return)} / 最差 ${formatSignedRatio(worst.excess_return)}`;
 }
 
@@ -363,12 +366,20 @@ export function shadowPortfolioCostGateText(
   reference: MacroToolkitShadowPortfolio,
   candidate: MacroToolkitShadowPortfolio,
 ) {
+  if ([reference, candidate].some((portfolio) => [20, 50].some((costBps) => {
+    const result = portfolioCostResult(portfolio, costBps);
+    return result?.total_return == null || result.excess_return == null;
+  }))) {
+    return "收益覆盖不完整，成本后结论待确认";
+  }
   const passingCosts = [20, 50].filter((costBps) => {
     const referenceCost = portfolioCostResult(reference, costBps);
     const candidateCost = portfolioCostResult(candidate, costBps);
     return (
       referenceCost != null &&
       candidateCost != null &&
+      referenceCost.total_return != null && referenceCost.excess_return != null &&
+      candidateCost.total_return != null && candidateCost.excess_return != null &&
       candidateCost.total_return > referenceCost.total_return &&
       candidateCost.excess_return > referenceCost.excess_return
     );
@@ -456,6 +467,9 @@ export function shadowPortfolioReviewAction(candidate: MacroToolkitShadowPortfol
 }
 
 export function shadowPortfolioWarningText(warning: string) {
+  if (warning === "INCOMPLETE_ADJUSTED_RETURN_COVERAGE") {
+    return "部分持仓缺少有效边界价格或复权因子，组合收益及累计结果暂不能确认。";
+  }
   if (warning === "DUCKDB_BUSY") {
     return "本地股票历史库正在刷新或被落库任务占用，稍后刷新页面即可重试。";
   }
@@ -466,7 +480,7 @@ export function shadowPortfolioWarningText(warning: string) {
     return "本地股票历史库不存在，暂时不能生成影子组合回测。";
   }
   if (warning.startsWith("MISSING_TABLES")) {
-    return "本地股票历史表或因子快照表缺失，暂时不能生成影子组合回测。";
+    return "本地股票历史、因子快照或复权因子表缺失，暂时不能生成影子组合回测。";
   }
   if (warning === "FACTOR_HISTORY_TOO_SHORT" || warning === "SHORT_HISTORY") {
     return "因子快照历史偏短，当前结果只能作为只读观察。";
@@ -490,6 +504,7 @@ export function shadowRuleVersionLabel(ruleVersion: string) {
 
 /** 影子组合告警胶囊短中文；未登记 token 原样保留为证据引用（原 token 收 title）。 */
 const SHADOW_WARNING_PILL_LABELS: Record<string, string> = {
+  INCOMPLETE_ADJUSTED_RETURN_COVERAGE: "收益覆盖不完整",
   READ_ONLY_SHADOW_NOT_PRODUCTION: "只读·非生产",
   FACTOR_HISTORY_TOO_SHORT: "因子历史偏短",
   SHORT_HISTORY: "历史偏短",

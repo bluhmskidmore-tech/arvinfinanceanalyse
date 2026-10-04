@@ -16,3 +16,7 @@
 
 - This sample protects the current analytical executive overview overlay for `report_date=2026-02-28`.
 - It is not a formal source-of-truth sample.
+
+## Technical recapture — 2026-09-27
+
+Executive cache identity moved to nim_percent_points_v2; selected metrics remained unchanged. This is a deterministic technical recapture only; business-owner approval and formal-use permissions remain unchanged. Evidence: output/audits/2026-09-27/release-repair/backend/golden-diffs/ and golden-semantic-review/REPORT.md.

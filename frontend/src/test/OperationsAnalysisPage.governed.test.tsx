@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
+import { BALANCE_ANALYSIS_METRIC_DEFINITIONS } from "../mocks/balanceAnalysisMockClient";
 import type { ProductCategoryPnlRow } from "../api/contracts";
 import OperationsAnalysisPage from "../features/workbench/pages/OperationsAnalysisPage";
 
@@ -351,6 +352,7 @@ describe("OperationsAnalysisPage governed values", () => {
           liability_total_amortized_cost_amount: "26050000000",
           asset_total_accrued_interest_amount: "875000000",
           liability_total_accrued_interest_amount: "400000000",
+          metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
         },
       })),
       getBalanceAnalysisSummary: vi.fn(async () => ({
@@ -457,7 +459,7 @@ describe("OperationsAnalysisPage governed values", () => {
       expect(cockpit).toHaveTextContent("-1.30");
       expect(cockpit).toHaveTextContent("经营净收入");
       expect(cockpit).toHaveTextContent("2.90");
-      expect(cockpit).toHaveTextContent("/ui/pnl/product-category");
+      expect(cockpit).not.toHaveTextContent("/ui/pnl/product-category");
       expect(cockpit).not.toHaveTextContent("总市值");
       expect(cockpit).not.toHaveTextContent("摊余成本");
       expect(cockpit).not.toHaveTextContent("3,525.0");
@@ -472,7 +474,7 @@ describe("OperationsAnalysisPage governed values", () => {
     const conclusionGrid = await screen.findByTestId("operations-conclusion-grid");
     await waitFor(() => {
       expect(conclusionGrid).toHaveTextContent("2026-02-28");
-      expect(conclusionGrid).toHaveTextContent("产品分类损益正式读模型");
+      expect(conclusionGrid).toHaveTextContent("月度产品分类损益");
       expect(conclusionGrid).toHaveTextContent("2.90");
     });
 
@@ -492,12 +494,12 @@ describe("OperationsAnalysisPage governed values", () => {
     expect(totalSummary).toHaveTextContent("4.20 / -1.30");
 
     const heroProvenance = await screen.findByTestId("operations-hero-provenance");
-    expect(heroProvenance).toHaveTextContent("物化/候选对账");
-    expect(heroProvenance).toHaveTextContent("总账对账 + 日均");
+    expect(heroProvenance).toHaveTextContent("月度产品分类损益口径");
+    expect(heroProvenance).toHaveTextContent("汇率覆盖情况用于核验外币数据");
     // hero 只留一句业务口径声明；示例声明由折叠区 summary 承载。
     expect(heroProvenance).not.toHaveTextContent("静态示例");
     const tableProv = await screen.findByTestId("operations-contribution-table-provenance");
-    expect(tableProv).toHaveTextContent("口径 正式口径");
+    expect(tableProv).toHaveTextContent("正式口径");
   });
 
   it("labels product-category contribution rows with the resolved payload report date", async () => {

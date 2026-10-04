@@ -116,6 +116,94 @@ def _load_execution_window_rows(
     )
     return [_normalize_execution_row(row) for row in rows]
 
+
+def _mask_execution_outcomes_as_of(
+    items: list[dict[str, Any]],
+    *,
+    evaluation_as_of_date: str,
+    available_columns: set[str],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Fail closed on execution outcomes not observable by the evaluation date.
+
+    Older materializations may not contain every exit-date column.  The
+    repository projects those missing columns as null; this helper additionally
+    discloses the schema gap and prevents a stored return from becoming usable
+    without a verifiable entry/exit date.
+    """
+
+    normalized_evaluation_date = _safe_optional_date(evaluation_as_of_date)
+    required_date_columns = {
+        "entry_date",
+        "exit_date_1d",
+        "exit_date_5d",
+        "exit_date_10d",
+        "exit_date_20d",
+    }
+    missing_date_columns = sorted(required_date_columns - available_columns)
+    bounded_items: list[dict[str, Any]] = []
+    missing_entry_date_count = 0
+    future_entry_date_count = 0
+    missing_exit_date_counts = {horizon: 0 for horizon in _FORWARD_MATURITY_HORIZONS}
+    future_exit_date_counts = {horizon: 0 for horizon in _FORWARD_MATURITY_HORIZONS}
+    return_fields = {
+        "1d": ("return_1d_net_adj",),
+        "5d": ("return_5d_gross_adj", "return_5d_net_adj"),
+        "10d": ("return_10d_net_adj",),
+        "20d": ("return_20d_net_adj",),
+    }
+
+    for raw_item in items:
+        item = dict(raw_item)
+        raw_executable = item.get("entry_executable") is True
+        entry_date = _safe_optional_date(str(item.get("entry_date") or ""))
+        entry_observable = bool(
+            normalized_evaluation_date
+            and entry_date
+            and entry_date <= normalized_evaluation_date
+        )
+        if raw_executable and not entry_date:
+            missing_entry_date_count += 1
+        elif (
+            raw_executable
+            and normalized_evaluation_date
+            and entry_date
+            and entry_date > normalized_evaluation_date
+        ):
+            future_entry_date_count += 1
+        if raw_executable and not entry_observable:
+            item["entry_executable"] = None
+
+        for horizon, fields in return_fields.items():
+            exit_date = _safe_optional_date(str(item.get(f"exit_date_{horizon}") or ""))
+            exit_observable = bool(
+                normalized_evaluation_date
+                and exit_date
+                and exit_date <= normalized_evaluation_date
+            )
+            if raw_executable and not exit_date:
+                missing_exit_date_counts[horizon] += 1
+            elif (
+                raw_executable
+                and normalized_evaluation_date
+                and exit_date
+                and exit_date > normalized_evaluation_date
+            ):
+                future_exit_date_counts[horizon] += 1
+            if not entry_observable or not exit_observable:
+                for field in fields:
+                    item[field] = None
+        bounded_items.append(item)
+
+    return bounded_items, {
+        "status": "degraded_missing_columns" if missing_date_columns else "ready",
+        "evaluation_as_of_date": normalized_evaluation_date,
+        "missing_date_columns": missing_date_columns,
+        "missing_entry_date_count": missing_entry_date_count,
+        "future_entry_date_count": future_entry_date_count,
+        "missing_exit_date_counts": missing_exit_date_counts,
+        "future_exit_date_counts": future_exit_date_counts,
+    }
+
 def _load_matched_baseline_window_rows(
     conn: duckdb.DuckDBPyConnection,
     *,

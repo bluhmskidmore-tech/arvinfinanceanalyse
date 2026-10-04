@@ -120,7 +120,7 @@ def run_portfolio_backtest_from_duckdb(
             return payload
 
         market_state_rows = _market_state_rows_from_execution(execution_rows)
-        exposure_start = min(str(row["entry_date"])[:10] for row in execution_rows if row.get("entry_date"))
+        exposure_start = min(str(row["signal_date"])[:10] for row in execution_rows)
         exposure_end = max(
             str(row.get("exit_date_20d") or row.get("exit_date_5d") or row.get("entry_date"))[:10]
             for row in execution_rows
@@ -327,7 +327,7 @@ def _load_execution_rows(
     has_signal_high = "high_value" in obs_columns
     has_execution_signal_close = "signal_close" in columns
     has_observation_signal_close = "close_value" in obs_columns
-    needs_signal_adj = has_signal_high or (not has_execution_signal_close and has_observation_signal_close)
+    needs_signal_adj = has_signal_high
     has_signal_adj = needs_signal_adj and TABLE_ADJ_FACTOR in tables and {
         "stock_code",
         "trade_date",
@@ -360,7 +360,7 @@ def _load_execution_rows(
     if has_execution_signal_close:
         signal_close_select = "e.signal_close as signal_close"
     elif has_observation_signal_close:
-        signal_close_select = f"d.close_value * {signal_factor_expr} as signal_close"
+        signal_close_select = "d.close_value as signal_close"
     else:
         signal_close_select = "cast(null as double) as signal_close"
     daily_join = (
@@ -492,7 +492,7 @@ def _load_execution_rows(
     if signal_adj_missing_count:
         issues.append(
             f"{signal_adj_missing_count} rows lacked signal-day adjustment factors; "
-            "signal_high/observation signal_close are set to null for adjusted-basis variants."
+            "signal_high is set to null for adjusted-basis variants."
         )
     amount_scale_unknown_count = sum(1 for row in rows if bool(row[19]))
     if amount_scale_unknown_count:
@@ -580,7 +580,7 @@ def _market_state_rows_from_execution(rows: list[dict[str, object]]) -> list[dic
         state = str(row.get("market_state") or "").strip()
         if not state:
             continue
-        date_value = row.get("entry_date")
+        date_value = row.get("signal_date")
         if date_value:
             by_date.setdefault(str(date_value)[:10], state)
     return [{"trade_date": key, "market_state": by_date[key]} for key in sorted(by_date)]
@@ -746,7 +746,7 @@ def _run_portfolio_result_set(
             max_positions=max_positions,
             mode=mode,
             price_paths=price_paths,
-            exposure_by_date=exposure_by_date,
+            effective_exposure_by_date=exposure_by_date,
             vol_target=target_vol,
         )
         for variant, result in vol_results.items():

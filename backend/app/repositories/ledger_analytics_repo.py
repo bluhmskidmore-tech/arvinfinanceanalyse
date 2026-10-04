@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
@@ -331,7 +331,11 @@ def _currency_breakdown(
 def _to_100m(value: object) -> float | None:
     if value is None:
         return None
-    return float((Decimal(str(value)) / Decimal("100000000")).quantize(Decimal("0.01")))
+    return float(
+        (Decimal(str(value)) / Decimal("100000000")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    )
 
 
 def _net_face_amount(

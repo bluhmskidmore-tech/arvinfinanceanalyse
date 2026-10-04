@@ -1,7 +1,7 @@
 import type { LiabilityYieldKpi } from "../../../api/liabilityAdbContracts";
+import { SectionHead } from "../../../components/layout";
 import { EM_DASH } from "../../../utils/format";
 import { dailyNimStressFromKpi } from "../utils/nimStress";
-import { LiabilitySectionLead } from "./LiabilitySectionLead";
 
 /** 有意对齐 DESIGN 语义色（涨绿跌红），不再使用旧 A股红涨绿跌。 */
 function deltaTone(deltaBp: number | null): "up" | "down" | "muted" | "ink" {
@@ -37,7 +37,7 @@ export function LiabilityNimStressPanel({
 
   return (
     <section className="liability-section">
-      <LiabilitySectionLead
+      <SectionHead
         title="压力测试：NIM 敏感性（+50bps）"
         actions={<span className="liability-status-pill">候选情景</span>}
       />

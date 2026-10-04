@@ -2,6 +2,7 @@ import type {
   MacroToolkitHasonStrategy,
   MacroToolkitModelReadiness,
 } from "../../../api/macroToolkitClient";
+import { DataTable, type DataTableColumn } from "../../../components/layout";
 import { EM_DASH, type MetricTone } from "../../../pageModel";
 import { hasonFrameworkDisplayName } from "../../macro-toolkit/lib/macroToolkitDisplayFormat";
 import { statusColor, statusLabel } from "../../macro-toolkit/lib/macroToolkitPanelShared";
@@ -9,6 +10,7 @@ import {
   hasonBoundaryText,
   modelDegradedReasonText,
   type MacroObservationStrategyEvidenceView,
+  type MacroObservationStrategyRow,
 } from "../model/macroObservationPageModel";
 import "./MacroObservationModelCrisis.css";
 
@@ -46,6 +48,65 @@ function hasonStatusTone(status: string): MetricTone {
   return STATUS_COLOR_TO_TONE[statusColor(status)] ?? "neutral";
 }
 
+const MODEL_READINESS_COLUMNS: readonly DataTableColumn<MacroToolkitModelReadiness>[] = [
+  { key: "label", title: "模型" },
+  {
+    key: "readiness",
+    title: "状态",
+    render: (model) => {
+      const display = modelReadinessDisplay(model.readiness);
+      return (
+        <span className="macro-observation-modelstrategy-badge" data-tone={display.tone}>
+          {display.label}
+        </span>
+      );
+    },
+  },
+  {
+    key: "degraded_reason",
+    title: "说明",
+    render: (model) => (
+      <span
+        className="macro-observation-modelstrategy-note-cell"
+        title={model.degraded_reason ?? undefined}
+      >
+        {modelDegradedReasonText(model.degraded_reason)}
+      </span>
+    ),
+  },
+];
+
+/** 「来源链」列只在存在行内差异时出现（列存在性判定见调用侧 `showChainColumn`）。 */
+function strategyRowColumns(
+  showChainColumn: boolean,
+): readonly DataTableColumn<MacroObservationStrategyRow>[] {
+  return [
+    { key: "label", title: "策略" },
+    {
+      key: "statusText",
+      title: "状态",
+      render: (row) => (
+        <span className="macro-observation-modelstrategy-badge" data-tone={row.tone}>
+          {row.statusText}
+        </span>
+      ),
+    },
+    ...(showChainColumn
+      ? [
+          {
+            key: "chainNote",
+            title: "来源链",
+            render: (row: MacroObservationStrategyRow) => (
+              <span className="macro-observation-modelstrategy-note-cell">
+                {row.chainNote ?? EM_DASH}
+              </span>
+            ),
+          },
+        ]
+      : []),
+  ];
+}
+
 function ModelReadinessPanel({ models }: { models: MacroToolkitModelReadiness[] }) {
   // 只读边界声明保留在页头徽标与只读细注；卡级「仅观察」脚注按 §6 去重删除。
   return (
@@ -56,43 +117,12 @@ function ModelReadinessPanel({ models }: { models: MacroToolkitModelReadiness[] 
           {models.length ? `${models.length} 个模型` : EM_DASH}
         </span>
       </div>
-      {models.length ? (
-        <table className="macro-observation-view__table">
-          <thead>
-            <tr>
-              <th>模型</th>
-              <th>状态</th>
-              <th>说明</th>
-            </tr>
-          </thead>
-          <tbody>
-            {models.map((model) => {
-              const display = modelReadinessDisplay(model.readiness);
-              return (
-                <tr key={model.id}>
-                  <td>{model.label}</td>
-                  <td>
-                    <span
-                      className="macro-observation-modelstrategy-badge"
-                      data-tone={display.tone}
-                    >
-                      {display.label}
-                    </span>
-                  </td>
-                  <td
-                    className="macro-observation-modelstrategy-note-cell"
-                    title={model.degraded_reason ?? undefined}
-                  >
-                    {modelDegradedReasonText(model.degraded_reason)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      ) : (
-        <p className="macro-observation-modelstrategy-empty">模型就绪清单待完整分析确认。</p>
-      )}
+      <DataTable
+        rows={models}
+        rowKey="id"
+        columns={MODEL_READINESS_COLUMNS}
+        emptyMessage="模型就绪清单待完整分析确认。"
+      />
     </section>
   );
 }
@@ -209,36 +239,12 @@ export default function MacroObservationModelStrategySection({
         {strategy.commonChainNote ? (
           <p className="macro-observation-modelstrategy-chain-note">{strategy.commonChainNote}</p>
         ) : null}
-        {strategy.rows.length ? (
-          <table className="macro-observation-view__table">
-            <thead>
-              <tr>
-                <th>策略</th>
-                <th>状态</th>
-                {showChainColumn ? <th>来源链</th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {strategy.rows.map((row) => (
-                <tr key={row.key}>
-                  <td>{row.label}</td>
-                  <td>
-                    <span className="macro-observation-modelstrategy-badge" data-tone={row.tone}>
-                      {row.statusText}
-                    </span>
-                  </td>
-                  {showChainColumn ? (
-                    <td className="macro-observation-modelstrategy-note-cell">
-                      {row.chainNote ?? EM_DASH}
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="macro-observation-modelstrategy-empty">策略供数明细待完整分析确认。</p>
-        )}
+        <DataTable
+          rows={strategy.rows}
+          rowKey="key"
+          columns={strategyRowColumns(showChainColumn)}
+          emptyMessage="策略供数明细待完整分析确认。"
+        />
         {dataStatus?.reason ? (
           <p className="macro-observation-modelstrategy-reason">
             <strong>策略不可用原因</strong>

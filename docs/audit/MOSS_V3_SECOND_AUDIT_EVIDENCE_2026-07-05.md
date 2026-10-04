@@ -1,4 +1,4 @@
-﻿# MOSS-V3 Second Audit Evidence Lock
+# MOSS-V3 Second Audit Evidence Lock
 
 Generated: 2026-07-05 America/New_York
 Repository: F:\MOSS-V3

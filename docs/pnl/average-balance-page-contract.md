@@ -46,7 +46,7 @@ The page must keep denominator semantics visible when they are present in result
 - `observed-days-scaled-to-calendar`: sparse-window analytical sample completion used by
   comparison and deep scale attribution; observed sums are scaled by
   `calendar_days / coverage_days` before applying the calendar-day denominator.
-- `LOCF`: last-observation-carried-forward analytical fill, when explicitly provided by backend evidence.
+- `LOCF`: last-observation-carried-forward analytical fill only when an entire source lacks the requested end-date snapshot, or when a category has an explicit invalid end-date amount. If the source has an end-date snapshot and a category is absent, the category is treated as closed / zero rather than carried forward.
 - `calendar-zero`: calendar-day denominator where missing dates contribute zero, only when explicitly stated by backend evidence.
 
 Frontend code must not infer, swap, or silently relabel these denominator modes. Missing or unavailable denominator metadata must be surfaced as pending or no-data evidence, not filled with demo values.
@@ -85,8 +85,8 @@ Frontend code must not infer, swap, or silently relabel these denominator modes.
 
 ### 有效余额与 coverage
 
-- 仅 `market_value_is_valid=true` / `amount_is_valid=true` 且金额有限的行参与金额累计、`coverage_days` 与 LOCF 的 `end_date_seen` 判定。
-- 无效行（含 `valid=false`、非有限数值）不参与上述任一口径。
+- 仅 `market_value_is_valid=true` / `amount_is_valid=true` 且金额有限的行参与金额累计与 `coverage_days`。
+- 无效行（含 `valid=false`、非有限数值）不参与金额或 `coverage_days`；但原始末日行用于区分“该分类末日金额无效”与“完整末日快照中该分类已消失”。前者可回退最近有效观测，后者按零余额处理。
 - `coverage_days`：区间内资产侧（ZQTZ）与负债侧（ZQTZ+TYW）**有效余额**的不重复观测日**并集**；与共享 `GET /api/analysis/adb` 的观测日口径可不同。
 - 显式标记有效的 **0 仍为有效余额**（可产出 `0.0` 总量，语义不同于 `null`）。
 

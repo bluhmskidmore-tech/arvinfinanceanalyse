@@ -89,6 +89,7 @@ class MacroVendorSeries(BaseModel):
 
     series_id: str
     series_name: str
+    display_name: str | None = None
     vendor_name: str
     vendor_version: str
     frequency: str
@@ -123,6 +124,7 @@ class ChoiceMacroLatestPoint(BaseModel):
 
     series_id: str
     series_name: str
+    display_name: str | None = None
     trade_date: str
     value_numeric: float
     frequency: str
@@ -144,6 +146,13 @@ class ChoiceMacroLatestPayload(BaseModel):
 
     read_target: Literal["duckdb"] = "duckdb"
     series: list[ChoiceMacroLatestPoint]
+    derived_spreads: dict[str, float | None] = Field(
+        default_factory=dict,
+        description=(
+            "Analytical same-date yield spreads in bp; missing, stale, or date-misaligned "
+            "legs are represented as null."
+        ),
+    )
 
 
 class FxFormalStatusRow(BaseModel):

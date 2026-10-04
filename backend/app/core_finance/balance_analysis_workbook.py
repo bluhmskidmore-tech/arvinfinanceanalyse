@@ -9,12 +9,11 @@ CANONICAL STATUS (2026-08-12，取代 2026-04-17 的迁移注释；canonical 反
   - `builder.py`: 纯委托壳（compatibility shell），公开入口直接委托回本模块，
     防止包路径与生产实现漂移；
   - `_utils.py` / `_bond_tables.py` / `_ifrs9_tables.py` / `_risk_tables.py` /
-    `_analysis_tables.py`: 拆分出的子模块副本，不在生产调用路径上，由等价性
-    测试钉住与本模块输出一致（tests/test_balance_workbook_cross_scope.py、
-    tests/test_balance_workbook_campisi_rate.py 等）。
-- 修改 workbook 逻辑时改本模块；若涉及包内副本覆盖的逻辑，需同步维护副本
-  以保持等价性测试通过。新代码 import 本模块或 core_finance 包根即可，
-  不要再把 `balance_workbook/` 包当作"新实现"入口。
+    `_analysis_tables.py`: 历史私有路径的兼容导出，直接复用本模块的函数对象，
+    不再维护第二套公式。
+- 修改 workbook 逻辑时只改本模块；兼容包由函数同一性测试保证不会重新形成
+  休眠副本。新代码 import 本模块或 core_finance 包根即可，不要再把
+  `balance_workbook/` 包当作"新实现"入口。
 """
 from __future__ import annotations
 
@@ -49,7 +48,9 @@ _MATURITY_BUCKETS = (
 # 条数由 bal_wb_risk_maturity_missing_001 风险预警显式披露。
 _MISSING_MATURITY_FALLBACK_BUCKET = "3个月以内"
 _RATE_BUCKETS = (
+    ("利率缺失", None, None),
     ("零息/无息", None, Decimal("0")),
+    ("0%以下", None, Decimal("0")),
     ("1.5%以下", Decimal("0"), Decimal("1.5")),
     ("1.5%-2.0%", Decimal("1.5"), Decimal("2.0")),
     ("2.0%-2.5%", Decimal("2.0"), Decimal("2.5")),
@@ -158,13 +159,19 @@ def _build_cards(
     interbank_liability_total = _sum_decimal(interbank_liabilities, lambda row: row.principal_amount)
     issuance_total = _sum_decimal(issuance_rows, lambda row: row.face_value_amount)
     assets_total = bond_asset_total + interbank_asset_total
-    net_position = assets_total - interbank_liability_total
+    liabilities_total = issuance_total + interbank_liability_total
+    net_position = assets_total - liabilities_total
     return [
         _card("bond_assets_excluding_issue", "债券资产(剔除发行类)", _to_wanyuan(bond_asset_total), "ZQTZ 资产端剔除发行类后余额(万元)"),
         _card("interbank_assets", "同业资产", _to_wanyuan(interbank_asset_total), "TYW 资产端余额(万元)"),
         _card("interbank_liabilities", "同业负债", _to_wanyuan(interbank_liability_total), "TYW 负债端余额(万元)"),
         _card("issuance_liabilities", "发行类负债", _to_wanyuan(issuance_total), "ZQTZ 发行类单独展示(万元)"),
-        _card("net_position", "净头寸", _to_wanyuan(net_position), "资产端合计 - 同业负债(万元)"),
+        _card(
+            "net_position",
+            "全口径余额净头寸",
+            _to_wanyuan(net_position),
+            "资产端合计 - 全口径负债（发行类 + 同业负债）(万元)",
+        ),
     ]
 
 
@@ -838,6 +845,13 @@ def _build_rule_reference_table() -> dict[str, Any]:
             "source_doc": "docs/calc_rules.md",
             "source_section": "14 禁止事项（不允许静默降级为 0 且不打标记）",
         },
+        {
+            "rule_id": "bal_wb_rating_default_001",
+            "rule_name": "利率债默认评级",
+            "summary": "对命中利率债关键词的无评级行默认赋予 AAA 评级。",
+            "source_doc": "docs/calc_rules.md",
+            "source_section": "12.3 利率债规则",
+        },
     ]
     return _table(
         "rule_reference",
@@ -1146,9 +1160,9 @@ def _build_rate_distribution_table(
     liability_interbank = [row for row in tyw_rows if row.position_scope == "liability"]
     rows = []
     for label, lower, upper in _RATE_BUCKETS:
-        bond_bucket = [row for row in asset_bonds if _match_bucket(_rate_value(row.coupon_rate), lower, upper)]
-        asset_bucket = [row for row in asset_interbank if _match_bucket(_rate_value(row.funding_cost_rate), lower, upper)]
-        liability_bucket = [row for row in liability_interbank if _match_bucket(_rate_value(row.funding_cost_rate), lower, upper)]
+        bond_bucket = [row for row in asset_bonds if _matches_rate_bucket(row.coupon_rate, label, lower, upper)]
+        asset_bucket = [row for row in asset_interbank if _matches_rate_bucket(row.funding_cost_rate, label, lower, upper)]
+        liability_bucket = [row for row in liability_interbank if _matches_rate_bucket(row.funding_cost_rate, label, lower, upper)]
         rows.append(
             {
                 "bucket": label,
@@ -1505,6 +1519,20 @@ def _build_risk_alerts_table(
         if row.position_scope in valid_scopes and row.maturity_date is None
     ]
     missing_maturity_count = len(missing_zqtz) + len(missing_tyw)
+    maturity_basis_amount = _sum_decimal(
+        [row for row in zqtz_rows if row.position_scope in valid_scopes],
+        lambda row: row.face_value_amount,
+    ) + _sum_decimal(
+        [row for row in tyw_rows if row.position_scope in valid_scopes],
+        lambda row: row.principal_amount,
+    )
+    missing_maturity_amount = _sum_decimal(
+        missing_zqtz,
+        lambda row: row.face_value_amount,
+    ) + _sum_decimal(
+        missing_tyw,
+        lambda row: row.principal_amount,
+    )
 
     maturity_gap = _build_maturity_gap_table(report_date, zqtz_rows, tyw_rows)
     negative_gap_rows = [row for row in maturity_gap["rows"] if _maturity_full_scope_gap_value(row) < _ZERO]
@@ -1563,6 +1591,11 @@ def _build_risk_alerts_table(
         interbank_liability_count = sum(
             row.position_scope == "liability" for row in missing_tyw
         )
+        missing_maturity_yi = missing_maturity_amount / Decimal("100000000")
+        missing_maturity_pct = _safe_ratio(
+            missing_maturity_amount,
+            maturity_basis_amount,
+        ) * Decimal("100")
         rows.append(
             {
                 "title": "到期日缺失口径披露",
@@ -1572,8 +1605,11 @@ def _build_risk_alerts_table(
                     "缺失 maturity_date："
                     f"债券投资资产 {bond_asset_count}、发行类负债 {issuance_liability_count}、"
                     f"同业资产 {interbank_asset_count}、同业负债 {interbank_liability_count}。"
+                    f"涉及期限分析面值/本金 {missing_maturity_yi:.2f} 亿元，"
+                    f"占该口径余额 {missing_maturity_pct:.2f}%。"
                     "口径说明：四类行在期限缺口中归入「3个月以内」桶"
-                    "（与负债分析兼容口径的缺失兜底一致，不落「已到期/逾期」）；"
+                    "，这是工作簿的短期限代理，不落「已到期/逾期」；"
+                    "负债分析兼容页则单列「到期日未提供」，不计入已知一年内到期压力，两者用途和口径不同；"
                     "债券投资资产和同业资产同时按 0 年进入组合剩余期限 proxy；"
                     "债券投资资产与发行类负债的加权期限及现金流、事件日历剔除缺失值。"
                 ),
@@ -1622,15 +1658,31 @@ def _sum_decimal(rows: list[Any], value_fn) -> Decimal:
     return sum((_to_finite_decimal(value_fn(row)) for row in rows), _ZERO)
 
 
+def _optional_finite_decimal(value: Any) -> Decimal | None:
+    """加权平均口径：缺失/非有限/不可解析的值返回 None，调用方整行剔除。
+
+    与 `_to_finite_decimal` 的归零语义分开：求和口径把缺失记作 0 是正确的，
+    加权平均口径把缺失记作 0 却保留权重会单向拉低结果。
+    """
+    if value is None or value == "":
+        return None
+    try:
+        result = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if not result.is_finite():
+        return None
+    return result
+
+
 def _weighted_average(rows: list[Any], weight_fn, value_fn) -> Decimal | None:
     numerator = _ZERO
     denominator = _ZERO
     for row in rows:
-        value = value_fn(row)
-        if value in (None, ""):
+        value_dec = _optional_finite_decimal(value_fn(row))
+        if value_dec is None:
             continue
         weight = _to_finite_decimal(weight_fn(row))
-        value_dec = _to_finite_decimal(value)
         if weight == _ZERO:
             continue
         numerator += weight * value_dec
@@ -1645,11 +1697,10 @@ def _merged_weighted_average(specs: list[tuple[list[Any], Any, Any]]) -> Decimal
     denominator = _ZERO
     for rows, weight_fn, value_fn in specs:
         for row in rows:
-            value = value_fn(row)
-            if value in (None, ""):
+            value_dec = _optional_finite_decimal(value_fn(row))
+            if value_dec is None:
                 continue
             weight = _to_finite_decimal(weight_fn(row))
-            value_dec = _to_finite_decimal(value)
             if weight == _ZERO:
                 continue
             numerator += weight * value_dec
@@ -1703,6 +1754,24 @@ def _safe_ratio(numerator: Decimal, denominator: Decimal) -> Decimal:
     if denominator == _ZERO:
         return _ZERO
     return numerator / denominator
+
+
+def _matches_rate_bucket(
+    value: Any,
+    label: str,
+    lower: Decimal | None,
+    upper: Decimal | None,
+) -> bool:
+    rate = _optional_finite_decimal(value)
+    if rate is None:
+        return label == "利率缺失"
+    if label == "利率缺失":
+        return False
+    if label == "零息/无息":
+        return rate == _ZERO
+    if label == "0%以下":
+        return rate < _ZERO
+    return _match_bucket(rate, lower, upper)
 
 
 def _spread_bp(asset_rate_pct: Decimal | None, liability_rate_pct: Decimal | None) -> Decimal | None:

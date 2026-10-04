@@ -15,9 +15,11 @@ contract already enforced on `/api/ledger-pnl/analysis` and `/account-detail`.
 """
 from __future__ import annotations
 
+from typing import Literal
+
 from backend.app.schemas.ledger_pnl_analysis import LedgerPnlAnalysisMoney
 from backend.app.schemas.result_meta import ResultMeta
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class _StrictLedgerPnlReadModel(BaseModel):
@@ -39,16 +41,38 @@ class LedgerPnlDataRow(_StrictLedgerPnlReadModel):
     currency: str
     beginning_balance: LedgerPnlAnalysisMoney
     ending_balance: LedgerPnlAnalysisMoney
+    # Source formula is period credit - period debit. It is signed PnL only for
+    # 5* accounts; for other ledger accounts it is the month's net activity.
     monthly_pnl: LedgerPnlAnalysisMoney
     daily_avg_balance: LedgerPnlAnalysisMoney
     days_in_period: int
+    # "ledger" = 总账工作簿真实观测行；"average_only" = 仅日均工作簿存在、
+    # 总账侧填 0 的合成行（PRD 2026-08-26 R1 冻结契约）。
+    source_presence: Literal["ledger", "average_only"]
 
 
 class LedgerPnlDataSummary(_StrictLedgerPnlReadModel):
     total_pnl_cnx: LedgerPnlAnalysisMoney
     total_pnl_cny: LedgerPnlAnalysisMoney
     total_pnl: LedgerPnlAnalysisMoney
+    # `count` covers every detail row (union caliber, unchanged semantics);
+    # `pnl_account_count` is the 5* population used by the three total_pnl
+    # fields above.
     count: int
+    pnl_account_count: int
+    # R1 冻结契约：总账真实观测行数 / 日均侧合成行数，恒等于 count。
+    ledger_evidence_rows: int = Field(ge=0)
+    average_only_row_count: int = Field(ge=0)
+    # 说明字段：声明 count/evidence_rows 的并集口径，避免行数被误读为总账行数。
+    evidence_rows_basis: str
+
+    @model_validator(mode="after")
+    def validate_source_presence_identity(self) -> LedgerPnlDataSummary:
+        if self.ledger_evidence_rows + self.average_only_row_count != self.count:
+            raise ValueError(
+                "ledger_evidence_rows + average_only_row_count must equal count"
+            )
+        return self
 
 
 class LedgerPnlDataPayload(_StrictLedgerPnlReadModel):

@@ -107,6 +107,12 @@ The workflow result uses the existing Workbench panels:
 - `Mapped Intent Results` shows each child intent's answer, `result_kind`, source tables, and evidence row count.
 - The right-side evidence and `result_meta` panels continue to show workflow-level governance state, including `formal_use_allowed=false`.
 
+### PnL Attribution Embedded Review
+
+The `/pnl-attribution` page exposes an embedded, read-only review surface whose composer defaults to `/pnl-review`. This embedded entry is plan-only: it must not set `context.workflow_mode="execute"`, automatically follow an `execute_intent` suggested action, or invoke any write or approval action. Its `page_context` keeps the business report date and product-category report date in separate fields; missing or divergent dates must remain visible rather than being silently coerced into one date.
+
+The embedded response remains non-formal (`formal_use_allowed=false`) and requires human review before any business use. The entry is development-gated by `VITE_MOSS_AGENT_FRONTEND_ENABLED=true` and still depends on the backend `MOSS_AGENT_ENABLED=true` gate. These flags expose an excluded-surface review aid only: they do not promote Agent MVP, `/api/agent/query`, or the embedded PnL review into the repo-wide formal-compute mainline.
+
 Normal free-text questions are routed conditionally (`AgentWorkbenchPage.tsx` `executeOrdinaryConversation`): questions recognized as local open chat (`isLocalOpenChatQuestion`), questions matching a local analysis intent pattern (`getLocalAgentQueryIntent`), plain analysis-conversation follow-ups (`shouldUseLocalAnalysisConversation`), and any question sent while the conversation mode is latched to `local_sync` all execute synchronously through the local `POST /api/agent/query` path. Other free-text questions go through the managed `/api/agent/runs` path; when a managed run fails because the Hermes provider is unavailable, the Workbench falls back to the local sync path and latches the conversation mode to `local_sync`. Beyond the four financial workflow shortcut buttons, the research shortcuts and suggested-action executions also call the local `POST /api/agent/query` path.
 
 ## Next Phases

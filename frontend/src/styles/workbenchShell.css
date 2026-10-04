@@ -23,7 +23,7 @@
   color: var(--moss-institutional-text);
   box-shadow: var(--moss-shadow-popover);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   transition:
     opacity var(--moss-motion-duration-fast) var(--moss-motion-ease-out),
@@ -73,11 +73,9 @@ body {
 
 .workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .workbench-main-column > main,
 .workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .workbench-main-surface {
-  border-color: var(--dh-api-line) !important;
-  background:
-    var(--moss-shell-paper-shade),
-    var(--moss-shell-paper-bg) !important;
-  box-shadow: none !important;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .moss-page-v2-surface,
@@ -105,11 +103,11 @@ body {
   height: 28px;
   pointer-events: none;
   color: var(--moss-color-warning-900);
-  background: linear-gradient(90deg, var(--moss-color-warning-50), var(--moss-color-warning-200));
+  background: var(--moss-color-warning-50);
   border-bottom: 1px solid var(--moss-color-warning-200);
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 .moss-data-mode-ribbon--cockpit {
@@ -122,7 +120,7 @@ body {
   justify-content: flex-start;
   padding: 0 10px;
   border: 1px solid color-mix(in srgb, var(--moss-color-warning-600) 24%, transparent);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: color-mix(in srgb, var(--moss-color-warning-50) 92%, transparent);
   box-shadow: none;
   color: var(--moss-color-warning-900);
@@ -143,6 +141,13 @@ select {
   font: inherit;
 }
 
+/* Single-line native controls need a stable box when the bundled font loads.
+ * Page-owned explicit heights still win; listboxes retain their intrinsic size. */
+:where(select:not([multiple]):not([size])) {
+  box-sizing: border-box;
+  height: 36px;
+}
+
 .app-root {
   min-height: 100vh;
   overflow-x: clip;
@@ -153,6 +158,12 @@ select {
   grid-template-columns: 216px minmax(0, 1fr);
   gap: var(--moss-shell-gap);
   align-items: start;
+}
+
+.workbench-shell-mobile-nav-bar,
+.workbench-shell-mobile-nav-close,
+.workbench-shell-mobile-nav-backdrop {
+  display: none;
 }
 
 .workbench-shell-aside {
@@ -185,11 +196,11 @@ select {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--moss-color-text-muted);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .workbench-shell-section-label--rail {
-  color: var(--ib-rail-section-label);
+  color: var(--nct-muted, var(--ib-rail-text));
   font-size: var(--ib-kicker-font-size);
   letter-spacing: var(--ib-kicker-letter-spacing);
 }
@@ -235,8 +246,8 @@ select {
 .workbench-shell-agent-nav__label {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .workbench-shell-agent-nav__badge {
@@ -341,7 +352,7 @@ select {
   border: 1px solid var(--moss-shell-rail-border);
   background: transparent;
   color: var(--moss-shell-rail-text);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .workbench-shell-rail-title-stack {
@@ -352,7 +363,7 @@ select {
 
 .workbench-shell-rail-product-name {
   color: var(--ib-rail-text-active);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 16px;
   letter-spacing: 0.12em;
 }
@@ -423,19 +434,19 @@ select {
   flex: 1;
   min-width: 0;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.01em;
 }
 
 .workbench-group-nav-shell a[data-active="true"] .workbench-shell-group-label {
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .workbench-shell-group-count {
   color: var(--ib-rail-section-label);
   font-family: var(--moss-font-sans);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: normal;
   letter-spacing: 0;
   background: transparent;
@@ -522,6 +533,65 @@ select {
   box-shadow: var(--moss-shadow-institutional-active);
 }
 
+.workbench-shell-support-unavailable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 7px 10px;
+  color: var(--moss-shell-rail-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.workbench-shell-support-availability {
+  margin-left: auto;
+  color: var(--moss-shell-rail-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/*
+ * 投稿截图模式：只在显式带 publication_capture=1 时展开完整页面。
+ * 解除 sticky/fixed 是为了让 full-page 截图只出现一次侧栏与导航；
+ * 正常工作台的滚动、定位和数据链路均不受影响。
+ */
+@media (min-width: 1181px) {
+  body:has(.workbench-shell-root--publication-capture) .moss-data-mode-ribbon,
+  body:has(.workbench-shell-root--publication-capture) .workbench-skip-link {
+    position: absolute !important;
+  }
+
+  .workbench-shell-root--publication-capture,
+  .workbench-shell-root--publication-capture > .workbench-main-column,
+  .workbench-shell-root--publication-capture [data-testid="dashboard-home-page"],
+  .workbench-shell-root--publication-capture [data-testid="dashboard-home-scroll-root"] {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .workbench-shell-root--publication-capture [data-testid="dashboard-home-page"] {
+    grid-template-rows: 42px auto !important;
+  }
+
+  .workbench-shell-root--publication-capture .workbench-shell-aside {
+    position: relative !important;
+    top: auto !important;
+    align-self: start !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    overflow: hidden !important;
+  }
+
+  .workbench-shell-root--publication-capture .workbench-main-column nav {
+    position: relative !important;
+    top: auto !important;
+  }
+}
+
 /* 本块 grid-template-columns/gap/padding 与文件末尾统一层（≥1181px）同值冗余，
    但本块在 ≤1180 仍生效（塌缩规则在 dashboardCockpit.css，加载顺序不保证），保留不删；
    壳层几何改动请去文件末尾的统一层。 */
@@ -530,7 +600,7 @@ select {
   gap: 0;
   align-items: stretch;
   min-height: 100vh !important;
-  padding: 0 !important;
+  padding: 0;
   background: var(--moss-institutional-bg) !important;
 }
 
@@ -541,9 +611,9 @@ select {
 
 .workbench-shell-grid--desktop-aligned .workbench-shell-aside {
   position: sticky !important;
-  top: 0 !important;
-  height: 100vh !important;
-  min-height: 100vh !important;
+  top: 0;
+  height: 100vh;
+  min-height: 100vh;
   gap: var(--moss-space-4) !important;
   overflow-y: auto;
   padding: 26px var(--moss-space-4) var(--moss-space-5) !important;
@@ -560,24 +630,28 @@ select {
 }
 
 .moss-data-mode-ribbon + .workbench-shell-grid--desktop-aligned .workbench-shell-aside {
-  top: 28px !important;
-  height: calc(100vh - 28px) !important;
-  min-height: calc(100vh - 28px) !important;
+  top: 28px;
+  height: calc(100vh - 28px);
+  min-height: calc(100vh - 28px);
 }
 
 .workbench-shell-grid--desktop-aligned .workbench-main-column {
-  gap: var(--moss-space-2);
+  gap: 0;
   align-self: stretch;
-  padding: 14px var(--moss-space-5) var(--moss-space-6);
+  padding: 0;
 }
 
-.workbench-shell-grid--desktop-aligned .workbench-main-column > main {
-  gap: 14px !important;
-  padding: 16px var(--moss-space-5) var(--moss-space-5) !important;
-  border-color: var(--moss-color-border-default) !important;
-  border-radius: var(--moss-radius-sm) !important;
-  background: var(--moss-shell-paper-bg) !important;
-  box-shadow: var(--moss-shadow-card) !important;
+.workbench-shell-grid.workbench-shell-grid--desktop-aligned .workbench-main-column > main {
+  gap: var(--moss-space-4);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Page-owned canvases keep their own inset; ordinary pages have one shared gutter. */
+.workbench-shell-grid--desktop-aligned .workbench-main-column > main:not(.workbench-main-surface--minimal) {
+  padding: var(--moss-space-4) var(--moss-page-gutter) var(--moss-space-6);
 }
 
 .workbench-shell-grid--desktop-aligned.moss-page-v2-shell {
@@ -601,14 +675,12 @@ select {
 .workbench-main-surface {
   display: grid;
   align-content: start;
-  gap: 18px;
-  padding: 20px;
-  border-radius: 24px;
-  border: 1px solid var(--moss-color-border-default);
-  box-shadow: var(--moss-shadow-panel);
-  background:
-    var(--moss-shell-paper-shade),
-    var(--moss-shell-paper-bg);
+  gap: var(--moss-space-4);
+  padding: var(--moss-space-4) var(--moss-page-gutter) var(--moss-space-6);
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
 }
 
 .workbench-main-surface.workbench-main-surface--minimal {
@@ -712,7 +784,7 @@ select {
   max-width: 86ch;
   color: var(--moss-color-neutral-700);
   font-size: 13px;
-  font-weight: 560;
+  font-weight: 600;
   line-height: 1.5;
 }
 
@@ -772,48 +844,6 @@ select {
   background: var(--ib-ink-muted);
   content: "";
   flex-shrink: 0;
-}
-
-.moss-page-v2-kpi-band {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-
-.moss-page-v2-kpi-metric {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  min-height: 58px;
-  padding: 8px 10px;
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius);
-  background: var(--ib-surface);
-  box-shadow: none;
-}
-
-.moss-page-v2-kpi-metric__label {
-  font-size: var(--ib-kicker-font-size);
-  font-weight: 600;
-  letter-spacing: var(--ib-kicker-letter-spacing);
-  text-transform: none;
-  color: var(--ib-ink-muted);
-}
-
-.moss-page-v2-kpi-metric__value {
-  font-family: var(--moss-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--ib-ink);
-  line-height: 1.15;
-}
-
-.moss-page-v2-kpi-metric__footer {
-  font-size: 12px;
-  line-height: 1.35;
-  color: var(--moss-color-text-secondary);
 }
 
 .moss-page-v2-analysis-grid {
@@ -883,61 +913,64 @@ select {
 .moss-page-v2-evidence-panel__heading {
   margin: 0 0 8px;
   font-size: 12.5px;
-  font-weight: 750;
+  font-weight: 600;
   color: var(--moss-color-text-primary);
 }
 
 .moss-page-v2-state-surface {
   display: grid;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius);
-  background: var(--ib-surface);
-  border-left-width: 2px;
+  gap: var(--moss-space-1);
+  padding: var(--moss-space-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .moss-page-v2-state-surface[data-state-variant="neutral"] {
-  border-left-color: var(--ib-ink-muted);
+  color: var(--ib-ink-muted);
 }
 
 .moss-page-v2-state-surface[data-state-variant="loading"] {
-  border-left-color: var(--ib-accent);
+  color: var(--ib-ink-muted);
 }
 
 .moss-page-v2-state-surface[data-state-variant="empty"] {
-  border-left-color: var(--ib-ink-muted);
+  color: var(--ib-ink-muted);
 }
 
 .moss-page-v2-state-surface[data-state-variant="error"] {
-  border-left-color: var(--ib-down);
+  color: var(--ib-down);
 }
 
 .moss-page-v2-state-surface[data-state-variant="stale"],
 .moss-page-v2-state-surface[data-state-variant="fallback-date"] {
-  border-left-color: var(--ib-warn);
+  color: var(--ib-warn);
 }
 
 .moss-page-v2-state-surface[data-state-variant="mock"] {
-  border-left-color: var(--ib-accent);
+  color: var(--ib-accent);
 }
 
 .moss-page-v2-state-surface[data-state-variant="definition-pending"] {
-  border-left-color: var(--ib-gold);
+  color: var(--ib-gold);
 }
 
 .moss-page-v2-state-surface__title {
   margin: 0;
-  font-size: 13px;
-  font-weight: 750;
-  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  color: inherit;
 }
 
 .moss-page-v2-state-surface__description {
   margin: 0;
   font-size: 12px;
   line-height: 1.45;
-  color: var(--moss-color-text-secondary);
+  color: var(--moss-color-text-muted);
+  font-weight: 400;
 }
 
 @media (max-width: 720px) {
@@ -1035,7 +1068,9 @@ select {
 @media (prefers-reduced-motion: reduce) {
   .workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-group-link,
   .workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-agent-nav__link,
-  .workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-support-link {
+  .workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-support-link,
+  .workbench-shell-root.workbench-shell-grid
+    > .workbench-shell-aside.workbench-shell-rail[data-mobile-nav-open] {
     transition: none;
   }
 }
@@ -1053,14 +1088,14 @@ select {
   gap: 0 !important;
   align-items: stretch;
   min-height: 100vh;
-  padding: 0 !important;
+  padding: 0;
   background: var(--dh-api-bg) !important;
   font-family: var(--balance-movement-font-ui);
 }
 
 .workbench-shell-grid--balance-movement .workbench-shell-aside {
   position: sticky !important;
-  top: 0 !important;
+  top: 0;
   height: 100vh;
   min-height: 100vh;
   overflow-y: auto;
@@ -1123,13 +1158,13 @@ select {
  * the compound route selector keeps the Figma shell authoritative. */
 .workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement {
   gap: 0 !important;
-  padding: 0 !important;
+  padding: 0;
 }
 
 .workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement
   > .workbench-shell-aside {
-  top: 0 !important;
-  height: 100vh !important;
+  top: 0;
+  height: 100vh;
   gap: 18px !important;
   padding: 16px !important;
   border-radius: 0 !important;
@@ -1163,23 +1198,133 @@ select {
     min-width: 0;
   }
 
-  /* 全外壳窄屏收口：单列塌缩后侧栏不得再保持 sticky/100vh 盖住首屏。
-     上方 --desktop-aligned 与 --balance-movement 变体的 sticky/100vh !important
-     声明没有断点限制，会压过 dashboardCockpit.css 的塌缩规则（加载顺序也不保证），
-     故在此以更高特异性同文件后置压制：侧栏折叠为可滚动静态块，主列提层并
-     继承外壳不透明底，保证首屏能看到业务内容且主导航可达。
-     cockpit / institutional-console 变体在本断点由各自分册整块隐藏侧栏，不受影响。 */
+  /* 窄屏保留一条稳定的全局导航入口；侧栏改为抽屉，不再直接隐藏或占据首屏。 */
   .workbench-shell-root.workbench-shell-grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
-  .workbench-shell-root.workbench-shell-grid > .workbench-shell-aside.workbench-shell-rail {
-    position: static !important;
-    top: auto !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: min(44vh, 420px);
-    overflow-y: auto;
+  .workbench-shell-mobile-nav-bar {
+    position: sticky;
+    top: 0;
+    z-index: 70;
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 6px 10px;
+    border: 1px solid var(--moss-shell-rail-border);
+    border-radius: var(--dh-api-radius, 8px);
+    background: var(--moss-shell-terminal-bg, var(--moss-shell-rail-bg));
+    color: var(--dh-api-ink, var(--moss-color-text-primary));
+  }
+
+  .workbench-shell-mobile-nav-toggle,
+  .workbench-shell-mobile-nav-close {
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--moss-shell-rail-border);
+    border-radius: var(--dh-api-radius, 8px);
+    background: transparent;
+    color: var(--dh-api-ink, var(--moss-color-text-primary));
+    cursor: pointer;
+  }
+
+  .workbench-shell-mobile-nav-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+
+  .workbench-shell-mobile-nav-toggle .moss-light-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .workbench-shell-mobile-nav-context {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .workbench-shell-mobile-nav-context span {
+    overflow: hidden;
+    color: var(--dh-api-muted, var(--moss-color-text-muted));
+    font-size: 11px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workbench-shell-mobile-nav-context strong {
+    overflow: hidden;
+    color: var(--dh-api-ink, var(--moss-color-text-primary));
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workbench-shell-root.workbench-shell-grid
+    > .workbench-shell-aside.workbench-shell-rail[data-mobile-nav-open] {
+    position: fixed !important;
+    inset: 0 auto 0 0;
+    z-index: 90;
+    display: grid !important;
+    width: min(320px, calc(100vw - 44px)) !important;
+    height: 100dvh;
+    min-height: 100vh;
+    max-height: none !important;
+    padding-top: 56px !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    border-right: 1px solid var(--moss-shell-rail-border) !important;
+    border-radius: 0 !important;
+    background: var(--moss-shell-rail-bg) !important;
+    box-shadow: none !important;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-100%);
+    pointer-events: none;
+    transition:
+      transform 200ms ease-out,
+      opacity 150ms ease-out,
+      visibility 0s linear 200ms;
+  }
+
+  .workbench-shell-root.workbench-shell-grid
+    > .workbench-shell-aside.workbench-shell-rail[data-mobile-nav-open="true"] {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+
+  .workbench-shell-mobile-nav-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    display: inline-flex;
+    color: var(--moss-shell-rail-text);
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .workbench-shell-mobile-nav-backdrop:not([hidden]) {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: color-mix(in srgb, var(--dh-api-bg, var(--moss-institutional-bg)) 72%, transparent);
+    cursor: default;
   }
 
   .workbench-shell-root.workbench-shell-grid > .workbench-main-column {
@@ -1187,6 +1332,26 @@ select {
     z-index: 1;
     min-width: 0;
     background: inherit;
+  }
+
+  /* The fixed mock ribbon must not cover the mobile menu or drawer close button.
+   * The dashboard's floating cockpit notice retains its page-owned placement. */
+  .moss-data-mode-ribbon:not(.moss-data-mode-ribbon--cockpit) ~ .workbench-shell-root.workbench-shell-grid {
+    padding-top: 28px;
+    /* Clip horizontal paint without creating a second sticky scrollport. */
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+
+  .moss-data-mode-ribbon:not(.moss-data-mode-ribbon--cockpit) ~ .workbench-shell-root.workbench-shell-grid > .workbench-shell-mobile-nav-bar {
+    top: 28px;
+  }
+
+  .moss-data-mode-ribbon:not(.moss-data-mode-ribbon--cockpit) ~ .workbench-shell-root.workbench-shell-grid
+    > .workbench-shell-aside.workbench-shell-rail[data-mobile-nav-open] {
+    inset: 28px auto 0 0;
+    height: calc(100dvh - 28px);
+    min-height: calc(100vh - 28px);
   }
 }
 
@@ -1533,4 +1698,274 @@ select {
   background: color-mix(in srgb, var(--nct-accent) 14%, transparent) !important;
   border-color: color-mix(in srgb, var(--nct-accent) 30%, transparent) !important;
   box-shadow: inset 2px 0 0 var(--nct-accent) !important;
+}
+
+/*
+ * ══════════════════════════════════════════════════════════════
+ * 终端条/操作区/行情带/子导航首帧几何（2026-09-19 WP-B CLS 修复）。
+ * WorkbenchShell 用 useEffect 动态 import workbenchDeferredChrome.css，
+ * 非首页路由终端条 <header> 首帧无该 CSS，按浏览器默认块级堆叠渲染；
+ * 约 150～360ms 后 deferred CSS 到达才收拢成一行，主内容区 <main> 随之
+ * 整体上移，实测 /pnl /positions /balance-analysis /portfolio 产生
+ * 0.5～0.9 级 CLS。本区块只放"决定首帧盒子尺寸与位置"的声明
+ * （display/flex/grid、gap、padding、min-width、order、font-size、
+ * line-height 等），必须随入口 CSS 一起 eager 加载；颜色、边框色、
+ * 阴影、背景等纯装饰声明留在 workbenchDeferredChrome.css 同名选择器里，
+ * 两文件按属性互补，不重复设置同一属性（deferred 后到达，若重复设置
+ * 尺寸类属性会在 CSS 到达时产生新的偏移）。
+ * ══════════════════════════════════════════════════════════════
+ */
+.workbench-terminal-bar {
+  display: grid;
+  gap: 10px;
+  padding: var(--moss-space-2) var(--moss-page-gutter);
+}
+
+.workbench-terminal-bar-split {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workbench-page-context-shell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.workbench-page-title-display {
+  font-size: 30px;
+  line-height: 1.02;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.workbench-shell-grid .workbench-page-title-display[data-variant="crumb"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.workbench-shell-grid .workbench-page-title-display[data-variant="crumb"] .workbench-page-crumb-current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-shell-grid.workbench-shell-grid [data-testid="workbench-page-context"] > .workbench-page-title-display[data-variant="crumb"] {
+  font-size: 13px !important;
+  font-weight: 500;
+  line-height: 1.2 !important;
+}
+
+/*
+ * report-chip 与 utility-navlink 是 page-context-shell / operator-zone-shell
+ * 的直接子元素（实测：无这两条几何时子元素首帧按纯文本渲染，deferred CSS
+ * 到达后补上 padding/gap 撑开尺寸，导致父容器在 116～193ms 二次偏移）。
+ */
+.workbench-shell-report-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.workbench-operator-zone-shell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workbench-operator-zone-shell .workbench-governance-pill__toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 var(--moss-space-2);
+  gap: var(--moss-space-1);
+  border: 0;
+  font-size: 12px;
+}
+
+.workbench-terminal-utility-navlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.workbench-terminal-utility-icon {
+  font-size: 11px;
+}
+
+.workbench-market-ticker-shell {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 7px 10px;
+  border-top: 1px solid transparent;
+  scrollbar-width: none;
+  /*
+   * WP-B2（2026-09-19）：行情带懒加载（React.lazy + Suspense）首帧用同名类的
+   * 占位元素代替 fallback={null}，min-height 需预留真实高度，避免 chunk 到达后
+   * 跳变产生 CLS。2026-10-02 视觉审计：行情带改为终端条内独占一行、不折行
+   * （nowrap；窄屏超宽时横向滚动并隐藏滚动条），内容高度固定为一行（实测
+   * 19px：12px 文字与 14px 数值按基线对齐），与视口宽度、指标数量无关，原
+   * 「按两行 69px 预留」改为「上边线 1px + 上下 padding + 19px」。各布局覆盖 padding 时
+   * 同步覆盖 min-height。上边线宽度首帧即给出（透明），颜色由 deferred 分册
+   * 补上，避免 CSS 到达时产生 1px 位移。
+   */
+  min-height: 34px;
+}
+
+.workbench-market-ticker-shell::-webkit-scrollbar {
+  display: none;
+}
+
+/* 行情带子项（标签 / 指标 / 分隔线 / 兜底徽标）不收缩、不换行，超宽时整行横向滚动。 */
+.workbench-market-ticker-shell > * {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/*
+ * WP-B2 补充：驾驶舱布局（.workbench-shell-grid--cockpit）下行情带没有像
+ * desktop-aligned 那样的 `flex: 1 1 420px` 固定基准，宽度按内容收缩到自身
+ * (flex-basis: auto)。占位期是空 section，收缩到 ~20px；真实行情带到达后
+ * 内容撑开到 750～810px，挤压同一行内的 terminal-bar-split，导致其内部
+ * page-context/operator-zone 从单行被挤到二行，产生比高度变化更大的重排。
+ * 用 flex-basis:0 + flex-grow:1 让占位与真实行情带都按「填满剩余空间」计算
+ * 宽度，与内容量无关，从源头消除这条宽度型 CLS。
+ * 2026-10-02 视觉审计：行情带改为独占终端条第二行（flex-basis:100%，终端条
+ * 换行见 dashboardCockpit.css），宽度依旧与内容量无关；padding 为「8px 0 0」，
+ * 预留高度 = 1 + 8 + 19。
+ */
+.workbench-shell-grid--cockpit [data-testid="workbench-market-ticker"] {
+  flex: 1 1 100%;
+  min-width: 0;
+  min-height: 28px;
+}
+
+.workbench-shell-grid.workbench-shell-grid [data-testid="workbench-terminal-bar"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--moss-space-2);
+  padding: var(--moss-space-2) var(--moss-page-gutter);
+}
+
+.workbench-shell-grid--desktop-aligned [data-testid="workbench-terminal-bar"] > div:first-child {
+  display: contents !important;
+}
+
+.workbench-shell-grid--desktop-aligned [data-testid="workbench-page-context"] {
+  order: 1;
+  flex: 0 0 auto;
+  gap: var(--moss-space-2) !important;
+}
+
+.workbench-shell-grid--desktop-aligned [data-testid="workbench-page-context"] > div:first-child {
+  font-size: 29px !important;
+  font-weight: 600;
+  line-height: 1 !important;
+}
+
+.workbench-shell-grid--desktop-aligned [data-testid="workbench-operator-zone"] {
+  order: 3;
+  flex: 0 0 auto;
+  gap: var(--moss-space-2) !important;
+}
+
+/* 行情带独占终端条第二行：第一行留给「面包屑 + 报告日」与右侧操作区；预留高度 = 1 + 8 + 19。 */
+.workbench-shell-grid--desktop-aligned [data-testid="workbench-market-ticker"] {
+  order: 4;
+  flex: 1 1 100%;
+  gap: var(--moss-space-3) !important;
+  min-width: 0;
+  min-height: 28px;
+  padding: 8px 0 0 !important;
+}
+
+.workbench-shell-grid--desktop-aligned [data-testid="workbench-market-ticker"] strong {
+  font-size: 14px !important;
+}
+
+.workbench-section-subnav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--moss-space-4);
+  padding-bottom: 0;
+}
+
+/* Page-owned canvases have no main inset, so navigation owns the shared gutter. */
+.workbench-shell-grid--cockpit.workbench-shell-grid--portfolio-home .workbench-section-subnav,
+.workbench-shell-grid--bond-analysis .workbench-section-subnav,
+.workbench-shell-grid--balance-movement .workbench-section-subnav {
+  padding-inline: var(--moss-page-gutter);
+}
+
+/* 组内子导航页签为纯文字（各页图标同形，不承载信息）；首帧即隐藏，避免 deferred 到达时页签宽度变化。 */
+.workbench-section-subnav__icon {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  /* Some shells use display:contents for the terminal split. The rendered
+   * operator row is the stable containing block for its detail popover. */
+  .workbench-operator-zone-shell {
+    position: relative;
+  }
+
+  /* Scope specificity keeps eager geometry authoritative when chrome arrives. */
+  .workbench-shell-grid .workbench-operator-zone-shell .workbench-governance-pill {
+    position: static;
+  }
+
+  .workbench-shell-grid .workbench-operator-zone-shell .workbench-governance-pill__detail {
+    width: min(360px, 100%);
+  }
+}
+
+/* Capture overrides must remain at EOF so later shell variants cannot restore sticky positioning. */
+@media (min-width: 1181px) {
+  body:has(.workbench-shell-root--publication-capture)
+    .workbench-shell-root.workbench-shell-root--publication-capture
+    .workbench-shell-aside,
+  body:has(.workbench-shell-root--publication-capture)
+    .workbench-shell-root--publication-capture
+    [data-testid="dashboard-home-page"]
+    header,
+  body:has(.workbench-shell-root--publication-capture)
+    .workbench-shell-root--publication-capture
+    main
+    :is(nav, details, th) {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+  }
+
+  body:has(.workbench-shell-root--publication-capture) #codex-browser-sidebar-comments-root {
+    display: none !important;
+    position: absolute !important;
+  }
 }

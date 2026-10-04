@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 
 import duckdb
+
 from backend.app.core_finance.balance_analysis import (
     FormalTywBalanceFactRow,
     FormalZqtzBalanceFactRow,
     TywSnapshotRow,
     ZqtzSnapshotRow,
 )
-from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
-from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
+from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate, validate_formal_fx_observation
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.repositories.currency_codes import normalize_currency_code
 from backend.app.repositories.duckdb_migrations import (
     apply_pending_migrations_on_connection,
@@ -26,6 +27,9 @@ from backend.app.repositories.fact_load_gates import (
     commit_report_date_purge,
     enforce_gate_outcome,
     evaluate_natural_key_load,
+)
+from backend.app.repositories.pnl_precompute_state import (
+    invalidate_pnl_by_business_precompute_on_connection,
 )
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
@@ -281,53 +285,165 @@ class BalanceAnalysisRepository(DuckDBRepository):
                 "mid_rate must be finite and greater than zero."
             )
 
-        business_day = bool(is_business_day)
-        carry_forward = bool(is_carry_forward)
         observed_trade_date_str = str(observed_trade_date) if observed_trade_date is not None else None
-        if business_day:
-            if carry_forward:
-                raise ValueError(
-                    f"Invalid formal fx metadata for base_currency={base_currency_normalized} report_date={report_date}: "
-                    "business-day row cannot be carry-forward."
-                )
-            return FormalFxRateLookup(
-                rate=rate,
-                source_version=str(source_version or ""),
-                is_business_day=True,
-                is_carry_forward=False,
-                observed_trade_date=observed_trade_date_str,
-            )
-
-        if not carry_forward or observed_trade_date_str is None:
-            raise ValueError(
-                f"Invalid formal fx carry-forward metadata for base_currency={base_currency_normalized} report_date={report_date}: "
-                "non-business-day row must carry forward an observed prior trade date."
-            )
-        if date.fromisoformat(observed_trade_date_str) >= date.fromisoformat(report_date):
-            raise ValueError(
-                f"Invalid formal fx carry-forward metadata for base_currency={base_currency_normalized} report_date={report_date}: "
-                f"observed_trade_date={observed_trade_date_str} must be before report_date."
-            )
-        if not is_cfets_fx_non_business_day(
-            report_date,
+        validate_formal_fx_observation(
+            target_date=report_date,
+            observed_date=observed_trade_date_str,
             base_currency=base_currency_normalized,
-            quote_currency="CNY",
-        ):
-            raise ValueError(
-                f"Invalid formal fx carry-forward metadata for base_currency={base_currency_normalized} report_date={report_date}: "
-                "carry-forward is only allowed for confirmed non-business-day rows."
-            )
+            is_business_day=is_business_day,
+            is_carry_forward=is_carry_forward,
+        )
         return FormalFxRateLookup(
             rate=rate,
             source_version=str(source_version or ""),
-            is_business_day=False,
-            is_carry_forward=True,
+            is_business_day=bool(is_business_day),
+            is_carry_forward=bool(is_carry_forward),
             observed_trade_date=observed_trade_date_str,
         )
 
     def lookup_fx_rate(self, *, report_date: str, base_currency: str) -> tuple[Decimal, str]:
         lookup = self.lookup_formal_fx_rate(report_date=report_date, base_currency=base_currency)
         return lookup.rate, lookup.source_version
+
+    def validate_existing_formal_fx_snapshot(
+        self,
+        *,
+        report_date: str,
+        required_base_currencies: set[str],
+        canonical_base_currencies: set[str],
+        expected_source_version: str,
+    ) -> None:
+        """Fail closed unless the existing same-date FX snapshot is recovery-qualified."""
+        if not isinstance(expected_source_version, str) or not expected_source_version.strip():
+            raise ValueError("expected_fx_source_version must be a non-empty string when provided.")
+        expected_version = expected_source_version
+
+        canonical = {
+            normalize_currency_code(value)
+            for value in canonical_base_currencies
+            if normalize_currency_code(value) not in {"", "CNY", "CNX", "RMB"}
+        }
+        required = {
+            normalize_currency_code(value)
+            for value in required_base_currencies
+            if normalize_currency_code(value) not in {"CNY", "CNX", "RMB"}
+        }
+        unsupported = sorted(required - canonical)
+        if unsupported:
+            raise ValueError(
+                "Existing formal FX snapshot does not cover required currencies: "
+                + ", ".join(unsupported)
+            )
+        if not canonical:
+            raise ValueError("Canonical formal FX recovery currency set must not be empty.")
+
+        placeholders = ", ".join("?" for _ in canonical)
+        rows = self._fetch_rows(
+            f"""
+            select upper(trim(base_currency)) as base_currency,
+                   upper(trim(quote_currency)) as quote_currency,
+                   mid_rate,
+                   source_name,
+                   is_business_day,
+                   is_carry_forward,
+                   source_version,
+                   vendor_name,
+                   vendor_version,
+                   vendor_series_code,
+                   cast(observed_trade_date as varchar)
+            from fx_daily_mid
+            where trade_date = ?
+              and upper(trim(quote_currency)) = 'CNY'
+              and upper(trim(base_currency)) in ({placeholders})
+            order by base_currency
+            """,
+            [report_date, *sorted(canonical)],
+        )
+        counts: dict[str, int] = {}
+        for row in rows:
+            base = normalize_currency_code(row[0])
+            counts[base] = counts.get(base, 0) + 1
+
+        missing = sorted(base for base in canonical if counts.get(base, 0) == 0)
+        duplicates = sorted(base for base, count in counts.items() if count != 1)
+        if missing:
+            raise ValueError(
+                f"Existing formal FX snapshot is missing canonical currencies for report_date={report_date}: "
+                + ", ".join(missing)
+            )
+        if duplicates:
+            raise ValueError(
+                f"Existing formal FX snapshot has duplicate canonical pairs for report_date={report_date}: "
+                + ", ".join(duplicates)
+            )
+
+        for row in rows:
+            (
+                base_currency,
+                quote_currency,
+                mid_rate,
+                source_name,
+                is_business_day,
+                is_carry_forward,
+                source_version,
+                vendor_name,
+                vendor_version,
+                vendor_series_code,
+                observed_trade_date,
+            ) = row
+            base = normalize_currency_code(base_currency)
+            if quote_currency != "CNY":
+                raise ValueError(
+                    f"Invalid formal FX quote currency for base_currency={base} report_date={report_date}."
+                )
+            try:
+                rate = Decimal(str(mid_rate))
+            except InvalidOperation as exc:
+                raise ValueError(
+                    f"Invalid formal FX rate for base_currency={base} report_date={report_date}: "
+                    "mid_rate must be finite and greater than zero."
+                ) from exc
+            if not is_valid_fx_mid_rate(rate):
+                raise ValueError(
+                    f"Invalid formal FX rate for base_currency={base} report_date={report_date}: "
+                    "mid_rate must be finite and greater than zero."
+                )
+            if str(source_version or "") != expected_version:
+                raise ValueError(
+                    f"Existing formal FX source_version mismatch for base_currency={base} "
+                    f"report_date={report_date}."
+                )
+            lineage = {
+                "source_name": source_name,
+                "vendor_name": vendor_name,
+                "vendor_version": vendor_version,
+                "vendor_series_code": vendor_series_code,
+                "observed_trade_date": observed_trade_date,
+            }
+            missing_lineage = sorted(
+                key for key, value in lineage.items() if not str(value or "").strip()
+            )
+            if missing_lineage:
+                raise ValueError(
+                    f"Existing formal FX lineage is incomplete for base_currency={base} "
+                    f"report_date={report_date}: {', '.join(missing_lineage)}."
+                )
+            if is_business_day is None or is_carry_forward is None:
+                raise ValueError(
+                    f"Existing formal FX quality flags are incomplete for base_currency={base} "
+                    f"report_date={report_date}."
+                )
+            if bool(is_business_day) and str(observed_trade_date) != report_date:
+                raise ValueError(
+                    f"Invalid formal FX observed_trade_date for base_currency={base} "
+                    f"report_date={report_date}: business-day row must be observed on report_date."
+                )
+
+        for base_currency in sorted(canonical):
+            self.lookup_formal_fx_rate(
+                report_date=report_date,
+                base_currency=base_currency,
+            )
 
     def resolve_formal_fx_mid_rates_map(
         self,
@@ -400,8 +516,19 @@ class BalanceAnalysisRepository(DuckDBRepository):
         report_date: str,
         zqtz_rows: list[FormalZqtzBalanceFactRow],
         tyw_rows: list[FormalTywBalanceFactRow],
+        writer_lock_already_held: bool = False,
     ) -> None:
         require_repository_task_write_scope("replace_formal_balance_rows")
+        if not writer_lock_already_held:
+            writer_lock = resolve_duckdb_writer_lock(self.path)
+            with acquire_lock(writer_lock, base_dir=Path(self.path).resolve().parent):
+                self.replace_formal_balance_rows(
+                    report_date=report_date,
+                    zqtz_rows=zqtz_rows,
+                    tyw_rows=tyw_rows,
+                    writer_lock_already_held=True,
+                )
+            return
         for gated_rows, gated_table, gated_key in (
             (zqtz_rows, "fact_formal_zqtz_balance_daily", ZQTZ_BALANCE_NATURAL_KEY),
             (tyw_rows, "fact_formal_tyw_balance_daily", TYW_BALANCE_NATURAL_KEY),
@@ -412,6 +539,15 @@ class BalanceAnalysisRepository(DuckDBRepository):
                 ),
                 table_name=gated_table,
             )
+        from backend.app.repositories.balance_analysis_publication_state import (
+            invalidate_balance_analysis_publications_before_fact_change,
+        )
+
+        invalidate_balance_analysis_publications_before_fact_change(
+            source_duckdb_path=self.path,
+            report_dates=(report_date,),
+            reason="formal_balance_facts_replace",
+        )
         conn = duckdb.connect(self.path, read_only=False)
         transaction_started = False
         try:
@@ -421,6 +557,20 @@ class BalanceAnalysisRepository(DuckDBRepository):
             conn.execute("commit")
             transaction_started = False
 
+            existing_zqtz_rows = bool(
+                conn.execute(
+                    "select 1 from fact_formal_zqtz_balance_daily where report_date = ? limit 1",
+                    [report_date],
+                ).fetchone()
+            )
+
+            def invalidate_before_commit(active_conn: duckdb.DuckDBPyConnection) -> None:
+                invalidate_pnl_by_business_precompute_on_connection(
+                    active_conn,
+                    changed_report_dates=(report_date,),
+                    reason="fact_formal_zqtz_balance_daily_purge",
+                )
+
             commit_report_date_purge(
                 conn,
                 tables=(
@@ -428,6 +578,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     "fact_formal_tyw_balance_daily",
                 ),
                 report_date=report_date,
+                before_commit=invalidate_before_commit if existing_zqtz_rows else None,
             )
 
             conn.execute("begin transaction")
@@ -569,6 +720,14 @@ class BalanceAnalysisRepository(DuckDBRepository):
                         )
                         for row in tyw_rows
                     ],
+                )
+            if zqtz_rows:
+                invalidate_pnl_by_business_precompute_on_connection(
+                    conn,
+                    changed_report_dates=tuple(
+                        sorted({row.report_date.isoformat() for row in zqtz_rows})
+                    ),
+                    reason="fact_formal_zqtz_balance_daily_replace",
                 )
             sync_zqtz_snapshot_market_value_cny_from_formal(conn, report_date)
             conn.execute("commit")
@@ -1499,7 +1658,9 @@ class BalanceAnalysisRepository(DuckDBRepository):
                 accounting_basis,
                 currency_code,
                 sum(coalesce(face_value_amount, 0)) as face_value_amount,
-                sum(coalesce(market_value_amount, 0)) as market_value_amount,
+                sum(market_value_amount) as market_value_amount,
+                -- Missing MV has no usable weight: coverage is the share of observed rows.
+                count(market_value_amount) * 1.0 / count(*) as market_value_coverage_ratio,
                 sum(coalesce(amortized_cost_amount, 0)) as amortized_cost_amount,
                 sum(coalesce(accrued_interest_amount, 0)) as accrued_interest_amount,
                 -- 缺失≠0：缺 coupon 行不得 coalesce 成 0 拉低加权利率；显式 0 才是零息。
@@ -1589,6 +1750,7 @@ def sync_zqtz_snapshot_market_value_cny_from_formal(conn: duckdb.DuckDBPyConnect
     2025-10-31 / 2025-12-31 / 2026-01-31 / 2026-02-28）。加上它之后两侧在全表
     578 个 report_date 上均无重复键。
     """
+    require_repository_task_write_scope("sync_zqtz_snapshot_market_value_cny_from_formal")
     if not _zqtz_snapshot_table_exists(conn):
         return
     conn.execute(

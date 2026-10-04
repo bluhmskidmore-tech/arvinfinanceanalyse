@@ -13,7 +13,7 @@
 .product-category-audit-page-title {
   margin: 0;
   font-size: 28px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .product-category-audit-boundary-copy {
@@ -61,7 +61,7 @@
   display: inline-flex;
   align-items: center;
   padding: 8px 12px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;

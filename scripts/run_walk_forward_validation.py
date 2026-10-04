@@ -1,4 +1,4 @@
-﻿"""Walk-forward 样本外验证框架（只读分析工具）。
+"""Walk-forward 样本外验证框架（只读分析工具）。
 
 用途：把"全窗口 in-sample 回测"得到的策略结论，放到滚动的训练/验证切割上重跑，
 区分"稳健优势"与"过拟合 / 时段红利"。
@@ -48,6 +48,7 @@ from backend.app.core_finance.portfolio_paths import (  # noqa: E402
     position_path_key,
 )
 from backend.app.core_finance.strategy_policy import POLICY  # noqa: E402
+from backend.app.governance.settings import get_settings  # noqa: E402
 from backend.app.repositories.duckdb_repo import read_only_connection  # noqa: E402
 from scripts.run_portfolio_backtest import (  # noqa: E402
     CHOICE_NATIVE_ERA_START,
@@ -332,7 +333,7 @@ def load_inputs(
         disclosure = _outcome_disclosure(conn)
         usable_rows = [row for row in execution_rows if _is_usable(row)]
         market_state_rows = _market_state_rows_from_execution(execution_rows)
-        exposure_start = min(date_text(row["entry_date"]) for row in usable_rows)
+        exposure_start = min(date_text(row["signal_date"]) for row in usable_rows)
         exposure_end = max(
             date_text(row.get("exit_date_20d") or row.get("entry_date")) for row in usable_rows
         )
@@ -1050,7 +1051,7 @@ def _report_header(payload: Mapping[str, Any], primary: Mapping[str, Any]) -> li
     return [
         "# Walk-Forward 样本外验证框架 — 首轮体检报告",
         "",
-        f"> 生成时间：{payload['generated_at']} | 引擎 `{PORTFOLIO_ENGINE_VERSION}` | 模式 `{payload['mode']}` | 变体 `{VARIANT}`",
+        f"> 生成时间：{payload['generated_at']} | 引擎 `{payload.get('engine_version', 'PENDING')}` | 模式 `{payload['mode']}` | 变体 `{VARIANT}`",
         f"> DuckDB `{payload['db_path']}`（只读） | 执行历史 {payload['execution_row_count']} 行，"
         f"其中可用 {payload['usable_row_count']} 行 | 回测调用 {payload['backtest_run_count']} 次",
         f"> 主切割：训练 {schedule['train_months']} 月 / 验证 {schedule['valid_months']} 月 / 步长 "
@@ -1059,7 +1060,7 @@ def _report_header(payload: Mapping[str, Any], primary: Mapping[str, Any]) -> li
         f"> 口径：{METRIC_BASIS}",
         "",
         "**本报告只做只读分析**：未修改引擎、策略、政策或任何数据；全部数字由 "
-        "`scripts/run_walk_forward_validation.py` 单次运行产出，可复现。",
+        "`scripts/run_walk_forward_validation.py` 所记录的单次运行产出；复现需相同引擎版本、输入数据与配置。",
         "",
         "---",
         "",
@@ -1131,31 +1132,24 @@ def _report_executive_summary(payload: Mapping[str, Any], primary: Mapping[str, 
         )
     lines.extend(["", "### 0.3 结论要点", ""])
     lines.extend(_readout_bullets(primary))
-    lines.extend(["", "### 0.4 整改后复跑与首版的差异（WF-1~WF-4）", ""])
+    lines.extend(["", "### 0.4 本次运行的去重证据与比较边界", ""])
     lines.extend(_rectification_notes(payload))
     lines.extend(["", "---", ""])
     return lines
 
 
 def _rectification_notes(payload: Mapping[str, Any]) -> list[str]:
-    """验收整改后复跑的差异说明：只有行计数变了，判定与收益数字未变。"""
+    """披露本次加载/去重计数；没有历史输入时不生成跨运行结论。"""
     dedupe = payload["dedupe"]
     return [
-        f"- **唯一的数字变化来自 WF-3 去重**：执行历史行 5560 → {dedupe['deduped_rows']}"
-        f"（−{dedupe['removed_rows']}：join 扇出 {dedupe['join_fanout_rows']} 行 + 表内重复 "
-        f"{dedupe['table_duplicate_rows']} 行），可用行 4311 → {payload['usable_row_count']}；"
-        "§0.1 的「可用行」列相应下降：stock_candidate 783 → 768、mean_reversion 589 → 577、"
-        f"hybrid_fusion 132 → 117（逐 kind 去重数 {dedupe['removed_rows_by_kind']}）。",
-        f"- **收益/回撤/超额/漂移/判定全部逐字不变**：本次 {dedupe['duplicate_keys']} 个重复键的 "
-        f"`ema10` 取值完全一致（`ema10_conflict_keys={dedupe['ema10_conflict_keys']}`），"
-        "且引擎本就对同日同股的重复候选按 `duplicate_stock` 跳过，扇出行从未真正建仓。"
-        "因此去重修正的是**披露口径**（行计数），不是任何业绩数字——与首版报告逐行对照确认。",
-        "- **WF-1（窗口夹取 + fail-fast）在当前数据下零影响**：主切割 5 个窗口的验证末日"
-        "均早于段边界，`windows_valid_end_clamped` 为空、`windows_crossing_forced_cut` 为空；"
-        "修复是防御性的（对抗构造见 §7.2 引用的测试）。",
-        "- **WF-2（训练路径按 `train_end` 截断）在当前数据下未改变选参**：主切割下"
-        "训练期尾部持仓的 path 顺延未跨过 `train_end`，选参轨迹与首版一致；"
-        "该截断消除的是「停牌顺延数日」这一微扰通道。",
+        f"- **本次去重计数**：加载 {dedupe['loaded_rows']} 行，去重后 {dedupe['deduped_rows']} 行，"
+        f"移除 {dedupe['removed_rows']} 行；join 扇出 {dedupe['join_fanout_rows']} 行，"
+        f"表内重复 {dedupe['table_duplicate_rows']} 行。当前可用 {payload['usable_row_count']} 行；"
+        f"逐 kind 去重数为 {dedupe['removed_rows_by_kind']}，可用行以 §0.1 的本次结果为准。",
+        f"- **重复键证据**：{dedupe['duplicate_keys']} 个重复键中，"
+        f"`ema10_conflict_keys={dedupe['ema10_conflict_keys']}`。该计数本身不证明去重前后业绩相同。",
+        "- **跨运行比较为 PENDING**：本次 payload 不含首版运行的输入和结果，"
+        "不能据此判断历史行数变化、收益/回撤/超额/判定是否变化，或窗口夹取与训练期截断对选参的影响。",
     ]
 
 
@@ -1314,21 +1308,23 @@ def _report_gap_accounting(payload: Mapping[str, Any]) -> list[str]:
             f"4. **复权缺失行**：{adjusted['rows']} 行有 `return_20d_net` 但无 `return_20d_net_adj`"
             f"（信号日 {adjusted['min_signal_date']}~{adjusted['max_signal_date']}），"
             "沿用引擎 coalesce 链 `return_20d_net_adj -> return_20d_net` 计入回测，逐 kind 计数见上表。"
-            "这些行按**未复权**净收益结算，除权窗口内存在方向不定的偏差。",
+            + (
+                "这些行按**未复权**净收益结算，除权窗口内存在方向不定的偏差。"
+                if adjusted["rows"]
+                else "本次未观测到复权缺失，不据此推断覆盖缺口。"
+            ),
             f"   - 根因取证（分两类）：**(a) 日期级空洞** —— "
             f"{factor_coverage.get('rows_with_uncovered_target', 0)} 行的 20d 目标日"
             f"（共 {factor_coverage.get('uncovered_target_date_count', 0)} 个日期，散布于 "
             f"{factor_coverage.get('first_uncovered_target_date', 'NA')}~"
             f"{factor_coverage.get('last_uncovered_target_date', 'NA')}）在 `stock_adjustment_factor` 中"
-            "完全没有因子行；**(b) 逐票缺失** —— 其余行的目标日有因子但该股票缺行。",
+            "完全没有因子行；**(b) 逐票缺失** —— 复权缺失行中，其余行的目标日有因子但该股票缺行。",
             f"   - 其中尾部 {factor_coverage.get('rows_after_dense_coverage_end', 0)} 行的目标日晚于"
             f"因子表的稠密覆盖末日 {factor_coverage.get('dense_coverage_end', 'NA')}"
-            f"（表内最大因子日 {factor_coverage.get('max_factor_trade_date', 'NA')} 是孤立补载日，"
-            "不构成连续覆盖），信号日集中在 "
+            f"（表内最大因子日 {factor_coverage.get('max_factor_trade_date', 'NA')}），信号日范围为 "
             f"{adjusted['recent_block_min_signal_date']}~{adjusted['max_signal_date']}、"
             f"目标日最远 {adjusted['max_exit_date']}。"
-            "**任务所述「2026-06 中旬遮挡」在本框架输入表中的可观测形态就是这道复权因子覆盖悬崖**——"
-            "这些行不是被排除，而是以未复权口径进入了最后一个可用月，属已披露偏差。",
+            "这些计数只描述本次输入覆盖，不能据此推断补载原因或特定历史缺口。",
             "",
             f"- 两代数据边界 `{CHOICE_NATIVE_ERA_START}` 为强制切割点，任何窗口不得跨越。",
             f"- path 模式缺价格路径行：{payload['missing_price_path_rows']}（按成本计价降级）。",
@@ -1342,7 +1338,7 @@ def _report_gap_accounting(payload: Mapping[str, Any]) -> list[str]:
             f"{dedupe['join_fanout_rows']} 行**（最大重复 {dedupe['max_multiplicity']} 次）。",
             f"- 执行历史表**自身**还有 {dedupe['table_duplicate_rows']} 行完全重复的执行行"
             f"（同 `(signal_date, stock_code, signal_kind)`、同 run_id / formula_version / "
-            "entry_date / 20d 收益），两者叠加才产生 4 倍键。",
+            f"entry_date / 20d 收益）；加载后的最大重复倍数为 {dedupe['max_multiplicity']}。",
             "- 该加载器是已提交的共享文件、扇出属继承问题，**本框架不改加载器**，"
             f"而是在编排侧按 `{', '.join(dedupe['key_fields'])}` 去重（{dedupe['keep_rule']}）："
             f"{dedupe['loaded_rows']} → {dedupe['deduped_rows']} 行"
@@ -1359,11 +1355,9 @@ def _report_gap_accounting(payload: Mapping[str, Any]) -> list[str]:
             f"（{sum(item['no_entry_date'] for item in disclosure['by_kind'].values())} 行无 "
             "`entry_date`，无法建仓）、且把上述表内重复行各计一次；"
             "§0.1「可用行」是编排侧去重后的口径。",
-            f"- 取舍说明：本次 {dedupe['duplicate_keys']} 个重复键的 `ema10` 取值全部相同"
-            f"（`ema10_conflict_keys={dedupe['ema10_conflict_keys']}`），故去重不改任何计算；"
-            "规则本身保留 ema10 非空且最小者 ⇒ 止损距离最大 ⇒ 同键候选中仓位最保守的一档，"
-            "并避免退回 POLICY 固定 fallback 止损距离。"
-            "引擎对同日同股的重复候选本就按 `duplicate_stock` 跳过，扇出行从未真正建仓。",
+            f"- 取舍说明：本次 {dedupe['duplicate_keys']} 个重复键的 "
+            f"`ema10_conflict_keys={dedupe['ema10_conflict_keys']}`；保留规则为 {dedupe['keep_rule']}。"
+            "是否影响交易路径与业绩需要去重前后同输入回放，不能由重复键计数直接判定。",
             "",
             "---",
             "",
@@ -2130,7 +2124,7 @@ def run_walk_forward_validation(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Walk-forward out-of-sample validation for MOSS strategies.")
-    parser.add_argument("--db-path", default=DEFAULT_DB_PATH)
+    parser.add_argument("--db-path", default=None, help="Override the configured DuckDB path.")
     parser.add_argument("--report-path", default=str(DEFAULT_REPORT_PATH))
     parser.add_argument("--mode", choices=("path", "horizon"), default="path")
     parser.add_argument("--objective", choices=("sharpe", "calmar"), default="sharpe")
@@ -2156,7 +2150,7 @@ def main() -> None:
     args = parser.parse_args()
 
     payload = run_walk_forward_validation(
-        db_path=args.db_path,
+        db_path=args.db_path if args.db_path is not None else get_settings().duckdb_path,
         report_path=args.report_path,
         mode=args.mode,
         objective=args.objective,

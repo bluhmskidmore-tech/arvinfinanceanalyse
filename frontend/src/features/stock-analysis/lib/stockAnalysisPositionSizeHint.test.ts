@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { LivermorePositionSizeHint, LivermoreStrategyPayload } from "../../../api/contracts";
 import { buildCandidateReviewQueue } from "./stockAnalysisPageModel";

@@ -1,4 +1,8 @@
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import {
+  CHART_CARD_HEIGHTS,
+  type ChartCardHeight,
+} from "../../../components/charts/chartCardScale";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import type { AdbTrendItem } from "../../../api/contracts";
 import { nocturneTokens } from "../../../theme/designSystem";
@@ -7,7 +11,10 @@ const YI = 100_000_000;
 
 export type AdbDailyTrendChartProps = {
   trend: AdbTrendItem[];
-  height?: number;
+  title: string;
+  question?: string;
+  height?: ChartCardHeight;
+  flat?: boolean;
 };
 
 function buildTrendOption(trend: AdbTrendItem[]) {
@@ -35,10 +42,8 @@ function buildTrendOption(trend: AdbTrendItem[]) {
     },
     legend: {
       data: ["日余额", "30日移动均线"],
-      top: 0,
-      bottom: "auto",
     },
-    grid: { left: 60, right: 24, top: 44, bottom: 36 },
+    grid: { left: 60, right: 24, top: 44 },
     xAxis: {
       type: "category",
       data: dates,
@@ -81,7 +86,21 @@ function buildTrendOption(trend: AdbTrendItem[]) {
  * 消费后端 `/api/analysis/adb` 返回的 `trend[]` 字段，
  * 展示区间内每日余额与 30 日移动平均线。
  */
-export default function AdbDailyTrendChart({ trend, height = 340 }: AdbDailyTrendChartProps) {
-  if (!trend.length) return null;
-  return <BaseChart option={buildTrendOption(trend)} height={height} />;
+export default function AdbDailyTrendChart({
+  trend,
+  title,
+  question,
+  height = CHART_CARD_HEIGHTS.hero,
+  flat = false,
+}: AdbDailyTrendChartProps) {
+  return (
+    <ChartCard
+      flat={flat}
+      title={title}
+      question={question}
+      unit="亿元"
+      height={height}
+      option={trend.length ? buildTrendOption(trend) : null}
+    />
+  );
 }

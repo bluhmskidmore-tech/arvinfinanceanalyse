@@ -59,7 +59,11 @@ export type HomeGovernanceStatusKind =
 
 export type HomeHeaderStatus = {
   dataStatusKind: HomeGovernanceStatusKind;
-  snapshotFailureKind?: "permission" | "requestFailed" | null;
+  snapshotFailureKind?:
+    | "permission"
+    | "reportDateUnavailable"
+    | "requestFailed"
+    | null;
   formalUseAllowed?: boolean | null;
   governanceFeedAvailable?: boolean;
   dataUpdatedAt: string;
@@ -157,10 +161,8 @@ export type DashboardHomeFirstScreenView = {
 
 export type DashboardHomeFirstScreenHydration = Pick<
   DashboardHomeFirstScreenView,
-  "reportDate" | "headerStatus" | "decisionRail" | "terminalKpis" | "keyRiskStrip"
-> & {
-  supplementalState?: HomeSupplementalApiState;
-};
+  "reportDate" | "keyRiskStrip"
+>;
 
 export type HomeSupplementalApiState = {
   kind: HomeDataStateKind;

@@ -11,10 +11,37 @@ import {
   filterMoneyMarketRows,
   filterRateQuoteRows,
   filterTerminalTickerItems,
+  formatTerminalSourceSummary,
   matchesSourceFilter,
   resolveLatestMarketDataTradeDate,
   type MarketDataBondFuturesSection,
 } from "./marketDataTerminalModel";
+
+describe("formatTerminalSourceSummary", () => {
+  it("keeps only the basis segment when quality is ok and no fallback", () => {
+    expect(
+      formatTerminalSourceSummary({
+        basis: "formal",
+        qualityFlag: "ok",
+        fallbackMode: "none",
+      } as Parameters<typeof formatTerminalSourceSummary>[0]),
+    ).toBe("口径 正式");
+  });
+
+  it("appends quality and fallback segments only when abnormal", () => {
+    expect(
+      formatTerminalSourceSummary({
+        basis: "analytical",
+        qualityFlag: "stale",
+        fallbackMode: "latest_snapshot",
+      } as Parameters<typeof formatTerminalSourceSummary>[0]),
+    ).toBe("口径 分析 · 质量 陈旧 · 降级 最新快照");
+  });
+
+  it("reports pending source when meta is missing", () => {
+    expect(formatTerminalSourceSummary(null)).toBe("来源待确认");
+  });
+});
 
 function meta(partial: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -64,6 +91,32 @@ function recentPoint(trade_date: string, value_numeric: number): ChoiceMacroRece
 }
 
 describe("buildMarketDataTerminalModel", () => {
+  it("prefers the governed OMO series and never labels SHIBOR 3M as DR007", () => {
+    const model = buildMarketDataTerminalModel({
+      ratesEnvelope: {
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [
+            point({ series_id: "M001", value_numeric: 1.75 }),
+            point({ series_id: "EMM00088132", value_numeric: 1.4 }),
+            point({ series_id: "EMM00167613", series_name: "SHIBOR:3M", value_numeric: 1.6 }),
+          ],
+        },
+      },
+    });
+
+    expect(model.moneyMarket.rows).toHaveLength(1);
+    expect(model.moneyMarket.rows[0]).toMatchObject({
+      seriesId: "EMM00088132",
+      name: "公开市场7天逆回购利率",
+      rateText: "1.4%",
+      tradeDate: "2026-04-30",
+      sourceVersion: "sv_market_rates",
+    });
+    expect(buildTerminalTickerItems(model).some((item) => item.label === "DR007")).toBe(false);
+  });
+
   it("builds rate and money rows only from explicit market-data series", () => {
     const model = buildMarketDataTerminalModel({
       ratesEnvelope: {

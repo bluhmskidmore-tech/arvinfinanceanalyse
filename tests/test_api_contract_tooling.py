@@ -93,6 +93,14 @@ def test_api_contract_script_prints_offline_schemathesis_command() -> None:
     assert ".codex-tmp/openapi.json" in command
 
 
+def test_baseline_check_exposes_explicit_diagnostic_bootstrap_flag() -> None:
+    help_text = _run_script("baseline-check", "--help")
+
+    assert "--allow-bootstrap-baseline" in help_text
+    assert "never" in help_text
+    assert "release-gate eligible" in help_text
+
+
 def _schemathesis_executable() -> str | None:
     """Prefer the CLI installed beside the interpreter running the tests."""
     scripts_dir = Path(sys.executable).parent
@@ -142,6 +150,9 @@ def test_ci_runs_api_contract_export_lint_and_breaking_change_gate() -> None:
     assert "npx --prefix frontend spectral lint .codex-tmp/openapi.json -r .spectral.yaml" in workflow
     # The gate must read the baseline from the base branch, not from the pull request.
     assert 'python scripts/api_contract_check.py baseline-check \\\n            --baseline-ref "origin/${{ github.base_ref }}"' in workflow
+    assert "--json .codex-tmp/openapi-contract-gate.json" in workflow
+    assert "name: openapi-contract-gate" in workflow
+    assert "path: .codex-tmp/openapi-contract-gate.json" in workflow
 
 
 def test_docs_describe_the_baseline_workflow_and_current_tool_versions() -> None:

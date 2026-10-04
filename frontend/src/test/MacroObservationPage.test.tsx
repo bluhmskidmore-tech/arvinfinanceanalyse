@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createApiClient, type ApiClient } from "../api/client";
 import { ApiClientProvider } from "../api/clientContext";
 import MacroObservationPage from "../features/macro-observation/pages/MacroObservationPage";
+import { MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY } from "../features/macro-toolkit/lib/macroToolkitPageModel";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -76,8 +77,10 @@ describe("MacroObservationPage", () => {
     expect(await screen.findByTestId("macro-observation-readonly-boundary")).toHaveTextContent(
       "只读宏观观察 · 本页只展示宏观分析证据；刷新、脚本执行和运营注册表保留在宏观工具页。",
     );
+    const contractBoundary = await screen.findByTestId("macro-toolkit-contract-boundary");
+    expect(contractBoundary).toHaveTextContent("非正式口径");
     const kpiBand = await screen.findByTestId("macro-observation-kpi-band");
-    expect(kpiBand.querySelectorAll(".macro-observation-view__kpi-cell")).toHaveLength(6);
+    expect(kpiBand.querySelectorAll('[data-kpi-cell="true"]')).toHaveLength(6);
     expect(screen.getByRole("link", { name: "前往宏观工具页" })).toHaveAttribute(
       "href",
       "/macro-toolkit",
@@ -129,6 +132,12 @@ describe("MacroObservationPage", () => {
     renderObservationPage(client);
 
     expect(await screen.findByTestId("macro-observation-readonly-boundary")).toBeInTheDocument();
+    expect(await screen.findByTestId("macro-toolkit-contract-boundary")).toHaveTextContent(
+      "非正式口径",
+    );
+    expect(await screen.findByTestId("macro-observation-contract-fallback")).toHaveTextContent(
+      "analytical / 非正式口径",
+    );
     expect(await screen.findByTestId("macro-observation-loading-note")).toHaveTextContent(
       "页面口径边界已就绪；观察结论和证据对照会在后端返回后自动补上。",
     );
@@ -162,8 +171,43 @@ describe("MacroObservationPage", () => {
     expect(errorState).not.toHaveTextContent("Request failed");
     expect(errorState).not.toHaveTextContent("/ui/macro/toolkit");
     expect(screen.getByTestId("macro-observation-readonly-boundary")).toBeInTheDocument();
+    expect(screen.getByTestId("macro-toolkit-contract-boundary")).toHaveTextContent("非正式口径");
+    expect(screen.getByTestId("macro-observation-contract-fallback")).toHaveTextContent(
+      "analytical / 非正式口径",
+    );
     expect(screen.getByRole("button", { name: "重试读取" })).toBeInTheDocument();
     expect(screen.queryByTestId("macro-observation-kpi-band")).not.toBeInTheDocument();
+  });
+
+  it("does not hydrate full analysis from a preloaded shared cache before explicit user intent", async () => {
+    const { fullEnvelope, coreEnvelope } = await buildCoreDeferredEnvelope();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getMacroToolkitAnalysis = vi.fn(
+      (options?: Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]) =>
+        Promise.resolve(options?.detail === "full" ? fullEnvelope : coreEnvelope),
+    );
+    const client = { ...baseClient, getMacroToolkitAnalysis } as ApiClient;
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY, fullEnvelope);
+
+    renderObservationPage(client, queryClient);
+
+    expect(await screen.findByTestId("macro-toolkit-contract-boundary")).toHaveTextContent(
+      "非正式口径",
+    );
+    expect((await screen.findAllByText("2 项证据延后确认")).length).toBeGreaterThan(0);
+    expect(await screen.findByRole("button", { name: "查看完整分析" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /刷新结果/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /刷新注册表/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /运行选中脚本/ })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(getMacroToolkitAnalysis).toHaveBeenCalledWith(
+        expect.objectContaining({ detail: "core" }),
+      ),
+    );
+    expect(getMacroToolkitAnalysis).not.toHaveBeenCalledWith(
+      expect.objectContaining({ detail: "full" }),
+    );
   });
 
   it("summarizes core deferred runtime and loads the full analysis on demand", async () => {
@@ -179,6 +223,9 @@ describe("MacroObservationPage", () => {
     renderObservationPage(client);
 
     expect((await screen.findAllByText("2 项证据延后确认")).length).toBeGreaterThan(0);
+    expect(await screen.findByTestId("macro-toolkit-contract-boundary")).toHaveTextContent(
+      "非正式口径",
+    );
     const fullAnalysisButton = await screen.findByRole("button", { name: "查看完整分析" });
     await user.click(fullAnalysisButton);
 

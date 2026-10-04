@@ -64,8 +64,12 @@ def test_decimal_and_required():
     assert _decimal("") is None
     assert _decimal("1,234.5") == Decimal("1234.5")
     assert _decimal("not-a-number") is None
-    assert _decimal_required("bad") == Decimal("0")
-    assert _decimal_required("2") == Decimal("2")
+    with pytest.raises(ValueError, match="ZQTZ required amount invalid"):
+        _decimal_required("bad", family="ZQTZ", header="面值", row_number=3, headers=["面值"])
+    assert (
+        _decimal_required("2", family="ZQTZ", header="面值", row_number=3, headers=["面值"])
+        == Decimal("2")
+    )
     assert _decimal(3.125) == Decimal("3.125")
     assert _decimal(-1) == Decimal("-1")
 
@@ -99,108 +103,72 @@ def test_currency_mapping_matches_normalize_currency_code():
 
 
 def test_zqtz_parse_calls_normalize_currency_code(monkeypatch):
-    path = ROOT / "sample_data" / "smoke-runtime" / "ZQTZSHOW-20251231.xls"
-    source_file = path.name
-
     def _stub(value: object) -> str:
         return f"stub:{value!r}"
 
     monkeypatch.setattr(snapshot_row_parse_mod, "normalize_currency_code", _stub)
-    rows = parse_zqtz_snapshot_rows_from_bytes(
-        file_bytes=path.read_bytes(),
-        ingest_batch_id="ib-currency",
-        source_version="sv",
-        source_file=source_file,
-        rule_version="rv",
+    rows = _parse_synthetic_amount_sheet(
+        monkeypatch, "zqtz", _synthetic_amount_sheet("zqtz")
     )
-    assert rows
-    assert str(rows[0]["currency_code"]).startswith("stub:")
+    assert rows[0]["currency_code"] == "stub:'人民币'"
 
 
 def test_tyw_parse_calls_normalize_currency_code(monkeypatch):
-    path = ROOT / "sample_data" / "smoke-runtime" / "TYWLSHOW-20251231.xls"
-    source_file = path.name
-
     def _stub(value: object) -> str:
         return f"tyw:{value!r}"
 
     monkeypatch.setattr(snapshot_row_parse_mod, "normalize_currency_code", _stub)
-    rows = parse_tyw_snapshot_rows_from_bytes(
-        file_bytes=path.read_bytes(),
-        ingest_batch_id="ib-tyw-curr",
-        source_version="sv",
-        source_file=source_file,
-        rule_version="rv",
+    rows = _parse_synthetic_amount_sheet(
+        monkeypatch, "tyw", _synthetic_amount_sheet("tyw")
     )
-    assert rows
-    assert str(rows[0]["currency_code"]).startswith("tyw:")
+    assert rows[0]["currency_code"] == "tyw:'人民币'"
 
 
-def test_parse_zqtz_smoke_workbook_currency_and_issuance_flag():
-    path = ROOT / "sample_data" / "smoke-runtime" / "ZQTZSHOW-20251231.xls"
-    source_file = path.name
-    rows = parse_zqtz_snapshot_rows_from_bytes(
-        file_bytes=path.read_bytes(),
-        ingest_batch_id="ib-contract",
-        source_version="sv",
-        source_file=source_file,
-        rule_version="rv",
+def test_parse_zqtz_synthetic_workbook_currency_and_issuance_flag(monkeypatch):
+    rows = _parse_synthetic_amount_sheet(
+        monkeypatch, "zqtz", _synthetic_amount_sheet("zqtz")
     )
-    assert rows
+    assert len(rows) == 1
     row = rows[0]
-    assert row["ingest_batch_id"] == "ib-contract"
-    assert row["source_version"] == "sv"
-    assert row["rule_version"] == "rv"
+    assert row["ingest_batch_id"] == "ib-synthetic"
+    assert row["source_version"] == "sv-synthetic"
+    assert row["rule_version"] == "rv-synthetic"
     assert isinstance(row["trace_id"], str) and row["trace_id"]
-    assert row["report_date"]
-    assert row["instrument_code"]
-    assert row["currency_code"]  # normalized via normalize_currency_code
-    assert "is_issuance_like" in row
-    assert row.get("sub_type") == row.get("business_type_primary")
-    assert row["next_call_date"] is None or isinstance(row["next_call_date"], str)
-    issuance_rows = [x for x in rows if "发行类债" in str(x.get("asset_class", ""))]
-    if issuance_rows:
-        assert all(bool(x["is_issuance_like"]) for x in issuance_rows[:5])
+    assert row["report_date"] == "2025-12-31"
+    assert row["instrument_code"] == "SYNTHETIC-ID"
+    assert row["currency_code"] == "CNY"
+    assert row["sub_type"] == row["business_type_primary"]
+    assert row["next_call_date"] is None
+    assert row["asset_class"] == "发行类债"
+    assert row["is_issuance_like"] is True
 
 
-def test_parse_tyw_smoke_workbook_liability_product_and_optional_none():
-    path = ROOT / "sample_data" / "smoke-runtime" / "TYWLSHOW-20251231.xls"
-    source_file = path.name
-    rows = parse_tyw_snapshot_rows_from_bytes(
-        file_bytes=path.read_bytes(),
-        ingest_batch_id="ib-tyw",
-        source_version="sv2",
-        source_file=source_file,
-        rule_version="rv2",
-    )
-    assert rows
-    r = rows[0]
-    assert r["ingest_batch_id"] == "ib-tyw"
-    assert r["report_date"]
-    assert r["position_id"]
-    assert r["currency_code"] is not None  # may be "" if blank in sheet
-    assert r["special_account_type"] is None or isinstance(r["special_account_type"], str)
-
-    liability_types = snapshot_row_parse_mod._LIABILITY_PRODUCTS
-    found = [row for row in rows if str(row.get("product_type", "")) in liability_types]
-    if found:
-        assert all(row["position_side"] == "liability" for row in found[:5])
-    non_liab = next((row for row in rows if str(row.get("product_type", "")) not in liability_types), None)
-    if non_liab is not None:
-        assert non_liab["position_side"] == "asset"
+def test_parse_tyw_synthetic_workbook_liability_product_and_optional_none(monkeypatch):
+    sheet_rows = _synthetic_amount_sheet("tyw")
+    sheet_rows.append(["SYNTHETIC-ASSET", "200", "0", "", "美元", "买入返售", ""])
+    rows = _parse_synthetic_amount_sheet(monkeypatch, "tyw", sheet_rows)
+    assert len(rows) == 2
+    liability, asset = rows
+    assert liability["ingest_batch_id"] == "ib-synthetic"
+    assert liability["report_date"] == "2025-12-31"
+    assert liability["position_id"] == "SYNTHETIC-ID"
+    assert liability["currency_code"] == "CNY"
+    assert liability["special_account_type"] is None
+    assert liability["position_side"] == "liability"
+    assert asset["currency_code"] == "USD"
+    assert asset["position_side"] == "asset"
 
 
-def test_parse_zqtz_prefers_source_file_report_date_over_stale_sheet_date():
+def test_parse_zqtz_rejects_source_file_report_date_conflicting_with_sheet_date():
     path = ROOT / "data_input" / "ZQTZSHOW-2025.11.20.xls"
-    rows = parse_zqtz_snapshot_rows_from_bytes(
-        file_bytes=path.read_bytes(),
-        ingest_batch_id="ib-zqtz-date-drift",
-        source_version="sv-zqtz-date-drift",
-        source_file=path.name,
-        rule_version="rv-zqtz-date-drift",
-    )
-    assert rows
-    assert {row["report_date"] for row in rows} == {"2025-11-20"}
+    with pytest.raises(ValueError, match="source date mismatch: file=2025-11-20, sheet=2025-11-19"):
+        parse_zqtz_snapshot_rows_from_bytes(
+            file_bytes=path.read_bytes(),
+            ingest_batch_id="ib-zqtz-date-drift",
+            source_version="sv-zqtz-date-drift",
+            source_file=path.name,
+            rule_version="rv-zqtz-date-drift",
+        )
 
 
 def test_parse_zqtz_maps_value_date_and_customer_attribute(monkeypatch):
@@ -310,41 +278,34 @@ def test_parse_zqtz_maps_value_date_and_customer_attribute(monkeypatch):
     ]
 
 
-# The three ZQTZSHOW header layouts observed across the whole archive, identified
-# by their column count. All of them carry 应收/应付利息 at index 28.
-_ZQTZ_ARCHIVE_LAYOUT_SAMPLES = (
-    (44, "ZQTZSHOW-20240101__08107eccc091__ib_14ea5edad372.xls"),
-    (45, "ZQTZSHOW-20250320__3930a6c1a8d4__ib_14ea5edad372.xls"),
-    (46, "ZQTZSHOW-2025.11.01__5637b36951a0__ib_14ea5edad372.xls"),
-)
-
-
-@pytest.mark.parametrize(("ncols", "file_name"), _ZQTZ_ARCHIVE_LAYOUT_SAMPLES)
-def test_parse_zqtz_reads_interest_receivable_payable_for_every_source_layout(
-    ncols: int,
-    file_name: str,
+# Source layouts observed in the archive have 44, 45, and 46 columns with
+# 应收/应付利息 at index 28. Synthetic rows isolate successful parsing
+# from copied source files with unresolved required amount blanks.
+@pytest.mark.parametrize("ncols", [44, 45, 46])
+def test_parse_zqtz_reads_interest_receivable_payable_across_layout_widths(
+    monkeypatch: pytest.MonkeyPatch, ncols: int
 ) -> None:
-    path = ROOT / "data" / "archive" / "ZQTZSHOW" / "files" / file_name
-    if not path.is_file():
-        pytest.skip(f"archived ZQTZSHOW sample not available locally: {file_name}")
-
-    content = path.read_bytes()
-    book = xlrd.open_workbook(file_contents=content)
-    assert book.sheet_by_index(0).ncols == ncols
-
+    template = _synthetic_amount_sheet("zqtz")
+    headers = [""] * ncols
+    values = [""] * ncols
+    for index, (header, value) in enumerate(zip(template[1], template[2])):
+        target = 28 if header == snapshot_row_parse_mod.ZQTZ_INTEREST_RECEIVABLE_PAYABLE else index
+        headers[target] = header
+        values[target] = "1234.56" if target == 28 else value
+    monkeypatch.setattr(
+        snapshot_row_parse_mod.xlrd,
+        "open_workbook",
+        lambda **kwargs: _FakeBook([[], headers, values]),
+    )
     rows = parse_zqtz_snapshot_rows_from_bytes(
-        file_bytes=content,
+        file_bytes=b"synthetic",
         ingest_batch_id="ib-irp-layout",
         source_version="sv-irp-layout",
-        source_file=file_name,
+        source_file="ZQTZSHOW-20251231.xls",
         rule_version="rv-irp-layout",
     )
-
-    assert rows
-    assert all("interest_receivable_payable" in row for row in rows)
-    values = [row["interest_receivable_payable"] for row in rows]
-    assert all(value is None or isinstance(value, Decimal) for value in values)
-    assert any(value is not None and value != Decimal("0") for value in values)
+    assert len(rows) == 1
+    assert rows[0]["interest_receivable_payable"] == Decimal("1234.56")
 
 
 def _zqtz_minimal_sheet(interest_header: str, interest_cell: object) -> list[list[object]]:
@@ -355,8 +316,11 @@ def _zqtz_minimal_sheet(interest_header: str, interest_cell: object) -> list[lis
             snapshot_row_parse_mod.ZQTZ_ACCRUED,
             interest_header,
             snapshot_row_parse_mod.ZQTZ_FACE_VALUE,
+            snapshot_row_parse_mod.ZQTZ_FAIR_VALUE,
+            snapshot_row_parse_mod.ZQTZ_AMORTIZED,
+            snapshot_row_parse_mod.ZQTZ_MATURITY,
         ],
-        ["240001.IB", "5", interest_cell, "100"],
+        ["240001.IB", "5", interest_cell, "100", "0", "0", ""],
     ]
 
 
@@ -411,8 +375,15 @@ def test_parse_zqtz_keeps_blank_interest_receivable_null_not_zero(monkeypatch) -
 def test_parse_zqtz_without_interest_receivable_column_yields_null(monkeypatch) -> None:
     rows = [
         [],
-        [snapshot_row_parse_mod.ZQTZ_BOND_CODE, snapshot_row_parse_mod.ZQTZ_FACE_VALUE],
-        ["240001.IB", "100"],
+        [
+            snapshot_row_parse_mod.ZQTZ_BOND_CODE,
+            snapshot_row_parse_mod.ZQTZ_FACE_VALUE,
+            snapshot_row_parse_mod.ZQTZ_FAIR_VALUE,
+            snapshot_row_parse_mod.ZQTZ_AMORTIZED,
+            snapshot_row_parse_mod.ZQTZ_ACCRUED,
+            snapshot_row_parse_mod.ZQTZ_MATURITY,
+        ],
+        ["240001.IB", "100", "0", "0", "0", ""],
     ]
     monkeypatch.setattr(
         snapshot_row_parse_mod.xlrd,
@@ -429,3 +400,203 @@ def test_parse_zqtz_without_interest_receivable_column_yields_null(monkeypatch) 
     )
 
     assert parsed[0]["interest_receivable_payable"] is None
+
+
+@pytest.mark.parametrize("invalid_maturity", ["bad-date", "2030-99-99", "2030-01-01junk", 1e308])
+def test_parse_zqtz_rejects_nonblank_invalid_maturity_date(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_maturity: object,
+) -> None:
+    rows = _zqtz_minimal_sheet("应收/应付利息", "")
+    rows[2][-1] = invalid_maturity
+    monkeypatch.setattr(
+        snapshot_row_parse_mod.xlrd,
+        "open_workbook",
+        lambda **kwargs: _FakeBook(rows),
+    )
+
+    with pytest.raises(ValueError, match="ZQTZ maturity_date invalid.*row=3"):
+        parse_zqtz_snapshot_rows_from_bytes(
+            file_bytes=b"fake",
+            ingest_batch_id="ib-invalid-maturity",
+            source_version="sv-invalid-maturity",
+            source_file="ZQTZSHOW-20251231.xls",
+            rule_version="rv-invalid-maturity",
+        )
+
+
+def test_parse_zqtz_rejects_missing_maturity_date_column(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = _zqtz_minimal_sheet("应收/应付利息", "")
+    rows[1].pop()
+    rows[2].pop()
+    monkeypatch.setattr(
+        snapshot_row_parse_mod.xlrd,
+        "open_workbook",
+        lambda **kwargs: _FakeBook(rows),
+    )
+
+    with pytest.raises(ValueError, match="ZQTZ required column missing: maturity_date"):
+        parse_zqtz_snapshot_rows_from_bytes(
+            file_bytes=b"fake",
+            ingest_batch_id="ib-missing-maturity-column",
+            source_version="sv-missing-maturity-column",
+            source_file="ZQTZSHOW-20251231.xls",
+            rule_version="rv-missing-maturity-column",
+        )
+
+
+def test_parse_zqtz_rejects_ambiguous_maturity_date_column(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = _zqtz_minimal_sheet("应收/应付利息", "")
+    rows[1].append(snapshot_row_parse_mod.ZQTZ_MATURITY)
+    rows[2].append("")
+    monkeypatch.setattr(
+        snapshot_row_parse_mod.xlrd,
+        "open_workbook",
+        lambda **kwargs: _FakeBook(rows),
+    )
+
+    with pytest.raises(ValueError, match="ZQTZ required column ambiguous: maturity_date"):
+        parse_zqtz_snapshot_rows_from_bytes(
+            file_bytes=b"fake",
+            ingest_batch_id="ib-ambiguous-maturity-column",
+            source_version="sv-ambiguous-maturity-column",
+            source_file="ZQTZSHOW-20251231.xls",
+            rule_version="rv-ambiguous-maturity-column",
+        )
+
+
+_REQUIRED_AMOUNT_COLUMNS = (
+    ("zqtz", snapshot_row_parse_mod.ZQTZ_FACE_VALUE, 2),
+    ("zqtz", snapshot_row_parse_mod.ZQTZ_FAIR_VALUE, 3),
+    ("zqtz", snapshot_row_parse_mod.ZQTZ_AMORTIZED, 4),
+    ("zqtz", snapshot_row_parse_mod.ZQTZ_ACCRUED, 5),
+    ("tyw", snapshot_row_parse_mod.TYW_PRINCIPAL, 2),
+    ("tyw", snapshot_row_parse_mod.TYW_ACCRUED, 3),
+)
+
+
+def _synthetic_amount_sheet(family: str) -> list[list[object]]:
+    if family == "zqtz":
+        return [
+            [],
+            [
+                snapshot_row_parse_mod.ZQTZ_BOND_CODE,
+                snapshot_row_parse_mod.ZQTZ_FACE_VALUE,
+                snapshot_row_parse_mod.ZQTZ_FAIR_VALUE,
+                snapshot_row_parse_mod.ZQTZ_AMORTIZED,
+                snapshot_row_parse_mod.ZQTZ_ACCRUED,
+                snapshot_row_parse_mod.ZQTZ_INTEREST_RECEIVABLE_PAYABLE,
+                snapshot_row_parse_mod.ZQTZ_CURRENCY,
+                snapshot_row_parse_mod.ZQTZ_BUSINESS_KIND,
+                snapshot_row_parse_mod.ZQTZ_BUSINESS_TYPE1,
+                snapshot_row_parse_mod.ZQTZ_ASSET_CLASS,
+                snapshot_row_parse_mod.ZQTZ_MATURITY,
+            ],
+            ["SYNTHETIC-ID", "100", "101", "99", "0", "", "人民币", "发行类债", "发行类债", "发行类债", ""],
+        ]
+    return [
+        [],
+        [
+            snapshot_row_parse_mod.TYW_SERIAL,
+            snapshot_row_parse_mod.TYW_PRINCIPAL,
+            snapshot_row_parse_mod.TYW_ACCRUED,
+            snapshot_row_parse_mod.TYW_RATE,
+            snapshot_row_parse_mod.TYW_CURRENCY,
+            snapshot_row_parse_mod.TYW_PRODUCT,
+            snapshot_row_parse_mod.TYW_SPECIAL_ACCOUNT,
+        ],
+        ["SYNTHETIC-ID", "100", "0", "", "人民币", "同业拆入", ""],
+    ]
+
+
+def _parse_synthetic_amount_sheet(
+    monkeypatch: pytest.MonkeyPatch, family: str, rows: list[list[object]]
+) -> list[dict[str, object]]:
+    monkeypatch.setattr(
+        snapshot_row_parse_mod.xlrd,
+        "open_workbook",
+        lambda **kwargs: _FakeBook(rows),
+    )
+    parser = (
+        parse_zqtz_snapshot_rows_from_bytes
+        if family == "zqtz"
+        else parse_tyw_snapshot_rows_from_bytes
+    )
+    return parser(
+        file_bytes=b"synthetic",
+        ingest_batch_id="ib-synthetic",
+        source_version="sv-synthetic",
+        source_file=f"{'ZQTZSHOW' if family == 'zqtz' else 'TYWLSHOW'}-20251231.xls",
+        rule_version="rv-synthetic",
+    )
+
+
+@pytest.mark.parametrize(("family", "header", "column"), _REQUIRED_AMOUNT_COLUMNS)
+@pytest.mark.parametrize("invalid_value", ["", "bad-private", "NaN", "Infinity", float("nan"), float("inf")])
+def test_required_snapshot_amount_rejects_missing_invalid_and_nonfinite(
+    monkeypatch: pytest.MonkeyPatch,
+    family: str,
+    header: str,
+    column: int,
+    invalid_value: object,
+) -> None:
+    rows = _synthetic_amount_sheet(family)
+    rows[2][column - 1] = invalid_value
+    with pytest.raises(ValueError) as exc:
+        _parse_synthetic_amount_sheet(monkeypatch, family, rows)
+    message = str(exc.value)
+    assert family.upper() in message
+    assert header in message
+    assert "row=3" in message
+    assert f"column={column}" in message
+    assert "SYNTHETIC-ID" not in message
+    assert "bad-private" not in message
+
+
+@pytest.mark.parametrize("family", ["zqtz", "tyw"])
+def test_snapshot_amount_explicit_zero_and_optional_blank_are_preserved(
+    monkeypatch: pytest.MonkeyPatch, family: str
+) -> None:
+    parsed = _parse_synthetic_amount_sheet(
+        monkeypatch, family, _synthetic_amount_sheet(family)
+    )
+    assert len(parsed) == 1
+    if family == "zqtz":
+        assert parsed[0]["accrued_interest_native"] == Decimal("0")
+        assert parsed[0]["interest_receivable_payable"] is None
+    else:
+        assert parsed[0]["accrued_interest_native"] == Decimal("0")
+        assert parsed[0]["funding_cost_rate"] is None
+
+
+
+@pytest.mark.parametrize(
+    ("family", "header", "column"),
+    [
+        ("zqtz", snapshot_row_parse_mod.ZQTZ_FAIR_VALUE, 3),
+        ("tyw", snapshot_row_parse_mod.TYW_PRINCIPAL, 2),
+    ],
+)
+def test_snapshot_amount_missing_header_reports_location(
+    monkeypatch: pytest.MonkeyPatch, family: str, header: str, column: int
+) -> None:
+    rows = _synthetic_amount_sheet(family)
+    del rows[1][column - 1]
+    del rows[2][column - 1]
+    with pytest.raises(ValueError) as exc:
+        _parse_synthetic_amount_sheet(monkeypatch, family, rows)
+    message = str(exc.value)
+    assert family.upper() in message
+    assert f"header={header}" in message
+    assert "row=3, column=missing" in message
+    assert "SYNTHETIC-ID" not in message
+
+
+@pytest.mark.parametrize("family", ["zqtz", "tyw"])
+def test_snapshot_parser_skips_entirely_empty_separator_row(
+    monkeypatch: pytest.MonkeyPatch, family: str
+) -> None:
+    rows = _synthetic_amount_sheet(family)
+    rows.insert(2, [""] * len(rows[1]))
+    parsed = _parse_synthetic_amount_sheet(monkeypatch, family, rows)
+    assert len(parsed) == 1

@@ -143,13 +143,11 @@ describe("PositionsView", () => {
 
     expect(await screen.findByTestId("positions-page")).toBeInTheDocument();
     expect(await screen.findByTestId("positions-page-title")).toHaveTextContent("持仓透视");
-    expect(await screen.findByTestId("positions-decision-hero")).toHaveTextContent(
-      "数据来源：ZQTZ + TYWL",
-    );
+    expect(await screen.findByTestId("positions-decision-hero")).toHaveTextContent("明细与区间统计仅供分析");
     expect(screen.getByTestId("positions-data-status")).toHaveTextContent("当前：债券持仓");
     expect(screen.getByTestId("positions-kpi-band")).toHaveTextContent("日均合计");
     expect(screen.getByTestId("positions-filter-tray")).toBeInTheDocument();
-    expect(screen.getByText("持仓工作区")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "持仓工作区" })).toBeInTheDocument();
     expect(
       await screen.findByRole("combobox", { name: "positions-report-date" }),
     ).toBeInTheDocument();
@@ -174,7 +172,17 @@ describe("PositionsView", () => {
       </QueryClientProvider>,
     );
 
-    const boundary = await screen.findByTestId("positions-list-candidate-boundary");
+    const restriction = await screen.findByTestId("positions-analysis-boundary");
+    expect(restriction).toBeVisible();
+    expect(restriction).toHaveTextContent("未经正式口径批准");
+    expect(restriction).not.toHaveTextContent("pending_confirmation");
+    const boundary = screen.getByTestId("positions-list-candidate-boundary");
+    expect(boundary).not.toBeVisible();
+    fireEvent.click(screen.getByRole("link", { name: "查看口径依据" }));
+    expect(boundary).not.toBeVisible();
+    expect(screen.getByTestId("positions-evidence-note")).toBeVisible();
+    fireEvent.click(boundary.closest("details")!.querySelector("summary")!);
+    expect(boundary).toBeVisible();
     expect(boundary).toHaveTextContent("GAP-POS-LIST");
     expect(boundary).toHaveTextContent("MTR-POS-001");
     expect(boundary).toHaveTextContent("MTR-POS-002");

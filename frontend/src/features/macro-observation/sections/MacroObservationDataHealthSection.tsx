@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { StateSurface } from "../../../components/layout";
 import {
   repairPriorityLabel,
   repairTypeLabel,
@@ -39,12 +40,11 @@ export default function MacroObservationDataHealthSection({
 }) {
   if (!health) {
     return (
-      <p
-        className="macro-observation-datahealth__empty"
-        data-testid="macro-observation-datahealth-empty"
-      >
-        数据健康读数尚未返回；核心分析落地后这里会补上覆盖读数与修复项。
-      </p>
+      <StateSurface
+        testId="macro-observation-datahealth-empty"
+        status="empty"
+        message="数据健康读数尚未返回；核心分析落地后这里会补上覆盖读数与修复项。"
+      />
     );
   }
 

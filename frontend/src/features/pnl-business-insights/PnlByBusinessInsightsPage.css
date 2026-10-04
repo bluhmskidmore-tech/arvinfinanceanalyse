@@ -24,22 +24,6 @@
   --ib-warn: var(--dh-api-amber);
   --ib-gold: var(--dh-api-amber);
   --ib-radius: var(--dh-api-radius);
-
-  /*
-   * 共享 PageSectionLead 消费 --moss-page-*：未定义时标题回退近黑 #16191d，
-   * 在深色底上呈 muted 灰、层级反转（§3）。桥接到 Nocturne 墨阶并把节题
-   * 收敛到 14px 节题制度（ledger-pnl 编号节题同档）。
-   */
-  --moss-page-ink: var(--dh-api-ink);
-  --moss-page-ink-secondary: var(--dh-api-soft);
-  --moss-page-ink-muted: var(--dh-api-muted);
-  --moss-page-section-title-size: 14px;
-}
-
-/* 节题字重对齐节题制度 14px/600（模块内写死 700；[class*=] 命中 CSS modules
-   hashed class，operations-analysis / cube-query 同款先例）。 */
-.pnl-by-business-insights-page h2[class*="sectionLeadTitle"] {
-  font-weight: 600;
 }
 
 /* 慢查询进度说明（§6 loading 可感知）：中性降权，不做警示色。 */
@@ -80,7 +64,7 @@
   align-items: center;
   gap: 10px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ib-ink);
 }
 
@@ -88,11 +72,11 @@
   display: inline-flex;
   align-items: center;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: color-mix(in srgb, var(--ib-down) 10%, var(--ib-surface));
   color: var(--ib-down);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
@@ -138,7 +122,7 @@
 .pnl-by-business-insights-decision-brief__label {
   color: var(--ib-accent);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.05em;
 }
 
@@ -247,7 +231,7 @@
 .pnl-by-business-insights-quadrant-card__header > span {
   color: var(--ib-accent);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-by-business-insights-quadrant-card__header > p {
@@ -319,7 +303,7 @@
   margin: 0 0 8px;
   padding: 2px 8px;
   border: 1px solid var(--ib-hairline);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--ib-surface);
   color: var(--ib-ink-muted);
   font-size: 11px;
@@ -358,19 +342,19 @@
   color: var(--dh-api-ink);
 }
 
+/* 子导航同壳层页签规则：常态无框文字，hover 显细线，当前页＝强调色描边 + 淡底。 */
 [data-testid="workbench-main-content"]:has(.pnl-by-business-insights-page)
   .workbench-section-subnav__link {
-  border-color: var(--dh-api-line);
+  border-color: transparent;
   border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  background: transparent;
   color: var(--dh-api-soft);
   box-shadow: none;
 }
 
 [data-testid="workbench-main-content"]:has(.pnl-by-business-insights-page)
   .workbench-section-subnav__link:hover {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line) 58%);
-  background: var(--dh-api-blue-soft);
+  border-color: var(--dh-api-line-soft);
   color: var(--dh-api-ink);
 }
 
@@ -381,13 +365,11 @@
   color: var(--dh-api-ink);
 }
 
-/* 三张分析表由共享 pageStyles 渲染，其色值已走 --ib-* 变量链并由本页页根桥接
-   翻转，无需路由内校正层。仅警示单元格需压过 tdStyle 的内联 ink 色，保留
-   !important 琥珀钩子。 */
-.pnl-by-business-insights-page
-  [data-testid="pnl-by-business-insights-negative-ftp-table"]
-  td[data-warning="true"] {
-  color: var(--dh-api-amber) !important;
+/* FTP后损益为负月份占比达到提示条件时的警示读数（DataTable 单元格内自定义
+   render，非结构耦合选择器）。 */
+.pnl-by-business-insights-negative-ftp-warning {
+  color: var(--dh-api-amber);
+  font-weight: 600;
 }
 
 @media (max-width: 1080px) {

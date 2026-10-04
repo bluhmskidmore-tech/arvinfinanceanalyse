@@ -107,7 +107,13 @@ def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade
           input_family varchar,
           field_key varchar,
           status varchar,
-          row_count integer
+          row_count integer,
+          call varchar,
+          vendor_indicator varchar,
+          request_arguments_json varchar,
+          request_options_json varchar,
+          source_version varchar,
+          vendor_version varchar
         )
         """
     )
@@ -160,15 +166,51 @@ def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade
         """
     )
     conn.executemany(
-        "insert into choice_stock_request_audit values (?, ?, ?, ?, ?)",
+        "insert into choice_stock_request_audit values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            (trade_date, "stock_universe", "a_share_universe_sector_001004", "completed", 1),
-            (trade_date, "sector_membership", "sw2021_industry_membership", "completed", 1),
-            (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1),
-            (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1),
-            (trade_date, "stock_status", "daily_trade_status", "completed", 1),
-            (trade_date, "limit_up_quality", "daily_limit_flags", "completed", 1),
-            (trade_date, "limit_up_quality", "point_in_time_limit_streaks", "completed", 1),
+            (
+                trade_date,
+                "stock_universe",
+                "a_share_universe_sector_001004",
+                "completed",
+                1,
+                "sector",
+                "001004",
+                f'["001004","{trade_date}"]',
+                "{}",
+                "choice-test-source",
+                "choice-test-vendor",
+            ),
+            (
+                trade_date,
+                "sector_membership",
+                "sw2021_industry_membership",
+                "completed",
+                1,
+                "css",
+                "SW2021,SW2021CODE",
+                '["000001.SZ","SW2021,SW2021CODE"]',
+                f'{{"EndDate":"{trade_date}","Classification":"1"}}',
+                "choice-test-source",
+                "choice-test-vendor",
+            ),
+            (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+            (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+            (trade_date, "stock_status", "daily_trade_status", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+            (trade_date, "limit_up_quality", "daily_limit_flags", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+            (
+                trade_date,
+                "limit_up_quality",
+                "point_in_time_limit_streaks",
+                "completed",
+                1,
+                "css",
+                "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS",
+                '["000001.SZ","ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS"]',
+                f'{{"TradeDate":"{trade_date}"}}',
+                "choice-test-source",
+                "choice-test-vendor",
+            ),
         ],
     )
     conn.execute(

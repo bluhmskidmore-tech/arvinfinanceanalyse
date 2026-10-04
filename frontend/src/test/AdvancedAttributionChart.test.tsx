@@ -62,7 +62,58 @@ function riskCoverage() {
   };
 }
 
+function attributionCoverage() {
+  return {
+    start_row_count: 100,
+    end_row_count: 100,
+    matched_position_count: 100,
+    attributed_position_count: 100,
+    start_market_value: n(12_000_000_000),
+    end_market_value: n(12_000_000_000),
+    covered_start_market_value: n(12_000_000_000),
+    covered_end_market_value: n(12_000_000_000),
+    excluded_start_market_value: n(0),
+    excluded_end_market_value: n(0),
+    start_coverage_pct: pct(1, "100.00%"),
+    end_coverage_pct: pct(1, "100.00%"),
+    exclusions: [],
+  };
+}
+
 describe("AdvancedAttributionChart", () => {
+  it("keeps incomplete carry and roll-down totals missing instead of showing zero", () => {
+    const carryData: CarryRollDownPayload = {
+      report_date: "2026-03-31",
+      total_market_value: n(1_000_000_000),
+      portfolio_carry: n(null, "pct"),
+      portfolio_rolldown: n(null, "pct"),
+      portfolio_static_return: n(null, "pct"),
+      total_carry_pnl: n(null),
+      total_rolldown_pnl: n(null),
+      total_static_pnl: n(null),
+      ftp_rate: n(0.02, "pct"),
+      items: [],
+    };
+    render(
+      <AdvancedAttributionChart
+        carryData={carryData}
+        spreadData={null}
+        krdData={null}
+        summaryData={null}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+    for (const label of [
+      "组合 Carry（年化）", "组合 Roll-down（年化）", "静态收益（年化）",
+      "Carry 合计（月度估算）", "Roll-down 合计（月度估算）", "Static 合计（月度估算）",
+    ]) {
+      const card = screen.getByText(label).closest(".advanced-attribution-chart__metric-card");
+      expect(card?.querySelector(".advanced-attribution-chart__metric-value")).toHaveTextContent("—");
+      expect(card?.querySelector(".advanced-attribution-chart__metric-value")).not.toHaveTextContent("0");
+    }
+  });
+
   it("keeps component-level style debt from regressing", () => {
     const source = readFileSync(advancedChartSourcePath, "utf8");
     const stylesheet = readFileSync(advancedChartCssPath, "utf8");
@@ -107,6 +158,11 @@ describe("AdvancedAttributionChart", () => {
       total_price_change: n(18_000_000),
       primary_driver: "treasury",
       interpretation: "test",
+      attribution_basis: "matched_positions_start_exposure",
+      method_note: "模拟数据：固定期初暴露，国债基准按各期剩余期限匹配，包含期限滚动。",
+      calculation_status: "complete",
+      attribution_coverage: attributionCoverage(),
+      warnings: [],
       items: [],
     };
     const krdData: KRDAttributionPayload = {
@@ -200,6 +256,11 @@ describe("AdvancedAttributionChart", () => {
       total_price_change: n(18_000_000),
       primary_driver: "treasury",
       interpretation: "test",
+      attribution_basis: "matched_positions_start_exposure",
+      method_note: "模拟数据：固定期初暴露，国债基准按各期剩余期限匹配，包含期限滚动。",
+      calculation_status: "complete",
+      attribution_coverage: attributionCoverage(),
+      warnings: [],
       items: [],
     };
     const krdData: KRDAttributionPayload = {

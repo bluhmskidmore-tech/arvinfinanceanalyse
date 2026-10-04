@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -28,7 +29,7 @@ def _scheduled_receipt(
         "run_kind": "scheduled",
         "invocation_mode": "run_once",
         "task_name": "refresh_macro_toolkit_freshness",
-        "source_version": "macro_toolkit_freshness_refresh_v3",
+        "source_version": "macro_toolkit_freshness_refresh_v4",
         "status": status,
         "exit_code": 0,
         "warnings": [],
@@ -49,6 +50,17 @@ def _scheduled_receipt(
                     "step": "choice_policy_rate_7d",
                     "status": "success",
                     "result": {"row_count": 31},
+                },
+                {
+                    "step": "choice_crisis_aa_5y",
+                    "status": "success",
+                    "result": {
+                        "row_count": 7,
+                        "series_id": "EMM00166683",
+                        "latest_valid_date": "2026-08-08",
+                        "lag_days": 1,
+                        "max_lag_days": 3,
+                    },
                 },
                 {
                     "step": "tushare_ncd_shibor",
@@ -118,9 +130,15 @@ def test_missing_core_latest_date_blocks_analysis(tmp_path: Path) -> None:
     assert "receipt.result.latest_observation_dates.CA.CSI300" in health.missing_fields
 
 
-def test_running_receipt_blocks_directional_analysis(tmp_path: Path) -> None:
-    receipt = _scheduled_receipt(status="running")
-    receipt["exit_code"] = None
+def test_old_v3_receipt_and_missing_aa5y_evidence_fail_closed(tmp_path: Path) -> None:
+    receipt = _scheduled_receipt()
+    receipt["source_version"] = "macro_toolkit_freshness_refresh_v3"
+    receipt["result"]["steps"] = [
+        step
+        for step in receipt["result"]["steps"]
+        if step["step"] != "choice_crisis_aa_5y"
+    ]
+    receipt["result"]["latest_observation_dates"].pop("EMM00166683")
     receipt_path = tmp_path / "receipt.json"
     _write_receipt(receipt_path, receipt)
 
@@ -128,8 +146,90 @@ def test_running_receipt_blocks_directional_analysis(tmp_path: Path) -> None:
 
     assert health.status == "blocked"
     assert health.ready is False
+    assert "receipt.source_version" in health.missing_fields
+    assert "receipt.result.steps.choice_crisis_aa_5y" in health.missing_fields
+    assert (
+        "receipt.result.latest_observation_dates.EMM00166683"
+        in health.missing_fields
+    )
+
+
+def test_running_receipt_blocks_directional_analysis(tmp_path: Path) -> None:
+    receipt = _scheduled_receipt(status="running")
+    receipt["exit_code"] = None
+    receipt_path = tmp_path / "receipt.json"
+    _write_receipt(receipt_path, receipt)
+
+    health = load_macro_toolkit_refresh_receipt_health(
+        receipt_path,
+        now=datetime(2026, 8, 9, 11, 30, tzinfo=UTC),
+    )
+
+    assert health.status == "blocked"
+    assert health.ready is False
     assert "receipt.status" in health.missing_fields
     assert "receipt.exit_code" in health.missing_fields
+
+
+def test_running_receipt_older_than_threshold_is_abandoned(tmp_path: Path) -> None:
+    now = datetime(2026, 8, 9, 17, 30, tzinfo=UTC)
+    receipt = _scheduled_receipt(status="running")
+    receipt["exit_code"] = None
+    receipt["generated_at"] = (now - timedelta(hours=7)).isoformat()
+    receipt_path = tmp_path / "receipt.json"
+    _write_receipt(receipt_path, receipt)
+
+    health = load_macro_toolkit_refresh_receipt_health(receipt_path, now=now)
+    recent = load_macro_toolkit_refresh_receipt_health(
+        receipt_path,
+        now=now - timedelta(hours=6),
+    )
+
+    assert health.status == "abandoned"
+    assert health.ready is False
+    assert health.running_age_hours == pytest.approx(7.0)
+    assert health.as_payload()["running_age_hours"] == pytest.approx(7.0)
+    assert "receipt.abandoned_running" in health.missing_fields
+    assert "未完成" in health.analysis_warnings()[0]
+    assert "7 小时" in health.analysis_warnings()[0]
+    assert health.cache_fingerprint.startswith("abandoned:")
+    assert recent.status == "blocked"
+    assert health.cache_fingerprint != recent.cache_fingerprint
+
+
+def test_running_receipt_within_threshold_stays_blocked(tmp_path: Path) -> None:
+    now = datetime(2026, 8, 9, 17, 30, tzinfo=UTC)
+    receipt = _scheduled_receipt(status="running")
+    receipt["exit_code"] = None
+    receipt["generated_at"] = (now - timedelta(hours=1)).isoformat()
+    receipt_path = tmp_path / "receipt.json"
+    _write_receipt(receipt_path, receipt)
+
+    health = load_macro_toolkit_refresh_receipt_health(receipt_path, now=now)
+
+    assert health.status == "blocked"
+    assert health.ready is False
+    assert health.running_age_hours == pytest.approx(1.0)
+    assert "receipt.abandoned_running" not in health.missing_fields
+
+
+def test_running_receipt_threshold_is_configurable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 8, 9, 17, 30, tzinfo=UTC)
+    receipt = _scheduled_receipt(status="running")
+    receipt["exit_code"] = None
+    receipt["generated_at"] = (now - timedelta(hours=1)).isoformat()
+    receipt_path = tmp_path / "receipt.json"
+    _write_receipt(receipt_path, receipt)
+    monkeypatch.setenv("MOSS_MACRO_TOOLKIT_RUNNING_RECEIPT_STALE_HOURS", "0.5")
+
+    health = load_macro_toolkit_refresh_receipt_health(receipt_path, now=now)
+
+    assert health.status == "abandoned"
+    assert health.ready is False
+    assert health.running_age_hours == pytest.approx(1.0)
 
 
 def test_valid_receipt_is_ready_and_content_change_breaks_fingerprint(tmp_path: Path) -> None:

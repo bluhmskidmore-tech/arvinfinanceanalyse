@@ -3,10 +3,13 @@ from __future__ import annotations
 from typing import Any, cast
 
 from backend.app.core_finance.livermore_theme_breakout import (
+    EPS,
     FORMULA_VERSION,
     MAX_REVIEW_ITEMS,
     MAX_THEMES,
     ThemeBreakoutSnapshot,
+    _close_strength,
+    _stock_sort_key,
     compute_theme_breakout,
 )
 
@@ -712,3 +715,36 @@ def test_whole_sector_proxy_matches_members_without_name_keywords() -> None:
     # 无关键词=整行业篮子：广度统计覆盖全部行业成员（含滞涨股）。
     assert defense["member_count"] == 4
     assert defense["advance_count"] == 3
+
+
+def test_close_strength_one_word_board_locks_current_near_zero_behavior() -> None:
+    # Known convention pending a separate versioned policy decision: one-word
+    # boards remain near zero here, matching livermore_stock_candidates.
+    assert _close_strength(close=11.0, low=11.0, high=11.0) == pytest.approx(0.0)
+    assert _close_strength(close=10.0, low=10.0, high=10.0 + (EPS / 10.0)) == pytest.approx(0.0)
+
+
+def test_close_strength_normal_range_unchanged() -> None:
+    assert _close_strength(close=10.0, low=9.4, high=10.1) == pytest.approx(
+        (10.0 - 9.4) / (10.1 - 9.4 + EPS)
+    )
+
+
+def test_stock_sort_key_still_prefers_closed_up_limit_over_close_strength() -> None:
+    limit_up_weaker_close = {
+        "closed_up_limit": True,
+        "sector_rank": 9,
+        "pctchange": 5.0,
+        "turn": 1.0,
+        "close_strength": 0.1,
+        "stock_code": "688002.SH",
+    }
+    strongest_close_not_flagged = {
+        "closed_up_limit": False,
+        "sector_rank": 9,
+        "pctchange": 9.9,
+        "turn": 9.0,
+        "close_strength": 1.0,
+        "stock_code": "688001.SH",
+    }
+    assert _stock_sort_key(limit_up_weaker_close) < _stock_sort_key(strongest_close_not_flagged)

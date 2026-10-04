@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ResultMeta } from "../../../api/contracts";
 
 import {
   mapToHomeBodyView,
@@ -20,6 +21,110 @@ describe("percentageDisplayRaw", () => {
     expect(percentageDisplayRaw(null)).toBeNull();
     expect(percentageDisplayRaw(undefined)).toBeNull();
     expect(percentageDisplayRaw(Number.NaN)).toBeNull();
+  });
+});
+
+describe("mapToHomeBodyView home-summary trust", () => {
+  const reportDate = "2026-06-30";
+  const meta: ResultMeta = {
+    trace_id: "synthetic-home-summary", basis: "analytical", result_kind: "synthetic",
+    formal_use_allowed: false, source_version: "synthetic", vendor_version: "synthetic",
+    rule_version: "synthetic", cache_version: "synthetic", quality_flag: "ok",
+    vendor_status: "ok", fallback_mode: "none", scenario_flag: false,
+    as_of_date: reportDate, resolved_report_date: reportDate, generated_at: reportDate,
+  };
+  const metric = (raw: number, unit: "yuan" | "pct" | "ratio" = "yuan") => ({
+    raw, unit, display: String(raw), precision: 2, sign_aware: false,
+  });
+  const mapSummary = (sourceMeta: ResultMeta | null = meta, zeroRisk = false) => mapToHomeBodyView({
+    reportDate, useMockFallback: false, homeSummaryMeta: sourceMeta,
+    assetStructure: {
+      report_date: reportDate, group_by: "asset_type", total_market_value: metric(100),
+      items: [{ category: "合成资产", total_market_value: metric(100), percentage: metric(1, "pct"), bond_count: 1 }],
+    },
+    ratingStructure: {
+      report_date: reportDate, group_by: "asset_rating", total_market_value: metric(100),
+      items: [{ category: "合成评级", total_market_value: metric(100), percentage: metric(1, "pct"), bond_count: 1 }],
+    },
+    maturityStructure: {
+      report_date: reportDate, total_market_value: metric(100),
+      items: [{ maturity_bucket: "合成期限", total_market_value: metric(100), percentage: metric(1, "pct"), bond_count: 1 }],
+    },
+    industryDistribution: {
+      report_date: reportDate, total_market_value: metric(100),
+      items: [{ industry_name: "合成行业", total_market_value: metric(100), percentage: metric(1, "pct"), bond_count: 1 }],
+    },
+    yieldDistribution: {
+      report_date: reportDate, weighted_ytm: metric(0.02, "pct"),
+      items: [{ yield_bucket: "合成收益档", total_market_value: metric(100), bond_count: 1 }],
+    },
+    portfolioComparison: {
+      report_date: reportDate,
+      items: [{ portfolio_name: "合成组合", total_market_value: metric(100), weighted_ytm: metric(0.02, "pct"),
+        weighted_duration: metric(2, "ratio"), total_dv01: metric(1), bond_count: 1 }],
+    },
+    riskIndicators: {
+      report_date: reportDate, total_market_value: metric(zeroRisk ? 0 : 100), total_dv01: metric(zeroRisk ? 0 : 1),
+      weighted_duration: metric(zeroRisk ? 0 : 2, "ratio"), credit_ratio: metric(zeroRisk ? 0 : 0.5, "ratio"),
+      weighted_convexity: metric(zeroRisk ? 0 : 3, "ratio"), total_spread_dv01: metric(zeroRisk ? 0 : 1),
+      reinvestment_ratio_1y: metric(zeroRisk ? 0 : 0.1, "ratio"),
+    },
+  } as MapToHomeBodyViewInput);
+  const distributions = (view: ReturnType<typeof mapSummary>) => [
+    view.assetDistribution, view.ratingDistribution, view.maturityDistribution,
+    view.industryDistribution, view.yieldDistribution, view.portfolioComparison,
+  ];
+
+  it("keeps same-date warning data usable and explains the warning in Chinese", () => {
+    const view = mapSummary({ ...meta, quality_flag: "warning" });
+    expect(distributions(view).every((rows) => rows.length === 1)).toBe(true);
+    expect(view.riskExposureMetrics).toHaveLength(7);
+    expect(view.assetDistributionState).toMatchObject({ kind: "partial", label: "数据质量需复核" });
+    expect(view.riskExposureState).toMatchObject({ kind: "partial", label: "数据质量需复核" });
+  });
+
+  it.each([0, -1])("withholds zero-filled risk and distributions when evidence_rows is %s", (evidenceRows) => {
+    const view = mapSummary({ ...meta, quality_flag: "warning", evidence_rows: evidenceRows }, true);
+    expect(view.riskExposureMetrics).toHaveLength(0);
+    expect(distributions(view).every((rows) => rows.length === 0)).toBe(true);
+    expect(view.assetDistributionState.kind).toBe("empty");
+    expect(view.riskExposureState).toMatchObject({ kind: "empty", label: "暂无持仓证据，未展示" });
+  });
+
+  it.each([
+    ["missing metadata", null],
+    ["quality error", { ...meta, quality_flag: "error" }],
+    ["missing data", { ...meta, quality_flag: "missing" }],
+    ["unavailable vendor", { ...meta, vendor_status: "vendor_unavailable" }],
+    ["missing quality flag", { ...meta, quality_flag: undefined }],
+    ["missing vendor status", { ...meta, vendor_status: undefined }],
+    ["missing fallback mode", { ...meta, fallback_mode: undefined }],
+  ])("withholds distributions and risk values for %s", (_name, sourceMeta) => {
+    const view = mapSummary(sourceMeta as ResultMeta | null);
+    expect(distributions(view).every((rows) => rows.length === 0)).toBe(true);
+    expect(view.riskExposureMetrics).toHaveLength(0);
+    expect(view.assetDistributionState.kind).toBe("error");
+    expect(view.riskExposureState.kind).toBe("error");
+  });
+
+  it.each(["as_of_date", "resolved_report_date", "fallback_date"] as const)(
+    "withholds same-date payloads when metadata %s conflicts with the snapshot",
+    (field) => {
+      const view = mapSummary({ ...meta, [field]: "2026-05-31" });
+      expect(distributions(view).every((rows) => rows.length === 0)).toBe(true);
+      expect(view.riskExposureMetrics).toHaveLength(0);
+      expect(view.assetDistributionState.label).toContain("2026-05-31");
+      expect(view.assetDistributionState.label).toContain("未展示");
+    },
+  );
+
+  it("allows disclosed stale and fallback data only when all effective dates agree", () => {
+    const view = mapSummary({ ...meta, quality_flag: "stale", vendor_status: "vendor_stale",
+      fallback_mode: "latest_snapshot", fallback_date: reportDate, requested_report_date: "2026-07-31" });
+    expect(distributions(view).every((rows) => rows.length === 1)).toBe(true);
+    expect(view.assetDistributionState.kind).toBe("stale");
+    expect(view.assetDistributionState.label).toContain("使用回退数据");
+    expect(view.assetDistributionState.label).toContain("数据偏旧");
   });
 });
 

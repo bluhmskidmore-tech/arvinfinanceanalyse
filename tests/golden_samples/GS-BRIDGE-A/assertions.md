@@ -22,6 +22,8 @@
 - `MTR-BRG-013 == "-3.25000000"`（残差 = 未被市场效应解释的 516；本样本无可用曲线，516 全额落入残差）.
 - `summary.row_count == 1`.
 - `warnings[0]` keeps the current phase-3 partial delivery warning.
+- `result_meta.filters_applied.expected_balance_start == "2025-11-30"` and `window_aligned == false` because the fixture has no exact beginning balance snapshot.
+- `warnings` includes `PNL_BRIDGE_WINDOW_MISMATCH`; the warning does not change the frozen PnL amounts.
 
 ## Sample profile
 

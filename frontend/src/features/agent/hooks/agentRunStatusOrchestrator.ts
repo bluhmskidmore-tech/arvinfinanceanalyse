@@ -90,9 +90,14 @@ export async function waitForAgentRunTerminal(
     streamAgentRunEvents(
       runId,
       (value) => {
-        if (!isAgentRunPayload(value) || value.run_id !== runId) {
+        if (!isAgentRunPayload(value)) {
           streamPayloadInvalid = true;
           return true;
+        }
+        if (value.run_id !== runId) {
+          // 串台快照（同一连接上混入了别的 run）：忽略该事件并继续读流，
+          // 不把它当作本 run 的状态，也不因此降级轮询。
+          return false;
         }
         const payload = normalizeAgentRunPayload(value);
         publishSnapshot(payload);
@@ -171,7 +176,8 @@ export async function pollAgentRunUntilTerminal({
   onUpdate,
   signal,
 }: PollAgentRunUntilTerminalOptions): Promise<AgentRunPayload> {
-  let payload = initialPayload;
+  // 只接受 run_id 与请求一致的快照：串台响应既不发布也不用于终态判定。
+  let payload = initialPayload && initialPayload.run_id === runId ? initialPayload : undefined;
   if (payload) {
     onUpdate?.(payload);
     if (isTerminalAgentRunStatus(payload.status)) {
@@ -182,8 +188,9 @@ export async function pollAgentRunUntilTerminal({
   let consecutiveErrorCount = 0;
   for (let attempt = 0; attempt < AGENT_RUN_POLL_MAX_ATTEMPTS; attempt += 1) {
     throwIfAborted(signal);
+    let nextPayload: AgentRunPayload;
     try {
-      payload = await fetchAgentRunStatus(runId);
+      nextPayload = await fetchAgentRunStatus(runId);
       consecutiveErrorCount = 0;
     } catch (error) {
       throwIfAborted(signal);
@@ -197,6 +204,12 @@ export async function pollAgentRunUntilTerminal({
       await sleepWithAbort(getAgentRunPollTransientRetryDelayMs(consecutiveErrorCount), signal);
       continue;
     }
+    if (nextPayload.run_id !== runId) {
+      // 忽略串台响应并继续轮询：不覆盖本 run 的最后已知状态，也不提前判定终态。
+      await sleepWithAbort(getAgentRunPollIntervalMs(payload ?? nextPayload, attempt), signal);
+      continue;
+    }
+    payload = nextPayload;
     onUpdate?.(payload);
     if (isTerminalAgentRunStatus(payload.status)) {
       return payload;
@@ -206,8 +219,16 @@ export async function pollAgentRunUntilTerminal({
   throw new Error(AGENT_RUN_POLL_TIMEOUT_RECOVERABLE_MESSAGE);
 }
 
+/**
+ * fetch 中止在 jsdom / Node 下抛出的是 DOMException，并不总是 `instanceof Error`，
+ * 因此按 name 判定，覆盖 Error 与 DOMException 两种中止载体。
+ */
 export function isAbortError(error: unknown) {
-  return error instanceof Error && error.name === "AbortError";
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { name?: unknown }).name === "AbortError"
+  );
 }
 
 function isTerminalPayload(payload: AgentRunPayload | undefined): payload is AgentRunPayload {

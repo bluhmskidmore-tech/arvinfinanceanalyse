@@ -1,4 +1,4 @@
-﻿# Balance Analysis FX Source Runbook
+# Balance Analysis FX Source Runbook
 
 ## Scope
 

@@ -19,6 +19,7 @@ from backend.app.schemas.product_category_pnl import (
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.product_category_pnl_service import (
     AVAILABLE_VIEWS,
+    ProductCategoryAdjustmentDateConflictError,
     ProductCategoryReadModelNotFoundError,
     ProductCategoryReadModelUnavailableError,
     ProductCategoryRefreshConflictError,
@@ -339,6 +340,8 @@ def edit_manual_adjustment(
             adjustment_id=adjustment_id,
             payload=payload,
         )
+    except ProductCategoryAdjustmentDateConflictError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

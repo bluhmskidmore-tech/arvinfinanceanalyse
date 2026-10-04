@@ -8,7 +8,6 @@ import type {
   FxAnalyticalGroup,
   FxFormalStatusPayload,
   MacroBondLinkagePayload,
-  MacroBondLinkageTopCorrelation,
   MarketDataCoverageSummaryPayload,
   MacroVendorPayload,
   MacroVendorSeries,
@@ -21,7 +20,6 @@ import {
   buildMarketDataBasisChipLabel,
   buildMarketDataPageModel,
   buildMarketDataRateTrendChartOption,
-  buildSpreadSlots,
   formatMarketWorkbenchSourceSummary,
   pickRailHighlightMetric,
 } from "./marketDataPageModel";
@@ -321,10 +319,6 @@ describe("marketDataPageModel", () => {
       linkage:
         "macro-bond linkage: 仅分析使用 / 数据正常 / 暂不可用于正式决策",
     });
-    expect(model.spreadSlots.find((slot) => slot.tenor === "5Y")?.point?.series_id).toBe(
-      "SPREAD_HIGH",
-    );
-    expect(model.nonSpreadTopCorrelations.map((point) => point.series_id)).toEqual(["RATE_10Y"]);
     expect(model.terminalTickerItems.map((item) => [item.key, item.value, item.delta])).toEqual([
       ["cgb10y", "2%", "+1bp"],
     ]);
@@ -358,7 +352,6 @@ describe("marketDataPageModel", () => {
     expect(model.catalog).toEqual([]);
     expect(model.latestSeries).toEqual([]);
     expect(model.rateTrendChartOption).toBeNull();
-    expect(model.livermoreStrategy).toBeNull();
     expect(model.macroMeta).toBeUndefined();
     expect(model.isFormalBasis).toBe(false);
     expect(Object.values(model.evidenceLines)).toEqual([
@@ -592,73 +585,6 @@ describe("marketDataPageModel", () => {
     ).toContain("已落地 2/3（沿用 1）");
   });
 
-  it("prefers spread_tenor_correlations over top_correlations filtering", () => {
-    const spreadTenorCorrelations: MacroBondLinkageTopCorrelation[] = [
-      {
-        series_id: "DEDICATED_5Y",
-        series_name: "Dedicated spread 5Y",
-        target_family: "credit_spread",
-        target_tenor: "5Y",
-        correlation_3m: 0.5,
-        correlation_6m: 0.6,
-        correlation_1y: 0.7,
-        lead_lag_days: 1,
-        direction: "positive",
-      },
-    ];
-    const topCorrelations: MacroBondLinkageTopCorrelation[] = [
-      {
-        series_id: "RATE_ONLY",
-        series_name: "Rate only",
-        target_family: "treasury",
-        target_tenor: "10Y",
-        correlation_3m: 0.9,
-        correlation_6m: 0.9,
-        correlation_1y: 0.9,
-        lead_lag_days: 0,
-        direction: "positive",
-      },
-    ];
-
-    expect(
-      buildSpreadSlots(topCorrelations, "both", spreadTenorCorrelations).find((slot) => slot.tenor === "5Y")?.point
-        ?.series_id,
-    ).toBe("DEDICATED_5Y");
-  });
-
-  it("filters spread slots by credit segment from linkage series names", () => {
-    const correlations: MacroBondLinkageTopCorrelation[] = [
-      {
-        series_id: "MTN_5Y",
-        series_name: "中票AAA 5Y",
-        target_family: "credit_spread",
-        target_tenor: "5Y",
-        correlation_3m: 0.1,
-        correlation_6m: 0.2,
-        correlation_1y: 0.9,
-        lead_lag_days: 1,
-        direction: "positive",
-      },
-      {
-        series_id: "URBAN_5Y",
-        series_name: "城投AA 5Y",
-        target_family: "credit_spread",
-        target_tenor: "5Y",
-        correlation_3m: 0.4,
-        correlation_6m: 0.5,
-        correlation_1y: 0.2,
-        lead_lag_days: 2,
-        direction: "negative",
-      },
-    ];
-
-    expect(buildSpreadSlots(correlations, "mtn").find((slot) => slot.tenor === "5Y")?.point?.series_id).toBe(
-      "MTN_5Y",
-    );
-    expect(buildSpreadSlots(correlations, "urban").find((slot) => slot.tenor === "5Y")?.point?.series_id).toBe(
-      "URBAN_5Y",
-    );
-  });
 });
 
 describe("buildMarketDataRateTrendChartOption", () => {
@@ -690,11 +616,7 @@ describe("buildMarketDataRateTrendChartOption", () => {
       nocturneTokens.color.green,
       nocturneTokens.color.amber,
     ]);
-    expect(option?.legend).toMatchObject({
-      type: "plain",
-      itemWidth: 14,
-      textStyle: { color: nocturneTokens.color.inkSoft },
-    });
+    expect(option?.legend).toBeUndefined();
 
     const series = option?.series as Array<{
       name?: string;

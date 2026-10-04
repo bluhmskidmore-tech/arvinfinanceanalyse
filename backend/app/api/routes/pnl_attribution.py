@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
+from fastapi import APIRouter, Depends, HTTPException, Query
+
 from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.pnl_attribution import (
@@ -28,7 +30,6 @@ from backend.app.services.pnl_attribution_service import (
     tpl_market_correlation_envelope,
     volume_rate_attribution_envelope,
 )
-from fastapi import APIRouter, Depends, Query
 
 router = APIRouter(prefix="/api/pnl-attribution", tags=["pnl-attribution"])
 
@@ -94,7 +95,12 @@ def summary(
     report_date: str | None = Query(None),
 ) -> dict[str, object]:
     _ensure_pnl_attribution_read_allowed(auth)
-    return attribution_analysis_summary_envelope(report_date=report_date)
+    try:
+        return attribution_analysis_summary_envelope(report_date=report_date)
+    except RuntimeError as exc:
+        if str(exc) != "Formal pnl storage is unavailable.":
+            raise
+        raise HTTPException(status_code=503, detail="Formal pnl storage is unavailable.") from exc
 
 
 @router.get(

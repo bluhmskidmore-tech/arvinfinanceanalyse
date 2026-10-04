@@ -6,15 +6,16 @@ limit-up seal/break counts aggregated from ``choice_stock_daily_observation``
 definitions and :mod:`backend.app.tasks.market_breadth_materialize` for the
 DuckDB write path).
 
-Fallback basis — **csi300_proxy** (legacy behavior, unchanged): when the
-all-market source table is not landed, derive proxy inputs from CSI300 daily
-returns (fact_choice_macro_daily / choice_market_snapshot):
+Fallback basis — **csi300_proxy**: when the all-market source table is not
+landed, derive proxy inputs from CSI300 daily returns
+(fact_choice_macro_daily / choice_market_snapshot):
 
 - Breadth proxy: net up-days (up_days - down_days) over the 5-day window of
   CSI300 daily returns ending at the current trade date, so the gate's
   ``breadth_5d > 0`` check keeps the same sign semantics as the formal basis.
-- Limit-up quality proxy: a simplified signal based on CSI300 return
-  characteristics.
+- Limit-up quality: always ``None`` (missing) on this path. Index momentum is
+  not the formal "sealed > broken" signal, so the fourth gate leg stays
+  fail-closed missing (market state capped at WARM) on proxy-only dates.
 """
 
 from __future__ import annotations
@@ -109,6 +110,12 @@ def materialize_market_breadth_daily(
     )
 
     typed_materialize = cast(_MarketBreadthMaterializer, _materialize)
+    if min_observations_per_day is None:
+        return typed_materialize(
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+            lookback_days=lookback_days,
+        )
     return typed_materialize(
         duckdb_path=duckdb_path,
         as_of_date=as_of_date,
@@ -1117,7 +1124,7 @@ def _load_csi300_daily_returns(
 def _compute_supplement_rows(
     daily_returns: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Compute breadth_5d and limit_up_quality_ok for each trade date.
+    """Compute breadth_5d for each trade date; limit_up_quality_ok stays None.
 
     breadth_5d:
       Net up-days (up_days - down_days) over the BREADTH_WINDOW days ending
@@ -1127,10 +1134,12 @@ def _compute_supplement_rows(
       in :mod:`backend.app.core_finance.market_breadth`.
 
     limit_up_quality_ok:
-      True when the market shows healthy momentum characteristics:
-      - No single-day drawdown exceeding -3% in the trailing window
-      - Average return in the window is positive
-      This is a proxy; replace with actual limit-up seal/break data when available.
+      Always ``None`` (missing) on this CSI300 proxy path. The formal basis is
+      "sealed limit-ups > broken boards"
+      (:mod:`backend.app.core_finance.market_breadth`); a CSI300 index-momentum
+      rule is a different signal and must not masquerade as it, so the fourth
+      gate leg stays fail-closed missing (market state capped at WARM) until
+      real limit-up seal/break data lands.
     """
     rows: list[dict[str, Any]] = []
     for i in range(BREADTH_WINDOW, len(daily_returns)):
@@ -1150,10 +1159,9 @@ def _compute_supplement_rows(
         down_days = sum(1 for v in pct_values if v < 0)
         breadth_5d = float(up_days - down_days)
 
-        # Limit-up quality proxy
-        avg_return = sum(pct_values) / len(pct_values)
-        max_drawdown = min(pct_values)
-        limit_up_quality_ok = bool(avg_return > 0 and max_drawdown > -3.0)
+        # Fail-closed: never emit a computed boolean for limit-up quality from
+        # index momentum; keep the key with None so the gate leg reads missing.
+        limit_up_quality_ok = None
 
         source_digest = hashlib.sha256(
             json.dumps(

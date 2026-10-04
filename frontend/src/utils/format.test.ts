@@ -64,6 +64,53 @@ describe("missing values render EM_DASH", () => {
     expect(formatYuanAmountAsYiPlain(Number.POSITIVE_INFINITY)).toBe(EM_DASH);
     expect(formatWanAmountAsYiPlain(Number.NaN)).toBe(EM_DASH);
   });
+
+  it("formatYi/formatWan/formatPercent/formatBp map +/-Infinity to EM_DASH (审计 F02 #1)", () => {
+    expect(formatYi(Number.POSITIVE_INFINITY, false)).toBe(EM_DASH);
+    expect(formatYi(Number.NEGATIVE_INFINITY, true)).toBe(EM_DASH);
+    expect(formatWan(Number.POSITIVE_INFINITY, false)).toBe(EM_DASH);
+    expect(formatPercent(Number.POSITIVE_INFINITY, false)).toBe(EM_DASH);
+    expect(formatBp(Number.POSITIVE_INFINITY, false)).toBe(EM_DASH);
+  });
+
+  it("formatRawAsNumeric treats Infinity raw as missing for every unit (审计 F02 #1)", () => {
+    const yuan = formatRawAsNumeric({ raw: Number.POSITIVE_INFINITY, unit: "yuan", sign_aware: false });
+    expect(yuan.display).toBe(EM_DASH);
+    expect(yuan.raw).toBeNull();
+
+    const yi = formatRawAsNumeric({ raw: Number.NEGATIVE_INFINITY, unit: "yi", sign_aware: false });
+    expect(yi.display).toBe(EM_DASH);
+    expect(yi.raw).toBeNull();
+  });
+
+  it("*AsYiPlain/*AsWanPlain map an 'Infinity' string or fully non-numeric garbage to EM_DASH, not the literal token (审计 F02 #1)", () => {
+    // parseFloat("Infinity") / parseFloat("abc") 均不产出有限数：修复前会回显原始字符串
+    // （"Infinity"/"abc"），现在统一走 EM_DASH。带部分数字前缀的截断解析（如 "12abc" →
+    // parseFloat 截断为 12）属于既有 parseFloat 语义，超出本任务范围（审计未覆盖），不在此断言。
+    expect(formatYuanAmountAsYiPlain("Infinity")).toBe(EM_DASH);
+    expect(formatYuanAmountAsWanPlain("Infinity")).toBe(EM_DASH);
+    expect(formatWanAmountAsYiPlain("abc")).toBe(EM_DASH);
+  });
+});
+
+describe("千分位统一（审计 F02 #3）：formatYi/formatWan 与 *AsYiPlain 同用 zh-CN 千分位", () => {
+  it("formatYi groups thousands once |值| ≥ 1000 亿", () => {
+    // 123_456_000_000_000 元 = 1,234,560.00 亿
+    expect(formatYi(123_456_000_000_000, false)).toBe("1,234,560.00 亿");
+    expect(formatYi(-123_456_000_000_000, true)).toBe("-1,234,560.00 亿");
+  });
+
+  it("formatWan groups thousands once |值| ≥ 1000 万", () => {
+    // 12_345_600_000 元 = 1,234,560.00 万
+    expect(formatWan(12_345_600_000, false)).toBe("1,234,560.00 万");
+  });
+
+  it("formatRawAsNumeric's yuan (→formatYi) and yi units agree on thousands grouping", () => {
+    const viaYuan = formatRawAsNumeric({ raw: 123_456_000_000_000, unit: "yuan", sign_aware: false });
+    const viaYi = formatRawAsNumeric({ raw: 1_234_560, unit: "yi", sign_aware: false });
+    expect(viaYuan.display).toBe("1,234,560.00 亿");
+    expect(viaYi.display).toBe("1,234,560.00 亿");
+  });
 });
 
 describe("true zero is distinct from missing", () => {
@@ -136,5 +183,44 @@ describe("existing correct behavior stays pinned", () => {
   it("keeps sign-aware positive prefix on governed helpers", () => {
     expect(formatYi(123_000_000, true)).toBe("+1.23 亿");
     expect(formatPercent(0.0255, true)).toBe("+2.55%");
+  });
+});
+
+describe("tie rounding is half-up on the written decimal", () => {
+  // 口径固化（2026-09-28）。修复前 formatPercent / formatBp 走 Number.prototype.toFixed，
+  // 它按 double 的**精确二进制值**取整：本意为 0.015% 时 double 实为 0.014999999999999999，
+  // 于是渲染成 0.01%。formatYi / formatWan 一直走 toLocaleString（按最短十进制表示 + half-up），
+  // 同一文件内两套口径互相矛盾。现在四条路径统一为「对调用者书写的十进制 half-up」。
+  // 量化：各 20000 个 tie 取值，修复前 formatPercent 错 4823 例、formatBp 错 4000 例，修复后均 0 例。
+  it("formatPercent rounds a percent tie up instead of truncating", () => {
+    expect(formatPercent(0.00015, false)).toBe("0.02%");
+    expect(formatPercent(0.00045, false)).toBe("0.05%");
+    expect(formatPercent(0.01005, false)).toBe("1.01%");
+    expect(formatPercent(0.00005, false)).toBe("0.01%");
+  });
+
+  it("formatBp rounds a basis-point tie up instead of truncating", () => {
+    expect(formatBp(0.15, false)).toBe("0.2 bp");
+    expect(formatBp(0.95, false)).toBe("1.0 bp");
+    expect(formatBp(2.05, false)).toBe("2.1 bp");
+    expect(formatBp(1.45, false)).toBe("1.5 bp");
+  });
+
+  it("negative ties round away from zero, matching ROUND_HALF_UP", () => {
+    expect(formatBp(-0.95, true)).toBe("-1.0 bp");
+    expect(formatPercent(-0.00015, true)).toBe("-0.02%");
+  });
+
+  it("all four formatters agree on the same 1.005 tie", () => {
+    // 修复前：formatYi → "1.01 亿"，而 formatPercent → "1.00%"，同文件自相矛盾。
+    expect(formatYi(100_500_000, false)).toBe("1.01 亿");
+    expect(formatWan(10_050, false)).toBe("1.01 万");
+    expect(formatPercent(0.01005, false)).toBe("1.01%");
+  });
+
+  it("tie rounding does not introduce thousands grouping", () => {
+    // 修复只改舍入，不改分组：formatBp 仍无千分位（formatYi/formatWan 的千分位另有断言）。
+    expect(formatBp(1234.55, false)).toBe("1234.6 bp");
+    expect(formatPercent(1234.565, false)).toBe("123456.50%");
   });
 });

@@ -1,5 +1,7 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode, useState, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DataHealthFetchResult, DataHealthPayload } from "../../../api/dataHealthClient";
@@ -51,10 +53,28 @@ function syntheticPayload(): DataHealthPayload {
   };
 }
 
+function renderCard(card: ReactElement) {
+  function Wrapper({ children }: { children: ReactNode }) {
+    const [queryClient] = useState(
+      () =>
+        new QueryClient({
+          defaultOptions: {
+            queries: {
+              retry: false,
+            },
+          },
+        }),
+    );
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  }
+
+  return render(card, { wrapper: Wrapper });
+}
+
 describe("StockAnalysisDataHealthCard", () => {
   it("renders one row per section with status dot, label, metric and detail tooltip", async () => {
     const loadHealth = vi.fn(async () => ok(syntheticPayload()));
-    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+    renderCard(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
 
     const panel = await screen.findByTestId("stock-analysis-data-health");
     expect(within(panel).getAllByRole("listitem")).toHaveLength(4);
@@ -94,7 +114,7 @@ describe("StockAnalysisDataHealthCard", () => {
       },
     ];
     const loadHealth = vi.fn(async () => ok(payload));
-    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+    renderCard(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
 
     const row = await screen.findByTestId("stock-analysis-data-health-row-tradestatus_vocabulary");
     expect(within(row).getByText("交易状态词表")).toBeInTheDocument();
@@ -109,7 +129,7 @@ describe("StockAnalysisDataHealthCard", () => {
       { key: "b", label: "乙", status: "warn", metric: "y" },
     ];
     const loadHealth = vi.fn(async () => ok(payload));
-    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+    renderCard(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
 
     const overall = await screen.findByTestId("stock-analysis-data-health-overall");
     expect(overall).toHaveTextContent("警告");
@@ -118,14 +138,14 @@ describe("StockAnalysisDataHealthCard", () => {
 
   it("hides the whole panel only when the capability is missing (404/明确空)", async () => {
     const loadHealth = vi.fn(async (): Promise<DataHealthFetchResult> => ({ kind: "missing" }));
-    const { container } = render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+    const { container } = renderCard(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
     await waitFor(() => expect(loadHealth).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
   });
 
   it("hides the whole panel when sections are empty", async () => {
     const loadHealth = vi.fn(async () => ok({ as_of_date: "2026-08-13", sections: [] }));
-    const { container } = render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+    const { container } = renderCard(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
     await waitFor(() => expect(loadHealth).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
   });
@@ -135,7 +155,7 @@ describe("StockAnalysisDataHealthCard", () => {
     const loadHealth = vi
       .fn(async (): Promise<DataHealthFetchResult> => ok(syntheticPayload()))
       .mockResolvedValueOnce({ kind: "error", reason: "HTTP 503" });
-    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+    renderCard(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
 
     const errorPanel = await screen.findByTestId("stock-analysis-data-health-error");
     expect(errorPanel).toHaveTextContent("健康面加载失败");
@@ -149,7 +169,7 @@ describe("StockAnalysisDataHealthCard", () => {
     const loadHealth = vi.fn(async () => {
       throw new Error("boom");
     });
-    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+    renderCard(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
     expect(await screen.findByTestId("stock-analysis-data-health-error")).toBeInTheDocument();
   });
 
@@ -161,7 +181,7 @@ describe("StockAnalysisDataHealthCard", () => {
           resolveLoad = resolve;
         }),
     );
-    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+    renderCard(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
 
     expect(screen.getByTestId("stock-analysis-data-health-loading")).toBeInTheDocument();
     resolveLoad(ok(syntheticPayload()));
@@ -170,12 +190,37 @@ describe("StockAnalysisDataHealthCard", () => {
 
   it("tolerates sections with every field missing", async () => {
     const loadHealth = vi.fn(async () => ok({ sections: [{}] }));
-    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+    renderCard(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
     const panel = await screen.findByTestId("stock-analysis-data-health");
     expect(within(panel).getByText("评估日 —")).toBeInTheDocument();
     expect(within(panel).getAllByText("—").length).toBeGreaterThan(0);
     // status 全缺 → 前端按未知(error 级严重度)推导徽章，展示原状态缺失语义。
     const overall = screen.getByTestId("stock-analysis-data-health-overall");
     expect(overall).toHaveAttribute("data-status", "error");
+  });
+
+  it("dedupes concurrent mounts under one query client", async () => {
+    const loadHealth = vi.fn(async () => ok(syntheticPayload()));
+    renderCard(
+      <>
+        <StockAnalysisDataHealthCard loadHealth={loadHealth} />
+        <StockAnalysisDataHealthCard loadHealth={loadHealth} />
+      </>,
+    );
+
+    expect(await screen.findAllByTestId("stock-analysis-data-health")).toHaveLength(2);
+    expect(loadHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it("dedupes the initial request in React StrictMode", async () => {
+    const loadHealth = vi.fn(async () => ok(syntheticPayload()));
+    renderCard(
+      <StrictMode>
+        <StockAnalysisDataHealthCard loadHealth={loadHealth} />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByTestId("stock-analysis-data-health")).toBeInTheDocument();
+    expect(loadHealth).toHaveBeenCalledTimes(1);
   });
 });

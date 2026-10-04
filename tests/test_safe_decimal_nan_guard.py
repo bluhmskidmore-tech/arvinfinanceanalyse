@@ -72,6 +72,48 @@ def test_risk_tensor_safe_decimal_returns_zero_for_non_finite():
     assert _safe_decimal(Decimal("100.5")) == Decimal("100.5")
 
 
+def test_core_safe_decimal_accepts_unambiguous_thousands_separator_strings():
+    # 中文 Excel 导出常见的千分位格式；仅严格匹配 ^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$
+    # 才去逗号解析，语义无歧义。
+    mod = load_module(
+        "backend.app.core_finance.safe_decimal",
+        "backend/app/core_finance/safe_decimal.py",
+    )
+
+    assert mod.safe_decimal("1,234.56") == Decimal("1234.56")
+    assert mod.safe_decimal("-1,234,567.89") == Decimal("-1234567.89")
+    assert mod.safe_decimal("+1,234") == Decimal("1234")
+
+
+def test_core_safe_decimal_rejects_ambiguous_comma_groupings(caplog):
+    # "1,2" / "1,23" 不是三位分组，语义存疑，保持既有降级为 default 行为并告警。
+    mod = load_module(
+        "backend.app.core_finance.safe_decimal",
+        "backend/app/core_finance/safe_decimal.py",
+    )
+
+    with caplog.at_level("WARNING"):
+        assert mod.safe_decimal("1,2") == Decimal("0")
+    assert "Conversion failed" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        assert mod.safe_decimal("1,23") == Decimal("0")
+    assert "Conversion failed" in caplog.text
+
+
+def test_core_safe_decimal_does_not_auto_divide_percent_strings(caplog):
+    # 百分号方向有歧义（属业务裁决），保持 warning + default，不做静默 /100。
+    mod = load_module(
+        "backend.app.core_finance.safe_decimal",
+        "backend/app/core_finance/safe_decimal.py",
+    )
+
+    with caplog.at_level("WARNING"):
+        assert mod.safe_decimal("12.5%") == Decimal("0")
+    assert "Conversion failed" in caplog.text
+
+
 def test_qdb_gl_to_decimal_treats_non_finite_as_missing():
     # qdb_gl 的缺省语义是 None（缺失），与其他实现的 0 缺省不同，保持不变。
     from backend.app.core_finance.qdb_gl_monthly_analysis import _as_decimal, _to_decimal

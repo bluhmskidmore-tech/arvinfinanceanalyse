@@ -763,6 +763,9 @@ def test_market_data_page_contract_documents_blocked_formal_use_visibility():
         "`formal · blocked`",
         "`禁止作为正式口径`",
         "`分析/候选`",
+        "`derived_spreads` 读面已随 02 区退役离开本页，**冻结边界改为跨页引用** `PAGE-CROSS-ASSET-001`",
+        "任一 leg 缺失、陈旧、fallback、null、单位不一致或无法证明同日报腿时，spread 值必须返回 `null`",
+        "不得为该槽位创建 `MTR-*` 或 golden sample",
         "`frontend/src/features/market-data/pages/marketDataPageModel.ts`",
         "`frontend/src/features/market-data/pages/MarketDataPage.tsx`",
         "`frontend/src/test/MarketDataPage.test.tsx`",
@@ -790,9 +793,16 @@ def test_macro_toolkit_page_contract_closes_tooling_route_without_metric_promoti
         "`read-only macro observation`",
         "`GET /ui/macro/toolkit/analysis?detail=core`",
         "`GET /ui/macro/toolkit/analysis/strategy-summaries`",
+        "`GET /ui/macro/toolkit/report-bundle/{artifact_id}`",
         "不展示脚本注册表",
+        "不得请求或展示",
+        "`GET /ui/macro/toolkit/scripts`",
+        "`POST /ui/macro/toolkit/scripts/{name}/run`",
+        "`POST /ui/macro/toolkit/choice-stock/refresh`",
+        "`POST /ui/macro/toolkit/commodity-futures/refresh`",
+        "`GET /ui/macro/toolkit/commodity-futures/refresh-status?run_id={run_id}`",
         "不新增 `MTR-MACRO-*`",
-        "`frontend/src/test/MacroToolkitPage.test.tsx`",
+        "`frontend/src/test/MacroObservationPage.test.tsx`",
         "`frontend/src/test/RouteRegistry.test.tsx`",
     ):
         assert required in observation_contract
@@ -806,9 +816,28 @@ def test_macro_toolkit_page_contract_closes_tooling_route_without_metric_promoti
         "`GET /ui/macro/toolkit/analysis?detail=core`",
         "`GET /ui/macro/toolkit/analysis/strategy-summaries`",
         "`GET /ui/macro/toolkit/scripts`",
+        "`GET /ui/macro/toolkit/model-chain-results`",
+        "`backtest_run_manifest.json`",
+        "`status=not_admitted`",
+        "`admission_status=null`",
+        "`pit_gate.status=blocked`",
+        "列名存在本身不构成 PIT 通过证据",
         "`POST /ui/macro/toolkit/scripts/{name}/run`",
         "`POST /ui/macro/toolkit/cffex-member-rank/refresh`",
         "`POST /ui/macro/toolkit/choice-stock/refresh`",
+        "`refreshCommodityFutures()` -> `POST /ui/macro/toolkit/commodity-futures/refresh`",
+        "`getCommodityFuturesRefreshStatus(runId)` -> `GET /ui/macro/toolkit/commodity-futures/refresh-status?run_id={run_id}`",
+        "服务端先对 `products` 集合做顺序规范化并纳入同一 fingerprint",
+        "在 in-flight / retry 阻断窗口内同一日期范围与产品集合仅因入参顺序不同不得绕过去重",
+        "terminal 后允许用户再次刷新",
+        "异步 queued 仅返回 `run_id` / `before_status`，不提前返回 `after_status` / `summary`",
+        "terminal 只回放该 run 已固化的 `after_status` / `summary` 闭环",
+        "后续刷新不得改写历史 run",
+        "服务端仅以 raw record 的 `requested_by_user_id` 作为 owner 真值并用 `AuthContext.user_id` 校验",
+        "非 owner、owner 缺失或 run 不存在统一 fail-closed `404`",
+        "公共响应不得泄漏 `requested_by_user_id` 或 `permission.user_id`",
+        "公共响应只暴露稳定的 `failure_category` / `failure_message`",
+        "不得泄漏 raw `failure_reason` / `error_message`",
         "不新增 `MTR-MACRO-*`",
         "`frontend/src/test/MacroToolkitPage.test.tsx`",
         "`tests/test_macro_toolkit_scripts.py`",
@@ -817,9 +846,9 @@ def test_macro_toolkit_page_contract_closes_tooling_route_without_metric_promoti
 
     assert (
         "| `/macro-observation` | `PAGE-MACRO-OBS-001` | "
-        "`MacroToolkitPage.tsx` -> `getMacroToolkitAnalysis` / `getMacroToolkitStrategySummaries` | "
+        "`MacroObservationPage.tsx` -> `getMacroToolkitAnalysis` / `getMacroToolkitStrategySummaries` | "
         "**无 `MTR-*`**：只读宏观观察口径，不升格为正式指标 | — | "
-        "`frontend/src/test/MacroToolkitPage.test.tsx`；`frontend/src/test/RouteRegistry.test.tsx` |"
+        "`frontend/src/test/MacroObservationPage.test.tsx`；`frontend/src/test/RouteRegistry.test.tsx` |"
     ) in metric_dictionary
     assert "`macro-observation`: 页面已有 `PAGE-MACRO-OBS-001`" in metric_dictionary
     assert "GAP-MACRO-OBS-PAGE" not in maturity_registry

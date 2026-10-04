@@ -3,11 +3,31 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+import pytest
+
 from backend.app.tasks import home_macro_release_refresh as refresh_module
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_macro_data,
+]
 
 
 NBS_GDP = "nbs.macro.cn_gdp.quarterly"
 TUSHARE_GDP = "tushare.macro.cn_gdp.quarterly"
+
+
+@pytest.fixture(autouse=True)
+def _stub_nbs_inflation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        refresh_module,
+        "run_nbs_inflation_release_ingest_once",
+        lambda **_kwargs: {
+            "status": "success",
+            "ingest_batch_id": "nbs-inflation-batch",
+            "results": [],
+        },
+    )
 
 
 @dataclass
@@ -30,14 +50,26 @@ def _tushare_success() -> dict[str, object]:
     }
 
 
-def _pmi_success(**_kwargs: object) -> dict[str, object]:
+def _cycle_success(**_kwargs: object) -> dict[str, object]:
     return {
         "status": "completed",
-        "total_added": 1,
-        "results": {"PMI": 1},
+        "total_added": 3,
+        "results": {
+            "制造业PMI": 1,
+            "社会融资规模存量:同比": 1,
+            "M2:同比": 1,
+        },
         "errors": {},
-        "source_by_series": {"M0017126": "tushare_macro"},
-        "vendor_versions": {"M0017126": "vv_tushare"},
+        "source_by_series": {
+            "M0017126": "nbs_pmi_release",
+            "M5525763": "pbc_financial_statistics_release",
+            "M0001385": "pbc_financial_statistics_release",
+        },
+        "vendor_versions": {
+            "M0017126": "vv_backfill_macro_nbs_pmi_release_20260717_abcd",
+            "M5525763": "vv_backfill_macro_pbc_financial_statistics_release_20260717_efgh",
+            "M0001385": "vv_backfill_macro_pbc_financial_statistics_release_20260717_ijkl",
+        },
     }
 
 
@@ -56,6 +88,8 @@ def test_nbs_runs_first_and_fresh_official_gdp_is_selected(monkeypatch) -> None:
                 "tushare.macro.cn_cpi.monthly": "2026-06-01",
                 "tushare.macro.cn_ppi.monthly": "2026-06-01",
                 "M0017126": "2026-06-01",
+                "M5525763": "2026-06-01",
+                "M0001385": "2026-06-01",
             },
         ]
     )
@@ -79,17 +113,26 @@ def test_nbs_runs_first_and_fresh_official_gdp_is_selected(monkeypatch) -> None:
     monkeypatch.setattr(
         refresh_module,
         "backfill_macro_series",
-        lambda **kwargs: calls.append("pmi") or _pmi_success(**kwargs),
+        lambda **kwargs: calls.append("cycle") or _cycle_success(**kwargs),
     )
 
     result = refresh_module.refresh_home_macro_release_sources(today=date(2026, 7, 17))
 
-    assert calls == ["nbs", "tushare", "pmi"]
+    assert calls == ["nbs", "tushare", "cycle"]
     assert result["status"] == "success"
     assert result["nbs_ingest_batch_id"] == "nbs-batch"
     assert _gdp(result)["selected_series_id"] == NBS_GDP
     assert _gdp(result)["selected_vendor"] == "NBS official release"
     assert _gdp(result)["selection_status"] == "ready"
+    assert result["source_by_series"] == {
+        "M0017126": "nbs_pmi_release",
+        "M5525763": "pbc_financial_statistics_release",
+        "M0001385": "pbc_financial_statistics_release",
+    }
+    warnings = " ".join(result["warnings"])
+    assert "official-first" in warnings
+    assert "M0017126=nbs_pmi_release" in warnings
+    assert "M5525763=pbc_financial_statistics_release" in warnings
 
 
 def test_nbs_failure_keeps_fresh_tushare_as_visible_fallback(monkeypatch) -> None:
@@ -101,6 +144,8 @@ def test_nbs_failure_keeps_fresh_tushare_as_visible_fallback(monkeypatch) -> Non
                 "tushare.macro.cn_cpi.monthly": "2026-06-01",
                 "tushare.macro.cn_ppi.monthly": "2026-06-01",
                 "M0017126": "2026-06-01",
+                "M5525763": "2026-06-01",
+                "M0001385": "2026-06-01",
             },
         ]
     )
@@ -112,7 +157,7 @@ def test_nbs_failure_keeps_fresh_tushare_as_visible_fallback(monkeypatch) -> Non
         lambda **_kwargs: {"status": "blocked", "error": "official unavailable"},
     )
     monkeypatch.setattr(refresh_module, "run_tushare_macro_ingest_once", _tushare_success)
-    monkeypatch.setattr(refresh_module, "backfill_macro_series", _pmi_success)
+    monkeypatch.setattr(refresh_module, "backfill_macro_series", _cycle_success)
 
     result = refresh_module.refresh_home_macro_release_sources(today=date(2026, 7, 17))
 
@@ -121,6 +166,9 @@ def test_nbs_failure_keeps_fresh_tushare_as_visible_fallback(monkeypatch) -> Non
     assert _gdp(result)["selected_series_id"] == TUSHARE_GDP
     assert _gdp(result)["selection_status"] == "fallback"
     assert any("official unavailable" in warning for warning in result["warnings"])
+    warnings = " ".join(result["warnings"])
+    assert "actual vendor tushare_macro" not in warnings
+    assert "M0017126=nbs_pmi_release" in warnings
 
 
 def test_dry_run_reports_both_gdp_candidates_without_nbs_fetch(monkeypatch) -> None:
@@ -148,3 +196,4 @@ def test_dry_run_reports_both_gdp_candidates_without_nbs_fetch(monkeypatch) -> N
     )
 
     assert _gdp(result)["source_candidates"] == [NBS_GDP, TUSHARE_GDP]
+    assert "official-first backfill plan" in " ".join(result["warnings"])

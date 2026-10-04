@@ -209,6 +209,26 @@ function envelope(
 }
 
 describe("buildPnlByBusinessInsightsLeadershipModel", () => {
+  it("holds the negative-FTP conclusion and identifies the pending source date", () => {
+    const model = buildPnlByBusinessInsightsLeadershipModel({
+      requestedDate: "2026-06-30", isLoading: false, isError: false,
+      envelope: envelope({}, { negative_ftp_persistence: {
+        ...payload.negative_ftp_persistence, eligible: false, status: "source_pending", warning_row_count: 0,
+        balance_quality_issues: [{ issue_id: "pending", report_date: "2025-11-20", status: "pending",
+          reason: "源表日期冲突", source_file: "test.xls", source_version: "sv_test" }],
+        rows: payload.negative_ftp_persistence.rows.map((row) => ({
+          ...row, eligible: false, status: "source_pending", warning_triggered: false,
+        })),
+      } }),
+    });
+    const negative = model.items.find((item) => item.key === "negative_ftp")!;
+    expect(negative.value).toContain("暂不形成结论");
+    expect(negative.detail).toContain("2025-11-20");
+    expect(negative.value + negative.detail).not.toContain("91.67%");
+    expect(negative.rowKey).toBeNull();
+    expect(model.items[0].value).toContain("13.42%");
+  });
+
   it("keeps upstream warning visible but returns four approved leadership facts", () => {
     const model = buildPnlByBusinessInsightsLeadershipModel({
       requestedDate: "2026-06-30",

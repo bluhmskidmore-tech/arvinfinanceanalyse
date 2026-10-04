@@ -3,8 +3,8 @@ from importlib import import_module
 from typing import Annotated, Literal
 
 from backend.app.api.deps import ensure_read_allowed
-from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
+from backend.app.observability.perf_logging import timed_api_call
 from backend.app.schemas.pnl import PnlByBusinessAnalysisDimension, PnlByBusinessManualAdjustmentRequest
 from backend.app.schemas.result_meta import ResultEnvelope
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
@@ -21,13 +21,33 @@ def _ensure_pnl_read_allowed(auth: AuthContext, settings) -> None:
     ensure_read_allowed(auth, "pnl", settings=settings, authorize=ensure_user_allowed)
 
 
+def _precompute_rebuild_permissions(auth: AuthContext, settings) -> dict[str, object]:
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="pnl_by_business.adjustment", action="write")
+    except PermissionError:
+        return {"can_rebuild": False, "reason": "当前账号可查看准备状态，请有更新权限的操作人安排准备。"}
+    except RuntimeError:
+        return {"can_rebuild": False, "reason": "暂时无法核实更新权限，请稍后重试。"}
+    return {"can_rebuild": True, "reason": None}
+
+
 @router.get("/pnl/dates", response_model=ResultEnvelope)
 def dates(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    page: Literal["by_business_insights"] | None = Query(
+        None, description="Use the business insights page's selectable-date catalog."
+    ),
 ) -> dict[str, object]:
     settings = get_settings()
     _ensure_pnl_read_allowed(auth, settings)
     try:
+        if page == "by_business_insights" and (
+            getattr(settings, "financial_publication_enabled", False)
+            or getattr(settings, "system_read_publication_enabled", False)
+        ):
+            return import_module(
+                "backend.app.services.pnl_by_business_page_dates"
+            ).pnl_by_business_page_dates_envelope(settings)
         return _pnl_service().pnl_dates_envelope(
             duckdb_path=str(settings.duckdb_path),
             governance_dir=str(settings.governance_path),
@@ -67,6 +87,28 @@ def pnl_bridge(
     _ensure_pnl_read_allowed(auth, settings)
     try:
         return import_module("backend.app.services.pnl_bridge_service").pnl_bridge_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/pnl/basis-bridge", response_model=ResultEnvelope)
+def pnl_basis_bridge(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str = Query(
+        ...,
+        description="Requested report date for the analytical formal-to-system PnL basis bridge.",
+    ),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
+    try:
+        return import_module("backend.app.services.pnl_basis_bridge_service").pnl_basis_bridge_envelope(
             duckdb_path=str(settings.duckdb_path),
             governance_dir=str(settings.governance_path),
             report_date=report_date,
@@ -231,7 +273,8 @@ def by_business_precompute_status(
     settings = get_settings()
     _ensure_pnl_read_allowed(auth, settings)
     try:
-        return _pnl_service().pnl_by_business_precompute_status(settings, year=year, as_of_date=as_of_date)
+        payload = _pnl_service().pnl_by_business_precompute_status(settings, year=year, as_of_date=as_of_date)
+        return {**payload, "permissions": _precompute_rebuild_permissions(auth, settings)}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -247,11 +290,19 @@ def rebuild_by_business_precompute(
         "selected",
         description="Rebuild the selected cutoff or every available month-end cutoff in the year.",
     ),
+    include_page_dependencies: bool = Query(
+        False, description="Prepare the selected page together with its required comparison periods."
+    ),
 ) -> dict[str, object]:
     settings = get_settings()
     _ensure_by_business_adjustment_write_allowed(auth, settings)
     service = _pnl_service()
     try:
+        if include_page_dependencies:
+            if scope != "selected" or as_of_date is None:
+                raise ValueError("Page preparation requires scope=selected and an explicit as_of_date.")
+            payload = service.request_pnl_by_business_page_rebuild(settings, year=year, as_of_date=as_of_date)
+            return {**payload, "permissions": _precompute_rebuild_permissions(auth, settings)}
         return service.request_pnl_by_business_precompute_rebuild(
             settings,
             year=year,
@@ -259,13 +310,13 @@ def rebuild_by_business_precompute(
             scope=scope,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=f"PnL rebuild request is invalid (error_type={type(exc).__name__}).") from exc
     except service.PnlByBusinessPrecomputeConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except service.PnlByBusinessPrecomputeDispatchError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=f"PnL rebuild is unavailable (error_type={type(exc).__name__}).") from exc
 
 
 @router.get("/pnl/by-business-candidate-insights", response_model=ResultEnvelope)
@@ -296,10 +347,28 @@ def by_business_insights(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., ge=2000, le=2100, description="Calendar year for approved business insights."),
     as_of_date: str = Query(..., description="Selected report-date cutoff in YYYY-MM-DD format."),
+    generation: str | None = Query(
+        None, min_length=1, max_length=160, description="Published version selected by the page readiness response."
+    ),
 ) -> dict[str, object]:
     settings = get_settings()
     _ensure_pnl_read_allowed(auth, settings)
     try:
+        if (
+            getattr(settings, "financial_publication_enabled", False)
+            or getattr(settings, "system_read_publication_enabled", False)
+        ):
+            publication_service = import_module(
+                "backend.app.services.pnl_by_business_publication_service"
+            )
+            try:
+                return publication_service.read_published_pnl_by_business_insights(
+                    settings, year=year, as_of_date=as_of_date, generation=generation
+                )
+            except publication_service.PnlPublishedGenerationConflictError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if generation is not None:
+            raise HTTPException(status_code=409, detail="Published result reading is not enabled on this instance.")
         return import_module(
             "backend.app.services.pnl_by_business_candidate_insights"
         ).pnl_by_business_insights_envelope(

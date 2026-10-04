@@ -103,3 +103,62 @@ def test_stock_output_loader_reuses_one_connection_for_coverage_and_candidates(
     assert outputs.stock_coverage is not None
     assert outputs.stock_coverage.status == "not_materialized"
     assert len(connect_calls) == 1
+
+
+def test_catalog_connection_envelope_uses_borrowed_uncached_payload_loader(
+    monkeypatch: Any,
+) -> None:
+    conn = duckdb.connect(":memory:")
+    seen: dict[str, object] = {}
+
+    def fake_connection_loader(
+        borrowed_conn: duckdb.DuckDBPyConnection,
+        **kwargs: object,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        seen["conn"] = borrowed_conn
+        seen["kwargs"] = kwargs
+        return (
+            {"as_of_date": "2026-07-22", "market_gate": {"state": "WARM"}},
+            {
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "vendor_version": "vv_test",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+                "tables_used": ["choice_market_snapshot"],
+                "evidence_rows": 1,
+            },
+        )
+
+    try:
+        monkeypatch.setattr(
+            livermore_service,
+            "load_choice_stock_readiness",
+            lambda _path: _ready_choice_stock_catalog(),
+        )
+        monkeypatch.setattr(
+            livermore_service,
+            "load_livermore_strategy_payload_from_connection",
+            fake_connection_loader,
+        )
+        monkeypatch.setattr(
+            livermore_service,
+            "load_livermore_strategy_payload",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("connection envelope must bypass cached loader")
+            ),
+        )
+
+        envelope = livermore_service.livermore_strategy_envelope_from_catalog_from_connection(
+            conn,
+            duckdb_path="ignored.duckdb",
+            choice_stock_catalog_file="choice-stock.json",
+            as_of_date="2026-07-22",
+        )
+
+        assert seen["conn"] is conn
+        assert envelope["result"]["as_of_date"] == "2026-07-22"
+        assert envelope["result_meta"]["source_version"] == "sv_test"
+        assert conn.execute("select 1").fetchone() == (1,)
+    finally:
+        conn.close()

@@ -1,4 +1,6 @@
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import DeferredChart, { type EChartsOption } from "../../../lib/echarts";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import type { ChartCardHeight } from "../../../components/charts/chartCardScale";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import type { ModuleHomeDetailChart } from "./moduleHomeModel";
@@ -7,7 +9,7 @@ import styles from "./portfolioHome.module.css";
 
 type PortfolioStructureChartProps = {
   chart: ModuleHomeDetailChart;
-  height?: number;
+  height?: ChartCardHeight;
   hideTitle?: boolean;
 };
 
@@ -34,14 +36,7 @@ function formatTooltipValue(value: unknown, unit: string) {
 
 export function PortfolioStructureChart({ chart, height, hideTitle = false }: PortfolioStructureChartProps) {
   const { containerRef, ready, onChartReady } = useDeferredChartMount<HTMLDivElement>();
-
-  if (chart.categories.length === 0 || chart.values.length === 0) {
-    return (
-      <div className={styles.structureChartEmpty} data-testid="module-home-structure-chart">
-        暂无可视化数据
-      </div>
-    );
-  }
+  const resolvedHeight = height ?? 280;
 
   const horizontal = chart.orientation === "horizontal";
   const maxValue = Math.max(...chart.values.filter((value): value is number => value !== null), 0);
@@ -62,15 +57,7 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
       type: "shadow" as const,
       shadowStyle: { color: "rgba(145, 132, 217, 0.08)" },
     },
-    backgroundColor: nocturneTokens.color.panel2,
-    borderColor: nocturneTokens.color.line,
-    borderWidth: 1,
     padding: [8, 10],
-    textStyle: {
-      color: nocturneTokens.color.ink,
-      fontSize: 11,
-      fontWeight: 650,
-    },
     valueFormatter: (value: unknown) => formatTooltipValue(value, chart.unit),
   };
 
@@ -78,12 +65,12 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
     ? {
         color: [...CHART_COLORS],
         animationDuration: 420,
-        grid: { left: 92, right: 32, top: 34, bottom: 28 },
+        grid: { left: 92, right: 32, top: 34 },
         tooltip,
         xAxis: {
           type: "value",
           name: chart.unit,
-          nameTextStyle: { color: AXIS_NAME_COLOR, fontSize: 10, fontWeight: 700 },
+          nameTextStyle: { color: AXIS_NAME_COLOR, fontSize: 10, fontWeight: 600 },
           splitLine: { lineStyle: { type: "dashed", color: GRID_LINE_COLOR, opacity: 0.5 } },
           axisLabel: { fontSize: 10, color: AXIS_LABEL_COLOR, fontWeight: 500 },
           axisLine: { show: false },
@@ -102,7 +89,6 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
             data: barData([...chart.values].reverse()),
             barMaxWidth: 12,
             barCategoryGap: "35%",
-            itemStyle: { borderRadius: [0, 3, 3, 0] },
             emphasis: {
               focus: "series",
               itemStyle: { shadowBlur: 0, shadowColor: "transparent" },
@@ -113,7 +99,7 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
     : {
         color: [...CHART_COLORS],
         animationDuration: 420,
-        grid: { left: 50, right: 22, top: 34, bottom: 42 },
+        grid: { left: 50, right: 22, top: 34 },
         tooltip,
         xAxis: {
           type: "category",
@@ -125,7 +111,7 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
         yAxis: {
           type: "value",
           name: chart.unit,
-          nameTextStyle: { color: AXIS_NAME_COLOR, fontSize: 10, fontWeight: 700 },
+          nameTextStyle: { color: AXIS_NAME_COLOR, fontSize: 10, fontWeight: 600 },
           splitLine: { lineStyle: { type: "dashed", color: GRID_LINE_COLOR, opacity: 0.5 } },
           axisLabel: { fontSize: 10, color: AXIS_LABEL_COLOR, fontWeight: 500 },
           axisLine: { show: false },
@@ -137,7 +123,6 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
             data: barData(chart.values),
             barMaxWidth: 12,
             barCategoryGap: "35%",
-            itemStyle: { borderRadius: [3, 3, 0, 0] },
             emphasis: {
               focus: "series",
               itemStyle: { shadowBlur: 0, shadowColor: "transparent" },
@@ -148,16 +133,27 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
 
   return (
     <div className={styles.structureChartWrap} ref={containerRef} data-testid="module-home-structure-chart">
-      {hideTitle ? null : <div className={styles.structureChartTitle}>{chart.title}</div>}
-      {ready ? (
-        <ReactECharts
-          option={option}
-          style={{ height: height ?? (horizontal ? 280 : 260), width: "100%" }}
-          notMerge
-          lazyUpdate
-          onChartReady={onChartReady}
-        />
-      ) : null}
+      <ChartCard
+        flat
+        title={hideTitle ? undefined : chart.title}
+        ariaLabel={chart.title}
+        unit={chart.unit}
+        option={chart.categories.length > 0 && chart.values.length > 0 ? option : null}
+        height={resolvedHeight}
+        legend="none"
+        emptyMessage="暂无可视化数据"
+        chartRenderer={({ option: chromedOption, height: chartHeight }) =>
+          ready ? (
+            <DeferredChart
+              option={chromedOption}
+              style={{ height: chartHeight, width: "100%" }}
+              notMerge
+              lazyUpdate
+              onChartReady={onChartReady}
+            />
+          ) : null
+        }
+      />
     </div>
   );
 }

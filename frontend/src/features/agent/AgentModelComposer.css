@@ -1,0 +1,1445 @@
+/*
+ * MOSS Chat（/agent）会话皮肤
+ *
+ * 版式参照 Gemini 会话界面：居中问候 + 胶囊输入框 + 无框回答 + 圆角用户气泡，
+ * 色彩全部走 Nocturne token（--dh-api-* / --nct-*），不引入新色值。
+ * 仅在 [data-moss-theme-scope="agent"]（/agent 页根）内生效；其他页面的
+ * 嵌入态 AgentPanel 复用同一批类名，但不带此 scope，不受影响。
+ * 圆角制度：本页为会话页，采用 28（输入框）/ 24（气泡、弹层）/ 16（卡片）+ 胶囊四档，
+ * 与 DESIGN.md §5 的 8px 终端制度不同，属 /agent 路由例外。表单控件、下拉项、
+ * 行内代码等小控件不进这四档，仍用 canonical 的 var(--dh-api-radius)。
+ */
+[data-moss-theme-scope="agent"] {
+  color-scheme: dark;
+  --agent-radius-composer: 28px;
+  --agent-radius-bubble: 24px;
+  --agent-radius-card: 16px;
+  --agent-radius-pill: 999px;
+  --agent-control-size: 36px;
+  --agent-hover: var(--dh-api-panel-3);
+  --agent-greeting-gradient: linear-gradient(
+    90deg,
+    var(--nct-accent-300) 0%,
+    var(--nct-accent) 52%,
+    var(--nct-soft) 100%
+  );
+  --agent-spark-gradient: linear-gradient(135deg, var(--nct-accent-300), var(--nct-accent));
+  --agent-spark-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 0C12.6 6.3 17.7 11.4 24 12C17.7 12.6 12.6 17.7 12 24C11.4 17.7 6.3 12.6 0 12C6.3 11.4 11.4 6.3 12 0Z'/%3E%3C/svg%3E");
+}
+
+[data-moss-theme-scope="agent"].agent-workbench-shell {
+  width: min(100%, 800px);
+}
+
+[data-moss-theme-scope="agent"] .agent-conversation,
+[data-moss-theme-scope="agent"] .agent-chat-composer__input,
+[data-moss-theme-scope="agent"] .agent-chat-composer__advanced-body,
+[data-moss-theme-scope="agent"] .agent-quick-entry__content {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dh-api-line) transparent;
+}
+
+/* ── 页眉：轻量文字标题 + 幽灵胶囊按钮 ───────────────────────────── */
+[data-moss-theme-scope="agent"] .agent-workbench-header {
+  flex-shrink: 0;
+  padding: 6px 0 14px;
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header h1 {
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__actions {
+  gap: 4px;
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__actions .agent-quick-entry {
+  position: relative;
+  flex: 0 0 auto;
+  width: auto;
+  padding: 0;
+  border: 0;
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__new-chat,
+[data-moss-theme-scope="agent"] .agent-workbench-header__actions .agent-quick-entry > summary {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--agent-control-size);
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__new-chat:hover:not(:disabled),
+[data-moss-theme-scope="agent"] .agent-workbench-header__actions .agent-quick-entry > summary:hover,
+[data-moss-theme-scope="agent"] .agent-workbench-header__actions .agent-quick-entry[open] > summary {
+  border: 0;
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__actions .agent-quick-entry__title {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__actions .agent-quick-entry__meta {
+  display: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__actions .agent-quick-entry > summary::after,
+[data-moss-theme-scope="agent"] .agent-result-side-drawer > summary::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__actions .agent-quick-entry[open] > summary::after,
+[data-moss-theme-scope="agent"] .agent-result-side-drawer[open] > summary::after {
+  margin-top: 3px;
+  transform: rotate(-135deg);
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__actions .agent-quick-entry__content {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 8;
+  width: min(640px, calc(100vw - 48px));
+  max-height: 64dvh;
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-bubble);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows,
+[data-moss-theme-scope="agent"] .agent-quick-entry .agent-financial-workflows {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows + .agent-financial-workflows {
+  padding-top: 16px;
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__header h2 {
+  font-weight: 600;
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__header > span {
+  border-color: var(--dh-api-line-soft);
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__button {
+  border-color: transparent;
+  border-radius: var(--agent-radius-card);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__button:hover:not(:disabled) {
+  border-color: var(--dh-api-line-soft);
+  background: var(--agent-hover);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__title,
+[data-moss-theme-scope="agent"] .agent-financial-workflows__command {
+  font-weight: 600;
+}
+
+/* ── 空态：居中问候 + 输入框 + 话题起点 ─────────────────────────── */
+[data-moss-theme-scope="agent"][data-chat-started="false"] {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 64px);
+  gap: 0;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-welcome {
+  order: 1;
+  margin: 0 0 28px;
+  text-align: center;
+}
+
+/* 问候 + 输入框 + 话题起点作为一组垂直居中：上下各一个 auto 外边距
+   平分剩余空间，页脚说明仍留在底部，首屏不再出现大段死白。 */
+[data-moss-theme-scope="agent"][data-chat-started="false"] > .agent-chat-welcome {
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+[data-moss-theme-scope="agent"][data-chat-started="false"] > .agent-conversation-starters {
+  margin-bottom: auto;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-welcome h2 {
+  margin: 0 0 10px;
+  background: var(--agent-greeting-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: clamp(28px, 2.6vw, 36px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-welcome p {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+[data-moss-theme-scope="agent"][data-chat-started="false"] > .agent-chat-composer {
+  margin: 0;
+}
+
+[data-moss-theme-scope="agent"] .agent-conversation-starters {
+  order: 3;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+[data-moss-theme-scope="agent"] .agent-conversation-starters button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--agent-control-size);
+  padding: 0 16px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-conversation-starters button:hover {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] > .agent-context-status {
+  order: 9;
+  justify-content: center;
+  margin: 0;
+  padding: 12px 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--dh-api-muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+[data-moss-theme-scope="agent"][data-chat-started="false"] > .agent-context-status {
+  padding: 32px 0 8px;
+}
+
+[data-moss-theme-scope="agent"] > .agent-repo-memory {
+  margin-top: 24px;
+}
+
+[data-moss-theme-scope="agent"] .agent-repo-memory__title {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-repo-memory__path,
+[data-moss-theme-scope="agent"] .agent-repo-memory__action {
+  border-color: var(--dh-api-line-soft);
+  background: transparent;
+  color: var(--dh-api-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-repo-memory__path:hover,
+[data-moss-theme-scope="agent"] .agent-repo-memory__action:hover {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+}
+
+/* ── 输入框：胶囊容器，工具与模型 chip 贴底，圆形发送键 ─────────── */
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat {
+  position: relative;
+  gap: 0;
+  margin-bottom: 0;
+  padding: 14px 14px 10px 18px;
+  border: 1px solid transparent;
+  border-radius: var(--agent-radius-composer);
+  background: var(--dh-api-panel);
+  box-shadow: none;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat:focus-within {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel);
+  box-shadow: none;
+}
+
+/* 空态输入框比对话态更高更松：首屏只有这一个操作入口，胶囊要立得住。 */
+[data-moss-theme-scope="agent"][data-chat-started="false"] > .agent-chat-composer--chat {
+  padding: 20px 16px 14px 24px;
+}
+
+[data-moss-theme-scope="agent"][data-chat-started="false"] > .agent-chat-composer--chat .agent-chat-composer__input {
+  min-height: 56px;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__form {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__input-wrap {
+  grid-column: 1 / -1;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__input {
+  min-height: 44px;
+  max-height: min(240px, 30dvh);
+  padding: 8px 34px 8px 2px;
+  border-radius: 0;
+  resize: none;
+  color: var(--dh-api-ink);
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__input::placeholder {
+  color: var(--dh-api-muted);
+  opacity: 1;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__clear {
+  top: 6px;
+  right: 0;
+  bottom: auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+/* 工具 chip（左下） */
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__advanced {
+  grid-row: 2;
+  grid-column: 1;
+  padding: 0;
+  border: 0;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__advanced > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__advanced > summary::after {
+  content: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__advanced > summary:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__advanced[open] > summary {
+  border-color: var(--dh-api-line);
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__advanced-body,
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat.agent-chat-composer--compact .agent-chat-composer__advanced-body {
+  position: absolute;
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 6;
+  max-height: min(340px, 42dvh);
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-bubble);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__field input,
+[data-moss-theme-scope="agent"] .agent-chat-composer__field select {
+  padding: 10px 14px;
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__field input:focus,
+[data-moss-theme-scope="agent"] .agent-chat-composer__field select:focus {
+  border-color: var(--dh-api-line);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__tool-button,
+[data-moss-theme-scope="agent"] .agent-chat-composer__secondary-action,
+[data-moss-theme-scope="agent"] .agent-chat-composer__quick-button {
+  padding: 7px 14px;
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__tool-button:hover:not(:disabled),
+[data-moss-theme-scope="agent"] .agent-chat-composer__secondary-action:hover:not(:disabled),
+[data-moss-theme-scope="agent"] .agent-chat-composer__quick-button:hover {
+  border-color: var(--dh-api-line);
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__process-details summary,
+[data-moss-theme-scope="agent"] .agent-chat-composer__advanced .agent-chat-composer__field {
+  color: var(--dh-api-soft);
+  font-weight: 500;
+}
+
+/* 模型 / 思考程度选择器（中间，右对齐） */
+[data-moss-theme-scope="agent"] .agent-model-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 6px;
+  min-width: 0;
+  grid-row: 2;
+  grid-column: 2;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  border-radius: var(--agent-radius-pill);
+  color: var(--dh-api-soft);
+  transition: background 150ms ease, color 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control:hover:has(.ant-select:not(.ant-select-disabled)) {
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control .ant-select {
+  min-width: 96px;
+  max-width: 100%;
+  height: 34px;
+  border-radius: var(--agent-radius-pill);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control .agent-model-select {
+  width: 176px;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control .ant-select-selector {
+  padding-inline: 12px 8px;
+  color: inherit;
+  background: transparent;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control .ant-select .ant-select-selection-item,
+[data-moss-theme-scope="agent"] .agent-model-control .ant-select .ant-select-arrow {
+  color: inherit;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control .ant-select:hover:not(.ant-select-disabled) {
+  background: transparent;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control .ant-select-focused {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 1px;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control--reasoning {
+  gap: 0;
+  padding-left: 10px;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control--reasoning > .anticon {
+  color: var(--dh-api-muted);
+  font-size: 14px;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-control--reasoning .ant-select-selector {
+  padding-inline-start: 6px;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-popup {
+  padding: 6px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-card);
+  background: var(--dh-api-panel);
+  box-shadow: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-popup .ant-select-item {
+  min-height: 38px;
+  padding: 9px 12px;
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-model-popup .ant-select-item-group {
+  min-height: 28px;
+  padding-block: 6px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-popup .ant-select-item-option-selected {
+  background: var(--dh-api-blue-soft);
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-popup .ant-select-item-option-active:not(.ant-select-item-option-selected) {
+  background: var(--agent-hover);
+}
+
+[data-moss-theme-scope="agent"] .agent-model-controls__notice {
+  flex-basis: 100%;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+[data-moss-theme-scope="agent"] .agent-model-controls__notice button {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dh-api-blue);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* 发送 / 停止 / 排队（右下） */
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__actions {
+  grid-row: 2;
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__send {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--dh-api-ink);
+  color: var(--dh-api-bg);
+  font-size: 18px;
+  box-shadow: none;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__send:hover:not(:disabled) {
+  background: var(--nct-accent-300);
+  color: var(--dh-api-bg);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__send:disabled {
+  border: 0;
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-muted);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__send--stop {
+  border: 0;
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__send--stop:hover {
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+  box-shadow: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__queue {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__queue:hover:not(:disabled) {
+  border-color: var(--dh-api-line);
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__queue:disabled {
+  display: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__hint {
+  grid-row: 3;
+  grid-column: 1 / -1;
+  padding: 6px 4px 0;
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* 空闲时的键盘说明只留给读屏，输入框内不再常驻一行版面。元素保留在无障碍
+   树内，aria-live 才能继续播报操作反馈；回答进行中的排队说明仍然可见，
+   那是「Enter 排队下一句」的唯一入口提示。 */
+[data-moss-theme-scope="agent"]
+  .agent-chat-composer--chat:not(:has(.agent-chat-composer__actions--running))
+  .agent-chat-composer__hint:not([data-assist-hint="true"]) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+[data-moss-theme-scope="agent"] .agent-composer-action-label,
+[data-moss-theme-scope="agent"] .agent-chat-action-label,
+[data-moss-theme-scope="agent"] .agent-user-bubble__edit > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── 对话流：右侧用户气泡，左侧星标 + 无框回答 ───────────────────── */
+[data-moss-theme-scope="agent"] .agent-conversation {
+  gap: 28px;
+  padding: 12px 8px 24px 4px;
+}
+
+[data-moss-theme-scope="agent"] .agent-turn {
+  gap: 22px;
+}
+
+[data-moss-theme-scope="agent"] .agent-message--user {
+  justify-items: end;
+}
+
+[data-moss-theme-scope="agent"] .agent-user-bubble {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-areas:
+    "edit body"
+    ". context";
+  align-items: center;
+  justify-content: end;
+  justify-items: end;
+  gap: 0 6px;
+  max-width: min(640px, 82%);
+}
+
+[data-moss-theme-scope="agent"] .agent-user-bubble .agent-message__body {
+  grid-area: body;
+  max-width: 100%;
+  padding: 12px 18px;
+  border: 0;
+  border-radius: var(--agent-radius-bubble) var(--dh-api-radius) var(--agent-radius-bubble) var(--agent-radius-bubble);
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-ink);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.65;
+}
+
+[data-moss-theme-scope="agent"] .agent-user-bubble__context {
+  grid-area: context;
+  margin-top: 4px;
+  padding-right: 6px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+[data-moss-theme-scope="agent"] .agent-user-bubble__edit {
+  grid-area: edit;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dh-api-muted);
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-message--user:hover .agent-user-bubble__edit:not(:disabled),
+[data-moss-theme-scope="agent"] .agent-user-bubble__edit:focus-visible {
+  opacity: 1;
+}
+
+[data-moss-theme-scope="agent"] .agent-user-bubble__edit:hover:not(:disabled) {
+  border: 0;
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+@media (hover: none) {
+  [data-moss-theme-scope="agent"] .agent-user-bubble__edit:not(:disabled) {
+    opacity: 1;
+  }
+}
+
+[data-moss-theme-scope="agent"] .agent-message--assistant {
+  grid-template-columns: 30px minmax(0, 1fr);
+  column-gap: 14px;
+  align-items: start;
+}
+
+[data-moss-theme-scope="agent"] .agent-message--assistant::before {
+  content: "";
+  grid-column: 1;
+  width: 26px;
+  height: 26px;
+  margin: 3px 0 0 2px;
+  background: var(--agent-spark-gradient);
+  -webkit-mask: var(--agent-spark-mask) center / contain no-repeat;
+  mask: var(--agent-spark-mask) center / contain no-repeat;
+}
+
+[data-moss-theme-scope="agent"] .agent-message--assistant:has(.agent-thinking)::before {
+  animation: agentSparkBreathe 1.5s ease-in-out infinite;
+}
+
+[data-moss-theme-scope="agent"] .agent-message--assistant .agent-message__body {
+  grid-column: 2;
+  width: auto;
+  min-width: 0;
+  gap: 10px;
+}
+
+[data-moss-theme-scope="agent"] .agent-conversation__bottom {
+  scroll-margin-bottom: 0;
+}
+
+/* 运行状态：由卡片收成一行安静的说明 */
+[data-moss-theme-scope="agent"] .agent-wait-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-height: 32px;
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__title {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+[data-moss-theme-scope="agent"] .agent-thinking {
+  flex-basis: 100%;
+  gap: 4px 10px;
+}
+
+[data-moss-theme-scope="agent"] .agent-thinking__label {
+  background: linear-gradient(
+    90deg,
+    var(--dh-api-muted) 0%,
+    var(--dh-api-ink) 50%,
+    var(--dh-api-muted) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 15px;
+  font-weight: 500;
+  animation: agentShimmer 2.2s linear infinite;
+}
+
+[data-moss-theme-scope="agent"] .agent-thinking__text {
+  color: var(--dh-api-soft);
+  font-size: 14px;
+}
+
+[data-moss-theme-scope="agent"] .agent-thinking__dots {
+  display: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__detail {
+  padding-top: 0;
+  font-size: 12px;
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__details summary,
+[data-moss-theme-scope="agent"] .agent-wait-status__stop {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__details summary:hover {
+  border: 0;
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__stop {
+  color: var(--dh-api-red);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__stop:hover {
+  border: 0;
+  background: var(--dh-api-red-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__detail-list {
+  justify-content: flex-start;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+[data-moss-theme-scope="agent"] .agent-callout {
+  padding: 12px 16px;
+  border-radius: var(--agent-radius-card);
+  font-size: 14px;
+}
+
+[data-moss-theme-scope="agent"] .agent-callout__action {
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: var(--agent-radius-pill);
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-restore-status {
+  border-radius: var(--agent-radius-card);
+}
+
+/* 回答正文：16px 阅读字号，表格和代码块圆角化 */
+[data-moss-theme-scope="agent"] .agent-answer-panel.agent-answer-panel--markdown {
+  color: var(--dh-api-ink);
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+[data-moss-theme-scope="agent"] .agent-answer-panel h1,
+[data-moss-theme-scope="agent"] .agent-answer-panel h2,
+[data-moss-theme-scope="agent"] .agent-answer-panel h3,
+[data-moss-theme-scope="agent"] .agent-answer-panel h4 {
+  margin: 22px 0 10px;
+  font-size: 18px;
+}
+
+[data-moss-theme-scope="agent"] .agent-answer-panel :not(pre) > code {
+  border-radius: var(--dh-api-radius);
+  font-size: 0.9em;
+}
+
+[data-moss-theme-scope="agent"] .agent-answer-table {
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-answer-table table {
+  font-size: 14px;
+}
+
+[data-moss-theme-scope="agent"] .agent-answer-table th,
+[data-moss-theme-scope="agent"] .agent-answer-table td {
+  border: 0;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-answer-table tr:last-child td {
+  border-bottom: 0;
+}
+
+[data-moss-theme-scope="agent"] .agent-code-block {
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-answer-notice {
+  display: block;
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+[data-moss-theme-scope="agent"] .agent-answer-notice span + span::before {
+  content: "；";
+}
+
+[data-moss-theme-scope="agent"] .agent-result-shell,
+[data-moss-theme-scope="agent"] .agent-result-main {
+  gap: 10px;
+}
+
+/* 回答操作：圆形幽灵图标按钮 */
+[data-moss-theme-scope="agent"] .agent-result-toolbar {
+  gap: 2px;
+  margin: 4px 0 0 -8px;
+}
+
+[data-moss-theme-scope="agent"] .agent-result-toolbar__button,
+[data-moss-theme-scope="agent"] .agent-result-toolbar .agent-follow-up-chips__button--primary,
+[data-moss-theme-scope="agent"] .agent-result-toolbar .agent-follow-up-chips__details > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dh-api-muted);
+  font-size: 16px;
+  font-weight: 400;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-result-toolbar__button:hover:not(:disabled),
+[data-moss-theme-scope="agent"] .agent-result-toolbar .agent-follow-up-chips__button--primary:hover:not(:disabled),
+[data-moss-theme-scope="agent"] .agent-result-toolbar .agent-follow-up-chips__details > summary:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__clear:hover {
+  border: 0;
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-result-toolbar .agent-follow-up-chips,
+[data-moss-theme-scope="agent"] .agent-result-toolbar .agent-follow-up-chips__details[open] {
+  gap: 2px;
+}
+
+[data-moss-theme-scope="agent"] .agent-result-toolbar .agent-follow-up-chips__details > summary::after {
+  content: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-result-toolbar .agent-follow-up-chips__options {
+  gap: 6px;
+  margin-left: 4px;
+}
+
+[data-moss-theme-scope="agent"] .agent-follow-up-chips__button:not(.agent-follow-up-chips__button--primary),
+[data-moss-theme-scope="agent"] .agent-next-drill-row button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-follow-up-chips__button:not(.agent-follow-up-chips__button--primary):hover:not(:disabled),
+[data-moss-theme-scope="agent"] .agent-next-drill-row button:hover:not(:disabled) {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-copy-feedback {
+  min-height: 36px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 依据抽屉与侧面板：内联文字开关 + 16px 圆角卡 */
+[data-moss-theme-scope="agent"] .agent-result-side-drawer > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  min-height: 32px;
+  padding: 0 12px 0 10px;
+  border: 0;
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  color: var(--dh-api-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+[data-moss-theme-scope="agent"] .agent-result-side-drawer > summary:hover {
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-result-side-drawer[open] .agent-result-side {
+  margin-top: 10px;
+}
+
+[data-moss-theme-scope="agent"] .agent-result-details summary {
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-result-details summary:hover {
+  border-color: var(--dh-api-line);
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-side-panel,
+[data-moss-theme-scope="agent"] .agent-result-side .agent-side-panel {
+  padding: 14px 16px;
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-card);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-side-panel__title {
+  margin-bottom: 8px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-side-panel__body {
+  font-size: 13px;
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions,
+[data-moss-theme-scope="agent"] .agent-suggested-actions__active {
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-card);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions__item {
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions__button {
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: var(--agent-radius-pill);
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-generic-cards__card {
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-card);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-generic-cards__row,
+[data-moss-theme-scope="agent"] .agent-generic-cards__intent-item {
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-page-context summary {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-pill);
+  color: var(--dh-api-soft);
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-page-context__code {
+  border-radius: var(--dh-api-radius);
+}
+
+/* ── 会话态：对话流独立滚动，输入框贴底 ─────────────────────────── */
+[data-moss-theme-scope="agent"][data-chat-started="true"] {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 64px);
+  min-height: 420px;
+  gap: 8px;
+}
+
+[data-moss-theme-scope="agent"][data-chat-started="true"] > * {
+  flex-shrink: 0;
+}
+
+[data-moss-theme-scope="agent"][data-chat-started="true"] > .agent-conversation {
+  flex: 1 1 auto;
+  min-height: 100px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  align-content: start;
+  scrollbar-gutter: stable;
+}
+
+[data-moss-theme-scope="agent"] > .agent-composer-dock {
+  position: relative;
+  bottom: auto;
+  margin-top: 0;
+  padding: 6px 0 0;
+  background: transparent;
+}
+
+[data-moss-theme-scope="agent"] .agent-composer-dock .agent-chat-composer--chat {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-composer-dock .agent-chat-composer--chat:focus-within {
+  border-color: var(--dh-api-line-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-active-turn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 10px 14px;
+  border-left: 2px solid var(--dh-api-blue);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-active-turn__copy {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+[data-moss-theme-scope="agent"] .agent-active-turn__copy strong {
+  color: var(--dh-api-soft);
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-active-turn__copy span {
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-moss-theme-scope="agent"] .agent-active-turn__locate {
+  flex-shrink: 0;
+  min-height: var(--agent-control-size);
+  padding: 0 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+[data-moss-theme-scope="agent"] .agent-active-turn__locate:hover {
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-active-turn__locate:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+[data-moss-theme-scope="agent"] .agent-jump-to-latest {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-pill);
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+[data-moss-theme-scope="agent"] .agent-jump-to-latest:hover {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft {
+  margin-bottom: 8px;
+  padding: 12px 16px;
+  border: 1px dashed var(--dh-api-line);
+  border-radius: var(--agent-radius-bubble);
+  background: var(--dh-api-panel-2);
+  box-shadow: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft__count {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel);
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft__action {
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--agent-radius-pill);
+  background: transparent;
+  font-weight: 500;
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft__action:hover {
+  border-color: var(--dh-api-line);
+  background: var(--agent-hover);
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__advanced-body,
+[data-moss-theme-scope="agent"] > .agent-quick-entry[open],
+[data-moss-theme-scope="agent"] > .agent-repo-memory[open] {
+  max-height: 22dvh;
+  overflow-y: auto;
+}
+
+/* ── 动效：仅限进行中指示，reduce 下静止 ────────────────────────── */
+@keyframes agentSparkBreathe {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(1) rotate(0deg);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.12) rotate(45deg);
+  }
+}
+
+@keyframes agentShimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-moss-theme-scope="agent"] .agent-message--assistant:has(.agent-thinking)::before,
+  [data-moss-theme-scope="agent"] .agent-thinking__label {
+    animation: none;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-thinking__label {
+    background: none;
+    color: var(--dh-api-soft);
+  }
+}
+
+/* ── 窄屏 ───────────────────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  [data-moss-theme-scope="agent"][data-chat-started="true"] {
+    height: calc(100dvh - 130px);
+  }
+}
+
+@media (max-width: 720px) {
+  .agent-workbench-shell[data-moss-theme-scope="agent"] {
+    width: calc(100vw - 32px);
+    margin-inline: calc(50% - 50vw + 16px);
+  }
+
+  [data-moss-theme-scope="agent"] .agent-workbench-header {
+    display: flex;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-workbench-header h1 {
+    font-size: 18px;
+  }
+
+  [data-moss-theme-scope="agent"][data-chat-started="false"] > .agent-chat-welcome {
+    padding-top: 8px;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-chat-welcome h2 {
+    font-size: 26px;
+  }
+
+  [data-moss-theme-scope="agent"][data-chat-started="false"] {
+    min-height: calc(100dvh - 130px);
+  }
+
+  [data-moss-theme-scope="agent"] .agent-chat-composer--chat {
+    padding: 12px 10px 8px 14px;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-model-controls {
+    gap: 0;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-model-control .ant-select {
+    min-width: 92px;
+    font-size: 12px;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-model-control .agent-model-select {
+    width: 136px;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-model-control--reasoning {
+    padding-left: 0;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-model-control--reasoning > .anticon,
+  [data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__advanced > summary > span:not(.anticon) {
+    display: none;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__advanced > summary {
+    width: 34px;
+    padding: 0;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-workbench-header__actions .agent-quick-entry__content {
+    right: -86px;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__actions {
+    flex-direction: column-reverse;
+    gap: 4px;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-chat-composer--chat .agent-chat-composer__queue {
+    max-width: 72px;
+    padding: 0 8px;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-user-bubble {
+    max-width: 92%;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-message--assistant {
+    grid-template-columns: 24px minmax(0, 1fr);
+    column-gap: 10px;
+  }
+
+  [data-moss-theme-scope="agent"] .agent-message--assistant::before {
+    width: 22px;
+    height: 22px;
+    margin-left: 1px;
+  }
+}

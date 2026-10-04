@@ -7,10 +7,12 @@ import sys
 import textwrap
 import time
 import uuid
-from datetime import date
+from dataclasses import asdict
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -349,6 +351,206 @@ def test_api_returns_real_data(tmp_path, monkeypatch):
     assert [row["instrument_code"] for row in result["bottom_spread_bonds"]] == ["CB-001", "CB-002"]
     assert [row["tenor_bucket"] for row in result["spread_term_structure"]] == ["5Y", "10Y"]
     assert result["historical_context"]["percentile_1y"] == "100.00000000"
-    assert result["warnings"] == []
+    # 只有 1 个历史观测：分位数照常出数，但服务层按 60 观测阈值追加样本不足告警。
+    assert result["warnings"] == [
+        "SPREAD_HISTORY_OBSERVATIONS_LT_60:1y=1",
+        "SPREAD_HISTORY_OBSERVATIONS_LT_60:3y=1",
+    ]
 
     get_settings.cache_clear()
+
+
+def _service_with_fake_repos(monkeypatch, *, curve: dict[str, Decimal], credit_rows: list[dict]):
+    service = load_module(
+        f"tests._credit_spread_analysis.service_{uuid.uuid4().hex}",
+        "backend/app/services/credit_spread_analysis_service.py",
+    )
+
+    class _FakeBondRepo:
+        def __init__(self, _path: str) -> None:
+            pass
+
+        def fetch_bond_analytics_rows(self, *, report_date: str, asset_class: str | None = None):
+            return list(credit_rows)
+
+        def list_report_dates(self):
+            return []
+
+    class _FakeCurveRepo:
+        def __init__(self, _path: str) -> None:
+            pass
+
+    snapshot = {
+        "curve": curve,
+        "source_version": "sv_curve_fake",
+        "rule_version": "rv_curve_fake",
+        "vendor_version": "vv_fake",
+    }
+    monkeypatch.setattr(service, "BondAnalyticsRepository", _FakeBondRepo)
+    monkeypatch.setattr(service, "YieldCurveRepository", _FakeCurveRepo)
+    monkeypatch.setattr(service, "get_settings", lambda: type("S", (), {"duckdb_path": "unused"})())
+    monkeypatch.setattr(
+        service,
+        "resolve_curve_snapshot",
+        lambda _repo, *, requested_trade_date, curve_type: (snapshot, None),
+    )
+    return service
+
+
+_CREDIT_ROW = {
+    "instrument_code": "CB-001",
+    "instrument_name": "信用债A",
+    "rating": "AAA",
+    "asset_class_std": "credit",
+    "tenor_bucket": "3Y",
+    "ytm": Decimal("0.0312"),
+    "years_to_maturity": None,
+    "market_value": Decimal("1000000"),
+    "face_value": Decimal("1000000"),
+    "modified_duration": Decimal("2.5"),
+    "source_version": "sv_bond_fake",
+    "rule_version": "rv_bond_fake",
+}
+
+
+@pytest.mark.parametrize(
+    "curve",
+    [{"8Y": Decimal("3.0")}, {"3Y": None}, {"3Y": Decimal("NaN")}, {"3Y": Decimal("Infinity")}, {"3Y": "bad"}],
+)
+def test_service_marks_curve_without_usable_tenors_as_vendor_unavailable(monkeypatch, curve):
+    """快照节点的期限或收益率不可用时，必须标为曲线不可用。"""
+    service = _service_with_fake_repos(
+        monkeypatch,
+        curve=curve,
+        credit_rows=[_CREDIT_ROW],
+    )
+
+    envelope = service.get_credit_spread_analysis(date(2026, 3, 31))
+
+    assert envelope["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert envelope["result_meta"]["cache_version"] == "cv_credit_spread_analysis_formal_v3"
+    assert "rv_credit_spread_analysis_formal_v3" in envelope["result_meta"]["rule_version"]
+    assert envelope["result_meta"]["fallback_mode"] == "none"
+    assert envelope["result"]["credit_bond_count"] == 1
+    assert Decimal(envelope["result"]["total_credit_market_value"]) == Decimal("1000000")
+    assert envelope["result"]["spread_bond_count"] == 0
+    assert envelope["result"]["weighted_avg_spread_bps"] is None
+    assert service.CURVE_NO_USABLE_TENORS_WARNING in envelope["result"]["warnings"]
+    assert service.EMPTY_WARNING not in envelope["result"]["warnings"]
+
+
+def test_service_keeps_vendor_ok_when_curve_has_usable_tenors(monkeypatch):
+    """对照：同一持仓换成可用曲线时正常出数，只保留历史样本不足告警。"""
+    service = _service_with_fake_repos(
+        monkeypatch,
+        curve={"1Y": Decimal("2.0"), "5Y": Decimal("3.0")},
+        credit_rows=[_CREDIT_ROW],
+    )
+
+    envelope = service.get_credit_spread_analysis(date(2026, 3, 31))
+
+    assert envelope["result_meta"]["vendor_status"] == "ok"
+    assert envelope["result_meta"]["cache_version"] == "cv_credit_spread_analysis_formal_v3"
+    assert "rv_credit_spread_analysis_formal_v3" in envelope["result_meta"]["rule_version"]
+    assert envelope["result"]["credit_bond_count"] == 1
+    assert service.CURVE_NO_USABLE_TENORS_WARNING not in envelope["result"]["warnings"]
+    assert envelope["result"]["warnings"] == [
+        "SPREAD_HISTORY_OBSERVATIONS_LT_60:1y=0",
+        "SPREAD_HISTORY_OBSERVATIONS_LT_60:3y=0",
+    ]
+
+
+@pytest.mark.parametrize("ytm_value", [None, "bad", Decimal("NaN"), Decimal("Infinity")])
+def test_missing_ytm_keeps_credit_holdings_and_nulls_current_spread_with_full_history(monkeypatch, ytm_value):
+    from backend.app.core_finance.bond_analytics.engine import compute_bond_analytics_rows
+
+    report_date = date(2026, 3, 31)
+    credit_row = asdict(compute_bond_analytics_rows([{
+        "instrument_code": "YTM-MISSING-001",
+        "asset_class": "债券资产",
+        "bond_type": "企业债",
+        "currency_code": "CNY",
+        "accounting_basis": "FVOCI",
+        "face_value_native": Decimal("100000000"),
+        "market_value_native": Decimal("100000000"),
+        "coupon_rate": Decimal("3"),
+        "ytm_value": ytm_value,
+        "maturity_date": date(2031, 3, 31),
+        "interest_mode": "annual",
+    }], report_date)[0])
+    service = _service_with_fake_repos(
+        monkeypatch, curve={"5Y": Decimal("2.5")}, credit_rows=[credit_row],
+    )
+    monkeypatch.setattr(service, "_build_historical_spreads", lambda **_: [
+        (report_date - timedelta(days=index + 1), Decimal("50")) for index in range(60)
+    ])
+
+    envelope = service.get_credit_spread_analysis(report_date)
+    result = envelope["result"]
+    assert result["credit_bond_count"] == 1
+    assert Decimal(result["total_credit_market_value"]) == Decimal("100000000")
+    assert result["spread_bond_count"] == 0
+    assert Decimal(result["spread_market_value"]) == 0
+    assert result["missing_ytm_count"] == 1
+    assert Decimal(result["missing_ytm_market_value"]) == Decimal("100000000")
+    assert result["spread_coverage_status"] == "unavailable"
+    assert result["weighted_avg_spread_bps"] is None
+    assert result["historical_context"]["current_spread_bps"] is None
+    assert result["historical_context"]["percentile_1y"] is None
+    assert result["historical_context"]["percentile_3y"] is None
+    assert result["historical_context"]["median_1y"] == "50"
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert envelope["result_meta"]["formal_use_allowed"] is False
+    assert any("YTM" in warning for warning in result["warnings"])
+    assert not any(warning.startswith("SPREAD_HISTORY_OBSERVATIONS_LT_") for warning in result["warnings"])
+
+
+def test_partial_ytm_coverage_discloses_holdings_and_keeps_observed_zero(monkeypatch):
+    service = _service_with_fake_repos(
+        monkeypatch,
+        curve={"3Y": Decimal("0")},
+        credit_rows=[
+            {**_CREDIT_ROW, "ytm": Decimal("0"), "market_value": Decimal("1000000")},
+            {**_CREDIT_ROW, "instrument_code": "YTM-MISSING", "ytm": None, "market_value": Decimal("3000000")},
+        ],
+    )
+    result = service.get_credit_spread_analysis(date(2026, 3, 31))["result"]
+    assert result["credit_bond_count"] == 2
+    assert Decimal(result["total_credit_market_value"]) == Decimal("4000000")
+    assert result["spread_bond_count"] == 1
+    assert Decimal(result["spread_market_value"]) == Decimal("1000000")
+    assert result["missing_ytm_count"] == 1
+    assert Decimal(result["missing_ytm_market_value"]) == Decimal("3000000")
+    assert result["spread_coverage_status"] == "partial"
+    assert Decimal(result["weighted_avg_spread_bps"]) == 0
+    assert Decimal(result["top_spread_bonds"][0]["ytm"]) == 0
+    assert any("YTM" in warning for warning in result["warnings"])
+
+
+def test_empty_credit_holdings_do_not_publish_observed_zero_spread(monkeypatch):
+    service = _service_with_fake_repos(monkeypatch, curve={"3Y": Decimal("2")}, credit_rows=[])
+    result = service.get_credit_spread_analysis(date(2026, 3, 31))["result"]
+    assert result["credit_bond_count"] == 0
+    assert Decimal(result["total_credit_market_value"]) == 0
+    assert result["weighted_avg_spread_bps"] is None
+    assert result["spread_coverage_status"] == "empty"
+
+
+def test_observed_zero_ytm_and_spread_keep_complete_coverage_and_history_percentile(monkeypatch):
+    report_date = date(2026, 3, 31)
+    service = _service_with_fake_repos(
+        monkeypatch, curve={"3Y": Decimal("0")}, credit_rows=[{**_CREDIT_ROW, "ytm": Decimal("0")}],
+    )
+    monkeypatch.setattr(service, "_build_historical_spreads", lambda **_: [
+        (report_date - timedelta(days=index + 1), Decimal("0")) for index in range(60)
+    ])
+    envelope = service.get_credit_spread_analysis(report_date)
+    result = envelope["result"]
+    assert result["spread_bond_count"] == result["credit_bond_count"] == 1
+    assert result["spread_coverage_status"] == "complete"
+    assert result["missing_ytm_count"] == 0
+    assert Decimal(result["weighted_avg_spread_bps"]) == 0
+    assert Decimal(result["historical_context"]["percentile_1y"]) == 100
+    assert result["warnings"] == []
+    assert envelope["result_meta"]["formal_use_allowed"] is True
+    assert envelope["result_meta"]["quality_flag"] == "ok"

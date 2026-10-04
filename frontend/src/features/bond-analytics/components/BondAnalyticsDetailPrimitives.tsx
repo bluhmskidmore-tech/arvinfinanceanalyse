@@ -56,8 +56,8 @@ export function DetailEmptyNote({ children, testId }: DetailEmptyNoteProps) {
 }
 
 /**
- * 明细请求失败文案：中文原因句进正文，裸端点/原始报错属证据层收进 title（DESIGN §6 溯源分层）。
- * 状态码从 `Request failed: /api/...(502)` 形态中提取；无法识别时给通用原因句，原文保留在 title。
+ * 明细请求失败文案：中文原因句进正文，裸端点/原始报错收进技术诊断（DESIGN §6 溯源分层）。
+ * 状态码从 `Request failed: /api/...(502)` 形态中提取；无法识别时给通用原因句，原文保留在技术诊断。
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function describeDetailLoadError(raw: string): { text: string; title: string } {
@@ -67,23 +67,29 @@ export function describeDetailLoadError(raw: string): { text: string; title: str
     status === null
       ? "数据请求失败，请稍后重试。"
       : status >= 500
-        ? `后端服务暂不可用（${status}），请稍后重试。`
+        ? `数据服务暂不可用（${status}），请稍后重试。`
         : status === 404
-          ? "请求的读面不存在（404），请核对报告日与参数。"
+          ? "未找到对应分析数据（404），请核对报告日和筛选条件。"
           : status === 401 || status === 403
-            ? `没有访问该读面的权限（${status}）。`
+            ? `没有查看该分析数据的权限（${status}）。`
             : `数据请求失败（${status}），请稍后重试。`;
   return { text, title: raw };
 }
 
-/** 明细区统一错误横幅：正文中文原因句，title 保留原始报错供复核。 */
+/** 明细区统一错误横幅：正文中文原因句，技术诊断保留原始报错供复核。 */
 export function DetailLoadErrorAlert({ error, testId }: { error: string; testId?: string }) {
   const { text, title } = describeDetailLoadError(error);
   return (
     <Alert
       type="error"
       showIcon
-      message={<span title={title}>{text}</span>}
+      message={text}
+      description={
+        <details>
+          <summary>技术诊断</summary>
+          <div>{title}</div>
+        </details>
+      }
       data-testid={testId}
     />
   );

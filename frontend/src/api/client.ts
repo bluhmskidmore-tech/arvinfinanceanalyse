@@ -87,6 +87,8 @@ import {
   type DashboardClientMethods,
 } from "./workbenchDashboardApi";
 import { bondDashboardLiveEndpoints } from "./bondDashboardWorkbenchEndpoints";
+import { registerApiClientFactory } from "./clientFactoryOptions";
+import { resolveDataSourceMode } from "./dataSourceMode";
 
 export type DataSourceMode = "mock" | "real";
 export { ApiClientProvider, useApiClient } from "./clientContext";
@@ -169,33 +171,7 @@ async function ensureMockClientBundle(): Promise<MockClientBundle> {
   return mockClientBundleCache;
 }
 
-const normalizeBaseUrl = (value?: string) =>
-  value ? value.replace(/\/$/, "") : "";
-
-const parseEnvMode = (): DataSourceMode => {
-  const raw = import.meta.env.VITE_DATA_SOURCE;
-  const envValue = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  const isProd = import.meta.env.PROD === true;
-
-  if (envValue === "real") return "real";
-  if (envValue === "mock") {
-    if (isProd) throw new Error("VITE_DATA_SOURCE='mock' is not allowed in production.");
-    return "mock";
-  }
-
-  // Not explicitly set (or invalid value)
-  if (isProd) {
-    throw new Error(
-      "VITE_DATA_SOURCE must be explicitly set to 'real' or 'mock' in production build. " +
-        "Refusing to silently fall back to mock. " +
-        "See docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md § 9.1.",
-    );
-  }
-
-  // dev / test: default to real; mock requires an explicit local switch.
-  console.warn("[client] VITE_DATA_SOURCE not set or invalid (raw=%o). Defaulting to real.", raw);
-  return "real";
-};
+const normalizeBaseUrl = (value?: string) => value ? value.replace(/\/$/, "") : "";
 
 const parseBaseUrl = () => {
   const raw = import.meta.env.VITE_API_BASE_URL;
@@ -203,7 +179,7 @@ const parseBaseUrl = () => {
 };
 
 // Lazy-load demo composition; cache module import only (not instances).
-let demoClientModulePromise: Promise<typeof import("./mockApiClient")> | null = null;
+let demoClientModulePromise: Promise<typeof import("../mocks/mockApiClient")> | null = null;
 let cachedApiClientMethodNames: string[] | null = null;
 let demoSurfaceAsserted = false;
 
@@ -220,7 +196,7 @@ function createLazyDemoClient(methodNames: string[]): ApiClient {
   let demoPromise: Promise<ApiClient> | null = null;
   const loadDemo = () => {
     if (demoPromise === null) {
-      demoClientModulePromise ??= import("./mockApiClient");
+      demoClientModulePromise ??= import("../mocks/mockApiClient");
       demoPromise = demoClientModulePromise.then(({ createMockApiClient }) => {
         const composed = createMockApiClient(delay, ensureMockClientBundle);
         if (!demoSurfaceAsserted && (import.meta.env.DEV || import.meta.env.MODE === "test")) {
@@ -254,15 +230,16 @@ function createLazyDemoClient(methodNames: string[]): ApiClient {
 }
 
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
-  const mode = options.mode ?? parseEnvMode();
+  const mode = resolveDataSourceMode(options.mode);
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? parseBaseUrl());
   const fetchImpl = options.fetchImpl ?? defaultFetch;
 
-  if (mode === "mock") {
-    return createLazyDemoClient(getApiClientMethodNames());
+  // Vite folds this branch out of production, including the lazy payload graph.
+  if (!import.meta.env.PROD && mode === "mock") {
+    return registerApiClientFactory(createLazyDemoClient(getApiClientMethodNames()), { mode, baseUrl, fetchImpl }, createApiClient);
   }
 
-  return {
+  return registerApiClientFactory({
     mode,
     ...createRealHealthClient({ fetchImpl, baseUrl }),
     ...createRealBalanceMovementClient({ fetchImpl, baseUrl }),
@@ -293,5 +270,5 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealBalanceAnalysisClient({
       fetchImpl, baseUrl, requestJson, requestActionJson, requestText, requestBlob,
     }),
-  };
+  }, { mode, baseUrl, fetchImpl }, createApiClient);
 }

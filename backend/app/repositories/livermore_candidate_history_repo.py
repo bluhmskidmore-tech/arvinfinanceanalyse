@@ -89,11 +89,14 @@ CANDIDATE_EXECUTION_SELECT_COLUMNS = (
     "entry_executable",
     "entry_block_reason",
     "entry_date",
+    "exit_date_1d",
     "exit_date_5d",
     "return_1d_net_adj",
     "return_5d_gross_adj",
     "return_5d_net_adj",
+    "exit_date_10d",
     "return_10d_net_adj",
+    "exit_date_20d",
     "return_20d_net_adj",
     # 读取端 stale formula 披露需要行级版本；缺列的旧 schema 由
     # execution_select_list 落 null as formula_version。

@@ -148,8 +148,9 @@ tests/golden_samples/
 | `GS-PROD-CAT-PNL-A` | `GET /ui/pnl/product-category` | `capture-ready` | `2026-02-28` | `tests/test_product_category_pnl_flow.py`、`tests/test_golden_samples_capture_ready.py` | formal 明细/主表样本 |
 | `GS-BRIDGE-A` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 正常样本 |
 | `GS-BRIDGE-WARN-B` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py`（warning profile） | `warning-profile` 样本 |
-| `GS-RISK-A` | `/api/risk/tensor` | `capture-ready` | `2026-03-31` | `tests/test_risk_tensor_api.py`、`tests/test_risk_tensor_service.py` | 正常样本 |
-| `GS-RISK-WARN-B` | `/api/risk/tensor` | `capture-ready` | `2026-03-31` | `tests/test_risk_tensor_api.py`（degraded） | `warning-profile` 样本 |
+| `GS-RISK-A` | `/api/risk/tensor` | `capture-ready` | `2026-03-31` | `tests/test_risk_tensor_api.py`、`tests/test_risk_tensor_service.py` | v10 正常样本，显式冻结无到期日负债排除条数与本金金额 |
+| `GS-RISK-WARN-B` | `/api/risk/tensor` | `capture-ready` | `2026-03-31` | `tests/test_risk_tensor_api.py`（degraded） | v10 `warning-profile` 样本，新增负债期限缺失披露字段为显式零值 |
+| 公开证据边界 | 公开候选采用合成样本验证 | 本地执行证据未附 | 本地执行证据未附 | 本地执行证据未附 | 本地执行证据未附 |
 | `GS-EXEC-OVERVIEW-A` | `/ui/home/overview` | `capture-ready` | `2026-02-28` | `tests/test_executive_release_contract.py` + `tests/test_executive_dashboard_endpoints.py` | overlay 样本 |
 | `GS-EXEC-PNL-ATTR-A` | `/ui/pnl/attribution` | `capture-ready` | `2026-02-28` | `tests/test_executive_release_contract.py` + `tests/test_executive_dashboard_endpoints.py` | overlay 样本 |
 | `GS-EXEC-SUMMARY-A` | `/ui/home/summary` | `capture-ready` | `2026-02-28` | `tests/test_executive_release_contract.py` + `tests/test_executive_dashboard_endpoints.py` | narrative 样本 |
@@ -260,8 +261,8 @@ tests/golden_samples/
   - `result_meta.result_kind == "pnl.overview"`
   - `result_meta.source_version == "fi-shared-v1__nonstd-shared-v1"`
   - `result_meta.vendor_version == "vv_none"`
-  - `result_meta.rule_version == "rv_pnl_phase2_materialize_v3"`
-  - `result_meta.cache_version == "cv_pnl_formal__rv_pnl_phase2_materialize_v3"`
+  - `result_meta.rule_version == "rv_pnl_phase2_materialize_v4"`
+  - `result_meta.cache_version == "cv_pnl_formal__rv_pnl_phase2_materialize_v4"`
   - `MTR-PNL-101 == 1`
   - `MTR-PNL-102 == 1`
   - `MTR-PNL-001 == "12.50"`
@@ -374,8 +375,8 @@ tests/golden_samples/
   - `result_meta.basis == "formal"`
   - `result_meta.result_kind == "risk.tensor"`
   - `result_meta.source_version == "sv_risk_tensor__sv_bond_snap_1"`
-  - `result_meta.rule_version == "rv_risk_tensor_formal_materialize_v6"`
-  - `result_meta.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"`
+  - `result_meta.rule_version == "rv_risk_tensor_formal_materialize_v10"`
+  - `result_meta.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v10"`
   - `result_meta.tables_used == ["fact_formal_risk_tensor_daily"]`
   - `result_meta.evidence_rows == 1`
   - `result_meta.quality_flag == "ok"`
@@ -389,6 +390,8 @@ tests/golden_samples/
   - `MTR-RSK-017 == "14.00000000"`
   - `MTR-RSK-018 == "14.00000000"`
   - `MTR-RSK-012 == "1.00000000"`
+  - `result.missing_liability_maturity_count == 0`
+  - `result.missing_liability_maturity_principal_amount.raw == 0.0`（单位：人民币元；旧事实缺字段时不得解释为零）
   - `MTR-RSK-001` 为 8 位小数字符串
   - `MTR-RSK-008 > 0`
   - `MTR-RSK-009 > 0`

@@ -194,17 +194,46 @@ describe("DashboardHomeToolbar", () => {
     expect(screen.getByText("更新 09:15")).toBeInTheDocument();
 
     const dataStatusPill = screen.getByTestId("dashboard-home-data-status");
-    expect(dataStatusPill).toHaveTextContent("数据更新");
     expect(dataStatusPill).not.toHaveTextContent("09:15");
+    expect(dataStatusPill).toHaveAttribute("data-status-kind", "ok");
   });
 
-  it("merges the market status pill into one short segment with the full context in title", () => {
+  it("collapses both normal-state pills into one muted note and keeps the originals in title", () => {
     renderToolbar();
 
-    const marketPill = screen.getByTitle("市场同步 · 估值完成");
-    expect(marketPill).toHaveAttribute("data-valuation-tone", "ok");
-    expect(marketPill).toHaveTextContent("估值完成");
-    expect(marketPill).not.toHaveTextContent("市场同步");
+    const quietNote = screen.getByTestId("dashboard-home-data-status");
+    expect(quietNote).toHaveTextContent("快照与估值正常");
+    expect(quietNote).toHaveAttribute("title", "数据更新；市场同步 · 估值完成");
+    expect(quietNote).not.toHaveTextContent("数据更新");
+    expect(quietNote).not.toHaveTextContent("估值完成");
+    expect(
+      screen.getByTestId("dashboard-home-toolbar").querySelector(
+        '[data-role="dashboard-home-market-status"]',
+      ),
+    ).toBeNull();
+    const statusRow = screen.getByTestId("dashboard-home-toolbar").querySelector(
+      '[data-role="dashboard-home-status-row"]',
+    );
+    expect(statusRow?.children).toHaveLength(1);
+  });
+
+  it("keeps the semantic stale pill copy when the snapshot state is abnormal", () => {
+    renderToolbar({
+      headerStatus: {
+        ...headerStatus,
+        dataStatusKind: "stale",
+        dataSyncPrefix: "展示上一版本",
+        marketStatus: "新报告日失败",
+        valuationLabel: "沿用旧快照",
+        valuationTone: "warn",
+      },
+    });
+
+    const dataStatusPill = screen.getByTestId("dashboard-home-data-status");
+    expect(dataStatusPill).toHaveAttribute("data-status-kind", "stale");
+    expect(dataStatusPill).toHaveTextContent("展示上一版本");
+    expect(dataStatusPill).not.toHaveTextContent("快照与估值正常");
+    expect(screen.getByTitle("新报告日失败 · 沿用旧快照")).toHaveTextContent("沿用旧快照");
   });
 
   it("keeps the amber tone marker when the valuation state is abnormal", () => {
@@ -220,6 +249,102 @@ describe("DashboardHomeToolbar", () => {
     const marketPill = screen.getByTitle("新报告日失败 · 沿用旧快照");
     expect(marketPill).toHaveAttribute("data-valuation-tone", "warn");
     expect(marketPill).toHaveTextContent("沿用旧快照");
+  });
+
+  describe("report date age hint", () => {
+    const now = new Date(2026, 8, 2, 16, 0);
+    const ageHint = () =>
+      screen
+        .getByTestId("dashboard-home-toolbar")
+        .querySelector('[data-role="dashboard-home-report-date-age"]');
+
+    it("flags a report date that is 33 days old in the warning tone with the full sentence in title", () => {
+      renderToolbar({
+        now,
+        reportDateInput: "2026-07-31",
+        reportDateContext: {
+          requestedDate: "",
+          actualDataDate: "2026-07-31",
+          divergenceReason: null,
+          dataAsOfDate: "2026-07-31",
+          generatedAt: "2026-09-02T15:03:41",
+          mode: "exact",
+        },
+      });
+
+      const hint = ageHint();
+      expect(hint).toHaveTextContent("距今 33 天");
+      expect(hint).toHaveAttribute("data-age-tone", "warn");
+      expect(hint).toHaveAttribute(
+        "title",
+        "报告日 2026-07-31，距今 33 天；最近更新 2026-09-02 15:03",
+      );
+    });
+
+    it("uses the muted tone when the report date is only a few days old", () => {
+      renderToolbar({
+        now,
+        reportDateInput: "2026-08-30",
+        reportDateContext: {
+          requestedDate: "",
+          actualDataDate: "2026-08-30",
+          divergenceReason: null,
+          dataAsOfDate: "2026-08-30",
+          mode: "exact",
+        },
+      });
+
+      const hint = ageHint();
+      expect(hint).toHaveTextContent("距今 3 天");
+      expect(hint).toHaveAttribute("data-age-tone", "muted");
+    });
+
+    it("renders nothing for a same-day report date", () => {
+      renderToolbar({
+        now,
+        reportDateInput: "2026-09-02",
+        reportDateContext: {
+          requestedDate: "",
+          actualDataDate: "2026-09-02",
+          divergenceReason: null,
+          dataAsOfDate: "2026-09-02",
+          mode: "exact",
+        },
+      });
+
+      expect(ageHint()).toBeNull();
+    });
+
+    it("renders nothing when the actual data date is missing", () => {
+      renderToolbar({
+        now,
+        reportDateInput: "",
+        reportDateContext: {
+          requestedDate: "2026-09-01",
+          actualDataDate: "",
+          divergenceReason: "no snapshot",
+          dataAsOfDate: "",
+          mode: "empty",
+        },
+      });
+
+      expect(ageHint()).toBeNull();
+    });
+
+    it("renders nothing when the actual data date is malformed", () => {
+      renderToolbar({
+        now,
+        reportDateContext: {
+          requestedDate: "",
+          actualDataDate: "not-a-date",
+          divergenceReason: null,
+          dataAsOfDate: "",
+          mode: "exact",
+        },
+      });
+
+      expect(ageHint()).toBeNull();
+    });
   });
 
   it("keeps the clickable risk-review pill with its count", () => {

@@ -56,6 +56,7 @@ def test_bond_dashboard_service_rule_version_matches_task_module() -> None:
 
 
 def test_pnl_service_identity_constants_match_task_module() -> None:
+    import backend.app.services.pnl_by_business_precompute_lifecycle as lifecycle
     import backend.app.services.pnl_service as service
     import backend.app.tasks.pnl_materialize as task
 
@@ -65,11 +66,29 @@ def test_pnl_service_identity_constants_match_task_module() -> None:
     assert service.PNL_MATERIALIZE_LOCK.ttl_seconds == task.PNL_MATERIALIZE_LOCK.ttl_seconds
     assert service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY == task.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY
     assert service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION == task.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION
+    assert lifecycle.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION == task.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION
     assert service.PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME == task.PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME
     assert (
         service.PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION
         == task.PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION
     )
+
+
+def test_pnl_dispatch_cold_import_uses_current_rule_without_loading_tasks() -> None:
+    code = (
+        "import sys; "
+        "from backend.app.services import pnl_task_dispatch as dispatch; "
+        "from backend.app.repositories.pnl_repo import PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION as rule; "
+        "loaded = sorted(m for m in sys.modules if m.startswith('backend.app.tasks')); "
+        "assert not loaded, loaded; "
+        "assert dispatch.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION == "
+        "f'cv_pnl_by_business_precompute__{rule}'"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], cwd=ROOT, capture_output=True,
+        text=True, stdin=subprocess.DEVNULL,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_pnl_bridge_service_identity_constants_match_task_modules() -> None:
@@ -143,7 +162,8 @@ def test_lazy_actor_proxies_delegate_fn_and_allow_instance_override() -> None:
             "materialize_balance_analysis_facts",
         ),
         (
-            "backend.app.api.routes.adb_analysis",
+            # ADB 回填派发已从路由下沉到服务层（dispatch_adb_backfill），懒代理随之迁移。
+            "backend.app.services.adb_analysis_service",
             "materialize_balance_analysis_facts",
             "backend.app.tasks.balance_analysis_materialize",
             "materialize_balance_analysis_facts",

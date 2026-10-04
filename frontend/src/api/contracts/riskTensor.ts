@@ -82,12 +82,23 @@ export type RiskTensorPayload = {
   duration_excluded_count: number;
   missing_maturity_market_value?: RiskTensorScalar | null;
   missing_maturity_count?: number | null;
+  fund_no_maturity_market_value?: RiskTensorScalar | null;
+  fund_no_maturity_count?: number | null;
+  unknown_maturity_market_value?: RiskTensorScalar | null;
+  unknown_maturity_count?: number | null;
+  matured_outstanding_market_value?: RiskTensorScalar | null;
+  matured_outstanding_count?: number | null;
+  nonpositive_duration_market_value?: RiskTensorScalar | null;
+  nonpositive_duration_count?: number | null;
+  maturity_breakdown_status?: "available" | "unavailable_legacy";
   floating_rate_proxy_market_value?: RiskTensorScalar | null;
   floating_rate_proxy_count?: number | null;
   payment_frequency_fallback_market_value?: RiskTensorScalar | null;
   payment_frequency_fallback_count?: number | null;
   bullet_value_date_fallback_market_value?: RiskTensorScalar | null;
   bullet_value_date_fallback_count?: number | null;
+  missing_liability_maturity_principal_amount?: RiskTensorScalar | null;
+  missing_liability_maturity_count?: number | null;
   projection_quality_status?: string | null;
   bond_count: number;
   quality_flag: string;
@@ -151,8 +162,9 @@ export type RiskScenarioStressSummary = {
   scenario_count: number;
   available_count: number;
   review_required_count: number;
-  worst_estimated_impact: Numeric;
+  worst_estimated_impact: Numeric | null;
   worst_scenario_key: string | null;
+  comparison_measure?: string | null;
   message: string;
 };
 
@@ -173,6 +185,28 @@ export type RiskScenarioStressPayload = {
   scenarios: RiskScenarioStressRow[];
   warnings: string[];
   source_warnings: string[];
+  evidence?: RiskScenarioStressEvidence;
+};
+
+export type RiskScenarioStressEvidence = {
+  requested_report_date: string;
+  actual_risk_date: string | null;
+  date_status: "verified" | "unknown" | "conflict";
+  fallback_status: "none" | "fallback" | "unknown";
+  fallback_date: string | null;
+  metric_id: "MTR-RSK-001R";
+  scope_label: string;
+  scope_rule_ids?: string[];
+  coverage: {
+    status: "complete" | "incomplete" | "unknown";
+    total_position_count: number | null;
+    included_position_count: number | null;
+    excluded_position_count: number | null;
+    missing_risk_position_count: number | null;
+    reasons: string[];
+  };
+  amount_display_allowed: boolean;
+  human_review_required: true;
 };
 
 export type PlaceholderSnapshot = {

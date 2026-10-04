@@ -46,6 +46,15 @@ RULE_VERSION = "rv_backfill_macro_v1"
 MIN_ROW_THRESHOLD = 10
 FETCH_MAX_ATTEMPTS = 3
 FETCH_RETRY_DELAY_SECONDS = 1.0
+TUSHARE_PRO_API_URL = "https://api.tushare.pro"
+TUSHARE_PRO_TIMEOUT_SECONDS = (10.0, 30.0)
+_TUSHARE_MACRO_FIELDS: dict[str, str] = {
+    "cn_cpi": "month,nt_yoy",
+    "cn_gdp": "quarter,gdp,gdp_yoy",
+    "cn_m": "month,m0,m0_mom,m0_yoy,m1,m1_mom,m1_yoy,m2,m2_mom,m2_yoy",
+    "cn_pmi": "month,pmi010000,pmi010500",
+    "sf_month": "month,inc_month,stk_endval",
+}
 # 源级取数失败（vendor/网络/IO/解析/duckdb 读）允许重试并降级到下一数据源；
 # 其余异常（如 TypeError/KeyError 一类代码缺陷）必须直接抛出，不得吞掉。
 # OSError 已覆盖 requests 异常（requests.RequestException 继承 IOError）。
@@ -1375,11 +1384,11 @@ def _fetch_from_tushare(
     if not token:
         raise RuntimeError("MOSS_TUSHARE_TOKEN is not configured.")
 
-    ts = import_tushare_pro()
-    pro = ts.pro_api(token)
     name = series_name
 
     if series_id.startswith("NCD.SHIBOR.") or "SHIBOR" in name.upper():
+        ts = import_tushare_pro()
+        pro = ts.pro_api(token)
         time.sleep(0.3)
         return _tushare_shibor_rows(pro, series_id=series_id, series_name=series_name, start_date=start_date, end_date=end_date)
 
@@ -1389,14 +1398,17 @@ def _fetch_from_tushare(
 
     request_start = _tushare_request_start_month(tushare_api, name, start_date)
     time.sleep(0.3)
-    frame = {
-        "cn_cpi": pro.cn_cpi,
-        "cn_gdp": pro.cn_gdp,
-        "cn_m": lambda: pro.cn_m(start_m=request_start, end_m=end_date[:7].replace("-", "")),
-        "cn_pmi": lambda: pro.cn_pmi(start_m=request_start, end_m=end_date[:7].replace("-", "")),
-        "sf_month": lambda: pro.sf_month(start_m=request_start, end_m=end_date[:7].replace("-", "")),
-    }[tushare_api]()
-    records = _records_from_frame(frame)
+    request_params: dict[str, str] = {}
+    if tushare_api in {"cn_m", "cn_pmi", "sf_month"}:
+        request_params = {
+            "start_m": request_start,
+            "end_m": end_date[:7].replace("-", ""),
+        }
+    records = _fetch_tushare_macro_records(
+        api_name=tushare_api,
+        token=token,
+        params=request_params,
+    )
     mapped = _map_tushare_records(tushare_api, records, series_name=series_name)
     return [
         BackfillRow(
@@ -1410,6 +1422,58 @@ def _fetch_from_tushare(
         for row in mapped
         if start_date <= row["trade_date"] <= end_date
     ]
+
+
+def _fetch_tushare_macro_records(
+    *,
+    api_name: str,
+    token: str,
+    params: dict[str, str],
+) -> list[dict[str, object]]:
+    fields = _TUSHARE_MACRO_FIELDS.get(api_name)
+    if fields is None:
+        raise ValueError(f"Unsupported Tushare macro API: {api_name}")
+
+    session = requests.Session()
+    session.trust_env = False
+    try:
+        response = session.post(
+            TUSHARE_PRO_API_URL,
+            json={
+                "api_name": api_name,
+                "token": token,
+                "params": params,
+                "fields": fields,
+            },
+            timeout=TUSHARE_PRO_TIMEOUT_SECONDS,
+            verify=True,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    finally:
+        session.close()
+
+    if not isinstance(payload, dict):
+        raise ValueError("Tushare macro response must be an object")
+    if payload.get("code") != 0:
+        raise RuntimeError(str(payload.get("msg") or f"Tushare {api_name} request failed."))
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise ValueError("Tushare macro response data must be an object")
+    response_fields = data.get("fields")
+    items = data.get("items")
+    if not isinstance(response_fields, list) or not all(isinstance(field, str) for field in response_fields):
+        raise ValueError("Tushare macro response fields must be a string list")
+    if not isinstance(items, list):
+        raise ValueError("Tushare macro response items must be a list")
+
+    records: list[dict[str, object]] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, (list, tuple)) or len(item) != len(response_fields):
+            raise ValueError(f"Tushare macro response row {index} does not align with fields")
+        records.append(dict(zip(response_fields, item, strict=True)))
+    return records
 
 
 def _tushare_shibor_rows(pro: Any, *, series_id: str, series_name: str, start_date: str, end_date: str) -> list[BackfillRow]:

@@ -3,13 +3,16 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Protocol
 
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.home_macro_release_context_repo import (
     HomeMacroObservation,
     HomeMacroSeriesRead,
 )
+from backend.app.repositories.system_read_publication_repo import system_read_cache_identity
 from backend.app.schemas.home_macro_release_context import (
     HomeMacroCoverage,
     HomeMacroHistoryItem,
@@ -17,11 +20,50 @@ from backend.app.schemas.home_macro_release_context import (
     HomeMacroReleaseContextEnvelope,
     HomeMacroReleaseContextResult,
 )
-from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.formal_result_runtime import VendorStatus, build_result_envelope
 from backend.app.services.home_macro_period_freshness import (
     home_macro_freshness_age_days,
 )
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# WP-A2: envelope-level cache for `HomeMacroReleaseContextService.build_envelope`.
+# The route re-instantiates the service on every request, so caching must be at
+# the module level; the key is derived from (window_start, window_end,
+# history_limit, bindings file identity, repository DuckDB identity). All inputs
+# are fingerprintable so we use the long TTL. `functools.lru_cache` on the
+# bindings loader keeps repeated `_Bindings.model_validate_json` off the hot
+# path when the file on disk has not changed.
+_HOME_MACRO_ENVELOPE_CACHE_TTL_SECONDS = 900.0
+_HOME_MACRO_ENVELOPE_CACHE: InMemoryTTLCache[tuple[object, ...], HomeMacroReleaseContextEnvelope] = get_runtime_cache(
+    "home_macro_release_context.envelope",
+    ttl_seconds=_HOME_MACRO_ENVELOPE_CACHE_TTL_SECONDS,
+)
+
+
+def clear_home_macro_release_context_runtime_cache() -> None:
+    _HOME_MACRO_ENVELOPE_CACHE.clear()
+    _load_bindings_cached.cache_clear()
+
+
+def _file_identity(path: Path) -> tuple[str, int, int] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=8)
+def _load_bindings_cached(identity: tuple[str, int, int]) -> _Bindings:
+    return _Bindings.model_validate_json(Path(identity[0]).read_text(encoding="utf-8"))
+
+
+def _duckdb_identity_of_repository(repository: _Repository) -> tuple[str, int, int] | None:
+    path = getattr(repository, "_duckdb_path", None)
+    if not isinstance(path, Path):
+        return None
+    return _file_identity(Path(resolve_effective_read_path(path)))
 
 
 class _Repository(Protocol):
@@ -110,7 +152,41 @@ class HomeMacroReleaseContextService:
 
     def __init__(self, *, repository: _Repository, bindings_path: str | Path) -> None:
         self._repository = repository
-        self._bindings = _Bindings.model_validate_json(Path(bindings_path).read_text(encoding="utf-8"))
+        self._bindings_path = Path(bindings_path)
+        identity = _file_identity(self._bindings_path)
+        if identity is not None:
+            self._bindings_identity: tuple[str, int, int] | None = identity
+            self._bindings = _load_bindings_cached(identity)
+        else:
+            self._bindings_identity = None
+            self._bindings = _Bindings.model_validate_json(
+                self._bindings_path.read_text(encoding="utf-8")
+            )
+
+    def _envelope_cache_key(
+        self,
+        window_start_date: date,
+        window_end_date: date,
+        history_limit: int,
+    ) -> tuple[object, ...] | None:
+        if (
+            self._bindings_identity is None
+            or self._bindings_identity != _file_identity(self._bindings_path)
+        ):
+            return None
+        duckdb_identity = _duckdb_identity_of_repository(self._repository)
+        if duckdb_identity is None:
+            return None
+        return (
+            "home_macro_release_context.envelope",
+            "cv_home_macro_release_context_v1",
+            self._bindings.rule_version,
+            window_start_date.isoformat(),
+            window_end_date.isoformat(),
+            int(history_limit),
+            self._bindings_identity,
+            duckdb_identity,
+        )
 
     def build_envelope(
         self,
@@ -118,12 +194,47 @@ class HomeMacroReleaseContextService:
         window_start_date: date,
         window_end_date: date,
         history_limit: int = 8,
+        force_refresh: bool = False,
     ) -> HomeMacroReleaseContextEnvelope:
         if window_end_date < window_start_date:
             raise ValueError("window_end_date must be on or after window_start_date")
         if history_limit <= 0:
             raise ValueError("history_limit must be positive")
 
+        cache_key = self._envelope_cache_key(window_start_date, window_end_date, history_limit)
+        if cache_key is not None and not force_refresh:
+            return _HOME_MACRO_ENVELOPE_CACHE.get_or_set(
+                cache_key,
+                lambda: self._build_envelope_uncached(
+                    window_start_date=window_start_date,
+                    window_end_date=window_end_date,
+                    history_limit=history_limit,
+                ),
+            )
+        generation = _HOME_MACRO_ENVELOPE_CACHE.generation()
+        read_identity = system_read_cache_identity(cache_key)
+        value = self._build_envelope_uncached(
+            window_start_date=window_start_date,
+            window_end_date=window_end_date,
+            history_limit=history_limit,
+        )
+        if (
+            cache_key is not None
+            and cache_key == self._envelope_cache_key(
+                window_start_date, window_end_date, history_limit,
+            )
+            and read_identity == system_read_cache_identity(cache_key)
+        ):
+            _HOME_MACRO_ENVELOPE_CACHE.set(cache_key, value, generation=generation)
+        return value
+
+    def _build_envelope_uncached(
+        self,
+        *,
+        window_start_date: date,
+        window_end_date: date,
+        history_limit: int,
+    ) -> HomeMacroReleaseContextEnvelope:
         items: list[HomeMacroHistoryItem] = []
         observations: list[HomeMacroObservation] = []
         valid_observations: list[HomeMacroObservation] = []
@@ -155,6 +266,7 @@ class HomeMacroReleaseContextService:
         tables_used = sorted({observation.table for observation in observations})
         as_of = max((item.observation_date for item in valid_observations), default=None)
         automatic_items = [item for item in items if item.region == "CN"]
+        vendor_status: VendorStatus
         if not valid_observations:
             vendor_status = "vendor_unavailable"
         elif any(item.source_status in {"stale", "error"} for item in automatic_items):

@@ -4,8 +4,8 @@ from __future__ import annotations
 from typing import Annotated
 
 from backend.app.api.deps import ensure_read_allowed
-from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
+from backend.app.observability.perf_logging import timed_api_call
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.dashboard_service import get_core_metrics, get_daily_changes
 from fastapi import APIRouter, Depends, Query

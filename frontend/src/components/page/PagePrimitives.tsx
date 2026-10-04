@@ -82,13 +82,6 @@ export function PageHeader({
   );
 }
 
-export type PageSectionLeadProps = {
-  eyebrow: string;
-  title: string;
-  description: string;
-  style?: CSSProperties;
-};
-
 export type PageFilterTrayProps = {
   children: ReactNode;
   testId?: string;
@@ -120,21 +113,6 @@ export type PageV2SurfacePanelProps = {
   testId?: string;
   style?: CSSProperties;
 };
-
-export function PageSectionLead({
-  eyebrow,
-  title,
-  description,
-  style,
-}: PageSectionLeadProps) {
-  return (
-    <div className={styles.sectionLead} style={style}>
-      <span className={styles.sectionLeadEyebrow}>{eyebrow}</span>
-      <h2 className={styles.sectionLeadTitle}>{title}</h2>
-      <p className={styles.sectionLeadDescription}>{description}</p>
-    </div>
-  );
-}
 
 export function PageFilterTray({ children, testId, style }: PageFilterTrayProps) {
   return (
@@ -289,42 +267,6 @@ export function DataStatusStrip({ children, testId, className, style }: DataStat
       style={style}
     >
       {children}
-    </div>
-  );
-}
-
-export type KpiBandProps = {
-  children: ReactNode;
-  testId?: string;
-  className?: string;
-  style?: CSSProperties;
-};
-
-export function KpiBand({ children, testId, className, style }: KpiBandProps) {
-  return (
-    <div
-      data-testid={testId}
-      className={cx(PAGE_V2_CONTRACT.kpiBandRoot, className)}
-      style={style}
-    >
-      {children}
-    </div>
-  );
-}
-
-export type KpiBandMetricProps = {
-  label: ReactNode;
-  value: ReactNode;
-  footer?: ReactNode;
-  testId?: string;
-};
-
-export function KpiBandMetric({ label, value, footer, testId }: KpiBandMetricProps) {
-  return (
-    <div data-testid={testId} className={PAGE_V2_CONTRACT.kpiMetricItem}>
-      <div className="moss-page-v2-kpi-metric__label">{label}</div>
-      <div className="moss-page-v2-kpi-metric__value">{value}</div>
-      {footer ? <div className="moss-page-v2-kpi-metric__footer">{footer}</div> : null}
     </div>
   );
 }

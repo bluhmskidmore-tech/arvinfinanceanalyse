@@ -960,9 +960,9 @@ export default function AverageBalanceView() {
       <header className="adb-topbar">
         <div className="adb-topbar-left">
           <div className="adb-title-row">
-            <h2 data-testid="average-balance-page-title" className="adb-page-title">
+            <h1 data-testid="average-balance-page-title" className="adb-page-title">
               日均分析
-            </h2>
+            </h1>
             <CalibrationBadge calibration={comparisonQuery.data?.calibration} />
           </div>
           <div className="adb-topbar-meta">
@@ -1154,26 +1154,18 @@ export default function AverageBalanceView() {
                     <section className="adb-sec">
                       <AdbSectionHead title="期末时点与日均偏离对比" />
                       <div className="adb-two-col">
-                        <div className="adb-panel adb-chart-panel">
-                          <div className="adb-subhead">期末时点与日均偏离对比 · 资产</div>
-                          <AdbComparisonChart rows={comparisonAssetRows} />
-                        </div>
-                        <div className="adb-panel adb-chart-panel">
-                          <div className="adb-subhead">期末时点与日均偏离对比 · 负债</div>
-                          <AdbComparisonChart rows={comparisonLiabilityRows} />
-                        </div>
+                        <AdbComparisonChart title="资产端偏离对比" rows={comparisonAssetRows} />
+                        <AdbComparisonChart title="负债端偏离对比" rows={comparisonLiabilityRows} />
                       </div>
                     </section>
 
                     {trendQuery.data?.trend && trendQuery.data.trend.length > 0 ? (
                       <section className="adb-sec" data-testid="adb-daily-trend-chart">
-                        <AdbSectionHead
+                        <AdbDailyTrendChart
                           title="区间日均余额走势"
-                          meta="细线为日余额，粗线为 30 日移动均线，用于识别区间内规模异常波动"
+                          question="细线为日余额，粗线为 30 日移动均线，用于识别区间内规模异常波动"
+                          trend={trendQuery.data.trend}
                         />
-                        <div className="adb-panel adb-chart-panel">
-                          <AdbDailyTrendChart trend={trendQuery.data.trend} />
-                        </div>
                       </section>
                     ) : null}
 
@@ -1320,13 +1312,11 @@ export default function AverageBalanceView() {
 
                     {monthlyMatrixMonths.length > 1 ? (
                       <section className="adb-sec" data-testid="adb-monthly-nim-trend">
-                        <AdbSectionHead
+                        <AdbNimTrendChart
                           title="月度利差走势"
-                          meta="加权YTM vs 加权票息 vs NIM利差"
+                          question="加权YTM vs 加权票息 vs NIM利差"
+                          months={monthlyMatrixMonths}
                         />
-                        <div className="adb-panel adb-chart-panel">
-                          <AdbNimTrendChart months={monthlyMatrixMonths} />
-                        </div>
                       </section>
                     ) : null}
 
@@ -1432,9 +1422,8 @@ export default function AverageBalanceView() {
                         />
                         <div className="adb-two-col">
                           <div className="adb-panel">
-                            <div className="adb-subhead">资产端分类明细</div>
                             <AdbMonthlyHorizontalChart
-                              className="adb-chart-block"
+                              flat
                               rows={monthlyAssetRows}
                               title={`${selectedMonthData.month_label} 资产端`}
                               variant="asset"
@@ -1442,9 +1431,8 @@ export default function AverageBalanceView() {
                             <AdbMonthlyBreakdownTable rows={selectedMonthData.breakdown_assets} columns={monthlyAssetColumns} rowKeyPrefix="asset-deep" />
                           </div>
                           <div className="adb-panel">
-                            <div className="adb-subhead">负债端分类明细</div>
                             <AdbMonthlyHorizontalChart
-                              className="adb-chart-block"
+                              flat
                               rows={monthlyLiabilityRows}
                               title={`${selectedMonthData.month_label} 负债端`}
                               variant="liability"

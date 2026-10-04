@@ -264,10 +264,205 @@ def test_codex_verify_page_supports_dashboard_home_dry_run():
     assert "Codex verify page: dashboard-home" in output
     assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_home_snapshot_endpoint.py" in output
-    assert "DashboardPage.test.tsx" in output
-    assert "dashboardCockpitHomeModel.test.ts" in output
+    assert "DashboardHomePage.test.tsx" in output
+    assert "dashboardHomeSnapshotAdapter.test.ts" in output
+    assert "npm.cmd run typecheck" in output
+    assert "npm.cmd run debt:audit" in output
+    assert "npm.cmd run build" in output
     assert "Codex verify page dry run complete. Pass -Run to execute checks." in output
     assert "Codex verify page checks passed." not in output
+
+
+def test_codex_verify_home_feedback_is_scoped_and_uses_existing_tests():
+    output = run_powershell_script(
+        "codex-verify-page.ps1", "-PageSlug", "dashboard-home", "-HomeFeedback"
+    )
+    assert "not page acceptance" in output
+    command = next(line for line in output.splitlines() if "npm.cmd run test --" in line)
+    paths = command.split("npm.cmd run test --", 1)[1].split()
+    assert len(paths) == len(set(paths))
+    assert "src/test/DashboardHomePage.test.tsx" in paths
+    assert "src/features/workbench/dashboard-home/dashboardHomeSnapshotAdapter.test.ts" in paths
+    assert "src/features/workbench/pages/useDashboardSnapshotBoundary.test.tsx" in paths
+    assert all((ROOT / "frontend" / path).is_file() for path in paths)
+    assert "python -m pytest" not in output
+    assert "npm.cmd run build" not in output
+    assert "npm.cmd run debt:audit" not in output
+    assert "npm.cmd run typecheck" not in output
+
+
+def test_codex_verify_home_feedback_rejects_other_pages():
+    completed = run_powershell_script_result(
+        "codex-verify-page.ps1", "-PageSlug", "balance-analysis", "-HomeFeedback"
+    )
+    assert completed.returncode != 0
+    assert "HomeFeedback requires -PageSlug dashboard-home" in completed.stderr
+
+
+def test_codex_verify_home_feedback_propagates_test_failure(tmp_path):
+    # A fake runner proves the wrapper cannot turn a failing test command green.
+    (tmp_path / "npm.cmd").write_text("@exit /b 9\n", encoding="ascii")
+    completed = run_powershell_script_result(
+        "codex-verify-page.ps1", "-PageSlug", "dashboard-home", "-HomeFeedback", "-Run",
+        env_overrides={"PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]},
+    )
+    assert completed.returncode != 0
+    assert "failed with exit code 9" in completed.stderr
+    assert "checks passed" not in completed.stdout
+    assert "[Timing] Dashboard frontend tests:" in completed.stdout
+
+
+def test_codex_verify_frontend_feedback_plans_only_explicit_files_once():
+    test_path = "src/features/workbench/dashboard-home/dashboardHomeBodyView.test.ts"
+    lint_path = "src/features/workbench/dashboard-home/dashboardHomeBodyView.ts"
+    output = run_powershell_script(
+        "codex-verify-page.ps1", "-PageSlug", "dashboard-home", "-FrontendFeedback",
+        "-FrontendTests", f"{test_path},{test_path}", "-LintFiles", f"{lint_path},{lint_path}",
+    )
+    commands = [line for line in output.splitlines() if line.startswith("[Frontend")]
+    assert len(commands) == 2
+    assert commands[0].endswith(f"npm.cmd run test -- {test_path}")
+    assert commands[1].endswith(f"node node_modules/eslint/bin/eslint.js {lint_path}")
+    assert "not page acceptance" in output
+    assert "python -m pytest" not in output
+    assert "npm.cmd run typecheck" not in output
+    assert "npm.cmd run debt:audit" not in output
+    assert "npm.cmd run build" not in output
+    assert "test:a11y-smoke" not in output
+
+
+def test_codex_verify_frontend_feedback_typecheck_is_explicit():
+    output = run_powershell_script(
+        "codex-verify-page.ps1", "-PageSlug", "balance-analysis", "-FrontendFeedback", "-Typecheck",
+    )
+    commands = [line for line in output.splitlines() if line.startswith("[Frontend")]
+    assert commands == ["[Frontend typecheck] npm.cmd run typecheck"]
+    assert "python -m pytest" not in output
+    assert "npm.cmd run debt:audit" not in output
+    assert "npm.cmd run build" not in output
+
+
+def test_codex_verify_frontend_feedback_rejects_unknown_parameters_before_running():
+    completed = run_powershell_script_result(
+        "codex-verify-page.ps1", "-PageSlug", "dashboard-home", "-FrontendFeedbak", "-Run",
+    )
+    assert completed.returncode != 0
+    assert "FrontendFeedbak" in completed.stderr
+    assert "[MCP contract tests]" not in completed.stdout
+    assert "[Dashboard backend" not in completed.stdout
+    assert "[Timing]" not in completed.stdout
+
+
+def test_codex_verify_home_feedback_can_replace_default_tests_and_add_lint():
+    test_path = "src/features/workbench/dashboard-home/dashboardHomeBodyView.test.ts"
+    lint_path = "src/features/workbench/dashboard-home/dashboardHomeBodyView.ts"
+    output = run_powershell_script(
+        "codex-verify-page.ps1", "-PageSlug", "dashboard-home", "-HomeFeedback",
+        "-FrontendTests", test_path, "-LintFiles", lint_path,
+    )
+    assert output.count("npm.cmd run test --") == 1
+    assert test_path in output
+    assert "src/test/DashboardHomePage.test.tsx" not in output
+    assert f"node node_modules/eslint/bin/eslint.js {lint_path}" in output
+    assert "npm.cmd run typecheck" not in output
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (("-FrontendFeedback",), "requires at least one"),
+        (("-FrontendTests", "src/test/DashboardHomePage.test.tsx"), "require -FrontendFeedback or -HomeFeedback"),
+        (("-FrontendTestNamePattern", "formal|scenario"), "require -FrontendFeedback or -HomeFeedback"),
+        (("-FrontendTestSerial",), "require -FrontendFeedback or -HomeFeedback"),
+        (("-FrontendFeedback", "-FrontendTestNamePattern", "formal|scenario"), "require explicit -FrontendTests"),
+        (("-FrontendFeedback", "-FrontendTestSerial"), "require explicit -FrontendTests"),
+        (("-Typecheck",), "require -FrontendFeedback or -HomeFeedback"),
+        (("-FrontendFeedback", "-HomeFeedback"), "cannot be combined"),
+        (("-FrontendFeedback", "-FrontendTests", "src"), "must name a file"),
+        (("-FrontendFeedback", "-LintFiles", "src/missing-feedback-file.ts"), "must name a file"),
+        (("-FrontendFeedback", "-LintFiles", "../scripts/codex-verify-page.ps1"), "must stay within frontend"),
+    ],
+)
+def test_codex_verify_frontend_feedback_rejects_ambiguous_scope(args, message):
+    completed = run_powershell_script_result("codex-verify-page.ps1", "-PageSlug", "dashboard-home", *args)
+    assert completed.returncode != 0
+    assert message in completed.stderr
+
+
+def test_codex_verify_frontend_feedback_runs_selected_checks_once_and_reports_results(tmp_path):
+    (tmp_path / "npm.cmd").write_text("@echo npm-called %*\n@exit /b 0\n", encoding="ascii")
+    (tmp_path / "node.cmd").write_text("@echo node-called %*\n@exit /b 0\n", encoding="ascii")
+    completed = run_powershell_script_result(
+        "codex-verify-page.ps1", "-PageSlug", "dashboard-home", "-FrontendFeedback", "-Run",
+        "-FrontendTests", "src/features/workbench/dashboard-home/dashboardHomeBodyView.test.ts",
+        "-LintFiles", "src/features/workbench/dashboard-home/dashboardHomeBodyView.ts",
+        env_overrides={"PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]},
+    )
+    completed.check_returncode()
+    assert completed.stdout.count("npm-called ") == 1
+    assert completed.stdout.count("node-called ") == 1
+    assert "[Result] Frontend selected tests: passed (exit 0)" in completed.stdout
+    assert "[Result] Frontend selected lint: passed (exit 0)" in completed.stdout
+    assert "[Timing] Frontend selected tests:" in completed.stdout
+    assert "[Timing] Frontend selected lint:" in completed.stdout
+    assert "Frontend feedback checks passed; not page acceptance." in completed.stdout
+
+
+@pytest.mark.parametrize("runner_exit_code", [0, 9])
+def test_codex_verify_frontend_feedback_passes_pattern_as_one_argument_and_keeps_failure(
+    tmp_path, runner_exit_code,
+):
+    test_paths = [
+        "src/test/ProductCategoryPnlPage.test.tsx",
+        "src/test/ProductCategoryPnlBacktestFormalHistory.test.tsx",
+        "src/features/product-category-pnl/pages/useProductCategoryRefresh.test.tsx",
+    ]
+    pattern = "formal monthly operating backtest|scenario sensitivity only when requested"
+    arguments_path = tmp_path / "arguments.json"
+    recorder = tmp_path / "record-arguments.cjs"
+    recorder.write_text(
+        "require('fs').writeFileSync("
+        + json.dumps(str(arguments_path))
+        + ", JSON.stringify(process.argv.slice(2)));\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "npm.cmd").write_text(
+        f'@node.exe "{recorder}" %*\n@exit /b {runner_exit_code}\n',
+        encoding="ascii",
+    )
+    completed = run_powershell_script_result(
+        "codex-verify-page.ps1", "-PageSlug", "product-category-pnl", "-FrontendFeedback", "-Run",
+        "-FrontendTests", ",".join(test_paths), "-FrontendTestNamePattern", pattern,
+        "-FrontendTestSerial",
+        env_overrides={"PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]},
+    )
+    assert json.loads(arguments_path.read_text(encoding="utf-8")) == [
+        "run", "test", "--", *test_paths, "-t", pattern,
+        "--maxWorkers", "1", "--no-file-parallelism",
+    ]
+    assert completed.stdout.count("[Frontend selected tests]") == 1
+    assert "[Timing] Frontend selected tests:" in completed.stdout
+    if runner_exit_code == 0:
+        completed.check_returncode()
+        assert "[Result] Frontend selected tests: passed (exit 0)" in completed.stdout
+    else:
+        assert completed.returncode != 0
+        assert "failed with exit code 9" in completed.stderr
+        assert "[Result] Frontend selected tests: failed (exit 9)" in completed.stdout
+        assert "checks passed" not in completed.stdout
+
+
+def test_codex_verify_frontend_feedback_propagates_lint_failure(tmp_path):
+    (tmp_path / "node.cmd").write_text("@exit /b 7\n", encoding="ascii")
+    completed = run_powershell_script_result(
+        "codex-verify-page.ps1", "-FrontendFeedback", "-Run",
+        "-LintFiles", "src/features/workbench/dashboard-home/dashboardHomeBodyView.ts",
+        env_overrides={"PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]},
+    )
+    assert completed.returncode != 0
+    assert "failed with exit code 7" in completed.stderr
+    assert "[Result] Frontend selected lint: failed (exit 7)" in completed.stdout
+    assert "checks passed" not in completed.stdout
 
 
 def test_codex_verify_page_supports_balance_analysis_dry_run():
@@ -1205,14 +1400,19 @@ def test_codex_page_readiness_supports_positions_dry_run(readiness_env_overrides
 
     assert "MOSS page readiness gate: positions" in output
     assert "candidate_or_pending" in output
-    assert "golden_sample_boundary: pass" in output
-    assert "missing" in output
+    # PAGE-POS-001 now binds MTR-POS-001/002 candidate rows to the capture-ready
+    # GS-POSITIONS-*-LIST-A samples, so the golden gate reports page DTO evidence
+    # awaiting approval instead of a missing dedicated sample.
+    assert "golden_sample_boundary: pass (page_dto_only)" in output
+    assert "missing" not in output
     assert "codex-page-smoke.ps1 -PageSlug positions" in output
     assert "codex-verify-page.ps1 -PageSlug positions -Run" in output
     assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" in output
     assert "Candidate metric dictionary-level approval remains pending." in output
-    assert "dedicated golden sample is missing" in output
+    assert "dedicated golden sample is missing" not in output
+    assert "Golden sample approval is captured-awaiting-approval" in output
+    assert "Existing golden sample is supporting or page DTO evidence only" in output
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 

@@ -21,12 +21,13 @@
 - `result.report_date == "2025-12-31"`.
 - `result.position_scope == "all"`.
 - `result.currency_basis == "CNY"`.
-- `MTR-BAL-001 == "792.00000000"`.
-- `MTR-BAL-002 == "720.00000000"`.
-- `MTR-BAL-003 == "50.40000000"`.
+- `MTR-BAL-001 == "792.00000000"`（API 兼容市值毛额；`720.00000000 + 72.00000000`，不是资产规模或净头寸）.
+- `MTR-BAL-002 == "720.00000000"`（API 兼容摊余成本毛额；`648.00000000 + 72.00000000`）.
+- `MTR-BAL-003 == "50.40000000"`（API 兼容应计利息毛额；`36.00000000 + 14.40000000`）.
+- 页面主展示的分项字段冻结为：资产/负债市值 `720.00000000` / `72.00000000`、资产/负债摊余成本 `648.00000000` / `72.00000000`、资产/负债应计利息 `36.00000000` / `14.40000000`；这些分项当前不自动批准新的 `metric_id`.
 - `MTR-BAL-101 == 2`.
 - `MTR-BAL-102 == 2`.
 
 ## Reconciliation
 
-- Reconcile headline totals with `GS-BAL-WORKBOOK-A`.
+- Reconcile compatibility gross fields and side-specific page disclosures with `GS-BAL-WORKBOOK-A`; primary pages must render side-specific disclosures rather than label `total_*` gross fields as asset scale or net balance.

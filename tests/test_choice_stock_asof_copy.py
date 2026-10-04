@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import pytest
@@ -46,13 +47,31 @@ def _seed_complete_choice_date(
         ("limit_up_quality", "daily_limit_flags", "completed_tushare_fallback"),
         ("limit_up_quality", "point_in_time_limit_streaks", "completed"),
     ]
+    pit_request_evidence = {
+        "a_share_universe_sector_001004": (
+            "sector", "001004", json.dumps(["001004", as_of_date]), "{}",
+        ),
+        "sw2021_industry_membership": (
+            "css", "SW2021,SW2021CODE", json.dumps(["000001.SZ", "SW2021,SW2021CODE"]),
+            json.dumps({"EndDate": as_of_date, "ClassiFication": 1}),
+        ),
+        "point_in_time_limit_streaks": (
+            "css", "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS",
+            json.dumps(["000001.SZ", "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS"]),
+            json.dumps({"TradeDate": as_of_date}),
+        ),
+    }
     conn.executemany(
         """
         insert into choice_stock_request_audit values
-          (?, ?, ?, ?, 'csd', 'indicator', '{}', '{}', ?, 1, 0, '', ?, ?, 'rv_choice_stock_materialization_front_layer_v1')
+          (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, '', ?, ?, 'rv_choice_stock_materialization_front_layer_v1')
         """,
         [
-            (run_id, as_of_date, family, field_key, status, source_version, vendor_version)
+            (
+                run_id, as_of_date, family, field_key,
+                *pit_request_evidence.get(field_key, ("csd", "indicator", "[]", "{}")),
+                status, source_version, vendor_version,
+            )
             for family, field_key, status in audits
         ],
     )
@@ -297,3 +316,149 @@ def test_choice_stock_asof_copy_main_emits_json(monkeypatch: pytest.MonkeyPatch,
 
     assert module.main() == 0
     assert json.loads(capsys.readouterr().out) == {"status": "completed", "inserted_counts": {}}
+
+
+def _copy_state(path: Path) -> dict[str, list[tuple[object, ...]]]:
+    with duckdb.connect(str(path), read_only=True) as conn:
+        return {
+            str(table): conn.execute(f"select * from {table} order by all").fetchall()
+            for (table,) in conn.execute("show tables").fetchall()
+        }
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_choice_stock_asof_copy_rejects_single_day_source_missing_target_history(
+    tmp_path: Path, dry_run: bool,
+) -> None:
+    module = load_module(
+        "scripts.copy_choice_stock_asof_from_duckdb",
+        "scripts/copy_choice_stock_asof_from_duckdb.py",
+    )
+    source_path = tmp_path / "single-day-source.duckdb"
+    target_path = tmp_path / "target-with-history.duckdb"
+    as_of_date = "2026-08-20"
+    with _open_choice_db(source_path) as conn:
+        _seed_complete_choice_date(conn, as_of_date=as_of_date, run_id="source-run")
+        conn.execute("delete from choice_stock_daily_observation where trade_date <> ?", [as_of_date])
+    with _open_choice_db(target_path) as conn:
+        _seed_target_old_rows(conn, as_of_date=as_of_date)
+    before = _copy_state(target_path)
+
+    with pytest.raises(RuntimeError, match="source daily window does not cover target keys"):
+        module.copy_choice_stock_asof_from_duckdb(
+            source_duckdb_path=source_path,
+            target_duckdb_path=target_path,
+            as_of_date=as_of_date,
+            governance_dir=tmp_path / "governance",
+            dry_run=dry_run,
+        )
+
+    assert _copy_state(target_path) == before
+
+
+def test_choice_stock_asof_copy_rejects_missing_stock_on_source_date(tmp_path: Path) -> None:
+    module = load_module(
+        "scripts.copy_choice_stock_asof_from_duckdb",
+        "scripts/copy_choice_stock_asof_from_duckdb.py",
+    )
+    source_path = tmp_path / "source.duckdb"
+    target_path = tmp_path / "target.duckdb"
+    as_of_date = "2026-08-20"
+    with _open_choice_db(source_path) as conn:
+        _seed_complete_choice_date(conn, as_of_date=as_of_date, run_id="source-run")
+    with _open_choice_db(target_path) as conn:
+        _seed_target_old_rows(conn, as_of_date=as_of_date)
+        conn.execute(
+            "insert into choice_stock_daily_observation "
+            "select trade_date, '000002.SZ', * exclude (trade_date, stock_code) "
+            "from choice_stock_daily_observation where trade_date = ?",
+            [as_of_date],
+        )
+    before = _copy_state(target_path)
+
+    with pytest.raises(RuntimeError, match="source daily window does not cover target keys"):
+        module.copy_choice_stock_asof_from_duckdb(
+            source_duckdb_path=source_path,
+            target_duckdb_path=target_path,
+            as_of_date=as_of_date,
+            governance_dir=tmp_path / "governance",
+        )
+
+    assert _copy_state(target_path) == before
+
+
+def test_choice_stock_asof_copy_rolls_back_after_partial_table_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_module(
+        "scripts.copy_choice_stock_asof_from_duckdb",
+        "scripts/copy_choice_stock_asof_from_duckdb.py",
+    )
+    source_path = tmp_path / "source.duckdb"
+    target_path = tmp_path / "target.duckdb"
+    as_of_date = "2026-08-20"
+    with _open_choice_db(source_path) as conn:
+        _seed_complete_choice_date(conn, as_of_date=as_of_date, run_id="source-run")
+    with _open_choice_db(target_path) as conn:
+        _seed_target_old_rows(conn, as_of_date=as_of_date)
+    before = _copy_state(target_path)
+    original_insert = module._insert_source_rows
+
+    def fail_second_insert(conn: duckdb.DuckDBPyConnection, spec: Any) -> int:
+        if spec.table == "choice_stock_request_audit":
+            raise RuntimeError("simulated copy interruption")
+        return original_insert(conn, spec)
+
+    monkeypatch.setattr(module, "_insert_source_rows", fail_second_insert)
+    with pytest.raises(RuntimeError, match="simulated copy interruption"):
+        module.copy_choice_stock_asof_from_duckdb(
+            source_duckdb_path=source_path,
+            target_duckdb_path=target_path,
+            as_of_date=as_of_date,
+            governance_dir=tmp_path / "governance",
+        )
+
+    assert _copy_state(target_path) == before
+
+
+def test_choice_stock_asof_copy_rechecks_coverage_before_deleting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_module(
+        "scripts.copy_choice_stock_asof_from_duckdb",
+        "scripts/copy_choice_stock_asof_from_duckdb.py",
+    )
+    source_path = tmp_path / "source.duckdb"
+    target_path = tmp_path / "target.duckdb"
+    as_of_date = "2026-08-20"
+    with _open_choice_db(source_path) as conn:
+        _seed_complete_choice_date(conn, as_of_date=as_of_date, run_id="source-run")
+    with _open_choice_db(target_path) as conn:
+        _seed_target_old_rows(conn, as_of_date=as_of_date)
+    before = _copy_state(target_path)
+    original_check = module._assert_source_covers_target_daily_keys
+    check_count = 0
+
+    def changed_target_before_second_check(conn: duckdb.DuckDBPyConnection, **kwargs: Any) -> None:
+        nonlocal check_count
+        check_count += 1
+        if check_count == 2:
+            conn.execute(
+                "insert into choice_stock_daily_observation "
+                "select trade_date, '000002.SZ', * exclude (trade_date, stock_code) "
+                "from choice_stock_daily_observation where trade_date = ?",
+                [as_of_date],
+            )
+        original_check(conn, **kwargs)
+
+    monkeypatch.setattr(module, "_assert_source_covers_target_daily_keys", changed_target_before_second_check)
+    with pytest.raises(RuntimeError, match="source daily window does not cover target keys"):
+        module.copy_choice_stock_asof_from_duckdb(
+            source_duckdb_path=source_path,
+            target_duckdb_path=target_path,
+            as_of_date=as_of_date,
+            governance_dir=tmp_path / "governance",
+        )
+
+    assert check_count == 2
+    assert _copy_state(target_path) == before

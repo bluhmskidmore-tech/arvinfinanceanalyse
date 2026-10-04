@@ -33,7 +33,7 @@
  */
 import { useRef, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -319,6 +319,9 @@ describe("LedgerPnlDateSemanticsContract / flow 与 point 日期基准的标签-
     );
 
     await screen.findByTestId("ledger-indicator-summary-section-financial");
+    // 面板默认「当月聚焦」只渲染一个期间组；本用例校验的是多期间列绑定，先展开全部月份。
+    const monthToggle = await screen.findByTestId("ledger-indicator-summary-month-toggle");
+    fireEvent.click(within(monthToggle).getByRole("button"));
     const row = screen.getByTestId("ledger-indicator-summary-row-period-binding");
     const cells = within(row)
       .getAllByRole("cell")
@@ -455,6 +458,8 @@ function createDateSemanticsPageClient() {
         total_pnl_cny: pageMoney("90000000.00"),
         total_pnl: pageMoney("100000000.00"),
         count: 0,
+        ledger_evidence_rows: 0,
+        average_only_row_count: 0,
       },
       items: [],
     },

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal
 
 from backend.app.core_finance.bond_analytics.common import resolve_period
 from backend.app.core_finance.calibers.enums import Basis, View
@@ -48,6 +49,30 @@ class ProductCategoryPnlAnalysisAdapter:
     def __init__(self, duckdb_path: str):
         self._repo = ProductCategoryPnlRepository(duckdb_path)
 
+    def read_formal_rows(self, report_date: str, view: str) -> list[dict[str, object]]:
+        """Read one period under the same rule and report-year FTP policy for every consumer."""
+        rows = self._repo.fetch_rows(report_date, view)
+        if not rows:
+            return []
+        persisted_rule_versions = {
+            str(row.get("rule_version") or "").strip() for row in rows
+        }
+        if persisted_rule_versions != {PRODUCT_CATEGORY_RULE_VERSION}:
+            raise ProductCategoryPnlStorageError(
+                "Product-category read model rule_version mismatch: "
+                f"expected {PRODUCT_CATEGORY_RULE_VERSION!r}, "
+                f"found {sorted(persisted_rule_versions)!r}; refresh is required."
+            )
+
+        from backend.app.core_finance.product_category_pnl import apply_baseline_ftp_rate_to_rows
+
+        persisted_baseline_rate = Decimal(str(rows[0]["baseline_ftp_rate_pct"]))
+        expected_baseline_rate = resolve_product_category_ftp_rate_pct(
+            date.fromisoformat(report_date),
+            persisted_baseline_rate,
+        )
+        return apply_baseline_ftp_rate_to_rows(rows, expected_baseline_rate)
+
     def execute(self, query: AnalysisQuery) -> AnalysisResultEnvelope:
         # Adapter narrows to formal+scenario only; analytical+management is INCLUDE in the
         # caliber matrix but this read-model path does not serve analytical basis yet.
@@ -71,29 +96,11 @@ class ProductCategoryPnlAnalysisAdapter:
             )
         view = query.view or "monthly"
         # Single storage path: formal read model. Scenario basis applies apply_scenario_to_rows on top.
-        rows = self._repo.fetch_rows(query.report_date, view)
+        rows = self.read_formal_rows(query.report_date, view)
         if not rows:
             raise ValueError(
                 f"No product-category read model rows for report_date={query.report_date} view={view}"
             )
-        persisted_rule_versions = {
-            str(row.get("rule_version") or "").strip() for row in rows
-        }
-        if persisted_rule_versions != {PRODUCT_CATEGORY_RULE_VERSION}:
-            raise ProductCategoryPnlStorageError(
-                "Product-category read model rule_version mismatch: "
-                f"expected {PRODUCT_CATEGORY_RULE_VERSION!r}, "
-                f"found {sorted(persisted_rule_versions)!r}; refresh is required."
-            )
-
-        from backend.app.core_finance.product_category_pnl import apply_baseline_ftp_rate_to_rows
-
-        persisted_baseline_rate = Decimal(str(rows[0]["baseline_ftp_rate_pct"]))
-        expected_baseline_rate = resolve_product_category_ftp_rate_pct(
-            date.fromisoformat(query.report_date),
-            persisted_baseline_rate,
-        )
-        rows = apply_baseline_ftp_rate_to_rows(rows, expected_baseline_rate)
         typed_rows = [_to_product_category_row(row) for row in rows]
         if query.basis == Basis.SCENARIO.value and query.scenario_rate_pct is not None:
             from backend.app.core_finance.product_category_pnl import apply_scenario_to_rows
@@ -313,7 +320,7 @@ def _build_product_category_attribution(
         share = Decimal("0")
         if denominator != 0:
             share = (row.business_net_income.copy_abs() / denominator) * Decimal("100")
-        tone = "neutral"
+        tone: Literal["positive", "neutral", "negative"] = "neutral"
         if row.business_net_income > 0:
             tone = "positive"
         elif row.business_net_income < 0:
@@ -324,7 +331,7 @@ def _build_product_category_attribution(
                 label=row.category_name,
                 dimension="product_category",
                 value=str(row.business_net_income),
-                share_pct=f"{share.quantize(Decimal('0.01'))}",
+                share_pct=f"{share.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}",
                 tone=tone,
                 drill_targets=[
                     DrillTarget(

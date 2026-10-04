@@ -45,8 +45,7 @@ export function ProductCategoryManagementMonitoring(props: {
           </span>
           <h3 id="product-category-management-monitor-title">经营修复监控</h3>
           <p>
-            把 1—6
-            月正式数据压缩为恢复阈值、改善质量、稳定性和经营节奏；不新增正式指标。
+            使用{surface.periodLabel}正式月度数据，观察恢复阈值、改善质量、稳定性和经营节奏；不新增正式指标。
           </p>
         </div>
         <span
@@ -80,7 +79,7 @@ export function ProductCategoryManagementMonitoring(props: {
           className="product-category-management-monitor__empty"
           role="status"
         >
-          正在加载 1—6 月正式月度数据与归因证据。
+          正在加载{surface.periodLabel}正式月度数据与归因证据。
         </div>
       ) : !monitoring ? (
         <div
@@ -101,22 +100,22 @@ export function ProductCategoryManagementMonitoring(props: {
               <small>收益率 {monitoring.tpl.currentYieldLabel}</small>
             </div>
             <div>
-              <span>负债 H1 净贡献</span>
-              <strong>{monitoring.liability.h1NetLabel}</strong>
+              <span>负债年内净贡献</span>
+              <strong>{monitoring.liability.yearNetLabel}</strong>
               <small>负拖累抵消 {monitoring.liability.offsetRatioLabel}</small>
             </div>
             <div>
-              <span>衍生品 H1 净营收</span>
-              <strong>{monitoring.derivatives.h1TotalLabel}</strong>
+              <span>衍生品年内净营收</span>
+              <strong>{monitoring.derivatives.yearTotalLabel}</strong>
               <small>
                 Top3 月份 {monitoring.derivatives.topThreeConcentrationLabel}
               </small>
             </div>
             <div>
-              <span>Q2 月均净营收</span>
-              <strong>{monitoring.runRate.q2MonthlyAverageLabel}</strong>
+              <span>{monitoring.runRate.recentPeriodLabel}月均净营收</span>
+              <strong>{monitoring.runRate.recentMonthlyAverageLabel}</strong>
               <small>
-                回到 H1 月均需 {monitoring.runRate.recoveryLiftLabel}
+                达到年内月均的变动 {monitoring.runRate.recoveryLiftLabel}
               </small>
             </div>
           </div>
@@ -127,7 +126,7 @@ export function ProductCategoryManagementMonitoring(props: {
                 <div>
                   <h4>TPL 恢复阈值</h4>
                   <p>
-                    固定 6 月规模 {monitoring.tpl.currentScaleLabel} 亿元、FTP
+                    固定{surface.currentMonthLabel}规模 {monitoring.tpl.currentScaleLabel} 亿元、FTP
                     与归因天数，静态反推收益率。
                   </p>
                 </div>
@@ -171,11 +170,11 @@ export function ProductCategoryManagementMonitoring(props: {
                 <div className="product-category-management-monitor__signal-head">
                   <h4>负债改善质量</h4>
                   <b className="is-negative">
-                    6 月 {monitoring.liability.currentMonthDeltaLabel}
+                    {surface.currentMonthLabel}环比 {monitoring.liability.currentMonthDeltaLabel}
                   </b>
                 </div>
                 <p>
-                  H1 正贡献 {monitoring.liability.positivePoolLabel}{" "}
+                  年内正贡献 {monitoring.liability.positivePoolLabel}{" "}
                   亿元，负拖累 {monitoring.liability.negativePoolLabel} 亿元，
                   抵消比例 {monitoring.liability.offsetRatioLabel}。
                 </p>
@@ -204,14 +203,15 @@ export function ProductCategoryManagementMonitoring(props: {
                 <div className="product-category-management-monitor__signal-head">
                   <h4>经营节奏</h4>
                   <b className="is-negative">
-                    差额 {monitoring.runRate.gapToH1Label}
+                    同期节奏差额 {monitoring.runRate.gapToYearPaceLabel}
                   </b>
                 </div>
                 <p>
-                  Q1 月均 {monitoring.runRate.q1MonthlyAverageLabel} 亿元，H1
-                  月均 {monitoring.runRate.h1MonthlyAverageLabel} 亿元； 若按 Q2
-                  月均静态延展，H2 为 {monitoring.runRate.h2AtQ2PaceLabel}{" "}
-                  亿元。
+                  Q1 月均 {monitoring.runRate.q1MonthlyAverageLabel} 亿元，年内
+                  月均 {monitoring.runRate.yearMonthlyAverageLabel} 亿元；
+                  {monitoring.runRate.remainingMonths > 0
+                    ? `若按 ${monitoring.runRate.recentPeriodLabel}月均静态延展，年内剩余 ${monitoring.runRate.remainingMonths} 个月为 ${monitoring.runRate.remainingAtRecentPaceLabel} 亿元。`
+                    : "本年已结束，无剩余月份需要延展。"}
                 </p>
                 <small>静态节奏不等同于预测，也不接入预算或计财目标。</small>
               </article>
@@ -256,6 +256,7 @@ function productCategoryOperatingActionRowKey(
 
 export function ProductCategoryOperatingAnalysisPanel(props: {
   surface: ProductCategoryOperatingAnalysisSurface;
+  view?: "monthly" | "ytd";
   candidateNotice?: ReactNode;
 }) {
   const [selectedActionRowKey, setSelectedActionRowKey] = useState<
@@ -292,7 +293,9 @@ export function ProductCategoryOperatingAnalysisPanel(props: {
             产品类别利润结构与经营动作
           </h2>
           <p className="product-category-operating-analysis__description">
-            基于当前正式表和已有月环比归因，优先识别利润池、压力项、主要变动驱动和可优化产品。
+            {props.view === "ytd"
+              ? "基于当前正式累计表，优先识别利润池、压力项和可优化产品。"
+              : "基于当前正式月度表和已有月环比归因，优先识别利润池、压力项、主要变动驱动和可优化产品。"}
           </p>
         </div>
         <span className="product-category-operating-analysis__badge">
@@ -336,7 +339,9 @@ export function ProductCategoryOperatingAnalysisPanel(props: {
             月环比变动驱动
           </h3>
           <p className="product-category-operating-analysis__panel-note">
-            直接复用正式经营差异归因，按变动绝对值排序。
+            {props.view === "ytd"
+              ? "月环比归因仅适用于月度视图，累计视图不展示月度变动。"
+              : "直接复用正式月环比经营差异归因，按变动绝对值排序。"}
           </p>
           {props.surface.movement.emptyCopy ? (
             <div className="product-category-operating-analysis__empty">

@@ -4,8 +4,21 @@ import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import {
+  DataTable,
+  SECTION_HEAD_STACK_CLASSNAME,
+  SectionHead,
+  StateSurface,
+  type DataTableColumn,
+  type SectionMetaField,
+  type SectionState,
+  type SectionStateTone,
+  type SurfaceStatus,
+} from "../../../components/layout";
+import {
   buildModuleHomeView,
+  type ModuleHomeDataState,
   type ModuleHomeDetailPanel,
+  type ModuleHomeDetailRow,
   type ModuleHomeTone,
 } from "./moduleHomeModel";
 import {
@@ -44,6 +57,33 @@ function statePillClassName(tone: ModuleHomeTone) {
   return styles.pill;
 }
 
+function pageStateTone(
+  dataState: ModuleHomeDataState | undefined,
+  stateLabel: string,
+): ModuleHomeTone {
+  if (dataState === "error" || stateLabel === "读取失败") return "error";
+  if (
+    dataState === "empty" ||
+    dataState === "partial" ||
+    dataState === "stale" ||
+    stateLabel === "部分失败" ||
+    stateLabel === "部分无权限"
+  ) {
+    return "watch";
+  }
+  if (dataState === "loading" || stateLabel === "读取中") return "muted";
+  return "ok";
+}
+
+function performanceStateMessage(status: SurfaceStatus) {
+  if (status === "loading") return "正在读取绩效工作台";
+  if (status === "empty") return "本年暂无可展示绩效数据";
+  if (status === "error") return "绩效数据读取失败";
+  if (status === "partial") return "绩效数据部分可用";
+  if (status === "stale") return "绩效数据已经过期";
+  return "绩效数据已就绪";
+}
+
 function currentYear() {
   return new Date().getFullYear();
 }
@@ -77,66 +117,79 @@ function isCompactKpiValue(value: string) {
   return value.length >= 9;
 }
 
-function sectionIndexLabel(index: number) {
-  return String(index).padStart(2, "0");
+/**
+ * 分区状态：页面的四档 tone 里只有 ok 在原语的 SectionState 词表外——原语把
+ * ready 定义成「不渲染状态位」，没有「绿色的已就绪徽标」这一档。为了不丢掉
+ * 面板头上那句状态读数（§6 状态即内容），ok 档改由 meta 承载文案，只有颜色
+ * 语义从绿降为中性；其余三档逐档同色（红 / 琥珀 / 中性）。
+ */
+const PANEL_STATE_TONE: Record<ModuleHomeTone, SectionStateTone | null> = {
+  ok: null,
+  watch: "partial",
+  error: "error",
+  muted: "loading",
+};
+
+function panelSectionState(panel: ModuleHomeDetailPanel): SectionState {
+  const tone = PANEL_STATE_TONE[panel.tone];
+  if (tone === null || !panel.stateLabel) return null;
+  return { label: panel.stateLabel, tone };
 }
 
-/** 编号节题（首页 01/02… 语言：编号 muted mono + 标题 + 右侧状态与口径 meta）。 */
-function SectionHead({
-  index,
-  title,
-  stateLabel,
-  stateTone,
-  meta,
+/**
+ * 面板 meta 是「标签 值」形状的展示串（如 `来源 kpi`）；这里只做一次拆分，
+ * "·" 配额与竖线分栏交给 SectionHead 内部按字段数推导。ok 档的状态读数作为
+ * 第一个字段并入，保证迁移前后没有任何一句文案从页面上消失。
+ */
+function panelSectionMeta(panel: ModuleHomeDetailPanel): SectionMetaField[] {
+  const fields: SectionMetaField[] = [];
+  if (PANEL_STATE_TONE[panel.tone] === null && panel.stateLabel) {
+    fields.push({ label: "状态", value: panel.stateLabel, title: panel.stateDetail });
+  }
+  if (panel.meta) {
+    const separator = panel.meta.indexOf(" ");
+    fields.push(
+      separator < 0
+        ? { label: panel.meta, value: "" }
+        : { label: panel.meta.slice(0, separator), value: panel.meta.slice(separator + 1) },
+    );
+  }
+  return fields;
+}
+
+/*
+ * 明细表列。读数列此前靠 `.detailValue` 的 nowrap + ellipsis 单行省略，对应
+ * DataTable 的 `ellipsis`（它会把整表切到 table-layout: fixed，与原来
+ * `.detailTable { table-layout: fixed }` 一致）；日期列 88px 宽度保持不变。
+ */
+const DETAIL_COLUMNS: readonly DataTableColumn<ModuleHomeDetailRow>[] = [
+  { key: "label", title: "字段" },
+  {
+    key: "value",
+    title: "读数",
+    align: "numeric",
+    ellipsis: true,
+    render: (row) => <span className={toneClassName(row.tone)}>{row.value}</span>,
+  },
+  { key: "tradeDate", title: "日期", align: "numeric", width: 88 },
+  { key: "source", title: "来源" },
+];
+
+function DetailRowsTable({
+  rows,
+  ariaLabel,
 }: {
-  index: number;
-  title: string;
-  stateLabel?: string;
-  stateTone?: ModuleHomeTone;
-  meta?: string;
+  rows: ModuleHomeDetailPanel["rows"];
+  ariaLabel: string;
 }) {
   return (
-    <div className={styles.secHead}>
-      <i aria-hidden="true">{sectionIndexLabel(index)}</i>
-      <h2>{title}</h2>
-      {stateLabel ? (
-        <span className={`${styles.secState} ${toneClassName(stateTone ?? "muted")}`}>
-          {stateLabel}
-        </span>
-      ) : null}
-      {meta ? (
-        <span className={styles.secMeta} title={meta}>
-          {meta}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function DetailRowsTable({ rows }: { rows: ModuleHomeDetailPanel["rows"] }) {
-  return (
-    <table className={styles.detailTable}>
-      <thead>
-        <tr>
-          <th>字段</th>
-          <th className={styles.detailValueHead}>读数</th>
-          <th className={styles.detailDateHead}>日期</th>
-          <th>来源</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.key}>
-            <td className={styles.detailLabel}>{row.label}</td>
-            <td className={`${styles.detailValue} ${styles.num} ${toneClassName(row.tone)}`}>
-              {row.value}
-            </td>
-            <td className={`${styles.detailDate} ${styles.num}`}>{row.tradeDate}</td>
-            <td className={styles.detailSource}>{row.source}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <DataTable<ModuleHomeDetailRow>
+      rows={rows}
+      rowKey="key"
+      columns={DETAIL_COLUMNS}
+      emptyPolicy="collapse"
+      ariaLabel={ariaLabel}
+    />
   );
 }
 
@@ -154,14 +207,17 @@ function DetailPanelBody({ panel }: { panel: ModuleHomeDetailPanel }) {
                 <span className={styles.detailSectionMeta}>{section.subtitle}</span>
               ) : null}
             </div>
-            <DetailRowsTable rows={section.rows} />
+            <DetailRowsTable
+              rows={section.rows}
+              ariaLabel={`${panel.title} · ${section.title}`}
+            />
           </section>
         ))}
       </div>
     );
   }
   if (panel.rows.length > 0) {
-    return <DetailRowsTable rows={panel.rows} />;
+    return <DetailRowsTable rows={panel.rows} ariaLabel={panel.title} />;
   }
   return (
     <p className={`${styles.detailEmpty} ${toneClassName(panel.tone)}`}>{panel.stateDetail}</p>
@@ -323,19 +379,24 @@ export default function ModuleWorkbenchHomePage({
       }
     }
   };
-  const stateTone: ModuleHomeTone =
-    view.stateLabel === "读取失败"
-      ? "error"
-      : view.stateLabel === "部分失败"
-        ? "watch"
-      : view.stateLabel === "读取中"
-        ? "muted"
-        : "ok";
+  const stateTone = pageStateTone(view.dataState, view.stateLabel);
+  const performanceState = kind === "performance" ? view.dataState : undefined;
+  const performanceBlockingState =
+    performanceState === "loading" ||
+    performanceState === "empty" ||
+    performanceState === "error"
+      ? performanceState
+      : undefined;
+  const performanceAdvisoryState =
+    performanceState === "partial" || performanceState === "stale"
+      ? performanceState
+      : undefined;
 
   return (
     <section
       className={`${styles.moduleHome} theme-dh-api`}
       data-moss-theme-scope="module-workbench-home"
+      data-state={view.dataState}
       data-testid="module-workbench-home"
     >
       {/* 工具栏 — 首页 dhTopbar 语言：左标题 + 一问副题与状态说明，右来源/状态胶囊 */}
@@ -373,7 +434,35 @@ export default function ModuleWorkbenchHomePage({
       </header>
 
       <div className={styles.layout}>
-        <main className={styles.main}>
+        {/* 一个 stack 容器 = 一个独立编号域：01 主结论区与 02+ 明细区块的序号
+            由 SectionHead 的 CSS counter 按 DOM 顺序生成，页面不再手写 index。 */}
+        <main className={`${styles.main} ${SECTION_HEAD_STACK_CLASSNAME}`}>
+          {performanceBlockingState ? (
+            <StateSurface
+              status={performanceBlockingState}
+              message={performanceStateMessage(performanceBlockingState)}
+              reason={performanceBlockingState === "loading" ? undefined : view.stateDetail}
+              minHeight={performanceBlockingState === "loading" ? 224 : undefined}
+              testId="module-home-primary-state"
+              actions={
+                performanceBlockingState === "empty" ? (
+                  <Link className={styles.stateAction} to="/kpi">
+                    前往绩效考核核验配置
+                  </Link>
+                ) : undefined
+              }
+            />
+          ) : (
+            <>
+              {performanceAdvisoryState ? (
+                <StateSurface
+                  status={performanceAdvisoryState}
+                  message={performanceStateMessage(performanceAdvisoryState)}
+                  reason={view.stateDetail}
+                  density="compact"
+                  testId="module-home-primary-state"
+                />
+              ) : null}
           {/* KPI 单框横带（首页 kpiRail 语言：等高分格 + 发丝竖缝 + 等宽数字） */}
           <section className={styles.kpiStrip} data-testid="module-home-kpi-strip">
             {view.kpis.map((item) => (
@@ -420,7 +509,7 @@ export default function ModuleWorkbenchHomePage({
 
           {/* 01 主结论区 */}
           <section className={styles.card} data-testid="module-home-briefing">
-            <SectionHead index={1} title="主结论区" />
+            <SectionHead title="主结论区" />
             <div className={styles.briefGrid}>
               {view.briefings.map((item) => (
                 <article className={styles.brief} key={item.title}>
@@ -436,22 +525,22 @@ export default function ModuleWorkbenchHomePage({
 
           {/* 02+ 明细区块（performance：KPI 指标明细 / 业务种类损益；
               governance：数据源状态 / Cube 维度与度量 / 健康检查明细） */}
-          {(view.detailPanels ?? []).map((panel, index) => (
+          {(view.detailPanels ?? []).map((panel) => (
             <section
               className={styles.card}
               data-testid={detailPanelTestId(panel.key)}
               key={panel.key}
             >
               <SectionHead
-                index={index + 2}
                 title={panel.title}
-                stateLabel={panel.stateLabel}
-                stateTone={panel.tone}
-                meta={panel.meta}
+                state={panelSectionState(panel)}
+                meta={panelSectionMeta(panel)}
               />
               <DetailPanelBody panel={panel} />
             </section>
           ))}
+            </>
+          )}
         </main>
 
         <aside className={styles.rail}>

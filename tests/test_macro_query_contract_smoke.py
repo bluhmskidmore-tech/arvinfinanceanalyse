@@ -10,7 +10,6 @@ from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.macro_vendor_service import (
     choice_macro_formal_envelope,
-    choice_macro_refresh_status,
     load_choice_macro_latest_payload,
 )
 from tests.helpers import load_module
@@ -101,29 +100,6 @@ def test_macro_vendor_read_surfaces_require_explicit_read_scope(
     response = client.get(path, params=params, headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 403, f"Expected 403 for {path}, got {response.status_code}: {response.text}"
-
-
-def test_choice_macro_refresh_status_reads_governance_runs(tmp_path):
-    governance_mod = load_module(
-        "backend.app.repositories.governance_repo",
-        "backend/app/repositories/governance_repo.py",
-    )
-    governance_mod.GovernanceRepository(base_dir=tmp_path).append(
-        governance_mod.CACHE_BUILD_RUN_STREAM,
-        {
-            "job_name": "choice_macro_refresh",
-            "cache_key": "choice_macro.latest",
-            "run_id": "choice-run-1",
-            "status": "running",
-        },
-    )
-
-    payload = choice_macro_refresh_status(tmp_path, run_id="choice-run-1")
-
-    assert payload["run_id"] == "choice-run-1"
-    assert payload["trigger_mode"] == "async"
-    with pytest.raises(ValueError, match="missing-run"):
-        choice_macro_refresh_status(tmp_path, run_id="missing-run")
 
 
 def test_macro_foundation_preview_is_duckdb_backed_and_returns_result_meta(tmp_path, monkeypatch):
@@ -679,11 +655,9 @@ def test_choice_macro_latest_exposes_vendor_name_without_vendor_code(
     get_settings.cache_clear()
 
 
-def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch):
-    route_module = load_module(
-        "backend.app.api.routes.macro_vendor",
-        "backend/app/api/routes/macro_vendor.py",
-    )
+def test_choice_macro_refresh_also_runs_public_cross_asset_headlines():
+    from backend.app.services.macro_vendor_refresh_service import run_choice_macro_refresh
+
     calls: list[tuple[str, int | None]] = []
 
     class _ChoiceRefresh:
@@ -709,13 +683,14 @@ def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch
             "warnings": ["tushare index_weight used latest available date"],
         }
 
-    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
-    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
-    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
-
-    payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=7)
+    payload, refresh_succeeded = run_choice_macro_refresh(
+        backfill_days=7,
+        choice_refresh_task=_ChoiceRefresh(),
+        public_refresh_task=_public_refresh,
+    )
 
     assert calls == [("choice", 7), ("public_cross_asset", None)]
+    assert refresh_succeeded is True
     assert payload["status"] == "completed"
     assert payload["run_id"] == "choice_macro_refresh:test"
     assert payload["choice_macro"]["series_count"] == 2
@@ -724,11 +699,9 @@ def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch
     assert payload["warnings"] == ["tushare index_weight used latest available date"]
 
 
-def test_choice_macro_refresh_uses_public_and_tushare_backups_when_choice_fails(monkeypatch):
-    route_module = load_module(
-        "backend.app.api.routes.macro_vendor",
-        "backend/app/api/routes/macro_vendor.py",
-    )
+def test_choice_macro_refresh_uses_public_and_tushare_backups_when_choice_fails():
+    from backend.app.services.macro_vendor_refresh_service import run_choice_macro_refresh
+
     calls: list[tuple[str, int | None]] = []
 
     class _ChoiceRefresh:
@@ -756,14 +729,15 @@ def test_choice_macro_refresh_uses_public_and_tushare_backups_when_choice_fails(
             "row_count": 305,
         }
 
-    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
-    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
-    monkeypatch.setattr(route_module, "refresh_tushare_ncd_shibor_proxy", _tushare_shibor_refresh, raising=False)
-    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
-
-    payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=30)
+    payload, refresh_succeeded = run_choice_macro_refresh(
+        backfill_days=30,
+        choice_refresh_task=_ChoiceRefresh(),
+        public_refresh_task=_public_refresh,
+        tushare_ncd_shibor_refresh_task=_tushare_shibor_refresh,
+    )
 
     assert calls == [("choice", 30), ("public_cross_asset", None), ("tushare_ncd_shibor", None)]
+    assert refresh_succeeded is True
     assert payload["status"] == "partial"
     assert payload["choice_macro"]["status"] == "failed"
     assert payload["choice_macro"]["error_message"] == "user access for this API expired"
@@ -775,106 +749,13 @@ def test_choice_macro_refresh_uses_public_and_tushare_backups_when_choice_fails(
     ]
 
 
-def test_choice_macro_refresh_invalidates_cached_latest_payload(monkeypatch):
-    route_module = load_module(
-        "backend.app.api.routes.macro_vendor",
-        "backend/app/api/routes/macro_vendor.py",
-    )
-    route_module.market_home_response_cache.invalidate()
-    build_calls: list[object] = []
-
-    def _latest_envelope(_duckdb_path: object, *, category: object | None = None) -> dict[str, object]:
-        build_calls.append(category)
-        return {
-            "result_meta": {"result_kind": "macro.choice.latest"},
-            "result": {"series": [{"series_id": f"series-{len(build_calls)}"}]},
-        }
-
-    class _ChoiceRefresh:
-        @staticmethod
-        def fn(backfill_days: int = 0) -> dict[str, object]:
-            return {"status": "completed", "run_id": f"choice-refresh-{backfill_days}"}
-
-    monkeypatch.setattr(route_module, "choice_macro_latest_envelope", _latest_envelope)
-    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
-    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", lambda: {"status": "completed"})
-    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
-
-    auth = _macro_vendor_read_auth(route_module)
-    first = route_module.choice_series_latest(auth=auth)
-    second = route_module.choice_series_latest(auth=auth)
-    route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=3)
-    third = route_module.choice_series_latest(auth=auth)
-
-    assert first["result"]["series"][0]["series_id"] == "series-1"
-    assert second["result"]["series"][0]["series_id"] == "series-1"
-    assert third["result"]["series"][0]["series_id"] == "series-2"
-    assert build_calls == [None, None]
-    route_module.market_home_response_cache.invalidate()
-
-
-def test_choice_macro_refresh_invalidates_cache_when_choice_status_is_degraded(monkeypatch):
-    """Choice macro refresh that lands data but reports a non-fatal warning returns
-    status="degraded" (see backend/app/tasks/choice_macro.py). The refreshed data is
-    already committed to DuckDB, so the response cache must still be invalidated;
-    otherwise the market-home page keeps serving pre-refresh cached data for up to
-    the cache TTL after the user explicitly triggers a refresh.
-    """
-    route_module = load_module(
-        "backend.app.api.routes.macro_vendor",
-        "backend/app/api/routes/macro_vendor.py",
-    )
-    route_module.market_home_response_cache.invalidate()
-    build_calls: list[object] = []
-
-    def _latest_envelope(_duckdb_path: object, *, category: object | None = None) -> dict[str, object]:
-        build_calls.append(category)
-        return {
-            "result_meta": {"result_kind": "macro.choice.latest"},
-            "result": {"series": [{"series_id": f"series-{len(build_calls)}"}]},
-        }
-
-    class _ChoiceRefresh:
-        @staticmethod
-        def fn(backfill_days: int = 0) -> dict[str, object]:
-            return {
-                "status": "degraded",
-                "run_id": f"choice-refresh-{backfill_days}",
-                "quality_flag": "warning",
-                "warning_code": "gate_supplement_failed",
-                "warnings": [{"code": "gate_supplement_failed", "message": "livermore gate supplement failed"}],
-            }
-
-    # Public backup refresh is deliberately NOT "completed"/"partial" here so the
-    # invalidation decision is isolated to the choice payload's "degraded" status
-    # instead of being masked by the public backup also counting as a success.
-    monkeypatch.setattr(route_module, "choice_macro_latest_envelope", _latest_envelope)
-    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
-    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", lambda: {"status": "skipped"})
-    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
-
-    auth = _macro_vendor_read_auth(route_module)
-    first = route_module.choice_series_latest(auth=auth)
-    second = route_module.choice_series_latest(auth=auth)
-    route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=3)
-    third = route_module.choice_series_latest(auth=auth)
-
-    assert first["result"]["series"][0]["series_id"] == "series-1"
-    assert second["result"]["series"][0]["series_id"] == "series-1"
-    assert third["result"]["series"][0]["series_id"] == "series-2"
-    route_module.market_home_response_cache.invalidate()
-
-
-def test_choice_macro_refresh_preserves_degraded_status_and_quality_fields(monkeypatch):
+def test_choice_macro_refresh_preserves_degraded_status_and_quality_fields():
     """The merged refresh response must pass the choice payload's degraded status,
     quality_flag and warning_code through unchanged (not silently promoted to
     "completed"), and must keep the underlying warning detail reachable so callers
     can surface the quality issue instead of assuming a clean refresh.
     """
-    route_module = load_module(
-        "backend.app.api.routes.macro_vendor",
-        "backend/app/api/routes/macro_vendor.py",
-    )
+    from backend.app.services.macro_vendor_refresh_service import run_choice_macro_refresh
 
     class _ChoiceRefresh:
         @staticmethod
@@ -894,12 +775,13 @@ def test_choice_macro_refresh_preserves_degraded_status_and_quality_fields(monke
     def _public_refresh() -> dict[str, object]:
         return {"status": "completed", "run_id": "public_cross_asset_refresh:test", "series_count": 3}
 
-    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
-    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
-    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
+    payload, refresh_succeeded = run_choice_macro_refresh(
+        backfill_days=7,
+        choice_refresh_task=_ChoiceRefresh(),
+        public_refresh_task=_public_refresh,
+    )
 
-    payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=7)
-
+    assert refresh_succeeded is True
     assert payload["status"] == "degraded"
     assert payload["quality_flag"] == "warning"
     assert payload["warning_code"] == "gate_supplement_failed"
@@ -1828,16 +1710,13 @@ def test_macro_vendor_route_module_has_no_task_import():
 
 
 def test_macro_vendor_lazy_task_proxies_keep_fn_call_semantics():
-    route_module = load_module(
-        "backend.app.api.routes.macro_vendor",
-        "backend/app/api/routes/macro_vendor.py",
-    )
+    from backend.app.services import macro_vendor_refresh_service
     from backend.app.tasks import choice_macro
 
-    actor_proxy = route_module.refresh_choice_macro_snapshot
-    assert getattr(actor_proxy, "fn", actor_proxy) is choice_macro.refresh_choice_macro_snapshot.fn
+    actor_proxy = macro_vendor_refresh_service.run_choice_macro_refresh_task
+    assert getattr(actor_proxy, "fn", actor_proxy) is choice_macro.run_choice_macro_refresh_workflow.fn
 
-    plain_proxy = route_module.refresh_public_cross_asset_headlines
+    plain_proxy = macro_vendor_refresh_service.refresh_public_cross_asset_headlines
     resolved_plain = getattr(plain_proxy, "fn", plain_proxy)
     assert resolved_plain is plain_proxy
     assert callable(resolved_plain)

@@ -54,7 +54,7 @@
 .schedule { min-width: 0; padding: 18px; border: 1px solid var(--dh-api-line); border-radius: var(--dh-api-radius); background: var(--dh-api-panel); }
 .dateLabel { display: flex; flex-direction: column; gap: 8px; font-size: 13px; max-width: 300px; margin-bottom: 14px; }
 .dateLabel input,
-.dateLabel select { color-scheme: dark; min-height: 38px; border: 1px solid var(--dh-api-line); border-radius: var(--dh-api-radius); padding: 6px 10px; background: var(--dh-api-panel-2); color: var(--dh-api-ink); font: inherit; }
+.dateLabel select { color-scheme: dark; min-height: 36px; border: 1px solid var(--dh-api-line); border-radius: var(--dh-api-radius); padding: 6px 10px; background: var(--dh-api-panel-2); color: var(--dh-api-ink); font: inherit; }
 .directory code { display: block; margin-top: 4px; word-break: break-all; color: var(--dh-api-soft); font-size: 12px; }
 .checks,
 .schedules,

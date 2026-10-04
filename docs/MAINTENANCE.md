@@ -93,6 +93,16 @@ expansion: a `read/vendor queue` may scale out, while the
 
 ## Operator Runbooks
 
+### Fixed-income whole-bundle shadow candidate
+
+固定收益试点现在有了一个只面向影子候选的维护入口：
+
+- Runbook: `docs/fixed_income_whole_bundle_shadow_runbook.md`
+- Shadow candidate build (read/write only to explicit output dir, never live path): `.\.venv\Scripts\python.exe scripts/bond_risk_shadow_candidate.py --report-date 2026-05-31 --source-duckdb-path <sealed-copy.duckdb> --expected-source-sha256 <sealed-copy-sha256> --output-dir <shadow-output-dir>`
+- Multi-date structural evidence (one isolated candidate per listed date, output only below repository `output/` or `.tmp/`): `.\.venv\Scripts\python.exe scripts/bond_risk_shadow_batch.py --report-dates-file <absolute-approved-dates-file> --source-duckdb-path <sealed-copy.duckdb> --expected-source-sha256 <sealed-copy-sha256> --batch-output-dir <new-absolute-repo-output-or-tmp-dir>`
+
+单日期入口只允许在隔离副本上重建 `fact_formal_bond_analytics_daily` 与 `fact_formal_risk_tensor_daily` 的目标日期切片，并强制校验 source 文件不变、catalog 一致、非目标表不漂移。多日期入口只聚合彼此隔离的逐日结构证据，不代表一个 candidate 已完成全历史重建。两者都不是生产 promote 脚本，也不授权绕过 release control、停写窗口、owner 审批或 `duckdb-main` compare-and-swap 切换。
+
 Tushare news backup refresh for the homepage policy/funding card is documented
 as an operator workflow, not a homepage write path:
 

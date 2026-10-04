@@ -27,7 +27,7 @@
   background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
   color: var(--dh-api-blue, #1d4ed8);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .routeStatusTitle {
@@ -74,7 +74,7 @@
   background: var(--dh-api-blue, #0f172a);
   color: var(--dh-api-bg, #ffffff);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
 }
 

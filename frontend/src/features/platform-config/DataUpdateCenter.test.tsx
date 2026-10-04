@@ -26,6 +26,8 @@ const run: DataUpdateRun = { run_id: "receipt-1", report_date: reportDate, statu
 function makeApi(): DataUpdatesClient {
   return { overview: vi.fn().mockResolvedValue(structuredClone(overview)), preflight: vi.fn().mockResolvedValue(preflight),
     requestCore: vi.fn().mockResolvedValue(run), cancel: vi.fn().mockResolvedValue({ ...run, status: "cancelled" }),
+    recoverPublication: vi.fn().mockResolvedValue({ ...run, run_id: "recovery-1", status: "queued", recovery_mode: "publication_only", recovery_of_run_id: run.run_id,
+      message: "已受理仅恢复发布请求。" }),
     requestMarket: vi.fn().mockResolvedValue({ status: "accepted", message: "已请求启动市场更新。" }) };
 }
 
@@ -231,5 +233,157 @@ describe("DataUpdateCenter", () => {
     });
     expect(model.surfaces).toHaveLength(0);
     expect(model.dates[0].value).toBe("—");
+  });
+
+  it.each([undefined, { failed_step: "publish" }])("keeps a failed historical stock restoration out of financial retry and publication recovery (%s)", async (failureReceipt) => {
+    const api = makeApi();
+    vi.mocked(api.overview).mockResolvedValue({ ...overview, runs: [{ ...run,
+      workflow: "choice_stock_pit_history" as DataUpdateRun["workflow"], report_date: "2026-05-28", status: "failed",
+      message: "历史来源恢复未完成。", recovery_mode: failureReceipt ? "publication_only" : undefined,
+      failure_receipt: failureReceipt,
+      publication_recovery: { available: true, reason: null, failed_step: "publish" },
+    }] });
+    mount(api);
+    await screen.findByText("历史来源恢复未完成。");
+    expect(screen.queryByRole("button", { name: "重新提交此日期" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "仅恢复发布" })).not.toBeInTheDocument();
+    expect(screen.queryByText("财务计算已完成，发布待处理")).not.toBeInTheDocument();
+    expect(screen.getByText("历史股票来源恢复")).toBeInTheDocument();
+    expect(screen.getByLabelText("报告日期")).toHaveValue("");
+    expect(api.requestCore).not.toHaveBeenCalled();
+    expect(api.recoverPublication).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { core: true, market: false, canCancel: false },
+    { core: false, market: true, canCancel: true },
+  ])("uses market permission for cancelling historical stock restoration ($canCancel)", async ({ core, market, canCancel }) => {
+    const api = makeApi();
+    vi.mocked(api.overview).mockResolvedValue({ ...overview, permissions: { core, market }, runs: [{ ...run,
+      workflow: "choice_stock_pit_history" as DataUpdateRun["workflow"], report_date: "2026-05-28", status: "queued",
+      message: "历史来源恢复已受理。",
+    }] });
+    mount(api);
+    await screen.findByText("历史来源恢复已受理。");
+    const button = screen.queryByRole("button", { name: "取消等待" });
+    expect(Boolean(button)).toBe(canCancel);
+    if (button) {
+      fireEvent.click(button);
+      await waitFor(() => expect(vi.mocked(api.cancel).mock.calls[0]?.[0]).toBe(run.run_id));
+    }
+    expect(api.requestCore).not.toHaveBeenCalled();
+  });
+
+  it("shows historical restoration completion without advancing financial result dates", async () => {
+    const api = makeApi();
+    vi.mocked(api.overview).mockResolvedValue({ ...overview, runs: [{ ...run,
+      workflow: "choice_stock_pit_history" as DataUpdateRun["workflow"], report_date: "2026-05-28", status: "completed",
+      message: "历史来源恢复已核验。",
+    }] });
+    mount(api);
+    await screen.findByText("历史来源恢复已核验。");
+    expect(screen.getByRole("region", { name: "更新记录" })).toHaveTextContent("历史股票来源恢复");
+    expect(screen.getByLabelText("各模块实际数据日期")).toHaveTextContent("2026-07-31");
+    expect(screen.getByLabelText("各模块实际数据日期")).not.toHaveTextContent("2026-05-28");
+  });
+
+  it("recovers only publication, refreshes the overview and displays the new receipt", async () => {
+    const api = makeApi();
+    const failedRun = { ...run, status: "failed" as const, failure_receipt: { failed_step: "publish" },
+      publication_recovery: { available: true, reason: null, failed_step: "publish" } };
+    const recovery = { ...run, run_id: "recovery-1", status: "queued" as const, recovery_mode: "publication_only" as const,
+      recovery_of_run_id: run.run_id, message: "已受理仅恢复发布请求。" };
+    vi.mocked(api.overview).mockResolvedValueOnce({ ...overview, runs: [failedRun] })
+      .mockResolvedValue({ ...overview, runs: [recovery, failedRun] });
+    mount(api);
+    fireEvent.click(await screen.findByRole("button", { name: "仅恢复发布" }));
+    await screen.findByText(/恢复请求编号：/);
+    expect(api.recoverPublication).toHaveBeenCalledWith(run.run_id, expect.any(String));
+    expect(api.requestCore).not.toHaveBeenCalled();
+    expect(api.overview).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText(/原请求编号：/)).toHaveTextContent(run.run_id);
+    expect(screen.getByText("仅恢复发布，保留已完成财务计算。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "仅恢复发布" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { core: false, available: true },
+    { core: true, available: false },
+    { core: true, available: undefined },
+    { core: true, available: "true" },
+  ])("requires explicit backend eligibility and scope permission for recovery ($core/$available)", async ({ core, available }) => {
+    const api = makeApi();
+    const failedRun = { ...run, status: "failed" as const, failure_receipt: { failed_step: "publish" },
+      publication_recovery: { available, reason: "完成回执不完整，不能恢复发布。", failed_step: "publish" } };
+    vi.mocked(api.overview).mockResolvedValue({ ...overview, permissions: { core, balance: true, market: false }, runs: [failedRun] } as DataUpdatesOverview);
+    mount(api);
+    await screen.findByText("财务计算已完成，发布待处理");
+    expect(screen.queryByRole("button", { name: "仅恢复发布" })).not.toBeInTheDocument();
+    expect(api.recoverPublication).not.toHaveBeenCalled();
+  });
+
+  it("blocks duplicate recovery clicks and keeps its key when an uncertain request is retried", async () => {
+    const api = makeApi();
+    vi.mocked(api.overview).mockResolvedValue({ ...overview, runs: [{ ...run, status: "failed",
+      failure_receipt: { failed_step: "publish" }, publication_recovery: { available: true, reason: null, failed_step: "publish" } }] });
+    let rejectRequest!: (reason: Error) => void;
+    vi.mocked(api.recoverPublication).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRequest = reject; }))
+      .mockRejectedValue(new Error("来源版本已变化，不能恢复发布。"));
+    mount(api);
+    const button = await screen.findByRole("button", { name: "仅恢复发布" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect(api.recoverPublication).toHaveBeenCalledTimes(1));
+    expect(button).toBeDisabled();
+    rejectRequest(new Error("连接中断，请刷新回执后重试。"));
+    await screen.findByText("连接中断，请刷新回执后重试。");
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await screen.findByText("来源版本已变化，不能恢复发布。");
+    expect(vi.mocked(api.recoverPublication).mock.calls[1]).toEqual(vi.mocked(api.recoverPublication).mock.calls[0]);
+    expect(api.requestCore).not.toHaveBeenCalled();
+  });
+
+  it("keeps a failed recovery out of the financial resubmission shortcut and targets its original receipt", async () => {
+    const api = makeApi();
+    vi.mocked(api.overview).mockResolvedValue({ ...overview, runs: [{ ...run, run_id: "recovery-failed", status: "failed",
+      recovery_mode: "publication_only", recovery_of_run_id: "original-run", message: "恢复发布失败。",
+      publication_recovery: { available: true, reason: null, failed_step: "publish" } }] });
+    mount(api);
+    fireEvent.click(await screen.findByRole("button", { name: "仅恢复发布" }));
+    await waitFor(() => expect(api.recoverPublication).toHaveBeenCalledWith("original-run", expect.any(String)));
+    expect(screen.queryByRole("button", { name: "重新提交此日期" })).not.toBeInTheDocument();
+    expect(api.requestCore).not.toHaveBeenCalled();
+  });
+
+  it("shows an ineligible receipt reason without offering a financial retry", async () => {
+    const api = makeApi();
+    vi.mocked(api.overview).mockResolvedValue({ ...overview, runs: [{ ...run, status: "failed",
+      failure_receipt: { failed_step: "source_preview", business_body_status: "completed" },
+      publication_recovery: { available: false, reason: "该失败阶段缺少可复用发布回执，请联系运维。", failed_step: "source_preview" } }] });
+    mount(api);
+    expect(await screen.findByText("该失败阶段缺少可复用发布回执，请联系运维。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "仅恢复发布" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新提交此日期" })).not.toBeInTheDocument();
+  });
+
+  it("shows verified completion and actual dates only after refreshing the recovery receipt", async () => {
+    const api = makeApi();
+    const recovery = { ...run, run_id: "recovery-1", status: "queued" as const, recovery_mode: "publication_only" as const,
+      recovery_of_run_id: "original-run", message: "仅恢复发布已受理。" };
+    vi.mocked(api.overview).mockResolvedValueOnce({ ...overview, runs: [recovery] })
+      .mockResolvedValue({ ...overview, financial_dates: [{ key: "pnl", label: "正式损益", as_of_date: reportDate, status: "available" }],
+        runs: [{ ...recovery, status: "completed", message: "只读结果已发布并核验。", steps: [{ key: "publish", label: "只读结果发布", status: "completed" }] }] });
+    mount(api);
+    await screen.findByText("仅恢复发布已受理。");
+    expect(screen.getByLabelText("各模块实际数据日期")).toHaveTextContent("2026-07-31");
+    expect(screen.queryByText("更新已核验")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新状态" }));
+    await screen.findByText("只读结果已发布并核验。");
+    expect(screen.getAllByText("更新已核验")).toHaveLength(2);
+    expect(screen.getByLabelText("各模块实际数据日期")).toHaveTextContent(reportDate);
+    expect(screen.getByText(/原请求编号：/)).toHaveTextContent("original-run");
+    expect(api.requestCore).not.toHaveBeenCalled();
+    expect(api.recoverPublication).not.toHaveBeenCalled();
   });
 });

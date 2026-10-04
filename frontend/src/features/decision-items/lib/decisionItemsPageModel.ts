@@ -8,6 +8,8 @@ import type {
   BalanceAnalysisCurrentUserPayload,
   ResultMeta,
 } from "../../../api/contracts";
+import { numericDecimalOrNull } from "../../../api/numeric";
+import Decimal from "decimal.js";
 
 const SEVERITY_RANK: Record<BalanceAnalysisSeverity, number> = {
   high: 0,
@@ -25,6 +27,37 @@ function isValidSeverity(value: unknown): value is BalanceAnalysisSeverity {
 
 function isValidDecisionStatus(value: unknown): value is BalanceAnalysisDecisionStatus {
   return value === "pending" || value === "confirmed" || value === "dismissed";
+}
+
+const DECISION_REASON_WAN_AMOUNT_PATTERN =
+  /(^|[^\d.eE+-])(-?\d+(?:\.\d+)?)\s*万元/gi;
+const WAN_PER_YI = new Decimal("10000");
+
+function parseDecisionReasonWanDecimal(rawAmount: string): Decimal | null {
+  const parsed = numericDecimalOrNull(rawAmount);
+  return parsed === null ? null : parsed;
+}
+
+function formatDecimalWithThousands(value: Decimal, fractionDigits: number): string {
+  const fixed = value.toFixed(fractionDigits, Decimal.ROUND_HALF_UP);
+  const normalized = value.isNegative() && !fixed.startsWith("-") ? `-${fixed}` : fixed;
+  const [rawInt, rawFrac = ""] = normalized.split(".");
+  const sign = rawInt.startsWith("-") ? "-" : "";
+  const intPart = sign ? rawInt.slice(1) : rawInt;
+  const groupedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${sign}${groupedInt}.${rawFrac}`;
+}
+
+function formatDecisionWanAmount(value: string): string | null {
+  const decimal = parseDecisionReasonWanDecimal(value);
+  if (decimal === null) {
+    return null;
+  }
+  const abs = decimal.abs();
+  const shouldScaleToYi = abs.gte(WAN_PER_YI);
+  const normalized = shouldScaleToYi ? decimal.div(WAN_PER_YI) : decimal;
+  const unit = shouldScaleToYi ? "亿元" : "万元";
+  return `${formatDecimalWithThousands(normalized, 2)} ${unit}`;
 }
 
 function severitySortRank(value: unknown): number {
@@ -109,8 +142,6 @@ function metaWarnings(meta: ResultMeta | undefined): string[] {
   return out;
 }
 
-const WAN_PER_YI = 10_000;
-
 /**
  * 决策事项 reason 为后端拼接的叙述串，金额以原始 Decimal 精度直出
  * （如 "6137559.46000000 万元"）。展示层把「数值 + 万元」片段收敛为
@@ -118,16 +149,10 @@ const WAN_PER_YI = 10_000;
  * 不改写后端数值本身。
  */
 export function formatDecisionReasonText(reason: string): string {
-  return reason.replace(/(-?\d+(?:\.\d+)?)\s*万元/g, (match, num: string) => {
-    const value = Number.parseFloat(num);
-    if (!Number.isFinite(value)) {
-      return match;
-    }
-    const options = { minimumFractionDigits: 2, maximumFractionDigits: 2 } as const;
-    if (Math.abs(value) >= WAN_PER_YI) {
-      return `${(value / WAN_PER_YI).toLocaleString("zh-CN", options)} 亿元`;
-    }
-    return `${value.toLocaleString("zh-CN", options)} 万元`;
+  return reason.replace(DECISION_REASON_WAN_AMOUNT_PATTERN, (match, prefix: string, amount: string) => {
+    const display = formatDecisionWanAmount(amount);
+    const rendered = display ?? `${amount} 万元`;
+    return `${prefix}${rendered}`;
   });
 }
 

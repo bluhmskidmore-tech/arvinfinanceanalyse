@@ -7,11 +7,19 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, TypedDict
 
+from backend.app.core_finance.bond_analytics.common import (
+    compute_macaulay_duration_and_convexity,
+    resolve_ytm_with_par_fallback,
+)
 from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_AC
-from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
+from backend.app.core_finance.interest_mode import classify_interest_payment_frequency
+from backend.app.core_finance.rate_units import (
+    NEGATIVE_YIELD_DIRTY_FLOOR,
+    normalize_annual_rate_to_decimal,
+)
 
 from .bond_duration import (
     estimate_convexity_bond,
@@ -19,6 +27,7 @@ from .bond_duration import (
     infer_accounting_class,
     modified_duration_from_macaulay,
 )
+from .decimal_utils import to_decimal_strict
 from .safe_decimal import safe_decimal
 
 logger = logging.getLogger(__name__)
@@ -30,6 +39,27 @@ ACCRUED_INTEREST_PARTIAL_DIAGNOSTIC = "accrued_interest_partial"
 ACCRUED_INTEREST_EXCEEDS_CARRY_DIAGNOSTIC = "accrued_interest_exceeds_modeled_carry"
 MATURITY_DATE_PARSE_FAILED_DIAGNOSTIC = "maturity_date_parse_failed"
 MOD_DUR_FALLBACK_ZERO_DIAGNOSTIC = "mod_dur_fallback_zero"
+COUPON_RATE_START_PARSE_FAILED_DIAGNOSTIC = "coupon_rate_start_parse_failed"
+FACE_VALUE_START_PARSE_FAILED_DIAGNOSTIC = "face_value_start_parse_failed"
+MARKET_VALUE_START_PARSE_FAILED_DIAGNOSTIC = "market_value_start_parse_failed"
+MARKET_VALUE_END_PARSE_FAILED_DIAGNOSTIC = "market_value_end_parse_failed"
+# 「缺失」与「脏值」是两种事故：脏值有 *_PARSE_FAILED_*，缺失此前没有任何披露通道，
+# 于是「按 0 代入」在下游与「观测到 0」完全不可区分。数值口径不变，只补标记。
+COUPON_RATE_START_MISSING_DIAGNOSTIC = "coupon_rate_start_missing"
+FACE_VALUE_START_MISSING_DIAGNOSTIC = "face_value_start_missing"
+MARKET_VALUE_START_MISSING_DIAGNOSTIC = "market_value_start_missing"
+MARKET_VALUE_END_MISSING_DIAGNOSTIC = "market_value_end_missing"
+# 只在期初或只在期末存在的持仓：缺失一侧不是「市值 0」，两者之差也不是价格变动。
+POSITION_START_ONLY_DIAGNOSTIC = "position_start_only"
+POSITION_END_ONLY_DIAGNOSTIC = "position_end_only"
+POSITION_PRINCIPAL_CHANGED_DIAGNOSTIC = "position_principal_changed"
+POSITION_PRINCIPAL_UNAVAILABLE_DIAGNOSTIC = "position_principal_unavailable"
+PRINCIPAL_EXCLUSION_DIAGNOSTICS = frozenset(
+    {POSITION_PRINCIPAL_CHANGED_DIAGNOSTIC, POSITION_PRINCIPAL_UNAVAILABLE_DIAGNOSTIC}
+)
+SINGLE_SIDED_POSITION_DIAGNOSTICS = frozenset(
+    {POSITION_START_ONLY_DIAGNOSTIC, POSITION_END_ONLY_DIAGNOSTIC}
+)
 # 这两个诊断都意味着 total_return 退化为「净价变动 + 票息估算」，selection_effect
 # 因此吸收面值/市值差异；`has_accrued_interest is False` 与本集合等价。
 CLEAN_PRICE_FALLBACK_DIAGNOSTICS = frozenset(
@@ -76,11 +106,65 @@ def resolve_accounting_class(bond: Any) -> str:
     )
 
 
-def _annual_rate_decimal(value: Any) -> Decimal:
-    normalized = normalize_annual_rate_to_decimal(value)
+def _annual_rate_decimal(value: Any, *, negative_floor: float | None = None) -> Decimal:
+    normalized = normalize_annual_rate_to_decimal(value, negative_floor=negative_floor)
     if normalized is None:
         return Decimal("0")
     return Decimal(str(normalized))
+
+
+def _ytm_decimal(value: Any) -> Decimal | None:
+    """保留观测零；缺失或脏值返回 None，由久期入口使用 par 代理。"""
+    normalized = normalize_annual_rate_to_decimal(
+        value, negative_floor=NEGATIVE_YIELD_DIRTY_FLOOR
+    )
+    return Decimal(str(normalized)) if normalized is not None else None
+
+
+# 与 campisi_decision_grade.is_missing_numeric 对齐：真缺失不记解析失败。
+_MISSING_NUMERIC_TEXT = frozenset({"", "nan", "none", "null"})
+
+
+def _is_absent_numeric(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and value.strip().lower() in _MISSING_NUMERIC_TEXT:
+        return True
+    if isinstance(value, float) and value != value:
+        return True
+    if isinstance(value, Decimal) and value.is_nan():
+        return True
+    return False
+
+
+def _present_value_parse_failed(value: Any) -> bool:
+    """字段存在但无法转为有限 Decimal 时为 True；缺失/占位不记解析失败。"""
+    if _is_absent_numeric(value):
+        return False
+    try:
+        to_decimal_strict(value)
+    except (TypeError, ValueError, InvalidOperation, ArithmeticError):
+        return True
+    return False
+
+
+def _safe_decimal_with_parse_flag(value: Any) -> tuple[Decimal, bool]:
+    """数值行为与 safe_decimal 一致；仅对存在但不可解析的脏值打标。"""
+    return safe_decimal(value), _present_value_parse_failed(value)
+
+
+def _annual_rate_with_parse_flag(value: Any) -> tuple[Decimal, bool]:
+    """数值行为与 _annual_rate_decimal 一致；仅对存在但不可解析的脏值打标。"""
+    return _annual_rate_decimal(value), _present_value_parse_failed(value)
+
+
+def _side_declared_present(bond: Any, key: str) -> bool:
+    """该期末是否真的持有这条持仓。
+
+    只有上游显式写入 ``False`` 才算「这一侧不存在」。缺字段视为「未声明」，
+    保持既有口径：``attribution_daily`` 等调用方不产生该标记，行为不变。
+    """
+    return _get_bond_field(bond, key, default=None) is not False
 
 
 class BondFourEffects(TypedDict):
@@ -126,13 +210,34 @@ def compute_bond_four_effects(
       否则退化为 total_price_change + income_return（净价变动 + 票息估算），
       此时 selection_effect 会系统性吸收面值/市值差异（折溢价债券误差约 5-10%）。
     """
-    coupon = _annual_rate_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
-    face = safe_decimal(_get_bond_field(bond, "face_value_start", "face_value"))
-    mv_start = safe_decimal(_get_bond_field(bond, "market_value_start"))
-    mv_end = safe_decimal(_get_bond_field(bond, "market_value_end"))
+    coupon_raw = _get_bond_field(bond, "coupon_rate_start", "coupon_rate", default=None)
+    coupon, coupon_parse_failed = _annual_rate_with_parse_flag(coupon_raw)
+    face_raw = _get_bond_field(bond, "face_value_start", "face_value", default=None)
+    face, face_parse_failed = _safe_decimal_with_parse_flag(face_raw)
+    mv_start_raw = _get_bond_field(bond, "market_value_start", default=None)
+    mv_start, mv_start_parse_failed = _safe_decimal_with_parse_flag(mv_start_raw)
+    mv_end_raw = _get_bond_field(bond, "market_value_end", default=None)
+    mv_end, mv_end_parse_failed = _safe_decimal_with_parse_flag(mv_end_raw)
+    start_present = _side_declared_present(bond, "start_present")
+    end_present = _side_declared_present(bond, "end_present")
+    single_sided = start_present != end_present
+    principal_diagnostic = None
+    # Snapshot merging supplies both principal endpoints. Legacy daily inputs
+    # do not: an absent key is not an assertion that ending principal is zero.
+    if not single_sided and "face_value_end" in bond:
+        # CNY-equivalent face values change with FX even when native principal
+        # is unchanged. Keep CNY face for income; compare native evidence only.
+        native_basis = "face_value_native_start" in bond or "face_value_native_end" in bond
+        start_face_raw = bond.get("face_value_native_start") if native_basis else face_raw
+        end_face_raw = bond.get("face_value_native_end") if native_basis else bond.get("face_value_end")
+        if (_is_absent_numeric(start_face_raw) or _is_absent_numeric(end_face_raw)
+                or _present_value_parse_failed(start_face_raw) or _present_value_parse_failed(end_face_raw)):
+            principal_diagnostic = POSITION_PRINCIPAL_UNAVAILABLE_DIAGNOSTIC
+        elif to_decimal_strict(start_face_raw) != to_decimal_strict(end_face_raw):
+            principal_diagnostic = POSITION_PRINCIPAL_CHANGED_DIAGNOSTIC
     bond_code = str(_get_bond_field(bond, "bond_code", default=""))
-    ytm_raw = _get_bond_field(bond, "yield_to_maturity_start", "yield_to_maturity")
-    ytm = _annual_rate_decimal(ytm_raw) if ytm_raw is not None else None
+    ytm_raw = _get_bond_field(bond, "yield_to_maturity_start", "yield_to_maturity", default=None)
+    ytm = _ytm_decimal(ytm_raw)
 
     # 应计利息（全价基准）
     ai_start_raw = _get_bond_field(bond, "accrued_interest_start", "accrued_interest", default=None)
@@ -172,18 +277,30 @@ def compute_bond_four_effects(
     if mat_date is None:
         mod_dur = Decimal("0")
     else:
-        macaulay = estimate_duration(
-            maturity_date=mat_date,
-            report_date=report_date,
-            coupon_rate=coupon,
-            bond_code=bond_code,
-            ytm=ytm,
-            wind_metrics=None,
-            coupon_frequency=coupon_frequency,
+        if classify_interest_payment_frequency(bond.get("interest_mode_start")) == "bullet":
+            effective_ytm, _ = resolve_ytm_with_par_fallback(coupon, ytm)
+            macaulay, _ = compute_macaulay_duration_and_convexity(
+                coupon_rate=coupon, ytm=effective_ytm,
+                years_to_maturity=Decimal((mat_date - report_date).days) / Decimal("365"),
+                coupon_frequency=coupon_frequency, single_cashflow_at_maturity=True,
+                report_date=report_date, maturity_date=mat_date,
+            )
+        else:
+            macaulay = estimate_duration(
+                maturity_date=mat_date,
+                report_date=report_date,
+                coupon_rate=coupon,
+                bond_code=bond_code,
+                ytm=ytm,
+                wind_metrics=None,
+                coupon_frequency=coupon_frequency,
+            )
+        # 修正久期的除数必须用 Macaulay 实际采用的生效 ytm：estimate_duration 对有票息
+        # 缺 ytm 的债走 par 假设（ytm=coupon），这里取同一来源，不再各自维护一份回退逻辑。
+        ytm_for_mod, _par_fallback_used = resolve_ytm_with_par_fallback(
+            coupon,
+            ytm,
         )
-        # modified_duration_from_macaulay returns duration unchanged when ytm <= 0,
-        # so passing 0 is safe and avoids the arbitrary 0.01 proxy.
-        ytm_for_mod = ytm if ytm and ytm > Decimal("0") else coupon if coupon > Decimal("0") else Decimal("0")
         mod_dur = modified_duration_from_macaulay(
             duration=macaulay,
             ytm=ytm_for_mod,
@@ -214,28 +331,94 @@ def compute_bond_four_effects(
         selection_effect = Decimal("0")
         total_return = income_return
 
+    if single_sided or principal_diagnostic:
+        # 单边或本金发生变化的持仓不能由两端市值推断收益；双端本金缺失也不能
+        # 证明持仓未变。没有交易现金流时只保留排除诊断，Campisi 汇总据此剔除
+        # 相关行。这里的 0 是排除占位，不是观测到的收益。
+        income_return = Decimal("0")
+        treasury_effect = Decimal("0")
+        spread_effect = Decimal("0")
+        selection_effect = Decimal("0")
+        total_return = Decimal("0")
+        total_price_change = Decimal("0")
+
     diagnostics: list[str] = []
+    if principal_diagnostic:
+        diagnostics.append(principal_diagnostic)
+    log_id = bond_code or str(
+        _get_bond_field(bond, "instrument_code", "instrument_id", default="") or "UNKNOWN"
+    )
+    _parse_failed_fields = (
+        (coupon_parse_failed, COUPON_RATE_START_PARSE_FAILED_DIAGNOSTIC, "coupon_rate_start"),
+        (face_parse_failed, FACE_VALUE_START_PARSE_FAILED_DIAGNOSTIC, "face_value_start"),
+        (mv_start_parse_failed, MARKET_VALUE_START_PARSE_FAILED_DIAGNOSTIC, "market_value_start"),
+        (mv_end_parse_failed, MARKET_VALUE_END_PARSE_FAILED_DIAGNOSTIC, "market_value_end"),
+    )
+    for failed, code, field_name in _parse_failed_fields:
+        if not failed:
+            continue
+        diagnostics.append(code)
+        logger.warning(
+            "compute_bond_four_effects: %s parse failed for bond %s, treating as 0",
+            field_name,
+            log_id,
+        )
+    if single_sided:
+        diagnostics.append(
+            POSITION_START_ONLY_DIAGNOSTIC if start_present else POSITION_END_ONLY_DIAGNOSTIC
+        )
+        logger.warning(
+            "bond %s: position exists on the %s side only; all four effects and total_return "
+            "are 0 on this row because a one-sided holding is a position change, not a price "
+            "move. Trade-level attribution for this row is undefined.",
+            log_id,
+            "start" if start_present else "end",
+        )
+    # 单边行的 market_value 缺失已由单边码解释，不再重复报缺失码；
+    # 票息/面值缺失与单边无关，两种情形都必须披露。
+    _missing_fields = (
+        (coupon_raw, COUPON_RATE_START_MISSING_DIAGNOSTIC, "coupon_rate_start", True),
+        (face_raw, FACE_VALUE_START_MISSING_DIAGNOSTIC, "face_value_start", True),
+        (mv_start_raw, MARKET_VALUE_START_MISSING_DIAGNOSTIC, "market_value_start", not single_sided),
+        (mv_end_raw, MARKET_VALUE_END_MISSING_DIAGNOSTIC, "market_value_end", not single_sided),
+    )
+    for raw, code, field_name, reportable in _missing_fields:
+        if not reportable or not _is_absent_numeric(raw):
+            continue
+        diagnostics.append(code)
+        logger.warning(
+            "compute_bond_four_effects: %s is missing for bond %s, substituting 0; "
+            "the resulting 0 is an input gap, not an observed value",
+            field_name,
+            log_id,
+        )
     if _mat_parse_failed:
         diagnostics.append(MATURITY_DATE_PARSE_FAILED_DIAGNOSTIC)
     if mat_date is None:
         diagnostics.append(MOD_DUR_FALLBACK_ZERO_DIAGNOSTIC)
-    log_id = bond_code or str(
-        _get_bond_field(bond, "instrument_code", "instrument_id", default="") or "UNKNOWN"
-    )
+    if single_sided or principal_diagnostic:
+        accrued_disclosure = (
+            "excluded from attribution; all effects and total_return are 0 placeholders"
+        )
+    elif ac_class == ACCOUNTING_BASIS_AC:
+        accrued_disclosure = "AC attribution uses modeled coupon only; selection_effect is 0"
+    else:
+        accrued_disclosure = (
+            "falling back to clean-price basis; "
+            "selection_effect absorbs the par/market difference on this row"
+        )
     if _ai_partial:
         diagnostics.append(ACCRUED_INTEREST_PARTIAL_DIAGNOSTIC)
         logger.warning(
             "bond %s: only one side of accrued_interest present "
-            "(start=%r, end=%r), falling back to clean-price basis; "
-            "selection_effect absorbs the par/market difference on this row",
-            log_id, ai_start_raw, ai_end_raw,
+            "(start=%r, end=%r); %s",
+            log_id, ai_start_raw, ai_end_raw, accrued_disclosure,
         )
     elif not has_accrued:
         diagnostics.append(ACCRUED_INTEREST_MISSING_DIAGNOSTIC)
         logger.warning(
-            "bond %s: accrued_interest missing on both sides, falling back to clean-price basis; "
-            "selection_effect absorbs the par/market difference on this row",
-            log_id,
+            "bond %s: accrued_interest missing on both sides; %s",
+            log_id, accrued_disclosure,
         )
     elif coupon_cash < Decimal("0"):
         diagnostics.append(ACCRUED_INTEREST_EXCEEDS_CARRY_DIAGNOSTIC)
@@ -288,7 +471,11 @@ def compute_bond_six_effects(
         report_date,
         coupon_frequency=coupon_frequency,
     )
-    if resolve_accounting_class(bond) == ACCOUNTING_BASIS_AC:
+    if resolve_accounting_class(bond) == ACCOUNTING_BASIS_AC or (SINGLE_SIDED_POSITION_DIAGNOSTICS | PRINCIPAL_EXCLUSION_DIAGNOSTICS).intersection(
+        fx["diagnostics"]
+    ):
+        # 排除持仓的二阶项同样以 mv_start 为基数，不归零就会让选券残差重新
+        # 吸收 -(convexity + cross)，四效应侧的 fail-closed 归零白做。
         return {
             "income_return": fx["income_return"],
             "treasury_effect": Decimal("0"),
@@ -304,10 +491,14 @@ def compute_bond_six_effects(
             "diagnostics": list(fx["diagnostics"]),
         }
 
-    coupon = _annual_rate_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
-    ytm_raw = _get_bond_field(bond, "yield_to_maturity_start", "yield_to_maturity")
-    ytm = _annual_rate_decimal(ytm_raw) if ytm_raw is not None else None
-    mv_start = safe_decimal(_get_bond_field(bond, "market_value_start"))
+    coupon, _ = _annual_rate_with_parse_flag(
+        _get_bond_field(bond, "coupon_rate_start", "coupon_rate", default=None)
+    )
+    ytm_raw = _get_bond_field(bond, "yield_to_maturity_start", "yield_to_maturity", default=None)
+    ytm = _ytm_decimal(ytm_raw)
+    mv_start, _ = _safe_decimal_with_parse_flag(
+        _get_bond_field(bond, "market_value_start", default=None)
+    )
     mat = _get_bond_field(bond, "maturity_date_start", "maturity_date")
     if mat is not None and hasattr(mat, "date"):
         mat_date = mat.date()
@@ -330,18 +521,11 @@ def compute_bond_six_effects(
     if mat_date is None:
         convexity = Decimal("0")
     else:
-        macaulay = estimate_duration(
-            maturity_date=mat_date,
-            report_date=report_date,
-            coupon_rate=coupon,
-            bond_code=bond_code,
-            ytm=ytm,
-            wind_metrics=None,
-            coupon_frequency=coupon_frequency,
+        # 凸性的贴现 ytm 与 estimate_duration 实际采用的生效 ytm 同源（缺 ytm 走 par 假设）。
+        ytm_for_mod, _par_fallback_used = resolve_ytm_with_par_fallback(
+            coupon,
+            ytm,
         )
-        # modified_duration_from_macaulay returns duration unchanged when ytm <= 0,
-        # so passing 0 is safe and avoids the arbitrary 0.01 proxy.
-        ytm_for_mod = ytm if ytm and ytm > Decimal("0") else coupon if coupon > Decimal("0") else Decimal("0")
         # W-fi-2026-08 P4：传现金流入参，凸性走标准现金流二阶导而非久期型近似。
         # years_to_maturity 与 estimate_duration 内部同式（ACT/365F，剩余天数/365）。
         remaining_days = (mat_date - report_date).days
@@ -350,14 +534,32 @@ def compute_bond_six_effects(
             if remaining_days > 0
             else Decimal("0")
         )
-        convexity = estimate_convexity_bond(
-            macaulay,
-            ytm_for_mod,
-            wind_convexity=None,
-            coupon_frequency=coupon_frequency,
-            coupon_rate=coupon,
-            years_to_maturity=years_to_maturity,
-        )
+        if classify_interest_payment_frequency(bond.get("interest_mode_start")) == "bullet":
+            _, convexity = compute_macaulay_duration_and_convexity(
+                coupon_rate=coupon, ytm=ytm_for_mod, years_to_maturity=years_to_maturity,
+                coupon_frequency=coupon_frequency, single_cashflow_at_maturity=True,
+                report_date=report_date, maturity_date=mat_date,
+            )
+        else:
+            macaulay = estimate_duration(
+                maturity_date=mat_date,
+                report_date=report_date,
+                coupon_rate=coupon,
+                bond_code=bond_code,
+                ytm=ytm,
+                wind_metrics=None,
+                coupon_frequency=coupon_frequency,
+            )
+            convexity = estimate_convexity_bond(
+                macaulay,
+                ytm_for_mod,
+                wind_convexity=None,
+                coupon_frequency=coupon_frequency,
+                coupon_rate=coupon,
+                years_to_maturity=years_to_maturity,
+                report_date=report_date,
+                maturity_date=mat_date,
+            )
 
     convexity_effect = Decimal("0.5") * convexity * (dy * dy + ds * ds) * mv_start
     cross_effect = convexity * dy * ds * mv_start

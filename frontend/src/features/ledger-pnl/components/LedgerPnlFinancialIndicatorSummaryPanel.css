@@ -4,7 +4,7 @@
   grid-template-columns: minmax(0, 1fr);
   gap: var(--moss-space-4);
   margin-bottom: var(--moss-space-6);
-  padding: var(--moss-space-5);
+  padding: var(--moss-space-4);
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel);
@@ -21,8 +21,8 @@
 .ledger-indicator-summary__header h2 {
   margin: 0;
   color: var(--dh-api-ink);
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -43,13 +43,13 @@
 
 .ledger-indicator-summary__header-meta > span {
   padding: 3px 8px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  border-radius: 0;
+  background: transparent;
   color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
+  border: 0;
 }
 
 .ledger-indicator-summary__header-meta > small {
@@ -63,10 +63,11 @@
   justify-items: start;
   min-height: 72px;
   padding: var(--moss-space-4);
-  border: 1px dashed var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
+  border-radius: 0;
   color: var(--dh-api-soft);
   font-size: 13px;
+  border: 0;
+  background: transparent;
 }
 
 .ledger-indicator-summary__state > strong {
@@ -88,8 +89,39 @@
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel-2);
   color: var(--dh-api-ink);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
+  min-height: 36px;
+}
+
+.ledger-indicator-summary__month-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--moss-space-3);
+  padding: var(--moss-space-2) var(--moss-space-3);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.ledger-indicator-summary__month-toggle button {
+  padding: 3px 10px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.ledger-indicator-summary__month-toggle button:hover,
+.ledger-indicator-summary__month-toggle button:focus-visible {
+  border-color: var(--dh-api-blue);
+  outline: none;
 }
 
 .ledger-indicator-summary__quality {
@@ -98,11 +130,11 @@
   align-items: center;
   gap: var(--moss-space-3);
   padding: var(--moss-space-2) var(--moss-space-3);
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  border-radius: 0;
+  background: transparent;
   color: var(--dh-api-soft);
   font-size: 12px;
+  border: 0;
 }
 
 .ledger-indicator-summary__quality[data-state="warning"] {
@@ -119,7 +151,7 @@
 .ledger-indicator-summary__quality-failure {
   color: var(--dh-api-amber);
   font-style: normal;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .ledger-indicator-summary__dot {
@@ -144,8 +176,10 @@
 
 .ledger-indicator-summary__section {
   min-width: 0;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  border-top: 1px solid var(--dh-api-line-soft);
 }
 
 .ledger-indicator-summary__section > summary {
@@ -158,7 +192,7 @@
   list-style: none;
   cursor: pointer;
   color: var(--dh-api-soft);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .ledger-indicator-summary__section > summary::-webkit-details-marker {
@@ -196,7 +230,7 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ledger-indicator-summary__section-heading small {
@@ -209,6 +243,29 @@
   border-top: 1px solid transparent;
 }
 
+.ledger-indicator-summary__nosource-fold {
+  margin: var(--moss-space-2) var(--moss-space-3) var(--moss-space-3);
+  border-top: 1px dashed var(--dh-api-line-soft);
+}
+
+.ledger-indicator-summary__nosource-fold > summary {
+  padding: var(--moss-space-2) 0;
+  list-style: none;
+  cursor: pointer;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.ledger-indicator-summary__nosource-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ledger-indicator-summary__nosource-fold > summary:hover,
+.ledger-indicator-summary__nosource-fold > summary:focus-visible {
+  color: var(--dh-api-soft);
+  outline: none;
+}
+
 .ledger-indicator-summary__table {
   width: 100%;
   min-width: 960px;
@@ -218,35 +275,40 @@
 
 .ledger-indicator-summary__table th,
 .ledger-indicator-summary__table td {
-  padding: 6px 10px;
-  border-top: 1px solid var(--dh-api-line-soft);
+  padding: 0 var(--moss-space-3);
+  border-top: 1px solid var(--moss-table-border);
   text-align: left;
   vertical-align: top;
+  height: var(--moss-table-row-h);
+  line-height: var(--moss-table-line-height);
 }
 
 .ledger-indicator-summary__table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-header-weight);
+  color: var(--moss-table-header-color);
 }
 
 .ledger-indicator-summary__group-row th {
   border-top: none;
   background: var(--dh-api-panel-2);
-  color: var(--dh-api-ink);
-  font-weight: 700;
+  color: var(--moss-table-cell-color);
+  font-weight: var(--moss-table-header-weight);
   white-space: nowrap;
 }
 
 .ledger-indicator-summary__period-head {
-  border-left: 1px solid var(--dh-api-line);
+  border-left: 0;
   text-align: center !important;
 }
 
 .ledger-indicator-summary__column-row th {
   background: var(--dh-api-panel-2);
-  color: var(--dh-api-soft);
-  font-weight: 650;
+  color: var(--moss-table-header-color);
+  font-weight: var(--moss-table-header-weight);
   text-align: right;
   white-space: nowrap;
 }
@@ -256,7 +318,7 @@
 }
 
 .ledger-indicator-summary__column-row th:nth-child(4n + 2) {
-  border-left: 1px solid var(--dh-api-line);
+  border-left: 0;
 }
 
 .ledger-indicator-summary__row th[scope="row"] {
@@ -266,8 +328,8 @@
   min-width: 250px;
   max-width: 330px;
   background: var(--dh-api-panel);
-  color: var(--dh-api-ink);
-  font-weight: 500;
+  color: var(--moss-table-cell-color);
+  font-weight: var(--moss-table-cell-weight);
 }
 
 .ledger-indicator-summary__row th[scope="row"][data-indent="1"] {
@@ -287,12 +349,12 @@
 
 .ledger-indicator-summary__row-flag {
   flex: 0 0 auto;
-  padding: 1px 5px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-family: inherit;
   line-height: 1.4;
@@ -314,22 +376,23 @@
 
 .ledger-indicator-summary__row-flag--evidence {
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-tabular, ui-monospace, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
 }
 
 .ledger-indicator-summary__row[data-availability="no_system_source"] th[scope="row"] {
-  color: var(--dh-api-soft);
+  color: var(--moss-table-header-color);
 }
 
 .ledger-indicator-summary__num {
   font-variant-numeric: tabular-nums;
-  font-family: var(--moss-font-tabular, ui-monospace, monospace);
+  font-family: var(--moss-font-tabular);
   text-align: right !important;
   white-space: nowrap;
 }
 
 .ledger-indicator-summary__num:nth-child(4n + 2) {
-  border-left: 1px solid var(--dh-api-line);
+  border-left: 0;
 }
 
 .ledger-indicator-summary__footer {
@@ -345,7 +408,7 @@
 .ledger-indicator-summary__footer summary {
   cursor: pointer;
   color: var(--dh-api-soft);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .ledger-indicator-summary__footer ul {
@@ -364,7 +427,8 @@
 .ledger-indicator-summary__source-version {
   margin-left: 6px;
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-tabular, ui-monospace, monospace);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
 }
 
@@ -375,5 +439,6 @@
 
   .ledger-indicator-summary__row th[scope="row"] {
     min-width: 200px;
+    font-weight: var(--moss-table-cell-weight);
   }
 }

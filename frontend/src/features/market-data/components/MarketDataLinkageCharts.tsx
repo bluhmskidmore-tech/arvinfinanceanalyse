@@ -5,12 +5,12 @@ import type {
   MacroBondLinkageEnvironmentScore,
   MacroBondLinkageTopCorrelation,
 } from "../../../api/contracts";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import {
   buildDerivedSpreadsBarOption,
   buildLinkageEnvironmentBarOption,
 } from "../lib/charts/linkageEnvironmentBarChartOption";
 import { buildLinkageCorrelationBarOption } from "../lib/charts/linkageCorrelationBarChartOption";
-import { MarketDataChartShell } from "./MarketDataChartShell";
 
 type MarketDataLinkageChartsProps = {
   environmentScore?: Partial<MacroBondLinkageEnvironmentScore>;
@@ -30,20 +30,25 @@ export function MarketDataLinkageEnvironmentChart({
 
   return (
     <div className="market-data-linkage-chart-stack" data-testid="market-data-linkage-environment-charts">
-      <MarketDataChartShell
+      <ChartCard
+        flat
+        title="环境评分"
         option={envOption}
         height={220}
+        legend="none"
         testId="market-data-linkage-environment-bar"
         emptyMessage="缺少 environment_score 分项，无法绘制环境柱图。"
       />
-      {spreadOption ? (
-        <MarketDataChartShell
-          option={spreadOption}
-          height={Math.max(160, (Object.keys(derivedSpreads ?? {}).length || 1) * 28)}
-          testId="market-data-linkage-derived-spreads-bar"
-          emptyMessage="缺少 derived_spreads。"
-        />
-      ) : null}
+      <ChartCard
+        flat
+        title="期限利差"
+        unit="bp"
+        option={spreadOption}
+        height={220}
+        legend="none"
+        testId="market-data-linkage-derived-spreads-bar"
+        emptyMessage="缺少同日、可用的期限利差数据。"
+      />
     </div>
   );
 }
@@ -60,10 +65,13 @@ export function MarketDataLinkageCorrelationChart({
       className="market-data-linkage-chart-block market-data-spreads-chart-panel"
       data-testid="market-data-linkage-correlation-wrap"
     >
-      <p className="market-data-linkage-chart-note">{note}</p>
-      <MarketDataChartShell
+      <ChartCard
+        flat
+        title="相关强度"
+        question={note}
         option={option}
-        height={260}
+        height={280}
+        legendRows={2}
         testId="market-data-linkage-correlation-bar"
         emptyMessage="缺少 top_correlations，无法绘制相关强度图。"
       />

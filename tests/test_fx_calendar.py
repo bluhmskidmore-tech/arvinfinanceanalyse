@@ -15,8 +15,9 @@ def test_cfets_fx_calendar_marks_weekend_non_business_day() -> None:
     )
 
 
-def test_cfets_fx_calendar_marks_usd_currency_holiday() -> None:
-    assert is_cfets_fx_non_business_day(
+def test_cfets_fixing_calendar_ignores_usd_settlement_holiday() -> None:
+    # CFETS published the 2026-01-19 USD/CNY middle rate (7.0051).
+    assert not is_cfets_fx_non_business_day(
         date(2026, 1, 19),
         base_currency="USD",
         quote_currency="CNY",
@@ -32,7 +33,7 @@ def test_cfets_fx_calendar_marks_2026_dragon_boat_cny_holiday() -> None:
 
 
 def test_cfets_fx_calendar_is_pair_symmetric() -> None:
-    assert is_cfets_fx_non_business_day(
+    assert not is_cfets_fx_non_business_day(
         "2026-01-19",
         base_currency="CNY",
         quote_currency="USD",

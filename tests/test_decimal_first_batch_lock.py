@@ -148,13 +148,13 @@ _SPREAD_LOCK: dict[str, Decimal] = {
 }
 
 # ---------------------------------------------------------------------------
-# W-fi-2026-08 P2 重锁：treasury/spread_effect 的口径依据
+# W-fi-2026-08 P2 重锁；2026-09-05 日期票息日历口径复核
 # ---------------------------------------------------------------------------
 # 这批值 pin 的是**逐期现金流贴现久期**，不是旧的整期闭合式久期。完整口径：
 #
 #   剩余期限 = 剩余自然日 / 365（ACT/365）
-#   付息计划 = 半年付，n = ceil(剩余期限 × 2) 期；末期落在剩余期限当天，其余按
-#              1/2 年回推，因此首期是一段短残期（≤0.01 期的尾数并入上一期）
+#   付息计划 = 半年付，从到期日按 6 个月回推真实付息日期；报告日之后的票息
+#              按实际日期距报告日 ACT/365 定位（报告日恰在票息网格时用 k/2 年）
 #   贴现     = (1 + ytm/2) ^ (t × 2)
 #   Macaulay = Σ t·PV(t) / Σ PV(t)；修正久期 = Macaulay / (1 + ytm/2)
 #   Δy       = 国债曲线自然三次样条（1/3/5/7/10/30Y 节点，百分数保留 8 位小数）
@@ -163,9 +163,9 @@ _SPREAD_LOCK: dict[str, Decimal] = {
 #
 # 旧锁（−441,588.75 / GOV_2031 −340,435.15）错在久期一项：旧实现把期数四舍五入成
 # 整数，等于把债券重定价成一只整期债——
-#   GOV_2031  剩余 1719d = 4.7096y → 旧口径按 9 期（4.50y）定价，修正久期 4.2322 vs 正确 4.3855（+3.62%）
-#   AAA_2029  剩余 1086d = 2.9753y → 旧口径按 6 期（3.00y）定价，修正久期 2.8322 vs 正确 2.8079（−0.86%）
-#   CT_2027   剩余  437d = 1.1973y → 旧口径按 2 期（1.00y）定价，修正久期 0.9704 vs 正确 1.1438（+17.87%）
+#   GOV_2031  剩余 1719d = 4.7096y → 旧整期按 9 期（4.50y）定价，修正久期 4.2322
+#   AAA_2029  剩余 1086d = 2.9753y → 旧整期按 6 期（3.00y）定价，修正久期 2.8322
+#   CT_2027   剩余  437d = 1.1973y → 旧整期按 2 期（1.00y）定价，修正久期 0.9704
 #
 # 2026-08-13 重算方式（这些数是独立推出来的，不是从被测代码输出抄回来的）：另写一份
 # **不 import 任何 MOSS 代码**的教科书参考实现，同一个值用互相独立的多条路径求——
@@ -173,26 +173,30 @@ _SPREAD_LOCK: dict[str, Decimal] = {
 # scipy CubicSpline(bc_type="natural")），久期走五条（float 逐期贴现、Decimal prec=60
 # 逐期贴现、几何级数闭合式的 float 与 Decimal 版、prec=60 价格函数中心差分反推修正
 # 久期——最后一条同时独立验证了 Macaulay→修正久期的除法）。核对结果：
-#   * 独立值与代码输出逐券逐字段 |diff| = 0（不是"落在容差内"，是完全一致）；
+#   * 当时独立值与当时代码输出逐券逐字段 |diff| = 0；
 #   * 独立样条复现了本文件 2026-08-12 就锁定、且久期修复未触及的 _BENCH_LOCK 七个 Δy
 #     （|diff| < 1.6e-18），说明 Δy 这条腿也不是拿今天的代码倒推的；
 #   * 把同一份独立 Δy/市值配上旧的整期闭合式久期，能把旧锁那六个数复现到 3.5e-10 元，
 #     反证两版锁值之差确实只来自久期口径，其余输入逐字段未动。
-# income_return / total_return / market_value_start 与旧锁完全一致（久期不进入这三项）。
+# 2026-09-05 日期口径升级后，本锁表按到期日锚定的真实票息日重算：独立脚本
+# output/validation/computation-followup-20260923-24d2/duration/independent_reference.py
+# 不导入 MOSS，按 ACT/365 逐笔贴现；市场曲线变化仍取 2026-08-13 独立锁，
+# 重算利率/利差效应及闭合选券残差。旧锁的等间隔碎期现金流已过时。
+# income_return / total_return / market_value_start 不受久期影响，保持原锁。
 
 # 上述口径直接产出的修正久期。单独锁一遍，是为了让"利率效应差了几万元"能被读成
 # "久期从 X 年变成 Y 年"——CNY 数字看不出口径回退，久期看得出。
 _MOD_DURATION_LOCK: dict[str, float] = {
-    "GOV_2031": 4.385538577546118,
-    "AAA_2029": 2.8078906842612144,
-    "CT_2027": 1.1438419445777561,
+    "GOV_2031": 4.3856898708176605,
+    "AAA_2029": 2.8078176582432365,
+    "CT_2027": 1.1437591565944832,
 }
 
 _TOTALS_LOCK: dict[str, float] = {
     "income_return": 481391.7808219178,
-    "treasury_effect": -455841.9380529043,
-    "spread_effect": -40625.700618696654,
-    "selection_effect": 1027321.8486716009,
+    "treasury_effect": -455850.6129579807,
+    "spread_effect": -40625.01074804284,
+    "selection_effect": 1027329.8337060235,
     "total_return": 1012245.9908219178,
     "market_value_start": 182679011.22,
 }
@@ -200,23 +204,23 @@ _TOTALS_LOCK: dict[str, float] = {
 _BY_BOND_LOCK: dict[str, dict[str, float]] = {
     "GOV_2031": {
         "income_return": 227616.43835616438,
-        "treasury_effect": -352766.6212843688,
+        "treasury_effect": -352778.7911046272,
         "spread_effect": 0.0,
-        "selection_effect": 994741.9412843687,
+        "selection_effect": 994754.1111046271,
         "total_return": 869591.7583561643,
     },
     "AAA_2029": {
         "income_return": 146506.84931506848,
-        "treasury_effect": -85516.62254818487,
-        "spread_effect": -48533.87049675862,
-        "selection_effect": -88171.72695505651,
+        "treasury_effect": -85514.39848068444,
+        "spread_effect": -48532.60825556123,
+        "selection_effect": -88175.2132637543,
         "total_return": -75715.3706849315,
     },
     "CT_2027": {
         "income_return": 107268.49315068492,
-        "treasury_effect": -17558.694220350662,
-        "spread_effect": 7908.169878061973,
-        "selection_effect": 120751.63434228869,
+        "treasury_effect": -17557.42337266904,
+        "spread_effect": 7907.597507518396,
+        "selection_effect": 120750.93586515066,
         "total_return": 218369.60315068494,
     },
 }
@@ -304,9 +308,10 @@ class TestScenarioStressDecimalLock:
         tensor = _tensor_result()
         rows = [_rate_scenario(tensor), _credit_scenario(tensor), _liquidity_scenario(tensor)]
         summary = _scenario_summary(rows)
-        assert summary["worst_scenario_key"] == "liquidity_30d_cashflow_10pct"
-        assert summary["worst_estimated_impact"]["raw"] == pytest.approx(-433333322.321, abs=_TOL_YUAN)
-        assert summary["worst_estimated_impact"]["display"] == "-433,333,322.32"
+        assert summary["comparison_measure"] == "estimated_pnl_impact"
+        assert summary["worst_scenario_key"] == "parallel_rate_up_10bp"
+        assert summary["worst_estimated_impact"]["raw"] == pytest.approx(-1254327.891, abs=_TOL_YUAN)
+        assert summary["worst_estimated_impact"]["display"] == "-1,254,327.89"
         assert summary["available_count"] == 3
 
 

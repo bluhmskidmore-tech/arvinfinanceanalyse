@@ -31,7 +31,9 @@ import type {
 export type PnlCoreClientMethods = {
   // /api/pnl/dates、/api/pnl/data、/api/pnl/overview 仅提供正式口径读模型：
   // 后端路由与服务不消费 basis 查询参数（分析口径读模型未建），前端不再发送该参数。
-  getFormalPnlDates: () => Promise<ApiEnvelope<PnlDatesPayload>>;
+  getFormalPnlDates: (options?: {
+    page?: "by_business_insights";
+  }) => Promise<ApiEnvelope<PnlDatesPayload>>;
   getFormalPnlData: (date: string) => Promise<ApiEnvelope<PnlDataPayload>>;
   getFormalPnlOverview: (reportDate: string) => Promise<ApiEnvelope<PnlOverviewPayload>>;
   getLedgerPnlDates: () => Promise<ApiEnvelope<LedgerPnlDatesPayload>>;
@@ -117,8 +119,14 @@ export function createRealPnlCoreClient(
   const { fetchImpl, baseUrl, requestJson, requestActionJson } = options;
 
   return {
-    getFormalPnlDates: () =>
-      requestJson<PnlDatesPayload>(fetchImpl, baseUrl, "/api/pnl/dates"),
+    getFormalPnlDates: (datesOptions) =>
+      requestJson<PnlDatesPayload>(
+        fetchImpl,
+        baseUrl,
+        datesOptions?.page === "by_business_insights"
+          ? "/api/pnl/dates?page=by_business_insights"
+          : "/api/pnl/dates",
+      ),
     getFormalPnlData: (date: string) =>
       requestJson<PnlDataPayload>(
         fetchImpl,

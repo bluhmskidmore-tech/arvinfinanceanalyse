@@ -22,7 +22,7 @@
 .stock-detail-drawer .ant-drawer-title {
   color: var(--dh-api-ink);
   font-size: 15px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .stock-detail-drawer .ant-drawer-close,
@@ -60,13 +60,13 @@
 .stock-detail-drawer__header .ant-typography-strong {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   color: var(--dh-api-ink);
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__name {
   color: var(--dh-api-soft) !important;
   font-size: 14px;
-  font-weight: 750;
+  font-weight: 600;
   margin-left: 4px;
 }
 
@@ -87,7 +87,7 @@
   background: var(--dh-api-panel-2);
   color: var(--dh-api-muted) !important;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__review-context {
@@ -104,7 +104,7 @@
   background: var(--dh-api-panel-3);
   color: var(--dh-api-blue);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 /* 多策略命中徽章 */
@@ -124,20 +124,20 @@
   color: var(--dh-api-soft);
   white-space: nowrap;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__strategy-ranks-badge--consensus {
   border-color: var(--dh-api-green);
   background: var(--dh-api-panel-3);
   color: var(--dh-api-green);
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__lookback .ant-typography {
   color: var(--dh-api-muted) !important;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__lookback .ant-segmented {
@@ -200,7 +200,7 @@
 .stock-detail-drawer__strategy-ranks-label {
   color: var(--dh-api-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   margin-right: 2px;
   display: none;
 }
@@ -233,7 +233,7 @@
 }
 
 .stock-detail-drawer__tabular {
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -274,7 +274,7 @@
 .stock-detail-drawer__alert-title {
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__alert--danger .stock-detail-drawer__alert-title {
@@ -322,7 +322,7 @@
 .stock-detail-drawer__market-events > .ant-typography {
   color: var(--dh-api-blue);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__audit-details {
@@ -343,8 +343,9 @@
 .stock-detail-drawer__audit-details > summary::after {
   content: "+";
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
-  font-weight: 850;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__audit-details[open] > summary::after {
@@ -354,7 +355,7 @@
 .stock-detail-drawer__audit-details summary small {
   color: var(--dh-api-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__audit-details-body {
@@ -398,7 +399,7 @@
   background: var(--dh-api-panel-3);
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__kline-tags span[data-tone="warning"] {
@@ -428,7 +429,7 @@
   cursor: pointer;
   color: var(--dh-api-blue);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   list-style: none;
 }
 
@@ -439,8 +440,9 @@
 .stock-detail-drawer__review-check-more > summary::after {
   content: "+";
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
-  font-weight: 850;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__review-check-more[open] > summary::after {
@@ -450,7 +452,7 @@
 .stock-detail-drawer__review-check-more small {
   color: var(--dh-api-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__review-check-more-grid {
@@ -481,7 +483,7 @@
   display: block;
   color: var(--dh-api-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__confirmation-grid strong {
@@ -490,7 +492,7 @@
   overflow: hidden;
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -521,7 +523,7 @@
   background: var(--dh-api-panel-3);
   color: var(--dh-api-blue);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -534,12 +536,12 @@
 
 .stock-detail-drawer__boundary-line span {
   color: var(--dh-api-muted);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__boundary-line strong {
   color: var(--dh-api-ink);
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__event-boundary-list {
@@ -593,13 +595,13 @@
 .stock-detail-drawer__decision-summary-head > .ant-typography {
   color: var(--dh-api-blue);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__decision-summary-head > span {
   color: var(--dh-api-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__decision-brief {
@@ -631,7 +633,7 @@
   display: block;
   color: var(--dh-api-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -641,7 +643,7 @@
   overflow: hidden;
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -663,7 +665,7 @@
   cursor: pointer;
   color: var(--dh-api-blue);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   list-style: none;
 }
 
@@ -674,8 +676,9 @@
 .stock-detail-drawer__thesis-details > summary::after {
   content: "+";
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono), ui-monospace, monospace;
-  font-weight: 850;
+  font-family: var(--moss-font-tabular), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__thesis-details[open] > summary::after {
@@ -685,7 +688,7 @@
 .stock-detail-drawer__thesis-details small {
   color: var(--dh-api-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__thesis-details .stock-detail-drawer__review-thesis-grid {
@@ -704,7 +707,7 @@
   display: block;
   color: var(--dh-api-blue);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__review-thesis-grid ul {
@@ -754,7 +757,7 @@
   padding: 8px 10px;
   background: var(--dh-api-panel-2);
   color: var(--dh-api-muted);
-  font-weight: 750;
+  font-weight: 600;
   white-space: nowrap;
   border-bottom: 1px solid var(--dh-api-line);
 }
@@ -778,7 +781,7 @@
   margin-top: 2px;
   color: var(--dh-api-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__history-maturity[data-maturity-status="matured_missing_bar"] > small,
@@ -829,7 +832,7 @@
 .stock-detail-drawer__lineage-grid dt {
   color: var(--dh-api-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__lineage-grid dd {
@@ -844,13 +847,13 @@
 .stock-detail-drawer__factor-label {
   font-size: 12px;
   color: var(--dh-api-muted);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stock-detail-drawer__factor-value {
   margin-top: 4px;
   font-size: 15px;
-  font-weight: 850;
+  font-weight: 600;
   color: var(--dh-api-ink);
 }
 
@@ -862,7 +865,7 @@
   gap: 10px;
   cursor: pointer;
   color: var(--dh-api-blue);
-  font-weight: 850;
+  font-weight: 600;
   list-style: none;
   min-height: 36px;
   padding: 8px 10px;
@@ -946,7 +949,7 @@
 }
 
 .stock-detail-drawer__market-events-topic {
-  font-weight: 750;
+  font-weight: 600;
   color: var(--dh-api-blue);
   word-break: break-all;
 }

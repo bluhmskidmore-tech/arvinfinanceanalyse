@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 
 import duckdb
@@ -66,7 +67,7 @@ def _write_manifest(
     governance_dir: Path,
     report_date: str,
     *,
-    rule_version: str = "rv_accounting_asset_movement_v3",
+    rule_version: str = "rv_accounting_asset_movement_v4",
     source_version: str = "sv-control",
 ) -> None:
     governance_dir.mkdir(parents=True, exist_ok=True)
@@ -258,7 +259,7 @@ def test_interior_gap_is_repaired_even_when_latest_dates_match(monkeypatch, tmp_
     ("manifest_rule", "manifest_source"),
     [
         ("rv-accounting-old", "sv-control"),
-        ("rv_accounting_asset_movement_v3", "sv-control-old"),
+        ("rv_accounting_asset_movement_v4", "sv-control-old"),
     ],
 )
 def test_rule_or_source_drift_is_rematerialized(
@@ -389,6 +390,107 @@ def test_cli_writes_failure_receipt_and_returns_nonzero(monkeypatch, tmp_path) -
     assert receipt["status"] == "failed"
     assert receipt["exit_code"] == 1
     assert receipt["alert"]["active"] is True
+
+
+@pytest.mark.parametrize("host_exit", [0, 7])
+def test_scheduled_cli_delegates_drain_and_records_runtime_failure(
+    monkeypatch, tmp_path, host_exit: int
+) -> None:
+    watch = _watch_module()
+    settings = SimpleNamespace(
+        duckdb_path=tmp_path / "moss.duckdb",
+        governance_path=tmp_path / "governance",
+        product_category_source_dir=tmp_path / "product-category",
+        data_input_root=tmp_path / "data-input",
+        local_archive_path=tmp_path / "archive",
+    )
+    monkeypatch.setattr(watch, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        watch,
+        "reconcile_balance_movement_freshness",
+        lambda **_kwargs: pytest.fail("scheduled writer must go through the maintenance host"),
+    )
+    commands = []
+
+    def fake_host(command, **_kwargs):
+        commands.append(command)
+        child_path = Path(command[command.index("-BalanceMovementReceiptPath") + 1])
+        child_path.write_text(
+            json.dumps({"task_name": watch.TASK_NAME, "result": {"status": "fresh", "alert": None}}),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, host_exit, stdout="", stderr="recovery failed")
+
+    monkeypatch.setattr(subprocess, "run", fake_host)
+    receipt_path = tmp_path / "receipt.json"
+    exit_code = watch.main([
+        "--run-once", "--run-kind", "scheduled", "--receipt-path", str(receipt_path)
+    ])
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert "-BalanceMovementOnly" in commands[0]
+    assert str(settings.duckdb_path) in commands[0]
+    assert str(settings.governance_path) in commands[0]
+    assert exit_code == (0 if host_exit == 0 else 1)
+    assert receipt["status"] == ("fresh" if host_exit == 0 else "failed")
+    if host_exit:
+        assert receipt["alert"]["code"] == "balance_movement_runtime_failed"
+
+
+def test_child_cli_refuses_unowned_maintenance_token(monkeypatch, tmp_path) -> None:
+    watch = _watch_module()
+    monkeypatch.setattr(watch, "ROOT", tmp_path)
+    monkeypatch.setattr(watch, "get_settings", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        watch, "reconcile_balance_movement_freshness",
+        lambda **_kwargs: pytest.fail("invalid maintenance must not start a writer"),
+    )
+    receipt_path = tmp_path / "receipt.json"
+    exit_code = watch.main([
+        "--run-once", "--run-kind", "scheduled", "--maintenance-owner-token", "foreign",
+        "--receipt-path", str(receipt_path),
+    ])
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert receipt["alert"]["code"] == "balance_movement_runtime_failed"
+
+
+def test_child_cli_runs_only_under_existing_owner(monkeypatch, tmp_path) -> None:
+    watch = _watch_module()
+    monkeypatch.setattr(watch, "ROOT", tmp_path)
+    settings = SimpleNamespace(
+        duckdb_path=tmp_path / "moss.duckdb", governance_path=tmp_path / "governance",
+        product_category_source_dir=tmp_path / "inputs", data_input_root=tmp_path / "inputs",
+        local_archive_path=tmp_path / "archive",
+    )
+    monkeypatch.setattr(watch, "get_settings", lambda: settings)
+    marker = tmp_path / "tmp-governance/runtime-clean/control/maintenance.json"
+    marker.parent.mkdir(parents=True)
+    marker.write_text(json.dumps({"state": "launch_blocked", "owner_token": "owned"}), encoding="utf-8")
+    calls = []
+
+    def fake_reconcile(**kwargs):
+        calls.append(kwargs)
+        return {"status": "fresh", "alert": None}
+
+    monkeypatch.setattr(watch, "reconcile_balance_movement_freshness", fake_reconcile)
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: pytest.fail("owned child must not recurse into host"))
+    assert watch.main(["--run-once", "--run-kind", "scheduled", "--maintenance-owner-token", "owned"]) == 0
+    assert len(calls) == 1
+    assert calls[0]["duckdb_path"] == settings.duckdb_path
+    assert marker.exists(), "only the host may release its lease"
+
+
+def test_scheduled_cli_without_child_receipt_records_failure(monkeypatch, tmp_path) -> None:
+    watch = _watch_module()
+    monkeypatch.setattr(watch, "get_settings", lambda: SimpleNamespace(
+        duckdb_path=tmp_path / "moss.duckdb", governance_path=tmp_path / "governance",
+    ))
+    monkeypatch.setattr(subprocess, "run", lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, "", ""))
+    receipt_path = tmp_path / "receipt.json"
+    assert watch.main(["--run-once", "--run-kind", "scheduled", "--receipt-path", str(receipt_path)]) == 1
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["alert"]["code"] == "balance_movement_runtime_failed"
+    assert "without a balance receipt" in receipt["alert"]["message"]
 
 
 def test_installer_registers_daily_watch_with_receipt_and_log() -> None:

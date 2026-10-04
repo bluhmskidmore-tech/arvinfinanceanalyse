@@ -1,4 +1,4 @@
-﻿"""Contract tests for positions HTTP API (envelope + snapshot read behaviors)."""
+"""Contract tests for positions HTTP API (envelope + snapshot read behaviors)."""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -15,6 +15,54 @@ from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
 POSITIONS_READ_HEADERS = {"X-User-Id": "positions-read-user", "X-User-Role": "viewer"}
+
+
+@pytest.mark.parametrize("top_n,page,page_size", [(None, 1, 50), (75, 2, 50), (10, 2, 10), (None, 4, 50), (0, 1, 50)])
+def test_counterparty_bonds_formats_only_page_and_keeps_full_population(top_n, page, page_size, monkeypatch):
+    from backend.app.repositories.positions_repo import PositionsRepository
+
+    repo = PositionsRepository.__new__(PositionsRepository)
+    # 120 equally sized counterparties: ten leaders are 8.33% of the population,
+    # even when a top_n or a page excludes the customers with missing rates.
+    rows = [
+        (f"issuer-{index:03d}", 100, 2, 2 if index < 100 else None, 3, 100 if index < 100 else 0, 100, 100)
+        for index in range(120)
+    ]
+    responses = iter([[(2,)], rows, [(12000, 200, 360, 10000, 12000, 2000, 0, 20, 0)]])
+    queries = []
+
+    def fetch(sql, params):
+        queries.append((sql, params))
+        return next(responses)
+
+    monkeypatch.setattr(repo, "_table_exists", lambda name: True)
+    monkeypatch.setattr(repo, "_fetch_rows", fetch)
+    original = repo._rows_to_counterparty_items
+    formatted = []
+
+    def format_page(selected, num_days):
+        formatted.extend(selected)
+        return original(selected, num_days)
+
+    monkeypatch.setattr(repo, "_rows_to_counterparty_items", format_page)
+    result = repo.aggregate_counterparty_bonds("2026-01-01", "2026-01-02", None, top_n, page, page_size)
+    expected_rows = rows[:top_n] if top_n and top_n > 0 else rows
+    expected_rows = expected_rows[(page - 1) * page_size : page * page_size]
+    assert result["items"] == original(expected_rows, 2)
+    assert formatted == expected_rows
+    assert len(formatted) <= page_size
+    assert len(queries) == 3
+    assert result["total_customers"] == 120
+    assert result["cr10_ratio"] == "8.33%"
+    assert result["total_amount"] == "12000.00000000"
+    assert result["total_avg_daily"] == "6000.00000000"
+    assert result["total_weighted_rate"] == "0.02000000"
+    assert result["total_weighted_coupon_rate"] == "0.03000000"
+    assert result["ytm_rate_coverage"]["covered_amount"] == "10000.00000000"
+    assert result["ytm_rate_coverage"]["missing_amount"] == "2000.00000000"
+    assert result["ytm_rate_coverage"]["missing_count"] == 20
+    assert result["ytm_rate_coverage"]["coverage_ratio"] == "83.33333333"
+    assert result["coupon_rate_coverage"]["coverage_ratio"] == "100.00000000"
 
 
 def _grant_positions_read_scope(*, settings, user_id: str = "*") -> None:
@@ -376,7 +424,8 @@ def test_positions_read_surface_allows_development_fallback_without_explicit_sco
 ) -> None:
     """development 环境 + 匿名 viewer 回退身份可读（与 balance_analysis 读路由对齐）。
 
-    显式头部身份缺 scope 时仍 403，由上面的契约测试锁定。
+    显式头部身份缺 scope 时仍 403，由上面的契约测试锁定。dev fallback 额外要求
+    loopback 客户端（P1 安全收紧）；TestClient 显式设置 client=127.0.0.1 以满足该判定。
     """
     route_mod = load_module(
         "backend.app.api.routes.positions",
@@ -400,7 +449,7 @@ def test_positions_read_surface_allows_development_fallback_without_explicit_sco
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(route_mod.router)
-    client = TestClient(app)
+    client = TestClient(app, client=("127.0.0.1", 12345))
 
     response = client.get("/api/positions/bonds/sub_types")
 
@@ -994,10 +1043,12 @@ def test_positions_bond_rates_low_percent_not_passthrough_and_dirty_values_rejec
     tmp_path,
     monkeypatch,
 ) -> None:
-    """百分数口径无条件 /100：0.5（=0.5%）→ 0.005；>20% 与负值按脏数据置空并从加权分母剔除。
+    """百分数口径无条件 /100：0.5（=0.5%）→ 0.005；>20%、低于 −20% 的 YTM 与任何负票息
+    按脏数据置空并从加权分母剔除。
 
     旧 `>1 and <=100` 启发式会把 0.5 当作小数 50% 直通，使低票息券按百倍计入
-    加权收益率；权威口径见 rate_units.normalize_percent_rate_to_decimal。
+    加权收益率；权威口径见 rate_units.normalize_percent_rate_to_decimal，负值下界见
+    rate_units.NEGATIVE_YIELD_DIRTY_FLOOR。
     """
     db = tmp_path / "pos-low-percent-rate.duckdb"
     conn = duckdb.connect(str(db), read_only=False)
@@ -1032,7 +1083,7 @@ def test_positions_bond_rates_low_percent_not_passthrough_and_dirty_values_rejec
             bond_type="Conv",
             issuer_name="Issuer-Conv",
             market_value=Decimal("100"),
-            ytm=Decimal("-3.0"),
+            ytm=Decimal("-25.0"),
             coupon=Decimal("-1.0"),
             is_issuance_like=False,
         )
@@ -1071,6 +1122,132 @@ def test_positions_bond_rates_low_percent_not_passthrough_and_dirty_values_rejec
     assert counterparty_body["ytm_rate_coverage"]["missing_amount"] == "200.00000000"
     assert counterparty_body["ytm_rate_coverage"]["missing_count"] == 2
     assert counterparty_body["coupon_rate_coverage"]["missing_count"] == 2
+
+
+def test_positions_bond_ytm_admits_legal_negative_yield_but_coupon_and_interbank_unchanged(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """负 YTM 口径与 rate_units.NEGATIVE_YIELD_DIRTY_FLOOR（−20%，含端点）对齐。
+
+    −0.5（百分数）→ −0.005 观测值、−20 → −0.20 仍是观测值、−25 → 脏值置空；票息一律
+    拒绝负值（−0.5 → None）；同业 funding_cost_rate 不是收益率，无条件 /100 的行为不变。
+    """
+    db = tmp_path / "pos-negative-ytm.duckdb"
+    conn = duckdb.connect(str(db), read_only=False)
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="LEGAL-NEG",
+            bond_type="Neg",
+            issuer_name="Issuer-Neg",
+            market_value=Decimal("100"),
+            ytm=Decimal("-0.5"),
+            coupon=Decimal("-0.5"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="FLOOR-EDGE",
+            bond_type="Neg",
+            issuer_name="Issuer-Neg",
+            market_value=Decimal("100"),
+            ytm=Decimal("-20"),
+            coupon=Decimal("2.0"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="DIRTY-NEG",
+            bond_type="Neg",
+            issuer_name="Issuer-Neg",
+            market_value=Decimal("100"),
+            ytm=Decimal("-25"),
+            coupon=Decimal("2.0"),
+            is_issuance_like=False,
+        )
+        _insert_tyw(
+            conn,
+            report_date="2026-01-10",
+            position_id="IB-NEG",
+            product_type="IB",
+            position_side="Asset",
+            counterparty="CP-NEG",
+            principal=Decimal("1000"),
+            rate=Decimal("-0.5"),
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = _authorized_positions_client(tmp_path, monkeypatch)
+
+    bond_response = client.get(
+        "/api/positions/bonds",
+        params={"report_date": "2026-01-10", "sub_type": "Neg", "page": 1, "page_size": 10},
+    )
+    assert bond_response.status_code == 200
+    items = {item["bond_code"]: item for item in bond_response.json()["result"]["items"]}
+    assert items["LEGAL-NEG"]["yield_rate"] == "-0.00500000"
+    assert items["FLOOR-EDGE"]["yield_rate"] == "-0.20000000"
+    assert items["DIRTY-NEG"]["yield_rate"] is None
+
+    counterparty_response = client.get(
+        "/api/positions/counterparty/bonds",
+        params={
+            "start_date": "2026-01-10",
+            "end_date": "2026-01-10",
+            "sub_type": "Neg",
+            "top_n": 10,
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    assert counterparty_response.status_code == 200
+    counterparty_body = counterparty_response.json()["result"]
+    # (−0.005 * 100 + −0.20 * 100) / 200：−25 行从加权分子与分母一并剔除。
+    assert counterparty_body["total_weighted_rate"] == "-0.10250000"
+    assert counterparty_body["ytm_rate_coverage"]["covered_amount"] == "200.00000000"
+    assert counterparty_body["ytm_rate_coverage"]["missing_amount"] == "100.00000000"
+    assert counterparty_body["ytm_rate_coverage"]["missing_count"] == 1
+    # 负票息仍是脏值：只有两条 2.0% 参与加权。
+    assert counterparty_body["total_weighted_coupon_rate"] == "0.02000000"
+    assert counterparty_body["coupon_rate_coverage"]["missing_amount"] == "100.00000000"
+    assert counterparty_body["coupon_rate_coverage"]["missing_count"] == 1
+
+    rating_response = client.get(
+        "/api/positions/stats/rating",
+        params={"start_date": "2026-01-10", "end_date": "2026-01-10", "sub_type": "Neg"},
+    )
+    assert rating_response.status_code == 200
+    assert rating_response.json()["result"]["items"][0]["weighted_rate"] == "-0.10250000"
+
+    details_response = client.get(
+        "/api/positions/customer/details",
+        params={"customer_name": "Issuer-Neg", "report_date": "2026-01-10"},
+    )
+    assert details_response.status_code == 200
+    details_items = {item["bond_code"]: item for item in details_response.json()["result"]["items"]}
+    assert details_items["LEGAL-NEG"]["yield_rate"] == "-0.00500000"
+    assert details_items["DIRTY-NEG"]["yield_rate"] is None
+
+    ib_response = client.get(
+        "/api/positions/interbank",
+        params={"report_date": "2026-01-10", "product_type": "IB", "direction": "Asset", "page": 1, "page_size": 10},
+    )
+    assert ib_response.status_code == 200
+    assert ib_response.json()["result"]["items"][0]["interest_rate"] == "-0.00500000"
+
+    ib_split_response = client.get(
+        "/api/positions/counterparty/interbank/split",
+        params={"start_date": "2026-01-10", "end_date": "2026-01-10", "product_type": "IB"},
+    )
+    assert ib_split_response.status_code == 200
+    assert ib_split_response.json()["result"]["asset_total_weighted_rate"] == "-0.00500000"
 
 
 def test_positions_customer_drilldowns_exclude_issuance_like_rows(tmp_path, monkeypatch) -> None:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from backend.app.core_finance.bond_analytics.dv01 import (
     build_dv01_action_bond_payloads,
     build_dv01_action_issuer_payloads,
@@ -22,6 +24,140 @@ from backend.app.core_finance.bond_analytics.dv01 import (
 )
 
 ZERO = Decimal("0")
+
+
+def _holding(portfolio="one", cost_center="desk", accounting_class="OCI", face="1000000", duration="5"):
+    return dict(instrument_code="SAME-BOND", portfolio_name=portfolio, cost_center=cost_center,
+                currency_code="CNY", accounting_class=accounting_class, tenor_bucket="5Y",
+                face_value=Decimal(face), modified_duration=Decimal(duration),
+                dv01=Decimal(face) * Decimal(duration) / Decimal("10000"))
+
+
+def _movement(previous, current, accounting_class="all"):
+    rows = build_dv01_movement_bond_payloads(
+        current_rows=[row for row in current if accounting_class == "all" or row["accounting_class"] == accounting_class],
+        previous_rows=[row for row in previous if accounting_class == "all" or row["accounting_class"] == accounting_class],
+        current_all_rows=current, previous_all_rows=previous,
+    )
+    delta = sum((row["dv01"] for row in current if accounting_class == "all" or row["accounting_class"] == accounting_class), ZERO)
+    delta -= sum((row["dv01"] for row in previous if accounting_class == "all" or row["accounting_class"] == accounting_class), ZERO)
+    drivers = build_dv01_movement_attribution_payloads(rows, total_delta_dv01=delta)
+    return rows, {row["driver_key"]: row for row in drivers}
+
+
+@pytest.mark.parametrize("identity", ["portfolio_name", "cost_center", "currency_code"])
+def test_movement_preserves_holdings_and_is_order_independent(identity):
+    first, second = _holding(), _holding(duration="3")
+    first[identity], second[identity] = "one", "two"
+    previous = [first, second]
+    current = [{**first, "face_value": Decimal("2000000"), "dv01": Decimal("1000")}, second]
+    rows, drivers = _movement(previous, current)
+    assert len(rows) == 1
+    assert rows[0]["dv01_delta"] == Decimal("500")
+    assert rows[0]["current_dv01"] == Decimal("1300")
+    assert rows[0]["estimated_dv01_from_face_duration"] == Decimal("1300")
+    assert rows[0]["current_modified_duration"] == Decimal("13") / Decimal("3")
+    assert drivers["face_value_change"]["dv01_delta"] == Decimal("500")
+    assert drivers["duration_change"]["dv01_delta"] == ZERO
+    assert drivers["residual"]["dv01_delta"] == ZERO
+    for before in (previous, previous[::-1]):
+        for after in (current, current[::-1]):
+            assert _movement(before, after) == (rows, drivers)
+
+
+def test_movement_sums_duplicate_full_identity_rows_without_summing_duration():
+    previous = [_holding(), _holding()]
+    current = [_holding(), _holding(face="2000000")]
+    rows, drivers = _movement(previous, current)
+    assert rows[0]["previous_dv01"] == Decimal("1000")
+    assert rows[0]["current_dv01"] == Decimal("1500")
+    assert rows[0]["current_modified_duration"] == Decimal("5")
+    assert drivers["face_value_change"]["dv01_delta"] == Decimal("500")
+    assert drivers["residual"]["dv01_delta"] == ZERO
+    assert _movement(previous[::-1], current[::-1]) == (rows, drivers)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_movement_zero_risk_existing_holding_is_not_new_or_exited(reverse):
+    previous, current = [_holding(duration="0")], [_holding(duration="5")]
+    if reverse:
+        previous, current = current, previous
+    rows, drivers = _movement(previous, current)
+    assert rows[0]["reason_label"] == "久期变化"
+    assert drivers["new_position"]["position_count"] == 0
+    assert drivers["exited_position"]["position_count"] == 0
+    assert drivers["duration_change"]["dv01_delta"] == Decimal("-500" if reverse else "500")
+    assert drivers["residual"]["dv01_delta"] == ZERO
+
+
+def test_movement_offset_zero_risk_existing_identity_is_not_new():
+    previous = [_holding(duration="5"), _holding(face="-500000", duration="10")]
+    current = [_holding(duration="6"), _holding(face="-500000", duration="10")]
+    rows, drivers = _movement(previous, current)
+    assert rows[0]["previous_dv01"] == ZERO
+    assert rows[0]["current_dv01"] == Decimal("100")
+    assert drivers["new_position"]["position_count"] == 0
+    assert drivers["exited_position"]["position_count"] == 0
+    assert drivers["duration_change"]["dv01_delta"] == Decimal("100")
+    assert drivers["residual"]["dv01_delta"] == ZERO
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_movement_new_or_exited_zero_risk_holding_keeps_existence_count(reverse):
+    previous, current = [], [_holding(duration="0")]
+    if reverse:
+        previous, current = current, previous
+    rows, drivers = _movement(previous, current)
+    expected = "exited_position" if reverse else "new_position"
+    assert rows[0]["reason_label"] == ("退出/到期" if reverse else "新增")
+    assert drivers[expected]["position_count"] == 1
+    assert all(item["dv01_delta"] == ZERO for item in drivers.values())
+
+
+@pytest.mark.parametrize("accounting_class,expected", [("OCI", "500"), ("TPL", "-500"), ("all", "0")])
+def test_movement_class_transfer_is_paired_within_the_same_holding(accounting_class, expected):
+    previous = [_holding("moved", accounting_class="TPL"), _holding("stays")]
+    current = [_holding("moved"), _holding("stays")]
+    rows, drivers = _movement(previous, current, accounting_class)
+    assert rows[0]["dv01_delta"] == Decimal(expected)
+    assert drivers["classification_change"]["dv01_delta"] == Decimal(expected)
+    assert drivers["classification_change"]["position_count"] == 1
+    assert drivers["new_position"]["dv01_delta"] == ZERO
+    assert drivers["exited_position"]["dv01_delta"] == ZERO
+    assert drivers["residual"]["dv01_delta"] == ZERO
+    assert _movement(previous[::-1], current[::-1], accounting_class) == (rows, drivers)
+
+
+def test_movement_does_not_mistake_another_portfolio_for_a_class_transfer():
+    previous = [_holding("exited", accounting_class="TPL"), _holding("stays")]
+    current = [_holding("new"), _holding("stays")]
+    rows, drivers = _movement(previous, current)
+    assert rows[0]["dv01_delta"] == ZERO
+    assert drivers["new_position"]["dv01_delta"] == Decimal("500")
+    assert drivers["exited_position"]["dv01_delta"] == Decimal("-500")
+    assert drivers["classification_change"]["dv01_delta"] == ZERO
+    assert drivers["residual"]["dv01_delta"] == ZERO
+
+
+def test_movement_keeps_coexisting_accounting_classes_separate():
+    previous = [_holding(accounting_class="OCI"), _holding(accounting_class="TPL", duration="3")]
+    current = [_holding(accounting_class="OCI", face="2000000"), previous[1]]
+    rows, drivers = _movement(previous, current)
+    assert len(rows) == 1
+    assert rows[0]["dv01_delta"] == Decimal("500")
+    assert drivers["classification_change"]["dv01_delta"] == ZERO
+    assert drivers["face_value_change"]["dv01_delta"] == Decimal("500")
+    assert drivers["duration_change"]["dv01_delta"] == ZERO
+    assert drivers["residual"]["dv01_delta"] == ZERO
+
+
+def test_movement_estimate_sums_row_risk_when_duplicate_faces_net_to_zero():
+    rows, drivers = _movement([], [_holding(), _holding(face="-1000000", duration="3")])
+    assert rows[0]["current_face_value"] == ZERO
+    assert rows[0]["estimated_dv01_from_face_duration"] == Decimal("200")
+    assert rows[0]["dv01_estimate_gap"] == ZERO
+    assert drivers["new_position"]["dv01_delta"] == Decimal("200")
+    assert drivers["residual"]["dv01_delta"] == ZERO
 
 
 def _rows() -> list[dict[str, object]]:

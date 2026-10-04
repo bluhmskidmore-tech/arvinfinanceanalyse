@@ -96,11 +96,7 @@ export function buildReturnDecompositionWaterfallOption(d: ReturnDecompositionRe
     tooltip: {
       trigger: "axis",
       confine: true,
-      backgroundColor: nocturneTokens.color.panel,
-      borderColor: nocturneTokens.color.line,
-      borderWidth: 1,
       padding: [8, 10],
-      textStyle: { color: nocturneTokens.color.ink, fontSize: 12 },
       axisPointer: { type: "shadow" },
       formatter: (items: unknown) => {
         const list = Array.isArray(items) ? items : [items];
@@ -110,7 +106,7 @@ export function buildReturnDecompositionWaterfallOption(d: ReturnDecompositionRe
         return `${label}<br/>${displayStrings[idx] ?? EM_DASH}`;
       },
     },
-    grid: { left: 48, right: 24, top: 24, bottom: 32, containLabel: true },
+    grid: { left: 48, right: 24, top: 24 },
     xAxis: {
       type: "category",
       data: categoryLabels,

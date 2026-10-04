@@ -99,7 +99,7 @@
   border-inline-start: 1px solid var(--moss-color-neutral-200);
   color: var(--moss-color-neutral-700);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   white-space: nowrap;
 }
@@ -186,7 +186,7 @@
   list-style: none;
   color: var(--moss-color-neutral-700);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .product-category-governance-strip__evidence > summary::-webkit-details-marker {

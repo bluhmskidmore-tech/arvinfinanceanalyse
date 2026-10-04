@@ -9,7 +9,7 @@ const sectionLeadWrapStyle = {
 
 const sectionEyebrowStyle = {
   fontSize: dt.fontSize[11],
-  fontWeight: 700,
+  fontWeight: 600,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
   color: dt.color.neutral[500],

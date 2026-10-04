@@ -179,7 +179,12 @@ def test_plan_envelope_shape_for_each_financial_workflow(
     calls: list[str] = []
     tool = _build_tool(tmp_path, mapped_intents, calls)
 
-    envelope = tool.execute(request_module.AgentQueryRequest(question=slash_command))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question=slash_command,
+            context={"user_id": "user_a"},
+        )
+    )
 
     assert calls == []
     assert envelope.result_meta.result_kind == f"agent.workflow.{workflow_id}"
@@ -247,7 +252,12 @@ def test_plan_action_payload_echoed_into_context_executes_first_intent(tmp_path)
         calls,
     )
 
-    plan = tool.execute(request_module.AgentQueryRequest(question="/portfolio-review"))
+    plan = tool.execute(
+        request_module.AgentQueryRequest(
+            question="/portfolio-review",
+            context={"user_id": "user_a"},
+        )
+    )
     payload = dict(plan.suggested_actions[0].payload)
 
     follow_up = tool.execute(
@@ -272,7 +282,12 @@ def test_plan_action_payload_with_same_slash_question_executes_intent_not_plan(t
         calls,
     )
 
-    plan = tool.execute(request_module.AgentQueryRequest(question="/portfolio-review"))
+    plan = tool.execute(
+        request_module.AgentQueryRequest(
+            question="/portfolio-review",
+            context={"user_id": "user_a"},
+        )
+    )
     payload = dict(plan.suggested_actions[0].payload)
     assert payload["intent"] == "portfolio_overview"
 

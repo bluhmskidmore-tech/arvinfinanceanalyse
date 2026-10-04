@@ -107,14 +107,7 @@ export function buildYieldCurveTermStructureChartOption(
       axisPointer: { type: "cross", label: { show: false } },
       formatter: formatCurveTooltip,
     },
-    legend: {
-      type: "plain",
-      bottom: 0,
-      itemWidth: 12,
-      itemHeight: 8,
-      textStyle: axisLabel,
-    },
-    grid: { left: 52, right: 52, top: 24, bottom: 56, containLabel: false },
+    grid: { left: 52, right: 52, top: 24 },
     xAxis: {
       type: "category",
       data: categories,

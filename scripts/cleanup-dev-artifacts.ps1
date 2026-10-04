@@ -66,6 +66,14 @@ function Test-ProtectedPath {
     return $false
   }
   $segments = $relative -split "[\\/]+"
+  $firstSegment = $segments[0]
+  if (
+    $firstSegment -in @(".codex-tmp", "test_output", ".pytest-basetemp") -or
+    $firstSegment -like ".pytest-tmp*" -or
+    ($firstSegment -eq "frontend" -and $segments.Count -gt 1 -and $segments[1] -eq "test-results")
+  ) {
+    return $true
+  }
   foreach ($segment in $segments) {
     if ($protectedSegments -contains $segment) {
       return $true
@@ -74,72 +82,73 @@ function Test-ProtectedPath {
   return $false
 }
 
-function Test-ContainsProtectedExtension {
+function Test-IsReparsePoint {
   param([Parameter(Mandatory = $true)][System.IO.FileSystemInfo]$Item)
 
-  if (-not $Item.PSIsContainer) {
-    return $protectedExtensions -contains $Item.Extension.ToLowerInvariant()
-  }
-
-  $protectedFile = Get-ChildItem -LiteralPath $Item.FullName -File -Recurse -Force -ErrorAction SilentlyContinue |
-    Where-Object { $protectedExtensions -contains $_.Extension.ToLowerInvariant() } |
-    Select-Object -First 1
-
-  return $null -ne $protectedFile
+  return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
 }
 
-function Test-AllowProtectedExtensionCleanup {
-  param([Parameter(Mandatory = $true)][string]$FullPath)
+function Test-ProtectedEvidenceName {
+  param([Parameter(Mandatory = $true)][string]$Name)
 
-  $relative = Get-RelativePathText -FullPath $FullPath
-  $allowedPrefixes = @(
-    ".codex-tmp\pytest-",
-    ".codex-tmp/pytest-",
-    ".mypy_cache\",
-    ".mypy_cache/",
-    ".pytest-basetemp\",
-    ".pytest-basetemp/",
-    "backend\.mypy_cache\",
-    "backend/.mypy_cache/",
-    "test_output\accounting_asset_movement\",
-    "test_output/accounting_asset_movement/",
-    "test_output\formal_balance_pipeline\",
-    "test_output/formal_balance_pipeline/",
-    "frontend\test-results\",
-    "frontend/test-results/"
+  return (
+    $Name -match "(?i)(^|[._-])(manifest|audit|evidence|acceptance|golden|release|review)([._-]|$)" -or
+    $Name -match "(?i)^raw-results$"
+  )
+}
+
+function Get-TreeSafetyIssue {
+  param(
+    [Parameter(Mandatory = $true)][System.IO.FileSystemInfo]$Item,
+    [Parameter(Mandatory = $true)][datetime]$Cutoff
   )
 
-  if (
-    $relative -eq ".pytest-basetemp" -or
-    $relative -eq ".mypy_cache" -or
-    $relative -eq "backend\.mypy_cache" -or
-    $relative -eq "backend/.mypy_cache" -or
-    $relative -eq "test_output\accounting_asset_movement" -or
-    $relative -eq "test_output/accounting_asset_movement" -or
-    $relative -eq "test_output\formal_balance_pipeline" -or
-    $relative -eq "test_output/formal_balance_pipeline" -or
-    $relative -eq "frontend\test-results" -or
-    $relative -eq "frontend/test-results"
-  ) {
-    return $true
-  }
+  $pending = New-Object System.Collections.Generic.Stack[string]
+  $pending.Push($Item.FullName)
+  while ($pending.Count -gt 0) {
+    $currentPath = $pending.Pop()
+    try {
+      $current = Get-Item -LiteralPath $currentPath -Force -ErrorAction Stop
+    }
+    catch {
+      return "unable to inspect candidate tree"
+    }
 
-  foreach ($prefix in $allowedPrefixes) {
-    if ($relative.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-      return $true
+    if (Test-IsReparsePoint -Item $current) {
+      return "reparse point in candidate tree"
+    }
+    if (Test-ProtectedPath -FullPath $current.FullName) {
+      return "protected path in candidate tree"
+    }
+    if (Test-ProtectedEvidenceName -Name $current.Name) {
+      return "protected evidence name in candidate tree"
+    }
+    if ($current.LastWriteTime -gt $Cutoff) {
+      return "recent descendant in candidate tree"
+    }
+
+    if (-not $current.PSIsContainer) {
+      if ($protectedExtensions -contains $current.Extension.ToLowerInvariant()) {
+        return "protected extension in candidate tree"
+      }
+      continue
+    }
+
+    try {
+      $children = @(Get-ChildItem -LiteralPath $current.FullName -Force -ErrorAction Stop)
+    }
+    catch {
+      return "unable to inspect candidate tree"
+    }
+    foreach ($child in $children) {
+      if (Test-IsReparsePoint -Item $child) {
+        return "reparse point in candidate tree"
+      }
+      $pending.Push($child.FullName)
     }
   }
 
-  return $false
-}
-
-function Test-ShouldSkipForProtectedExtension {
-  param([Parameter(Mandatory = $true)][System.IO.FileSystemInfo]$Item)
-
-  return (
-    (Test-ContainsProtectedExtension -Item $Item) -and
-    -not (Test-AllowProtectedExtensionCleanup -FullPath $Item.FullName)
-  )
+  return $null
 }
 
 function Add-CleanupCandidate {
@@ -149,28 +158,21 @@ function Add-CleanupCandidate {
     [Parameter(Mandatory = $true)][datetime]$Cutoff
   )
 
+  if (Test-IsReparsePoint -Item $Item) {
+    $skippedProtected.Add([pscustomobject]@{ Path = Get-RelativePathText -FullPath $Item.FullName; Reason = "reparse point" }) | Out-Null
+    return
+  }
+
   $fullPath = (Resolve-Path -LiteralPath $Item.FullName).Path.TrimEnd("\", "/")
   $relativePath = Get-RelativePathText -FullPath $fullPath
-
-  if ($Item.LastWriteTime -gt $Cutoff) {
+  if (Test-ProtectedPath -FullPath $fullPath) {
+    $skippedProtected.Add([pscustomobject]@{ Path = $relativePath; Reason = $Reason }) | Out-Null
     return
   }
 
-  $isProtectedPath = Test-ProtectedPath -FullPath $fullPath
-  if ($isProtectedPath) {
-    $skippedProtected.Add([pscustomobject]@{
-      Path = $relativePath
-      Reason = $Reason
-    }) | Out-Null
-    return
-  }
-
-  $skipForProtectedExtension = Test-ShouldSkipForProtectedExtension -Item $Item
-  if ($skipForProtectedExtension) {
-    $skippedProtected.Add([pscustomobject]@{
-      Path = $relativePath
-      Reason = $Reason
-    }) | Out-Null
+  $safetyIssue = Get-TreeSafetyIssue -Item $Item -Cutoff $Cutoff
+  if ($null -ne $safetyIssue) {
+    $skippedProtected.Add([pscustomobject]@{ Path = $relativePath; Reason = $safetyIssue }) | Out-Null
     return
   }
 
@@ -181,27 +183,9 @@ function Add-CleanupCandidate {
       Reason = $Reason
       LastWriteTime = $Item.LastWriteTime
       IsDirectory = $Item.PSIsContainer
+      Cutoff = $Cutoff
     }
   }
-}
-
-function Add-DirectoryChildrenByPattern {
-  param(
-    [Parameter(Mandatory = $true)][string]$ParentPath,
-    [Parameter(Mandatory = $true)][string[]]$NamePatterns,
-    [Parameter(Mandatory = $true)][string]$Reason
-  )
-
-  if (-not (Test-Path -LiteralPath $ParentPath -PathType Container)) {
-    return
-  }
-
-  Get-ChildItem -LiteralPath $ParentPath -Directory -Force -ErrorAction SilentlyContinue |
-    Where-Object {
-      $name = $_.Name
-      @($NamePatterns | Where-Object { $name -like $_ }).Count -gt 0
-    } |
-    ForEach-Object { Add-CleanupCandidate -Item $_ -Reason $Reason -Cutoff $cutoff }
 }
 
 function Add-DirectoryIfPresent {
@@ -215,65 +199,33 @@ function Add-DirectoryIfPresent {
   }
 }
 
-function Add-DirectoryChildrenIfPresent {
-  param(
-    [Parameter(Mandatory = $true)][string]$Path,
-    [Parameter(Mandatory = $true)][string]$Reason
-  )
-
-  if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
-    return
-  }
-
-  Get-ChildItem -LiteralPath $Path -File -Force -Recurse -ErrorAction SilentlyContinue |
-    ForEach-Object { Add-CleanupCandidate -Item $_ -Reason $Reason -Cutoff $cutoff }
-}
-
-function Get-LatestTreeWriteTime {
-  param([Parameter(Mandatory = $true)][string]$Path)
-
-  $item = Get-Item -LiteralPath $Path -Force
-  $latest = $item.LastWriteTime
-
-  if (-not $item.PSIsContainer) {
-    return $latest
-  }
-
-  Get-ChildItem -LiteralPath $Path -Force -Recurse -ErrorAction SilentlyContinue |
-    ForEach-Object {
-      if ($_.LastWriteTime -gt $latest) {
-        $latest = $_.LastWriteTime
-      }
+function Add-PythonBytecodeCachesSafely {
+  $pending = New-Object System.Collections.Generic.Stack[string]
+  $pending.Push($repoRootPath)
+  while ($pending.Count -gt 0) {
+    $currentPath = $pending.Pop()
+    try {
+      $directories = @(Get-ChildItem -LiteralPath $currentPath -Directory -Force -ErrorAction Stop)
+    }
+    catch {
+      $skippedProtected.Add([pscustomobject]@{
+        Path = Get-RelativePathText -FullPath $currentPath
+        Reason = "unable to inspect directory tree"
+      }) | Out-Null
+      continue
     }
 
-  return $latest
-}
-
-function Add-DisposableTreeDirectoriesIfPresent {
-  param(
-    [Parameter(Mandatory = $true)][string]$Path,
-    [Parameter(Mandatory = $true)][string]$Reason
-  )
-
-  if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
-    return
-  }
-
-  $rootItem = Get-Item -LiteralPath $Path -Force
-  $rootLatest = Get-LatestTreeWriteTime -Path $rootItem.FullName
-  if ($rootLatest -le $cutoff) {
-    Add-CleanupCandidate -Item $rootItem -Reason $Reason -Cutoff $cutoff
-    return
-  }
-
-  Get-ChildItem -LiteralPath $Path -Directory -Force -Recurse -ErrorAction SilentlyContinue |
-    Sort-Object { $_.FullName.Length } -Descending |
-    ForEach-Object {
-      $latest = Get-LatestTreeWriteTime -Path $_.FullName
-      if ($latest -le $cutoff) {
-        Add-CleanupCandidate -Item $_ -Reason $Reason -Cutoff $cutoff
+    foreach ($directory in $directories) {
+      if (Test-IsReparsePoint -Item $directory) { continue }
+      if (Test-ProtectedPath -FullPath $directory.FullName) { continue }
+      if (Test-ProtectedEvidenceName -Name $directory.Name) { continue }
+      if ($directory.Name -eq "__pycache__") {
+        Add-CleanupCandidate -Item $directory -Reason "Python bytecode cache" -Cutoff $cutoff
+        continue
       }
+      $pending.Push($directory.FullName)
     }
+  }
 }
 
 function Add-DirectFilesByPattern {
@@ -292,35 +244,12 @@ function Add-DirectFilesByPattern {
     ForEach-Object { Add-CleanupCandidate -Item $_ -Reason $Reason -Cutoff $Cutoff }
 }
 
-Add-DirectoryChildrenByPattern `
-  -ParentPath (Join-Path $repoRootPath ".codex-tmp") `
-  -NamePatterns @("pytest-*", "pytest-basetemp*") `
-  -Reason ".codex-tmp pytest run output"
-
-Add-DirectoryChildrenByPattern `
-  -ParentPath $repoRootPath `
-  -NamePatterns @(".pytest-tmp*") `
-  -Reason "legacy pytest temp directory"
-
-Add-DirectoryChildrenByPattern `
-  -ParentPath (Join-Path $repoRootPath ".pytest-basetemp") `
-  -NamePatterns @("*") `
-  -Reason "legacy root pytest run output"
-
-Add-DirectoryIfPresent -Path (Join-Path $repoRootPath ".pytest-basetemp") -Reason "legacy root pytest basetemp shell"
 Add-DirectoryIfPresent -Path (Join-Path $repoRootPath ".pytest_cache") -Reason "pytest cache"
 Add-DirectoryIfPresent -Path (Join-Path $repoRootPath ".ruff_cache") -Reason "ruff cache"
 Add-DirectoryIfPresent -Path (Join-Path $repoRootPath ".mypy_cache") -Reason "mypy cache"
 Add-DirectoryIfPresent -Path (Join-Path $repoRootPath "backend\.mypy_cache") -Reason "backend mypy cache"
-Add-DirectoryChildrenIfPresent -Path (Join-Path $repoRootPath "test_output\accounting_asset_movement") -Reason "test output"
-Add-DisposableTreeDirectoriesIfPresent -Path (Join-Path $repoRootPath "test_output\accounting_asset_movement") -Reason "test output"
-Add-DirectoryChildrenIfPresent -Path (Join-Path $repoRootPath "test_output\formal_balance_pipeline") -Reason "test output"
-Add-DisposableTreeDirectoriesIfPresent -Path (Join-Path $repoRootPath "test_output\formal_balance_pipeline") -Reason "test output"
-Add-DirectoryChildrenIfPresent -Path (Join-Path $repoRootPath "frontend\test-results") -Reason "frontend test output"
-Add-DisposableTreeDirectoriesIfPresent -Path (Join-Path $repoRootPath "frontend\test-results") -Reason "frontend test output"
 
-Get-ChildItem -LiteralPath $repoRootPath -Directory -Force -Recurse -Filter "__pycache__" -ErrorAction SilentlyContinue |
-  ForEach-Object { Add-CleanupCandidate -Item $_ -Reason "Python bytecode cache" -Cutoff $cutoff }
+Add-PythonBytecodeCachesSafely
 
 Add-DirectFilesByPattern -ParentPath $repoRootPath -Pattern "*.log" -Reason "root log file" -Cutoff $cutoff
 Add-DirectFilesByPattern -ParentPath (Join-Path $repoRootPath "frontend") -Pattern "*.log" -Reason "frontend log file" -Cutoff $cutoff
@@ -368,9 +297,10 @@ foreach ($candidate in $candidates) {
     continue
   }
 
-  $skipForProtectedExtension = Test-ShouldSkipForProtectedExtension -Item (Get-Item -LiteralPath $resolvedCandidate -Force)
-  if ($skipForProtectedExtension) {
-    Write-Host ("SKIP`t{0}`tprotected at delete time" -f $candidate.Path)
+  $resolvedItem = Get-Item -LiteralPath $resolvedCandidate -Force
+  $safetyIssue = Get-TreeSafetyIssue -Item $resolvedItem -Cutoff $candidate.Cutoff
+  if ($null -ne $safetyIssue) {
+    Write-Host ("SKIP {0} {1} at delete time" -f $candidate.Path, $safetyIssue)
     continue
   }
 

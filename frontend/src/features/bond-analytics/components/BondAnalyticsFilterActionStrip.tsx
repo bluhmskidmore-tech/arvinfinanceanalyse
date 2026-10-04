@@ -57,24 +57,24 @@ export function BondAnalyticsFilterActionStrip({
     : isAnalyticsRefreshing
       ? "刷新中"
       : lastAnalyticsRefreshRunId
-        ? "最近运行"
+        ? "刷新完成"
         : "刷新状态";
   const refreshStateText =
     analyticsRefreshError ??
     (isAnalyticsRefreshing
-      ? "正在刷新受治理总览状态..."
+      ? "正在刷新分析..."
       : lastAnalyticsRefreshRunId
-        ? `最近运行 ${lastAnalyticsRefreshRunId}`
-        : "尚未捕获刷新运行。");
+        ? "上次刷新已完成。"
+        : "本次尚未刷新。");
 
   return (
     <section data-testid="bond-analysis-filter-action-strip" className={styles.actionStrip}>
       <div data-testid="bond-analysis-command-bar" className={styles.commandBar}>
         <div className={styles.commandIntro}>
           <span className={styles.fieldLabel}>复核入口</span>
-          <strong>参数与下钻边界</strong>
+          <strong>分析设置</strong>
           <p>
-            报告日、期间和刷新放在页面顶部；这里仅保留收益拆解、KRD 和信用迁移的下钻参数。
+            设置收益拆解的资产与会计分类，以及 KRD 和信用迁移情景。
           </p>
         </div>
         <div
@@ -100,6 +100,12 @@ export function BondAnalyticsFilterActionStrip({
           ) : null}
         </div>
 
+        {lastAnalyticsRefreshRunId ? (
+          <details className={styles.advancedPanel} data-testid="bond-analysis-refresh-diagnostics">
+            <summary className={styles.advancedSummary}>技术诊断</summary>
+            <div className={styles.fieldLabel}>刷新编号：{lastAnalyticsRefreshRunId}</div>
+          </details>
+        ) : null}
         <details className={styles.advancedPanel}>
           <summary className={styles.advancedSummary}>高级筛选 / 参数调整</summary>
           <div className={styles.filterGrid}>

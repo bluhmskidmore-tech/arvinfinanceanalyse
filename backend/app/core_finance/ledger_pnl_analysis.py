@@ -100,6 +100,11 @@ def build_ledger_pnl_analysis(
                 "basis_availability reports PnL analyzability only; balance metric "
                 "availability and evidence are reported per comparison row"
             ),
+            "evidence_rows_boundary": (
+                "evidence_rows counts union-caliber canonical rows (ledger \u222a "
+                "daily-average keys, missing ledger side filled with 0); "
+                "ledger_evidence_rows counts only rows observed in the ledger workbook"
+            ),
             "previous_period_rule": (
                 "latest available report_date strictly earlier than current report_date"
             ),
@@ -267,11 +272,23 @@ def _calculate_basis_metrics(
         "all_pnl": len(pnl_rows),
         "other_5_pnl": len(pnl_rows),
     }
+    ledger_asset_rows = sum(1 for row in asset_rows if _is_ledger_row(row))
+    ledger_liability_rows = sum(1 for row in liability_rows if _is_ledger_row(row))
+    ledger_pnl_row_count = sum(1 for row in pnl_rows if _is_ledger_row(row))
+    metric_ledger_evidence_rows = {
+        "assets": ledger_asset_rows,
+        "liabilities": ledger_liability_rows,
+        "net_assets": ledger_asset_rows + ledger_liability_rows,
+        "core_pnl": ledger_pnl_row_count,
+        "all_pnl": ledger_pnl_row_count,
+        "other_5_pnl": ledger_pnl_row_count,
+    }
     return {
         "has_pnl_data": has_pnl_data,
         "evidence_rows": len(pnl_rows),
         "metric_availability": metric_availability,
         "metric_evidence_rows": metric_evidence_rows,
+        "metric_ledger_evidence_rows": metric_ledger_evidence_rows,
         "assets": assets,
         "liabilities": liabilities,
         "net_assets": assets - liabilities,
@@ -362,6 +379,10 @@ def _build_basis_comparison(current_by_basis: dict[str, dict[str, Any]]) -> list
                 "evidence_rows": {
                     "CNX": int(cnx_metrics["metric_evidence_rows"][metric_key]),
                     "CNY": int(cny_metrics["metric_evidence_rows"][metric_key]),
+                },
+                "ledger_evidence_rows": {
+                    "CNX": int(cnx_metrics["metric_ledger_evidence_rows"][metric_key]),
+                    "CNY": int(cny_metrics["metric_ledger_evidence_rows"][metric_key]),
                 },
             }
         )
@@ -486,6 +507,11 @@ def _signed_label(
 
 def _account_code(row: Any) -> str:
     return str(getattr(row, "account_code", "") or "").strip()
+
+
+def _is_ledger_row(row: Any) -> bool:
+    """构建端打标的来源标记；缺失属性的旧事实行按总账真实观测处理。"""
+    return str(getattr(row, "source_presence", "ledger")) == "ledger"
 
 
 def _decimal(value: Any) -> Decimal:

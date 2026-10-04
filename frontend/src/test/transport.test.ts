@@ -399,6 +399,41 @@ describe("requestJson (transport)", () => {
       "Invalid ApiEnvelope from http://localhost:8000/ui/pnl: missing `result.as_of`",
     );
   });
+
+  it("forwards a caller signal without a timeout and preserves its custom cancellation reason", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("superseded cutoff");
+    const fetchImpl = vi.fn(
+      (_url: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        }),
+    ) as unknown as typeof fetch;
+
+    const request = requestJson(fetchImpl, "", "/ui/x", {
+      timeoutMs: null,
+      signal: controller.signal,
+    });
+    controller.abort(cancellation);
+
+    await expect(request).rejects.toBe(cancellation);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/ui/x",
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
+  it("does not start a request for an already cancelled caller signal", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("cutoff replaced before dispatch");
+    controller.abort(cancellation);
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+
+    await expect(
+      requestJson(fetchImpl, "", "/ui/x", { signal: controller.signal }),
+    ).rejects.toBe(cancellation);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });
 
 describe("requestPlainJson (transport)", () => {
@@ -472,5 +507,20 @@ describe("requestPlainJson (transport)", () => {
         errorDetail: "json-detail",
       }),
     ).rejects.toThrow("watermark ledger busy");
+  });
+
+  it("forwards an optional caller signal", async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBe(controller.signal);
+      return okJsonResponse({ status: "ok" });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      requestPlainJson(fetchImpl, "", "/health/live", {
+        timeoutMs: null,
+        signal: controller.signal,
+      }),
+    ).resolves.toEqual({ status: "ok" });
   });
 });

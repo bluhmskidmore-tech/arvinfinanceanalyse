@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import importlib
 import json
@@ -9,7 +9,9 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.governance_repo import CACHE_MANIFEST_STREAM, GovernanceRepository
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import load_module
 
@@ -33,22 +35,28 @@ RISK_TENSOR_PROJECTION_QUALITY_FIELDS = (
 
 @pytest.fixture(autouse=True)
 def _seed_agent_read_scope(tmp_path, monkeypatch):
+    from backend.app.services.agent_service import INTENT_READ_RESOURCES
+
     sqlite_path = tmp_path / "agent-read-scope.db"
     auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
     monkeypatch.delenv("MOSS_GOVERNANCE_SQL_DSN", raising=False)
-    UserScopeRepository(auth_dsn).grant_scope(
+    repo = UserScopeRepository(auth_dsn)
+    repo.grant_scope(
         user_id="*",
         role=None,
         resource="agent",
         action="read",
     )
+    # 每个本地 intent 还需其实际读取资源的 read 权限（S-H2），端到端用例按真实处理器逐一放行。
+    for resource in sorted(set(INTENT_READ_RESOURCES.values())):
+        repo.grant_scope(user_id="*", role=None, resource=resource, action="read")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
 
 
-def _seed_agent_pnl_tables(duckdb_path: Path) -> None:
+def _seed_agent_pnl_tables(duckdb_path: Path, governance_dir: Path) -> None:
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -61,11 +69,11 @@ def _seed_agent_pnl_tables(duckdb_path: Path) -> None:
               invest_type_std varchar,
               accounting_basis varchar,
               currency_basis varchar,
-              interest_income_514 double,
-              fair_value_change_516 double,
-              capital_gain_517 double,
-              manual_adjustment double,
-              total_pnl double,
+              interest_income_514 decimal(38, 2),
+              fair_value_change_516 decimal(38, 2),
+              capital_gain_517 decimal(38, 2),
+              manual_adjustment decimal(38, 2),
+              total_pnl decimal(38, 2),
               source_version varchar,
               rule_version varchar,
               ingest_batch_id varchar,
@@ -80,11 +88,11 @@ def _seed_agent_pnl_tables(duckdb_path: Path) -> None:
               bond_code varchar,
               portfolio_name varchar,
               cost_center varchar,
-              interest_income_514 double,
-              fair_value_change_516 double,
-              capital_gain_517 double,
-              manual_adjustment double,
-              total_pnl double,
+              interest_income_514 decimal(38, 2),
+              fair_value_change_516 decimal(38, 2),
+              capital_gain_517 decimal(38, 2),
+              manual_adjustment decimal(38, 2),
+              total_pnl decimal(38, 2),
               source_version varchar,
               rule_version varchar,
               ingest_batch_id varchar,
@@ -95,22 +103,33 @@ def _seed_agent_pnl_tables(duckdb_path: Path) -> None:
         conn.execute(
             """
             insert into fact_formal_pnl_fi values
-            (?, 'BOND-001', '缁勫悎A', 'CC100', 'H', 'AC', 'CNX', 10, 5, 2, 0, 17, 'sv_fi_1', 'rv_fi_1', 'batch-1', 'tr-fi-1')
+            (?, 'BOND-001', '缁勫悎A', 'CC100', 'H', 'AC', 'CNY', 10, 5, 2, 0, 17, 'sv_fi_1', 'rv_pnl_phase2_materialize_v7', 'batch-1', 'tr-fi-1')
             """,
             [REPORT_DATE],
         )
         conn.execute(
             """
             insert into fact_nonstd_pnl_bridge values
-            (?, 'NONSTD-001', '缁勫悎A', 'CC100', 3, 1, 0, 0, 4, 'sv_nonstd_1', 'rv_nonstd_1', 'batch-2', 'tr-nonstd-1')
+            (?, 'NONSTD-001', '缁勫悎A', 'CC100', 3, 1, 0, 0, 4, 'sv_nonstd_1', 'rv_pnl_phase2_materialize_v7', 'batch-2', 'tr-nonstd-1')
             """,
             [REPORT_DATE],
         )
     finally:
         conn.close()
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_MANIFEST_STREAM,
+        {
+            "cache_key": "pnl:phase2:materialize:formal",
+            "cache_version": "cv_pnl_formal__rv_pnl_phase2_materialize_v7",
+            "source_version": "sv_agent_smoke_pnl_1",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_pnl_phase2_materialize_v7",
+            "report_date": REPORT_DATE,
+        },
+    )
 
 
-def _seed_agent_balance_tables(duckdb_path: Path) -> None:
+def _seed_agent_balance_tables(duckdb_path: Path, governance_dir: Path) -> None:
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -166,6 +185,22 @@ def _seed_agent_balance_tables(duckdb_path: Path) -> None:
         )
     finally:
         conn.close()
+    balance_service_module = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    governance_repo = GovernanceRepository(base_dir=governance_dir)
+    governance_repo.append(
+        CACHE_MANIFEST_STREAM,
+        {
+            "cache_key": balance_service_module.CACHE_KEY,
+            "cache_version": balance_service_module.CACHE_VERSION,
+            "source_version": "sv_agent_smoke_balance_1",
+            "vendor_version": "vv_none",
+            "rule_version": balance_service_module.RULE_VERSION,
+            "report_date": REPORT_DATE,
+        },
+    )
 
 
 def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> None:
@@ -372,11 +407,12 @@ def _seed_agent_product_pnl_tables(duckdb_path: Path) -> None:
         conn.execute(
             """
             insert into product_category_pnl_formal_read_model values
-            (1, 'asset_total', 'Asset Total', 'asset', 0, 'monthly', ?, 1.75, 100, 80, 20, 1000, 800, 200, 10, 3, 20, 5, 25, 2.5, true, '[]', 'sv_product_1', 'rv_product_1'),
-            (2, 'liability_total', 'Liability Total', 'liability', 0, 'monthly', ?, 1.75, 50, 40, 10, 500, 400, 100, 8, 2, 12, 3, 15, 1.5, true, '[]', 'sv_product_1', 'rv_product_1'),
-            (3, 'grand_total', 'Grand Total', 'all', 0, 'monthly', ?, 1.75, 150, 120, 30, 1500, 1200, 300, 18, 5, 32, 8, 40, 2.0, true, '[]', 'sv_product_1', 'rv_product_1')
+            (1, 'asset_total', 'Asset Total', 'asset', 0, 'monthly', ?, 1.75, 100, 80, 20, 1000, 800, 200, 10, 3, 20, 5, 25, 2.5, true, '[]', 'sv_product_1', 'rv_product_category_pnl_v2'),
+            (2, 'interest_earning_assets', 'Interest Earning Assets', 'asset', 1, 'monthly', ?, 1.75, 90, 70, 20, 900, 700, 200, 9, 3, 18, 5, 23, 2.4, false, '[]', 'sv_product_1', 'rv_product_category_pnl_v2'),
+            (3, 'liability_total', 'Liability Total', 'liability', 0, 'monthly', ?, 1.75, 50, 40, 10, 500, 400, 100, 8, 2, 12, 3, 15, 1.5, true, '[]', 'sv_product_1', 'rv_product_category_pnl_v2'),
+            (4, 'grand_total', 'Grand Total', 'all', 0, 'monthly', ?, 1.75, 150, 120, 30, 1500, 1200, 300, 18, 5, 32, 8, 40, 2.0, true, '[]', 'sv_product_1', 'rv_product_category_pnl_v2')
             """,
-            [REPORT_DATE, REPORT_DATE, REPORT_DATE],
+            [REPORT_DATE, REPORT_DATE, REPORT_DATE, REPORT_DATE],
         )
     finally:
         conn.close()
@@ -485,7 +521,10 @@ def _seed_agent_pnl_bridge_tables(duckdb_path: Path, governance_dir: Path) -> No
     )
 
 
-def _seed_agent_bond_analytics_tables(duckdb_path: Path) -> None:
+def _seed_agent_bond_analytics_tables(
+    duckdb_path: Path,
+    governance_dir: Path | None = None,
+) -> None:
     repo_module = load_module(
         "backend.app.repositories.bond_analytics_repo",
         "backend/app/repositories/bond_analytics_repo.py",
@@ -503,9 +542,43 @@ def _seed_agent_bond_analytics_tables(duckdb_path: Path) -> None:
         )
     finally:
         conn.close()
+    if governance_dir is not None:
+        bond_service_module = load_module(
+            "backend.app.services.bond_analytics_service",
+            "backend/app/services/bond_analytics_service.py",
+        )
+        governance_repo = GovernanceRepository(base_dir=governance_dir)
+        governance_repo.append(
+            CACHE_MANIFEST_STREAM,
+            {
+                "cache_key": bond_service_module.CACHE_KEY,
+                "source_version": "sv_bond_manifest_1",
+                "vendor_version": "vv_none",
+                "rule_version": bond_service_module.RULE_VERSION,
+                "cache_version": bond_service_module.CACHE_VERSION,
+                "report_date": REPORT_DATE,
+            },
+        )
+        governance_repo.append(
+            "cache_build_run",
+            {
+                "run_id": "bond-analytics-credit-run-1",
+                "job_name": bond_service_module.JOB_NAME,
+                "status": "completed",
+                "cache_key": bond_service_module.CACHE_KEY,
+                "source_version": "sv_bond_analytics_1",
+                "vendor_version": "vv_none",
+                "rule_version": bond_service_module.RULE_VERSION,
+                "cache_version": bond_service_module.CACHE_VERSION,
+                "report_date": REPORT_DATE,
+            },
+        )
 
 
-def _seed_agent_bond_analytics_tables(duckdb_path: Path) -> None:
+def _seed_agent_bond_analytics_tables(
+    duckdb_path: Path,
+    governance_dir: Path | None = None,
+) -> None:
     repo_module = load_module(
         "backend.app.repositories.bond_analytics_repo",
         "backend/app/repositories/bond_analytics_repo.py",
@@ -531,6 +604,37 @@ def _seed_agent_bond_analytics_tables(duckdb_path: Path) -> None:
         )
     finally:
         conn.close()
+    if governance_dir is not None:
+        bond_service_module = load_module(
+            "backend.app.services.bond_analytics_service",
+            "backend/app/services/bond_analytics_service.py",
+        )
+        governance_repo = GovernanceRepository(base_dir=governance_dir)
+        governance_repo.append(
+            CACHE_MANIFEST_STREAM,
+            {
+                "cache_key": bond_service_module.CACHE_KEY,
+                "source_version": "sv_bond_manifest_1",
+                "vendor_version": "vv_none",
+                "rule_version": bond_service_module.RULE_VERSION,
+                "cache_version": bond_service_module.CACHE_VERSION,
+                "report_date": REPORT_DATE,
+            },
+        )
+        governance_repo.append(
+            "cache_build_run",
+            {
+                "run_id": "bond-analytics-credit-run-1",
+                "job_name": bond_service_module.JOB_NAME,
+                "status": "completed",
+                "cache_key": bond_service_module.CACHE_KEY,
+                "source_version": "sv_bond_analytics_1",
+                "vendor_version": "vv_none",
+                "rule_version": bond_service_module.RULE_VERSION,
+                "cache_version": bond_service_module.CACHE_VERSION,
+                "report_date": REPORT_DATE,
+            },
+        )
 
 
 def _fresh_main_module():
@@ -562,7 +666,7 @@ def _enable_local_agent(monkeypatch) -> None:
 def test_agent_query_enabled_path_returns_real_envelope_and_audit(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
-    _seed_agent_pnl_tables(duckdb_path)
+    _seed_agent_pnl_tables(duckdb_path, governance_dir)
 
     _enable_local_agent(monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -582,6 +686,8 @@ def test_agent_query_enabled_path_returns_real_envelope_and_audit(tmp_path, monk
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["evidence"]["tables_used"] == ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"]
     assert payload["evidence"]["filters_applied"] == {
+        "position_scope": "all",
+        "currency_basis": "CNX",
         "report_date": REPORT_DATE,
         "report_date_resolution": "latest_default",
     }
@@ -598,10 +704,89 @@ def test_agent_query_enabled_path_returns_real_envelope_and_audit(tmp_path, monk
     assert audit_payload["tables_used"] == ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"]
 
 
+def test_agent_query_enabled_path_ties_semantic_fair_value_to_formal_overview(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss-semantic-pnl.duckdb"
+    governance_dir = tmp_path / "governance-semantic-pnl"
+    _seed_agent_pnl_tables(duckdb_path, governance_dir)
+
+    _enable_local_agent(monkeypatch)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_semantic_pnl")
+
+    client = TestClient(_fresh_main_module().app)
+    overview_response = client.get(
+        "/api/pnl/overview",
+        params={"report_date": REPORT_DATE},
+    )
+    assert overview_response.status_code == 200
+    overview_payload = overview_response.json()
+
+    response = client.post(
+        "/api/agent/query",
+        json={
+            "question": f"{REPORT_DATE} 的公允价值变动是多少",
+            "currency_basis": "CNY",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    overview_meta = overview_payload["result_meta"]
+    assert overview_payload["result"]["fair_value_change_516"] == "6.00"
+    assert overview_meta["amount_currency_basis"] == "CNY"
+    assert overview_meta["formal_use_allowed"] is True
+
+    cards = payload["cards"]
+    assert [card["metric_id"] for card in cards] == ["MTR-PNL-002"]
+    card = cards[0]
+    assert card["type"] == "metric"
+    assert card["spec"]["source_field"] == "fair_value_change_516"
+    assert card["spec"]["raw_value"] == overview_payload["result"]["fair_value_change_516"]
+    assert card["value"] == "6.00 元"
+    assert card["spec"]["raw_unit"] == "yuan"
+    assert card["spec"]["raw_precision"] == 2
+    assert card["spec"]["numeric"]["unit"] == "yuan"
+    assert card["spec"]["numeric"]["precision"] == 2
+
+    result_meta = payload["result_meta"]
+    assert result_meta["requested_report_date"] == REPORT_DATE
+    assert result_meta["resolved_report_date"] == REPORT_DATE
+    assert result_meta["source_surface"] == "formal_pnl"
+    assert result_meta["formal_use_allowed"] is True
+    assert result_meta["amount_currency_basis"] == "CNY"
+    assert result_meta["source_version"] == overview_meta["source_version"]
+    assert result_meta["rule_version"] == overview_meta["rule_version"]
+    assert result_meta["cache_version"] == overview_meta["cache_version"]
+    assert payload["evidence"]["tables_used"] == [
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+    ]
+    assert payload["evidence"]["evidence_rows"] == 2
+    filters_applied = payload["evidence"]["filters_applied"]
+    assert filters_applied["requested_position_scope"] == "all"
+    assert filters_applied["requested_currency_basis"] == "CNY"
+    assert "position_scope" not in filters_applied
+    assert "currency_basis" not in filters_applied
+
+    semantic_context = payload["semantic_context"]
+    assert semantic_context["status"] == "resolved"
+    assert semantic_context["result_check"] == "matched"
+    assert semantic_context["reason_code"] == "metric_value_resolved"
+    assert [reference["entity_id"] for reference in semantic_context["references"]] == [
+        "MTR-PNL-002"
+    ]
+    assert semantic_context["upstream_result_kind"] == "pnl.overview"
+    assert semantic_context["upstream_trace_id"] == overview_meta["trace_id"]
+
+
 def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss-balance.duckdb"
     governance_dir = tmp_path / "governance-balance"
-    _seed_agent_balance_tables(duckdb_path)
+    _seed_agent_balance_tables(duckdb_path, governance_dir)
 
     _enable_local_agent(monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -650,7 +835,7 @@ def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_
         },
     }
     assert payload["result_meta"]["amount_currency_basis"] == "CNY"
-    assert payload["result_meta"]["requested_report_date"] is None
+    assert payload["result_meta"]["requested_report_date"] == REPORT_DATE
     assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
     assert payload["result_meta"]["as_of_date"] == REPORT_DATE
     assert payload["result_meta"]["date_basis"] == "balance_analysis_report_date"
@@ -697,7 +882,7 @@ def test_agent_query_enabled_path_returns_real_risk_tensor_and_audit(tmp_path, m
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "agent.risk_tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
-    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
+    assert payload["result_meta"]["rule_version"] == FIXED_INCOME_VERSION_SET.risk_tensor.rule_version
     assert payload["evidence"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
     assert payload["evidence"]["sql_executed"]
     assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])
@@ -903,7 +1088,7 @@ def test_agent_query_enabled_path_returns_real_product_pnl_and_audit(tmp_path, m
         "report_date_resolution": "latest_default",
         "view": "monthly",
     }
-    assert payload["evidence"]["evidence_rows"] == 3
+    assert payload["evidence"]["evidence_rows"] == 4
     assert any(card["title"] == "Grand Total" for card in payload["cards"])
 
     audit_path = governance_dir / "agent_audit.jsonl"
@@ -1026,7 +1211,7 @@ def test_agent_query_enabled_path_returns_real_duration_risk_and_audit(tmp_path,
 def test_agent_query_enabled_path_returns_real_credit_exposure_and_audit(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss-credit.duckdb"
     governance_dir = tmp_path / "governance-credit"
-    _seed_agent_bond_analytics_tables(duckdb_path)
+    _seed_agent_bond_analytics_tables(duckdb_path, governance_dir)
 
     _enable_local_agent(monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1057,6 +1242,37 @@ def test_agent_query_enabled_path_returns_real_credit_exposure_and_audit(tmp_pat
     assert audit_payload["user_id"] == "u_credit"
     assert audit_payload["query_text"] == "credit"
     assert audit_payload["tables_used"] == ["fact_formal_bond_analytics_daily"]
+
+
+def test_agent_query_enabled_path_credit_exposure_without_governance_run_fails_closed(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss-credit-no-governance.duckdb"
+    governance_dir = tmp_path / "governance-credit-no-run"
+    _seed_agent_bond_analytics_tables(duckdb_path)
+
+    _enable_local_agent(monkeypatch)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_credit_no_run")
+
+    client = TestClient(_fresh_main_module().app)
+    response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "credit",
+            "context": {"user_id": "u_credit_no_run"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["result_kind"] == "agent.credit_exposure"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["source_version"] == "sv_bond_analytics_empty"
+    assert "formal_use_allowed=false" in payload["answer"]
 
 
 def test_agent_query_enabled_path_returns_local_analysis_chat_for_chinese_question(tmp_path, monkeypatch):

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
@@ -139,7 +140,7 @@ function RowInfoMarker({
 }: {
   label: string;
   detail: string;
-  tone: "unavailable" | "caliber" | "evidence";
+  tone: "unavailable" | "caliber" | "evidence" | "note";
 }) {
   return (
     <button
@@ -216,7 +217,14 @@ function SummaryColumnHeads({
         )}
       </th>
       <th scope="col">增减额</th>
-      <th scope="col">增减幅</th>
+      <th scope="col">
+        增减幅
+        <RowInfoMarker
+          label="口径"
+          detail="按工作簿口径直接相除、未取绝对值，对比期为负时符号可能与直觉相反"
+          tone="note"
+        />
+      </th>
     </>
   );
 }
@@ -300,12 +308,12 @@ function SummaryValueCells({
   );
 }
 
-function splitRowsByBasis(section: LedgerPnlIndicatorSummarySection) {
+function splitRowsByBasis(rows: LedgerPnlIndicatorSummaryRow[]) {
   const segments: Array<{
     basis: "flow" | "point";
     rows: LedgerPnlIndicatorSummaryRow[];
   }> = [];
-  for (const row of section.rows) {
+  for (const row of rows) {
     const lastSegment = segments[segments.length - 1];
     if (lastSegment && lastSegment.basis === row.basis) {
       lastSegment.rows.push(row);
@@ -314,6 +322,71 @@ function splitRowsByBasis(section: LedgerPnlIndicatorSummarySection) {
     }
   }
   return segments;
+}
+
+/**
+ * 拆分"默认可见行"与"可折叠行"。
+ *
+ * 规则（PRD B3）：无系统来源（`no_system_source`）的行本身若在其后紧跟的、
+ * indent 更深的子行序列中存在任一可计算（`ledger_computed`）行，则视为分组
+ * 小计/层级行，保留在默认视图以维持层级可读；只有整段（自身及全部子行）
+ * 都没有可计算来源的无来源行，才收进折叠组。计算基于原始行序中的相邻窗口，
+ * 不改变行序、行文案、单元格取值逻辑。
+ */
+function splitFoldableRows(rows: LedgerPnlIndicatorSummaryRow[]): {
+  visible: LedgerPnlIndicatorSummaryRow[];
+  foldable: LedgerPnlIndicatorSummaryRow[];
+} {
+  const visible: LedgerPnlIndicatorSummaryRow[] = [];
+  const foldable: LedgerPnlIndicatorSummaryRow[] = [];
+  rows.forEach((row, index) => {
+    if (row.availability !== "no_system_source") {
+      visible.push(row);
+      return;
+    }
+    let hasComputedDescendant = false;
+    for (let j = index + 1; j < rows.length && rows[j].indent > row.indent; j += 1) {
+      if (rows[j].availability === "ledger_computed") {
+        hasComputedDescendant = true;
+        break;
+      }
+    }
+    (hasComputedDescendant ? visible : foldable).push(row);
+  });
+  return { visible, foldable };
+}
+
+function SegmentedRowsTable({
+  rows,
+  periods,
+}: {
+  rows: LedgerPnlIndicatorSummaryRow[];
+  periods: LedgerPnlIndicatorSummaryPeriod[];
+}) {
+  const segments = splitRowsByBasis(rows);
+  return (
+    <table className="ledger-indicator-summary__table">
+      <thead>
+        {segments.length > 0 ? (
+          <SummaryHeaderRows periods={periods} basis={segments[0].basis} segmentLabel="项目" />
+        ) : null}
+      </thead>
+      {segments.map((segment, index) => (
+        <tbody key={`segment-${index}`}>
+          {index > 0 ? (
+            <SummaryHeaderRows
+              periods={periods}
+              basis={segment.basis}
+              segmentLabel="项目"
+            />
+          ) : null}
+          {segment.rows.map((row) => (
+            <SummaryRow key={row.row_id} row={row} periods={periods} />
+          ))}
+        </tbody>
+      ))}
+    </table>
+  );
 }
 
 function SummarySection({
@@ -325,8 +398,8 @@ function SummarySection({
   periods: LedgerPnlIndicatorSummaryPeriod[];
   defaultOpen: boolean;
 }) {
-  const segments = splitRowsByBasis(section);
   const counts = countRowAvailability(section.rows);
+  const { visible, foldable } = splitFoldableRows(section.rows);
   return (
     <details
       className="ledger-indicator-summary__section"
@@ -342,32 +415,19 @@ function SummarySection({
         <CoverageCounts counts={counts} />
       </summary>
       <div className="ledger-indicator-summary__scroller">
-        <table className="ledger-indicator-summary__table">
-          <thead>
-            {segments.length > 0 ? (
-              <SummaryHeaderRows
-                periods={periods}
-                basis={segments[0].basis}
-                segmentLabel="项目"
-              />
-            ) : null}
-          </thead>
-          {segments.map((segment, index) => (
-            <tbody key={`${section.section_id}-${index}`}>
-              {index > 0 ? (
-                <SummaryHeaderRows
-                  periods={periods}
-                  basis={segment.basis}
-                  segmentLabel="项目"
-                />
-              ) : null}
-              {segment.rows.map((row) => (
-                <SummaryRow key={row.row_id} row={row} periods={periods} />
-              ))}
-            </tbody>
-          ))}
-        </table>
+        <SegmentedRowsTable rows={visible} periods={periods} />
       </div>
+      {foldable.length > 0 ? (
+        <details
+          className="ledger-indicator-summary__nosource-fold"
+          data-testid={`ledger-indicator-summary-nosource-fold-${section.section_id}`}
+        >
+          <summary>无系统来源行（{foldable.length}），展开查看</summary>
+          <div className="ledger-indicator-summary__scroller">
+            <SegmentedRowsTable rows={foldable} periods={periods} />
+          </div>
+        </details>
+      ) : null}
     </details>
   );
 }
@@ -404,6 +464,7 @@ export function LedgerPnlFinancialIndicatorSummaryPanel({
   enabled = true,
 }: Props) {
   const client = useApiClient();
+  const [showAllMonths, setShowAllMonths] = useState(false);
   const normalizedReportMonth = reportMonth.trim();
   const summaryQuery = useQuery({
     queryKey: [
@@ -522,6 +583,12 @@ export function LedgerPnlFinancialIndicatorSummaryPanel({
     );
   }
 
+  const allPeriods = payload.periods;
+  const currentPeriod =
+    allPeriods.find((period) => period.period_id === payload.report_month) ??
+    allPeriods[allPeriods.length - 1];
+  const visiblePeriods = showAllMonths || !currentPeriod ? allPeriods : [currentPeriod];
+
   return (
     <section
       className="ledger-indicator-summary"
@@ -530,12 +597,27 @@ export function LedgerPnlFinancialIndicatorSummaryPanel({
       {renderHeader(
         "行结构对标财务指标工作簿汇总表；可计算行由系统总账科目组合得出，无来源行保持空值。",
       )}
+      {allPeriods.length > 1 ? (
+        <div
+          className="ledger-indicator-summary__month-toggle"
+          data-testid="ledger-indicator-summary-month-toggle"
+        >
+          <span>{showAllMonths ? `全部月份（${allPeriods.length}）` : "当月聚焦"}</span>
+          <button
+            type="button"
+            aria-expanded={showAllMonths}
+            onClick={() => setShowAllMonths((prev) => !prev)}
+          >
+            {showAllMonths ? "仅看当月" : `展开全部月份（${allPeriods.length}）`}
+          </button>
+        </div>
+      ) : null}
       <PanelStatusStrip payload={payload} />
       {payload.sections.map((section) => (
         <SummarySection
           key={section.section_id}
           section={section}
-          periods={payload.periods}
+          periods={visiblePeriods}
           defaultOpen={section.section_id === "financial"}
         />
       ))}

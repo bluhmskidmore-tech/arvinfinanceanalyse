@@ -36,7 +36,7 @@ def _governed_analytical_component_envelope(
             "fallback_mode": "none",
             "fallback_date": None,
             "source_version": f"sv_{report_date}",
-            "rule_version": "rv_pnl_phase2_materialize_v3",
+            "rule_version": "rv_pnl_phase2_materialize_v4",
             "cache_version": "cv_pnl_formal_v3",
             "vendor_version": "vv_none",
             "vendor_status": "ok",
@@ -371,7 +371,9 @@ def test_formal_insights_envelope_propagates_cutoff_quality_and_approved_status(
 
     assert hasattr(service, "pnl_by_business_insights_envelope")
 
-    def fake_ytd_envelope(*, duckdb_path, governance_dir, year, as_of_date=None):
+    def fake_ytd_envelope(
+        *, duckdb_path, governance_dir, year, as_of_date=None, source_version_cache=None
+    ):
         report_date = as_of_date or f"{year}-12-31"
         multiplier = Decimal("1") if year == 2026 else Decimal("0.8")
         items = [
@@ -391,7 +393,9 @@ def test_formal_insights_envelope_propagates_cutoff_quality_and_approved_status(
         envelope["result"].update({"year": year, "items": items})
         return envelope
 
-    def fake_monthly_envelope(*, duckdb_path, governance_dir, year, as_of_date=None):
+    def fake_monthly_envelope(
+        *, duckdb_path, governance_dir, year, as_of_date=None, source_version_cache=None
+    ):
         report_date = as_of_date or f"{year}-12-31"
         envelope = _governed_analytical_component_envelope(
             result_kind="pnl.by_business_monthly",
@@ -460,7 +464,9 @@ def test_formal_insights_fails_closed_on_component_fallback_vendor_and_baseline_
 ) -> None:
     from backend.app.services import pnl_by_business_candidate_insights as service
 
-    def fake_ytd_envelope(*, duckdb_path, governance_dir, year, as_of_date=None):
+    def fake_ytd_envelope(
+        *, duckdb_path, governance_dir, year, as_of_date=None, source_version_cache=None
+    ):
         requested = as_of_date or f"{year}-12-31"
         resolved = "2025-05-31" if year == 2025 else requested
         fallback_mode = "latest_snapshot" if resolved != requested else "none"
@@ -493,7 +499,9 @@ def test_formal_insights_fails_closed_on_component_fallback_vendor_and_baseline_
         )
         return envelope
 
-    def fake_monthly_envelope(*, duckdb_path, governance_dir, year, as_of_date=None):
+    def fake_monthly_envelope(
+        *, duckdb_path, governance_dir, year, as_of_date=None, source_version_cache=None
+    ):
         requested = as_of_date or f"{year}-12-31"
         months = []
         if year == 2026:
@@ -560,7 +568,9 @@ def test_formal_insights_warns_on_incomplete_monthly_window(
 ) -> None:
     from backend.app.services import pnl_by_business_candidate_insights as service
 
-    def fake_ytd_envelope(*, duckdb_path, governance_dir, year, as_of_date=None):
+    def fake_ytd_envelope(
+        *, duckdb_path, governance_dir, year, as_of_date=None, source_version_cache=None
+    ):
         report_date = as_of_date or f"{year}-12-31"
         envelope = _governed_analytical_component_envelope(
             result_kind="pnl.by_business_ytd",
@@ -582,7 +592,9 @@ def test_formal_insights_warns_on_incomplete_monthly_window(
         )
         return envelope
 
-    def fake_monthly_envelope(*, duckdb_path, governance_dir, year, as_of_date=None):
+    def fake_monthly_envelope(
+        *, duckdb_path, governance_dir, year, as_of_date=None, source_version_cache=None
+    ):
         if year == 2025 and prior_year_mode == "unavailable":
             raise ValueError("monthly year unavailable")
         report_date = as_of_date or f"{year}-12-31"
@@ -803,7 +815,7 @@ def test_component_evidence_exposes_and_admits_governed_formal_fact_lineage() ->
         "trace_id": "tr_pnl_by_business_ytd_2026-06-30",
         "source_surface": "formal_pnl",
         "source_version": "sv_2026-06-30",
-        "rule_version": "rv_pnl_phase2_materialize_v3",
+        "rule_version": "rv_pnl_phase2_materialize_v4",
         "cache_version": "cv_pnl_formal_v3",
         "tables_used": _FORMAL_COMPONENT_TABLES,
         "formal_source_admitted": True,
@@ -1010,7 +1022,7 @@ def test_formal_insights_endpoint_fails_closed_on_unadmitted_component(
                 "result_kind": result_kind,
                 "trace_id": f"tr_{entry['component']}",
                 "source_surface": "formal_pnl",
-                "rule_version": "rv_pnl_phase2_materialize_v3",
+                "rule_version": "rv_pnl_phase2_materialize_v4",
                 "cache_version": "cv_pnl_formal_v3",
                 "tables_used": list(_FORMAL_COMPONENT_TABLES),
                 "formal_source_admitted": True,

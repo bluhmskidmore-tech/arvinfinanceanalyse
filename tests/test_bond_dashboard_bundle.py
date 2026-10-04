@@ -1,6 +1,7 @@
 """Narrow contract test for bond-dashboard bundle aggregation endpoint."""
 from __future__ import annotations
 
+
 import copy
 import sys
 import time
@@ -8,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -29,6 +31,86 @@ def _strip_volatile_envelope_fields(envelope: dict) -> dict:
         meta.pop("trace_id", None)
         meta.pop("generated_at", None)
     return out
+
+
+def _home_summary_refresh_fixture(monkeypatch):
+    service = load_module(
+        "tests._bond_dashboard_home_summary_refresh",
+        "backend/app/services/bond_dashboard_service.py",
+    )
+    state = {"database": 1, "physical": 1, "scope": 1, "terminal": 1, "builds": 0, "hook": None}
+    monkeypatch.setattr(service, "_duckdb_cache_version_token", lambda: ("test-db", state["database"]))
+    monkeypatch.setattr(service, "_bond_analytics_rows_cache_version_token", lambda: ("selected-db", state["physical"]), raising=False)
+    monkeypatch.setattr(service, "resolve_completed_formal_build_lineage", lambda **_kwargs: {
+        "run_id": str(state["terminal"]), "source_version": "sv_home",
+        "rule_version": "rv_home", "cache_version": "cv_home",
+    }, raising=False)
+    from backend.app.services import runtime_cache
+
+    def identity(key):
+        return ("test-scope", state["scope"], key)
+
+    monkeypatch.setattr(runtime_cache, "system_read_cache_identity", identity)
+    monkeypatch.setattr(service, "system_read_cache_identity", identity, raising=False)
+
+    def build(rd):
+        state["builds"] += 1
+        result = ({"report_date": rd, "build": state["builds"]},
+                  {"source_version": "sv_home", "rule_version": "rv_home", "cache_version": "cv_home"}, 1)
+        if state["hook"]:
+            state["hook"]()
+        return result
+
+    monkeypatch.setattr(service, "_build_bond_dashboard_home_summary_components", build)
+    monkeypatch.setattr(service, "_analytical_envelope_from_lineage", lambda **kwargs: {
+        "result": kwargs["result_payload"], "result_meta": kwargs["lineage"],
+    })
+    return service, state
+
+
+def test_home_summary_force_refresh_keeps_valid_hit_until_new_result_is_ready(monkeypatch):
+    service, state = _home_summary_refresh_fixture(monkeypatch)
+    rd = date.fromisoformat(REPORT_DATE)
+    first = service.get_bond_dashboard_home_summary(rd)
+    assert service.get_bond_dashboard_home_summary(rd)["result"] == first["result"]
+    assert state["builds"] == 1
+    state["hook"] = lambda: service.get_bond_dashboard_home_summary(rd)
+    refreshed = service.get_bond_dashboard_home_summary(rd, force_refresh=True)
+    assert refreshed["result"]["build"] == 2
+    assert service.get_bond_dashboard_home_summary(rd)["result"] == refreshed["result"]
+    assert state["builds"] == 2
+    state["hook"] = lambda: (_ for _ in ()).throw(RuntimeError("refresh failed"))
+    with pytest.raises(RuntimeError, match="refresh failed"):
+        service.get_bond_dashboard_home_summary(rd, force_refresh=True)
+    assert service.get_bond_dashboard_home_summary(rd)["result"] == refreshed["result"]
+
+
+@pytest.mark.parametrize("change", ["generation", "database", "physical", "scope", "terminal"])
+def test_home_summary_force_refresh_does_not_store_changed_read_inputs(monkeypatch, change):
+    service, state = _home_summary_refresh_fixture(monkeypatch)
+    rd = date.fromisoformat(REPORT_DATE)
+    first = service.get_bond_dashboard_home_summary(rd)
+    cache = service._home_summary_cache
+    original_key = next(iter(cache._store))
+
+    def invalidate():
+        if change == "generation":
+            service.clear_bond_dashboard_runtime_cache()
+        else:
+            state[change] += 1
+
+    state["hook"] = invalidate
+    refreshed = service.get_bond_dashboard_home_summary(rd, force_refresh=True)
+    assert refreshed["result"]["build"] == 2
+    state["hook"] = None
+    if change == "generation":
+        assert cache._store == {}
+        assert service.get_bond_dashboard_home_summary(rd)["result"]["build"] == 3
+    else:
+        assert cache._store[original_key][1][0] == first["result"]
+        assert all(entry[1][0] != refreshed["result"] for entry in cache._store.values())
+    if change in {"database", "scope"}:
+        assert service.get_bond_dashboard_home_summary(rd)["result"]["build"] == 3
 
 
 def _live_bond_dashboard_service():
@@ -507,3 +589,80 @@ def test_bond_dashboard_bundle_dates_only_without_report_date(tmp_path, monkeypa
         dates_response.json()
     )
     get_settings.cache_clear()
+
+
+def test_dashboard_cache_capacity_and_expiry_are_bounded():
+    from backend.app.services import bond_dashboard_service as service
+
+    now = [0.0]
+    cache = service._TTLCache(ttl_seconds=30, clock=lambda: now[0], max_entries=32, sweep_budget=4)
+    for version in range(10000):
+        cache.set(("database-version", version), bytes(1024))
+        assert len(cache._store) <= 32
+        assert len(cache._expiry_scan) <= 32
+    now[0] = 86400.0
+    for _ in range(8):
+        cache.get(("unused",))
+    assert len(cache._store) == len(cache._expiry_scan) == 0
+
+
+def test_dashboard_fetch_lock_retained_for_waiters_and_reclaimed_after_exit():
+    import threading
+    import time
+    from backend.app.services import bond_dashboard_service as service
+
+    key = ("synthetic-lock-test",)
+    entered, release, waiter_entered = (threading.Event() for _ in range(3))
+
+    def holder():
+        with service._fact_rows_fetch_lock(key):
+            entered.set()
+            assert release.wait(2)
+
+    def waiter():
+        with service._fact_rows_fetch_lock(key):
+            waiter_entered.set()
+
+    first, second = threading.Thread(target=holder), threading.Thread(target=waiter)
+    first.start()
+    assert entered.wait(1)
+    second.start()
+    try:
+        for _ in range(200):
+            with service._fact_rows_fetch_locks_guard:
+                entry = service._fact_rows_fetch_locks[key]
+                if entry[1] == 2:
+                    break
+            time.sleep(0.001)
+        assert entry[1] == 2
+        lock = entry[0]
+        service.clear_bond_dashboard_runtime_cache()
+        assert service._fact_rows_fetch_locks[key][0] is lock
+        assert not waiter_entered.is_set()
+    finally:
+        release.set()
+        first.join(2)
+        second.join(2)
+    assert waiter_entered.is_set()
+    assert key not in service._fact_rows_fetch_locks
+    for version in range(10000):
+        with service._fact_rows_fetch_lock(("synthetic-version", version)):
+            pass
+    assert not service._fact_rows_fetch_locks
+
+
+def test_dashboard_clear_drops_report_dates_build_started_before_clear(monkeypatch):
+    from types import SimpleNamespace
+    from backend.app.services import bond_dashboard_service as service
+
+    service.clear_bond_dashboard_runtime_cache()
+    monkeypatch.setattr(service, "_duckdb_cache_version_token", lambda: ("synthetic", 1))
+
+    def build():
+        service.clear_bond_dashboard_runtime_cache()
+        return ["old-date"]
+
+    monkeypatch.setattr(service, "_repo", lambda: SimpleNamespace(list_report_dates=build))
+    assert service._report_dates() == ["old-date"]
+    monkeypatch.setattr(service, "_repo", lambda: SimpleNamespace(list_report_dates=lambda: ["new-date"]))
+    assert service._report_dates() == ["new-date"]

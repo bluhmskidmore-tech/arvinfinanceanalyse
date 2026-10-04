@@ -16,8 +16,8 @@ import type {
 import {
   DataStatusStrip,
   PageDecisionHero,
-  PageSectionLead,
 } from "../../../components/page/PagePrimitives";
+import { SectionHead } from "../../../components/layout";
 import {
   buildDecisionItemsPageViewModel,
   decisionSeverityLabel,
@@ -356,10 +356,11 @@ export default function DecisionItemsPage() {
         </div>
       </PageDecisionHero>
 
-      <PageSectionLead
-        eyebrow="治理"
+      <SectionHead
+        category="治理"
         title="决策工作区"
-        description="对规则生成的待办做集中处理，保留追踪编号、规则版本与写回人信息以便审计。"
+        note="对规则生成的待办做集中处理，保留追踪编号、规则版本与写回人信息以便审计。"
+        numbered={false}
       />
 
       <section className="decision-items-page__summary-panel">

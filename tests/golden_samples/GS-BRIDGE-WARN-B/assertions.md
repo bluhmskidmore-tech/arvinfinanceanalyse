@@ -11,7 +11,7 @@
 - `result_meta.basis == "formal"`.
 - `result_meta.result_kind == "pnl.bridge"`.
 - `result_meta.source_version == "fi-shared-v1__nonstd-shared-v1__sv-z-current__sv-z-prior"`.
-- `result_meta.rule_version == "rv-z-current__rv-z-prior__rv_pnl_phase2_materialize_v3"`.
+- `result_meta.rule_version == "rv-z-current__rv-z-prior__rv_pnl_phase2_materialize_v7"`.
 - `result_meta.vendor_version == "vv_none"`.
 - `result.report_date == "2025-12-31"`.
 - `rows.length == 1`.
@@ -29,6 +29,8 @@
   - `Balance lineage fallback used for report_date=2025-12-31`
   - `Balance lineage fallback used for prior_report_date=2025-10-31`
   - `No treasury curve available`
+  - `PNL_BRIDGE_WINDOW_MISMATCH` because the available `2025-10-31` beginning balance is not the required `2025-11-30` baseline.
+- `result_meta.filters_applied.window_aligned == false`, while the actual and expected balance windows remain disclosed separately.
 
 ## Reconciliation
 

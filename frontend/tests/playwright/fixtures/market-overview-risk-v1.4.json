@@ -1,0 +1,772 @@
+{
+  "version": "market-risk-design-fixture-1.4",
+  "synthetic": true,
+  "notice": "All values and records are synthetic UI examples. Weekday dates are not a trading calendar.",
+  "report_date": "2026-09-04",
+  "rule_version": "rv_macro_crisis_score_cn_v1",
+  "current": {
+    "score": null,
+    "percentile": null,
+    "regime": null,
+    "current_available": false,
+    "history_only": true,
+    "risk_gate": {
+      "eligible": false,
+      "triggered": false,
+      "threshold": 2
+    },
+    "dependency": "choice_policy_rate_7d",
+    "missing_component": "commodity_vol"
+  },
+  "recovered_example": {
+    "score": -0.6,
+    "percentile": 24,
+    "regime": "宽松",
+    "current_available": true,
+    "components": 5,
+    "prerequisites": [
+      "direct_dr007_verified",
+      "policy_receipt_verified",
+      "commodity_window_complete"
+    ],
+    "risk_gate": {
+      "eligible": true,
+      "triggered": false,
+      "threshold": 2
+    }
+  },
+  "triggered_example": {
+    "score": 2.15,
+    "regime": "高风险",
+    "current_available": true,
+    "components": 5,
+    "risk_gate": {
+      "eligible": true,
+      "triggered": true,
+      "threshold": 2
+    }
+  },
+  "history": [
+    {
+      "date": "2026-06-15",
+      "crisis_score": 0.2,
+      "percentile": 64,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-16",
+      "crisis_score": 0.2135,
+      "percentile": 63.3,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-17",
+      "crisis_score": 0.2245,
+      "percentile": 62.6,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-18",
+      "crisis_score": 0.231,
+      "percentile": 61.9,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-19",
+      "crisis_score": 0.2311,
+      "percentile": 61.2,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-22",
+      "crisis_score": 0.2238,
+      "percentile": 60.5,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-23",
+      "crisis_score": 0.2086,
+      "percentile": 59.8,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-24",
+      "crisis_score": 0.186,
+      "percentile": 59.1,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-25",
+      "crisis_score": 0.157,
+      "percentile": 58.4,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-26",
+      "crisis_score": 0.1235,
+      "percentile": 57.7,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-29",
+      "crisis_score": 0.0875,
+      "percentile": 57,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-06-30",
+      "crisis_score": 0.0515,
+      "percentile": 56.3,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-01",
+      "crisis_score": 0.018,
+      "percentile": 55.6,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-02",
+      "crisis_score": -0.011,
+      "percentile": 54.9,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-03",
+      "crisis_score": -0.0336,
+      "percentile": 54.2,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-06",
+      "crisis_score": -0.0488,
+      "percentile": 53.5,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-07",
+      "crisis_score": -0.0561,
+      "percentile": 52.8,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-08",
+      "crisis_score": -0.056,
+      "percentile": 52.1,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-09",
+      "crisis_score": -0.0495,
+      "percentile": 51.4,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-10",
+      "crisis_score": -0.0385,
+      "percentile": 50.7,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-13",
+      "crisis_score": -0.025,
+      "percentile": 50,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-14",
+      "crisis_score": -0.0115,
+      "percentile": 49.3,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-15",
+      "crisis_score": -0.0005,
+      "percentile": 48.6,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-16",
+      "crisis_score": 0.006,
+      "percentile": 47.9,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-17",
+      "crisis_score": 0.0061,
+      "percentile": 47.2,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-20",
+      "crisis_score": -0.0012,
+      "percentile": 46.5,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-21",
+      "crisis_score": -0.0164,
+      "percentile": 45.8,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-22",
+      "crisis_score": -0.039,
+      "percentile": 45.1,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-23",
+      "crisis_score": -0.068,
+      "percentile": 44.4,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-24",
+      "crisis_score": -0.1015,
+      "percentile": 43.7,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-27",
+      "crisis_score": -0.1375,
+      "percentile": 43,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-28",
+      "crisis_score": -0.1735,
+      "percentile": 42.3,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-29",
+      "crisis_score": -0.207,
+      "percentile": 41.6,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-30",
+      "crisis_score": -0.236,
+      "percentile": 40.9,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-07-31",
+      "crisis_score": -0.2586,
+      "percentile": 40.2,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-03",
+      "crisis_score": -0.2737,
+      "percentile": 39.5,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-04",
+      "crisis_score": -0.2811,
+      "percentile": 38.8,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-05",
+      "crisis_score": -0.281,
+      "percentile": 38.1,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-06",
+      "crisis_score": -0.2745,
+      "percentile": 37.4,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-07",
+      "crisis_score": -0.2635,
+      "percentile": 36.7,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-10",
+      "crisis_score": -0.25,
+      "percentile": 36,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-11",
+      "crisis_score": -0.2585,
+      "percentile": 35.37,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-12",
+      "crisis_score": -0.2674,
+      "percentile": 34.74,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-13",
+      "crisis_score": -0.2767,
+      "percentile": 34.11,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-14",
+      "crisis_score": -0.2868,
+      "percentile": 33.47,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-17",
+      "crisis_score": -0.298,
+      "percentile": 32.84,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-18",
+      "crisis_score": -0.3103,
+      "percentile": 32.21,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-19",
+      "crisis_score": -0.324,
+      "percentile": 31.58,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-20",
+      "crisis_score": -0.3392,
+      "percentile": 30.95,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-21",
+      "crisis_score": -0.356,
+      "percentile": 30.32,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-24",
+      "crisis_score": -0.3744,
+      "percentile": 29.68,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-25",
+      "crisis_score": -0.3945,
+      "percentile": 29.05,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-26",
+      "crisis_score": -0.4161,
+      "percentile": 28.42,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-27",
+      "crisis_score": -0.4392,
+      "percentile": 27.79,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-28",
+      "crisis_score": -0.4638,
+      "percentile": 27.16,
+      "data_status": "complete",
+      "available_component_count": 5,
+      "component_count": 5,
+      "available_weight": 1
+    },
+    {
+      "date": "2026-08-31",
+      "crisis_score": -0.4895,
+      "percentile": 26.53,
+      "data_status": "degraded",
+      "available_component_count": 4,
+      "component_count": 5,
+      "available_weight": 0.85
+    },
+    {
+      "date": "2026-09-01",
+      "crisis_score": -0.5162,
+      "percentile": 25.89,
+      "data_status": "degraded",
+      "available_component_count": 4,
+      "component_count": 5,
+      "available_weight": 0.85
+    },
+    {
+      "date": "2026-09-02",
+      "crisis_score": -0.5437,
+      "percentile": 25.26,
+      "data_status": "degraded",
+      "available_component_count": 4,
+      "component_count": 5,
+      "available_weight": 0.85
+    },
+    {
+      "date": "2026-09-03",
+      "crisis_score": -0.5717,
+      "percentile": 24.63,
+      "data_status": "degraded",
+      "available_component_count": 4,
+      "component_count": 5,
+      "available_weight": 0.85
+    },
+    {
+      "date": "2026-09-04",
+      "crisis_score": -0.6,
+      "percentile": 24,
+      "data_status": "degraded",
+      "available_component_count": 4,
+      "component_count": 5,
+      "available_weight": 0.85
+    }
+  ],
+  "trends": [
+    {
+      "requested_window_points": 20,
+      "window_points": 20,
+      "start_date": "2026-08-10",
+      "end_date": "2026-09-04",
+      "score_change": -0.35,
+      "percentile_change": -12
+    },
+    {
+      "requested_window_points": 60,
+      "window_points": 60,
+      "start_date": "2026-06-15",
+      "end_date": "2026-09-04",
+      "score_change": -0.8,
+      "percentile_change": -40
+    }
+  ],
+  "components": [
+    {
+      "key": "equity_vol",
+      "label": "股票波动",
+      "raw_value": 16.2,
+      "raw_unit": "年化百分比",
+      "weight": 0.25,
+      "z_score": -0.4,
+      "latest_date": "2026-09-04"
+    },
+    {
+      "key": "credit_spread",
+      "label": "信用利差",
+      "raw_value": 0.42,
+      "raw_unit": "百分点",
+      "weight": 0.25,
+      "z_score": -0.8,
+      "latest_date": "2026-09-04"
+    },
+    {
+      "key": "fx_vol",
+      "label": "汇率波动",
+      "raw_value": 3.1,
+      "raw_unit": "年化百分比",
+      "weight": 0.15,
+      "z_score": -0.4,
+      "latest_date": "2026-09-04"
+    },
+    {
+      "key": "commodity_vol",
+      "label": "商品波动",
+      "raw_value": null,
+      "raw_unit": "年化百分比",
+      "weight": 0.15,
+      "z_score": null,
+      "latest_date": "2026-09-04"
+    },
+    {
+      "key": "liquidity_stress",
+      "label": "流动性压力",
+      "raw_value": 0.02,
+      "raw_unit": "百分点",
+      "proxy": true,
+      "weight": 0.2,
+      "z_score": -0.75,
+      "latest_date": "2026-09-04"
+    }
+  ],
+  "signals": {
+    "status": "unavailable",
+    "reason": "刷新回执待核验，方向暂不发布",
+    "cards": []
+  },
+  "actions": [
+    {
+      "priority": "P0",
+      "label": "恢复宏观刷新并复核回执",
+      "route": "/macro-toolkit"
+    },
+    {
+      "priority": "P1",
+      "label": "复核新闻比较",
+      "route": "/news-events"
+    },
+    {
+      "priority": "P2",
+      "label": "检查 Crisis 评分完整性",
+      "route": "/macro-toolkit"
+    }
+  ],
+  "news_compare": {
+    "same_direction": 3,
+    "conflicting": 2,
+    "review_needed": 2,
+    "candidate_scenarios": 2
+  },
+  "commodities": [
+    {
+      "label": "螺纹钢",
+      "sample_count": 130,
+      "crisis_sample_count": 33,
+      "max_abs_correlation": 0.08,
+      "decision": "watch",
+      "latest_return_z": 0.4,
+      "weight": 0.05,
+      "contribution": 0.02,
+      "latest_date": "2026-09-04",
+      "used_in_official_score": false
+    },
+    {
+      "label": "铁矿石",
+      "sample_count": 132,
+      "crisis_sample_count": 33,
+      "max_abs_correlation": 0.1,
+      "decision": "watch",
+      "latest_return_z": -0.2,
+      "weight": 0.05,
+      "contribution": -0.01,
+      "latest_date": "2026-09-04",
+      "used_in_official_score": false
+    },
+    {
+      "label": "铜",
+      "sample_count": 134,
+      "crisis_sample_count": 34,
+      "max_abs_correlation": 0.12,
+      "decision": "watch",
+      "latest_return_z": 0.1,
+      "weight": 0.05,
+      "contribution": 0.005,
+      "latest_date": "2026-09-04",
+      "used_in_official_score": false
+    },
+    {
+      "label": "铝",
+      "sample_count": 136,
+      "crisis_sample_count": 34,
+      "max_abs_correlation": 0.14,
+      "decision": "watch",
+      "latest_return_z": 0.3,
+      "weight": 0.05,
+      "contribution": 0.015,
+      "latest_date": "2026-09-04",
+      "used_in_official_score": false
+    },
+    {
+      "label": "原油",
+      "sample_count": 138,
+      "crisis_sample_count": 35,
+      "max_abs_correlation": 0.16,
+      "decision": "watch",
+      "latest_return_z": -0.1,
+      "weight": 0.05,
+      "contribution": -0.005,
+      "latest_date": "2026-09-04",
+      "used_in_official_score": false
+    },
+    {
+      "label": "黄金",
+      "sample_count": 140,
+      "crisis_sample_count": 35,
+      "max_abs_correlation": 0.18,
+      "decision": "watch",
+      "latest_return_z": 0.5,
+      "weight": 0.05,
+      "contribution": 0.025,
+      "latest_date": "2026-09-04",
+      "used_in_official_score": false
+    }
+  ],
+  "admission": {
+    "minimum_sample_count": 20,
+    "minimum_crisis_sample_count": 5,
+    "correlation_threshold": 0.2
+  },
+  "shadow": {
+    "formula_version": "rv_macro_crisis_score_shadow_commodity_v1",
+    "current_score": -0.6,
+    "shadow_score": -0.55,
+    "delta": 0.05,
+    "official_score_unchanged": true,
+    "approval_required": true
+  }
+}

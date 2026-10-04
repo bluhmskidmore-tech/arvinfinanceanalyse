@@ -537,11 +537,14 @@ def test_stock_candidates_fundamental_overlay_keeps_technically_eligible_stock_m
     # Regression guard: a candidate that clears every technical filter must
     # not silently disappear from the output just because it lacks one
     # fundamental factor input (pe here). It stays in the output, ranked
-    # after the fully-scored candidate, but without a factor score.
+    # after the fully-scored candidate, with an explicit ``factor_score=None``
+    # and the missing inputs listed so the UI can explain the gap.
     assert payload["candidate_count"] == 2
     assert [row["stock_code"] for row in items] == ["000010.SZ", "000020.SZ"]
     assert items[0]["factor_score"] is not None
-    assert "factor_score" not in items[1]
+    assert "factor_missing_inputs" not in items[0]
+    assert items[1]["factor_score"] is None
+    assert items[1]["factor_missing_inputs"] == ["pe"]
 
     assert payload["fundamental_overlay"] == {
         "status": "applied",

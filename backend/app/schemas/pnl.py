@@ -87,6 +87,7 @@ class PnlOverviewPayload(BaseModel):
     capital_gain_517: Decimal
     manual_adjustment: Decimal
     total_pnl: Decimal
+    reconciliation_checks: dict[str, dict[str, object]] = Field(default_factory=dict)
 
 
 class PnlV1DetailRow(BaseModel):
@@ -271,6 +272,17 @@ class PnlByBusinessYtdSummary(BaseModel):
     assets_count: int
 
 
+class PnlByBusinessBalanceQualityIssue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    issue_id: str
+    report_date: str
+    status: Literal["pending"] = "pending"
+    reason: str
+    source_file: str
+    source_version: str
+
+
 class PnlByBusinessYtdPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -280,6 +292,8 @@ class PnlByBusinessYtdPayload(BaseModel):
     period_start_date: str
     period_end_date: str
     total_pnl: Decimal
+    avg_balance_basis: Literal["book_value_including_accrued_interest"] = "book_value_including_accrued_interest"
+    balance_quality_issues: list[PnlByBusinessBalanceQualityIssue] = Field(default_factory=list)
     coverage_days: int = 0
     expected_days: int = 0
     sample_filled: bool = False
@@ -405,6 +419,7 @@ class PnlByBusinessMonthlyBucket(BaseModel):
     period_start_date: str
     period_end_date: str
     calendar_days: int
+    balance_quality_issues: list[PnlByBusinessBalanceQualityIssue] = Field(default_factory=list)
     coverage_days: int = 0
     expected_days: int = 0
     sample_filled: bool = False
@@ -472,6 +487,7 @@ class PnlByBusinessMonthlyManagementChange(BaseModel):
     previous_month_key: str
     coverage_warning_months: list[str]
     reconciliation_warning_months: list[str]
+    balance_quality_warning_months: list[str] = Field(default_factory=list)
     incomplete_months: list[str]
     summary: PnlByBusinessMonthlyChangeMetrics | None
     rows: list[PnlByBusinessMonthlyChangeRow]
@@ -482,6 +498,8 @@ class PnlByBusinessMonthlyPayload(BaseModel):
 
     year: int
     as_of_date: str
+    avg_balance_basis: Literal["book_value_including_accrued_interest"] = "book_value_including_accrued_interest"
+    balance_quality_issues: list[PnlByBusinessBalanceQualityIssue] = Field(default_factory=list)
     source_tables: list[str]
     months: list[PnlByBusinessMonthlyBucket]
     management_change: PnlByBusinessMonthlyManagementChange | None = None
@@ -528,6 +546,8 @@ class PnlByBusinessAnalysisPayload(BaseModel):
     dimension: PnlByBusinessAnalysisDimension
     period_start_date: str
     period_end_date: str
+    avg_balance_basis: Literal["book_value_including_accrued_interest"] = "book_value_including_accrued_interest"
+    balance_quality_issues: list[PnlByBusinessBalanceQualityIssue] = Field(default_factory=list)
     coverage_days: int = 0
     expected_days: int = 0
     sample_filled: bool = False
@@ -604,7 +624,7 @@ class PnlByBusinessNegativeFtpPersistenceRow(BaseModel):
     business_type: str
     months_observed: int
     eligible: bool
-    status: Literal["eligible", "insufficient_observations"]
+    status: Literal["eligible", "insufficient_observations", "source_pending"]
     negative_ftp_month_share_pct: Decimal | None
     negative_ftp_longest_streak_months: int | None
     warning_triggered: bool
@@ -619,13 +639,14 @@ class PnlByBusinessNegativeFtpPersistenceSummary(BaseModel):
     window_end_month: str | None
     months_observed: int
     eligible: bool
-    status: Literal["eligible", "insufficient_observations"]
+    status: Literal["eligible", "insufficient_observations", "source_pending"]
     negative_ftp_month_share_pct: Decimal | None
     negative_ftp_longest_streak_months: int | None
     warning_threshold_pct: Decimal
     minimum_observed_months: int
     warning_row_count: int
     rows: list[PnlByBusinessNegativeFtpPersistenceRow]
+    balance_quality_issues: list[PnlByBusinessBalanceQualityIssue] = Field(default_factory=list)
 
 
 class PnlByBusinessShareDriftRow(BaseModel):

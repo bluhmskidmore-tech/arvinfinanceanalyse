@@ -7,6 +7,7 @@ from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -335,6 +336,20 @@ def parse_finance_metric_sources(
     daily_file = Path(daily_path)
     ledger_snapshot = _read_file_snapshot(ledger_file, limits)
     daily_snapshot = _read_file_snapshot(daily_file, limits)
+    # Read and hash current bytes on every call. Cache only the immutable parsed
+    # observations; month/limits and exact snapshots remain part of the key.
+    return _parse_finance_metric_snapshots(ledger_snapshot, daily_snapshot, requested_month, limits)
+
+
+@lru_cache(maxsize=4)
+def _parse_finance_metric_snapshots(
+    ledger_snapshot: _FileSnapshot,
+    daily_snapshot: _FileSnapshot,
+    requested_month: str | None,
+    limits: XlsxLimits,
+) -> FinanceMetricSourceData:
+    ledger_file = ledger_snapshot.path
+    daily_file = daily_snapshot.path
     ledger_workbook = _read_xlsx_payload(ledger_snapshot.payload, ledger_file.name, limits)
     daily_workbook = _read_xlsx_payload(daily_snapshot.payload, daily_file.name, limits)
     ledger_sheet = _required_sheet(ledger_workbook, "综本")

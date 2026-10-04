@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
+. "$root\scripts\dev-runtime-common.ps1"
+Assert-DevRuntimeAllowed
 Set-Location $root
 . "$root\scripts\dev-env.ps1"
 . "$root\scripts\dev-python.ps1"
@@ -477,14 +479,16 @@ function Start-DevScriptDetached {
     -Property @{
       ShowWindow = [uint16]0
     }
-  $launchResult = Invoke-CimMethod `
-    -ClassName Win32_Process `
-    -MethodName Create `
-    -Arguments @{
-      CommandLine = $command
-      CurrentDirectory = $root
-      ProcessStartupInformation = $startupInfo
-    }
+  $launchResult = Invoke-DevRuntimeAction {
+    Invoke-CimMethod `
+      -ClassName Win32_Process `
+      -MethodName Create `
+      -Arguments @{
+        CommandLine = $command
+        CurrentDirectory = $root
+        ProcessStartupInformation = $startupInfo
+      }
+  }
   if ([int]$launchResult.ReturnValue -ne 0) {
     throw "$ScriptName launcher failed with WMI return code $($launchResult.ReturnValue)"
   }
@@ -526,9 +530,11 @@ function Start-DevScriptDetached {
   }
 }
 
-& (Join-Path $root "scripts\dev-postgres-up.ps1")
-if ($LASTEXITCODE -ne 0) {
-  throw "dev-postgres-up.ps1 failed; aborting dev-up startup."
+Invoke-DevRuntimeAction {
+  & (Join-Path $root "scripts\dev-postgres-up.ps1")
+  if ($LASTEXITCODE -ne 0) {
+    throw "dev-postgres-up.ps1 failed; aborting dev-up startup."
+  }
 }
 
 $postgresPort = Wait-TcpPort -ListenHost "127.0.0.1" -Port 55432 -TimeoutSeconds 120 -Description "local Postgres dev cluster"
@@ -592,7 +598,12 @@ if ($agentDevMode) {
 $frontendLaunch = Start-DevScriptDetached -ScriptName "dev-frontend.ps1"
 $frontendLogPaths = @($frontendLaunch.StderrPath, $frontendLaunch.StdoutPath, (Join-Path $logRoot "dev-frontend.err.log"), (Join-Path $logRoot "dev-frontend.out.log"))
 $frontendRoot = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:5888" -Description "frontend root" -LogPaths $frontendLogPaths
-$frontendClientContext = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:5888/src/api/clientContext.ts" -Description "frontend Vite API client context module" -LogPaths $frontendLogPaths
+$frontendPlan = Get-DevFrontendPlan
+$frontendProbePath = [string]$frontendPlan.probes[1].path
+$frontendClientContext = Wait-HttpEndpointWithLogs -Url ("http://127.0.0.1:5888/" + $frontendProbePath) -Description "selected frontend asset" -LogPaths $frontendLogPaths
+$runtimePython = Get-DevRuntimePython
+& $runtimePython "$root\scripts\dev_runtime_control.py" --repo-root $root frontend-probe
+if ($LASTEXITCODE -ne 0) { throw "Frontend response identity does not match its selected build" }
 $keepaliveLaunch = Start-DevScriptDetached -ScriptName "dev-keepalive.ps1"
 try {
   $workerHeartbeat = Wait-FileReady -Path $workerHeartbeatPath -ExpectedToken $workerHeartbeatToken -TimeoutSeconds 120 -Description "worker heartbeat"

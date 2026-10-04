@@ -131,6 +131,8 @@ export function hasApprovedPnlByBusinessInsightsEvidence(
 
 function buildLeadershipItems(result: PnlByBusinessInsightsPayload): PnlByBusinessInsightsLeadershipItem[] {
   const concentration = result.concentration;
+  const pendingIssues = result.negative_ftp_persistence.balance_quality_issues ?? [];
+  const sourcePending = result.negative_ftp_persistence.status === "source_pending" || pendingIssues.length > 0;
   const eligibleNegativeFtpRows = result.negative_ftp_persistence.rows.filter(
     (row) => row.eligible && row.status === "eligible",
   );
@@ -181,15 +183,17 @@ function buildLeadershipItems(result: PnlByBusinessInsightsPayload): PnlByBusine
     {
       key: "negative_ftp",
       label: "持续负 FTP",
-      value: negativeFtp
+      value: sourcePending ? "余额来源待核实，暂不形成结论" : negativeFtp
         ? `${negativeFtp.business_type} ${pct(negativeFtp.negative_ftp_month_share_pct)}`
         : eligibleNegativeFtpRows.length > 0
           ? "合格观察样本中未发现达到预警阈值的业务"
           : "观察期不足，暂不形成结论",
-      detail: negativeFtp
+      detail: sourcePending
+        ? `${pendingIssues.map((issue) => issue.report_date).join("、") || "滚动窗口内"}余额来源待核实；原序列保留为暂列值，取得正确源表后重算。`
+        : negativeFtp
         ? `近 ${result.negative_ftp_persistence.lookback_months} 个自然月，最长连续 ${negativeFtp.negative_ftp_longest_streak_months ?? EM_DASH} 个月`
         : `至少 ${result.negative_ftp_persistence.minimum_observed_months} 个有效月且负值月份占比达到 ${pct(result.negative_ftp_persistence.warning_threshold_pct)}`,
-      rowKey: negativeFtp?.row_key ?? null,
+      rowKey: sourcePending ? null : negativeFtp?.row_key ?? null,
     },
     {
       key: "share_drift",

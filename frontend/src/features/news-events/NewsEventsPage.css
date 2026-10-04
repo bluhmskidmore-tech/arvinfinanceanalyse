@@ -14,7 +14,6 @@
   --ib-ink-muted: var(--dh-api-muted);
   --ib-accent: var(--dh-api-blue);
   --ib-accent-surface: var(--dh-api-blue-soft);
-  --ib-radius: var(--dh-api-radius);
   --ib-shadow: none;
   --ib-up: var(--dh-api-green);
   --ib-down: var(--dh-api-red);
@@ -43,7 +42,7 @@
   color: var(--ib-ink);
   font-family: var(--moss-font-sans);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -60,11 +59,11 @@
   align-items: center;
   padding: 8px 14px;
   border: 1px solid var(--ib-hairline);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--ib-surface-muted);
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -102,24 +101,6 @@
   box-shadow: none;
 }
 
-.news-events-page__section-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.news-events-page__section-header-title {
-  color: var(--ib-ink);
-  font-weight: 650;
-}
-
-.news-events-page__section-header-meta {
-  color: var(--ib-ink-muted);
-  font-size: 12px;
-}
-
 .news-events-page__pager-row {
   display: flex;
   align-items: center;
@@ -127,12 +108,6 @@
   margin-top: 14px;
   color: var(--ib-ink-secondary);
   font-size: 13px;
-}
-
-.news-events-page__summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
 }
 
 /* 筛选控件右置在分区头一行内（卡套卡拍平后不再有独立筛选卡）。 */
@@ -164,35 +139,6 @@
   font-size: 13px;
 }
 
-.news-events-page__section-lead {
-  display: grid;
-  gap: 6px;
-  margin-top: 28px;
-}
-
-.news-events-page__section-eyebrow {
-  color: var(--ib-ink-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.news-events-page__section-title {
-  margin: 0;
-  color: var(--ib-ink);
-  font-size: 18px;
-  font-weight: 650;
-}
-
-.news-events-page__section-description {
-  margin: 0;
-  max-width: 860px;
-  color: var(--ib-ink-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
 .news-events-page__analytical-boundary {
   display: grid;
   gap: 8px;
@@ -209,7 +155,7 @@
 
 .news-events-page__boundary-code {
   color: var(--ib-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* 治理元信息 13 项默认折叠；展开后按键值两列排布，不再单行铺开。 */
@@ -260,7 +206,7 @@
 
 .news-events-page__compare-card-title {
   color: var(--ib-ink);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .news-events-page__compare-list {
@@ -294,7 +240,7 @@
 .news-events-page__table-head-cell {
   padding: 10px 8px;
   color: var(--ib-ink-secondary);
-  font-weight: 650;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -330,4 +276,10 @@
 .news-events-page__table-row--error .news-events-page__error-code-cell {
   color: var(--dh-api-red);
   font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .news-events-page__table {
+    min-width: 900px;
+  }
 }

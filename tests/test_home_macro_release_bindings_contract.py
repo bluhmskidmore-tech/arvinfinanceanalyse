@@ -3,6 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_macro_data,
+]
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config" / "home_macro_release_bindings.json"
@@ -37,16 +45,40 @@ EXPECTED_AUTOMATIC_BINDINGS = {
         "precision": 1,
     },
     ("cn_inflation", "cpi_yoy"): {
-        "table": "std_external_macro_daily",
-        "series_id": "tushare.macro.cn_cpi.monthly",
+        "source_candidates": [
+            {
+                "table": "std_external_macro_daily",
+                "series_id": "nbs.macro.cn_cpi.monthly",
+                "vendor_name": "NBS official release",
+                "priority": 1,
+            },
+            {
+                "table": "std_external_macro_daily",
+                "series_id": "tushare.macro.cn_cpi.monthly",
+                "vendor_name": "Tushare",
+                "priority": 2,
+            },
+        ],
         "cadence": "monthly",
         "display_unit": "pct",
         "change_unit": "pct_point",
         "precision": 1,
     },
     ("cn_inflation", "ppi_yoy"): {
-        "table": "std_external_macro_daily",
-        "series_id": "tushare.macro.cn_ppi.monthly",
+        "source_candidates": [
+            {
+                "table": "std_external_macro_daily",
+                "series_id": "nbs.macro.cn_ppi.monthly",
+                "vendor_name": "NBS official release",
+                "priority": 1,
+            },
+            {
+                "table": "std_external_macro_daily",
+                "series_id": "tushare.macro.cn_ppi.monthly",
+                "vendor_name": "Tushare",
+                "priority": 2,
+            },
+        ],
         "cadence": "monthly",
         "display_unit": "pct",
         "change_unit": "pct_point",

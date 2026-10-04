@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 _CURRENCY_CODE_MAPPING = {
     "人民币": "CNY",

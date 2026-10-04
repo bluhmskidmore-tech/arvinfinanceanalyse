@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
 from backend.app.schemas.result_meta import ResultMeta
-from pydantic import BaseModel, ConfigDict, model_validator
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
@@ -70,6 +71,9 @@ class VolumeRateAttributionItem(BaseModel):
     volume_effect: Numeric | None = None
     rate_effect: Numeric | None = None
     interaction_effect: Numeric | None = None
+    fair_value_effect: Numeric | None = None
+    capital_gain_effect: Numeric | None = None
+    manual_adjustment_effect: Numeric | None = None
     attrib_sum: Numeric | None = None
     recon_error: Numeric | None = None
     volume_contribution_pct: Numeric | None = None
@@ -87,6 +91,9 @@ class VolumeRateAttributionItem(BaseModel):
         "volume_effect": ("yuan", True),
         "rate_effect": ("yuan", True),
         "interaction_effect": ("yuan", True),
+        "fair_value_effect": ("yuan", True),
+        "capital_gain_effect": ("yuan", True),
+        "manual_adjustment_effect": ("yuan", True),
         "attrib_sum": ("yuan", True),
         "recon_error": ("yuan", True),
         "volume_contribution_pct": ("pct", True),
@@ -109,6 +116,11 @@ class VolumeRateAttributionPayload(BaseModel):
     total_volume_effect: Numeric | None = None
     total_rate_effect: Numeric | None = None
     total_interaction_effect: Numeric | None = None
+    total_fair_value_effect: Numeric | None = None
+    total_capital_gain_effect: Numeric | None = None
+    total_manual_adjustment_effect: Numeric | None = None
+    attribution_basis: str = "total_pnl_scale_proxy"
+    has_complete_inputs: bool = True
     total_recon_error: Numeric | None = None
     items: list[VolumeRateAttributionItem]
     has_previous_data: bool
@@ -120,6 +132,9 @@ class VolumeRateAttributionPayload(BaseModel):
         "total_volume_effect": ("yuan", True),
         "total_rate_effect": ("yuan", True),
         "total_interaction_effect": ("yuan", True),
+        "total_fair_value_effect": ("yuan", True),
+        "total_capital_gain_effect": ("yuan", True),
+        "total_manual_adjustment_effect": ("yuan", True),
         "total_recon_error": ("yuan", True),
     }
 
@@ -285,7 +300,7 @@ class PnlAttributionAnalysisSummary(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     report_date: str
-    primary_driver: Literal["volume", "rate", "market", "unknown"]
+    primary_driver: Literal["volume", "rate", "interaction", "fair_value", "capital_gain", "manual_adjustment", "unexplained", "market", "unknown"]
     primary_driver_pct: Numeric
     key_findings: list[str]
     tpl_market_aligned: bool
@@ -431,12 +446,72 @@ class AttributionRiskCoverage(BaseModel):
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
+class SpreadAttributionExclusion(BaseModel):
+    reason: str
+    start_row_count: int
+    end_row_count: int
+    start_market_value: Numeric
+    end_market_value: Numeric
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "start_market_value": ("yuan", False),
+        "end_market_value": ("yuan", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class SpreadAttributionCoverage(BaseModel):
+    start_row_count: int
+    end_row_count: int
+    matched_position_count: int
+    attributed_position_count: int
+    start_market_value: Numeric
+    end_market_value: Numeric
+    covered_start_market_value: Numeric
+    covered_end_market_value: Numeric
+    excluded_start_market_value: Numeric
+    excluded_end_market_value: Numeric
+    start_coverage_pct: Numeric
+    end_coverage_pct: Numeric
+    exclusions: list[SpreadAttributionExclusion]
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "start_market_value": ("yuan", False),
+        "end_market_value": ("yuan", False),
+        "covered_start_market_value": ("yuan", False),
+        "covered_end_market_value": ("yuan", False),
+        "excluded_start_market_value": ("yuan", False),
+        "excluded_end_market_value": ("yuan", False),
+        "start_coverage_pct": ("pct", False),
+        "end_coverage_pct": ("pct", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data = dict(data)
+            for name in ("start_coverage_pct", "end_coverage_pct"):
+                if isinstance(data.get(name), (int, float)):
+                    data[name] = numeric_from_raw(
+                        raw=data[name], unit="pct", sign_aware=False, raw_scale="percent",
+                    ).model_dump(mode="json")
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
 class SpreadAttributionItem(BaseModel):
     category: str
     category_type: str
     market_value: Numeric
     duration: Numeric
     weight: Numeric
+    matched_start_market_value: Numeric
+    attribution_duration: Numeric | None = None
+    attributed_position_count: int
     yield_change: Numeric | None = None
     treasury_change: Numeric | None = None
     spread_change: Numeric | None = None
@@ -450,6 +525,8 @@ class SpreadAttributionItem(BaseModel):
         "market_value": ("yuan", False),
         "duration": ("ratio", False),
         "weight": ("pct", False),
+        "matched_start_market_value": ("yuan", False),
+        "attribution_duration": ("ratio", False),
         "yield_change": ("bp", True),
         "treasury_change": ("bp", True),
         "spread_change": ("bp", True),
@@ -481,6 +558,11 @@ class SpreadAttributionPayload(BaseModel):
     total_price_change: Numeric
     primary_driver: str
     interpretation: str
+    attribution_basis: Literal["matched_positions_start_exposure"]
+    method_note: str
+    calculation_status: Literal["complete", "partial", "unavailable"]
+    attribution_coverage: SpreadAttributionCoverage
+    warnings: list[str] = []
     items: list[SpreadAttributionItem]
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
@@ -558,6 +640,8 @@ class KRDAttributionPayload(BaseModel):
     portfolio_duration: Numeric
     portfolio_dv01: Numeric
     total_duration_effect: Numeric
+    calculation_status: Literal["complete", "partial", "unavailable"] = "complete"
+    warnings: list[str] = Field(default_factory=list)
     curve_shift_type: str
     curve_interpretation: str
     buckets: list[KRDAttributionBucket]
@@ -766,7 +850,7 @@ class CarryRollDownEnvelope(BaseModel):
 
 
 class SpreadAttributionResult(SpreadAttributionPayload, _WorkbenchResult):
-    pass
+    warnings: list[str] = []
 
 
 class SpreadAttributionEnvelope(BaseModel):
@@ -777,7 +861,7 @@ class SpreadAttributionEnvelope(BaseModel):
 
 
 class KRDAttributionResult(KRDAttributionPayload, _WorkbenchResult):
-    pass
+    warnings: list[str] = Field(default_factory=list)
 
 
 class KRDAttributionEnvelope(BaseModel):

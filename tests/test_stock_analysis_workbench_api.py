@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import sys
 from datetime import date
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -11,6 +13,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_livermore,
+]
 
 
 def _strategy_envelope() -> dict[str, Any]:
@@ -62,6 +69,23 @@ def _strategy_envelope() -> dict[str, Any]:
     }
 
 
+def _ready_pretrade_qualification(module: Any, strategy_envelope: dict[str, Any]) -> dict[str, Any]:
+    strategy_result = strategy_envelope["result"]
+    return {
+        "schema": "pretrade_qualification/v1",
+        "status": "ready",
+        "reason": None,
+        "producer_run_id": "pretrade:test",
+        "target_date": strategy_result["as_of_date"],
+        "stock_candidate_policy": module.EXECUTION_STOCK_CANDIDATE_POLICY,
+        "evidence_sha256": "a" * 64,
+        "input_snapshot": {"sha256": "b" * 64},
+        "outputs": {
+            "strategy_payload_sha256": module.canonical_pretrade_output_sha256(strategy_result),
+        },
+    }
+
+
 def test_build_stock_analysis_workbench_envelope_wraps_livermore_strategy_as_observational_contract() -> (
     None
 ):
@@ -70,8 +94,10 @@ def test_build_stock_analysis_workbench_envelope_wraps_livermore_strategy_as_obs
         "backend/app/services/stock_analysis_workbench_service.py",
     )
 
+    strategy_envelope = _strategy_envelope()
     envelope = module.build_stock_analysis_workbench_envelope(
-        strategy_envelope=_strategy_envelope(),
+        strategy_envelope=strategy_envelope,
+        pretrade_qualification=_ready_pretrade_qualification(module, strategy_envelope),
         requested_as_of_date="2026-06-26",
         include="main,signal_confluence",
         sector_window_days=20,
@@ -111,6 +137,296 @@ def test_build_stock_analysis_workbench_envelope_wraps_livermore_strategy_as_obs
     assert "买入建议" not in serialized
     assert "卖出建议" not in serialized
     assert "下单" not in serialized
+
+
+def test_workbench_unavailable_qualification_removes_decision_hints_but_keeps_observations() -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        pretrade_qualification={
+            "schema": "pretrade_qualification/v1",
+            "status": "unavailable",
+            "reason": "signal_confluence_not_completed",
+        },
+    )["result"]
+
+    assert result["pretrade_qualification"]["status"] == "unavailable"
+    assert result["pretrade_qualification"]["reason"] == "signal_confluence_not_completed"
+    assert len(result["pretrade_qualification"]["strategy_payload_sha256"]) == 64
+    assert len(result["pretrade_qualification"]["workbench_projection_sha256"]) == 64
+    assert result["first_screen"]["review_queue"][0]["stock_code"] == "000001.SZ"
+    assert result["first_screen"]["risk_exit_snapshot"] == []
+    assert result["first_screen"]["sector_snapshot"][0]["sector_code"] == "801010"
+    assert "stock_candidates" not in result["modules"]["main"]["result"]
+    assert "risk_exit" not in result["modules"]["main"]["result"]
+    assert result["decision_summary"]["can_review_candidates"] is False
+    assert result["issues"][0] == {
+        "severity": "warning",
+        "code": "pretrade_qualification_unavailable",
+        "message": "signal_confluence_not_completed",
+        "source_module": "pretrade_qualification",
+    }
+    assert result["page_question"]["answer_state"] == "blocked"
+
+
+def test_workbench_keeps_authoritative_observation_queue_when_pretrade_is_unavailable() -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    strategy_result = strategy_envelope["result"]
+    strategy_result.update(
+        {
+            "stock_candidates": {"items": []},
+            "factor_screen_candidates": {
+                "items": [
+                    {"stock_code": "000001.SZ", "stock_name": "平安银行", "rank": 1}
+                ]
+            },
+            "hybrid_fusion_candidates": {
+                "items": [
+                    {"stock_code": "600000.SH", "stock_name": "浦发银行", "rank": 1}
+                ]
+            },
+            "uptrend_momentum_candidates": {
+                "items": [
+                    {"stock_code": "000002.SZ", "stock_name": "万科A", "rank": 1}
+                ]
+            },
+            "fresh_trend_watchlist": {
+                "items": [
+                    {"stock_code": "000333.SZ", "stock_name": "美的集团", "rank": 1}
+                ]
+            },
+            "mean_reversion_candidates": {
+                "items": [
+                    {"stock_code": "600036.SH", "stock_name": "招商银行", "rank": 1}
+                ]
+            },
+            "theme_breakout": {
+                "items": [
+                    {
+                        "theme_key": "bank",
+                        "theme_name": "银行",
+                        "rank": 1,
+                        "source_kind": "current_overlay",
+                        "items": [
+                            {
+                                "stock_code": "601398.SH",
+                                "stock_name": "工商银行",
+                                "rank": 1,
+                            }
+                        ],
+                    }
+                ]
+            },
+            "risk_exit": {
+                "items": [
+                    {"stock_code": "000001.SZ", "reason": "execution_only_exit_hint"}
+                ],
+                "watch_items": [],
+            },
+            "rule_readiness": [
+                {"key": key, "status": "ready", "missing_inputs": []}
+                for key in ("market_gate", "sector_rank", "stock_pivot", "risk_exit")
+            ],
+            "module_states": [
+                {
+                    "key": key,
+                    "state": "ready",
+                    "render_mode": "primary",
+                    "source_date": "2026-06-26",
+                    "excludes_from_primary": False,
+                }
+                for key in (
+                    "factor_screen_candidates",
+                    "uptrend_momentum_candidates",
+                    "fresh_trend_watchlist",
+                    "mean_reversion_candidates",
+                    "theme_breakout",
+                )
+            ]
+            + [
+                {
+                    "key": "hybrid_fusion",
+                    "state": "blocked",
+                    "render_mode": "evidence_only",
+                    "source_date": "2026-06-26",
+                    "excludes_from_primary": True,
+                }
+            ],
+        }
+    )
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        pretrade_qualification={
+            "schema": "pretrade_qualification/v1",
+            "status": "unavailable",
+            "reason": "system_read_generation_missing",
+        },
+        top_k=10,
+    )["result"]
+
+    assert result["pretrade_qualification"]["status"] == "unavailable"
+    assert result["pretrade_qualification"]["reason"] == "system_read_generation_missing"
+    assert result["formal_use_allowed"] is False
+    assert [
+        row["source_module"] for row in result["first_screen"]["review_queue"]
+    ] == [
+        "factor_screen_candidates",
+        "uptrend_momentum_candidates",
+        "fresh_trend_watchlist",
+        "mean_reversion_candidates",
+        "theme_breakout",
+    ]
+    assert result["decision_summary"]["can_review_candidates"] is True
+    assert result["decision_summary"]["review_queue_count"] == 5
+    assert result["page_question"]["answer_state"] == "limited_review"
+    assert result["first_screen"]["risk_exit_snapshot"] == []
+    assert "stock_candidates" not in result["modules"]["main"]["result"]
+    assert "risk_exit" not in result["modules"]["main"]["result"]
+
+
+def test_workbench_ready_empty_preserves_observations_but_not_pretrade_hints() -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    qualification = _ready_pretrade_qualification(module, strategy_envelope)
+    qualification["status"] = "ready_empty"
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        pretrade_qualification=qualification,
+    )["result"]
+
+    assert result["pretrade_qualification"]["status"] == "ready_empty"
+    assert result["first_screen"]["review_queue"][0]["stock_code"] == "000001.SZ"
+    assert "stock_candidates" not in result["modules"]["main"]["result"]
+    assert result["decision_summary"]["review_queue_count"] == 1
+
+
+def test_workbench_rejects_ready_evidence_for_a_different_strategy_projection() -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result"]["rule_readiness"] = [
+        {"key": key, "status": "ready", "missing_inputs": []}
+        for key in ("market_gate", "sector_rank", "stock_pivot", "risk_exit")
+    ]
+    qualification = _ready_pretrade_qualification(module, strategy_envelope)
+    qualification["outputs"]["strategy_payload_sha256"] = "f" * 64
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        pretrade_qualification=qualification,
+    )["result"]
+
+    assert result["pretrade_qualification"]["status"] == "unavailable"
+    assert result["pretrade_qualification"]["reason"] == "pretrade_strategy_projection_mismatch"
+    assert result["first_screen"]["review_queue"][0]["stock_code"] == "000001.SZ"
+    assert result["decision_summary"]["can_review_candidates"] is True
+    assert "stock_candidates" not in result["modules"]["main"]["result"]
+
+
+def test_workbench_meta_error_still_blocks_research_when_pretrade_is_unavailable() -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result_meta"]["quality_flag"] = "error"
+    strategy_envelope["result"]["rule_readiness"] = [
+        {"key": key, "status": "ready", "missing_inputs": []}
+        for key in ("market_gate", "sector_rank", "stock_pivot", "risk_exit")
+    ]
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        pretrade_qualification={
+            "schema": "pretrade_qualification/v1",
+            "status": "unavailable",
+            "reason": "system_read_generation_missing",
+        },
+    )["result"]
+
+    assert result["first_screen"]["review_queue"][0]["stock_code"] == "000001.SZ"
+    assert result["modules"]["main"]["status"] == "error"
+    assert result["decision_summary"]["can_review_candidates"] is False
+    assert result["page_question"]["answer_state"] == "blocked"
+    assert next(
+        issue for issue in result["issues"] if issue["code"] == "module_error"
+    )["severity"] == "blocking"
+
+
+def test_stock_analysis_workbench_integrates_exact_replay_closure_json_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    expected = module.empty_current_rule_replay_closure(
+        selection_status="no_active_certified",
+        data_availability="no_data",
+        status="insufficient",
+        primary_blocker_code="no_active_certified_cohort",
+        reason_codes=["no_active_certified_cohort"],
+        tables_used=[
+            "stock_analysis_current_rule_cohort_manifest",
+            "stock_analysis_current_rule_replay_fact",
+            "stock_analysis_current_rule_date_certificate",
+        ],
+    )
+    reader_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        module,
+        "livermore_strategy_envelope_from_catalog",
+        lambda **_kwargs: _strategy_envelope(),
+    )
+
+    def fake_reader(**kwargs: object) -> dict[str, object]:
+        reader_calls.append(dict(kwargs))
+        return expected
+
+    monkeypatch.setattr(module, "read_current_rule_replay_closure", fake_reader)
+
+    envelope = module.stock_analysis_workbench_envelope(
+        duckdb_path="fixture.duckdb",
+        as_of_date="2026-06-26",
+        choice_stock_catalog_file=object(),
+    )
+
+    assert envelope["result"]["replay_closure"] == expected
+    assert envelope["result"]["contract_status"] == "observational_only"
+    assert envelope["result"]["formal_use_allowed"] is False
+    assert reader_calls == [
+        {
+            "duckdb_path": "fixture.duckdb",
+            "page_as_of_date": "2026-06-26",
+        }
+    ]
+    assert envelope["result_meta"]["tables_used"] == [
+        "choice_stock_daily_observation",
+        "stock_analysis_current_rule_cohort_manifest",
+        "stock_analysis_current_rule_replay_fact",
+        "stock_analysis_current_rule_date_certificate",
+    ]
 
 
 def test_theme_breakout_nested_stocks_expand_and_merge_theme_memberships_without_cross_module_dedupe() -> (
@@ -334,7 +650,7 @@ def test_candidate_queue_small_top_k_skips_theme_reservation() -> None:
 
 
 def test_candidate_queue_passes_factor_screen_breakout_geometry_fields_through() -> None:
-    """多因子候选的观察位几何字段(pattern/distance_to_breakout_pct/close/
+    """多因子候选的观察位几何字段(pattern/pattern_code/distance_to_breakout_pct/close/
     breakout_level)必须原样进入 workbench first_screen.review_queue 行;
     缺 K 线候选的 None 也必须保留(不得被清洗成 0 或删除)。"""
     module = load_module(
@@ -353,6 +669,7 @@ def test_candidate_queue_passes_factor_screen_breakout_geometry_fields_through()
                     "breakout_level": 100.0,
                     "distance_to_breakout_pct": 3.0,
                     "pattern": "突破（参考）",
+                    "pattern_code": "breakout",
                 },
                 {
                     "rank": 2,
@@ -363,6 +680,7 @@ def test_candidate_queue_passes_factor_screen_breakout_geometry_fields_through()
                     "breakout_level": None,
                     "distance_to_breakout_pct": None,
                     "pattern": None,
+                    "pattern_code": None,
                 },
             ]
         },
@@ -376,18 +694,20 @@ def test_candidate_queue_passes_factor_screen_breakout_geometry_fields_through()
     ]
     geometry_row = rows[0]
     assert geometry_row["pattern"] == "突破（参考）"
+    assert geometry_row["pattern_code"] == "breakout"
     assert geometry_row["distance_to_breakout_pct"] == 3.0
     assert geometry_row["close"] == 103.0
     assert geometry_row["breakout_level"] == 100.0
     missing_row = rows[1]
     assert missing_row["pattern"] is None
+    assert missing_row["pattern_code"] is None
     assert missing_row["distance_to_breakout_pct"] is None
     assert missing_row["close"] is None
     assert missing_row["breakout_level"] is None
 
 
 def test_candidate_queue_passes_breakout_geometry_fields_through_for_all_observation_sources() -> None:
-    """动量/新趋势/超跌/融合四个扩展源的观察位几何字段(pattern/
+    """动量/新趋势/超跌/融合四个扩展源的观察位几何字段(pattern/pattern_code/
     distance_to_breakout_pct/close/breakout_level)与停牌披露字段
     (price_as_of_date/price_stale)必须原样进入 review_queue 行;
     缺 K 线候选的 None 也必须保留(不得被清洗成 0 或删除)。"""
@@ -407,6 +727,7 @@ def test_candidate_queue_passes_breakout_geometry_fields_through_for_all_observa
                     "breakout_level": 100.0,
                     "distance_to_breakout_pct": -2.0,
                     "pattern": "回踩（参考）",
+                    "pattern_code": "pullback",
                     "price_as_of_date": "2026-06-10",
                     "price_stale": True,
                 }
@@ -422,6 +743,7 @@ def test_candidate_queue_passes_breakout_geometry_fields_through_for_all_observa
                     "breakout_level": 155.0,
                     "distance_to_breakout_pct": 3.2258,
                     "pattern": "突破（参考）",
+                    "pattern_code": "breakout",
                 }
             ]
         },
@@ -435,6 +757,7 @@ def test_candidate_queue_passes_breakout_geometry_fields_through_for_all_observa
                     "breakout_level": None,
                     "distance_to_breakout_pct": None,
                     "pattern": None,
+                    "pattern_code": None,
                 }
             ]
         },
@@ -448,6 +771,7 @@ def test_candidate_queue_passes_breakout_geometry_fields_through_for_all_observa
                     "breakout_level": 100.0,
                     "distance_to_breakout_pct": -15.48,
                     "pattern": "回踩（参考）",
+                    "pattern_code": "pullback",
                 }
             ]
         },
@@ -464,6 +788,7 @@ def test_candidate_queue_passes_breakout_geometry_fields_through_for_all_observa
     }
     fusion_row = by_source["hybrid_fusion_candidates"]
     assert fusion_row["pattern"] == "回踩（参考）"
+    assert fusion_row["pattern_code"] == "pullback"
     assert fusion_row["distance_to_breakout_pct"] == -2.0
     assert fusion_row["price_as_of_date"] == "2026-06-10"
     assert fusion_row["price_stale"] is True
@@ -471,14 +796,17 @@ def test_candidate_queue_passes_breakout_geometry_fields_through_for_all_observa
     assert momentum_row["close"] == 160.0
     assert momentum_row["breakout_level"] == 155.0
     assert momentum_row["pattern"] == "突破（参考）"
+    assert momentum_row["pattern_code"] == "breakout"
     fresh_row = by_source["fresh_trend_watchlist"]
     assert fresh_row["close"] == 50.0
     assert fresh_row["breakout_level"] is None
     assert fresh_row["distance_to_breakout_pct"] is None
     assert fresh_row["pattern"] is None
+    assert fresh_row["pattern_code"] is None
     reversion_row = by_source["mean_reversion_candidates"]
     assert reversion_row["distance_to_breakout_pct"] == -15.48
     assert reversion_row["pattern"] == "回踩（参考）"
+    assert reversion_row["pattern_code"] == "pullback"
 
 
 def test_theme_breakout_member_rank_falls_back_to_nested_list_order() -> None:
@@ -537,6 +865,107 @@ def test_workbench_passes_overlay_reader_to_livermore_strategy(
     )
 
     assert calls == [reader]
+
+
+@pytest.mark.parametrize(
+    ("requested_date", "resolver_date", "expected_strategy_date", "expected_resolver_calls"),
+    [
+        (None, "2026-06-24", "2026-06-24", 1),
+        ("2026-06-26", "2026-06-24", "2026-06-26", 0),
+    ],
+)
+def test_stock_analysis_workbench_envelope_resolves_only_omitted_dates(
+    monkeypatch: pytest.MonkeyPatch,
+    requested_date: str | None,
+    resolver_date: str,
+    expected_strategy_date: str,
+    expected_resolver_calls: int,
+) -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    resolver_calls: list[dict[str, object]] = []
+    strategy_calls: list[dict[str, object]] = []
+    build_calls: list[dict[str, object]] = []
+    replay_calls: list[dict[str, object]] = []
+    sentinel = {"result": {"route": "/stock-analysis"}}
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result"]["as_of_date"] = expected_strategy_date
+    strategy_envelope["result"]["requested_as_of_date"] = expected_strategy_date
+    strategy_envelope["result_meta"]["filters_applied"] = {
+        "as_of_date": expected_strategy_date,
+        "requested_as_of_date": expected_strategy_date,
+    }
+
+    def fake_resolver(**kwargs: object) -> str | None:
+        resolver_calls.append(dict(kwargs))
+        return resolver_date
+
+    def fake_strategy(**kwargs: object) -> dict[str, Any]:
+        strategy_calls.append(dict(kwargs))
+        return strategy_envelope
+
+    def fake_build(**kwargs: object) -> dict[str, object]:
+        build_calls.append(dict(kwargs))
+        return sentinel
+
+    def fake_replay_reader(**kwargs: object) -> dict[str, object]:
+        replay_calls.append(dict(kwargs))
+        return {"status": "ready"}
+
+    monkeypatch.setattr(module, "latest_complete_stock_analysis_date", fake_resolver)
+    monkeypatch.setattr(module, "livermore_strategy_envelope_from_catalog", fake_strategy)
+    monkeypatch.setattr(module, "read_current_rule_replay_closure", fake_replay_reader)
+    monkeypatch.setattr(module, "build_stock_analysis_workbench_envelope", fake_build)
+
+    result = module.stock_analysis_workbench_envelope(
+        duckdb_path="fixture.duckdb",
+        as_of_date=requested_date,
+        choice_stock_catalog_file="choice-stock.json",
+    )
+
+    assert result is sentinel
+    assert len(resolver_calls) == expected_resolver_calls
+    assert strategy_calls[0]["as_of_date"] == expected_strategy_date
+    assert replay_calls[0]["page_as_of_date"] == expected_strategy_date
+    assert build_calls[0]["requested_as_of_date"] == requested_date
+    projected_strategy = build_calls[0]["strategy_envelope"]
+    assert isinstance(projected_strategy, dict)
+    assert projected_strategy["result"]["requested_as_of_date"] == requested_date
+    assert projected_strategy["result_meta"]["filters_applied"]["requested_as_of_date"] == requested_date
+
+
+def test_latest_complete_stock_analysis_date_selects_newest_common_complete_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.services import market_data_livermore_service as service
+
+    coverage_calls: list[str] = []
+    observations = [
+        SimpleNamespace(trade_date=date(2026, 6, 24)),
+        SimpleNamespace(trade_date=date(2026, 6, 25)),
+        SimpleNamespace(trade_date=date(2026, 6, 26)),
+    ]
+
+    monkeypatch.setattr(
+        service,
+        "_load_broad_index_history",
+        lambda **_kwargs: (observations, ["fact_choice_macro_daily"]),
+    )
+
+    def fake_coverage(**kwargs: object) -> SimpleNamespace:
+        candidate_date = str(kwargs["as_of_date"])
+        coverage_calls.append(candidate_date)
+        return SimpleNamespace(full_coverage=candidate_date == "2026-06-24")
+
+    monkeypatch.setattr(service, "load_choice_stock_materialization_coverage", fake_coverage)
+
+    assert (
+        service.latest_complete_stock_analysis_date(duckdb_path="missing-fixture.duckdb")
+        == "2026-06-24"
+    )
+    assert coverage_calls == ["2026-06-26", "2026-06-25", "2026-06-24"]
 
 
 def test_stock_analysis_workbench_logs_strategy_and_projection_timings(
@@ -609,6 +1038,7 @@ def test_ready_rule_chain_keeps_optional_data_gaps_in_limited_review() -> None:
 
     envelope = module.build_stock_analysis_workbench_envelope(
         strategy_envelope=strategy_envelope,
+        pretrade_qualification=_ready_pretrade_qualification(module, strategy_envelope),
         requested_as_of_date="2026-06-26",
         top_k=2,
     )
@@ -678,6 +1108,7 @@ def test_rule_readiness_is_fail_closed_with_a_specific_blocker(
 
     result = module.build_stock_analysis_workbench_envelope(
         strategy_envelope=strategy_envelope,
+        pretrade_qualification=_ready_pretrade_qualification(module, strategy_envelope),
         requested_as_of_date="2026-06-26",
         top_k=2,
     )["result"]
@@ -719,6 +1150,7 @@ def test_duplicate_required_rule_readiness_is_fail_closed_regardless_of_order(
 
     result = module.build_stock_analysis_workbench_envelope(
         strategy_envelope=strategy_envelope,
+        pretrade_qualification=_ready_pretrade_qualification(module, strategy_envelope),
         requested_as_of_date="2026-06-26",
         top_k=2,
     )["result"]
@@ -764,6 +1196,7 @@ def test_malformed_rule_readiness_rows_are_fail_closed(
 
     result = module.build_stock_analysis_workbench_envelope(
         strategy_envelope=strategy_envelope,
+        pretrade_qualification=_ready_pretrade_qualification(module, strategy_envelope),
         requested_as_of_date="2026-06-26",
         top_k=2,
     )["result"]
@@ -798,6 +1231,7 @@ def test_required_gap_without_status_is_unavailable_and_fail_closed() -> None:
 
     result = module.build_stock_analysis_workbench_envelope(
         strategy_envelope=strategy_envelope,
+        pretrade_qualification=_ready_pretrade_qualification(module, strategy_envelope),
         requested_as_of_date="2026-06-26",
         top_k=2,
     )["result"]
@@ -850,6 +1284,7 @@ def test_ready_gap_with_invalid_freshness_is_fail_closed(
 
     result = module.build_stock_analysis_workbench_envelope(
         strategy_envelope=strategy_envelope,
+        pretrade_qualification=_ready_pretrade_qualification(module, strategy_envelope),
         requested_as_of_date="2026-06-26",
         top_k=2,
     )["result"]
@@ -909,6 +1344,7 @@ def test_required_position_gap_blocks_after_optional_gaps_without_promoting_them
 
     result = module.build_stock_analysis_workbench_envelope(
         strategy_envelope=strategy_envelope,
+        pretrade_qualification=_ready_pretrade_qualification(module, strategy_envelope),
         requested_as_of_date="2026-06-26",
         top_k=2,
     )["result"]
@@ -948,6 +1384,14 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
         "backend.app.api.routes.market_data_livermore",
         "backend/app/api/routes/market_data_livermore.py",
     )
+    # `sys.modules` lookup by name (rather than `from ... import ...`) is
+    # required here: earlier tests in this file reload
+    # `stock_analysis_workbench_service` via `load_module`, which swaps
+    # `sys.modules[...]` without updating the parent package's attribute, so
+    # a plain `from backend.app.services import stock_analysis_workbench_service`
+    # would silently resolve to a stale pre-reload module object.
+    workbench_module = sys.modules[route_module.stock_analysis_workbench_envelope.__module__]
+
     calls: list[dict[str, Any]] = []
 
     def fake_workbench(**kwargs: Any) -> dict[str, Any]:
@@ -961,8 +1405,8 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
                 "scenario_flag": False,
                 "source_version": "sv_test",
                 "vendor_version": "vv_test",
-                "rule_version": "rv_stock_analysis_workbench_v1",
-                "cache_version": "cv_stock_analysis_workbench_v1",
+                "rule_version": "rv_stock_analysis_workbench_v2",
+                "cache_version": "cv_stock_analysis_workbench_v2",
                 "quality_flag": "ok",
                 "vendor_status": "ok",
                 "fallback_mode": "none",
@@ -973,8 +1417,16 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
             "result": {"route": "/stock-analysis"},
         }
 
+    # The stock-analysis-workbench cache wrapper (route_support) re-resolves
+    # `stock_analysis_workbench_envelope` from its defining module on every
+    # call (so it always calls through to the latest `load_module`-reloaded
+    # service instance), so the endpoint-level stub must be installed on that
+    # module rather than on the route module's unused re-exported copy.
     monkeypatch.setattr(
-        route_module, "stock_analysis_workbench_envelope", fake_workbench, raising=False
+        workbench_module,
+        "stock_analysis_workbench_envelope",
+        fake_workbench,
+        raising=False,
     )
     monkeypatch.setattr(
         route_module, "_ensure_livermore_read_allowed", lambda **_kwargs: None
@@ -1049,6 +1501,9 @@ def test_stock_analysis_workbench_endpoint_passes_through_candidate_liquidity_fi
         "backend/app/api/routes/market_data_livermore.py",
     )
     workbench_module = sys.modules[route_module.stock_analysis_workbench_envelope.__module__]
+    route_support_module = sys.modules[
+        route_module._cached_stock_analysis_workbench.__module__
+    ]
 
     strategy_envelope = _strategy_envelope()
     strategy_envelope["result"]["stock_candidates"] = {
@@ -1080,6 +1535,38 @@ def test_stock_analysis_workbench_endpoint_passes_through_candidate_liquidity_fi
         workbench_module,
         "livermore_strategy_envelope_from_catalog",
         lambda **_kwargs: strategy_envelope,
+    )
+    monkeypatch.setattr(
+        workbench_module,
+        "livermore_attested_strategy_envelope_from_catalog",
+        lambda **_kwargs: strategy_envelope,
+    )
+    monkeypatch.setattr(
+        workbench_module,
+        "current_system_read_context",
+        lambda: SimpleNamespace(pretrade_availability={}),
+    )
+    monkeypatch.setattr(
+        workbench_module,
+        "qualify_sealed_pretrade_read",
+        lambda **_kwargs: _ready_pretrade_qualification(
+            workbench_module, strategy_envelope
+        ),
+    )
+    monkeypatch.setattr(
+        workbench_module,
+        "read_current_rule_replay_closure",
+        lambda **_kwargs: {"status": "ready"},
+    )
+    monkeypatch.setattr(
+        route_support_module,
+        "_selected_pretrade_external_read",
+        lambda **_kwargs: (
+            _ready_pretrade_qualification(workbench_module, strategy_envelope),
+            None,
+            "2026-06-26",
+            "pretrade:test",
+        ),
     )
     monkeypatch.setattr(
         route_module, "_ensure_livermore_read_allowed", lambda **_kwargs: None
@@ -1171,12 +1658,15 @@ def test_stock_analysis_workbench_server_timing_surfaces_inflight_wait(
 def test_stock_analysis_workbench_cache_key_tracks_choice_catalog_version(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from importlib import import_module
+
     route_module = load_module(
         "backend.app.api.routes.market_data_livermore",
         "backend/app/api/routes/market_data_livermore.py",
     )
+    service_module = import_module("backend.app.services.market_data_livermore_service")
     catalog = tmp_path / "choice-stock.json"
-    monkeypatch.setattr(route_module, "livermore_data_version", lambda _path: "db-v1")
+    monkeypatch.setattr(service_module, "livermore_data_version", lambda _path: "db-v1")
 
     catalog.write_text("{}", encoding="utf-8")
     first = route_module._stock_analysis_workbench_cache_key(
@@ -1200,6 +1690,124 @@ def test_stock_analysis_workbench_cache_key_tracks_choice_catalog_version(
 
     assert first != second
     assert "::catalog_version=" in second
+
+
+def test_stock_analysis_workbench_cache_key_changes_after_database_promotion(
+    tmp_path,
+) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.market_data_livermore",
+        "backend/app/api/routes/market_data_livermore.py",
+    )
+    database = tmp_path / "fixture.duckdb"
+    catalog = tmp_path / "choice-stock.json"
+    database.write_bytes(b"duckdb-fixture")
+    catalog.write_text("{}", encoding="utf-8")
+    os.utime(database, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+
+    first = route_module._stock_analysis_workbench_cache_key(
+        duckdb_path=str(database),
+        catalog_file=catalog,
+        as_of_date="2026-06-30",
+        include=None,
+        sector_window_days=20,
+        top_k=10,
+    )
+
+    os.utime(database, ns=(1_700_000_001_000_000_000, 1_700_000_001_000_000_000))
+    second = route_module._stock_analysis_workbench_cache_key(
+        duckdb_path=str(database),
+        catalog_file=catalog,
+        as_of_date="2026-06-30",
+        include=None,
+        sector_window_days=20,
+        top_k=10,
+    )
+
+    assert first != second
+    assert "::data_version=1700000001000000000:" in second
+    assert "::rule_version=rv_stock_analysis_workbench_v2" in second
+    assert "::cache_version=cv_stock_analysis_workbench_v2" in second
+
+
+def test_stock_kline_analysis_cache_key_changes_after_database_promotion(
+    tmp_path,
+) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.market_data_livermore",
+        "backend/app/api/routes/market_data_livermore.py",
+    )
+    database = tmp_path / "fixture.duckdb"
+    database.write_bytes(b"duckdb-fixture")
+    os.utime(database, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+
+    first = route_module._stock_kline_analysis_cache_key(
+        duckdb_path=str(database),
+        stock_code="000001.SZ",
+        as_of_date="2026-06-30",
+        lookback=240,
+    )
+
+    os.utime(database, ns=(1_700_000_001_000_000_000, 1_700_000_001_000_000_000))
+    second = route_module._stock_kline_analysis_cache_key(
+        duckdb_path=str(database),
+        stock_code="000001.SZ",
+        as_of_date="2026-06-30",
+        lookback=240,
+    )
+
+    assert first != second
+    assert "::data_version=1700000001000000000:" in second
+
+
+def test_duckdb_backed_cache_keys_include_data_version() -> None:
+    route_support = load_module(
+        "backend.app.services.market_data_livermore_route_support",
+        "backend/app/services/market_data_livermore_route_support.py",
+    )
+    cache_key_functions = [
+        (name, function)
+        for name, function in inspect.getmembers(route_support, inspect.isfunction)
+        if function.__module__ == route_support.__name__
+        and name.endswith("_cache_key")
+        and "duckdb_path" in inspect.signature(function).parameters
+    ]
+
+    assert len(cache_key_functions) >= 6, [name for name, _function in cache_key_functions]
+
+    for name, function in cache_key_functions:
+        kwargs: dict[str, object] = {}
+        for parameter in inspect.signature(function).parameters.values():
+            if parameter.default is not inspect.Parameter.empty:
+                kwargs[parameter.name] = parameter.default
+            elif parameter.name == "catalog_file":
+                kwargs[parameter.name] = "choice-stock.json"
+            elif "None" in str(parameter.annotation):
+                kwargs[parameter.name] = None
+            elif str(parameter.annotation) in {"int", "<class 'int'>"}:
+                kwargs[parameter.name] = 1
+            else:
+                kwargs[parameter.name] = "x"
+
+        assert "::data_version=" in function(**kwargs), name
+
+
+def test_stock_analysis_workbench_envelope_versions_replay_closure_contract_v2() -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+
+    strategy_envelope = _strategy_envelope()
+    envelope = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        pretrade_qualification=_ready_pretrade_qualification(module, strategy_envelope),
+        requested_as_of_date="2026-06-26",
+    )
+
+    assert envelope["result_meta"]["rule_version"] == "rv_stock_analysis_workbench_v2"
+    assert envelope["result_meta"]["cache_version"] == "cv_stock_analysis_workbench_v2"
+    assert "replay_closure" in envelope["result"]
 
 
 @pytest.mark.parametrize(
@@ -1311,12 +1919,15 @@ def test_livermore_business_input_signature_invalidates_all_cache_layers(
 def test_signal_confluence_cache_key_invalidates_on_business_input_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from importlib import import_module
+
     route_module = load_module(
         "backend.app.api.routes.market_data_livermore",
         "backend/app/api/routes/market_data_livermore.py",
     )
-    monkeypatch.setattr(route_module, "livermore_data_version", lambda _path: "db-v1")
-    monkeypatch.setattr(route_module, "livermore_business_inputs_version", lambda: "inputs-v1")
+    service_module = import_module("backend.app.services.market_data_livermore_service")
+    monkeypatch.setattr(service_module, "livermore_data_version", lambda _path: "db-v1")
+    monkeypatch.setattr(service_module, "livermore_business_inputs_version", lambda: "inputs-v1")
     common = {
         "duckdb_path": "fixture.duckdb",
         "catalog_file": "choice-stock.json",
@@ -1324,7 +1935,7 @@ def test_signal_confluence_cache_key_invalidates_on_business_input_version(
     }
 
     first = route_module._livermore_signal_confluence_cache_key(**common)
-    monkeypatch.setattr(route_module, "livermore_business_inputs_version", lambda: "inputs-v2")
+    monkeypatch.setattr(service_module, "livermore_business_inputs_version", lambda: "inputs-v2")
     second = route_module._livermore_signal_confluence_cache_key(**common)
 
     assert first != second
@@ -1334,13 +1945,16 @@ def test_signal_confluence_cache_key_invalidates_on_business_input_version(
 def test_stock_analysis_workbench_cache_key_normalizes_default_include(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from importlib import import_module
+
     route_module = load_module(
         "backend.app.api.routes.market_data_livermore",
         "backend/app/api/routes/market_data_livermore.py",
     )
     catalog = tmp_path / "choice-stock.json"
     catalog.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(route_module, "livermore_data_version", lambda _path: "db-v1")
+    service_module = import_module("backend.app.services.market_data_livermore_service")
+    monkeypatch.setattr(service_module, "livermore_data_version", lambda _path: "db-v1")
 
     def cache_key(include: str | None) -> str:
         return route_module._stock_analysis_workbench_cache_key(
@@ -1392,8 +2006,8 @@ def test_stock_kline_analysis_route_validates_and_delegates_to_service(
                 "scenario_flag": False,
                 "source_version": "sv_test",
                 "vendor_version": "vv_test",
-                "rule_version": "rv_stock_kline_analysis_observation_v1",
-                "cache_version": "cv_stock_kline_analysis_observation_v1",
+                "rule_version": "rv_stock_kline_analysis_observation_v2",
+                "cache_version": "cv_stock_kline_analysis_observation_v2",
                 "quality_flag": "ok",
                 "vendor_status": "ok",
                 "fallback_mode": "none",

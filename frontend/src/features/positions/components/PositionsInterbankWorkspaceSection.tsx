@@ -1,7 +1,9 @@
-import { useMemo } from "react";
-import { Button, Select, Spin, Table } from "antd";
+import { useMemo, type ReactNode } from "react";
+import { Button, Select, Table } from "antd";
 import type { TableColumnsType } from "antd";
 
+import { StateSurface } from "../../../components/layout";
+import { TABLE_SKELETON_MIN_HEIGHT } from "./positionsTableState";
 import type { InterbankPositionItem, PositionDirection } from "../../../api/contracts";
 import type { PositionsPrimaryListTableState } from "../model/positionsPageModel";
 import { EM_DASH } from "../../../utils/format";
@@ -68,6 +70,7 @@ const INTERBANK_LIST_COLUMNS: TableColumnsType<InterbankListRow> = [
  * 方向切换沿用根组件 handleDirectionChange 的重置分页语义。
  */
 export default function PositionsInterbankWorkspaceSection({
+  tabs,
   reportDate,
   productTypeValue,
   productTypeOptions,
@@ -85,6 +88,7 @@ export default function PositionsInterbankWorkspaceSection({
   onPrevPage,
   onNextPage,
 }: {
+  tabs: ReactNode;
   reportDate: string;
   productTypeValue: string;
   productTypeOptions: string[] | undefined;
@@ -120,6 +124,7 @@ export default function PositionsInterbankWorkspaceSection({
   return (
     <div className="positions-view__workspace">
       <div className="positions-view__workspace-toolbar">
+        {tabs}
         <label className="positions-view__field">
           <span className="positions-view__field-label">产品类型</span>
           <Select
@@ -152,16 +157,18 @@ export default function PositionsInterbankWorkspaceSection({
       </div>
 
       {listState === "loading" ? (
-        <div
-          className="positions-view__table-state positions-view__table-state--loading"
-          data-testid="positions-interbank-list-loading"
-        >
-          <Spin />
-        </div>
+        <StateSurface
+          testId="positions-interbank-list-loading"
+          status="loading"
+          minHeight={TABLE_SKELETON_MIN_HEIGHT}
+        />
       ) : listState === "error" ? (
-        <p className="positions-view__table-state" data-testid="positions-interbank-list-error">
-          同业持仓暂不可用
-        </p>
+        <StateSurface
+          testId="positions-interbank-list-error"
+          status="error"
+          message="同业持仓暂不可用"
+          density="compact"
+        />
       ) : listState === "ready" ? (
         <>
           <Table
@@ -189,17 +196,19 @@ export default function PositionsInterbankWorkspaceSection({
           ) : null}
         </>
       ) : listState === "empty" ? (
-        <p className="positions-view__table-state" data-testid="positions-interbank-list-empty">
-          暂无数据
-        </p>
+        <StateSurface testId="positions-interbank-list-empty" status="empty" message="暂无数据" />
       ) : (
-        <p className="positions-view__table-state" data-testid="positions-interbank-list-blocked">
-          {reportDate
-            ? page > 1
-              ? "当前页无明细，正在返回第一页"
-              : "当前范围明细暂不可用"
-            : "请先选择可用报告日"}
-        </p>
+        <StateSurface
+          testId="positions-interbank-list-blocked"
+          status="empty"
+          message={
+            reportDate
+              ? page > 1
+                ? "当前页无明细，正在返回第一页"
+                : "当前范围明细暂不可用"
+              : "请先选择可用报告日"
+          }
+        />
       )}
     </div>
   );

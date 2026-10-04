@@ -89,14 +89,6 @@ export function formatSectorSeriesScore(value: number | null | undefined): strin
   return value.toFixed(4);
 }
 
-export function formatSectorSeriesPctChange(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) {
-    return "-";
-  }
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(2)}%`;
-}
-
 export function formatSectorSeriesCumPctChange(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) {
     return "-";

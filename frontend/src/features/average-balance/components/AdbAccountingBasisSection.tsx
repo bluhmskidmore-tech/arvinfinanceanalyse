@@ -118,8 +118,7 @@ export default function AdbAccountingBasisSection({
       ) : null}
       {trend && trend.length > 1 ? (
         <div data-testid="adb-accounting-basis-trend-chart">
-          <div className="adb-subhead">分桶日均走势（亿元）</div>
-          <AdbAccountingBasisTrendChart trend={trend} />
+          <AdbAccountingBasisTrendChart flat title="分桶日均走势" trend={trend} />
         </div>
       ) : null}
     </section>

@@ -10,6 +10,7 @@ import pytest
 
 from backend.app.core_finance.cycle_macro_score import M2_YOY_SERIES_ID
 from backend.app.services.market_data_livermore_service import (
+    _macro_cycle_component_values,
     _load_cycle_input_evidence,
 )
 from backend.app.services.market_data_livermore_service import _cycle_input_row_issue
@@ -202,6 +203,13 @@ def test_cycle_input_evidence_reports_m2_as_actual_credit_fallback_source(
         == M2_YOY_SERIES_ID
     )
     assert M2_YOY_SERIES_ID in evidence.credit_impulse_evidence
+    projected_values = {
+        item.input_family: item for item in _macro_cycle_component_values(evidence)
+    }
+    assert projected_values["credit_impulse"].input_label == M2_YOY_SERIES_ID
+    assert projected_values["credit_impulse"].value_numeric == pytest.approx(0.7)
+    assert projected_values["credit_impulse"].unit == "ppt"
+    assert projected_values["credit_impulse"].value_kind == "yoy_delta_proxy"
 
 
 def test_cycle_input_evidence_falls_back_to_m2_when_social_financing_months_are_invalid(
@@ -778,6 +786,137 @@ def test_production_june_official_availability_matches_stock_analysis_target(
         rule_version="rv_backfill_macro_v1",
         run_id="backfill_macro_v1:20260723T120000Z",
         as_of_date=date(2026, 7, 22),
+        availability_manifest_path=_PRODUCTION_AVAILABILITY_MANIFEST_PATH,
+        official_releases_manifest_path=_PRODUCTION_RELEASES_MANIFEST_PATH,
+    )
+
+    assert issue is None
+
+
+@pytest.mark.parametrize(
+    ("series_id", "unit", "vendor_version"),
+    [
+        (
+            "M0001385",
+            "%",
+            "vv_backfill_macro_pbc_financial_statistics_release_20260820_"
+            "b40a66d60ef842ea_4f52ffa84ae25efd",
+        ),
+        (
+            "M5525763",
+            "%",
+            "vv_backfill_macro_pbc_financial_statistics_release_20260820_"
+            "b40a66d60ef842ea_0fb997c2f3a446b9",
+        ),
+        (
+            "M0017126",
+            "index",
+            "vv_backfill_macro_nbs_pmi_release_20260820_"
+            "219d196944693556_f4b9c8d19417c0ec",
+        ),
+    ],
+    ids=["pbc-july-m2", "pbc-july-social-financing", "nbs-july-pmi"],
+)
+def test_production_july_official_availability_matches_stock_analysis_target(
+    series_id: str,
+    unit: str,
+    vendor_version: str,
+) -> None:
+    issue = _cycle_input_row_issue(
+        series_id=series_id,
+        trade_date="2026-07-01",
+        frequency="monthly",
+        unit=unit,
+        quality_flag="ok",
+        source_version="backfill_macro_v1",
+        vendor_version=vendor_version,
+        rule_version="rv_backfill_macro_v1",
+        run_id="backfill_macro_v1:20260820T120000Z",
+        as_of_date=date(2026, 8, 18),
+        availability_manifest_path=_PRODUCTION_AVAILABILITY_MANIFEST_PATH,
+        official_releases_manifest_path=_PRODUCTION_RELEASES_MANIFEST_PATH,
+    )
+
+    assert issue is None
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_livermore
+@pytest.mark.parametrize(
+    ("series_id", "vendor_suffix"),
+    [("M0001385", "f713a296add6bcde"), ("M5525763", "85b74231a83a76be")],
+)
+@pytest.mark.parametrize("evaluation_day", [14, 15])
+def test_production_august_credit_preserves_official_release_cutoff(
+    series_id: str,
+    vendor_suffix: str,
+    evaluation_day: int,
+) -> None:
+    issue = _cycle_input_row_issue(
+        series_id=series_id,
+        trade_date="2026-08-01",
+        frequency="monthly",
+        unit="%",
+        quality_flag="ok",
+        source_version="backfill_macro_v1",
+        vendor_version=(
+            "vv_backfill_macro_pbc_financial_statistics_release_20260916_"
+            f"89c958afba228fac_{vendor_suffix}"
+        ),
+        rule_version="rv_backfill_macro_v1",
+        run_id="backfill_macro_v1:20260916T025150Z",
+        as_of_date=date(2026, 9, evaluation_day),
+        availability_manifest_path=_PRODUCTION_AVAILABILITY_MANIFEST_PATH,
+        official_releases_manifest_path=_PRODUCTION_RELEASES_MANIFEST_PATH,
+    )
+
+    if evaluation_day == 14:
+        assert issue is not None
+        assert "availability date" in issue
+    else:
+        assert issue is None
+
+
+def test_production_august_pmi_release_and_availability_are_exactly_pinned() -> None:
+    releases = json.loads(_PRODUCTION_RELEASES_MANIFEST_PATH.read_text(encoding="utf-8"))
+    august_release = next(
+        row
+        for row in releases["releases"]
+        if row.get("series_id") == "M0017126" and row.get("latest_period") == "2026-08-01"
+    )
+
+    assert august_release == {
+        "source": "nbs_pmi_release",
+        "series_id": "M0017126",
+        "series_name": "制造业PMI",
+        "release_url": "https://www.stats.gov.cn/sj/zxfb/202608/t20260831_1965154.html",
+        "artifact_url": "https://www.stats.gov.cn/sj/zxfb/202608/P020260831316826769515.xls",
+        "published_at": "2026-08-31T09:30:00+08:00",
+        "artifact_sha256": "7ac612fa42b562fa27b4212d6b43b31fa9c0fd14e6a563bd5f385e735b629a2f",
+        "latest_period": "2026-08-01",
+        "covered_period_start": "2025-08-01",
+        "covered_period_end": "2026-08-01",
+        "sheet_name": "制造业",
+        "value_header": "PMI",
+        "source_unit": "%",
+        "target_unit": "index",
+        "value_transform": "identity_percentage_points_to_index_points",
+    }
+
+    issue = _cycle_input_row_issue(
+        series_id="M0017126",
+        trade_date="2026-08-01",
+        frequency="monthly",
+        unit="index",
+        quality_flag="ok",
+        source_version="backfill_macro_v1",
+        vendor_version=(
+            "vv_backfill_macro_nbs_pmi_release_20260905_"
+            "7ac612fa42b562fa_d6e4f50ae65a62b5"
+        ),
+        rule_version="rv_backfill_macro_v1",
+        run_id="backfill_macro_v1:20260905T120000Z",
+        as_of_date=date(2026, 9, 1),
         availability_manifest_path=_PRODUCTION_AVAILABILITY_MANIFEST_PATH,
         official_releases_manifest_path=_PRODUCTION_RELEASES_MANIFEST_PATH,
     )

@@ -51,10 +51,15 @@ def numeric_json(
     unit: NumericUnit,
     sign_aware: bool,
     raw_scale: NumericRawScale = "auto",
+    *,
+    preserve_decimal: bool = False,
 ) -> dict[str, Any]:
     if raw is None:
         return numeric_from_raw(raw=None, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
-    if isinstance(raw, Decimal):
+    raw_value: float | Decimal
+    if isinstance(raw, Decimal) and preserve_decimal:
+        raw_value = raw
+    elif isinstance(raw, Decimal):
         raw_value = float(raw)
     elif isinstance(raw, (int, float)) and not isinstance(raw, bool):
         raw_value = float(raw)
@@ -68,7 +73,12 @@ def numeric_json(
     ).model_dump(mode="json")
 
 
-def promote_flat_payload(payload: Any, model_cls: type) -> Any:
+def promote_flat_payload(
+    payload: Any,
+    model_cls: type,
+    *,
+    preserve_decimal: bool = False,
+) -> Any:
     if is_dataclass(payload):
         out = asdict(payload)
     elif isinstance(payload, BaseModel):
@@ -86,7 +96,13 @@ def promote_flat_payload(payload: Any, model_cls: type) -> Any:
         if value is None or isinstance(value, Numeric) or is_numeric_json(value):
             continue
         unit, sign_aware, raw_scale = unpack_numeric_field_spec(spec)
-        out[field_name] = numeric_json(value, unit, sign_aware, raw_scale)
+        out[field_name] = numeric_json(
+            value,
+            unit,
+            sign_aware,
+            raw_scale,
+            preserve_decimal=preserve_decimal,
+        )
     return out
 
 

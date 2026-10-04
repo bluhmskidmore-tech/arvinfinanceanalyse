@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import date
 from decimal import Decimal
 
@@ -7,7 +8,11 @@ import pytest
 from pydantic import ValidationError
 
 from backend.app.core_finance.product_category_pnl import CanonicalFactRow
-from backend.app.schemas.ledger_pnl_analysis import LedgerPnlAnalysisContributor
+from backend.app.schemas.ledger_pnl_analysis import (
+    LedgerPnlAnalysisContributor,
+    LedgerPnlAnalysisMoney,
+)
+from backend.app.schemas.ledger_pnl_read import LedgerPnlDataEnvelope
 from backend.app.services import ledger_pnl_service
 
 
@@ -19,7 +24,9 @@ def _fact(
     beginning_balance: str = "0",
     ending_balance: str = "0",
     monthly_pnl: str = "0",
+    daily_avg_balance: str = "0",
     report_date: date = date(2026, 4, 30),
+    source_presence: str = "ledger",
 ) -> CanonicalFactRow:
     return CanonicalFactRow(
         report_date=report_date,
@@ -29,9 +36,10 @@ def _fact(
         beginning_balance=Decimal(beginning_balance),
         ending_balance=Decimal(ending_balance),
         monthly_pnl=Decimal(monthly_pnl),
-        daily_avg_balance=Decimal("0"),
+        daily_avg_balance=Decimal(daily_avg_balance),
         annual_avg_balance=Decimal("0"),
         days_in_period=30,
+        source_presence=source_presence,
     )
 
 
@@ -177,6 +185,7 @@ def test_ledger_pnl_detail_default_keeps_cnx_details_but_totals_only_5_prefix(mo
     assert payload["summary"]["total_pnl_cny"]["yuan"] == "0"
     assert payload["summary"]["total_pnl"]["yuan"] == "7"
     assert payload["summary"]["count"] == 2
+    assert payload["summary"]["pnl_account_count"] == 1
 
 
 @pytest.mark.parametrize(
@@ -924,3 +933,184 @@ def test_ledger_pnl_account_detail_envelope_requires_exact_month_end(monkeypatch
             "55000000001",
             "CNX",
         )
+
+
+def test_ledger_pnl_data_discloses_source_presence_and_row_count_identity(monkeypatch):
+    """R1：合成行标记来自构建端打标，summary 计数满足恒等式。"""
+    facts = [
+        _fact("10101000001", "CNX", ending_balance="100"),
+        _fact("51401000001", "CNX", monthly_pnl="7"),
+        _fact(
+            "13304010001",
+            "CNX",
+            daily_avg_balance="55",
+            source_presence="average_only",
+        ),
+    ]
+
+    monkeypatch.setattr(
+        ledger_pnl_service,
+        "_load_facts_for_date",
+        lambda _source_dir, _report_date: (facts, "sv_test"),
+    )
+
+    payload = ledger_pnl_service.get_ledger_pnl_by_date(
+        "unused",
+        date(2026, 4, 30),
+    )
+
+    by_code = {item["account_code"]: item for item in payload["items"]}
+    assert by_code["10101000001"]["source_presence"] == "ledger"
+    assert by_code["51401000001"]["source_presence"] == "ledger"
+    assert by_code["13304010001"]["source_presence"] == "average_only"
+    summary = payload["summary"]
+    assert summary["count"] == 3
+    assert summary["ledger_evidence_rows"] == 2
+    assert summary["average_only_row_count"] == 1
+    assert (
+        summary["ledger_evidence_rows"] + summary["average_only_row_count"]
+        == summary["count"]
+    )
+    assert "并集口径" in summary["evidence_rows_basis"]
+    # 金额口径不变：合成行不影响 5* 汇总。
+    assert summary["total_pnl"]["yuan"] == "7"
+
+
+def test_ledger_pnl_data_envelope_schema_enforces_source_presence_identity(monkeypatch):
+    facts = [
+        _fact("51401000001", "CNX", monthly_pnl="7"),
+        _fact(
+            "13304010001",
+            "CNX",
+            daily_avg_balance="55",
+            source_presence="average_only",
+        ),
+    ]
+
+    monkeypatch.setattr(
+        ledger_pnl_service,
+        "_load_facts_for_date",
+        lambda _source_dir, _report_date: (facts, "sv_test"),
+    )
+
+    envelope = ledger_pnl_service.ledger_pnl_data_envelope(
+        "unused",
+        "2026-04-30",
+    )
+
+    validated = LedgerPnlDataEnvelope.model_validate(envelope)
+    assert validated.result.summary.ledger_evidence_rows == 1
+    assert validated.result.summary.average_only_row_count == 1
+    assert {row.source_presence for row in validated.result.items} == {
+        "ledger",
+        "average_only",
+    }
+
+    drifted = deepcopy(envelope)
+    drifted["result"]["summary"]["ledger_evidence_rows"] += 1
+    with pytest.raises(ValidationError, match="must equal count"):
+        LedgerPnlDataEnvelope.model_validate(drifted)
+
+
+def test_ledger_pnl_data_empty_source_keeps_source_presence_identity(monkeypatch):
+    monkeypatch.setattr(
+        ledger_pnl_service,
+        "_load_facts_for_date",
+        lambda _source_dir, _report_date: ([], "sv_ledger_pnl_empty"),
+    )
+
+    payload = ledger_pnl_service.get_ledger_pnl_by_date(
+        "unused",
+        date(2026, 4, 30),
+    )
+
+    summary = payload["summary"]
+    assert summary["count"] == 0
+    assert summary["ledger_evidence_rows"] == 0
+    assert summary["average_only_row_count"] == 0
+    assert "并集口径" in summary["evidence_rows_basis"]
+
+
+def test_ledger_pnl_data_normalizes_negative_zero_yi_and_keeps_yuan_sign(monkeypatch):
+    """R2：yi 量化后为 0 时输出 "0.00" 不带负号；yuan 原值保留符号。"""
+    facts = [_fact("51401000001", "CNX", monthly_pnl="-40000")]
+
+    monkeypatch.setattr(
+        ledger_pnl_service,
+        "_load_facts_for_date",
+        lambda _source_dir, _report_date: (facts, "sv_test"),
+    )
+
+    payload = ledger_pnl_service.get_ledger_pnl_by_date(
+        "unused",
+        date(2026, 4, 30),
+    )
+
+    item = payload["items"][0]
+    assert item["monthly_pnl"]["yuan"] == "-40000"
+    assert item["monthly_pnl"]["yi"] == "0.00"
+    summary = payload["summary"]
+    assert summary["total_pnl"]["yuan"] == "-40000"
+    assert summary["total_pnl"]["yi"] == "0.00"
+    assert summary["total_pnl_cnx"]["yi"] == "0.00"
+
+
+def test_ledger_pnl_summary_normalizes_negative_zero_yi(monkeypatch):
+    facts = [
+        _fact("10101000001", "CNX", ending_balance="100"),
+        _fact("20101000001", "CNX", ending_balance="-150"),
+        _fact("51401000001", "CNX", monthly_pnl="-40000"),
+    ]
+
+    monkeypatch.setattr(
+        ledger_pnl_service,
+        "_load_facts_for_date",
+        lambda _source_dir, _report_date: (facts, "sv_test"),
+    )
+
+    summary = ledger_pnl_service.get_ledger_pnl_summary(
+        "unused",
+        date(2026, 4, 30),
+    )
+
+    assert summary["ledger_net_assets"]["yuan"] == "-50"
+    assert summary["ledger_net_assets"]["yi"] == "0.00"
+    assert summary["ledger_monthly_pnl_core"]["yuan"] == "-40000"
+    assert summary["ledger_monthly_pnl_core"]["yi"] == "0.00"
+    assert summary["by_currency"][0]["total_pnl"]["yi"] == "0.00"
+    assert summary["by_account"][0]["total_pnl"]["yi"] == "0.00"
+
+
+def test_ledger_pnl_analysis_money_accepts_normalized_zero_yi_for_negative_yuan():
+    """LedgerMoneyValue 校验器兼容 Decimal("-0.00") == Decimal("0.00")。"""
+    money = LedgerPnlAnalysisMoney.model_validate({"yuan": "-40000", "yi": "0.00"})
+    assert money.yuan == "-40000"
+    assert money.yi == "0.00"
+
+
+@pytest.mark.parametrize(
+    ("report_month", "expected_month_end"),
+    [("202607", "2026-07-31"), ("202602", "2026-02-28")],
+)
+def test_ledger_pnl_financial_indicator_summary_falls_back_to_month_end(
+    monkeypatch,
+    report_month,
+    expected_month_end,
+):
+    """R9：当月源缺失时 resolved/as_of 回退为该月自然月末而非月初。"""
+    monkeypatch.setattr(
+        ledger_pnl_service,
+        "discover_source_pairs",
+        lambda _source_dir: [],
+    )
+
+    envelope = ledger_pnl_service.ledger_pnl_financial_indicator_summary_envelope(
+        "unused",
+        report_month,
+    )
+
+    meta = envelope["result_meta"]
+    assert meta["resolved_report_date"] == expected_month_end
+    assert meta["as_of_date"] == expected_month_end
+    assert meta["quality_flag"] == "warning"
+    assert envelope["result"]["data_status"] == "no_data"

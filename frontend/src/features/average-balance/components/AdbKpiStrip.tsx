@@ -1,6 +1,6 @@
 import { WarningFilled } from "@ant-design/icons";
 
-import "./AverageBalanceView.css";
+import KpiStrip, { type KpiCell, type KpiStripCols } from "../../../components/layout/KpiStrip";
 
 export type AdbKpiStripItem = {
   key: string;
@@ -23,27 +23,23 @@ type AdbKpiStripProps = {
 
 /** KPI 单框横带（首页 kpiStrip 语言：单框 + 发丝竖缝 + 等高分格 + 等宽数字）。 */
 export default function AdbKpiStrip({ items, columns }: AdbKpiStripProps) {
-  return (
-    <section className="adb-kpi-strip" data-cols={columns}>
-      {items.map((item) => (
-        <article className="adb-kpi" key={item.key}>
-          <span className="adb-kpi-label" title={item.label}>
-            {item.label}
-          </span>
-          <span
-            className={item.tone ? `adb-kpi-value adb-tone--${item.tone}` : "adb-kpi-value"}
-            title={item.value}
-          >
-            {item.value}
-            {item.warn ? <WarningFilled className="adb-kpi-warn-icon" aria-hidden="true" /> : null}
-          </span>
-          {item.detail ? (
-            <span className="adb-kpi-detail" title={item.detail}>
-              {item.detail}
-            </span>
-          ) : null}
-        </article>
-      ))}
-    </section>
-  );
+  const cols: KpiStripCols = {
+    base: 1,
+    md: 2,
+    lg: columns === 2 ? 2 : 3,
+    xl: columns,
+  };
+  const cells: KpiCell[] = items.map((item) => ({
+    key: item.key,
+    label: item.label,
+    value: item.value,
+    valueTone: item.tone === "down" ? "negative" : item.tone ? "positive" : undefined,
+    valueAdornment: item.warn ? (
+      <WarningFilled className="adb-kpi-warn-icon" aria-hidden="true" />
+    ) : undefined,
+    note: item.detail,
+    noteTitle: item.detail,
+  }));
+
+  return <KpiStrip cells={cells} cols={cols} />;
 }

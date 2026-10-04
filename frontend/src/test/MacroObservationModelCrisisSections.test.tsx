@@ -142,9 +142,9 @@ function buildCrisisView(
     componentMissingCount: 1,
     coverageNote: null,
     history: [
-      { date: "2026-04-03", value: -0.63 },
-      { date: "2026-04-10", value: -0.57 },
-      { date: "2026-04-17", value: -0.52 },
+      { date: "2026-04-03", value: -0.63, availableComponentCount: null, componentCount: null },
+      { date: "2026-04-10", value: -0.57, availableComponentCount: null, componentCount: null },
+      { date: "2026-04-17", value: -0.52, availableComponentCount: null, componentCount: null },
     ],
     ...overrides,
   };
@@ -397,7 +397,11 @@ describe("MacroObservationCrisisSection", () => {
 
     expect(screen.getByText("危机分证据完整分析后确认。")).toBeInTheDocument();
     const container = screen.getByTestId("macro-observation-crisis-chart");
-    expect(within(container).getByText("历史序列待完整分析确认")).toBeInTheDocument();
+    expect(within(container).getByText("正在载入")).toBeInTheDocument();
+    expect(screen.getByTestId("macro-observation-crisis-chart-state")).toHaveAttribute(
+      "data-status",
+      "loading",
+    );
     expect(screen.queryByTestId("macro-observation-echarts-stub")).not.toBeInTheDocument();
     expect(echartsOptions).toHaveLength(0);
   });
@@ -406,7 +410,16 @@ describe("MacroObservationCrisisSection", () => {
     render(
       <MemoryRouter>
         <MacroObservationCrisisSection
-          crisis={buildCrisisView({ history: [{ date: "2026-04-10", value: -0.57 }] })}
+          crisis={buildCrisisView({
+            history: [
+              {
+                date: "2026-04-10",
+                value: -0.57,
+                availableComponentCount: null,
+                componentCount: null,
+              },
+            ],
+          })}
         />
       </MemoryRouter>,
     );
@@ -446,5 +459,69 @@ describe("MacroObservationCrisisSection", () => {
     expect(option.series[0]?.markLine?.data).toEqual([{ yAxis: 0 }]);
     expect(option.series[0]?.markPoint?.data).toEqual([{ name: "latest", coord: [2, -0.52] }]);
     expect(option.series[0]?.markPoint?.label?.formatter).toBe("-0.52");
+  });
+
+  it("降级段逐段标注，中段降级点不漏", () => {
+    render(
+      <MemoryRouter>
+        <MacroObservationCrisisSection
+          crisis={buildCrisisView({
+            history: [
+              // 前两点仅 2/5 分项可用，中段全分项，末点又降级。
+              { date: "2026-04-03", value: -0.63, availableComponentCount: 2, componentCount: 5 },
+              { date: "2026-04-10", value: -0.57, availableComponentCount: 2, componentCount: 5 },
+              { date: "2026-04-17", value: -0.52, availableComponentCount: 5, componentCount: 5 },
+              { date: "2026-04-24", value: -0.48, availableComponentCount: 5, componentCount: 5 },
+              { date: "2026-05-01", value: -0.41, availableComponentCount: 3, componentCount: 5 },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    const option = echartsOptions.at(-1) as {
+      series: Array<{ markArea?: { data: Array<Array<{ xAxis?: string }>> } }>;
+    };
+    expect(option.series[0]?.markArea?.data).toEqual([
+      [{ xAxis: "2026-04-03" }, { xAxis: "2026-04-10" }],
+      [{ xAxis: "2026-05-01" }, { xAxis: "2026-05-01" }],
+    ]);
+  });
+
+  it("卡头披露降级观测点数，无降级段时只报点数", () => {
+    const { unmount } = render(
+      <MemoryRouter>
+        <MacroObservationCrisisSection
+          crisis={buildCrisisView({
+            history: [
+              { date: "2026-04-03", value: -0.63, availableComponentCount: 2, componentCount: 5 },
+              { date: "2026-04-10", value: -0.57, availableComponentCount: 5, componentCount: 5 },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("2 点 · 含 1 点降级观测")).toBeInTheDocument();
+    unmount();
+
+    render(
+      <MemoryRouter>
+        <MacroObservationCrisisSection crisis={buildCrisisView()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("3 点")).toBeInTheDocument();
+  });
+
+  it("载荷未携带覆盖字段时不标降级段，不拿总数回填", () => {
+    render(
+      <MemoryRouter>
+        <MacroObservationCrisisSection crisis={buildCrisisView()} />
+      </MemoryRouter>,
+    );
+
+    const option = echartsOptions.at(-1) as {
+      series: Array<{ markArea?: unknown }>;
+    };
+    expect(option.series[0]?.markArea).toBeUndefined();
   });
 });

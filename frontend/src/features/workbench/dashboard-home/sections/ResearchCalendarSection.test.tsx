@@ -120,7 +120,8 @@ describe("ResearchCalendarSection", () => {
           newsStatusLabel: "来源状态：正常",
           newsRefreshLabel: "刷新：随页面查询读取已落库数据",
           policyFundingSummary: singlePolicyFundingSummary,
-          supplyItems: [{ id: "supply-empty", label: "供给/招标：已查询当前窗口，暂无事件" }],
+          supplyItems: [],
+          supplyMessage: "供给/招标：已查询当前窗口，暂无事件",
         }}
       />,
     );
@@ -153,7 +154,16 @@ describe("ResearchCalendarSection", () => {
     expect(screen.getByText("高优先级")).toBeInTheDocument();
     expect(screen.getByText("央行开展逆回购操作，DR007 小幅下行")).toBeInTheDocument();
     expect(screen.getByText("供给/招标：已查询当前窗口，暂无事件")).toBeInTheDocument();
+    expect(screen.getByText("供给提示").previousElementSibling).toHaveTextContent("0");
     expect(screen.queryByText("当前窗口暂无供给/招标事件。")).not.toBeInTheDocument();
+
+    // 首页把发布项压成四列单行、隐藏了行内的时间与分类，完整口径必须留在悬停提示里。
+    expect(
+      screen.getByRole("link", { name: /ISM 制造业 PMI/ }),
+    ).toHaveAttribute(
+      "title",
+      "06-01 10:00 ET · ISM 制造业 PMI · ISM · PMI · 高优先级",
+    );
   });
 
   it("renders the policy funding pane as a summary with grouped evidence", () => {
@@ -209,6 +219,90 @@ describe("ResearchCalendarSection", () => {
     expect(screen.getByText("展示")).toBeInTheDocument();
     expect(screen.getByText("非政策/资金面")).toBeInTheDocument();
     expect(screen.getByText("超过展示上限")).toBeInTheDocument();
+  });
+
+  it("renders every policy item and keeps the plain group count", () => {
+    const crowdedGroupSummary = {
+      headline: "4 条政策与资金面快讯，重点集中在央行/公开市场。",
+      chips: [],
+      groups: [
+        {
+          id: "public-market",
+          label: "央行/公开市场",
+          countLabel: "4 条",
+          items: [1, 2, 3, 4].map((seq) => ({
+            id: `news-${seq}`,
+            timeLabel: `07-15 0${seq}:00`,
+            topicLabel: "市场快讯",
+            title: `政策快讯第${seq}条`,
+            freshnessLabel: `最近更新 07-15 0${seq}:00`,
+          })),
+        },
+      ],
+    };
+
+    render(
+      <ResearchCalendarSection
+        macroBriefing={
+          {
+            releaseItems: [],
+            releaseHistoryItems: [],
+            releaseWindowLabel: "未来 45 天",
+            releaseMessage: "暂无已维护发布日期，请补充配置清单。",
+            newsItems: crowdedGroupSummary.groups[0].items,
+            newsMessage: null,
+            newsStale: false,
+            newsFreshnessLabel: "最近更新 07-15 04:00",
+            newsSourceLabel: "来源：Tushare 宏观快讯",
+            newsAsOfLabel: "数据截至 07-15 04:00",
+            newsStatusLabel: "来源状态：正常",
+            newsRefreshLabel: "刷新：随页面查询读取已落库数据",
+            policyFundingSummary: crowdedGroupSummary,
+            supplyItems: [],
+          } as unknown as HomeMacroBriefingModel
+        }
+      />,
+    );
+
+    expect(screen.getByText("4 条")).toBeInTheDocument();
+    expect(screen.getByText("政策快讯第1条")).toBeInTheDocument();
+    expect(screen.getByText("政策快讯第2条")).toBeInTheDocument();
+    expect(screen.getByText("政策快讯第3条")).toBeInTheDocument();
+    expect(screen.getByText("政策快讯第4条")).toBeInTheDocument();
+    expect(
+      screen.getByText("央行/公开市场").closest("[data-layout-role]"),
+    ).not.toHaveAttribute("title");
+  });
+
+  it("keeps the plain group count for a single policy item", () => {
+    render(
+      <ResearchCalendarSection
+        macroBriefing={
+          {
+            releaseItems: [],
+            releaseHistoryItems: [],
+            releaseWindowLabel: "未来 45 天",
+            releaseMessage: "暂无已维护发布日期，请补充配置清单。",
+            newsItems: singlePolicyFundingSummary.groups[0].items,
+            newsMessage: null,
+            newsStale: false,
+            newsFreshnessLabel: "最近更新 04-21 15:06",
+            newsSourceLabel: "来源：Choice 宏观新闻",
+            newsAsOfLabel: "数据截至 04-21 15:06",
+            newsStatusLabel: "来源状态：正常",
+            newsRefreshLabel: "刷新：随页面查询读取已落库数据",
+            policyFundingSummary: singlePolicyFundingSummary,
+            supplyItems: [],
+          } as unknown as HomeMacroBriefingModel
+        }
+      />,
+    );
+
+    expect(screen.getByText("1 条")).toBeInTheDocument();
+    expect(screen.queryByText(/共 1 条/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("央行/公开市场").closest("[data-layout-role]"),
+    ).not.toHaveAttribute("title");
   });
 
   it("surfaces maintained release history below the forward calendar", () => {
@@ -294,7 +388,7 @@ describe("ResearchCalendarSection", () => {
 
   it("keeps maintained history visible when the forward calendar is empty", () => {
     const macroBriefing = buildHomeMacroBriefingModel({
-      todayIsoDate: "2026-08-01",
+      todayIsoDate: "2027-01-01",
       newsEvents: [],
       fallbackNewsEvents: [],
       newsLoading: false,
@@ -302,7 +396,7 @@ describe("ResearchCalendarSection", () => {
       supplyCalendar: {
         items: [],
         status: "empty",
-        windowLabel: "2026-08-01 to 2026-09-15",
+        windowLabel: "2027-01-01 to 2027-02-15",
         message: null,
       },
     });

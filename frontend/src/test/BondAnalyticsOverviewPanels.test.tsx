@@ -94,7 +94,7 @@ function createOverviewModel(): BondAnalyticsOverviewModel {
     reportDate: "2026-03-31",
     periodType: "MoM",
     truthStrip: {
-      title: "真值与证据",
+      title: "数据说明",
       items: [
         { key: "basis", label: "口径", value: "正式口径", tone: "neutral" },
       ],
@@ -196,13 +196,14 @@ describe("BondAnalyticsOverviewPanels", () => {
       "data-lead-module",
       "Lead from overview model",
     );
-    expect(screen.getByTestId("bond-analysis-candidate-boundary")).toHaveTextContent("candidate");
-    expect(screen.getByTestId("bond-analysis-candidate-boundary")).toHaveTextContent(
-      "formal_use_allowed=false",
-    );
-    expect(screen.getByTestId("bond-analysis-candidate-boundary")).toHaveTextContent(
-      "owner approval pending",
-    );
+    // 批准限制保持可见，首屏及悬浮提示不再出现内部状态码。
+    const candidateBoundary = screen.getByTestId("bond-analysis-candidate-boundary");
+    expect(candidateBoundary).toHaveTextContent("本页尚未获得业主正式批准");
+    expect(candidateBoundary).not.toHaveTextContent("PAGE-BOND-ANALYSIS-001");
+    expect(candidateBoundary).toHaveTextContent("尚未获得业主正式批准");
+    expect(candidateBoundary).toHaveTextContent("结果仅供分析参考");
+    expect(candidateBoundary).not.toHaveTextContent("owner approval pending");
+    expect(candidateBoundary).not.toHaveAttribute("title");
 
     const filter = screen.getByTestId("mock-bond-filter-action-strip");
     expect(filter).toHaveAttribute("data-asset-class", "all");

@@ -1,0 +1,150 @@
+{
+  "schema_version": "release-approval-registry/v1",
+  "registry_id": "moss-release-approval-v1",
+  "entries": [
+    {
+      "approval_id": "page:average-balance",
+      "subject_kind": "page",
+      "subject_key": "average-balance",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_average_balance_business_owner_approval.py", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "page:balance-analysis",
+      "subject_kind": "page",
+      "subject_key": "balance-analysis",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_balance_analysis_business_owner_approval.py", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "page:bond-analysis",
+      "subject_kind": "page",
+      "subject_key": "bond-analysis",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_bond_analysis_business_owner_approval.py", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "page:ledger-pnl",
+      "subject_kind": "page",
+      "subject_key": "ledger-pnl",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_ledger_pnl_business_owner_approval.py", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "page:pnl-attribution",
+      "subject_kind": "page",
+      "subject_key": "pnl-attribution",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_pnl_attribution_business_owner_approval.py", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "page:portfolio-home",
+      "subject_kind": "page",
+      "subject_key": "portfolio-home",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_portfolio_home_business_owner_approval.py", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "page:product-category-pnl",
+      "subject_kind": "page",
+      "subject_key": "product-category-pnl",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_product_category_pnl_business_owner_approval.py", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "page:stock-analysis",
+      "subject_kind": "page",
+      "subject_key": "stock-analysis",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_stock_analysis_business_owner_approval.py", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "calculation-p1:P1-01",
+      "subject_kind": "calculation_p1",
+      "subject_key": "P1-01",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_calculation_p1_owner_decisions.py", "--decision-id", "P1-01", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "calculation-p1:P1-02",
+      "subject_kind": "calculation_p1",
+      "subject_key": "P1-02",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_calculation_p1_owner_decisions.py", "--decision-id", "P1-02", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "calculation-p1:P1-03",
+      "subject_kind": "calculation_p1",
+      "subject_key": "P1-03",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_calculation_p1_owner_decisions.py", "--decision-id", "P1-03", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "calculation-p1:P1-04",
+      "subject_kind": "calculation_p1",
+      "subject_key": "P1-04",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_calculation_p1_owner_decisions.py", "--decision-id", "P1-04", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "calculation-p1:P1-05",
+      "subject_kind": "calculation_p1",
+      "subject_key": "P1-05",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_calculation_p1_owner_decisions.py", "--decision-id", "P1-05", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "calculation-p1:P1-06",
+      "subject_kind": "calculation_p1",
+      "subject_key": "P1-06",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_calculation_p1_owner_decisions.py", "--decision-id", "P1-06", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "calculation-p1:P1-10",
+      "subject_kind": "calculation_p1",
+      "subject_key": "P1-10",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_calculation_p1_owner_decisions.py", "--decision-id", "P1-10", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    },
+    {
+      "approval_id": "calculation-p1:P1-11",
+      "subject_kind": "calculation_p1",
+      "subject_key": "P1-11",
+      "authority_policy_id": "PENDING",
+      "scope_mapping": {"status": "PENDING", "scope_kind": null, "scope_key": null},
+      "command": {"argv": ["scripts/check_calculation_p1_owner_decisions.py", "--decision-id", "P1-11", "--require-captured"]},
+      "required_states": ["evidence_captured", "machine_validated", "business_approved", "formal_use_allowed", "closure_approved"]
+    }
+  ]
+}

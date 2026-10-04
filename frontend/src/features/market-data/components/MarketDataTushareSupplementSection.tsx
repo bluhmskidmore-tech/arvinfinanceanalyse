@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Spin } from "antd";
 
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import { externalDataQueryOptions } from "../../../app/externalDataRefreshPolicy";
 import type { TushareEcoCalEventRow, TushareMoneySupplyRow } from "../../../api/contracts";
 import { tabularNumsStyle } from "../../../theme/designSystem";

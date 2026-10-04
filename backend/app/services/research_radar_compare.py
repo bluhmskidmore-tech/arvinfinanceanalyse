@@ -4,10 +4,16 @@ import json
 from collections import defaultdict
 from typing import Any
 
+# 跨篇对比是关键词启发式，不是正式口径；版本号跟随本模块规则集，与 ChoiceNewsComparePayload 前端契约对齐。
+COMPARE_BASIS = "analytical"
+COMPARE_RULE_VERSION = "rv_research_radar_compare_v1"
 
-def build_choice_news_compare_payload(events: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+
+def build_choice_news_compare_payload(events: list[dict[str, Any]]) -> dict[str, Any]:
     normalized_events = [_normalize_event(event) for event in events]
     return {
+        "basis": COMPARE_BASIS,
+        "rule_version": COMPARE_RULE_VERSION,
         "same_direction": _same_direction_rows(normalized_events),
         "conflicting": _conflicting_rows(normalized_events),
         "review_needed": _review_needed_rows(normalized_events),

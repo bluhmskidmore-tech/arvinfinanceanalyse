@@ -72,11 +72,19 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 7888
 powershell -ExecutionPolicy Bypass -File scripts/dev-worker.ps1
 ```
 
-Worker 启动命令来自脚本本体：
+Worker 启动命令来自脚本本体。默认走进程内的 dev runner：
 
 ```text
-python -m dramatiq backend.app.tasks.worker_bootstrap
+python -m backend.app.tasks.dev_worker_runner --threads 4
 ```
+
+线程数由 `MOSS_DEV_WORKER_THREADS` 覆盖（默认 `4`）。只有显式设置 `MOSS_DEV_WORKER_USE_CLI=1` 时，脚本才改走 dramatiq CLI：
+
+```text
+python -m dramatiq --processes 1 --threads 4 backend.app.tasks.worker_bootstrap
+```
+
+（进程数由 `MOSS_DEV_WORKER_PROCESSES` 覆盖，默认 `1`。）
 
 ### 4. Frontend
 
@@ -137,8 +145,12 @@ curl http://127.0.0.1:7888/api/bond-analytics/dates
 
 ### 后端
 
+仓库纪律是使用**根目录** `.venv`（`README.md`「常用验证 / 后端」、`scripts/dev-python.ps1` 的 `Resolve-DevPython` 都解析到 `.venv\Scripts\python.exe`），本地执行测试和脚本时统一写成 `.\.venv\Scripts\python.exe ...`（POSIX 下 `.venv/bin/python`），不要用裸 `python`。
+
+如果想复现与 CI 完全一致的锁定环境，可以用 `uv sync`；注意 `--project backend` 会把 venv 落到 `backend/.venv` 而不是根 `.venv`，这时后续命令要用 `uv run --project backend` 包装：
+
 ```bash
-# 与 CI 完全一致的锁定环境（uv 0.11.32）；venv 落在 backend/.venv
+# 与 CI 完全一致的锁定环境（uv 0.11.32）；venv 落在 backend/.venv，不是仓库纪律要求的根 .venv
 uv sync --frozen --project backend --extra dev --python 3.11
 
 # 之后用 uv run 执行，不必手工激活 venv
@@ -153,7 +165,10 @@ uv run --project backend -- python -m pytest tests -q
 ### Worker
 
 ```bash
-python -m dramatiq backend.app.tasks.worker_bootstrap
+# 与 scripts/dev-worker.ps1 默认路径一致
+python -m backend.app.tasks.dev_worker_runner --threads 4
+# 或 dramatiq CLI（docker-compose worker 服务与 MOSS_DEV_WORKER_USE_CLI=1 时的形式）
+python -m dramatiq --processes 1 --threads 4 backend.app.tasks.worker_bootstrap
 ```
 
 ### 前端
@@ -168,7 +183,7 @@ npm run dev
 
 系统跑起来后，按这个顺序进入代码更稳妥：
 
-1. `docs/ARCHITECTURE.md`
+1. `docs/architecture.md`
 2. `docs/DEVELOPMENT.md`
 3. `docs/TESTING.md`
 4. 你要动的页面对应 `frontend/src/features/<domain>/`

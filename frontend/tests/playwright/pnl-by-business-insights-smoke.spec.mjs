@@ -22,6 +22,7 @@ const GOLDEN_RESPONSE = JSON.parse(
 test.describe("governed PnL by-business Insights browser smoke", () => {
   test("renders the governed formal conclusions and has no critical axe violations", async ({ page }) => {
     const requestedFilters = [];
+    const generation = "gen-browser-smoke-1";
 
     await page.route("**/api/pnl/dates*", async (route) => {
       await route.fulfill({
@@ -46,16 +47,52 @@ test.describe("governed PnL by-business Insights browser smoke", () => {
       });
     });
 
+    await page.route("**/api/pnl/by-business/precompute-status?*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          year: 2026,
+          status: "completed",
+          serving_mode: "published",
+          is_current: true,
+          run_id: null,
+          report_date: "2026-02-28",
+          source_version: "sv_browser_smoke",
+          rule_version: "rv_browser_smoke",
+          queued_at: null,
+          started_at: null,
+          finished_at: "2026-03-01T00:00:00Z",
+          generated_at: "2026-03-01T00:00:00Z",
+          record_count: 1,
+          error_message: null,
+          failure_category: null,
+          trigger_reason: null,
+          retry_attempt: 0,
+          retry_policy: { max_retries: 3, min_backoff_seconds: 15 },
+          readiness: "ready",
+          generation,
+          dependencies: [],
+          permissions: { can_rebuild: false, reason: "只读浏览器验收" },
+          worker_stalled: false,
+        }),
+      });
+    });
+
     await page.route("**/api/pnl/by-business-insights?*", async (route) => {
       const requestUrl = new URL(route.request().url());
       requestedFilters.push({
         year: requestUrl.searchParams.get("year"),
         asOfDate: requestUrl.searchParams.get("as_of_date"),
+        generation: requestUrl.searchParams.get("generation"),
       });
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(GOLDEN_RESPONSE),
+        body: JSON.stringify({
+          ...GOLDEN_RESPONSE,
+          result: { ...GOLDEN_RESPONSE.result, generation },
+        }),
       });
     });
 
@@ -69,6 +106,7 @@ test.describe("governed PnL by-business Insights browser smoke", () => {
     await expect.poll(() => requestedFilters.at(-1)).toEqual({
       year: "2026",
       asOfDate: "2026-02-28",
+      generation,
     });
 
     const contractStatus = page.locator('[data-testid="pnl-by-business-insights-contract-status"]');

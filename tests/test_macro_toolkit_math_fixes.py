@@ -1,4 +1,4 @@
-"""宏观 toolkit 三个已审计确认数学错误修复的回归测试。
+"""宏观 toolkit 已审计确认数学错误修复的回归测试。
 
 覆盖：
 1. backtest_cn.py：收益口径统一为简单收益复利（原对数收益 log_ret 与 calc_metrics
@@ -7,6 +7,8 @@
    未来数据污染历史时点的状态标签，属前视偏差）。
 3. performance_metrics_cn.py：风险平价权重改为按「资产」列 merge 读取（原按列名模糊
    匹配 + iloc[-1]，几乎总是匹配不到真实权重列而静默回落等权）。
+4. backtest_cn.py：CTA 信号全部非正时空仓持现金（原实现回退等权满仓，把熊市段应
+   空仓的趋势策略变成被动多头，高估净值/夏普/胜率）。
 
 仅测试纯函数/独立函数，不触发 akshare/Wind 网络请求：
 - 三个脚本均已有 `if __name__ == "__main__":` 主流程守卫，importlib 动态加载
@@ -269,3 +271,32 @@ def test_performance_metrics_falls_back_when_csv_missing_asset(tmp_path, monkeyp
     assert rp_label == "风险平价(等权替代)"
     captured = capsys.readouterr()
     assert "警告" in captured.out
+
+
+# ============================================================
+# 问题4（P0）：backtest_cn.py CTA 信号全非正时空仓，不得回退等权满仓
+# ============================================================
+
+
+def test_cta_weights_all_nonpositive_signals_mean_cash_not_equal_weight(monkeypatch) -> None:
+    """核心断言：CTA 合成信号全部非正（应空仓）时权重必须全零（现金，日收益 0），
+    而不是旧实现的等权满仓——后者会在熊市段高估 CTA 策略净值/夏普/胜率。"""
+    _ensure_scipy_optimize_stub()
+    backtest_cn = _load_toolkit_script("backtest_cn", monkeypatch, "_fixed_backtest_cn_cta_cash")
+
+    w = backtest_cn.cta_weights_from_signals(np.array([-0.5, 0.0, -1.2]))
+    np.testing.assert_allclose(w, np.zeros(3))
+
+    # 信号缺失经 fillna(0) 后全零（回测循环中的实际输入形态），同样应空仓。
+    w_zero = backtest_cn.cta_weights_from_signals(np.zeros(4))
+    np.testing.assert_allclose(w_zero, np.zeros(4))
+
+
+def test_cta_weights_positive_signals_normalized_to_full_allocation(monkeypatch) -> None:
+    """正常信号路径保持行为等价：正信号按比例归一化，负信号截断为 0。"""
+    _ensure_scipy_optimize_stub()
+    backtest_cn = _load_toolkit_script("backtest_cn", monkeypatch, "_fixed_backtest_cn_cta_norm")
+
+    w = backtest_cn.cta_weights_from_signals(np.array([0.2, 0.0, 0.6, -0.4]))
+    np.testing.assert_allclose(w, np.array([0.25, 0.0, 0.75, 0.0]))
+    assert float(w.sum()) == pytest.approx(1.0)

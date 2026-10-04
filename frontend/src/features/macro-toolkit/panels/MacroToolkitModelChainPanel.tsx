@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Tag } from "antd";
 
 import type {
+  MacroToolkitBacktestContext,
+  MacroToolkitModelChainArtifactSnapshot,
   MacroToolkitModelChainModel,
   MacroToolkitModelChainResults,
   MacroToolkitModelChainStep,
@@ -107,6 +109,14 @@ function formatReceiptTimestamp(generatedAt: string): string {
   return `${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())} ${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
 }
 
+function formatModelAsOf(asOf: string | null | undefined): string {
+  return asOf ?? "未知";
+}
+
+function formatModelGeneratedAt(generatedAt: string | null | undefined): string {
+  return generatedAt ? formatReceiptTimestamp(generatedAt) : EM_DASH;
+}
+
 function SchedulerBadge({
   kind,
   label,
@@ -127,6 +137,17 @@ function SchedulerBadge({
       </span>
     );
   }
+  if (receipt.read_status === "invalid") {
+    return (
+      <span
+        className="macro-toolkit-model-chain__scheduler-badge macro-toolkit-model-chain__scheduler-badge--failed"
+        data-testid={testId}
+        title={receipt.summary}
+      >
+        {label} 回执不可读/损坏
+      </span>
+    );
+  }
   const healthy = receipt.exit_code === 0 || SCHEDULER_HEALTHY_STATUSES.has(receipt.status);
   const toneClass = healthy
     ? "macro-toolkit-model-chain__scheduler-badge--ok"
@@ -139,6 +160,37 @@ function SchedulerBadge({
     >
       {label} {formatReceiptTimestamp(receipt.generated_at)} {schedulerStatusLabel(receipt.status)}
     </span>
+  );
+}
+
+function ArtifactSnapshotBadge({ snapshot }: { snapshot: MacroToolkitModelChainArtifactSnapshot }) {
+  const readStatus = snapshot.read_status ?? snapshot.status;
+  const writerStatus = snapshot.writer_status ?? snapshot.snapshot_status;
+  const isVerified =
+    snapshot.mode === "snapshot" && readStatus === "ready" && writerStatus === "captured";
+  const assurance =
+    snapshot.mode === "live_unverified"
+      ? "仅作未验证证据"
+      : isVerified
+        ? "已验证快照"
+        : "不可正式使用";
+  // 徽标只留业务结论（可否正式使用）；模式/读写状态的英文枚举与 run_id 是系统标识，
+  // 连同告警原文一起收进 title，业务段头不再出现中英混排技术串。
+  const details = [
+    `模式 ${snapshot.mode}`,
+    `读取 ${readStatus}`,
+    `写入 ${writerStatus ?? "未知"}`,
+    ...(snapshot.run_id ? [`run_id ${snapshot.run_id}`] : []),
+    ...(snapshot.warnings.length ? [snapshot.warnings.join("；")] : []),
+  ];
+  return (
+    <Tag
+      color={isVerified ? "green" : snapshot.mode === "live_unverified" ? "gold" : "red"}
+      data-testid="macro-toolkit-model-chain-artifact-snapshot"
+      title={details.join(" · ")}
+    >
+      {assurance}
+    </Tag>
   );
 }
 
@@ -186,6 +238,93 @@ function ModelChainTable({ model }: { model: MacroToolkitModelChainModel }) {
   );
 }
 
+const BACKTEST_GATE_REASON_LABEL: Record<
+  MacroToolkitBacktestContext["pit_gate"]["reason_code"],
+  string
+> = {
+  pit_metadata_unavailable: "PIT 元数据不可用",
+  pit_evidence_unverified: "PIT 逐行证据未验证",
+  backtest_manifest_missing: "回测运行清单缺失",
+  backtest_manifest_invalid: "回测运行清单无效",
+};
+
+function BacktestContextSummary({ context }: { context: MacroToolkitBacktestContext }) {
+  const { sample, asset_coverage: assetCoverage, pit_gate: pitGate } = context;
+  return (
+    <section
+      className="macro-toolkit-model-chain__backtest-context"
+      aria-label="回测准入与样本口径"
+      data-testid="macro-toolkit-model-chain-backtest-context"
+      title={context.warnings.join("；") || undefined}
+    >
+      <div className="macro-toolkit-model-chain__backtest-status">
+        <strong>未准入</strong>
+        <span>PIT 门禁阻断</span>
+        <span>{context.formal_use_allowed ? "允许正式使用" : "禁止正式使用"}</span>
+      </div>
+      <dl className="macro-toolkit-model-chain__backtest-facts">
+        <div>
+          <dt>收益样本</dt>
+          <dd>
+            {sample.return_start_date || sample.return_end_date
+              ? `${sample.return_start_date ?? EM_DASH} 至 ${sample.return_end_date ?? EM_DASH}`
+              : EM_DASH}
+            <span>
+              {sample.return_trading_days == null
+                ? EM_DASH
+                : `${sample.return_trading_days} 个交易日`}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>价格观测</dt>
+          <dd>
+            {sample.price_observation_days == null
+              ? EM_DASH
+              : `${sample.price_observation_days} 条`}
+            <span>
+              {sample.price_start_date || sample.price_end_date
+                ? `${sample.price_start_date ?? EM_DASH} 至 ${sample.price_end_date ?? EM_DASH}`
+                : EM_DASH}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>资产覆盖</dt>
+          <dd>
+            {assetCoverage.used_asset_count ?? EM_DASH} /{" "}
+            {assetCoverage.configured_asset_count ?? EM_DASH}
+            <span>
+              {sample.declared_window_years == null
+                ? "目标上限未返回"
+                : `目标上限 ${sample.declared_window_years} 年`} · 实际以收益样本为准
+            </span>
+          </dd>
+        </div>
+        <div className="macro-toolkit-model-chain__backtest-fact--wide">
+          <dt>缺失资产</dt>
+          <dd>
+            {assetCoverage.missing_assets.length
+              ? assetCoverage.missing_assets.join("、")
+              : EM_DASH}
+          </dd>
+        </div>
+        <div className="macro-toolkit-model-chain__backtest-fact--wide">
+          <dt>门禁依据</dt>
+          <dd>
+            {BACKTEST_GATE_REASON_LABEL[pitGate.reason_code]}
+            <span>
+              完整度{" "}
+              {pitGate.completeness_pct == null ? EM_DASH : `${pitGate.completeness_pct}%`}；规则{" "}
+              {pitGate.decision_rule || EM_DASH}
+            </span>
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 function ModelChainModelCard({
   model,
   readiness,
@@ -212,9 +351,20 @@ function ModelChainModelCard({
             {modelReadinessStatusLabel(readiness.readiness)}
           </Tag>
         ) : null}
-        <small>{model.as_of ?? EM_DASH}</small>
+        {/* 数据日是业务口径日期，留在卡面；生成时间是系统运行时间戳，
+            连同原始 ISO 一起收进 title，腾出的横向空间让业务读数完整显示。 */}
+        <small
+          title={`数据日 ${formatModelAsOf(model.as_of)} · 生成时间 ${formatModelGeneratedAt(
+            model.generated_at,
+          )}${model.generated_at ? ` · ${model.generated_at}` : ""}`}
+        >
+          数据日 {formatModelAsOf(model.as_of)}
+        </small>
       </div>
       <strong>{model.headline || EM_DASH}</strong>
+      {model.id === "backtest" && model.backtest_context ? (
+        <BacktestContextSummary context={model.backtest_context} />
+      ) : null}
       {model.trend ? <ModelChainTrendChart modelId={model.id} trend={model.trend} /> : null}
       {isMissing ? (
         <div className="macro-toolkit-model-chain__missing">产物缺失</div>
@@ -345,7 +495,11 @@ export function MacroToolkitModelChainPanel({
           <small>数据日 {results.as_of_date ?? EM_DASH}</small>
         </div>
         <div className="macro-toolkit-model-chain__head-side">
-          <Tag color="gold">仅观察 · 不入正式口径</Tag>
+          {/* H：口径披露降为 11px 元信息文字，模块头只保留产物快照一枚徽标。 */}
+          <span className="macro-toolkit-model-chain__scope-note">仅观察 · 不入正式口径</span>
+          {results.artifact_snapshot ? (
+            <ArtifactSnapshotBadge snapshot={results.artifact_snapshot} />
+          ) : null}
           <button
             type="button"
             className="macro-toolkit-model-chain__wall-toggle"

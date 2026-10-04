@@ -92,11 +92,29 @@ def test_ingest_writes_rows_and_repeat_run_is_idempotent(tmp_path) -> None:
     db_path = _new_synthetic_db(tmp_path)
     payload = {
         "20260105": [
-            {"ts_code": "000001.SZ", "trade_date": "20260105", "pre_close": 10.0, "up_limit": 11.0, "down_limit": 9.0},
-            {"ts_code": "600000.SH", "trade_date": "20260105", "pre_close": 8.0, "up_limit": 8.8, "down_limit": 7.2},
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260105",
+                "pre_close": 10.0,
+                "up_limit": 11.0,
+                "down_limit": 9.0,
+            },
+            {
+                "ts_code": "600000.SH",
+                "trade_date": "20260105",
+                "pre_close": 8.0,
+                "up_limit": 8.8,
+                "down_limit": 7.2,
+            },
         ],
         "20260106": [
-            {"ts_code": "000001.SZ", "trade_date": "20260106", "pre_close": 11.0, "up_limit": 12.1, "down_limit": 9.9},
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260106",
+                "pre_close": 11.0,
+                "up_limit": 12.1,
+                "down_limit": 9.9,
+            },
         ],
     }
     client = _MockStkLimitClient(payload)
@@ -140,13 +158,37 @@ def test_ingest_rejects_invalid_rows_and_reports_dq_warnings(tmp_path) -> None:
     payload = {
         "20260105": [
             # 合法行
-            {"ts_code": "000001.SZ", "trade_date": "20260105", "pre_close": 10.0, "up_limit": 11.0, "down_limit": 9.0},
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260105",
+                "pre_close": 10.0,
+                "up_limit": 11.0,
+                "down_limit": 9.0,
+            },
             # up <= down：行级硬校验拒绝，不落表
-            {"ts_code": "000002.SZ", "trade_date": "20260105", "pre_close": 10.0, "up_limit": 9.0, "down_limit": 11.0},
+            {
+                "ts_code": "000002.SZ",
+                "trade_date": "20260105",
+                "pre_close": 10.0,
+                "up_limit": 9.0,
+                "down_limit": 11.0,
+            },
             # 非正数值：拒绝
-            {"ts_code": "000003.SZ", "trade_date": "20260105", "pre_close": 10.0, "up_limit": -1.0, "down_limit": 0.0},
+            {
+                "ts_code": "000003.SZ",
+                "trade_date": "20260105",
+                "pre_close": 10.0,
+                "up_limit": -1.0,
+                "down_limit": 0.0,
+            },
             # 比例越界（up/pre_close - 1 = 100% > 50%）：可落表但写后抽检告警
-            {"ts_code": "000004.SZ", "trade_date": "20260105", "pre_close": 10.0, "up_limit": 20.0, "down_limit": 5.0},
+            {
+                "ts_code": "000004.SZ",
+                "trade_date": "20260105",
+                "pre_close": 10.0,
+                "up_limit": 20.0,
+                "down_limit": 5.0,
+            },
         ],
     }
     result = ingest_stock_limit_prices(
@@ -204,7 +246,13 @@ def test_ingest_flags_empty_response_on_landed_trade_dates(tmp_path) -> None:
         conn.close()
     payload = {
         "20260105": [
-            {"ts_code": "000001.SZ", "trade_date": "20260105", "pre_close": 10.0, "up_limit": 11.0, "down_limit": 9.0},
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260105",
+                "pre_close": 10.0,
+                "up_limit": 11.0,
+                "down_limit": 9.0,
+            },
         ],
     }
     result = ingest_stock_limit_prices(
@@ -220,11 +268,19 @@ def test_ingest_flags_empty_response_on_landed_trade_dates(tmp_path) -> None:
     assert any("empty stk_limit response" in issue for issue in result["dq"]["issues"])
 
 
-def test_ingest_empty_dates_without_observation_calendar_stay_unflagged(tmp_path) -> None:
+def test_ingest_empty_dates_without_observation_calendar_stay_unflagged(
+    tmp_path,
+) -> None:
     db_path = _new_synthetic_db(tmp_path)
     payload = {
         "20260105": [
-            {"ts_code": "000001.SZ", "trade_date": "20260105", "pre_close": 10.0, "up_limit": 11.0, "down_limit": 9.0},
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260105",
+                "pre_close": 10.0,
+                "up_limit": 11.0,
+                "down_limit": 9.0,
+            },
         ],
     }
     result = ingest_stock_limit_prices(
@@ -244,7 +300,13 @@ def test_ingest_partial_failure_keeps_successful_dates(tmp_path) -> None:
     db_path = _new_synthetic_db(tmp_path)
     payload = {
         "20260105": [
-            {"ts_code": "000001.SZ", "trade_date": "20260105", "pre_close": 10.0, "up_limit": 11.0, "down_limit": 9.0},
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260105",
+                "pre_close": 10.0,
+                "up_limit": 11.0,
+                "down_limit": 9.0,
+            },
         ],
     }
     client = _MockStkLimitClient(payload, failing_compact_dates=frozenset({"20260106"}))
@@ -278,7 +340,165 @@ def test_ingest_raises_when_all_dates_fail(tmp_path) -> None:
 
 
 def test_vendor_version_whitelist_guard() -> None:
-    assert_stock_limit_price_vendor_version("vv_tushare_stk_limit_20260105_0123456789ab")
-    for bad in ("", None, "vv_choice_stock_20260105_0123456789ab", "vv_tushare_stk_limit_2026"):
+    assert_stock_limit_price_vendor_version(
+        "vv_tushare_stk_limit_20260105_0123456789ab"
+    )
+    for bad in (
+        "",
+        None,
+        "vv_choice_stock_20260105_0123456789ab",
+        "vv_tushare_stk_limit_2026",
+    ):
         with pytest.raises(StockLimitPriceUnknownVendorVersionError):
             assert_stock_limit_price_vendor_version(bad)
+
+
+def _add_observation_domain(
+    db_path: str, codes: list[str], *, trade_date: str = "2026-01-05"
+) -> None:
+    conn = duckdb.connect(db_path, read_only=False)
+    try:
+        conn.execute(
+            "create table choice_stock_daily_observation (trade_date varchar, stock_code varchar)"
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?)",
+            [(trade_date, code) for code in codes],
+        )
+    finally:
+        conn.close()
+
+
+def test_daily_strict_mode_rejects_incomplete_required_domain_before_write(
+    tmp_path,
+) -> None:
+    db_path = _new_synthetic_db(tmp_path)
+    _add_observation_domain(db_path, ["000001.SZ", "600000.SH"])
+    conn = duckdb.connect(db_path, read_only=False)
+    try:
+        ensure_stock_limit_price_daily_schema(conn)
+        conn.execute(
+            f"""
+            insert into {TABLE_NAME} values (
+              '2026-01-05', '000001.SZ', 12.0, 8.0, 10.0,
+              'sv_existing', 'vv_tushare_stk_limit_20260105_0123456789ab',
+              ?, 'existing-run'
+            )
+            """,
+            [RULE_VERSION],
+        )
+    finally:
+        conn.close()
+    original_rows = _fetch_all_rows(db_path)
+
+    with pytest.raises(RuntimeError, match="missing required stock limit prices"):
+        ingest_stock_limit_prices(
+            duckdb_path=db_path,
+            start_date="2026-01-05",
+            client=_MockStkLimitClient(
+                {
+                    "20260105": [
+                        {
+                            "ts_code": "000001.SZ",
+                            "trade_date": "20260105",
+                            "pre_close": 10.0,
+                            "up_limit": 11.0,
+                            "down_limit": 9.0,
+                        }
+                    ]
+                }
+            ),
+            retry_sleep_seconds=0.0,
+            require_observation_coverage=True,
+        )
+
+    assert _fetch_all_rows(db_path) == original_rows
+
+
+def test_daily_strict_mode_scopes_vendor_extras_and_is_idempotent(tmp_path) -> None:
+    db_path = _new_synthetic_db(tmp_path)
+    _add_observation_domain(db_path, ["000001.SZ", "600000.SH"])
+    payload = {
+        "20260105": [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260105",
+                "pre_close": 10.0,
+                "up_limit": 11.0,
+                "down_limit": 9.0,
+            },
+            {
+                "ts_code": "600000.SH",
+                "trade_date": "20260105",
+                "pre_close": 8.0,
+                "up_limit": 8.8,
+                "down_limit": 7.2,
+            },
+            {
+                "ts_code": "830001.BJ",
+                "trade_date": "20260105",
+                "pre_close": 5.0,
+                "up_limit": 6.5,
+                "down_limit": 3.5,
+            },
+        ]
+    }
+
+    first = ingest_stock_limit_prices(
+        duckdb_path=db_path,
+        start_date="2026-01-05",
+        client=_MockStkLimitClient(payload),
+        retry_sleep_seconds=0.0,
+        require_observation_coverage=True,
+        run_id="daily-test",
+    )
+    second = ingest_stock_limit_prices(
+        duckdb_path=db_path,
+        start_date="2026-01-05",
+        client=_MockStkLimitClient(payload),
+        retry_sleep_seconds=0.0,
+        require_observation_coverage=True,
+        run_id="daily-test",
+    )
+
+    assert first["status"] == "completed"
+    assert first["required_code_count"] == 2
+    assert first["required_cells_covered"] is True
+    assert first["written_date_count"] == 1
+    assert first["inserted_row_count"] == 2
+    assert first["date_results"][0]["vendor_valid_row_count"] == 3
+    assert first["date_results"][0]["extra_code_count"] == 1
+    assert second["status"] == "completed"
+    assert _fetch_all_rows(db_path) == [
+        (
+            "2026-01-05",
+            "000001.SZ",
+            11.0,
+            9.0,
+            10.0,
+            first["date_results"][0]["vendor_version"],
+            RULE_VERSION,
+        ),
+        (
+            "2026-01-05",
+            "600000.SH",
+            8.8,
+            7.2,
+            8.0,
+            first["date_results"][0]["vendor_version"],
+            RULE_VERSION,
+        ),
+    ]
+
+
+@pytest.mark.parametrize("bad_date", ["2026-01-05junk", "20260105junk", "2026-1-05"])
+def test_ingest_rejects_user_dates_with_trailing_or_noncanonical_characters(
+    tmp_path,
+    bad_date: str,
+) -> None:
+    with pytest.raises(ValueError, match="valid YYYY-MM-DD or YYYYMMDD"):
+        ingest_stock_limit_prices(
+            duckdb_path=_new_synthetic_db(tmp_path),
+            start_date=bad_date,
+            dry_run=True,
+        )

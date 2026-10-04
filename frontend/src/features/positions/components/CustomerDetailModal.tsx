@@ -4,11 +4,13 @@ import { Modal, Spin, Table, Tabs, Typography } from "antd";
 import type { TableColumnsType } from "antd";
 import { Link } from "react-router-dom";
 
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import type { CustomerBondDetailItem } from "../../../api/contracts";
+import { assetClassLabel } from "../../bond-analytics/components/bondAnalyticsCockpitFormat";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { type EChartsOption } from "../../../lib/echarts";
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { POSITIONS_QUERY_STALE_TIME_MS } from "../model/positionsPageModel";
 import { formatAmountYi, formatAmountYiNumber, formatRatePercent } from "../utils/format";
@@ -112,10 +114,9 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
       },
       { title: "券种", dataIndex: "sub_type", render: (v: string | null) => v || EM_DASH },
       {
-        // 后端已返回未用字段补展示：枚举值属证据引用，原样透出。
         title: "资产分类",
         dataIndex: "asset_class",
-        render: (v: string | null) => v || EM_DASH,
+        render: assetClassLabel,
       },
       {
         title: "评级",
@@ -176,12 +177,9 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
     const yi = items.map((it) => parseFloat(it.balance) / 1e8);
 
     return {
-      grid: { left: 48, right: 16, top: 16, bottom: 28 },
+      grid: { left: 48, right: 16, top: 16 },
       tooltip: {
         trigger: "axis",
-        backgroundColor: nocturneTokens.color.panel2,
-        borderColor: nocturneTokens.color.line,
-        textStyle: { color: nocturneTokens.color.ink, fontSize: 12 },
         formatter: (params: unknown) => {
           const list = Array.isArray(params) ? params : [params];
           const p = list[0] as { axisValue?: string; data?: number; dataIndex?: number };
@@ -299,26 +297,24 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
             {
               key: "trend",
               label: "余额趋势",
-              children: trendQuery.isLoading ? (
-                <div className="positions-customer-detail__loading">
-                  <Spin />
-                </div>
-              ) : (
-                <>
-                  {trend?.start_date && trend?.end_date ? (
-                    <div className="positions-customer-detail__trend-head">
-                      {/* 后端返回的真实窗口原样透出（mock 语义缺陷不在前端修饰）。 */}
-                      <span className="positions-customer-detail__trend-window">
-                        {`窗口 ${trend.start_date} ~ ${trend.end_date}`}
-                      </span>
-                    </div>
-                  ) : null}
-                  {chartOption ? (
-                    <BaseChart option={chartOption} height={280} />
-                  ) : (
-                    <Typography.Text type="secondary">暂无趋势数据</Typography.Text>
-                  )}
-                </>
+              children: (
+                <ChartCard
+                  flat
+                  title="余额趋势"
+                  unit="亿元"
+                  asOf={trend?.end_date}
+                  height={CHART_CARD_HEIGHTS.hero}
+                  legend="none"
+                  option={chartOption}
+                  state={trendQuery.isLoading ? "loading" : trendQuery.isError ? "error" : undefined}
+                  errorMessage="余额趋势暂不可用"
+                  emptyMessage="暂无趋势数据"
+                  footnote={
+                    trend?.start_date && trend?.end_date
+                      ? `窗口 ${trend.start_date} ~ ${trend.end_date}`
+                      : undefined
+                  }
+                />
               ),
             },
           ]}

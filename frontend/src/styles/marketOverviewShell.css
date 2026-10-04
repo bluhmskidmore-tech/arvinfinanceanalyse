@@ -1,0 +1,45 @@
+/* /market-overview 路由壳层布局规则；仅保留 Cascadia Mono 等宽字面量供市场页数字展示使用。 */
+@font-face {
+  font-family: "Cascadia Mono";
+  src: url("/fonts/market-overview/CascadiaMono.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: swap;
+}
+
+
+/* The market page owns its top content; rail geometry remains shared with the workbench. */
+.workbench-shell-root.workbench-shell-grid.workbench-shell-grid--market-overview {
+  gap: 0 !important;
+  /* Allow the shared mock ribbon to reserve its 28px above the navigation. */
+  padding: 0;
+  --market-font-sans: var(--moss-font-sans, "PingFang SC", "Microsoft YaHei UI", "Segoe UI", sans-serif);
+  --market-font-mono: "Cascadia Mono", monospace;
+  font-family: var(--market-font-sans);
+}
+.workbench-shell-grid--market-overview > .workbench-main-column {
+  gap: 0 !important;
+  padding: 0 !important;
+}
+.workbench-shell-grid--market-overview .workbench-terminal-bar,
+.workbench-shell-grid--market-overview .workbench-market-ticker,
+.workbench-shell-grid--market-overview .workbench-workspace-hero {
+  display: none !important;
+}
+.workbench-shell-grid--market-overview [data-testid="workbench-section-subnav"] {
+  display: flex;
+  min-width: 0;
+  margin: 0 var(--moss-page-gutter);
+  padding: var(--moss-space-2) 0 0;
+  border-bottom: 1px solid var(--dh-api-line);
+}
+.workbench-shell-grid--market-overview .workbench-section-subnav__links {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.workbench-shell-grid--market-overview .workbench-main-surface.workbench-main-surface {
+  padding: 0 !important;
+  gap: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}

@@ -394,6 +394,33 @@
       "id": "full|response_field_type_changed|POST /api/agent/runs|response 200:.",
       "reason": "审计循环 2026-08-14 B2 批次：POST /api/agent/runs 异步创建从不返回 AgentEnvelope，response_model 收窄为可达联合 AgentRunCreateResponse | AgentDisabledResponse，移除不可达分支的契约噪音；同步问答仍走 POST /api/agent/query。",
       "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_removed|GET /api/bond-dashboard/business-type-metrics|response 200:result.items[].weighted_avg_ytm_pct",
+      "reason": "交叉审计 2026-08-26 P1 契约缺陷修复：业务类型行 YTM 此前是百分点字符串（\"2.55000000\"，缺覆盖为空串 \"\"），与同页 Headline weighted_ytm 的 governed Numeric 口径（unit=pct, raw_scale=ratio）不一致，空串还会被前端拼成误导性的 \"YTM %\"。改为同口径 Numeric 字段 weighted_avg_ytm（缺覆盖 raw=null），前后端消费方与测试同步更新，见 tests/test_bond_dashboard_api_contract.py、BusinessTypeSection.test.tsx。",
+      "approved_by": "system-audit-loop-2026-08-26"
+    },
+    {
+      "id": "*|response_field_removed|GET /api/bond-dashboard/home-summary|response 200:result.business_type.items[].weighted_avg_ytm_pct",
+      "reason": "交叉审计 2026-08-26 P1 契约缺陷修复：同上（home-summary 内嵌同一 BondDashboardBusinessTypeMetricItem），weighted_avg_ytm_pct 百分点字符串改为 governed Numeric 字段 weighted_avg_ytm，口径与 Headline weighted_ytm 对齐。",
+      "approved_by": "system-audit-loop-2026-08-26"
+    },
+    {
+      "id": "*|response_enum_value_added|GET /api/pnl-attribution/summary|response 200:result.primary_driver",
+      "owner": "Codex（本轮 API 契约修复与迁移验证维护；非组织业务负责人）",
+      "reason": "现行正式归因要求从利息规模、利息收益率、交叉效应、公允价值变动、投资收益变动、手工调整变动和未解释差额中选绝对值最大项。原 volume/rate/market/unknown 保留，新增 interaction/fair_value/capital_gain/manual_adjustment/unexplained，避免将非利息驱动误报为规模、市场或未知。",
+      "approved_by": "本对话用户于2026-09-27明确选择：接受9类扩展并完成契约迁移；不含部署授权",
+      "affected_consumers": [
+        "frontend/src/api/contracts/bondAnalytics.ts:PnlAttributionAnalysisSummary",
+        "frontend/src/api/pnlAttributionClient.ts:getPnlAttributionAnalysisSummary",
+        "frontend/src/features/workbench/module-home/usePortfolioHomeQueries.ts:pnlSummaryQuery",
+        "frontend/src/features/workbench/module-home/portfolioDecisionModel.ts:pnlDriverLabel/buildPortfolioDecision",
+        "frontend/src/features/workbench/module-home/portfolioHomeModel.ts:buildPnlSummaryRows",
+        "frontend/src/features/workbench/module-home/moduleHomeModel.ts:归因摘要展示",
+        "PENDING: 仓外或旧构建消费者清单及负责人确认"
+      ],
+      "migration_plan": "仓内 schema、TypeScript 契约及共享标签映射已支持全部九值，保留旧四值。复用正式七项主驱动展示测试及 fair_value=90 和缺失项 unknown/null 反例，补核 schema/envelope 透传与明细显示。仓外或旧构建消费者须由负责人确认枚举扩展接受或迁移完成；不得将新值改写为 market/unknown。确认后更新 default/full OpenAPI 快照并使用固定旧提交作比较，确保仅本项 acknowledgement 命中且无 stale。当前未部署。",
+      "expires_at": "2026-10-04"
     }
   ]
 }

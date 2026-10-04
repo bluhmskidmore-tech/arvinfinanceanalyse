@@ -8,6 +8,8 @@ from decimal import Decimal
 from pathlib import Path
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
+from backend.app.repositories.system_read_publication_repo import system_read_cache_identity
 from backend.app.repositories.yield_curve_repo import (
     YIELD_CURVE_LATEST_FALLBACK_PREFIX,
     YieldCurveRepository,
@@ -119,19 +121,46 @@ def _unified_envelope_dates(
     return resolved, resolved, fallback
 
 
-def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str, ...]) -> dict:
+def get_yield_curve_term_structure(
+    *,
+    report_date: date,
+    curve_types: tuple[str, ...],
+    force_refresh: bool = False,
+) -> dict:
     path = str(get_settings().duckdb_path)
     cache_key = _term_structure_cache_key(path, report_date, curve_types)
     if cache_key is None:
         return _compute_yield_curve_term_structure(path=path, report_date=report_date, curve_types=curve_types)
-    envelope = _TERM_STRUCTURE_CACHE.get_or_set(
-        cache_key,
-        lambda: _compute_yield_curve_term_structure(
+    if force_refresh:
+        generation = _TERM_STRUCTURE_CACHE.generation()
+        read_identity = system_read_cache_identity(cache_key)
+        effective_key = _term_structure_cache_key(
+            resolve_effective_read_path(path), report_date, curve_types,
+        )
+        envelope = _compute_yield_curve_term_structure(
             path=path,
             report_date=report_date,
             curve_types=curve_types,
-        ),
-    )
+        )
+        current_path = str(get_settings().duckdb_path)
+        if (
+            effective_key is not None
+            and cache_key == _term_structure_cache_key(current_path, report_date, curve_types)
+            and effective_key == _term_structure_cache_key(
+                resolve_effective_read_path(current_path), report_date, curve_types,
+            )
+            and read_identity == system_read_cache_identity(cache_key)
+        ):
+            _TERM_STRUCTURE_CACHE.set(cache_key, envelope, generation=generation)
+    else:
+        envelope = _TERM_STRUCTURE_CACHE.get_or_set(
+            cache_key,
+            lambda: _compute_yield_curve_term_structure(
+                path=path,
+                report_date=report_date,
+                curve_types=curve_types,
+            ),
+        )
     return _with_fresh_trace(envelope)
 
 

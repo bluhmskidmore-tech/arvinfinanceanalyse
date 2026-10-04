@@ -21,6 +21,20 @@ REPORT_DATE = "2026-03-31"
 
 
 def _envelope(kind: str, **result: object) -> dict[str, object]:
+    if kind == "home.research_reports":
+        return {
+            "result_meta": {
+                "trace_id": "tr_home_cache_research_reports",
+                "result_kind": kind,
+                "basis": "analytical",
+                "formal_use_allowed": False,
+                "source_version": "sv_home_cache",
+                "rule_version": "rv_home_cache",
+                "cache_version": "cv_home_cache",
+                "source_surface": "executive_analytical",
+            },
+            "result": {"source_status": "empty", "warnings": [], **result},
+        }
     return {"result_meta": {"result_kind": kind}, "result": dict(result)}
 
 
@@ -76,7 +90,15 @@ def _campisi_envelope(**result: object) -> dict[str, object]:
 
 
 @pytest.fixture
-def bond_analytics_client(monkeypatch) -> tuple[TestClient, object, list[tuple[object, ...]]]:
+def bond_analytics_client(monkeypatch, seed_wildcard_scope) -> tuple[TestClient, object, list[tuple[object, ...]]]:
+    from backend.app.governance.settings import get_settings
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+    from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    UserScopeRepository(get_settings().postgres_dsn).grant_scope(
+        user_id=READ_HEADERS["X-User-Id"], role=None, resource="bond_analytics", action="read"
+    )
     route_module = load_module(
         "backend.app.api.routes.bond_analytics",
         "backend/app/api/routes/bond_analytics.py",

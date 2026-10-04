@@ -2,9 +2,9 @@
 全策略综合回测框架
 ==================
 对比5种策略：买持等权 / 风险平价 / CTA趋势 / 状态切换 / 全模型综合
-资产池: 沪深300、中证500、黄金、铜、原油、国债ETF、十年国债ETF、国开债ETF
+配置资产池: 沪深300、中证500、黄金、铜、原油、国债ETF、十年国债ETF、国开债ETF
 数据源: akshare（股票/商品）+ Choice/Tushare 系统源（债券ETF，经 WindPy 兼容接口）
-回测区间: 近5年
+目标窗口: 最多近5年；实际样本、资产覆盖与 PIT 门禁以运行清单为准
 """
 
 import warnings
@@ -12,6 +12,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import importlib.util
+import json
 import sys
 
 import numpy as np
@@ -27,11 +28,15 @@ if importlib.util.find_spec("matplotlib") is None:
     mdates = None
     plt = None
 else:
-    import matplotlib
+    import matplotlib as _matplotlib
 
-    matplotlib.use("Agg")
-    import matplotlib.dates as mdates
-    import matplotlib.pyplot as plt
+    _matplotlib.use("Agg")
+    import matplotlib.dates as _mdates
+    import matplotlib.pyplot as _plt
+
+    matplotlib = _matplotlib
+    mdates = _mdates
+    plt = _plt
 
 from datetime import datetime
 from pathlib import Path
@@ -74,6 +79,17 @@ COST = 0.002        # 单边交易成本
 RP_WINDOW = 60      # 风险平价滚动窗口
 HURST_WINDOW = 60   # Hurst 计算窗口
 AUTOCORR_WINDOW = 20
+CONFIGURED_ASSETS = (
+    "hs300",
+    "csi500",
+    "gold",
+    "copper",
+    "crude_oil",
+    "bond_gov",
+    "bond_10y",
+    "bond_cdb",
+)
+PIT_REQUIRED_COLUMNS = ("release_at", "available_at", "vintage", "revision")
 
 
 # ============================================================
@@ -323,9 +339,32 @@ def load_merrill_clock() -> pd.DataFrame:
     return df
 
 
+def load_merrill_clock_input_columns() -> tuple[str, ...]:
+    """读取回测实际消费的宏观历史表头；缺失或损坏时返回空元组并由 PIT 门禁失败关闭。"""
+    path = ROOT / "merrill_clock_history.csv"
+    try:
+        return tuple(str(column) for column in pd.read_csv(path, encoding="utf-8-sig", nrows=0).columns)
+    except (OSError, UnicodeError, ValueError, pd.errors.ParserError):
+        return ()
+
+
 # ============================================================
 # 回测引擎
 # ============================================================
+
+def cta_weights_from_signals(signals) -> np.ndarray:
+    """前一日 CTA 合成信号 → 当日组合权重。
+
+    正信号按比例归一化；信号全部非正时返回全零权重（空仓持现金，日收益 0）。
+    不得回退等权满仓：那会在熊市段把应空仓的趋势策略变成被动多头，
+    高估净值/夏普/胜率（审计修复 P0-7）。
+    """
+    pos = np.clip(np.asarray(signals, dtype=float), 0, None)
+    total_pos = float(pos.sum())
+    if total_pos > 1e-6:
+        return pos / total_pos
+    return np.zeros_like(pos)
+
 
 def run_backtest(prices: pd.DataFrame) -> dict:
     assets = list(prices.columns)
@@ -394,11 +433,9 @@ def run_backtest(prices: pd.DataFrame) -> dict:
                 w_rp = calc_rp_weights(ret_win, assets)
             last_rp_month = date.month
 
-        # ── CTA 权重：前一日信号归一化 ──
+        # ── CTA 权重：前一日信号归一化；全部非正 → 空仓持现金 ──
         sig_prev = cta_signals.iloc[i - 1].fillna(0).values
-        pos = np.clip(sig_prev, 0, None)
-        total_pos = pos.sum()
-        w_cta = pos / total_pos if total_pos > 1e-6 else np.ones(n_assets) / n_assets
+        w_cta = cta_weights_from_signals(sig_prev)
 
         # ── 状态切换权重 ──
         regime = regimes[i - 1]  # 前一日状态
@@ -563,6 +600,7 @@ def _set_style():
 
 def plot_nav(ret_df: pd.DataFrame) -> Path:
     _set_style()
+    assert plt is not None and mdates is not None
     path = ASSET_DIR / "backtest_nav.png"
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8),
                                     gridspec_kw={"height_ratios": [3, 1]}, sharex=True)
@@ -591,7 +629,9 @@ def plot_nav(ret_df: pd.DataFrame) -> Path:
     ax1.tick_params(colors=COLORS["muted"], labelsize=9)
     ax1.text(0.0, 1.06, "全策略综合回测 — 净值曲线", transform=ax1.transAxes,
              fontsize=13, fontweight="bold", color=COLORS["navy"], ha="left")
-    ax1.text(0.0, 1.01, f"近5年，扣除单边 {COST*100:.1f}% 交易成本，RF={RF*100:.1f}%",
+    sample_from = ret_df.index.min().date().isoformat()
+    sample_to = ret_df.index.max().date().isoformat()
+    ax1.text(0.0, 1.01, f"实际收益样本 {sample_from} 至 {sample_to}，单边成本 {COST*100:.1f}%，RF={RF*100:.1f}%",
              transform=ax1.transAxes, fontsize=8.5, color=COLORS["muted"], ha="left")
 
     ax2.axhline(0, color=COLORS["grid"], linewidth=0.8)
@@ -612,6 +652,7 @@ def plot_nav(ret_df: pd.DataFrame) -> Path:
 
 def plot_annual(annual_df: pd.DataFrame) -> Path:
     _set_style()
+    assert plt is not None
     path = ASSET_DIR / "backtest_annual.png"
     strategies = [c for c in annual_df.columns if c != "年份"]
     years = annual_df["年份"].tolist()
@@ -648,20 +689,12 @@ def plot_annual(annual_df: pd.DataFrame) -> Path:
 
 def plot_metrics_heatmap(metrics_df: pd.DataFrame) -> Path:
     _set_style()
+    assert plt is not None
     path = ASSET_DIR / "backtest_metrics.png"
     cols = ["年化收益%", "年化波动%", "夏普比率", "索提诺比率", "最大回撤%", "Calmar比率", "胜率%"]
     data = metrics_df.set_index("策略")[cols]
 
-    # 归一化（每列 min-max，最大回撤取绝对值后反向）
-    norm = data.copy().astype(float)
-    for col in cols:
-        col_data = norm[col].copy()
-        if col == "最大回撤%":
-            col_data = -col_data  # 回撤越小越好
-        if col == "年化波动%":
-            col_data = -col_data  # 波动越小越好
-        mn, mx = col_data.min(), col_data.max()
-        norm[col] = (col_data - mn) / (mx - mn + 1e-9)
+    norm = _normalize_metrics_for_heatmap(metrics_df)
 
     fig, ax = plt.subplots(figsize=(10, 4.5))
     import matplotlib.colors as mcolors
@@ -683,13 +716,122 @@ def plot_metrics_heatmap(metrics_df: pd.DataFrame) -> Path:
             ax.text(j, i, txt, ha="center", va="center", fontsize=8.5,
                     color=fc, fontweight="bold")
 
-    ax.set_title("策略绩效热力图（颜色越深=越优）", fontsize=11,
+    ax.set_title("策略绩效热力图（各指标按方向列内归一，仅供研究观察）", fontsize=11,
                  color=COLORS["navy"], pad=12, fontweight="bold")
     fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return path
+
+
+def _normalize_metrics_for_heatmap(metrics_df: pd.DataFrame) -> pd.DataFrame:
+    cols = ["年化收益%", "年化波动%", "夏普比率", "索提诺比率", "最大回撤%", "Calmar比率", "胜率%"]
+    norm = metrics_df.set_index("策略")[cols].copy().astype(float)
+    for col in cols:
+        col_data = norm[col].copy()
+        if col == "最大回撤%":
+            # 回撤以负数落表；绝对值越小越好，避免把 -27% 错排在 -12% 之前。
+            col_data = -col_data.abs()
+        elif col == "年化波动%":
+            col_data = -col_data
+        mn, mx = col_data.min(), col_data.max()
+        norm[col] = (col_data - mn) / (mx - mn + 1e-9)
+    return norm
+
+
+def _manifest_index_date(frame: pd.DataFrame, *, edge: str) -> str | None:
+    if frame.empty:
+        return None
+    value = frame.index.min() if edge == "start" else frame.index.max()
+    return pd.Timestamp(value).date().isoformat()
+
+
+def _sample_scope_partial_warning(
+    returns: pd.DataFrame,
+    *,
+    declared_window_years: int,
+) -> str | None:
+    if returns.empty:
+        return None
+    start = pd.Timestamp(returns.index.min())
+    end = pd.Timestamp(returns.index.max())
+    if start > end - pd.DateOffset(years=declared_window_years):
+        return "BACKTEST_SAMPLE_SCOPE_PARTIAL"
+    return None
+
+
+def build_backtest_run_manifest(
+    prices: pd.DataFrame,
+    returns: pd.DataFrame,
+    *,
+    macro_input_columns: tuple[str, ...] | list[str] | None = None,
+    configured_assets: tuple[str, ...] = CONFIGURED_ASSETS,
+) -> dict[str, object]:
+    used_assets = [str(asset) for asset in prices.columns]
+    missing_assets = [asset for asset in configured_assets if asset not in prices.columns]
+    observed_columns = set(macro_input_columns or ())
+    available_pit_columns = [col for col in PIT_REQUIRED_COLUMNS if col in observed_columns]
+    missing_pit_columns = [col for col in PIT_REQUIRED_COLUMNS if col not in observed_columns]
+    pit_completeness = round(len(available_pit_columns) / len(PIT_REQUIRED_COLUMNS) * 100, 1)
+    pit_reason = "pit_metadata_unavailable" if missing_pit_columns else "pit_evidence_unverified"
+    warnings_list = [
+        "PIT_METADATA_UNAVAILABLE" if missing_pit_columns else "PIT_EVIDENCE_UNVERIFIED"
+    ]
+    if missing_pit_columns:
+        warnings_list.append("BACKTEST_PIT_GATE_BLOCKED")
+    sample_scope_warning = _sample_scope_partial_warning(returns, declared_window_years=5)
+    if sample_scope_warning is not None:
+        warnings_list.append(sample_scope_warning)
+    if missing_assets:
+        warnings_list.append("BACKTEST_ASSET_COVERAGE_INCOMPLETE")
+
+    return {
+        "schema_version": "backtest_run_manifest.v1",
+        "rule_version": "rv_macro_backtest_research_gate_v1",
+        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "status": "not_admitted",
+        "quality_flag": "warning",
+        # PIT 准入流程尚未进入，不能把 unknown 伪造为 rejected。
+        "admission_status": None,
+        "observation_only": True,
+        "formal_use_allowed": False,
+        "sample": {
+            "price_start_date": _manifest_index_date(prices, edge="start"),
+            "price_end_date": _manifest_index_date(prices, edge="end"),
+            "price_observation_days": int(len(prices.index)),
+            "return_start_date": _manifest_index_date(returns, edge="start"),
+            "return_end_date": _manifest_index_date(returns, edge="end"),
+            "return_trading_days": int(len(returns.index)),
+            "declared_window_years": 5,
+        },
+        "asset_coverage": {
+            "configured_asset_count": len(configured_assets),
+            "used_asset_count": len(used_assets),
+            "used_assets": used_assets,
+            "missing_assets": missing_assets,
+            "complete": not missing_assets,
+        },
+        "pit_gate": {
+            "status": "blocked",
+            "reason_code": pit_reason,
+            "required_fields": list(PIT_REQUIRED_COLUMNS),
+            "available_fields": available_pit_columns,
+            "missing_fields": missing_pit_columns,
+            "completeness_pct": pit_completeness,
+            "decision_rule": "available_at <= decision_at",
+        },
+        "warnings": warnings_list,
+        "research_output_generated": True,
+    }
+
+
+def write_backtest_run_manifest(manifest: dict[str, object], output_path: Path) -> Path:
+    output_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return output_path
 
 
 # ============================================================
@@ -725,15 +867,19 @@ def main():
               f"{r['夏普比率']:>7.3f} {r['索提诺比率']:>7.3f} "
               f"{r['最大回撤%']:>9.2f} {r['Calmar比率']:>7.3f} {r['胜率%']:>7.1f}")
 
-    # 最优策略
+    # 仅披露样本内排序，不把研究回测包装为准入结论。
     best_idx = metrics_df["夏普比率"].idxmax()
     best = metrics_df.iloc[best_idx]
-    print(f"\n  最优策略: {best['策略']}（夏普 {best['夏普比率']:.3f}，年化收益 {best['年化收益%']:.2f}%）")
+    print(f"\n  样本内夏普最高（研究观察）: {best['策略']}（夏普 {best['夏普比率']:.3f}，年化收益 {best['年化收益%']:.2f}%）")
 
     # 分年度收益
     annual_df = calc_annual_returns(ret_df)
     print("\n  分年度收益 (%):")
     print("  " + annual_df.to_string(index=False))
+
+    # 新产物写入前先撤销旧清单，避免失败重跑把新 CSV 与旧准入证据错误配对。
+    manifest_output_path = ROOT / "backtest_run_manifest.json"
+    manifest_output_path.unlink(missing_ok=True)
 
     # 保存 CSV
     metrics_path = ROOT / "backtest_results.csv"
@@ -754,6 +900,18 @@ def main():
 
     metrics_chart = plot_metrics_heatmap(metrics_df)
     print(f"  绩效热力图: {metrics_chart}")
+
+    # 只有 CSV 与图表全部成功后才落运行清单；中途失败时由读取端按清单缺失 fail closed。
+    manifest = build_backtest_run_manifest(
+        prices,
+        ret_df,
+        macro_input_columns=load_merrill_clock_input_columns(),
+    )
+    manifest_path = write_backtest_run_manifest(
+        manifest,
+        manifest_output_path,
+    )
+    print(f"  回测运行清单: {manifest_path}")
 
     print("\n完成。")
 

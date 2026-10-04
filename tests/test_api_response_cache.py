@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 
-from backend.app.api.response_cache import (
+from backend.app.observability.response_cache import (
     CacheBuildTimeoutError,
     TTLResponseCache,
     market_home_macro_analysis_cache_key,
@@ -19,6 +19,18 @@ class FakeClock:
 
     def __call__(self) -> float:
         return self.now
+
+
+def test_legacy_api_shims_are_gone() -> None:
+    """The api-layer re-export shims were removed; the observability module is the only path."""
+    import importlib
+
+    for legacy in ("backend.app.api.response_cache", "backend.app.api.perf_logging"):
+        try:
+            importlib.import_module(legacy)
+        except ModuleNotFoundError:
+            continue
+        raise AssertionError(f"{legacy} must not be importable anymore")
 
 
 def test_get_or_build_caches_until_ttl_expires() -> None:
@@ -98,6 +110,52 @@ def test_set_with_stale_generation_is_dropped() -> None:
 
     assert cache.set("k", {"value": "next"}, generation=cache.generation()) is True
     assert cache.get_or_build("k", lambda: {"value": "unused"}) == {"value": "next"}
+
+
+def test_shorten_if_same_reduces_ttl_and_later_hits_do_not_extend_it() -> None:
+    clock = FakeClock()
+    cache = TTLResponseCache(default_ttl_seconds=300.0, clock=clock)
+    cached = {"value": 1}
+    cache.set("k", cached)
+
+    clock.now = 10.0
+    assert cache.shorten_if_same("k", cached, ttl_seconds=15.0) is True
+    clock.now = 20.0
+    assert cache.shorten_if_same("k", cached, ttl_seconds=15.0) is False
+    assert cache.get_or_build("k", lambda: {"value": 2}) is cached
+
+    clock.now = 26.0
+    assert cache.get_or_build("k", lambda: {"value": 2}) == {"value": 2}
+
+
+def test_shorten_if_same_does_not_change_a_replaced_value() -> None:
+    clock = FakeClock()
+    cache = TTLResponseCache(default_ttl_seconds=300.0, clock=clock)
+    observed = {"value": 1}
+    replacement = {"value": 2}
+    cache.set("k", observed)
+    cache.set("k", replacement)
+
+    assert cache.shorten_if_same("k", observed, ttl_seconds=15.0) is False
+    clock.now = 16.0
+    assert cache.get_or_build("k", lambda: {"value": 3}) is replacement
+
+
+def test_shorten_if_same_does_not_create_or_revive_an_entry() -> None:
+    clock = FakeClock()
+    cache = TTLResponseCache(default_ttl_seconds=5.0, clock=clock)
+    expired = {"value": 1}
+
+    assert cache.shorten_if_same("missing", expired, ttl_seconds=15.0) is False
+    cache.set("k", expired)
+    clock.now = 6.0
+    assert cache.shorten_if_same("k", expired, ttl_seconds=15.0) is False
+    assert cache.get_or_build("k", lambda: {"value": 2}) == {"value": 2}
+
+    current = cache.get_or_build("current", lambda: {"value": 3})
+    cache.invalidate("current")
+    assert cache.shorten_if_same("current", current, ttl_seconds=15.0) is False
+    assert cache.get_or_build("current", lambda: {"value": 4}) == {"value": 4}
 
 
 def test_distinct_keys_do_not_collide() -> None:

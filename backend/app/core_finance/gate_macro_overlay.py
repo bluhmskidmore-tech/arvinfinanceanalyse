@@ -66,6 +66,17 @@ MACRO_CONTEXT_STATUS_LOOK_AHEAD = "look_ahead"
 
 
 @dataclass(frozen=True)
+class MacroCycleComponentValue:
+    """Display value produced by the same PIT-safe macro snapshot as the gate."""
+
+    input_family: str
+    input_label: str
+    value_numeric: float
+    unit: str
+    value_kind: str
+
+
+@dataclass(frozen=True)
 class MacroCycleObservation:
     """Macro-cycle inputs as of the gate trade date T (all business dates must be <= T).
 
@@ -76,6 +87,7 @@ class MacroCycleObservation:
     macro_score: float | None
     component_dates: tuple[tuple[str, str, str, str], ...] = ()
     evidence: str = ""
+    component_values: tuple[MacroCycleComponentValue, ...] = ()
 
 
 def classify_macro_cycle_state(macro_score: float) -> str:
@@ -105,18 +117,30 @@ def apply_macro_gate_overlay(
 
     components: list[dict[str, object]] = []
     if macro is not None and gate_as_of_date:
+        component_values = {
+            (item.input_family, item.input_label): item
+            for item in macro.component_values
+        }
         for input_family, input_label, cadence, business_date in macro.component_dates:
             assessment = assess_freshness(business_date, gate_as_of_date, cadence=cadence)
-            components.append(
-                {
-                    "input_family": input_family,
-                    "input": input_label,
-                    "cadence": cadence,
-                    "business_date": business_date,
-                    "age_days": assessment.age_days,
-                    "tier": assessment.tier,
-                }
-            )
+            component: dict[str, object] = {
+                "input_family": input_family,
+                "input": input_label,
+                "cadence": cadence,
+                "business_date": business_date,
+                "age_days": assessment.age_days,
+                "tier": assessment.tier,
+            }
+            component_value = component_values.get((input_family, input_label))
+            if component_value is not None:
+                component.update(
+                    {
+                        "value_numeric": component_value.value_numeric,
+                        "unit": component_value.unit,
+                        "value_kind": component_value.value_kind,
+                    }
+                )
+            components.append(component)
 
     status = _macro_context_status(
         gate_as_of_date=gate_as_of_date,

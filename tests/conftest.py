@@ -1,4 +1,4 @@
-"""Pytest hooks: skip storage migrations on app/worker startup during unit tests."""
+"""Pytest hooks: isolate startup storage mutations and readiness during unit tests."""
 
 from __future__ import annotations
 
@@ -10,11 +10,19 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from _pytest_duckdb_guard import (
+    install_pytest_duckdb_guard,
+    register_pytest_duckdb_temp_root,
+)
+
 os.environ.setdefault("MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS", "1")
 os.environ.setdefault("MOSS_SKIP_POSTGRES_MIGRATIONS", "1")
+os.environ.setdefault("MOSS_SKIP_STORAGE_READINESS_CHECKS", "1")
+
+install_pytest_duckdb_guard(repo_root=Path(__file__).resolve().parents[1])
 
 
-import pytest
+import pytest  # noqa: E402  # Startup-isolation env must be set before pytest hooks import app code.
 
 
 def _pid_is_running(pid: int) -> bool:
@@ -162,7 +170,7 @@ def _install_windows_readable_pytest_basetemp() -> None:
                 if basetemp is None or not basetemp.is_dir():
                     basetemp = _prepare_process_pytest_basetemp(root, os.getpid())
                     prepared_default_basetemps[root] = basetemp
-        self._basetemp = basetemp.resolve()
+        self._basetemp = register_pytest_duckdb_temp_root(basetemp.resolve())
         return self._basetemp
 
     def _mktemp_windows_readable(

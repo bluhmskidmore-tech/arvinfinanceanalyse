@@ -3,15 +3,24 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app.main import app
+from tests.helpers import load_module
 
 ALLOWED_ORIGIN = "http://localhost:5888"
 DISALLOWED_ORIGIN = "https://malicious.example"
 
 
 @pytest.fixture
-def client():
-    return TestClient(app)
+def client(monkeypatch, tmp_path):
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
+    monkeypatch.setenv("MOSS_LOCAL_ONLY_API", "1")
+    monkeypatch.setenv("MOSS_CORS_ORIGINS", ALLOWED_ORIGIN)
+    monkeypatch.setenv("MOSS_SYSTEM_READ_PUBLICATION_ENABLED", "0")
+    monkeypatch.setenv("MOSS_FINANCIAL_PUBLICATION_ENABLED", "0")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "isolated.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{tmp_path / 'scope.db'}")
+    monkeypatch.delenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", raising=False)
+    app = load_module("backend.app.main", "backend/app/main.py").app
+    return TestClient(app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:7888")
 
 
 def test_cors_preflight(client):
@@ -46,17 +55,17 @@ def test_cors_preflight_rejects_disallowed_origin(client):
             "Access-Control-Request-Method": "GET",
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == 403
     assert "access-control-allow-origin" not in response.headers
 
 
-def test_cors_simple_request_omits_allow_origin_for_disallowed_origin(client):
-    """Simple requests from a non-whitelisted origin do not gain CORS access."""
+def test_cors_simple_request_rejects_disallowed_origin(client):
+    """The local entrance rejects simple requests before route execution."""
     response = client.get(
         "/health/live",
         headers={"Origin": DISALLOWED_ORIGIN},
     )
-    assert response.status_code == 200
+    assert response.status_code == 403
     assert "access-control-allow-origin" not in response.headers
 
 
@@ -92,3 +101,17 @@ def test_cors_preflight_rejects_unknown_request_headers(client):
     assert response.status_code == 400
     allow_headers = response.headers.get("access-control-allow-headers", "").lower()
     assert "x-anything" not in allow_headers
+
+
+def test_cors_preflight_allows_data_update_idempotency_key(client):
+    response = client.options(
+        "/api/data-updates/core",
+        headers={
+            "Origin": ALLOWED_ORIGIN,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type, Authorization, Idempotency-Key",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN
+    assert "idempotency-key" in response.headers["access-control-allow-headers"].lower()

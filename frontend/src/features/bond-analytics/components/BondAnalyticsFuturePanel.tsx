@@ -19,7 +19,7 @@ export function BondAnalyticsFuturePanel({ futureVisibilityItems }: BondAnalytic
     >
       <div style={{ display: "grid", gap: 12 }}>
         <div style={EYEBROW}>暂缓与后续</div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: dt.color.primary[900] /* 近似映射，原值 #18314d。 */ }}>
+        <div style={{ fontSize: 18, fontWeight: 600, color: dt.color.primary[900] /* 近似映射，原值 #18314d。 */ }}>
           保留下阶段驾驶舱层级
         </div>
         <div
@@ -44,7 +44,7 @@ export function BondAnalyticsFuturePanel({ futureVisibilityItems }: BondAnalytic
                 gap: 5,
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 700, color: dt.color.primary[900] /* 近似映射，原值 #18314d。 */ }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: dt.color.primary[900] /* 近似映射，原值 #18314d。 */ }}>
                 {item.label}
               </div>
               <div

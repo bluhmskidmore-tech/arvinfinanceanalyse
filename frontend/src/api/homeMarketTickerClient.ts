@@ -29,7 +29,7 @@ let mockClientPromise: Promise<HomeMarketTickerClientMethods> | null = null;
 
 function loadMockClient(): Promise<HomeMarketTickerClientMethods> {
   if (!mockClientPromise) {
-    mockClientPromise = import("./homeMarketTickerMockClient").then(
+    mockClientPromise = import("../mocks/homeMarketTickerMockClient").then(
       ({ createMockHomeMarketTickerClient: createMockClient }) => createMockClient(),
     );
   }

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +10,7 @@ import { runPollingTask } from "../app/jobs/polling";
 import type { Numeric, ResultMeta } from "../api/contracts";
 import type { ActionAttributionResponse } from "../features/bond-analytics/types";
 import { formatRawAsNumeric } from "../utils/format";
+import { SystemReadInteractionContext } from "../router/systemReadInteractionContext";
 
 vi.mock("../app/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../app/navigation")>()),
@@ -214,6 +215,7 @@ function renderViewContent(
       queries: { retry: false, refetchOnWindowFocus: false },
     },
   }),
+  generation: string | null = null,
 ) {
   latestOverviewProps = null;
   latestDetailProps = null;
@@ -222,7 +224,11 @@ function renderViewContent(
     <MemoryRouter>
       <ApiClientProvider client={client}>
         <QueryClientProvider client={queryClient}>
-          <BondAnalyticsViewContent />
+          <SystemReadInteractionContext.Provider
+            value={{ generation, coverageDates: {}, refresh: vi.fn() }}
+          >
+            <BondAnalyticsViewContent />
+          </SystemReadInteractionContext.Provider>
         </QueryClientProvider>
       </ApiClientProvider>
     </MemoryRouter>,
@@ -387,12 +393,25 @@ describe("BondAnalyticsViewContent", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(toolbar.compareDocumentPosition(overview)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(overview.compareDocumentPosition(detail)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    /* 眉标去重（C16）：上方参数条已用「复核入口」，明细横带改「明细下钻」。 */
-    expect(detail).toHaveTextContent("明细下钻");
+    /* 眉标去重（C16）：上方参数条已用「复核入口」，明细横带改「进一步分析」。 */
+    expect(detail).toHaveTextContent("进一步分析");
     expect(detail).not.toHaveTextContent("复核入口");
-    expect(detail).toHaveTextContent("下钻证据与参数");
-    expect(detail).toHaveTextContent("不在底部生成新的方向性结论");
+    expect(detail).toHaveTextContent("分析明细");
+    expect(detail).toHaveTextContent("查看动作归因、收益拆解、信用利差和持仓明细");
     expect(detail).not.toHaveTextContent("分析师解读");
+    expect(detail).not.toHaveAttribute("open");
+    expect(screen.queryByTestId("mock-bond-analytics-detail-section")).not.toBeInTheDocument();
+    expect(latestDetailProps).toBeNull();
+    const diagnostics = within(detail).getByTestId("bond-analysis-page-diagnostics");
+    const pageEvidence = within(diagnostics).getByTestId("bond-analysis-page-evidence");
+    expect(diagnostics).not.toHaveAttribute("open");
+    expect(pageEvidence).not.toBeVisible();
+    expect(pageEvidence).toHaveTextContent("PAGE-BOND-ANALYSIS-001");
+    expect(pageEvidence).toHaveTextContent("candidate");
+    const user = userEvent.setup();
+    await user.click(detail.querySelector("summary")!);
+    await user.click(within(diagnostics).getByText("技术诊断"));
+    expect(pageEvidence).toBeVisible();
     await waitFor(() => {
       expect(latestOverviewProps?.actionAttributionResult).toEqual(
         expect.objectContaining({
@@ -400,9 +419,6 @@ describe("BondAnalyticsViewContent", () => {
         }),
       );
     });
-    expect(detail).not.toHaveAttribute("open");
-    expect(screen.queryByTestId("mock-bond-analytics-detail-section")).not.toBeInTheDocument();
-    expect(latestDetailProps).toBeNull();
   });
 
   it("keeps the workstation visible when action-attribution evidence fails", async () => {
@@ -664,6 +680,51 @@ describe("BondAnalyticsViewContent", () => {
         .getAttribute("data-detail-instance");
       expect(after).not.toBe(instanceBefore);
     });
+  });
+
+  it("keeps published bond data and filters visible after a fixed-generation refresh completes", async () => {
+    const user = userEvent.setup();
+    runPollingTaskMock.mockImplementation(async (options) => {
+      const onUpdate = options.onUpdate as
+        | ((payload: { run_id?: string; status: string }) => void)
+        | undefined;
+      onUpdate?.({ run_id: "run-awaiting-publication", status: "completed" });
+      return { status: "completed", run_id: "run-awaiting-publication" };
+    });
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+
+    renderViewContent(client, queryClient, "full-gen-a");
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await user.click(screen.getByTestId("trigger-report-date"));
+    await user.click(screen.getByTestId("trigger-period-type"));
+    await user.click(screen.getByTestId("trigger-open-credit-spread"));
+    await screen.findByTestId("mock-bond-analytics-detail-section");
+    const detailInstance = screen
+      .getByTestId("mock-bond-analytics-detail-section")
+      .getAttribute("data-detail-instance");
+
+    await user.click(screen.getByTestId("trigger-refresh"));
+
+    const state = await screen.findByTestId("bond-analysis-refresh-awaiting-publication");
+    expect(state).toHaveAttribute("data-state-variant", "stale");
+    expect(state).toHaveTextContent("计算任务完成");
+    expect(state).toHaveTextContent(
+      "当前页面仍显示已发布的数据。请在数据中心完成发布后重新进入本页。",
+    );
+    expect(latestOverviewProps?.reportDate).toBe("2025-12-31");
+    expect(latestOverviewProps?.periodType).toBe("YTD");
+    expect(screen.getByTestId("mock-bond-analytics-detail-section")).toHaveAttribute(
+      "data-detail-instance",
+      detailInstance,
+    );
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   it("surfaces refresh failure to overview when polling does not complete", async () => {

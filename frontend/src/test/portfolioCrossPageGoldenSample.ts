@@ -7,6 +7,7 @@ import type {
   PnlAttributionAnalysisSummary,
   ResultMeta,
 } from "../api/contracts";
+import { BALANCE_ANALYSIS_METRIC_DEFINITIONS } from "../mocks/balanceAnalysisMockClient";
 import { formatRawAsNumeric } from "../utils/format";
 
 export const PORTFOLIO_CROSS_PAGE_REPORT_DATE = "2026-05-31";
@@ -222,6 +223,7 @@ export function portfolioCrossPageBondHomeSummary(): BondDashboardHomeSummaryPay
     },
     industry: {
       report_date: PORTFOLIO_CROSS_PAGE_REPORT_DATE,
+      total_market_value: marketValue,
       items: [
         {
           industry_name: PORTFOLIO_CROSS_PAGE_EXPECTED.industryName,
@@ -348,28 +350,28 @@ export function portfolioCrossPageBondHomeSummary(): BondDashboardHomeSummaryPay
         {
           name: "policy-bank",
           market_value: "41600000000.00",
-          weighted_avg_ytm_pct: "2.31",
+          weighted_avg_ytm: portfolioCrossPageNumeric(0.0231, "pct", true),
           weighted_avg_duration: "5.62",
           duration_source: "formal",
         },
         {
           name: "local-gov",
           market_value: "29400000000.00",
-          weighted_avg_ytm_pct: "2.44",
+          weighted_avg_ytm: portfolioCrossPageNumeric(0.0244, "pct", true),
           weighted_avg_duration: "4.81",
           duration_source: "formal",
         },
         {
           name: PORTFOLIO_CROSS_PAGE_EXPECTED.businessTypeName,
           market_value: "18800000000.00",
-          weighted_avg_ytm_pct: "3.12",
+          weighted_avg_ytm: portfolioCrossPageNumeric(0.0312, "pct", true),
           weighted_avg_duration: "3.24",
           duration_source: "formal",
         },
         {
           name: "ncd",
           market_value: "21200000000.00",
-          weighted_avg_ytm_pct: "2.68",
+          weighted_avg_ytm: portfolioCrossPageNumeric(0.0268, "pct", true),
           weighted_avg_duration: "0.74",
           duration_source: "formal",
         },
@@ -383,6 +385,7 @@ export function portfolioCrossPageBalanceOverview(): BalanceAnalysisOverviewPayl
     report_date: PORTFOLIO_CROSS_PAGE_REPORT_DATE,
     position_scope: "all",
     currency_basis: "CNY",
+    metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
     detail_row_count: 908,
     summary_row_count: 2,
     total_market_value_amount: "111111111111.11",

@@ -24,6 +24,24 @@ describe("pnl by-business precompute client", () => {
       trigger_reason: "manual_retry",
       retry_attempt: 0,
       retry_policy: { max_retries: 3, min_backoff_seconds: 15 },
+      readiness: "pending" as const,
+      generation: null,
+      dependencies: [
+        {
+          key: "current_ytd" as const,
+          requested_report_date: "2025-06-30",
+          resolved_report_date: null,
+          readiness: "pending" as const,
+          generation: null,
+          run_id: "pnl_by_business_precompute:test",
+          last_progress_at: "2026-07-15T12:00:00Z",
+          error_message: null,
+        },
+      ],
+      permissions: { can_rebuild: true, reason: null },
+      last_progress_at: "2026-07-15T12:00:00Z",
+      worker_stalled: false,
+      recovery_hint: null,
     };
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify(payload), {
       status: 200,
@@ -36,7 +54,11 @@ describe("pnl by-business precompute client", () => {
     });
 
     await expect(client.getPnlByBusinessPrecomputeStatus(2025, "2025-06-30")).resolves.toEqual(payload);
-    await expect(client.rebuildPnlByBusinessPrecompute(2025, "2025-06-30")).resolves.toEqual(payload);
+    await expect(client.rebuildPnlByBusinessPrecompute(
+      2025,
+      "2025-06-30",
+      { includePageDependencies: true, scope: "selected" },
+    )).resolves.toEqual(payload);
 
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
@@ -45,7 +67,7 @@ describe("pnl by-business precompute client", () => {
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
-      "http://backend.local/api/pnl/by-business/precompute-rebuild?year=2025&as_of_date=2025-06-30",
+      "http://backend.local/api/pnl/by-business/precompute-rebuild?year=2025&scope=selected&as_of_date=2025-06-30&include_page_dependencies=true",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ Accept: "application/json" }),

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import duckdb
+import pytest
 
 from backend.app.core_finance.gate_macro_overlay import (
     GATE_MACRO_OVERLAY_FORMULA_VERSION,
@@ -15,6 +16,7 @@ from backend.app.core_finance.gate_macro_overlay import (
     MACRO_CYCLE_STATE_NEUTRAL,
     MACRO_CYCLE_STATE_RECESSION,
     MACRO_EXPOSURE_CAP_BY_STATE,
+    MacroCycleComponentValue,
     MacroCycleObservation,
     apply_macro_gate_overlay,
     classify_macro_cycle_state,
@@ -225,6 +227,47 @@ def test_lag_days_disclosure_uses_as_of_lte_gate_date() -> None:
     assert components["price_spread"]["age_days"] == 2
 
 
+def test_component_values_are_structured_without_parsing_evidence() -> None:
+    gate = apply_macro_gate_overlay(
+        _gate(),
+        gate_as_of_date="2026-07-06",
+        macro=MacroCycleObservation(
+            macro_score=0.7,
+            component_dates=(
+                ("PMI", "M0017126", "monthly", "2026-06-30"),
+                ("credit_impulse", "M5525763", "monthly", "2026-06-30"),
+            ),
+            evidence="intentionally does not contain display values",
+            component_values=(
+                MacroCycleComponentValue("PMI", "M0017126", 49.2, "index", "level"),
+                MacroCycleComponentValue(
+                    "credit_impulse",
+                    "M5525763",
+                    0.0,
+                    "ppt",
+                    "yoy_delta_proxy",
+                ),
+            ),
+        ),
+    )
+
+    components = {row["input_family"]: row for row in gate["macro_context"]["components"]}
+    assert components["PMI"] == {
+        "input_family": "PMI",
+        "input": "M0017126",
+        "cadence": "monthly",
+        "business_date": "2026-06-30",
+        "age_days": 6,
+        "tier": "fresh",
+        "value_numeric": 49.2,
+        "unit": "index",
+        "value_kind": "level",
+    }
+    assert components["credit_impulse"]["value_numeric"] == 0.0
+    assert components["credit_impulse"]["unit"] == "ppt"
+    assert components["credit_impulse"]["value_kind"] == "yoy_delta_proxy"
+
+
 # --- service-level wiring -------------------------------------------------
 
 
@@ -309,6 +352,13 @@ def test_service_deteriorating_macro_caps_gate_exposure(tmp_path) -> None:
     assert macro_context["cycle_state"] == MACRO_CYCLE_STATE_RECESSION
     assert macro_context["gate_as_of_date"] == "2026-04-06"
     assert 0.0 <= macro_context["macro_score"] < 0.25
+    components = {row["input_family"]: row for row in macro_context["components"]}
+    assert components["PMI"]["value_numeric"] == 44.0
+    assert components["PMI"]["unit"] == "index"
+    assert components["PMI"]["value_kind"] == "level"
+    assert components["credit_impulse"]["value_numeric"] == pytest.approx(-3.4)
+    assert components["credit_impulse"]["unit"] == "ppt"
+    assert components["credit_impulse"]["value_kind"] == "yoy_delta_proxy"
     assert market_gate["macro_overlay"]["applied"] is True
     assert market_gate["macro_overlay"]["exposure_cap"] == 0.25
 

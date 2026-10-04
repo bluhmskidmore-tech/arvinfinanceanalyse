@@ -22,6 +22,7 @@ import type {
   AdbComparisonResponse,
   BalanceAnalysisOverviewPayload,
 } from "../api/contracts";
+import { BALANCE_ANALYSIS_METRIC_DEFINITIONS } from "../mocks/balanceAnalysisMockClient";
 import AdbAnalyticalPreview from "../features/balance-analysis/components/AdbAnalyticalPreview";
 import { buildBalanceAnalysisPageReadModel } from "../features/balance-analysis/pages/balanceAnalysisPageModel";
 
@@ -45,6 +46,7 @@ function buildOverview(reportDate: string): BalanceAnalysisOverviewPayload {
     liability_total_amortized_cost_amount: "0",
     asset_total_accrued_interest_amount: "30000000",
     liability_total_accrued_interest_amount: "0",
+    metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
   };
 }
 

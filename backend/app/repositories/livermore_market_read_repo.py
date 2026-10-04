@@ -301,6 +301,18 @@ class LivermoreMarketReadRepository(DuckDBRepository):
     ) -> dict[str, Any] | None:
         if TABLE_FACTOR not in _MARKET_READ_RELATIONS:
             return None
+        try:
+            factor_columns = {
+                str(row[1])
+                for row in conn.execute(f"pragma table_info('{TABLE_FACTOR}')").fetchall()
+            }
+        except duckdb.Error:
+            factor_columns = set()
+        market_cap_select = (
+            "total_mv, circ_mv,"
+            if {"total_mv", "circ_mv"}.issubset(factor_columns)
+            else "null as total_mv, null as circ_mv,"
+        )
         result = conn.execute(
             f"""
             select
@@ -309,6 +321,7 @@ class LivermoreMarketReadRepository(DuckDBRepository):
               pb,
               roe,
               dividend_yield,
+              {market_cap_select}
               source_version,
               vendor_version
             from {TABLE_FACTOR}
@@ -920,6 +933,7 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
         has_observation_vendor_version: bool,
         has_observation_amount: bool,
         conn: duckdb.DuckDBPyConnection,
+        has_factor_market_cap: bool = False,
     ) -> list[tuple[Any, ...]]:
         factor_select = (
             """
@@ -931,10 +945,27 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
               f.three_month_return,
               f.twelve_month_return,
               f.volatility,
-              f.dividend_yield
+              f.dividend_yield,
+              f.total_mv,
+              f.circ_mv
             """
-            if factor_snapshot_date is not None
-            else """
+            if factor_snapshot_date is not None and has_factor_market_cap
+            else (
+                """
+              f.pe,
+              f.pb,
+              f.ps,
+              f.roe,
+              f.gross_margin,
+              f.three_month_return,
+              f.twelve_month_return,
+              f.volatility,
+              f.dividend_yield,
+              null as total_mv,
+              null as circ_mv
+            """
+                if factor_snapshot_date is not None
+                else """
               null as pe,
               null as pb,
               null as ps,
@@ -943,8 +974,11 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
               null as three_month_return,
               null as twelve_month_return,
               null as volatility,
-              null as dividend_yield
+              null as dividend_yield,
+              null as total_mv,
+              null as circ_mv
             """
+            )
         )
         factor_join = (
             f"""

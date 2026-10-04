@@ -15,7 +15,6 @@ from backend.app.repositories.duckdb_migrations import apply_pending_migrations_
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM, GovernanceRepository
 from backend.app.repositories.tushare_adapter import (
     TUSHARE_TOKEN_ENV,
-    import_tushare_pro,
     resolve_tushare_token_with_settings_fallback,
 )
 from backend.app.schemas.choice_news import ChoiceNewsTopicsAsset
@@ -281,8 +280,9 @@ def _ingest_tushare_news_to_choice_news(
             f"{TUSHARE_TOKEN_ENV} is not set; add it to config/.env or export it before calling Tushare pro API."
         )
 
-    ts = import_tushare_pro()
-    pro = ts.pro_api(token)
+    from backend.app.tasks.choice_stock_materialize import _TushareRestApi
+
+    pro = _TushareRestApi(token)
     configured_src = str(getattr(settings, "tushare_news_src", "") or "").strip()
     src_resolved = (
         str(news_src or "").strip() or os.getenv(TUSHARE_NEWS_SRC_ENV, "").strip() or configured_src or "sina"

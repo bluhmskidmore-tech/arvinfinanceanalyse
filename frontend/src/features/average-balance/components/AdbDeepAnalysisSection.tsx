@@ -1,11 +1,12 @@
 import { Alert } from "antd";
 
 import type { AdbInsightsResponse } from "../../../api/contracts";
+import { SectionHead } from "../../../components/layout";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
+import { ADB_SECTION_HEAD_NUMBERING } from "./adbSectionHeadNumbering";
 import AdbConcentrationPanel from "./AdbConcentrationPanel";
 import AdbNimAttributionPanel from "./AdbNimAttributionPanel";
 import AdbScaleAttributionPanel from "./AdbScaleAttributionPanel";
-import AdbSectionHead from "./AdbSectionHead";
 import AdbVolatilityPanel from "./AdbVolatilityPanel";
 
 import "./AverageBalanceView.css";
@@ -25,7 +26,7 @@ export default function AdbDeepAnalysisSection({ data, isLoading, isError }: Adb
   if (isError) {
     return (
       <section className="adb-sec" data-testid="adb-deep-analysis-section">
-        <AdbSectionHead title="深度分析" />
+        <SectionHead title="深度分析" numbered={ADB_SECTION_HEAD_NUMBERING} />
         <p className="adb-note">深度分析暂不可用，请查看上方「区间结论与警示」区的提示。</p>
       </section>
     );
@@ -34,7 +35,7 @@ export default function AdbDeepAnalysisSection({ data, isLoading, isError }: Adb
   if (isLoading || !data) {
     return (
       <section className="adb-sec" data-testid="adb-deep-analysis-section">
-        <AdbSectionHead title="深度分析" />
+        <SectionHead title="深度分析" numbered={ADB_SECTION_HEAD_NUMBERING} />
         <div className="adb-skeleton" aria-busy="true">
           <span>深度分析数据读取中…</span>
         </div>
@@ -54,7 +55,7 @@ export default function AdbDeepAnalysisSection({ data, isLoading, isError }: Adb
     return (
       <>
         <section className="adb-sec" data-testid="adb-deep-analysis-section">
-          <AdbSectionHead title="深度分析" />
+          <SectionHead title="深度分析" numbered={ADB_SECTION_HEAD_NUMBERING} />
           <Alert type="info" showIcon message="区间过短，无法计算深度分析" />
         </section>
         {resultMetaPanel}
@@ -66,7 +67,7 @@ export default function AdbDeepAnalysisSection({ data, isLoading, isError }: Adb
     return (
       <>
         <section className="adb-sec" data-testid="adb-deep-analysis-section">
-          <AdbSectionHead title="深度分析" />
+          <SectionHead title="深度分析" numbered={ADB_SECTION_HEAD_NUMBERING} />
           <Alert type="info" showIcon message="本期无有效余额，无法计算深度分析" />
         </section>
         {resultMetaPanel}

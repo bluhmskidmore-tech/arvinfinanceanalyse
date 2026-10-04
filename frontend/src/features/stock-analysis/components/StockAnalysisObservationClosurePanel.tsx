@@ -13,12 +13,78 @@ function toneColorToTextClass(tone: string) {
   }
 }
 
+type CurrentRuleStateCode =
+  | "diagnostic_only"
+  | "armed_not_promoted"
+  | "promoted_active"
+  | "conflict"
+  | "unavailable";
+
+type CurrentRuleState = {
+  code: CurrentRuleStateCode;
+  label: string;
+  tone: "positive" | "warning" | "negative";
+  detail: string;
+};
+
+function resolveCurrentRuleState(closureSummary: StockObservationClosureSummary): CurrentRuleState {
+  const total = closureSummary.endpointTotal;
+  const loaded = closureSummary.endpointLoadedCount;
+  const unresolved = closureSummary.unresolvedReasons.length;
+  const errors = closureSummary.endpointErrorCount;
+
+  if (total === 0 || loaded === 0) {
+    return {
+      code: "unavailable",
+      label: "当前不可用",
+      tone: "warning",
+      detail: "观测边界：接口未接通或全链路未返回，当前规则状态不可确认。",
+    };
+  }
+
+  if (errors > 0 || closureSummary.unresolvedReasons.some((reason) => reason.tone === "negative")) {
+    return {
+      code: "conflict",
+      label: "状态冲突",
+      tone: "negative",
+      detail: "观测边界：读取失败或证据互相冲突，先修复冲突项，再谈推广或执行。",
+    };
+  }
+
+  if (closureSummary.formalUseAllowed) {
+    return {
+      code: "promoted_active",
+      label: "已推广生效",
+      tone: "positive",
+      detail: "观测边界：正式用途已放行，但页面仍只读呈现，不自动下达执行动作。",
+    };
+  }
+
+  if (unresolved === 0) {
+    return {
+      code: "armed_not_promoted",
+      label: "已装填未推广",
+      tone: "warning",
+      detail: "观测边界：证据链已接通，但尚未获得正式用途授权，仍只作只读观察。",
+    };
+  }
+
+  return {
+    code: "diagnostic_only",
+    label: "仅诊断",
+    tone: "warning",
+    detail: "观测边界：当前只允许诊断与复核，不能当作正式结论或执行依据。",
+  };
+}
+
 /** Evidence-layer observation closure controls: unresolved reasons and next evidence actions. */
 export function StockAnalysisObservationClosurePanel({
   closureSummary,
 }: {
   closureSummary: StockObservationClosureSummary;
 }) {
+  const currentRuleState = resolveCurrentRuleState(closureSummary);
+
   return (
     <section
       className="stock-analysis-page__fs-card"
@@ -42,6 +108,28 @@ export function StockAnalysisObservationClosurePanel({
           正式用途：{closureSummary.formalUseAllowed ? "是" : "否"}
         </span>
       </header>
+
+      <div
+        className="stock-analysis-page__closure-state-strip mt-3 flex flex-wrap items-center gap-2"
+        aria-label="当前规则状态"
+      >
+        <span
+          className="stock-analysis-page__fs-card-pill stock-analysis-page__tabular"
+          data-tone={currentRuleState.tone}
+          data-testid="stock-analysis-current-rule-state-code"
+        >
+          {currentRuleState.code}
+        </span>
+        <span className="stock-analysis-page__fs-card-pill" data-tone={currentRuleState.tone}>
+          {currentRuleState.label}
+        </span>
+      </div>
+      <p
+        className="stock-analysis-page__dh-section-desc mt-2"
+        data-testid="stock-analysis-current-rule-state-detail"
+      >
+        {currentRuleState.detail}
+      </p>
 
       <dl className="stock-analysis-page__evidence-contract-grid">
         <div>

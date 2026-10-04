@@ -15,7 +15,7 @@
  * 范围声明：单位缩放（元/万元/亿元换算）与 null/0 区分由并行的
  * LedgerPnlUnitContract / LedgerPnlNullMatrixContract 探针负责，此处不重叠。
  */
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
@@ -221,8 +221,18 @@ describe("ledger-pnl precision: indicator summary panel float display path (2dp)
     );
   }
 
+  /**
+   * 面板默认「当月聚焦」只渲染 report_month 对应期间组；探针单元格挂在
+   * periods[0]（更早月），先展开全部月份再断言，精度契约本身不放宽。
+   */
+  async function expandAllMonths() {
+    const toggle = await screen.findByTestId("ledger-indicator-summary-month-toggle");
+    fireEvent.click(within(toggle).getByRole("button"));
+  }
+
   it("rounds representable halves up and pads percent cells to exactly 2dp", async () => {
     renderProbePanel();
+    await expandAllMonths();
     const row = await screen.findByTestId("ledger-indicator-summary-row-probe.percent");
     const [current, compare, delta, deltaPct] = within(row).getAllByRole("cell");
     // 7.125 双精度可精确表示：half-up 进位到 7.13（若 banker's 则 7.12）。
@@ -236,6 +246,7 @@ describe("ledger-pnl precision: indicator summary panel float display path (2dp)
 
   it("formats money cells with zh-CN grouping, 2dp padding, and signed delta", async () => {
     renderProbePanel();
+    await expandAllMonths();
     const row = await screen.findByTestId("ledger-indicator-summary-row-probe.money");
     const [current, compare, delta, deltaPct] = within(row).getAllByRole("cell");
     expect(current.textContent).toBe("8.13");
@@ -257,6 +268,7 @@ describe("ledger-pnl precision: indicator summary panel float display path (2dp)
   // 首轮红色证据（2026-08-12）：expected "1.01%", received "1.00%"。
   it("keeps the exact decimal half for x.005 percent input", async () => {
     renderProbePanel();
+    await expandAllMonths();
     const row = await screen.findByTestId("ledger-indicator-summary-row-probe.decimal-half");
     const [current] = within(row).getAllByRole("cell");
     expect(current.textContent).toBe("1.01%");

@@ -1,3 +1,5 @@
+import Decimal from "decimal.js";
+
 import type {
   AdvancedAttributionSummary,
   Numeric,
@@ -5,9 +7,11 @@ import type {
   ProductCategoryAttributionPayload,
   ProductCategoryPnlPayload,
   ProductCategoryPnlRow,
+  ResultMeta,
   TPLMarketCorrelationPayload,
   VolumeRateAttributionPayload,
 } from "../../../api/contracts";
+import { numericDecimalOrNull } from "../../../api/numeric";
 import { EM_DASH, formatYi as formatYiShared } from "../../../utils/format";
 
 export type PnlAttributionTab = "product-category" | "volume-rate" | "tpl-market" | "composition" | "advanced";
@@ -32,9 +36,15 @@ export type VolumeRateBridgeSummary = {
   volumeEffect: number | undefined;
   rateEffect: number | undefined;
   interactionEffect: number | undefined;
+  includesDirectPnl: boolean;
+  fairValueEffect: number | undefined;
+  capitalGainEffect: number | undefined;
+  manualAdjustmentEffect: number | undefined;
   explainedEffect: number | undefined;
   unexplainedEffect: number | undefined;
   coveragePct: number | undefined;
+  /** 各效应“占变动”展示是否有可用分母；与闭合计算共用同一 Decimal/raw 容差分支。 */
+  effectSharesEligible: boolean;
   status: VolumeRateBridgeStatus;
   statusLabel: string;
   /** 闭合/覆盖率的口径披露文案；消费组件（损益变动桥状态区）应在判定文案旁原样渲染。 */
@@ -63,6 +73,32 @@ export type PnlAttributionErrorSummary = {
   detail: string;
 };
 
+export type AdvancedAttributionQualitySummary = {
+  qualityFlag: ResultMeta["quality_flag"] | null;
+  fallbackLabel: string;
+};
+
+/** 首屏只汇总已加载子结果的状态，不合成来源、日期或正式使用资格。 */
+export function summarizeAdvancedAttributionQuality(
+  metas: readonly (ResultMeta | null)[],
+): AdvancedAttributionQualitySummary {
+  const loaded = metas.filter((meta): meta is ResultMeta => meta !== null);
+  if (loaded.length === 0) {
+    return { qualityFlag: null, fallbackLabel: "待加载" };
+  }
+  const qualityOrder = ["error", "missing", "stale", "warning", "ok"] as const;
+  const qualityFlag = qualityOrder.find((flag) => loaded.some((meta) => meta.quality_flag === flag)) ?? null;
+  const fallbackCount = loaded.filter((meta) => meta.fallback_mode === "latest_snapshot").length;
+  return {
+    qualityFlag,
+    fallbackLabel: fallbackCount === 0
+      ? "未降级"
+      : fallbackCount === loaded.length
+        ? "已加载数据均降级"
+        : "部分数据降级",
+  };
+}
+
 /**
  * 把客户端抛出的 `Request failed: <path> (<status>)` 收敛为中文结论句；
  * 其他文案（后端 detail 多为中文）原样透出，不做二次加工。
@@ -82,6 +118,24 @@ export function summarizePnlAttributionError(
     };
   }
   return { message: text, detail: text };
+}
+
+/**
+ * 归因决策条治理 token 的展示层中文短语；原 token 是证据引用，只进 title（§6）。
+ * 仅做映射不改判定，未登记的值原样透出。
+ */
+const GOVERNANCE_TOKEN_LABELS: Record<string, string> = {
+  candidate_or_pending: "候选/待批准",
+  "formal_use_allowed=false": "未允许正式使用",
+  "owner approval pending": "待业主批准",
+  "closure_approved=false": "口径未闭合",
+};
+
+export function formatGovernanceToken(token: string): {
+  text: string;
+  title: string;
+} {
+  return { text: GOVERNANCE_TOKEN_LABELS[token] ?? token, title: token };
 }
 
 /**
@@ -129,7 +183,7 @@ export type AttributionBridge = {
 };
 
 /**
- * 标准归因桥（瀑布）定位：上期总值起步 → 各效应从累计位起画 → 当期总值收尾。
+ * 标准归因桥（瀑布）定位：上期总值起步，逐项列示效应和未解释差额，以当期总值收尾。
  * 任一输入缺失返回 null：缺失不得补 0 参与累计定位，调用方回退独立柱形态。
  * 交叉效应方向语义弱（二阶联动项），tone 恒为 neutral；规模/利率按符号取绿/红。
  */
@@ -138,15 +192,28 @@ export function buildAttributionBridge(values: {
   volume: number | null;
   rate: number | null;
   interaction: number | null;
+  fairValue?: number | null;
+  capitalGain?: number | null;
+  manualAdjustment?: number | null;
+  unexplained: number | null;
   current: number | null;
 }): AttributionBridge | null {
-  const { previous, volume, rate, interaction, current } = values;
+  const { previous, volume, rate, interaction, unexplained, current } = values;
+  const includesDirectPnl =
+    values.fairValue !== undefined ||
+    values.capitalGain !== undefined ||
+    values.manualAdjustment !== undefined;
   if (
     previous === null ||
     volume === null ||
     rate === null ||
     interaction === null ||
-    current === null
+    unexplained === null ||
+    current === null ||
+    (includesDirectPnl &&
+      [values.fairValue, values.capitalGain, values.manualAdjustment].some(
+        (value) => value === null || value === undefined,
+      ))
   ) {
     return null;
   }
@@ -170,17 +237,29 @@ export function buildAttributionBridge(values: {
   pushSpan("上期损益", 0, previous, previous, "total-prev");
   let cumulative = previous;
   const effects: Array<[string, number, AttributionBridgeTone]> = [
-    ["规模效应", volume, volume >= 0 ? "positive" : "negative"],
-    ["利率效应", rate, rate >= 0 ? "positive" : "negative"],
+    [includesDirectPnl ? "利息规模效应" : "规模效应", volume, volume >= 0 ? "positive" : "negative"],
+    [includesDirectPnl ? "利息收益率效应" : "利率效应", rate, rate >= 0 ? "positive" : "negative"],
     ["交叉效应", interaction, "neutral"],
   ];
+  if (includesDirectPnl) {
+    for (const [category, value] of [
+      ["公允价值变动", values.fairValue],
+      ["投资收益变动", values.capitalGain],
+      ["手工调整变动", values.manualAdjustment],
+    ] as const) {
+      if (value !== null && value !== undefined) {
+        effects.push([category, value, value >= 0 ? "positive" : "negative"]);
+      }
+    }
+  }
+  effects.push(["未解释差额", unexplained, "neutral"]);
   for (const [category, value, tone] of effects) {
     const start = cumulative;
     connectors.push({ from: bars.length - 1, to: bars.length, level: start });
     pushSpan(category, start, start + value, value, tone);
     cumulative = start + value;
   }
-  // 末段连线落在效应累计位；若存在未解释差额，它与当期柱顶的落差即残差的可视化。
+  // 残差有独立柱，末段连线不再承担未标注差额的展示。
   connectors.push({ from: bars.length - 1, to: bars.length, level: cumulative });
   pushSpan("当期损益", 0, current, current, "total-current");
   return { bars, connectors };
@@ -223,6 +302,14 @@ export function formatYiNumeric(value: Numeric | null | undefined): string {
   return formatYi(numericRaw(value));
 }
 
+/** 新口径缺失值仍须列示；仅旧接口完全没有这些字段时兼容三效应展示。 */
+export function hasDirectPnlAttribution(data: VolumeRateAttributionPayload): boolean {
+  return data.attribution_basis === "interest_income_and_direct_pnl" ||
+    data.total_fair_value_effect !== undefined ||
+    data.total_capital_gain_effect !== undefined ||
+    data.total_manual_adjustment_effect !== undefined;
+}
+
 export function buildVolumeRateBridgeSummary(data: VolumeRateAttributionPayload | null): VolumeRateBridgeSummary | null {
   if (!data) {
     return null;
@@ -234,25 +321,120 @@ export function buildVolumeRateBridgeSummary(data: VolumeRateAttributionPayload 
   const volumeEffect = numericRaw(data.total_volume_effect);
   const rateEffect = numericRaw(data.total_rate_effect);
   const interactionEffect = numericRaw(data.total_interaction_effect);
+  const includesDirectPnl = hasDirectPnlAttribution(data);
+  const fairValueEffect = numericRaw(data.total_fair_value_effect);
+  const capitalGainEffect = numericRaw(data.total_capital_gain_effect);
+  const manualAdjustmentEffect = numericRaw(data.total_manual_adjustment_effect);
   const unexplainedEffect = numericRaw(data.total_recon_error);
+  const exactPnlChangeDecimal = numericDecimalOrNull(data.total_pnl_change);
+  const effectInputs = [
+    data.total_volume_effect,
+    data.total_rate_effect,
+    data.total_interaction_effect,
+    ...(includesDirectPnl ? [
+      data.total_fair_value_effect,
+      data.total_capital_gain_effect,
+      data.total_manual_adjustment_effect,
+    ] : []),
+  ];
+  const rawEffects = effectInputs.map(numericRaw);
+  const exactEffectDecimals = effectInputs.map(numericDecimalOrNull);
+  const exactUnexplainedEffectDecimal = numericDecimalOrNull(data.total_recon_error);
+  const exactClosureDecimals = [
+    exactPnlChangeDecimal,
+    ...exactEffectDecimals,
+    exactUnexplainedEffectDecimal,
+  ].filter((value): value is Decimal => value !== null);
+  const closureDecimalConstructor =
+    exactClosureDecimals.length === 0
+      ? null
+      : exactClosureDecimals.reduce<typeof Decimal>((selected, value) => {
+          const candidate = value.constructor as typeof Decimal;
+          return candidate.precision > selected.precision ? candidate : selected;
+        }, Decimal);
+  const decimalWithRawFallback = (
+    value: Numeric | null | undefined,
+    exactValue: Decimal | null,
+  ): Decimal | null => {
+    if (closureDecimalConstructor === null) {
+      return null;
+    }
+    if (exactValue !== null) {
+      return new closureDecimalConstructor(exactValue);
+    }
+    const raw = numericRaw(value);
+    return raw !== undefined && Number.isFinite(raw)
+      ? new closureDecimalConstructor(raw)
+      : null;
+  };
+  const pnlChangeDecimal = decimalWithRawFallback(data.total_pnl_change, exactPnlChangeDecimal);
+  const effectDecimals = effectInputs.map((value, index) =>
+    decimalWithRawFallback(value, exactEffectDecimals[index]),
+  );
+  const unexplainedEffectDecimal = decimalWithRawFallback(
+    data.total_recon_error,
+    exactUnexplainedEffectDecimal,
+  );
+  const hasRawClosureInputs =
+    pnlChange !== undefined &&
+    rawEffects.every((value) => value !== undefined && Number.isFinite(value)) &&
+    unexplainedEffect !== undefined;
+  const hasDecimalClosureInputs =
+    pnlChangeDecimal !== null &&
+    effectDecimals.every((value) => value !== null) &&
+    unexplainedEffectDecimal !== null;
   const canCalculateClosure =
     data.has_previous_data &&
-    pnlChange !== undefined &&
-    volumeEffect !== undefined &&
-    rateEffect !== undefined &&
-    interactionEffect !== undefined &&
-    unexplainedEffect !== undefined;
-  const explainedEffect = canCalculateClosure ? volumeEffect + rateEffect + interactionEffect : undefined;
+    (closureDecimalConstructor !== null ? hasDecimalClosureInputs : hasRawClosureInputs);
+  const rawExplainedEffect = hasRawClosureInputs
+    ? rawEffects.reduce<number>((sum, value) => sum + (value as number), 0)
+    : undefined;
+  const decimalExplainedEffect =
+    closureDecimalConstructor !== null &&
+    effectDecimals.every((value): value is Decimal => value !== null)
+      ? effectDecimals.reduce((sum, value) => sum.plus(value), new closureDecimalConstructor(0))
+      : null;
+  const explainedEffect = canCalculateClosure
+    ? closureDecimalConstructor !== null
+      ? decimalExplainedEffect?.toNumber()
+      : rawExplainedEffect
+    : undefined;
+  const pnlChangeWithinTolerance =
+    canCalculateClosure &&
+    (closureDecimalConstructor !== null && pnlChangeDecimal !== null
+      ? pnlChangeDecimal.abs().lessThanOrEqualTo(VOLUME_RATE_CLOSURE_TOLERANCE_YUAN)
+      : pnlChange !== undefined &&
+        Math.abs(pnlChange) <= VOLUME_RATE_CLOSURE_TOLERANCE_YUAN);
+  const effectSharesEligible =
+    canCalculateClosure &&
+    (closureDecimalConstructor !== null && pnlChangeDecimal !== null
+      ? pnlChangeDecimal.abs().greaterThan(VOLUME_RATE_CLOSURE_TOLERANCE_YUAN)
+      : pnlChange !== undefined &&
+        Math.abs(pnlChange) > VOLUME_RATE_CLOSURE_TOLERANCE_YUAN);
+  const explainedEffectWithinTolerance =
+    canCalculateClosure &&
+    (closureDecimalConstructor !== null && decimalExplainedEffect !== null
+      ? decimalExplainedEffect.abs().lessThanOrEqualTo(VOLUME_RATE_CLOSURE_TOLERANCE_YUAN)
+      : rawExplainedEffect !== undefined &&
+        Math.abs(rawExplainedEffect) <= VOLUME_RATE_CLOSURE_TOLERANCE_YUAN);
   const coveragePct =
-    canCalculateClosure && explainedEffect !== undefined && pnlChange !== undefined
-      ? Math.abs(pnlChange) <= VOLUME_RATE_CLOSURE_TOLERANCE_YUAN
-        ? Math.abs(explainedEffect) <= VOLUME_RATE_CLOSURE_TOLERANCE_YUAN
+    canCalculateClosure
+      ? pnlChangeWithinTolerance
+        ? explainedEffectWithinTolerance
           ? 100
           : undefined
-        : (Math.abs(explainedEffect) / Math.abs(pnlChange)) * 100
+        : closureDecimalConstructor !== null && decimalExplainedEffect !== null && pnlChangeDecimal !== null
+          ? decimalExplainedEffect.abs().dividedBy(pnlChangeDecimal.abs()).times(100).toNumber()
+          : rawExplainedEffect !== undefined && pnlChange !== undefined
+            ? (Math.abs(rawExplainedEffect) / Math.abs(pnlChange)) * 100
+            : undefined
       : undefined;
   const hasMaterialResidual =
-    unexplainedEffect !== undefined && Math.abs(unexplainedEffect) > VOLUME_RATE_CLOSURE_TOLERANCE_YUAN;
+    canCalculateClosure &&
+    (closureDecimalConstructor !== null && unexplainedEffectDecimal !== null
+      ? unexplainedEffectDecimal.abs().greaterThan(VOLUME_RATE_CLOSURE_TOLERANCE_YUAN)
+      : unexplainedEffect !== undefined &&
+        Math.abs(unexplainedEffect) > VOLUME_RATE_CLOSURE_TOLERANCE_YUAN);
   const status: VolumeRateBridgeStatus = !data.has_previous_data
     ? "no-prior"
     : !canCalculateClosure
@@ -276,9 +458,14 @@ export function buildVolumeRateBridgeSummary(data: VolumeRateAttributionPayload 
     volumeEffect,
     rateEffect,
     interactionEffect,
+    includesDirectPnl,
+    fairValueEffect,
+    capitalGainEffect,
+    manualAdjustmentEffect,
     explainedEffect,
     unexplainedEffect,
     coveragePct,
+    effectSharesEligible,
     status,
     statusLabel,
     closureDisclosure: VOLUME_RATE_CLOSURE_DISCLOSURE,

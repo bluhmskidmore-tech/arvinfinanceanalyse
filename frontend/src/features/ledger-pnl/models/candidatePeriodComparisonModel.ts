@@ -104,7 +104,7 @@ type ReadyComparisonModel = {
     sourceLabel: "总账源" | "日均源";
     reasonLabel: string;
   }>;
-  hasUnlockedHistoricalSource: boolean;
+  unlockedSourceMonths: string[];
 };
 
 type InvalidComparisonModel = {
@@ -159,7 +159,11 @@ function reportMonthEnd(reportMonth: string): string {
   return `${reportMonth.slice(0, 4)}-${reportMonth.slice(4, 6)}-${String(day).padStart(2, "0")}`;
 }
 
-function fixedDecimal(value: string, precision: number, showPositive: boolean): string {
+/**
+ * BigInt 精确 ROUND_HALF_UP 十进制格式化，不经浮点。R4（186 项候选指标目录）与本文件的
+ * 跨期比较金额/比率格式化共用同一实现，禁止用 toFixed/Number/parseFloat 重复造轮子。
+ */
+export function fixedDecimal(value: string, precision: number, showPositive: boolean): string {
   const negative = value.startsWith("-");
   const unsigned = negative ? value.slice(1) : value;
   const [integerPart, fractionPart = ""] = unsigned.split(".");
@@ -661,8 +665,8 @@ export function buildCandidatePeriodComparisonViewModel(
       sourceLabel: gap.source_kind === "daily" ? "日均源" : "总账源",
       reasonLabel: fullScopeReasonLabel(gap),
     })),
-    hasUnlockedHistoricalSource: parsed.source_periods
-      .slice(1)
-      .some((period) => period.lock_status === "unlocked"),
+    unlockedSourceMonths: parsed.source_periods
+      .filter((period) => period.lock_status === "unlocked")
+      .map((period) => period.month),
   };
 }

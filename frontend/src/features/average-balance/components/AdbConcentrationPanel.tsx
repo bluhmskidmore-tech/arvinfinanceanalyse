@@ -2,8 +2,9 @@ import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { AdbConcentrationSide } from "../../../api/contracts";
+import { SectionHead } from "../../../components/layout";
 import { EM_DASH, formatPercent } from "../../../utils/format";
-import AdbSectionHead from "./AdbSectionHead";
+import { ADB_SECTION_HEAD_NUMBERING } from "./adbSectionHeadNumbering";
 import {
   formatAlreadyPercent,
   formatHhi,
@@ -108,7 +109,15 @@ function SideBlock({
 export default function AdbConcentrationPanel({ concentration }: AdbConcentrationPanelProps) {
   return (
     <section className="adb-sec" data-testid="adb-concentration-panel">
-      <AdbSectionHead title="结构集中度与迁移" meta="HHI=Σ份额²；movers 按 |Δ份额| 降序" />
+      <SectionHead
+        title="结构集中度与迁移"
+        numbered={ADB_SECTION_HEAD_NUMBERING}
+        actions={
+          <span className="adb-sec-meta" title="HHI=Σ份额²；movers 按 |Δ份额| 降序">
+            HHI=Σ份额²；movers 按 |Δ份额| 降序
+          </span>
+        }
+      />
       <p className="adb-note">
         口径：取本期首个与末个观测日的分类余额分布计算 HHI/Top3/Top5；只有 1 个观测日时无法比较，整块显示不可用原因。
       </p>

@@ -2,7 +2,7 @@ import { ClockCircleOutlined, WarningOutlined } from "@ant-design/icons";
 import { Tag } from "antd";
 
 import type { MacroToolkitAShareRiskPayload } from "../../../api/macroToolkitClient";
-import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { SectionHead } from "../../../components/layout";
 import { EM_DASH } from "../../../utils/format";
 import { formatRiskMetric, riskLevelTone } from "../lib/macroToolkitDisplayFormat";
 import { MacroStatusIcon } from "../lib/MacroToolkitStatusPrimitives";
@@ -96,10 +96,12 @@ export function MacroToolkitRiskSection({
 }) {
   return (
     <section className="macro-toolkit-section">
-      <PageSectionLead
-        eyebrow={showOperations ? "风险" : "预警"}
+      <SectionHead
+        category={showOperations ? "风险" : "预警"}
         title="市场踩踏风险"
-        description="A股盘后宽度、跌停、成交与回落压力判断。"
+        note="A股盘后宽度、跌停、成交与回落压力判断。"
+        numbered={{ counter: "mt-section" }}
+        contentGap="flush"
       />
       <AShareRiskPanel risk={risk} />
     </section>

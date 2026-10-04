@@ -7,9 +7,8 @@
 * formal 业务日必须有当日官方中间价；非营业日只允许沿用前一营业日。
 * 观测日不得晚于目标日；中间价必须有限且严格大于零。
 
-已知 Medium 缺口：``fx_calendar.py`` 只登记 CNY/USD 假日，而正式物化还支持
-EUR/AUD/CAD/HKD。下方测试如实锁定这些币种当前只受周末和 CNY 已登记假日约束；
-这不是对该日历完整性的认可，补齐币种假日仍待业务口径裁决。
+人民币中间价按 CFETS 发布日准入。USD/EUR/AUD/CAD/HKD 各自的清算假日
+不决定人民币中间价是否发布，不得据此允许沿用旧价格。
 """
 
 from __future__ import annotations
@@ -108,14 +107,14 @@ def test_non_finite_mid_rates_are_rejected(invalid_rate: Decimal) -> None:
         )
 
 
-def test_registered_cny_and_usd_holidays_are_non_business_days() -> None:
+def test_cny_publication_holiday_differs_from_usd_settlement_holiday() -> None:
     # 2026-02-18 在中国春节假期；2026-01-19 是美国 Martin Luther King Jr. Day。
     assert is_cfets_fx_non_business_day(
         date(2026, 2, 18),
         base_currency="USD",
         quote_currency="CNY",
     )
-    assert is_cfets_fx_non_business_day(
+    assert not is_cfets_fx_non_business_day(
         date(2026, 1, 19),
         base_currency="USD",
         quote_currency="CNY",
@@ -131,11 +130,11 @@ def test_registered_cny_and_usd_holidays_are_non_business_days() -> None:
         ("HKD", date(2026, 7, 1)),    # 香港特别行政区成立纪念日
     ],
 )
-def test_materialized_non_usd_currency_holidays_are_currently_unregistered(
+def test_foreign_settlement_holidays_do_not_close_cfets_fixing(
     base_currency: str,
     unregistered_local_holiday: date,
 ) -> None:
-    """锁定已知缺口：这些工作日不是 CNY 假日，当前实现会误判为业务日。"""
+    """这些工作日不是 CNY 发布假日，外币清算日历不改变中间价准入。"""
     assert (
         is_cfets_fx_non_business_day(
             unregistered_local_holiday,

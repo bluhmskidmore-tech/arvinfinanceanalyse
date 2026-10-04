@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,6 +20,110 @@ from backend.app.services.yield_curve_term_structure_service import (
     YIELD_CURVE_TERM_STRUCTURE_TENORS,
 )
 from tests.helpers import load_module
+
+
+def _term_structure_refresh_fixture(tmp_path, monkeypatch):
+    from backend.app.services.runtime_cache import InMemoryTTLCache
+
+    service = load_module(
+        "tests._term_structure_refresh",
+        "backend/app/services/yield_curve_term_structure_service.py",
+    )
+    database = tmp_path / "cache-identity.duckdb"
+    database.write_bytes(b"synthetic cache identity")
+    selected = tmp_path / "selected-cache-identity.duckdb"
+    selected.write_bytes(b"synthetic selected identity")
+    state = {"time": 0.0, "builds": 0, "hook": None, "path": str(database),
+             "selected": str(database), "scope": 1}
+    monkeypatch.setattr(service, "get_settings", lambda: SimpleNamespace(duckdb_path=state["path"]))
+    monkeypatch.setattr(service, "resolve_effective_read_path", lambda _path: state["selected"], raising=False)
+    from backend.app.services import runtime_cache
+
+    def identity(key):
+        return ("test-scope", state["scope"], key)
+
+    monkeypatch.setattr(runtime_cache, "system_read_cache_identity", identity)
+    monkeypatch.setattr(service, "system_read_cache_identity", identity, raising=False)
+    cache = InMemoryTTLCache(ttl_seconds=300, clock=lambda: state["time"])
+    monkeypatch.setattr(service, "_TERM_STRUCTURE_CACHE", cache)
+
+    def compute(**_kwargs):
+        state["builds"] += 1
+        result = {"result_meta": {"trace_id": "builder-trace"}, "result": {"build": state["builds"]}}
+        if state["hook"]:
+            state["hook"]()
+        return result
+
+    monkeypatch.setattr(service, "_compute_yield_curve_term_structure", compute)
+    return service, state, database, selected
+
+
+def test_term_structure_force_refresh_renews_expiry_and_retains_current_hit(tmp_path, monkeypatch):
+    service, state, _database, _selected = _term_structure_refresh_fixture(tmp_path, monkeypatch)
+    kwargs = {"report_date": date(2026, 4, 10), "curve_types": ("treasury", "cdb")}
+    first = service.get_yield_curve_term_structure(**kwargs)
+    assert service.get_yield_curve_term_structure(**kwargs)["result"] == first["result"]
+    assert state["builds"] == 1
+    state["time"] = 240
+
+    def read_existing():
+        assert service.get_yield_curve_term_structure(**kwargs)["result"] == first["result"]
+
+    state["hook"] = read_existing
+    refreshed = service.get_yield_curve_term_structure(**kwargs, force_refresh=True)
+    assert refreshed["result"]["build"] == 2
+    state["hook"] = None
+    state["time"] = 301
+    assert service.get_yield_curve_term_structure(**kwargs)["result"] == refreshed["result"]
+    assert state["builds"] == 2
+    state["time"] = 541
+    assert service.get_yield_curve_term_structure(**kwargs)["result"]["build"] == 3
+
+
+def test_term_structure_force_refresh_failure_preserves_cached_result(tmp_path, monkeypatch):
+    service, state, _database, _selected = _term_structure_refresh_fixture(tmp_path, monkeypatch)
+    kwargs = {"report_date": date(2026, 4, 10), "curve_types": ("treasury",)}
+    first = service.get_yield_curve_term_structure(**kwargs)
+    state["hook"] = lambda: (_ for _ in ()).throw(RuntimeError("refresh failed"))
+    with pytest.raises(RuntimeError, match="refresh failed"):
+        service.get_yield_curve_term_structure(**kwargs, force_refresh=True)
+    assert service.get_yield_curve_term_structure(**kwargs)["result"] == first["result"]
+
+
+@pytest.mark.parametrize("change", ["generation", "database", "path", "selected", "selected-file", "scope"])
+def test_term_structure_force_refresh_does_not_refill_changed_identity(tmp_path, monkeypatch, change):
+    service, state, database, selected = _term_structure_refresh_fixture(tmp_path, monkeypatch)
+    kwargs = {"report_date": date(2026, 4, 10), "curve_types": ("treasury",)}
+    first = service.get_yield_curve_term_structure(**kwargs)
+    cache = service._TERM_STRUCTURE_CACHE
+    original_key = next(iter(cache._store))
+
+    def invalidate():
+        if change == "generation":
+            cache.clear()
+        elif change == "database":
+            database.write_bytes(b"changed synthetic database identity")
+        elif change == "selected-file":
+            # Keep the configured database unchanged; the effective read file
+            # alone changes while the forced producer is running.
+            selected.write_bytes(b"changed selected identity")
+        elif change == "scope":
+            state["scope"] += 1
+        else:
+            state[change] = str(selected)
+
+    if change == "selected-file":
+        state["selected"] = str(selected)
+    state["hook"] = invalidate
+    refreshed = service.get_yield_curve_term_structure(**kwargs, force_refresh=True)
+    assert refreshed["result"]["build"] == 2
+    state["hook"] = None
+    if change == "generation":
+        assert cache._store == {}
+        assert service.get_yield_curve_term_structure(**kwargs)["result"]["build"] == 3
+    else:
+        assert cache._store[original_key][1]["result"] == first["result"]
+        assert all(entry[1]["result"] != refreshed["result"] for entry in cache._store.values())
 
 
 def _seed_two_day_treasury_curve(duckdb_path: str) -> None:

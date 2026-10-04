@@ -105,11 +105,14 @@ function formatBandDate(tradeDate: string | null | undefined): string {
 
 /** 来源标签：按槽位口径给出，缺数据/口径变化时按实际 sourceKind 修正。 */
 function resolveSourceLabel(slot: KpiBandSlot, kpi: ResolvedCrossAssetKpi): string {
+  if (kpi.missingNote) {
+    return kpi.missingNote;
+  }
   if (kpi.sourceKind === "missing") {
     return "待接入";
   }
   if (slot.key === "gov_spread") {
-    return kpi.label === "中美10Y利差" ? "中债+UST" : "中债口径";
+    return kpi.sourceKind === "public" ? "公共补充" : "中债+UST";
   }
   if (slot.key === "cn_gov_10y") {
     return kpi.sourceKind === "choice" ? "中债估值" : "公共补充";

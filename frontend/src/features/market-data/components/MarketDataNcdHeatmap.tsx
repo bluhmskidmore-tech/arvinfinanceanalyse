@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 
 import type { NcdFundingProxyPayload } from "../../../api/contracts";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { MARKET_DATA_CHART_ERROR } from "../lib/charts/marketDataChartMessages";
 import { buildNcdProxyHeatmapOption } from "../lib/charts/ncdProxyHeatmapChartOption";
-import { MarketDataChartShell } from "./MarketDataChartShell";
 
 type MarketDataNcdHeatmapProps = {
   payload?: NcdFundingProxyPayload;
@@ -19,15 +20,15 @@ export function MarketDataNcdHeatmap({
 }: MarketDataNcdHeatmapProps) {
   const option = useMemo(() => buildNcdProxyHeatmapOption(payload), [payload]);
 
-  const rowCount = payload?.rows?.length ?? 0;
-  const heatmapHeight = Math.max(220, rowCount * 36);
-
   return (
-    <MarketDataChartShell
+    <ChartCard
+      flat
+      ariaLabel="同业存单代理矩阵"
       option={option}
-      height={heatmapHeight}
-      isLoading={isLoading}
-      isError={isError}
+      height={280}
+      legend="none"
+      state={isLoading ? "loading" : isError ? "error" : undefined}
+      errorMessage={MARKET_DATA_CHART_ERROR}
       onRetry={onRetry}
       testId="market-data-ncd-heatmap"
       emptyMessage="当前未返回可绘制的存单 proxy 矩阵。"

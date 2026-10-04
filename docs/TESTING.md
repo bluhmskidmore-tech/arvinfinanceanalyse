@@ -32,6 +32,26 @@ venv，里面根本没有 pytest。更危险的情况是它解析到另一个**�
 - 同一纪律见 `scripts/README.md`（「本机 `python` 可能被无关 venv 遮蔽，故脚本从不直接调 `python`」）、
   `scripts/dev-python.ps1::Resolve-DevPython` 和 `docs/GLOBAL_DATA_REFRESH_RUNBOOK.md`。
 
+上述路径只有在解释器和依赖匹配时才代表有效验证。类型与 Ruff 基线检查要求 Python 3.11，
+mypy 固定为 1.20.1，Ruff 固定为 0.15.7。先执行目标解释器的 `--version`，不能仅凭目录名判断版本。
+需要与 CI 对齐时，可建立独立环境，保留日常运行环境：
+
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = [IO.Path]::GetFullPath(".codex-tmp/qa-py311")
+uv sync --frozen --project backend --extra dev --python 3.11
+uv pip install --python "$env:UV_PROJECT_ENVIRONMENT/Scripts/python.exe" "mypy==1.20.1" "ruff==0.15.7"
+& "$env:UV_PROJECT_ENVIRONMENT/Scripts/python.exe" -m pytest -q tests/test_check_mypy_baseline.py tests/test_backend_debt_gate.py
+& "$env:UV_PROJECT_ENVIRONMENT/Scripts/python.exe" scripts/check_mypy_baseline.py
+```
+
+历史源码重放必须在历史目录中单独安装项目，并核对 editable 安装来源；复用指向当前工作树的
+环境会混入当前导入路径。逐条基线只能来自可核对的旧版本诊断。`--update-baseline` 只移除已解决
+的身份，新增或替换诊断、检查配置或依赖锁不一致时必须失败，不得用当前错误重刷扩大豁免。
+
+类型门禁显式检查 `backend/app`。mypy 默认可能静默处理 editable 安装路径内的非目标导入模块，
+所以这条命令不代表所有仓库脚本均获检查。需要扩展时，应明确新增脚本目标并审查其诊断；
+不要把未检查的脚本记为通过，也不要为此直接开启全部第三方包诊断。
+
 ### 跑窄范围
 
 ```powershell
@@ -152,18 +172,21 @@ npm run build
 
 ## CI
 
-`.github/workflows/ci.yml` 当前有 **10 个 job**（2026-08-13 核对）。触发面：`push` 到 `main` /
+`.github/workflows/ci.yml` 当前有 **13 个 job 定义**（2026-09-22 核对，不将矩阵实例重复计数）。触发面：`push` 到 `main` /
 `codex/**`、`pull_request` → `main`、以及每日 `18:00 UTC` 的 schedule。后端各 job 统一用
 `uv sync --frozen --project backend --extra dev` 装依赖并把该 venv 前置进 `PATH`。
 
 | Job | 名称 | 何时跑 | 内容 |
 | --- | --- | --- | --- |
-| `backend` | Backend Tests | 全部 | `uv lock --check` → `scripts/backend_release_suite.py` → 10 个 agent harness / caliber 映射测试 → **caliber path-trigger gate**（仅 PR：diff 触及 `CALIBER_GATE_MAP` 里的口径源文件时，强制跑对应红线测试；拿不到 base-ref 即 fail-closed） |
+| `backend` | Backend Tests | 全部 | 有界 release suite、14 个 harness/契约/配置测试文件；PR 另跑 caliber 路径映射检查 |
+| `release-control-structure` | Release Control Structure (not approval) | 全部 | 发布登记结构、状态及并发控制测试，不构成发布审批 |
 | `agent-eval-replay` | Agent Eval Replay | 仅 PR | 按 diff 与任务 `allowed_scope` 交集选任务跑重放评测，scorecard 发到 step summary + PR 评论。**评测 fail/void 不阻塞合并**；此 job 变红只代表编排自身故障 |
 | `backend-full-pytest` | Backend Full Pytest | 仅 schedule 或 push→`main` | 全量 `python -m pytest -q`，产出 junit XML + 控制台日志；schedule 失败时自动开/追评 `ci-full-pytest-failure` issue |
-| `backend-lint` | Backend Ruff | 全部 | `ruff check backend scripts tests --select S110,S112` 硬门禁（静默异常，存量已清零）+ BLE001 棘轮报数（不阻断） |
-| `mypy-ratchet` | Backend Mypy Ratchet | 全部 | `scripts/check_mypy_baseline.py`，mypy 钉在 1.20.1。**当前 `continue-on-error: true`**，属观察模式，红了不拦 |
-| `frontend` | Frontend Tests | 全部 | typecheck → Vitest → **`npm run debt:audit`** → `VITE_DATA_SOURCE=real npm run build` → a11y smoke → stock-analysis mock smoke（后两项走 Playwright/Chromium） |
+| `backend-lint` | Backend Ruff | 全部 | S110/S112 硬门禁；BLE001 逐条身份门禁同样阻断 |
+| `mypy-ratchet` | Backend Mypy Ratchet | 全部 | 检查器回归后运行逐条身份门禁，Python 3.11 / mypy 1.20.1；失败阻断，CI 不更新基线 |
+| `frontend` | Frontend Tests | 全部 | typecheck、Vitest、debt:audit、real 模式构建；独立检查失败后继续收集其余结果 |
+| `frontend-a11y-smoke-shard` | Frontend Accessibility Smoke Shard | 全部 | 四分片 Playwright；首分片另跑 stock-analysis mock smoke |
+| `frontend-a11y-smoke` | Frontend Accessibility Smoke | 分片结束后 | 汇总分片结果，任一失败均阻断 |
 | `lint` | Frontend Lint | 全部 | `node scripts/check_surface_naming.mjs` + `npx eslint .` |
 | `api-contract` | API Contract | 全部 | `scripts/api_contract_check.py export-openapi` → `spectral lint ... -r .spectral.yaml` |
 | `secrets` | Secret Scan | 全部 | Gitleaks（`scripts/supply_chain_security_scan.py --tool gitleaks`）+ 供应链扫描计划 dry-run，报告上传为 artifact |

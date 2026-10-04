@@ -28,12 +28,14 @@ def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) ->
         return value
     if isinstance(value, dict) and {"raw", "unit", "display", "precision", "sign_aware"} <= set(value.keys()):
         return value
+    if isinstance(value, Decimal):
+        return numeric_from_raw(raw=value, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
     if isinstance(value, str):
         normalized = value.strip().replace(",", "")
         if not normalized:
             return None
         try:
-            raw = float(Decimal(normalized))
+            raw = Decimal(normalized)
         except InvalidOperation:
             return value
         return numeric_from_raw(raw=raw, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
@@ -643,9 +645,11 @@ class ActionAttributionResponse(BaseModel):
     total_pnl_from_actions: Numeric
     by_action_type: list[ActionTypeSummary] = Field(default_factory=list, description="Summary by action type")
     action_details: list[ActionDetail] = Field(default_factory=list, description="Individual action details")
-    period_start_duration: Numeric
-    period_end_duration: Numeric
-    duration_change_from_actions: Numeric
+    snapshot_window: dict[str, Any] | None = None
+    pnl_coverage: dict[str, Any] | None = None
+    period_start_duration: Numeric | None
+    period_end_duration: Numeric | None
+    duration_change_from_actions: Numeric | None
     period_start_dv01: Numeric | None
     period_end_dv01: Numeric | None
     status: str = "ready"
@@ -1309,7 +1313,9 @@ class BondTopHoldingItem(BaseModel):
     market_value: Numeric
     face_value: Numeric
     ytm: Numeric
-    modified_duration: Numeric
+    modified_duration: Numeric | None = None
+    duration_quality_flag: str | None = None
+    maturity_category: str = "unknown"
     weight: Numeric
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {

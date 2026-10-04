@@ -115,9 +115,9 @@ export function PerformanceComparison() {
     <EvidencePanel
       heading="组合表现对比（年初至今）"
       style={{
-        border: "1px solid var(--ib-hairline)",
+        border: "1px solid var(--dh-api-line-soft, var(--ib-hairline))",
         borderRadius: "var(--dh-api-radius, 6px)",
-        background: "var(--ib-surface)",
+        background: "var(--dh-api-panel-2, var(--ib-surface))",
         boxShadow: "none",
       }}
     >

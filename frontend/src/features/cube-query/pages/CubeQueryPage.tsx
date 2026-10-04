@@ -9,22 +9,21 @@ import {
   Row,
   Select,
   Space,
-  Table,
   Tag,
   Typography,
 } from "antd";
-import type { ColumnsType } from "antd/es/table";
 import dayjs, { type Dayjs } from "dayjs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
 import type { CubeDrillPath, CubeQueryRequest, CubeQueryResult } from "../../../api/contracts";
+import { isForbiddenCubeError } from "../../../api/cubeClient";
+import { DataTable, type DataTableColumn } from "../../../components/layout";
 import {
   EvidencePanel,
   PageHeader,
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
-import { tabularNumsStyle } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 
 import styles from "./CubeQueryPage.module.css";
@@ -38,8 +37,7 @@ const FACT_OPTIONS = [
   { value: "product_category", label: "产品类别" },
 ] as const;
 
-const AGG_OPTIONS = ["sum", "avg", "count", "min", "max"] as const;
-const AGG_LABELS: Record<(typeof AGG_OPTIONS)[number], string> = {
+const AGG_LABELS: Record<string, string> = {
   sum: "求和",
   avg: "平均",
   count: "计数",
@@ -56,6 +54,24 @@ type OrderRow = { key: string; field: string; descending: boolean };
 
 let seq = 0;
 const nextKey = () => `k${++seq}`;
+
+/*
+ * 403 是权限边界不是链路故障：默认 viewer 身份拿不到 cube 读权限时，整页维度目录都拿不到，
+ * 此前一律写成「稍后重试或切换事实表」，把无权说成了临时故障（2026-09-02 走查）。
+ */
+const CUBE_FORBIDDEN_TITLE = "当前角色无权访问自助查询";
+const CUBE_FORBIDDEN_DESCRIPTION =
+  "后端按角色拒绝了 cube 读请求（403）。需要数据中心开通 cube 读权限；页面不会用前端数据补数，重试不会改变结果。";
+
+function describeCubeFailure(
+  error: unknown,
+  fallback: { title: string; description: string },
+): { title: string; description: string; forbidden: boolean } {
+  if (isForbiddenCubeError(error)) {
+    return { title: CUBE_FORBIDDEN_TITLE, description: CUBE_FORBIDDEN_DESCRIPTION, forbidden: true };
+  }
+  return { ...fallback, forbidden: false };
+}
 
 const EMPTY_STRINGS: string[] = [];
 
@@ -96,7 +112,7 @@ function formatCellValue(value: unknown): string {
 }
 
 function aggLabel(value: string): string {
-  return AGG_LABELS[value as (typeof AGG_OPTIONS)[number]] ?? value;
+  return AGG_LABELS[value] ?? value;
 }
 
 function resultMetaQualityLabel(value: string | undefined): string {
@@ -130,7 +146,9 @@ function collectConfigIssues({
   filterRows,
   orderRows,
   dimensionList,
+  filterDimensionList,
   measureFields,
+  allowedAggregations,
 }: {
   reportDateValid: boolean;
   measureRows: MeasureRow[];
@@ -138,14 +156,16 @@ function collectConfigIssues({
   filterRows: FilterRow[];
   orderRows: OrderRow[];
   dimensionList: string[];
+  filterDimensionList: string[];
   measureFields: string[];
+  allowedAggregations: string[];
 }): string[] {
   const issues = new Set<string>();
   if (!reportDateValid) {
     issues.add("请先填写有效的报告日");
   }
 
-  const aggAllowed = new Set<string>(AGG_OPTIONS);
+  const aggAllowed = new Set<string>(allowedAggregations);
   const activeMeasures = measureRows.filter((r) => r.field && r.agg);
   if (activeMeasures.length === 0) {
     issues.add("请至少配置一个有效度量");
@@ -173,7 +193,7 @@ function collectConfigIssues({
       }
       return;
     }
-    if (!dimensionList.includes(row.dimension)) {
+    if (!filterDimensionList.includes(row.dimension)) {
       issues.add(`筛选维度「${row.dimension}」不在当前事实表可用清单`);
     }
   });
@@ -200,12 +220,21 @@ export default function CubeQueryPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [lastResult, setLastResult] = useState<CubeQueryResult | null>(null);
+  const activeRequest = useRef<{ request: CubeQueryRequest; key: string } | null>(null);
   const [validationIssues, setValidationIssues] = useState<string[]>([]);
+  const [productView, setProductView] = useState("monthly");
+  const [categoryId, setCategoryId] = useState<string>();
+  const analyticalOnly = factTable === "balance" || factTable === "product_category";
 
   const dimensionsQuery = useQuery({
     queryKey: [client.mode, "cube-dimensions", factTable],
     queryFn: () => client.getCubeDimensions(factTable),
     enabled: Boolean(factTable),
+  });
+
+  const dimensionsFailure = describeCubeFailure(dimensionsQuery.error, {
+    title: "维度加载失败",
+    description: "维度清单请求失败，请稍后重试或切换事实表。",
   });
 
   const dimsPayload = dimensionsQuery.data;
@@ -217,6 +246,15 @@ export default function CubeQueryPage() {
     () => dimsPayload?.measure_fields ?? EMPTY_STRINGS,
     [dimsPayload?.measure_fields],
   );
+  const filterDimensionList = useMemo(
+    () => dimensionList.filter((dimension) =>
+      factTable === "balance" ? dimension !== "currency_basis"
+      : factTable === "product_category" ? dimension !== "view" && dimension !== "category_id"
+      : true,
+    ),
+    [dimensionList, factTable],
+  );
+  const allowedAggregations = dimsPayload?.measures ?? EMPTY_STRINGS;
 
   useEffect(() => {
     if (!measureFields.length) {
@@ -237,7 +275,7 @@ export default function CubeQueryPage() {
     setSelectedDimensions((prev) => prev.filter((d) => dimensionList.includes(d)));
     setFilterRows((rows) =>
       rows.map((r) =>
-        r.dimension && !dimensionList.includes(r.dimension)
+        r.dimension && !filterDimensionList.includes(r.dimension)
           ? { ...r, dimension: "", values: [] }
           : r,
       ),
@@ -251,7 +289,7 @@ export default function CubeQueryPage() {
     );
     setPage(1);
     setValidationIssues([]);
-  }, [factTable, dimensionList, measureFields]);
+  }, [factTable, dimensionList, filterDimensionList, measureFields]);
 
   const buildRequest = useCallback(
     (
@@ -275,6 +313,11 @@ export default function CubeQueryPage() {
         return null;
       }
       const filters = buildFiltersMap(rows);
+      if (factTable === "balance") filters.currency_basis = ["CNY"];
+      if (factTable === "product_category") {
+        filters.view = [productView];
+        filters.category_id = categoryId ? [categoryId] : [];
+      }
       const order_by = orderRows
         .filter((r) => r.field.trim())
         .map((r) => (r.descending ? `-${r.field.trim()}` : r.field.trim()));
@@ -287,7 +330,7 @@ export default function CubeQueryPage() {
         order_by: order_by.length ? order_by : undefined,
         limit: ps,
         offset: (p - 1) * ps,
-        basis: "formal",
+        basis: analyticalOnly ? "analytical" : "formal",
       };
     },
     [
@@ -299,14 +342,35 @@ export default function CubeQueryPage() {
       selectedDimensions,
       page,
       pageSize,
+      analyticalOnly,
+      productView,
+      categoryId,
     ],
   );
 
   const executeMutation = useMutation({
     mutationFn: (req: CubeQueryRequest) => client.executeCubeQuery(req),
-    onSuccess: (data) => {
-      setLastResult(data);
+    onSuccess: (data, req) => {
+      if (activeRequest.current?.request === req) setLastResult(data);
     },
+    onMutate: () => setLastResult(null),
+  });
+  const requestKey = JSON.stringify([client.mode, buildRequest()]);
+  const resetMutation = executeMutation.reset;
+  useLayoutEffect(() => {
+    if (activeRequest.current && activeRequest.current.key !== requestKey) {
+      activeRequest.current = null;
+      setLastResult(null);
+      resetMutation();
+    }
+  }, [requestKey, resetMutation]);
+  useEffect(() => () => { activeRequest.current = null; }, []);
+  const executeFailure = describeCubeFailure(executeMutation.error, {
+    title: "查询执行失败",
+    description:
+      executeMutation.error instanceof Error && executeMutation.error.message
+        ? executeMutation.error.message
+        : "查询失败，请稍后重试。",
   });
 
   const submit = useCallback(
@@ -318,8 +382,13 @@ export default function CubeQueryPage() {
         filterRows: overrides?.filterRows ?? filterRows,
         orderRows,
         dimensionList,
+        filterDimensionList,
         measureFields,
+        allowedAggregations,
       });
+      if (factTable === "product_category" && !categoryId) {
+        issues.push("请选择一个产品类别；跨类别汇总尚未开放");
+      }
       if (issues.length > 0) {
         setValidationIssues(issues);
         return false;
@@ -330,11 +399,13 @@ export default function CubeQueryPage() {
         return false;
       }
       setValidationIssues([]);
+      activeRequest.current = { request: req, key: JSON.stringify([client.mode, req]) };
       executeMutation.mutate(req);
       return true;
     },
     [
       buildRequest,
+      client.mode,
       executeMutation,
       reportDate,
       measureRows,
@@ -342,7 +413,11 @@ export default function CubeQueryPage() {
       filterRows,
       orderRows,
       dimensionList,
+      filterDimensionList,
       measureFields,
+      allowedAggregations,
+      factTable,
+      categoryId,
     ],
   );
 
@@ -351,33 +426,30 @@ export default function CubeQueryPage() {
     submit({ page: 1, pageSize });
   };
 
-  const tableColumns: ColumnsType<Record<string, unknown>> = useMemo(() => {
-    /** 数值单元格统一等宽 + tabular-nums（DESIGN.md §3：所有对比性数字必须 tabular）。 */
-    const numericCellProps = () => ({ style: tabularNumsStyle });
+  const tableColumns: readonly DataTableColumn<Record<string, unknown>>[] = useMemo(() => {
     if (!lastResult?.rows?.length) {
       const keys = [
         ...(lastResult?.dimensions ?? selectedDimensions),
         ...(lastResult?.measures ?? []),
       ];
       if (keys.length === 0 && measureRows.length) {
-        return measureRows.map((m) => ({
-          title: m.agg === "count" ? "计数" : `${aggLabel(m.agg)}(${m.field})`,
-          dataIndex: m.agg === "count" ? "count" : m.field,
-          key: `${m.agg}-${m.field}`,
-          align: "right" as const,
-          onCell: numericCellProps,
-          render: (v: unknown) => formatCellValue(v),
-        }));
+        return measureRows.map((m) => {
+          const dataIndex = m.agg === "count" ? "count" : m.field;
+          return {
+            title: m.agg === "count" ? "计数" : `${aggLabel(m.agg)}(${m.field})`,
+            key: `${m.agg}-${m.field}`,
+            align: "numeric" as const,
+            render: (row: Record<string, unknown>) => formatCellValue(row[dataIndex]),
+          };
+        });
       }
       return keys.map((k) => {
         const numeric = measureFields.includes(String(k)) || String(k) === "count";
         return {
           title: String(k) === "count" ? "计数" : k,
-          dataIndex: k,
           key: k,
-          align: numeric ? ("right" as const) : ("left" as const),
-          onCell: numeric ? numericCellProps : undefined,
-          render: (v: unknown) => formatCellValue(v),
+          align: numeric ? ("numeric" as const) : ("text" as const),
+          render: (row: Record<string, unknown>) => formatCellValue(row[k]),
         };
       });
     }
@@ -393,16 +465,16 @@ export default function CubeQueryPage() {
         rows.some((row) => isNumericCellValue(row[key]));
       return {
         title: key === "count" ? "计数" : key,
-        dataIndex: key,
         key,
-        align: numeric ? ("right" as const) : ("left" as const),
-        onCell: numeric ? numericCellProps : undefined,
-        render: (v: unknown) => formatCellValue(v),
+        align: numeric ? ("numeric" as const) : ("text" as const),
+        render: (row: Record<string, unknown>) => formatCellValue(row[key]),
       };
     });
   }, [lastResult, selectedDimensions, measureRows, measureFields]);
 
   const onDrillValue = (dimension: string, value: string) => {
+    if ((factTable === "balance" && dimension === "currency_basis")
+      || (factTable === "product_category" && (dimension === "view" || dimension === "category_id"))) return;
     setPage(1);
     setFilterRows((prev) => {
       const existing = prev.find((r) => r.dimension === dimension);
@@ -463,7 +535,7 @@ export default function CubeQueryPage() {
       <PageHeader
         eyebrow="报表与数据"
         title="多维查询"
-        description="对正式口径事实表进行维度聚合、筛选与钻取。"
+        description="按明确口径筛选与钻取；余额和产品类别结果仅供分析。"
       />
 
       <EvidencePanel heading="查询配置">
@@ -505,6 +577,36 @@ export default function CubeQueryPage() {
             </Col>
           </Row>
 
+          {analyticalOnly ? (
+            <PageStateSurface
+              variant="definition-pending"
+              testId="cube-analytical-only"
+              title="当前结果仅供分析，不能正式使用"
+              description={factTable === "balance"
+                ? "金额固定采用折人民币口径；原币记录不参与汇总。"
+                : "每次读取一个期间、一个已配置类别的现成收入；父子类别不叠加。"}
+            />
+          ) : null}
+          {factTable === "balance" ? (
+            <Space>
+              <Text strong>金额口径</Text>
+              <Select aria-label="cube-currency-basis" value="CNY" disabled options={[{ value: "CNY", label: "折人民币（CNY）" }]} />
+            </Space>
+          ) : null}
+          {factTable === "product_category" ? (
+            <Space wrap>
+              <Text strong>期间</Text>
+              <Select aria-label="cube-product-view" className={styles.selectWide} value={productView}
+                options={(dimsPayload?.required_filters?.view ?? []).map((value) => ({ value, label: value }))}
+                onChange={setProductView} />
+              <Text strong>产品类别</Text>
+              <Select aria-label="cube-product-category" className={styles.selectWide} value={categoryId}
+                placeholder="选择单个类别" showSearch
+                options={(dimsPayload?.required_filters?.category_id ?? []).map((value) => ({ value, label: value }))}
+                onChange={setCategoryId} />
+            </Space>
+          ) : null}
+
           <div data-testid="cube-dimensions">
             <Text strong>维度（多选）</Text>
             <div className={styles.sectionBody}>
@@ -513,8 +615,9 @@ export default function CubeQueryPage() {
               ) : dimensionsQuery.isError ? (
                 <PageStateSurface
                   variant="error"
-                  title="维度加载失败"
-                  description="维度清单请求失败，请稍后重试或切换事实表。"
+                  testId="cube-dimensions-error"
+                  title={dimensionsFailure.title}
+                  description={dimensionsFailure.description}
                 />
               ) : (
                 <Checkbox.Group
@@ -551,7 +654,7 @@ export default function CubeQueryPage() {
                   <Select
                     className={styles.selectNarrow}
                     value={row.agg}
-                    options={AGG_OPTIONS.map((a) => ({ value: a, label: AGG_LABELS[a] }))}
+                    options={allowedAggregations.map((a) => ({ value: a, label: aggLabel(a) }))}
                     onChange={(agg) =>
                       setMeasureRows((rows) =>
                         rows.map((x) => (x.key === row.key ? { ...x, agg } : x)),
@@ -604,7 +707,7 @@ export default function CubeQueryPage() {
                     className={styles.selectMedium}
                     placeholder="维度"
                     value={row.dimension || undefined}
-                    options={dimensionList.map((d) => ({ value: d, label: d }))}
+                    options={filterDimensionList.map((d) => ({ value: d, label: d }))}
                     onChange={(dimension) =>
                       setFilterRows((rows) =>
                         rows.map((x) => (x.key === row.key ? { ...x, dimension, values: [] } : x)),
@@ -709,28 +812,25 @@ export default function CubeQueryPage() {
               <PageStateSurface
                 variant="error"
                 testId="cube-query-error"
-                title="查询执行失败"
-                description={
-                  executeMutation.error instanceof Error && executeMutation.error.message
-                    ? executeMutation.error.message
-                    : "查询失败，请稍后重试。"
-                }
+                title={executeFailure.title}
+                description={executeFailure.description}
                 actions={
-                  <Button size="small" onClick={() => submit()}>
-                    重试
-                  </Button>
+                  executeFailure.forbidden ? undefined : (
+                    <Button size="small" onClick={() => submit()}>
+                      重试
+                    </Button>
+                  )
                 }
               />
             ) : null}
-            <Table<Record<string, unknown>>
-              data-testid="cube-results-table"
-              size="small"
+            <DataTable<Record<string, unknown>>
+              testId="cube-results-table"
               rowKey={(row) => JSON.stringify(row)}
-              loading={executeMutation.isPending}
+              status={executeMutation.isPending ? "loading" : "ready"}
               columns={tableColumns}
-              dataSource={(lastResult?.rows ?? []) as Record<string, unknown>[]}
-              pagination={false}
-              locale={{ emptyText: lastResult ? "暂无数据" : "点击「执行查询」加载" }}
+              rows={(lastResult?.rows ?? []) as Record<string, unknown>[]}
+              skeletonRows={pageSize > 8 ? 8 : pageSize}
+              emptyMessage={lastResult ? "暂无数据" : "点击「执行查询」加载"}
             />
             {lastResult ? (
               <Pagination
@@ -771,6 +871,10 @@ export default function CubeQueryPage() {
             {resultMetaQualityLabel(lastResult.result_meta.quality_flag)}
           </Text>
           <Text type="secondary">来源版本={lastResult.result_meta.source_version}</Text>
+          {lastResult.result_meta.formal_use_allowed === false ? <Text type="secondary">仅供分析，不能正式使用</Text> : null}
+          {lastResult.result_meta.filters_applied ? (
+            <Text type="secondary">实际筛选={JSON.stringify(lastResult.result_meta.filters_applied)}</Text>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -4,6 +4,8 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { workbenchNavigation } from "../../../app/navigation";
+import type { LedgerPositionItem } from "../../../api/ledgerClient";
+import { DataTable, SectionHead, type DataTableColumn } from "../../../components/layout";
 import { EM_DASH } from "../../../utils/format";
 import {
   buildLedgerKpiCards,
@@ -35,12 +37,15 @@ function queryCurrency(value: string | null) {
   return value?.trim().toUpperCase() ?? "";
 }
 
+/** 元数据未到达（undefined）时是「未知」而不是「否」，显示 EM_DASH。 */
 function ledgerBoolLabel(value: boolean | undefined): string {
+  if (value === undefined) return EM_DASH;
   return value ? "是" : "否";
 }
 
 /** 「无数据 否」双重否定难读：无数据回退按事件表述（发生/未发生）。 */
 function ledgerNoDataLabel(value: boolean | undefined): string {
+  if (value === undefined) return EM_DASH;
   return value ? "发生" : "未发生";
 }
 
@@ -57,6 +62,29 @@ function ledgerMissingValue<T>(value: T | null | undefined): T | typeof EM_DASH 
   }
   return value;
 }
+
+/** 列头 title 属性沿用既有的三个接口字段名证据引用（position_key / batch_id / row_no）。 */
+const LEDGER_POSITION_COLUMNS: readonly DataTableColumn<LedgerPositionItem>[] = [
+  { key: "position_key", title: "持仓键", note: "position_key", render: (row) => row.position_key },
+  { key: "direction", title: "方向", render: (row) => row.direction },
+  { key: "bond_code", title: "债券代码", render: (row) => row.bond_code },
+  { key: "portfolio", title: "组合", render: (row) => row.portfolio || EM_DASH },
+  { key: "currency", title: "币种", render: (row) => row.currency || EM_DASH },
+  {
+    key: "account_category_std",
+    title: "账户类别",
+    render: (row) => row.account_category_std || EM_DASH,
+  },
+  { key: "asset_class_std", title: "资产分类", render: (row) => row.asset_class_std || EM_DASH },
+  {
+    key: "face_amount",
+    title: "面值（原币）",
+    align: "numeric",
+    render: (row) => formatLedgerYuanAmount(row.face_amount),
+  },
+  { key: "batch_id", title: "批次号", note: "batch_id", render: (row) => String(row.batch_id) },
+  { key: "row_no", title: "行号", note: "row_no", render: (row) => String(row.row_no) },
+];
 
 export default function LedgerDashboardPage() {
   const client = useApiClient();
@@ -149,9 +177,10 @@ export default function LedgerDashboardPage() {
     setSearchParams(next, { replace: true });
   }, [normalizeUnclassifiedDirection, searchParams, setSearchParams]);
 
+  const positionsEnabled = Boolean(selectedDate && selectedCurrency && !unclassifiedDirectionBlocked);
   const positionsQuery = useQuery({
     queryKey: ["bank-ledger", "positions", client.mode, selectedDate, selectedCurrency, direction],
-    enabled: Boolean(selectedDate && selectedCurrency && !unclassifiedDirectionBlocked),
+    enabled: positionsEnabled,
     queryFn: () =>
       client.getLedgerPositions({
         asOfDate: selectedDate,
@@ -188,6 +217,13 @@ export default function LedgerDashboardPage() {
     }
   };
   const positionsState = ledgerDataState(positions?.metadata, positionsQuery.error);
+  /*
+   * 上游（日期目录/总览）失败或无数据时明细请求从未发起：不能停在骨架「数据载入中」，
+   * 也不能把「未请求」显示成 0 条。
+   */
+  const positionsNotRequested =
+    !positionsEnabled && (state === "loading_failure" || state === "no_data");
+  const positionsUnavailable = (positionsQuery.isError && !positions) || positionsNotRequested;
   const actualDate = resolvedLedgerDate(dashboard?.trace, dashboard?.data.as_of_date);
   const requestedDate = dashboard?.trace.requested_as_of_date ?? selectedDate;
   const positionsActualDate = resolvedLedgerDate(positions?.trace);
@@ -430,43 +466,52 @@ export default function LedgerDashboardPage() {
 
       <section className="ledger-dashboard__panel" data-testid="ledger-dashboard-classification-quality">
         <div className="ledger-dashboard__panel-head">
-          <div>
-            <h2>分类质量</h2>
-            {!selectedBucket ? (
-              <p>暂无可评估分类质量。</p>
-            ) : classificationStatus === "legacy_unassessed" ? (
-              <p>旧规则批次不可评估；资产、负债和净敞口已 fail closed 显示为 {EM_DASH}。</p>
-            ) : classificationStatus === "invalid_materialization" ? (
-              <p>物化方向非法；资产、负债、净敞口和分类质量已 fail closed。</p>
-            ) : (
-              <p>
-                覆盖率 {selectedBucket.classification_coverage_pct?.toFixed(2) ?? EM_DASH}%
-                ，未分类 {selectedBucket.unclassified_row_count ?? EM_DASH} 行（
-                {formatLedgerYiAmount(selectedBucket.unclassified_face_amount, selectedCurrency)}
-                ）
-              </p>
-            )}
-          </div>
-          {classificationReady && selectedBucket ? (
-            <button type="button" onClick={() => updateDirection("UNCLASSIFIED")}>
-              查看未分类明细
-            </button>
-          ) : null}
+          <SectionHead
+            title="分类质量"
+            numbered={false}
+            note={
+              !selectedBucket
+                ? "暂无可评估分类质量。"
+                : classificationStatus === "legacy_unassessed"
+                  ? `旧规则批次不可评估；资产、负债和净敞口已 fail closed 显示为 ${EM_DASH}。`
+                  : classificationStatus === "invalid_materialization"
+                    ? "物化方向非法；资产、负债、净敞口和分类质量已 fail closed。"
+                    : `覆盖率 ${selectedBucket.classification_coverage_pct?.toFixed(2) ?? EM_DASH}%，未分类 ${selectedBucket.unclassified_row_count ?? EM_DASH} 行（${formatLedgerYiAmount(selectedBucket.unclassified_face_amount, selectedCurrency)}）`
+            }
+            actions={
+              classificationReady && selectedBucket ? (
+                <button type="button" onClick={() => updateDirection("UNCLASSIFIED")}>
+                  查看未分类明细
+                </button>
+              ) : null
+            }
+            contentGap="flush"
+          />
         </div>
       </section>
       <section className="ledger-dashboard__panel" data-testid="ledger-dashboard-positions-panel">
         <div className="ledger-dashboard__panel-head">
-          <div>
-            <h2>持仓明细</h2>
-            <p>
-              {directionLabel(direction)} · {positions?.data.total ?? 0} 条
-            </p>
-          </div>
+          <SectionHead
+            title="持仓明细"
+            numbered={false}
+            note={`${directionLabel(direction)} · ${positions ? `${positions.data.total} 条` : EM_DASH}`}
+            contentGap="flush"
+          />
         </div>
 
         <div className="ledger-dashboard__table-wrap">
           {positionsQuery.isLoading ? (
             <div className="ledger-dashboard__panel-status">明细加载中</div>
+          ) : null}
+          {positionsNotRequested ? (
+            <div
+              className={`ledger-dashboard__panel-status ledger-dashboard__panel-status--${state}`}
+              data-testid="ledger-dashboard-positions-status"
+            >
+              {state === "loading_failure"
+                ? "明细未触发加载：上游台账数据加载失败"
+                : "明细未触发加载：暂无可用台账日期"}
+            </div>
           ) : null}
           {!positionsQuery.isLoading && positionsState !== "ready" ? (
             <div
@@ -485,46 +530,16 @@ export default function LedgerDashboardPage() {
               ) : null}
             </div>
           ) : null}
-          <table data-testid="ledger-dashboard-positions-table">
-            <thead>
-              {/* 列名中文化；接口字段名收进 title 作证据引用（§7）。 */}
-              <tr>
-                <th title="position_key">持仓键</th>
-                <th>方向</th>
-                <th>债券代码</th>
-                <th>组合</th>
-                <th>币种</th>
-                <th>账户类别</th>
-                <th>资产分类</th>
-                <th>面值（原币）</th>
-                <th title="batch_id">批次号</th>
-                <th title="row_no">行号</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(positions?.data.items ?? []).map((item) => (
-                <tr key={positionRowKey(item)}>
-                  <td>{item.position_key}</td>
-                  <td>{item.direction}</td>
-                  <td>{item.bond_code}</td>
-                  <td>{item.portfolio || EM_DASH}</td>
-                  <td>{item.currency || EM_DASH}</td>
-                  <td>{item.account_category_std || EM_DASH}</td>
-                  <td>{item.asset_class_std || EM_DASH}</td>
-                  <td className="ledger-dashboard__num">{formatLedgerYuanAmount(item.face_amount)}</td>
-                  <td>{item.batch_id}</td>
-                  <td>{item.row_no}</td>
-                </tr>
-              ))}
-              {positions && positions.data.items.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="ledger-dashboard__empty">
-                    暂无匹配明细
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+          {/* 失败/未触发时上方状态行已说明原因，不再渲染「数据载入中」骨架。 */}
+          {positionsUnavailable ? null : (
+            <DataTable<LedgerPositionItem>
+              testId="ledger-dashboard-positions-table"
+              rows={positions?.data.items}
+              rowKey={positionRowKey}
+              columns={LEDGER_POSITION_COLUMNS}
+              emptyMessage="暂无匹配明细"
+            />
+          )}
         </div>
       </section>
 

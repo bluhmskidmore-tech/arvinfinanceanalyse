@@ -5,7 +5,13 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from backend.app.core_finance.bond_analytics.common import YTM_PAR_FALLBACK_RULE_ID
-from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
+from backend.app.core_finance.bond_analytics.engine import (
+    DURATION_QUALITY_YTM_PAR_FALLBACK,
+)
+from backend.app.core_finance.fixed_income_version_set import (
+    FIXED_INCOME_VERSION_SET,
+    compose_risk_tensor_source_version,
+)
 from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
 from backend.app.governance.locks import LockDefinition
@@ -14,6 +20,7 @@ from backend.app.repositories.balance_analysis_repo import BalanceAnalysisReposi
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.risk_tensor_repo import (
     RiskTensorRepository,
+    load_current_tyw_liability_lineage_state,
     load_latest_bond_analytics_lineage,
 )
 from backend.app.repositories.task_write_guard import repository_task_write_scope
@@ -25,19 +32,9 @@ from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALY
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
 
-RISK_TENSOR_MODULE = ensure_formal_module(
-    FormalComputeModuleDescriptor(
-        module_name="risk_tensor",
-        basis="formal",
-        # Governed downstream derivative of bond_analytics formal facts.
-        input_sources=("fact_formal_bond_analytics_daily", "fact_formal_tyw_balance_daily"),
-        fact_tables=("fact_formal_risk_tensor_daily",),
-        rule_version="rv_risk_tensor_formal_materialize_v6",
-        result_kind_family="risk-tensor",
-        supports_standard_queries=True,
-        supports_custom_queries=False,
-    )
-)
+_RISK_TENSOR_VERSION = FIXED_INCOME_VERSION_SET.risk_tensor
+_BOND_ANALYTICS_VERSION = FIXED_INCOME_VERSION_SET.bond_analytics
+RISK_TENSOR_MODULE = ensure_formal_module(_RISK_TENSOR_VERSION.descriptor)
 RISK_TENSOR_FORMAL_BASIS = RISK_TENSOR_MODULE.basis
 CACHE_KEY = RISK_TENSOR_MODULE.cache_key
 RISK_TENSOR_LOCK = LockDefinition(
@@ -68,24 +65,28 @@ def _build_source_version(
     upstream_source_version: str,
     liability_source_versions: list[str] | None = None,
 ) -> str:
-    parts = ["sv_risk_tensor", upstream_source_version]
-    for value in sorted({str(item).strip() for item in (liability_source_versions or []) if str(item).strip()}):
-        parts.append(value)
-    return "__".join(parts)
+    liability_source_version = "__".join(
+        sorted(
+            {
+                str(item).strip()
+                for item in (liability_source_versions or [])
+                if str(item).strip()
+            }
+        )
+    )
+    return compose_risk_tensor_source_version(
+        upstream_source_version=upstream_source_version,
+        liability_source_version=liability_source_version,
+    )
 
 
 def _load_liability_rows(*, duckdb_file: Path, report_date: str) -> list[dict[str, object]]:
     repo = BalanceAnalysisRepository(str(duckdb_file))
-    try:
-        return repo.fetch_formal_tyw_rows(
-            report_date=report_date,
-            position_scope="liability",
-            currency_basis="CNY",
-        )
-    except Exception as exc:
-        if "fact_formal_tyw_balance_daily" in str(exc) and "does not exist" in str(exc):
-            return []
-        raise
+    return repo.fetch_formal_tyw_rows(
+        report_date=report_date,
+        position_scope="liability",
+        currency_basis="CNY",
+    )
 
 
 def _rate_unit_violations(rows: list[dict[str, object]]) -> list[str]:
@@ -169,20 +170,23 @@ def _finite_decimal_or_none(value: object) -> Decimal | None:
 def _ytm_par_fallback_disclosure(rows: list[dict[str, object]]) -> tuple[int, Decimal]:
     """统计上游按 par 假设（ytm=coupon）计算久期/DV01 的行（聚合披露）。
 
-    bond_analytics 引擎（W-fi-2026-08 P1）对有票息但 ytm 缺失/非正的行按
-    ``common.resolve_ytm_with_par_fallback`` 采用 par 假设；
-    fact_formal_bond_analytics_daily 无行级 provenance 列（本轮不改 schema），
-    此处按同一判定条件在物化结果元数据中做聚合级披露。
+    新事实优先使用 ``duration_quality_flag`` 的行级 provenance；迁移前的
+    NULL provenance 仅为兼容旧事实保留同口径推断。
     """
     count = 0
     market_value = _ZERO
     for row in rows:
-        coupon_rate = _finite_decimal_or_none(row.get("coupon_rate"))
-        if coupon_rate is None or coupon_rate <= _ZERO:
-            continue
-        ytm = _finite_decimal_or_none(row.get("ytm"))
-        if ytm is not None and ytm > _ZERO:
-            continue
+        duration_quality_flag = str(row.get("duration_quality_flag") or "").strip()
+        if duration_quality_flag:
+            if duration_quality_flag != DURATION_QUALITY_YTM_PAR_FALLBACK:
+                continue
+        else:
+            coupon_rate = _finite_decimal_or_none(row.get("coupon_rate"))
+            if coupon_rate is None or coupon_rate <= _ZERO:
+                continue
+            ytm = _finite_decimal_or_none(row.get("ytm"))
+            if ytm is not None and ytm > _ZERO:
+                continue
         count += 1
         row_market_value = _finite_decimal_or_none(row.get("market_value"))
         if row_market_value is not None:
@@ -264,7 +268,7 @@ def _execute_risk_tensor_materialization(
     if missing_lineage_fields:
         raise FormalComputeMaterializeFailure(
             source_version="sv_risk_tensor_upstream_missing",
-            vendor_version="vv_none",
+            vendor_version=RISK_TENSOR_MODULE.vendor_version,
             message=(
                 "risk_tensor requires completed bond_analytics lineage with non-empty "
                 "source_version, rule_version, and cache_version; "
@@ -272,6 +276,23 @@ def _execute_risk_tensor_materialization(
             ),
         )
     upstream_lineage = normalized_upstream_lineage
+    if (
+        upstream_lineage["rule_version"] != _BOND_ANALYTICS_VERSION.rule_version
+        or upstream_lineage["cache_version"] != _BOND_ANALYTICS_VERSION.cache_version
+    ):
+        raise FormalComputeMaterializeFailure(
+            source_version="sv_risk_tensor_upstream_version_stale",
+            vendor_version=RISK_TENSOR_MODULE.vendor_version,
+            message=(
+                "risk_tensor requires configured-current bond_analytics lineage; "
+                f"report_date={report_date}; expected_rule_version="
+                f"{_BOND_ANALYTICS_VERSION.rule_version}; expected_cache_version="
+                f"{_BOND_ANALYTICS_VERSION.cache_version}; "
+                f"got_rule_version={upstream_lineage['rule_version']}; "
+                f"got_cache_version={upstream_lineage['cache_version']}. "
+                "Rematerialize bond_analytics before materializing risk_tensor."
+            ),
+        )
 
     bond_repo = BondAnalyticsRepository(str(duckdb_file))
     report_day = date.fromisoformat(report_date)
@@ -281,10 +302,46 @@ def _execute_risk_tensor_materialization(
         report_day=report_day,
     )
     ytm_par_fallback_row_count, ytm_par_fallback_market_value = _ytm_par_fallback_disclosure(rows)
+    liability_lineage = load_current_tyw_liability_lineage_state(
+        duckdb_path=str(duckdb_file),
+        report_date=report_date,
+    )
+    source_version = _build_source_version(upstream_lineage["source_version"])
+    if liability_lineage.availability != "available":
+        raise FormalComputeMaterializeFailure(
+            source_version=source_version,
+            vendor_version=RISK_TENSOR_MODULE.vendor_version,
+            message=(
+                "risk_tensor requires a readable formal TYW liability input; "
+                f"report_date={report_date}; status={liability_lineage.availability}. "
+                "A missing or unreadable source cannot be treated as zero liability."
+            ),
+        )
     liability_rows = _load_liability_rows(
         duckdb_file=duckdb_file,
         report_date=report_date,
     )
+    if len(liability_rows) != liability_lineage.row_count:
+        raise FormalComputeMaterializeFailure(
+            source_version=source_version,
+            vendor_version=RISK_TENSOR_MODULE.vendor_version,
+            message=(
+                "risk_tensor TYW liability read did not match the verified formal input; "
+                f"report_date={report_date}; expected_rows={liability_lineage.row_count}; "
+                f"read_rows={len(liability_rows)}."
+            ),
+        )
+    if liability_lineage.row_count and (
+        not liability_lineage.source_version or not liability_lineage.rule_version
+    ):
+        raise FormalComputeMaterializeFailure(
+            source_version=source_version,
+            vendor_version=RISK_TENSOR_MODULE.vendor_version,
+            message=(
+                "risk_tensor requires non-empty TYW liability source_version and rule_version; "
+                f"report_date={report_date}."
+            ),
+        )
     source_version = _build_source_version(
         upstream_lineage["source_version"],
         liability_source_versions=[
@@ -295,7 +352,7 @@ def _execute_risk_tensor_materialization(
     if provenance_violations:
         raise FormalComputeMaterializeFailure(
             source_version=source_version,
-            vendor_version="vv_none",
+            vendor_version=RISK_TENSOR_MODULE.vendor_version,
             message=(
                 "risk_tensor requires bond_analytics payment-frequency fallback provenance; "
                 "rebuild bond_analytics before materializing risk_tensor. "
@@ -320,7 +377,7 @@ def _execute_risk_tensor_materialization(
     if numeric_violations:
         raise FormalComputeMaterializeFailure(
             source_version=source_version,
-            vendor_version="vv_none",
+            vendor_version=RISK_TENSOR_MODULE.vendor_version,
             message=(
                 "risk_tensor requires parseable numeric formal inputs; "
                 f"report_date={report_date}; violations="
@@ -331,7 +388,7 @@ def _execute_risk_tensor_materialization(
     if rate_unit_violations:
         raise FormalComputeMaterializeFailure(
             source_version=source_version,
-            vendor_version="vv_none",
+            vendor_version=RISK_TENSOR_MODULE.vendor_version,
             message=(
                 "risk_tensor requires decimal-form bond analytics rates; "
                 "rebuild bond_analytics before materializing risk_tensor. "
@@ -382,13 +439,13 @@ def _execute_risk_tensor_materialization(
     except Exception as exc:
         raise FormalComputeMaterializeFailure(
             source_version=source_version,
-            vendor_version="vv_none",
+            vendor_version=RISK_TENSOR_MODULE.vendor_version,
             message=str(exc),
         ) from exc
 
     return FormalComputeMaterializeResult(
         source_version=source_version,
-        vendor_version="vv_none",
+        vendor_version=RISK_TENSOR_MODULE.vendor_version,
         payload={
             "bond_count": tensor.bond_count,
             "quality_flag": tensor.quality_flag,
@@ -399,6 +456,7 @@ def _execute_risk_tensor_materialization(
             "ytm_par_fallback_rule_id": YTM_PAR_FALLBACK_RULE_ID,
             "ytm_par_fallback_row_count": ytm_par_fallback_row_count,
             "ytm_par_fallback_market_value": str(ytm_par_fallback_market_value),
+            "input_quality": tensor.input_quality_metadata,
         },
     )
 
@@ -417,7 +475,7 @@ def _materialize_risk_tensor_facts(
 
     return run_formal_materialize(
         descriptor=RISK_TENSOR_MODULE,
-        job_name="risk_tensor_materialize",
+        job_name=_RISK_TENSOR_VERSION.job_name,
         report_date=report_date,
         governance_dir=str(governance_path),
         lock_base_dir=str(duckdb_file.parent),

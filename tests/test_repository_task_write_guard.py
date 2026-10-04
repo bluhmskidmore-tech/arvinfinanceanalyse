@@ -174,6 +174,133 @@ def test_high_risk_repository_writers_require_task_write_scope(tmp_path) -> None
         conn.close()
 
 
+def test_commit_report_date_purge_requires_task_write_scope(tmp_path) -> None:
+    from backend.app.repositories.fact_load_gates import commit_report_date_purge
+
+    conn = duckdb.connect(str(tmp_path / "purge-guard.duckdb"), read_only=False)
+    try:
+        conn.execute("create table guarded_fact (report_date varchar)")
+        conn.execute("insert into guarded_fact values ('2026-03-31')")
+
+        with pytest.raises(PermissionError, match="task write scope"):
+            commit_report_date_purge(
+                conn,
+                tables=("guarded_fact",),
+                report_date="2026-03-31",
+            )
+
+        assert conn.execute("select count(*) from guarded_fact").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def test_commit_report_date_purge_runs_before_commit_callback_atomically(tmp_path) -> None:
+    from backend.app.repositories.fact_load_gates import commit_report_date_purge
+    from backend.app.repositories.task_write_guard import repository_task_write_scope
+
+    conn = duckdb.connect(str(tmp_path / "purge-callback.duckdb"), read_only=False)
+    try:
+        conn.execute("create table guarded_fact (report_date varchar)")
+        conn.execute("create table invalidation_event (report_date varchar)")
+        conn.execute("insert into guarded_fact values ('2026-03-31')")
+
+        def fail_after_invalidation(active_conn) -> None:
+            active_conn.execute("insert into invalidation_event values ('2026-03-31')")
+            raise RuntimeError("stop before commit")
+
+        with repository_task_write_scope("backend.app.tasks.repository_guard_test"):
+            with pytest.raises(RuntimeError, match="stop before commit"):
+                commit_report_date_purge(
+                    conn,
+                    tables=("guarded_fact",),
+                    report_date="2026-03-31",
+                    before_commit=fail_after_invalidation,
+                )
+
+        assert conn.execute("select count(*) from guarded_fact").fetchone()[0] == 1
+        assert conn.execute("select count(*) from invalidation_event").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("rollback_error_type", [RuntimeError, TypeError])
+def test_purge_rollback_failure_preserves_original_error_and_stops_write(
+    caplog, rollback_error_type,
+) -> None:
+    from backend.app.repositories.fact_load_gates import commit_report_date_purge
+    from backend.app.repositories.task_write_guard import repository_task_write_scope
+
+    statements: list[str] = []
+    original_error = ValueError("invalid synthetic fact")
+    cleanup_secret = "synthetic-secret-in-rollback-error"
+
+    class Connection:
+        def execute(self, sql, parameters=None):
+            statements.append(sql)
+            if sql == "rollback":
+                raise rollback_error_type(cleanup_secret)
+
+    def fail_before_commit(_conn):
+        raise original_error
+
+    with repository_task_write_scope("backend.app.tasks.repository_guard_test"):
+        with pytest.raises(ValueError) as caught:
+            commit_report_date_purge(
+                Connection(),
+                tables=("guarded_fact",),
+                report_date="2026-03-31",
+                before_commit=fail_before_commit,
+            )
+            statements.append("dangerous subsequent insert")
+
+    assert caught.value is original_error
+    assert statements == [
+        "begin transaction",
+        "delete from guarded_fact where report_date = ?",
+        "rollback",
+    ]
+    assert caught.value.__context__ is None
+    assert cleanup_secret not in caplog.text
+
+
+def test_sync_zqtz_snapshot_market_value_requires_task_write_scope(tmp_path) -> None:
+    from backend.app.repositories.balance_analysis_repo import (
+        sync_zqtz_snapshot_market_value_cny_from_formal,
+    )
+
+    conn = duckdb.connect(str(tmp_path / "snapshot-sync-guard.duckdb"), read_only=False)
+    try:
+        with pytest.raises(PermissionError, match="task write scope"):
+            sync_zqtz_snapshot_market_value_cny_from_formal(conn, "2026-03-31")
+    finally:
+        conn.close()
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_source_preview
+def test_source_preview_repository_writers_require_task_write_scope(tmp_path) -> None:
+    from backend.app.repositories.source_preview_repo import (
+        cleanup_preview_backups,
+        clear_preview_tables,
+        materialize_source_previews,
+        restore_preview_tables,
+        snapshot_preview_tables,
+    )
+
+    duckdb_path = str(tmp_path / "source-preview-guard.duckdb")
+    writers = (
+        lambda: materialize_source_previews(duckdb_path),
+        lambda: snapshot_preview_tables(duckdb_path),
+        lambda: restore_preview_tables(duckdb_path),
+        lambda: cleanup_preview_backups(duckdb_path),
+        lambda: clear_preview_tables(duckdb_path),
+    )
+
+    for writer in writers:
+        with pytest.raises(PermissionError, match="task write scope"):
+            writer()
+
+
 def test_cffex_member_rank_replace_rolls_back_delete_when_insert_fails(tmp_path) -> None:
     from backend.app.repositories.task_write_guard import repository_task_write_scope
 

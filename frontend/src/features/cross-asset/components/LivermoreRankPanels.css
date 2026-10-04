@@ -25,7 +25,7 @@
 .cross-asset-livermore-rank__eyebrow {
   color: var(--ca-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cross-asset-livermore-rank__title {
@@ -35,7 +35,7 @@
   margin: 0;
   color: var(--ca-text);
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -46,7 +46,7 @@
   color: var(--ca-info-text);
   background: var(--ca-card);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cross-asset-livermore-rank__description {
@@ -63,7 +63,7 @@
   gap: 8px;
   color: var(--ca-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -95,7 +95,7 @@
   border-bottom: 1px solid var(--ca-border-muted);
   color: var(--ca-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: left;
   white-space: nowrap;
 }
@@ -112,7 +112,7 @@
 
 .cross-asset-livermore-rank__num {
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -133,7 +133,7 @@
 .cross-asset-livermore-rank__sector strong,
 .cross-asset-livermore-rank__stock strong {
   color: var(--ca-text);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cross-asset-livermore-rank__sector small,
@@ -154,5 +154,5 @@
   padding-top: var(--moss-space-2);
   color: var(--ca-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }

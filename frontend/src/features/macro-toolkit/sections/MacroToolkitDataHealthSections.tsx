@@ -13,6 +13,7 @@ import {
   capabilityHealthDetail,
   capabilityIssueCount,
   coverageValue,
+  extractRepairActionCodes,
   formatDataHealthRepairAction,
   formatDataHealthRepairLabel,
   formatMissingIndicatorDetail,
@@ -20,7 +21,6 @@ import {
   formatObservationRepairSummary,
   localizeRepairActionText,
   repairItemFocusKey,
-  repairPriorityColor,
   repairPriorityLabel,
   repairTicketOwner,
   repairTicketReceipt,
@@ -80,7 +80,18 @@ function DataHealthWarningNote({ warning }: { warning: string }) {
   return <Tag color="red">{warning}</Tag>;
 }
 
-/** 能力缺口修复建议：英文缺口代码清单收进 details，卡面留一句中文摘要；原文同时进 title。 */
+/** 延后加载类修复项的共因说明；行内不复读，由区块头一次性声明。 */
+const DEFERRED_REPAIR_NOTE = "打开完整分析后确认这部分证据，不把首屏延后加载当作缺失。";
+
+/** 修复项严重度圆点 tone（沿用信号横带的语义圆点语言）。 */
+function repairPriorityStateTone(priority: string | null | undefined) {
+  if (priority === "high") return " macro-toolkit-signal-state--negative";
+  if (priority === "low") return "";
+  return " macro-toolkit-signal-state--missing";
+}
+
+/** 行式清单：模板句「N 项输入待补或降级…」压成「待补 N 项」，缺口代码清单收进折叠明细；
+    共因句（补齐后重新运行完整分析 / 延后加载说明）由区块头一次性声明，行内不复读。 */
 function MacroToolkitRepairActionNote({
   action,
   item,
@@ -89,20 +100,24 @@ function MacroToolkitRepairActionNote({
   item?: MacroToolkitRepairItem;
 }) {
   const summary = summarizeRepairAction(action);
-  if (!summary) {
-    // 卡面元信息已单独展示「最新日期 + 落后天数」时，模板句只留动作子句；
-    // 「当前 degraded/unavailable」状态枚举一律译中文，全句保留在 title。
-    const displayAction = localizeRepairActionText(
-      item ? stripRepairActionRepeatedFacts(action, item) : action,
+  if (summary) {
+    const codeCount = extractRepairActionCodes(action).length;
+    return (
+      <details className="macro-toolkit-data-health__repair-note-details">
+        <summary title={localizeRepairActionText(action)}>待补 {codeCount} 项</summary>
+        <small>{localizeRepairActionText(action)}</small>
+      </details>
     );
-    return <small title={action}>{compactText(displayAction, 78)}</small>;
   }
-  return (
-    <details className="macro-toolkit-data-health__repair-note-details">
-      <summary title={action}>{summary}</summary>
-      <small>{localizeRepairActionText(action)}</small>
-    </details>
+  if (action === DEFERRED_REPAIR_NOTE) {
+    return null;
+  }
+  // 行内元信息已单独展示「最新日期 + 落后天数」时，模板句只留动作子句；
+  // 「当前 degraded/unavailable」状态枚举一律译中文，全句保留在 title。
+  const displayAction = localizeRepairActionText(
+    item ? stripRepairActionRepeatedFacts(action, item) : action,
   );
+  return <small title={action}>{compactText(displayAction, 78)}</small>;
 }
 
 export function MacroToolkitDataHealthSummary({ dataHealth }: { dataHealth: MacroToolkitDataHealth }) {
@@ -193,6 +208,10 @@ export function MacroToolkitDataHealthPanel({
             .map((item) => `${item.action?.label ?? "待处理"}：${item.action?.reason ?? "需要人工确认"}`),
         ),
       );
+  // 行式清单的共因说明各出现一次；行内只保留能力名、待补项数与日期事实。
+  const rowActionTexts = repairItems.map((item) => formatDataHealthRepairAction(item, plainLanguage));
+  const hasDeferredActionNote = rowActionTexts.includes(DEFERRED_REPAIR_NOTE);
+  const hasSummarizedGapNote = rowActionTexts.some((action) => Boolean(summarizeRepairAction(action)));
   return (
     <section className="macro-toolkit-data-health" aria-label="数据健康总览">
       <div className="macro-toolkit-data-health__head">
@@ -287,6 +306,14 @@ export function MacroToolkitDataHealthPanel({
               {blockedActionNotes.join("；")}
             </small>
           ) : null}
+          {hasSummarizedGapNote ? (
+            <small className="macro-toolkit-data-health__repair-note">
+              缺口行按能力列出待补项数；补齐后重新运行完整分析。
+            </small>
+          ) : null}
+          {hasDeferredActionNote ? (
+            <small className="macro-toolkit-data-health__repair-note">{DEFERRED_REPAIR_NOTE}</small>
+          ) : null}
           {focusedRepairItem ? (
             <MacroToolkitRepairTicket
               item={focusedRepairItem}
@@ -309,9 +336,10 @@ export function MacroToolkitDataHealthPanel({
                 >
                 <div className="macro-toolkit-data-health__repair-main">
                   <span>
-                    <Tag color={repairPriorityColor(item.priority)}>
+                    <em className={`macro-toolkit-signal-state${repairPriorityStateTone(item.priority)}`}>
+                      <i aria-hidden="true" />
                       {repairPriorityLabel(item.priority)} · {repairTypeLabel(item.type)}
-                    </Tag>
+                    </em>
                     {formatDataHealthRepairLabel(item, plainLanguage)}
                   </span>
                   <MacroToolkitRepairActionNote
@@ -319,7 +347,7 @@ export function MacroToolkitDataHealthPanel({
                     item={item}
                   />
                 </div>
-                {/* 卡内只留「最新日期 + 落后天数」；别名与事项名重复不再复读，来源表名收 title。 */}
+                {/* 行内只留「最新日期 + 落后天数」；别名与事项名重复不再复读，来源表名收 title。 */}
                 <div
                   className="macro-toolkit-data-health__repair-meta"
                   title={item.source_table ? `来源表 ${item.source_table}` : undefined}

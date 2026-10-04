@@ -167,16 +167,15 @@ export default function AdbAnalyticalPreview({
         <div style={{ color: "var(--dh-api-ink)", fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
           期末时点与日均偏离对比
         </div>
-        <div style={{ color: "var(--dh-api-soft)", fontSize: 12, marginBottom: 6 }}>资产</div>
-        <AdbComparisonChart height={280} rows={comparisonAssetRows} />
-        <div style={{ color: "var(--dh-api-soft)", fontSize: 12, margin: "12px 0 6px" }}>负债</div>
-        <AdbComparisonChart height={280} rows={comparisonLiabilityRows} />
+        <AdbComparisonChart flat height={280} title="资产端偏离对比" rows={comparisonAssetRows} />
+        <AdbComparisonChart flat height={280} title="负债端偏离对比" rows={comparisonLiabilityRows} />
       </div>
       <div>
         <div style={{ color: "var(--dh-api-ink)", fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
           日均月度结构预览
         </div>
         <AdbMonthlyHorizontalChart
+          flat
           color={nocturneTokens.color.blue}
           height={280}
           rows={monthlyRows}

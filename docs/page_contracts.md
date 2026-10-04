@@ -187,6 +187,8 @@
 | `research_calendar` | `supplemental` | 否 | 自然日事件窗口，只能作为下钻上下文。 |
 | `macro_release_context` | `supplemental` | 否 | 由 `/ui/home/macro-release-context` 提供自然日宏观发布与历史变动上下文；不参与首页主判断，`source_pending` 不得伪装成 0 或正常值。 |
 | `risk_overview` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
+
+首页快捷下钻中的“持仓收益归因覆盖”使用 Campisi 自身的 `report_date / period_start / period_end` 核对首页快照日，不能用市场上下文中其他来源的最新日期替代。本金变化维度的纳入与排除数量不代表所有效应均可用，利率、利差和应计利息缺口分别披露；旧响应缺少覆盖字段、日期错配或请求失败时，不推定全覆盖，也不生成同区间明细链接。该摘要不发布组合收益金额，不参与首页主判断。
 | `contribution` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
 | `alerts` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
 | 静态演示内容 | `demo` | 否 | 只能留在占位或演示区，不进入首屏判断。 |
@@ -214,6 +216,8 @@
   - strict 默认使用最新严格交集；手动开启 partial 才允许含缺域
 - latest fallback 是否必须可见：
   - 是
+
+手动选择的报告日不在严格交集中、且存在其他完整报告日时，首页快照仍返回 HTTP 503；`detail.code=home_report_date_unavailable`，并给出 `requested_report_date`、`domains_missing` 和 `latest_available_report_date`。页面应说明实际缺少的数据域，提供“查看最新可用报告”入口；用户点击后才清除日期筛选，由后端重新选择最新严格交集日期。已有快照可以按过期状态保留，其实际数据日必须继续显示。没有完整交集或读取失败时，沿用服务不可用处理。
 
 ### E. Endpoint / DTO 契约
 
@@ -260,6 +264,8 @@
 
   - `macro_release_context` 的 `ready` / `partial` / `stale` / `fallback` / `source_pending` / `error` 与 `no-data` 必须可见；美国未接入指标保持 `source_pending`。
   - 禁止静态历史数值回退；自动接口失败或无可用证据时显示 `自动数据暂不可用`，不得恢复人工维护值。
+
+2026-09-22：首页风险概览分别保留债券摘要与组合风险摘要的质量、回退状态和实际报告日。主快照正常不能覆盖补充来源异常；同日 stale 或回退数据可以保留读数，但须在风险概览旁与观测行说明来源状态。异日、缺元信息或不可用来源不进入风险条，另一健康来源继续展示，真实零值保留。
 ### H. 对账与黄金样本
 
 - 黄金样本：
@@ -280,6 +286,8 @@
   - `tests/test_home_snapshot_endpoint.py`
 
 ## 6. PAGE-BALANCE-001 资产负债分析
+
+2026-09-05 质量传播修正：余额变动区块使用哪个 endpoint 的值，就同时使用该 endpoint 的结果元信息、实际报告日和质量状态。movement 回退不能借用 workbook 的正常状态；请求失败、日期陈旧、必要元信息缺失和 warning/partial 均须在对应区块可见。此修正不改变金额、币种或筛选口径。
 
 ### A. 页面身份
 
@@ -322,8 +330,8 @@
 
 | section_key | 名称 | 目的 | 数据来源 |
 | --- | --- | --- | --- |
-| `filter_bar` | 报告日/头寸范围/币种筛选 | 确定当前口径 | page state + `/dates` |
-| `overview` | 正式概览 | 展示总市值、总摊余成本、总应计利息、行数 | `/overview` |
+| `filter_bar` | 报告日/明细范围/币种筛选 | 确定当前明细读面口径，并显式说明跨侧分析固定全口径 | page state + `/dates` |
+| `overview` | 正式概览 | 分别展示资产/负债市值、摊余成本、应计利息和行数；不得把 `total_*` 兼容毛额显示成资产规模、负债规模或净额 | `/overview` |
 | `detail` | 正式明细 | 展示 detail rows | `/ui/balance-analysis` |
 | `workbook` | governed workbook | 展示已支持的 workbook tables / operational sections | `/workbook` |
 | `decision_items` | 决策与治理 | 展示 decision items / status | `/decision-items` |
@@ -347,8 +355,11 @@
 
 - 页面主筛选：
   - `report_date`
-  - `position_scope`
+  - `position_scope`（页面标签为“明细范围”）
   - `currency_basis`
+- `position_scope` 页面作用域：
+  - 作用于正式概览、正式明细、汇总、basis breakdown、单边分布和 CSV 导出。
+  - 净头寸、期限缺口、跨侧风险表、治理事项及 Workbook 导出必须使用 `position_scope="all"`；页面切换资产/负债明细范围不得把这些双侧结果伪装成单边结果。
 - `requested_report_date`：
   - 当前页面选中的 `selectedReportDate`
 - `resolved_report_date`：
@@ -367,10 +378,10 @@
 | 用途 | Endpoint | Response DTO | basis | 备注 |
 | --- | --- | --- | --- | --- |
 | 日期列表 | `/ui/balance-analysis/dates` | `BalanceAnalysisDatesPayload` | `formal` | 页面初始化 |
-| 正式概览 | `/ui/balance-analysis/overview` | overview payload | `formal` | 头部 KPI |
+| 正式概览 | `/ui/balance-analysis/overview` | overview payload | `formal` | 头部 KPI 按资产端/负债端分列；`total_*` 仅作 API 兼容毛额 |
 | 正式明细 | `/ui/balance-analysis` | `BalanceAnalysisPayload` | `formal` | detail rows |
-| workbook | `/ui/balance-analysis/workbook` | `BalanceAnalysisWorkbookPayload` | `formal` | governed workbook |
-| 决策项 | `/ui/balance-analysis/decision-items` | `BalanceAnalysisDecisionItemsPayload` | `formal` | 运营治理 |
+| workbook | `/ui/balance-analysis/workbook` | `BalanceAnalysisWorkbookPayload` | `formal` | governed workbook；本页固定请求全口径 |
+| 决策项 | `/ui/balance-analysis/decision-items` | `BalanceAnalysisDecisionItemsPayload` | `formal` | 运营治理；本页固定请求全口径 |
 | 汇总表 | `/ui/balance-analysis/summary` | `BalanceAnalysisSummaryTablePayload` | `formal` | 分页表 |
 | basis breakdown | `/ui/balance-analysis/summary-by-basis` | `BalanceAnalysisBasisBreakdownPayload` | `formal` | basis 拆分 |
 | refresh | `/ui/balance-analysis/refresh*` | action payload | action | 非 envelope 主读面 |
@@ -380,9 +391,12 @@
 
 | 页面展示项 | `metric_id` | 来源字段 |
 | --- | --- | --- |
-| 总市值 | `MTR-BAL-001` | `overview.total_market_value_amount` |
-| 总摊余成本 | `MTR-BAL-002` | `overview.total_amortized_cost_amount` |
-| 总应计利息 | `MTR-BAL-003` | `overview.total_accrued_interest_amount` |
+| 资产/负债市值（页面主展示） | 暂不新增 `metric_id`；待 owner 审批 | `overview.asset_total_market_value_amount` / `liability_total_market_value_amount` |
+| 资产/负债摊余成本（页面主展示） | 暂不新增 `metric_id`；待 owner 审批 | `overview.asset_total_amortized_cost_amount` / `liability_total_amortized_cost_amount` |
+| 资产/负债应计利息（页面主展示） | 暂不新增 `metric_id`；待 owner 审批 | `overview.asset_total_accrued_interest_amount` / `liability_total_accrued_interest_amount` |
+| 市值毛额（API 兼容字段；页面不作主展示） | `MTR-BAL-001` | `overview.total_market_value_amount`；`position_scope=all` 时为资产端 + 负债端，既非资产规模也非净头寸 |
+| 摊余成本毛额（API 兼容字段；页面不作主展示） | `MTR-BAL-002` | `overview.total_amortized_cost_amount`；`position_scope=all` 时为资产端 + 负债端 |
+| 应计利息毛额（API 兼容字段；页面不作主展示） | `MTR-BAL-003` | `overview.total_accrued_interest_amount`；`position_scope=all` 时为资产端 + 负债端 |
 | 市值 | `MTR-BAL-004` | detail/summary/basis rows |
 | 摊余成本 | `MTR-BAL-005` | detail/summary/basis rows |
 | 应计利息 | `MTR-BAL-006` | detail/summary/basis rows |
@@ -403,9 +417,12 @@
   - 若 `dates` 空，则页面进入无数据态
 - Stale / fallback：
   - formal 页面若 `fallback_mode != none`，必须显示提示
+  - Workbook 若存在 `bal_wb_risk_maturity_missing_001`，其 `result_meta.quality_flag` 必须为 `warning`，风险原因同时披露缺失行数、涉及面值/本金和余额占比
 - Error / fail-closed：
   - `404`：当前 `report_date` 无 balance-analysis 数据
   - `503`：lineage 不可解析、refresh runtime 问题、或 governed prerequisite 不满足
+
+2026-09-22：工作簿 `rate_distribution` 将缺失、不可解析与非有限利率归入“利率缺失”，分别披露债券、同业资产、同业负债的行数及面值／本金；只有有限的真实零值进入“零息/无息”，有限负利率单列“0%以下”。金额单位沿用原契约。页面展开工作簿分布面板后首先显示缺失桶，Excel 导出保持相同行值。
 
 ### H. 导出、下钻与证据
 
@@ -538,6 +555,8 @@
   - `GS-PNL-DATA-A`
 - 对账对象：
   - overview ↔ data rows aggregation
+- 治理/报告侧跨口径诊断：
+  - `/api/pnl/basis-bridge` 按 `docs/pnl/pnl-basis-bridge-contract.md` 对账系统经营分析、正式损益与正式产品FTP后收益；它不是本页必有 section，不新增正式指标，映射残差必须可见。
 
 ### I. 自动化测试
 
@@ -613,6 +632,8 @@
 | --- | --- | --- | --- | --- |
 | 日期列表 | `/api/pnl/dates` | `PnlDatesPayload` | `formal` | 与 PnL 共享 |
 | bridge | `/api/pnl/bridge` | `PnlBridgePayload` | `formal` | 页面主读面 |
+
+2026-09-11 月度窗口修正：`fact_formal_pnl_fi` 为报告月发生额，余额与曲线期初须从报告月首日之前解析，不能因有日度余额而取报告日前一天。`result_meta.filters_applied` 中的 `pnl_window` 披露月首至报告日，`balance_window` 披露实际两端，`expected_balance_start` 为上月末，`window_aligned` 仅表示余额日期两端齐备且对齐；曲线实际日期另列 `curve_dates`，其质量仍由原有 vendor/fallback/availability 表达。期初早于上月末或任一端缺失时，保留可读结果并发出 `PNL_BRIDGE_WINDOW_MISMATCH`，质量不能为正常。Campisi 四效应、增强和期限桶传递实际起止日；非同月窗口或缺少准确两端时，不采用月度桥作同期间正式闭合依据。高级归因页面明确传上月末，不用固定30天冒充自然月。回归见 `tests/test_pnl_bridge_monthly_window.py` 和 `frontend/src/test/PnlAttributionPage.monthlyWindow.test.tsx`。
 
 ### F. 指标映射
 
@@ -693,6 +714,7 @@
   2. 当前发行人集中度和流动性缺口是否异常。
   3. 当前风险质量标记是否正常。
   4. 当前组合久期覆盖了哪些利率风险适用资产，哪些市值被排除在久期分母外。
+  5. 流动性缺口排除了多少条无到期日负债及其本金金额。
 - 页面不负责回答的问题：
   - 不负责替代 excluded 的 `/ui/risk/overview`
   - 不负责补算任何风险衍生指标
@@ -705,8 +727,8 @@
 | section_key | 名称 | 目的 | 数据来源 |
 | --- | --- | --- | --- |
 | `dates` | 报告日选择 | 确定 report_date | `/api/risk/tensor/dates` |
-| `summary_kpis` | 风险摘要 | 展示 DV01、CS01、凸性、集中度、流动性缺口 | `/api/risk/tensor` |
-| `duration_scope` | 久期口径披露 | 展示利率风险适用市值、DV01、久期，以及被排除的市值/行数 | `/api/risk/tensor` |
+| `summary_kpis` | 风险摘要 | 展示 DV01、CS01、凸性、集中度、流动性缺口，并披露无到期日负债排除条数和本金金额 | `/api/risk/tensor` |
+| `duration_scope` | 久期口径披露 | 展示利率风险适用市值、DV01、久期，以及被排除市值/记录数的四类原因 | `/api/risk/tensor` |
 | `krd_chart` | KRD 图 | 展示期限桶风险 | `/api/risk/tensor` |
 | `radar` | 风险雷达 | 展示强弱对比 | `/api/risk/tensor` |
 | `scenario_stress` | 压力情景 | 展示独立 scenario 口径的利率、信用、流动性与 FX 输入缺口 | `/api/risk/scenario-stress` |
@@ -720,6 +742,8 @@
 - 把 `prior_period_change`、`dv01_controls` 或会计分类 DV01 注入 formal Risk Tensor DTO
 - 把 scenario 压力估算、限额判断或处置建议标记为 `formal`
 - 把 excluded 的 `risk-overview` 内容移花接木进来
+- 用 distinct `instrument_code` 数量替代 `bond_count`，或把 `bond_count` 标成债券只数
+- 用 candidate `/api/cashflow-projection` 的一月行为期限代理填入 formal Risk Tensor；该期限代理仍待业务 owner 裁决
 
 ### D. 筛选与时间语义
 
@@ -741,8 +765,8 @@
 | 用途 | Endpoint | Response DTO | basis | 备注 |
 | --- | --- | --- | --- | --- |
 | 日期列表 | `/api/risk/tensor/dates` | dates payload | `formal` | 页面初始化 |
-| 风险张量 | `/api/risk/tensor` | `RiskTensorPayload` | `formal` | 页面主读面 |
-| 压力情景 | `/api/risk/scenario-stress` | `RiskScenarioStressPayload` | `scenario` | `formal_use_allowed=false`，仅作人工复核覆盖层 |
+| 风险张量 | `/api/risk/tensor` | `RiskTensorPayload` | `formal` | 页面主读面；规则 `rv_risk_tensor_formal_materialize_v10` 新增无到期日负债覆盖披露，30/90 天正式缺口不变 |
+| 压力情景 | `/api/risk/scenario-stress` | `RiskScenarioStressPayload` | `scenario` | 规则 `rv_risk_tensor_scenario_stress_v2`；`formal_use_allowed=false`，仅作人工复核覆盖层 |
 
 ### F. 指标映射
 
@@ -767,10 +791,13 @@
 | 利率风险市值 | `MTR-RSK-021` | `rate_risk_market_value` |
 | 利率风险 DV01 | `MTR-RSK-022` | `rate_risk_dv01` |
 | 利率风险久期 | `MTR-RSK-023` | `rate_risk_modified_duration` |
-| 债券数量 | `MTR-RSK-101` | `bond_count` |
+| 持仓记录数 | `MTR-RSK-101` | `bond_count`；正式债券分析持仓记录行数，单位条，不是 distinct `instrument_code` 数量 |
 | 风险质量标记 | `MTR-RSK-102` | `quality_flag` |
 | 久期排除行数 | `MTR-RSK-103` | `duration_excluded_count` |
 | 久期排除市值 | `MTR-RSK-104` | `duration_excluded_market_value` |
+| 久期排除原因 | —（质量披露字段） | `fund_no_maturity_*`、`unknown_maturity_*`、`matured_outstanding_*`、`nonpositive_duration_*`；各含金额和记录数，分别合计旧排除总量 |
+| 无到期日负债排除条数 | —（质量披露字段） | `missing_liability_maturity_count` |
+| 无到期日负债排除本金 | —（质量披露字段） | `missing_liability_maturity_principal_amount`；单位 yuan |
 
 ### G. 状态合同
 
@@ -780,6 +807,13 @@
   - `bond_count=0` 时进入 empty
 - Stale / fallback：
   - 若 `quality_flag != ok` 必须在页面可见
+- 流动性覆盖披露：
+  - formal Risk Tensor 继续排除无到期日负债，`missing_liability_maturity_count` 与 `missing_liability_maturity_principal_amount` 必须在流动性缺口旁可见；历史物化行的空值表示尚无该披露，不得显示为零
+  - `liquidity_gap_30d` / `liquidity_gap_90d` 保持已知到期日覆盖口径；不得采用 candidate cashflow projection 的一月代理，直至业务 owner 裁决
+- 期限属性拆分：当前规则 `rv_risk_tensor_formal_materialize_v12` 在物化表写入四类排除原因；`maturity_breakdown_status=available` 才展示其金额和记录数。旧行状态为 `unavailable_legacy`，八个值为空，不得推断为零。旧 `missing_maturity_*` 按未列日期保留，包含基金；基金不被要求补造合同到期日，但底层利率风险未穿透。已到期仍有余额单独提示核查，不等于违约。仅有“同业存放”名称不支持推断负债为活期。
+- Scenario v2：
+  - `summary.comparison_measure=estimated_pnl_impact`；摘要最不利项只在利率与信用估值损益内选择，流动性缺口变化单列，不参与跨 measure 排序
+  - 当 `evidence.amount_display_allowed=false` 时，摘要与全部情景卡片隐藏金额，并显示 `evidence.coverage.reasons`；原始金额不得借由缓存、格式化或其他字段重新出现
 - Error：
   - `404`：当前报告日无 tensor 数据
   - `503`：risk tensor governed prerequisite 缺失
@@ -993,7 +1027,7 @@
 
 | 用途 | Endpoint | Response DTO | basis | 备注 |
 | --- | --- | --- | --- | --- |
-| 规模/利率 | `/api/pnl-attribution/volume-rate` | `VolumeRateAttributionPayload` | `formal` | `current_yield_pct / previous_yield_pct` 为百分比值 |
+| 规模/利率 | `/api/pnl-attribution/volume-rate` | `VolumeRateAttributionPayload` | `formal` | 利息量价加三项非利息直接变动；`pct` Numeric raw 为小数比率 |
 | TPL 市场 | `/api/pnl-attribution/tpl-market` | `TPLMarketCorrelationPayload` | `formal` | `treasury_10y_total_change_bp` 为 BP |
 | 损益构成 | `/api/pnl-attribution/composition` | `PnlCompositionPayload` | `formal` | `other_income` 必须可见 |
 | 归因摘要 | `/api/pnl-attribution/summary` | `PnlAttributionAnalysisSummary` | `formal` | 当前仅做说明性 findings |
@@ -1002,6 +1036,26 @@
 | Campisi 六效应 | `/api/pnl-attribution/campisi/enhanced` | `CampisiEnhancedPayload` | `formal` | model 路径拆出 `convexity_effect / cross_effect`；formal-bridge 路径不拆二阶项，三项均发布为 0 且贡献并入 `selection_effect` |
 | Campisi 到期桶 | `/api/pnl-attribution/campisi/maturity-buckets` | `CampisiMaturityBucketsPayload` | `formal` | 桶内金额与四效应同源 |
 | Campisi 决策级解释 | `/api/pnl-attribution/campisi/decision-grade` | `CampisiDecisionGradePayload` | `formal` | 窗口口径披露见 `window_disclosure`；不得把 `selection_proxy` 解读为交易员能力 |
+
+2026-09-09 计算复核补充：`attribution_basis=interest_income_and_direct_pnl` 时，量价的收益率为 514 利息收入除以期末市值，非年化。516、517、manual_adjustment 仅以两期金额差单列；缺规模利息继续留在残差，不从期末缺行推断真实零余额。金额必要字段缺失须拒绝计算，组件缺失保留行级及总计 null，`has_complete_inputs=false`。摘要、明细及瀑布显示同一组六项效应和未解释差额；同源模块首页也遵守此契约。`primary_driver` 在六项效应与残差中取绝对值最大项，占比以七项绝对值之和为分母；缺分项不判断主驱动。
+
+TPL 的累计区间包含首月相对前一日历月基准的变化。缺 FI 月份时保留自然月缺口，两项累计值均为空；缺国债基准或曲线时仅影响国债累计与有效配对样本，不用跨月差值补充一个月的变化。
+
+利差归因发布 `attribution_basis=matched_positions_start_exposure`、`method_note`、`calculation_status` 和 `attribution_coverage`。按证券、组合、成本中心、会计分类及币种匹配两期，固定期初市值和久期，使用各期剩余期限对应的国债收益率；国债效应包含期限滚动，不能与 Carry 骑乘直接加总。无同币种曲线、无有效观测收益率、无有效风险、重复或新增退出持仓须披露排除原因及两期金额，零有效覆盖时效应为空。类别表区分期末市值/久期与匹配期初市值/归因久期，10Y 变动只作参考。
+
+Campisi 四效应、增强和到期桶分别传递其实际使用的 formal bridge 元信息，质量按 `error > stale > warning > ok` 合并，保留 vendor 与 fallback 状态及真实 fallback_date。四效应缓存以 `formal_closure.bridge_*` 保留同一信息，新增 `bridge_fallback_date` 可为空。`formal_closure.status=closed` 只说明金额闭合；页面须独立显示来源错误、陈旧、降级及元信息缺失，缺日期显示未提供，不能拿报告日替代。
+
+Campisi 模型允许国债曲线采用请求日之前最近 7 天内的正式观测，持仓起止日保持不变。曲线质量块 `input_quality.market_curve_coverage.treasury_effect` 以 `start_requested_date/start_resolved_date/end_requested_date/end_resolved_date` 和 `start_curve_used/end_curve_used` 独立披露请求、解析及采纳情况；原有 `start_curve_rows_present/end_curve_rows_present` 仍表示精确请求日有行，不能据此否定已采纳的前一日曲线。首页覆盖卡与四效应明细显示实际曲线日期；未采用的解析结果明确显示未采用，不能把曲线观测日写成报告日或持仓期初。没有这些可选字段的旧响应不推断实际日期。未来或超过 7 天的观测仍按缺失处理，缺口与共同期限守卫保持有效。允许窗口内的曲线回退按正式曲线来源口径披露为 `stale/vendor_stale/latest_snapshot`；这里的 stale 表示采用此前观测，不等于触发 7 天弃用守卫。上游更严重的 error 或 vendor_unavailable 保留，报告日回退日期优先于曲线回退日期。
+
+2026-09-22：Campisi 模型回退对无法从两端本金解释的持仓保留排除诊断，`effect_availability.position_change` 与 `input_quality.position_change` 披露纳入／排除数量及排除的两端绝对市值。模型合计与收益率只解释可归因子集；部分或全部排除时 `formal_use_allowed=false`，全部排除的页面金额显示为空，兼容 advanced 摘要的 `Numeric.raw=null`，不能把占位零解释为真实收益。已有正式 bridge 路径保持其正式损益依据。
+
+国债曲线、信用利差和应计利息的可用性只按已纳入模型的可归因持仓统计，分母取 `effect_availability.position_change.covered_bonds`；排除行只计入持仓覆盖披露，不计入这三项效应的缺口。不能从应计缺口数量直接推断合计偏差方向。仍纳入且缺应计的非 AC 模型行按净价加模型票息回退，AC 模型行仅保留模型票息、选券效应为零。应计可用性是输入质量说明，不是单独的效应金额。
+
+四效应模型路径的 `input_quality.included_maturity_unavailable` 只统计已经纳入归因、但模型无法取得可用到期日而进入 `UNKNOWN` 桶的持仓；`positions` 是项数，`market_value_start_abs` 是期初绝对市值之和（元），`model_residual` 是这些持仓进入 `selection_effect` 的带符号模型剩余金额（元）。无此类持仓或采用正式 bridge 路径时字段不出现，`detail=summary/full` 的质量汇总一致。这个剩余金额不能解释为主动选券能力；`treasury_effect.status=ok` 仅证明国债曲线输入可用，不证明每项持仓都有可用久期。页面须直接展示后端质量汇总，不从逐券明细重算。
+
+首页“查看同区间四效应明细”通过 `source=dashboard-home`、`report_date`、`campisi_start_date` 和 `campisi_end_date` 传入接口实际区间，自动打开四效应与资产类别明细。该入口只请求对应区间的 four-effects，不混入月度高级摘要、增强、期限桶或决策级结果；日期非法、反向、与报告日不符，或返回区间／模型口径无法核对时，显示不可用。普通入口保留月度正式损益桥，刷新及同路由导航重新解析查询参数。`formal_closure.status=unavailable` 显示“正式损益核对不可用”，空正式损益与残差不能当成零或解释为已核对的金额差额。`insufficient_shared_positive_tenors` 表示两端共同的有效正收益率期限不足，前端显示中文原因并隐藏不可用效应的数字。
+
+期限桶归因在任一期国债 10Y 缺失或风险覆盖不可用时，贡献金额与国债变动的 `Numeric.raw` 保持 null，明确 `calculation_status` 和 warnings，禁止正式使用。有效观测的零变动仍是零贡献，但最大贡献期限为空；部分风险覆盖须说明仅覆盖子集。
 
 ### F. 指标映射
 
@@ -1018,6 +1072,7 @@
 | Campisi 信用利差效应 | `MTR-PAT-307` | `totals.spread_effect` / 行级 `spread_effect` |
 | Campisi 选择效应 | `MTR-PAT-308` | `totals.selection_effect` / 行级 `selection_effect` |
 | Campisi 合计回报 | `MTR-PAT-309` | `totals.total_return` / 行级 `total_return` |
+| Campisi 已纳入但到期日不可用 | `MTR-PAT-311` | `input_quality.included_maturity_unavailable` |
 
 #### F.1 Campisi 字段清单
 
@@ -1041,6 +1096,8 @@
 **model 路径**（非 bridge，`decomposition_basis` 缺省）：`selection_effect` 仍为单券曲线分解闭合残差（`total_return - income_return - treasury_effect - spread_effect`），`total_return` 等于四效应（或 enhanced 六效应）之和；不得与 formal-bridge 七项口径混读。
 
 **decision-grade 路径**（`CampisiDecisionGradePayload`，`/api/pnl-attribution/campisi/decision-grade`）：
+
+2026-09-05 补充：`scope_disclosure` 明示 `actual_scope=matched_beginning_positions`、`scope_decision_status=PENDING`，展示完整输入、纳入金额、未匹配金额及相应行数和绝对金额；`full_month_coverage=false`。closure 的说明仅指已匹配组合内部闭合，空结果不可声称已核对。未匹配金额净额为零但仍有未匹配行时，保留 warning。`residual_diagnostics.market_value_source_counts` 披露 analytics、余额回退或缺失来源，前端不把缺字段形成的 `residual_noise` 解释成选券能力。
 
 | 字段 | 层级 | 类型 | 语义 | 备注 |
 | --- | --- | --- | --- | --- |
@@ -1134,7 +1191,7 @@
 
 ### F. 指标映射（`metric_id`）
 
-- 本页 does not create `MTR-OPS-*`。当前首屏正式经营净收入复用产品分类损益已批准的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` 与 `GS-PROD-CAT-PNL-A`；与正式余额重叠的专题入口展示项仍沿用 `PAGE-BALANCE-001` 在字典中的 `MTR-BAL-*`，以 `getBalanceAnalysisOverview` 字段为准；其余为 **analytical/preview/operational 展示**，仅字段路径，**无**独立字典行。
+- 本页 does not create `MTR-OPS-*`。当前首屏正式经营净收入复用产品分类损益已批准的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` 与 `GS-PROD-CAT-PNL-A`；余额专题入口仅展示 `getBalanceAnalysisOverview` 的资产端/负债端分项与行数，不展示 `total_*` 兼容毛额；其余为 **analytical/preview/operational 展示**，仅字段路径，**无**独立字典行。
 
 | 展示锚点 | `metric_id`（若可映射） | 来源 |
 | --- | --- | --- |
@@ -1142,7 +1199,8 @@
 | 负债端经营净收入 | `MTR-PCP-002` | `ProductCategoryPnlPayload.liability_total.business_net_income` |
 | 合计经营净收入 | `MTR-PCP-003` | `ProductCategoryPnlPayload.grand_total.business_net_income` |
 | product-category detail rows | 不新增 `metric_id` | detail rows 仍按 product-category truth contract / sample truth，不在本页升格 |
-| 总市值/摊余/应计/行数 | `MTR-BAL-001`–`MTR-BAL-103`（与 balance 页一致部分） | `BalanceAnalysisOverviewPayload`；supplemental topic-entry evidence |
+| 资产端/负债端市值、摊余、应计 | 暂不新增 `metric_id`；待 owner 审批 | `BalanceAnalysisOverviewPayload.asset_total_*` / `liability_total_*`；supplemental topic-entry evidence |
+| 明细/汇总行数 | `MTR-BAL-101`、`MTR-BAL-102` | `BalanceAnalysisOverviewPayload`；supplemental topic-entry evidence |
 | Source/Macro/News/FX 卡计数 | 不适用（无 `metric_id`）；`GAP-OPS-MACRO-FX` | 各 `result` 列表长度或 envelope |
 
 ### G. 状态：loading / empty / stale / fallback / error
@@ -1229,6 +1287,10 @@
 - 黄金样本状态：`GS-BOND-HEADLINE-A` 现已作为 **capture-ready** 页面样本绑定到 `GET /api/bond-dashboard/headline-kpis`，样本目录位于 `tests/golden_samples/GS-BOND-HEADLINE-A/`，并已纳入 `tests/test_golden_samples_capture_ready.py`。该样本冻结的是 bond-dashboard 首屏 headline DTO 真值与空态行为；Headline / 风险卡与正式 `MTR-*` 的字典级绑定仍见 `docs/metric_dictionary.md` **GAP-BOND-DASH-***，本次样本冻结**不**自动批准新的字典级 metric 映射。
 
 ## 13.6.1 PAGE-BOND-ANALYSIS-001 债券分析工作台
+
+2026-09-05 动作归因补充：页面“期间损益（含未分配）”对应完整期间输入，已识别动作数不包含 UNALLOCATED；未分配计数显示为输入键数。`pnl_coverage` 披露已识别、未分配、完整输入、绝对金额、键覆盖和对账差异，`period_status/missing_months` 独立说明月度期间完整度。`snapshot_window` 展示请求与实际期初、实际期末及期初间隔，陈旧阈值保持 PENDING。缺任一端快照时不得制造动作，缺失端久期及久期变化显示 `—`；期末无行必须有日期、来源和版本一致的已完成空构建才能解释为清仓。非月末 TTM 或月度版本权威不唯一时，页面展示明确不可用原因，不保留成功金额。这些字段补充不提升本页候选身份。
+
+2026-09-22：信用利差详情 v3 的 `credit_bond_count`、`total_credit_market_value` 表示全部信用持仓；`spread_bond_count`、`spread_market_value` 表示可计算样本，`missing_ytm_count`、`missing_ytm_market_value` 披露当前收益率缺失或无效范围，金额为元。`spread_coverage_status` 区分 complete、partial、unavailable、empty。零可计算样本时均值、当前利差及其历史分位为 null，历史中位数等观测统计仍可保留；部分覆盖只展示子集统计并令正式使用标志为 false。收益率真实零值仍参与计算，历史窗口锚点沿用现有定义。
 
 ### A. 页面身份
 
@@ -1394,28 +1456,37 @@
 
 - 页面 ID：`PAGE-MKT-001`
 - 页面名称：`市场数据`
-- 路由：前端 `/market-data`；别名重定向见 `frontend/src/router/routes.tsx`（`/market`→`/market-data` 等，见 `RouteRegistry.test.tsx`）
-- 页面状态：`mixed-source`（**formal 片段**：`GET /ui/market-data/rates`（`getMarketDataRates` / 前端 `formalRatesQuery`）驱动利率主表的 formal basis 片段；`RateQuoteTable` / `MoneyMarketTable` 在序列缺失时仅展示 `emptyReason`，不再补静态 demo 行情；`BondFuturesTable` / `BondTradeDetail` / `CreditBondTradesTable` 目前为故意保留的 `source-pending` 终端面板。**preview/analytical**：Choice 宏观目录/最新点、vendor、外汇分析 `getFxAnalytical`、结构化代理 `ncd-funding-proxy`、`api/macro-bond-linkage`、**Livermore**（`/ui/market-data/livermore/*`，门控/板块/候选/风险退出等，均为 analytical）。与 `DOCUMENT_AUTHORITY.md` 中 **market-data preview/vendor/analytical surface** 的排除/警示语义一致：页内须标注 `basis` 与 `formal_use_allowed` 语义，不得整页称 formal cutover 真值面）
+- 路由：前端 `/market-data`；别名重定向见 `frontend/src/router/routes.tsx`（`/market`→`/market-data` 等，见 `RouteRegistry.test.tsx`）。**同路由 query 子视图**：`?view=explorer`（序列浏览器，见 §H.6）——不新增路由、不新增 `PAGE-*` 契约 ID，仍属本页契约
+- 页面状态：`mixed-source`（**formal 片段**：`GET /ui/market-data/rates`（`getMarketDataRates` / 前端 `formalRatesQuery`）驱动利率主表的 formal basis 片段；`RateQuoteTable` / `MoneyMarketTable` 在序列缺失时仅展示 `emptyReason`，不再补静态 demo 行情；`BondFuturesTable` / `BondTradeDetail` / `CreditBondTradesTable` 目前为故意保留的 `source-pending` 终端面板。**preview/analytical**：Choice 宏观目录/最新点、vendor、外汇分析 `getFxAnalytical`、结构化代理 `ncd-funding-proxy`、`api/macro-bond-linkage`（本页只保留摘要卡口径，明细读面见 `/cross-asset`）。与 `DOCUMENT_AUTHORITY.md` 中 **market-data preview/vendor/analytical surface** 的排除/警示语义一致：页内须标注 `basis` 与 `formal_use_allowed` 语义，不得整页称 formal cutover 真值面）
+- **Livermore 端点归属（2026-08-27 IA 重构阶段 2）**：`/ui/market-data/livermore/*`（门控/板块/候选/风险退出等，均为 analytical）已自本页读面清单移除，改由 `PAGE-CROSS-ASSET-001`（`/cross-asset`）承接——该页已原生消费同批端点（`frontend/src/features/cross-asset/components/LivermorePanels.tsx`）。本页只保留导航证据卡（§C `market-data-strategy-evidence-card`），不挂任何 Livermore 查询
 
 ### B. 业务问题与不回答
 
-- **须回答**：当前可得的利率/货基/信用成交/新闻与汇率覆盖、**refresh tier** 与 `result_meta` 所表达的线路质量如何；`macro-bond-linkage` 在选定 `report_date` 下环境/组合摘要是什么。
+- **须回答**：当前可得的利率/货基/信用成交/新闻与汇率覆盖、**refresh tier** 与 `result_meta` 所表达的线路质量如何；`macro-bond-linkage` 在选定 `report_date` 下环境/组合摘要是什么。联动明细读面迁 `/cross-asset` 后，该问题仍由本页回答：环境综合分、利率方向、组合影响与 `report_date` 由 `market-data-linkage-summary-card` 在本页可见，analytical 警示（`market-data-linkage-caveat`）随卡常驻。
 - **不回答**：不作为 `Phase 2` 全量 formal market 权威；不替代 PnL/余额页；不将 Choice/预览混写为「已晋升正式」。
 
 ### C. 必有 section（实装侧锚点，含 analytical-only）
 
-- `market-data-page-title`、**catalog/series 统计**（`market-data-*-count` 等，见 `MarketDataPage.test.tsx`）
-- 利率/曲线：rate quote、money market、rate trend、NCD 矩阵、信用成交等 `data-testid` 以 `market-data-` 前缀
-- 外汇：本页已挂载 `getFxAnalytical`（**analytical**）；`getFxFormalStatus` 见 §E「实现核对」（domain 具备，本页当前未独立 query）；概览 KPI 另与 `getMarketDataRates` 的 formal 片段协同展示
-- `NewsAndCalendar` / 宏观联动（`getMacroBondLinkageAnalysis` 等，**analytical/专题**)
-- 运维区：Choice refresh + `getChoiceMacroRefreshStatus`、refresh tier / policy 文案
+- **catalog/series 统计**（`market-data-*-count` 等，见 `MarketDataPage.test.tsx`）
+- 利率/曲线：rate quote、money market、NCD 矩阵、信用成交等 `data-testid` 以 `market-data-` 前缀
+- **走势面板**：`market-data-rate-trend-panel`（原 02 区曲线 Tab 的走势能力并入 01 区），内含 `market-data-rate-trend-chart` 与 `market-data-macro-readiness`；口径为 **analytical**（Choice macro latest），与同区 formal 片段显式分标
+- 外汇：正式外汇 `getFxFormalStatus` 已挂载并上提为「简表常显 + 明细折叠」（见 §H.4）；`getFxAnalytical`（**analytical**）读面已迁入序列浏览器（见 §H.6）；概览 KPI 另与 `getMarketDataRates` 的 formal 片段协同展示
+- `NewsAndCalendar`：紧凑摘要卡 `frontend/src/features/market-data/components/MarketDataNewsCalendarSummary.tsx`，锚点 `market-data-news-calendar-summary` / `-item` / `-empty`（另有 `-list`、`-loading`、`-error`、`-asof`、`-link`）。数据源 `getResearchCalendarEvents({ reportDate })` → `GET /ui/calendar/supply-auctions`（**analytical**，不作正式结论）。展示最近 3 条 `kind ∈ {macro, supply, auction}` 事件（`internal` 排除），单行 = 日期 + 事件名 + 类别 +（金额标签）；组头标注「分析口径」；底部「完整日历见新闻事件页」链接 `/news-events`。近视口懒加载，不计入首屏请求；client 已剥离 `result_meta`，无 stale/quality 语义可读，改以底部「截至 {reportDate}」常驻标注替代
+- **宏观联动摘要**：`market-data-linkage-summary-card`（含 `market-data-linkage-summary-composite` / `-direction` / `-impact` / `-report-date` / `-link`，以及 `market-data-linkage-caveat`；加载/失败/方法警示为 `-loading` / `-error` / `-warnings`），**analytical/专题**；明细读面见 `/cross-asset`
+- **策略证据卡**：`market-data-strategy-evidence-card`（含 `market-data-strategy-evidence-link` → `/cross-asset#cross-asset-zone-linkage`），纯导航卡，不挂任何策略查询
+- **序列浏览器入口**：`market-data-series-library-entry`（主列单行入口卡，文案「稳定 N · 降级 M · 按需查看」；宏观序列加载中或失败时计数渲染 `EM_DASH`）
+- 治理面板（右栏「数据状态」）：`market-data-rail-disclosure` / `market-data-rail-summary` 折叠入口 + 三组结构，锚点与分层规则见 §G.1
+- 运维区：Choice refresh + `getChoiceMacroRefreshStatus`、refresh tier / policy 文案（披露位见 §G.1）
+- **已退役、页面不再渲染（2026-08-27 IA 重构阶段 2）**：`market-data-macro-depth-card`、`market-data-macro-tab-*`、`market-data-livermore-collapse` / `-panel`、`market-data-linkage-collapse`、`market-data-linkage-spread-table`、`market-data-linkage-spreads-audit*`、`market-data-macro-spread-slot-*`、`market-data-linkage-top-correlations`。除 `market-data-linkage-spread-table`（宿主 `LinkageSpreadTenorTable.tsx` 仍在仓库但未被页面挂载，待阶段 5 删代码）外，其余锚点已随 `MarketDataMacroDepthTabs.tsx` / `MarketDataLivermoreSection.tsx` / `MarketDataLinkageSection.tsx` 一并从源码删除
+- **契约要求但当前实现缺失（待补，见 §J）**：`market-data-page-title`、`market-data-filter-strip`、`market-data-active-filter-summary`。页面标题由 `PageDecisionHero`（`market-data-hero`）承担，筛选控件为 `market-data-curve-filter` / `market-data-source-filter`，三个契约 testid 在实装中均不存在；此处保留追踪，不静默删除
 - 折叠说明中声明 **未暴露** 的 V1 `api/macro` 决策端点不实现（见 `MarketDataPage` 中注释性描述）
 
 ### D. 时间语义
 
 - `requested_report_date` / `linkageReportDate`：由页面内状态或 selector 选择（`MarketDataPage` 内 `useState`+macro bond linkage 查询）
-- `resolved_report_date`：以各 API 结果字段（如 `MacroBondLinkagePayload` 内含 report、或 `ChoiceMacroLatestPoint.trade_date` 等）为准
+- `resolved_report_date`：以各 API 结果字段（如 `MacroBondLinkagePayload` 内含 report、或 `ChoiceMacroLatestPoint.trade_date` 等）为准；联动侧的可见落点为 `market-data-linkage-summary-report-date`（载荷返回前回退请求侧 `linkageReportDate`，缺失渲染 `EM_DASH`）
 - `generated_at`：各 `result_meta.generated_at`
+- `NewsAndCalendar` 摘要卡无 `result_meta` 可读（client 剥离），时间语义以行内事件日期 + 底部「截至 {reportDate}」承担
 
 ### E. Endpoint / DTO 表
 
@@ -1423,13 +1494,14 @@
 | --- | --- | --- |
 | `getMacroFoundation()` | `GET /ui/preview/macro-foundation` | catalog/preview，**analytical** |
 | `getChoiceMacroLatest()` | `GET /ui/macro/choice-series/latest` | 最新点 + `recent_points` |
-| `getFxFormalStatus()` | `GET /ui/market-data/fx/formal-status` | **formal 状态表**（domain client 具备；**本页当前未挂载 query**，见上「实现核对」） |
-| `getFxAnalytical()` | `GET /ui/market-data/fx/analytical` | **analytical** |
+| `getFxFormalStatus()` | `GET /ui/market-data/fx/formal-status` | **formal 状态表**；本页已挂载（简表常显 + 明细折叠，见 §H.4） |
+| `getFxAnalytical()` | `GET /ui/market-data/fx/analytical` | **analytical**；读面在序列浏览器内（§H.6） |
 | `getNcdFundingProxy()` | `GET /ui/market-data/ncd-funding-proxy` | 结构化代理 |
-| `getMacroBondLinkageAnalysis` | `GET /api/macro-bond-linkage/analysis?report_date=` | 债券-宏观联动 **analytical** 读面 |
+| `getMacroBondLinkageAnalysis` | `GET /api/macro-bond-linkage/analysis?report_date=` | 债券-宏观联动 **analytical** 读面；本页仅供摘要卡，近视口才 `enabled` |
+| `getResearchCalendarEvents` | `GET /ui/calendar/supply-auctions` | `NewsAndCalendar` 摘要（**analytical**）；近视口懒加载 |
 | `getChoiceMacroRefreshStatus` / refresh POST | vendor 运维 | 非主值 |
 
-> **实现核对（仓库当前 `MarketDataPage.tsx`）**：本页已挂载查询的上表方法为 `getMacroFoundation`、`getChoiceMacroLatest`、`getFxFormalStatus`、`getFxAnalytical`、`getNcdFundingProxy`、`getMacroBondLinkageAnalysis`、`getChoiceMacroRefreshStatus`（及刷新 POST）、`getMarketDataRates`、`getLivermoreStrategy`（Livermore 展开后 `enabled`）。
+> **实现核对（仓库当前 `MarketDataPage.tsx` + `useMarketDataPageData.ts`）**：本页已挂载查询的上表方法为 `getMacroFoundation`、`getChoiceMacroLatest`、`getFxFormalStatus`、`getFxAnalytical`、`getNcdFundingProxy`、`getMacroBondLinkageAnalysis`（懒挂载）、`getResearchCalendarEvents`（懒挂载）、`getChoiceMacroRefreshStatus`（及刷新 POST）、`getMarketDataRates`；另有未列表的 `getExternalDataWatermarks`、`getBondFuturesRankings`、`getMarketDataCoverageSummary` 三个治理/终端辅助查询。`getLivermoreStrategy` 已从本页挂载清单删除：`useMarketDataPageData` 仍保留 `livermoreEnabled` 开关与 `livermoreStrategyQuery`，但页面不再传入该选项，取值恒为 `false`，查询永不 `enabled`，其 envelope 仅参与治理证据行的 `result_meta` 组装。
 
 ### F. 指标映射
 
@@ -1440,63 +1512,112 @@
 - 测试约定：`market-data-*` 系列 testid 对 catalog/stable/fallback/missing/result_meta 的可见性（`MarketDataPage.test.tsx`）
 - **Error**：Async/polling 与 vendor 失败（含 `424` permission 等）须可感知
 
+### G.1 治理分层（L0–L3）与右栏「数据状态」面板
+
+- **分层规则**（`railLineLayer` / `MarketDataPage.tsx`）：
+  - **L0 正常态**：静默，只计数，不出现在任何告警清单。
+  - **L1 结构性披露**（`proxy_only` / `source_pending` / `deferred`）：归灰列展示，**不告警**、不进「下一步动作」。
+  - **L2 运行时异常**（`stale` / `fallback` / `vendor_unavailable` / `error`）：黄红角标并置顶。
+  - **L3**（`basis=formal` 且 `formal_use_allowed=false`）：**必须首屏可见**，由 hero 状态条 `market-data-status-strip` 承担（文案约束见 §H.3），不依赖右栏展开。
+- **面板结构**：右栏为原生 `details` 折叠（`market-data-rail-disclosure` / `market-data-rail-summary`，收起时内容仍在 DOM，契约 testid 可及），内部分三组：
+  - `market-data-rail-group-line-status`（线路状态）
+  - `market-data-rail-group-evidence`（口径证据）
+  - `market-data-rail-group-ops`（数据运维）
+- **置顶块**：`market-data-rail-next-actions` **仅在存在 L2 运行时异常（`stale`/`error`）时渲染**，取前 3 条；正常态不出现。语义已由「结构性缺口常驻清单」修订为「运行时异常置顶清单」。
+- **线路状态行**：`market-data-rail-line-list` 内为九条链路 `market-data-rail-line-{formal_rates|money_market|fx_formal|macro_latest|fx_analytical|ncd_proxy|bond_futures|cash_bond_trades|credit_trades}`，每行带治理分层属性 `data-layer="l0|l1|l2"`，内容为业务标签 + 状态 pill + 最新日期，非 L0/非 `ready` 时附「查看诊断」展开（`basis` / 允许正式使用 / message）。
+- **未接入摘要**：`market-data-rail-source-pending-summary` 位于 `market-data-coverage-bucket-source-pending` 桶内；终端区原有的 `market-data-source-pending-summary` 保留，两处并存。
+- **口径证据组**：`market-data-macro-evidence-rail` 移入本组（testid、`aria-label="证据口径"`、七行内容不变）；全页上限约束不变——`MarketWorkbenchFrame` 底部 audit 一份 + 本面板一份，共两份。本组另新增 **口径**（`basis`）与 **允许正式使用**（`formal_use_allowed`）两行，与既有报告日期/数据时间/生成时间并列。
+- **数据运维组**：刷新按钮 `market-data-refresh-btn` 文案与 `aria-label` 同为「刷新 Choice 宏观（回填 30 天）」；`refreshStatus` / `refreshError` 在此组获得**第二披露处**（「最近刷新」/「刷新错误」），与 hero 状态条合计两处。
+- **骨架态**：`coverageSections` 为空时整轨渲染骨架条，不渲染空的三组结构。
+
 ### H. 测试锚点
 
 - `frontend/src/test/MarketDataPage.test.tsx`、`ApiClient.test.ts`（端点 URL 拼写）、`RouteRegistry.test.tsx`
+- 组件级：`frontend/src/features/market-data/components/MarketDataNewsCalendarSummary.test.tsx`、`MarketDataSeriesCompactTable.test.tsx`、`MarketDataFxSeriesDeck.test.tsx`
+- Playwright：`frontend/tests/playwright/market-data-terminal-smoke.spec.mjs`、`market-data-workflow-smoke.spec.mjs`（断言口径见 §H.5）
 
 ### H.1 Hero filter strip（前端读面筛选，不触发新 API）
 
-- **控件锚点**：`market-data-filter-strip`、`market-data-active-filter-summary`（`MarketDataHeroSection.tsx`）。
+- **控件锚点**：`MarketDataHeroSection.tsx` 已随 IA 重构删除，筛选控件上移至 `MarketDataPage.tsx` 的 `PageDecisionHero` actions（`market-data-curve-filter`、`market-data-source-filter`）。契约锚点 `market-data-filter-strip` 与 `market-data-active-filter-summary` **当前实装中不存在**（见 §C、§J）。
 - **筛选维度**（均为**前端本地过滤**，不改变 `useQuery` 参数或后端请求）：
   - **国债 / 国开**（`curveFilter`）：过滤 `RateQuoteTable`、Market Tape、首屏终端 KPI；`both` 表示不过滤曲线品种。
   - **来源**（`sourceFilter`）：过滤利率主表、资金表、Tape、KPI；分类规则见下。
-  - **中票 / 城投**（`creditSegment`）：仅过滤宏观深度「信用利差」Tab 的 `credit_spread` 联动槽位（`buildSpreadSlots`）；按 `MacroBondLinkageTopCorrelation.series_name` 是否包含「中票」或「城投」匹配；`both` 表示不过滤信用分段。
+  - **中票 / 城投**（`creditSegment`）：**已删除**。宿主的宏观深度「信用利差」Tab 与 `credit_spread` 联动槽位随 02 区一并退役，`buildSpreadSlots` 引用作废（源码中已无该符号）。类型 `MarketCreditSegmentFilter` 与 `buildMarketDataActiveFilterSummary` 仍留在 `marketDataTerminalModel.ts` 并被单测覆盖，但页面不再引用（残留项，见 §J）。
 - **来源分类规则**（`classifyTerminalSource` / `matchesSourceFilter`，`marketDataTerminalModel.ts`）：
   - 优先读取 catalog `vendor_name`（`buildCatalogVendorNameMap(catalog)`，按 `series_id` 对齐）；当 `vendor_name=choice` 时归为 **Choice**。
   - 否则读取每行/API 点上的 `source_version` 与 `vendor_version`，拼接为小写字符串；若包含子串 `choice` → **Choice**；否则 → **内部**（含 `public_*`、`fred`、`boc` 等中性 lineage）。
   - 前端**不得**据此重算利率/利差数值，仅决定行是否展示。
 - **Fragment golden**（`GS-MKT-RATES-FRAGMENT-A`）：冻结 `GET /ui/market-data/rates` formal 片段；不关闭 `GAP-MKT-DATA` 全页缺口。回归：`marketDataRatesFragmentGolden.test.ts`、`tests/test_golden_samples_capture_ready.py`。
-- **生效摘要文案**：`buildMarketDataActiveFilterSummary` 将非默认筛选拼为 `国债 + Choice` 等形式；全部为默认时显示 `全部`。
-- **Tab 联动**：当 `creditSegment` 为 `mtn` 或 `urban` 时，页面自动切换宏观深度 Tab 至 **信用利差**（`macroDepthTab=spreads`）；改回 `both` 时不强制回切曲线 Tab。
+- **生效摘要文案**：`buildMarketDataActiveFilterSummary` 将非默认筛选拼为 `国债 + Choice` 等形式；全部为默认时显示 `全部`。**该摘要当前无渲染落点**（`market-data-active-filter-summary` 缺失），仅存模型层与单测。
+- **Tab 联动**：**整条作废**。宏观深度 Tab 已退役，不存在 `macroDepthTab` 状态与自动切换行为。
+- **`derived_spreads` 冻结边界**：`derived_spreads` 读面已随 02 区退役离开本页，**冻结边界改为跨页引用** `PAGE-CROSS-ASSET-001`（`/cross-asset`）。约束本身不变，并在承接页继续生效：每个 spread 必须由同一 `trade_date` / `as_of_date` 的两条 leg 直接配对，任一 leg 缺失、陈旧、fallback、null、单位不一致或无法证明同日报腿时，spread 值必须返回 `null` 并保留缺口/陈旧语义；前端不得补算、补零、跨日拼接，也不得为该槽位创建 `MTR-*` 或 golden sample。
 - **空态**：筛选后无匹配行时，利率/资金表展示 `market-data-*-filter-empty`，不补 demo 数。
 - **回归锚点**：`frontend/src/features/market-data/lib/marketDataTerminalModel.test.ts`、`frontend/src/test/MarketDataPage.test.tsx`（`updates shell filter state locally…`）。
 
 ### H.2 首屏收口与延迟加载（Route A）
 
-- **Livermore**：`market-data-livermore-collapse` 默认折叠；`getLivermoreStrategy` 仅在用户展开后 `enabled`（`useMarketDataPageData({ livermoreEnabled })`）。展开前 DOM 中不应出现 `market-data-livermore-panel` 正文。
-- **宏观深度 Tab**：仅渲染当前 `macroDepthTab` 对应 panel（曲线 / 信用利差 / 压力与情景），非激活 Tab 的 `market-data-macro-tab-*` 不应挂载。
+- **策略/联动明细端点零请求**：本页初始与刷新链路均不再请求 `/ui/market-data/livermore/*` 与联动明细读面；`getMacroBondLinkageAnalysis` 仅由**联动摘要卡近视口触发**（`lazyLinkage`，`rootMargin: 400px`、`fallbackDelayMs: 8000`）。原「Livermore 折叠段」与「宏观深度 Tab 仅渲染激活 panel」两条整段作废。
+- **lazy-mount 观察者共 3 个**：`data-lazy-mount="extended-terminal"`（扩展终端）、`data-lazy-mount="linkage-summary"`（联动摘要卡）、`data-lazy-mount="news-calendar-summary"`（news 摘要卡内部自持）。
+- **分包**：宏观/FX 主题读面组件已移出根 chunk，仅在序列浏览器 chunk（`React.lazy(() => import("./MarketDataExplorerView"))`）加载；根视图不再加载主题卡代码。
 - **查询焦点**：市场页相关 `useQuery` 设置 `refetchOnWindowFocus: false`；`staleTime` 继续沿用 `externalDataQueryOptions`（稳定 date_slice 30 分钟，其余 5 分钟）。
 - **壳层**：`WorkbenchShell` 在 `market-data` 路由隐藏市场工作台子导航网格（`isMarketDataTerminalMain`）。
-- **布局版本**：`data-layout-rev=2026-06-10g`。
-- **回归**：`MarketDataPage.test.tsx`（`defers macro-bond linkage…`、`keeps Livermore deferred…`、`renders only the active macro depth tab panel`）。
+- **布局版本**：`data-layout-rev=2026-07-01-redesign`（`MarketDataPage.tsx` 实际值）。2026-08-27 IA 重构（阶段 1–3）扩展了该 rev 的语义但**未换 rev 号**；换号计划在方案阶段 4（驾驶舱视觉独裁）随同一 PR 修订本节。
+- **回归**：`MarketDataPage.test.tsx`（`defers macro-bond linkage…` 等懒加载用例）。
 
 ### H.4 新数据源接入（Route C）
 
-- **正式外汇**：页面挂载 `getFxFormalStatus()` → `GET /ui/market-data/fx/formal-status`；`market-data-fx-formal-collapse` 默认折叠，展开后展示 `market-data-fx-formal-table`（仅后端行，前端不补算中间价）。
+- **正式外汇**：页面挂载 `getFxFormalStatus()` → `GET /ui/market-data/fx/formal-status`。行为已由「默认折叠」上提为 **「简表常显 + 明细折叠」**（2026-08-27 IA 裁决 #6）：
+  - **简表常驻首屏**：`market-data-fx-formal-summary-table`，按后端返回行序取**前 5 行**（不自定重要性排序），列为 货币对 / 中间价 / 交易日 / 状态。**仅后端行**，前端不补算中间价，也**不以 FX analytical 序列回填**；无行时渲染 `market-data-fx-formal-summary-empty`。
+  - **完整列表收进原生 `details`**：`market-data-fx-formal-collapse`（默认收起），触发器 `market-data-fx-formal-details-summary`；**首次展开才挂载** `market-data-fx-formal-panel` / `market-data-fx-formal-table`（全列 antd `Table`）。
+  - **阻断态**：`result_meta.formal_use_allowed=false` 时，区块头显式渲染 `market-data-fx-formal-blocked`（文案「暂不可正式使用」）。
 - **与 analytical 分离**：`getFxAnalytical` 仍为分析观察；正式外汇状态单独进入证据轨 `FX formal` 与运维 KPI `market-data-fx-formal-materialized`。
 - **仍 source-pending**：国债期货 / 现券成交 / 信用成交无 outward contract；`market-data-source-pending-contract-note` 明示缺口，面板保持 `source-pending` 空态。
-- **布局版本**：`data-layout-rev=2026-06-10g`（首屏状态条仅保留利率口径；运维 KPI 与联动 API 懒加载）。
+- **布局版本**：`data-layout-rev=2026-07-01-redesign`（首屏状态条仅保留利率口径；运维 KPI 与联动 API 懒加载）。
 - **回归**：`MarketDataPage.test.tsx`、`marketDataPageModel.test.ts`、`frontend/tests/playwright/market-data-terminal-smoke.spec.mjs`。
 
 ### H.3 Blocked formal-use visibility
 
 - If the `/market-data` formal rates fragment returns `result_meta.basis=formal` but `formal_use_allowed=false`, the page must not present it as formal-ready.
 - Required user-visible copy: `formal · blocked`, `禁止作为正式口径`, and first-screen status `分析/候选`.
-- Current implementation anchors: `frontend/src/features/market-data/pages/marketDataPageModel.ts`, `frontend/src/features/market-data/pages/MarketDataPage.tsx`, `frontend/src/features/market-data/pages/MarketDataHeroSection.tsx`.
+- Current implementation anchors: `frontend/src/features/market-data/pages/marketDataPageModel.ts`, `frontend/src/features/market-data/pages/MarketDataPage.tsx`（`MarketDataHeroSection.tsx` 已删除，首屏状态条改由页内 `DataStatusStrip` / `market-data-status-strip` 承担）。
 - Regression anchors: `frontend/src/test/MarketDataPage.test.tsx` and `frontend/src/features/market-data/pages/marketDataPageModel.test.ts`.
 - This visibility rule does not add new `MTR-*` rows, approve full-page formal truth, or create a capture-ready golden sample; `GAP-MKT-DATA` remains in force.
+
+### H.5 退役锚点兼容与 Playwright 回归口径
+
+- **`#market-data-linkage-correlation`** → 重定向至 `/cross-asset#cross-asset-zone-linkage`（`navigate(..., { replace: true })`）。承接页已挂 `id="cross-asset-zone-linkage"`（`CrossAssetDriversPage.tsx`）。
+- **`#market-data-macro-series`** → 以 `replace` 语义进入 `?view=explorer`（打开序列浏览器），**不再滚动到已退场的主列平铺区**；挂载时与 post-mount `hashchange` 两条路径行为一致。
+- **`#market-data-term-structure`、`#market-data-liquidity-deck`** → 语义不变，仍为同页 `scrollIntoView`（DOM `id` 分别在 01 区正式利率板与流动性 deck 上）。
+- **terminal smoke**（`market-data-terminal-smoke.spec.mjs`）：断言 `market-data-macro-depth-card` / `market-data-livermore-collapse` / `market-data-livermore-panel` 计数为 **0**；`market-data-rate-trend-panel` 含「收益率走势」；`market-data-strategy-evidence-card` 可见且 `market-data-strategy-evidence-link` 的 `href` 为 `/cross-asset#cross-asset-zone-linkage`。
+- **workflow smoke**（`market-data-workflow-smoke.spec.mjs`）：断言 `market-data-macro-tab-trigger-spreads` / `market-data-linkage-collapse` / `market-data-linkage-spreads-audit` 计数为 **0**；`market-data-linkage-summary-card` 可见、`market-data-linkage-caveat` 含「分析口径」、`market-data-linkage-summary-report-date` 轮询到 `报告日期 YYYY-MM-DD`；点击 `market-data-linkage-summary-link` 后 `cross-asset-zone-linkage` 可见，再回本页跑 Tushare 币种筛选。
+
+### H.6 序列浏览器子视图（`?view=explorer`）
+
+- **形态**：同路由 query 子视图，**不新增路由、不新增 `PAGE-*` 契约 ID**；`React.lazy` 独立分包（`MarketDataExplorerView.tsx`），激活时主列整列替换为浏览器（`data-active-view="explorer"`），右栏治理面板保持不变。
+- **query 键**：`view`、`domain`（`macro|fx`）、`theme`、`tier`（`stable|fallback`）、`q`、`series`。关闭视图时仅清除这 6 个键，不动 `date` 等页面级参数；搜索输入以 `replace` 语义更新，避免逐字符占用历史记录。来源筛选为目录辅助过滤，**不进 URL 契约**。
+- **入口**：主列 `market-data-series-library-entry`（见 §C）。
+- **浏览器锚点族**：`market-data-explorer-view`、`-close`、`-domain-macro` / `-domain-fx`、`-search`、`-tier-all` / `-tier-stable` / `-tier-fallback`、`-source-filter`、`-panel`、`-skeleton`（`Suspense` 兜底，位于 `MarketDataPage.tsx`）；另有 `-directory`、`-fx-directory`、`-tier-filter`、`-panel-empty`。
+- **行与钻取**：行前缀 `market-data-explorer-series-*`（`MarketDataSeriesCompactTable` 的 `testIdPrefix`，展开为 `-<series_id>`、`-chart-toggle-<id>`、`-inline-chart-<id>`、`-compact-table`、`-historical-section` 等）；单序列钻取 `market-data-explorer-series-detail`（含 `-chart` / `-meta` / `-close`），由 `?series=<id>` 深链恢复。
+- **其他浏览器内锚点**：`market-data-macro-missing-stable-entry`、`market-data-fx-explorer-group-<key>`、`market-data-macro-fallback-tier-rail`、`market-data-macro-fallback-theme-empty`。
+- **迁移锚点（原 04 区 → 浏览器视图；测试须先切 `view` 再断言）**：`market-data-macro-series-deck`、`market-data-macro-stable-tier-rail`、`market-data-macro-stable-theme-band`、`market-data-macro-stable-theme-<key>`、`market-data-macro-stable-theme-empty`、`market-data-macro-fallback-directory`、`market-data-macro-fallback-group-<key>`、`market-data-fx-series-deck`、`market-data-fx-theme-band`、`market-data-fx-tier-rail`、`market-data-fx-group-card-<key>`、`market-data-missing-stable-section`。
+- **退役锚点（页面不再渲染）**：`market-data-supplementary-series-section`、`market-data-supplementary-panel`、`market-data-supplementary-macro-body`、`market-data-macro-fallback-tier-collapse`、`market-data-macro-fallback-group-summary-<key>`、`market-data-missing-stable-collapse`、`market-data-macro-*-theme-column-N`。其中 `market-data-missing-stable-collapse` 已从源码消失；宏观降级目录与主题列旧链已于 2026-10-01 删除，其余仍存在于未被挂载的 `MarketDataSupplementarySeriesSection.tsx`，待方案阶段 5 删代码（见 §J）。
+- **回归**：`MarketDataPage.test.tsx`（`browses macro themes, tiers, search, and missing-stable list inside the series explorer` 等）、`MarketDataSeriesCompactTable.test.tsx`。
 
 ### I. 显式待确认
 
 - 与全仓 `Phase 2` cutover 声明对齐后，本页是否拆分为「formal 子面」+「preview 子应用」的导航或强提示（当前为 **同页 mixed-source**）。
+- **契约锚点缺失（待补）**：`market-data-page-title`、`market-data-filter-strip`、`market-data-active-filter-summary` 在实装中不存在（见 §C、§H.1）。需确认是补挂 testid 还是修订契约；方案阶段 4「恢复阶段 0 裁决的缺失锚点」列为承接项，在此保留追踪。
+- **死锚点 `#market-data-evidence-gate`**：01 区表头链接 `<a href="#market-data-evidence-gate">查看完整曲线</a>` 无同名 DOM `id`（`market-data-evidence-gate` 仅作为 testid 存在于覆盖门禁块）。点击无跳转效果，须补 `id` 或改链接目标。
 
 ### J. 实施边界与已知 GAP（文档事实，非业务指标定义）
 
 - **`GAP-MKT-DATA`**（与 `docs/metric_dictionary.md` §12.5、`docs/golden_sample_catalog.md` §5.2 一致）：市场页**尚无**本字典可冻结的**全页** formal metric dictionary / capture-ready **golden sample**；当前仅能对 `GET /ui/market-data/rates` 对应的 formal rates 片段做测试与 lineage 核对，页面契约不替代指标字典主表。
 - **显示边界**：`RateQuoteTable`、`MoneyMarketTable` 在序列缺失时展示 `emptyReason`，不再补静态 demo 行情；`BondFuturesTable`、`BondTradeDetail`、`CreditBondTradesTable` 为故意保留的 `source-pending` 面板，不渲染示例合约或成交流水（见 `docs/plans/market-workbench-cursor-prompts.md` Cursor 分工说明）。
 - **NCD 读面**：`ncd-funding-proxy` 为 **Shibor/资金利率类 proxy**（默认文案与 `payload.proxy_label` 对齐，如 Tushare Shibor funding proxy），**不是**「实际同业存单期限 × 评级」全矩阵真值；页内 `NcdMatrix` 已声明 proxy 语义。
-- **Livermore `risk_exit`**：后端 `unsupported_outputs` / `rule_readiness` / `data_gaps` 所描述的门禁为事实链依赖；实现侧依赖 **ACTIVE A 股持仓、成本/入场条、K 线历史等 supplement** 就绪后才会解除 blocked（以前端展示的后端返回为准，本文不展开公式）。
-- **`/news-events`**：若按市场工作台方案开放为路由实页，定位为 **analytical `temporary-exception`** 读面，**不是** formal metric 主链页面（与 `AGENTS.md` 占位/临时例外语义一致）。
+- **Livermore `risk_exit`**：后端 `unsupported_outputs` / `rule_readiness` / `data_gaps` 所描述的门禁为事实链依赖；实现侧依赖 **ACTIVE A 股持仓、成本/入场条、K 线历史等 supplement** 就绪后才会解除 blocked（以前端展示的后端返回为准，本文不展开公式）。读面归属已迁 `/cross-asset`（见 §A）。
+- **`/news-events`**：若按市场工作台方案开放为路由实页，定位为 **analytical `temporary-exception`** 读面，**不是** formal metric 主链页面（与 `AGENTS.md` 占位/临时例外语义一致）。本页 `NewsAndCalendar` 摘要卡底部链接指向该路由。
+- **测试覆盖缺口（须在 `/cross-asset` 侧补测）**：`LivermoreStrategyPanel.tsx` 与 `LivermoreStrategyPanel.test.tsx` 随阶段 2 退役一并删除，以下断言在本仓当前**无任何测试覆盖**，须由承接页补齐——突破型 `stock_candidates`、`mean_reversion_candidates`、`theme_breakout`、`risk_exit` 明细表渲染；`data_gaps` 的新鲜度与降级说明、诊断码列表；stale 场景的「请求日期…」「最新快照降级」注记；后端 reserved 错误的「本轮不可用 / 接口保留」文案；仓位建议（`risk_budget`）与因子缺失披露。
+- **阶段 5 待删代码（残留，非契约面）**：以下模块已不被 `/market-data` 挂载，但仍在仓库中并保留自有单测——`MarketDataSupplementarySeriesSection.tsx`、`MarketDataFxSeriesDeck.tsx`、`MarketDataLinkageSummaryBand.tsx`、`MarketDataLinkageCharts.tsx`、`LinkageSpreadTenorTable.tsx`，以及 `marketDataTerminalModel.ts` 中的 `MarketCreditSegmentFilter` / `buildMarketDataActiveFilterSummary`。它们承载的 testid 不再出现在页面 DOM 中；按方案阶段 5「删旧代」清理，清理前本节为唯一追踪处。2026-10-01 已删除宏观旧主题卡与序列 Deck 及其专属测试；现用序列浏览器的分组、查询、缺失与明细检查保留在 `MarketDataPage.test.tsx`。
 
 ## 13.9 PAGE-MACRO-TOOLKIT-001 宏观工具
 
@@ -1525,6 +1646,7 @@
 | 核心信号 / 市场踩踏风险 | live | 只展示后端宏观模块返回的分析结果；缺失时须显示空/失败态 |
 | 指标矩阵 / 功能结果 | live | M7-M16 的输入证据、缺失输入和降级状态须可见 |
 | 策略展示 / 策略供数闭环 | live | 显示真实链路、降级、样例数量、股票历史日期、因子快照日期与 source/version/run_id |
+| `MacroToolkitModelChainPanel` 回测卡 | live / read-only | 只透传 `backtest_run_manifest.json` 的实际收益样本、价格观测数、资产覆盖与 PIT 门禁；PIT 缺失时必须显示 `not_admitted` / blocked，禁止展示“最优策略”或正式准入暗示 |
 | `MacroToolkitReportBundlePanel` | live / read-only | 仅展示清单与 SHA-256 校验通过的 PDF/PNG/Markdown 白名单资产；始终 `formal_use_allowed=false` |
 | CFFEX 席位状态 / 股票数据刷新 | operational | 显式触发的刷新动作；须由后端权限与审计测试约束 |
 | 脚本注册表 / 脚本产物 / 运行结果 | operational | 只作为工具运行证据；不得作为正式指标或自动交易建议 |
@@ -1547,6 +1669,7 @@
 | `getMacroToolkitAnalysis({ detail: "full", historyLimit })` -> `GET /ui/macro/toolkit/analysis?detail=full&history_limit=430` | 完整分析下的 Crisis Score 历史序列（`score_history`） | `MacroToolkitAnalysisPayload.capability_results[crisis_score_cn].result.score_history` | analytical / tooling |
 | `getMacroToolkitStrategySummaries()` -> `GET /ui/macro/toolkit/analysis/strategy-summaries` | 策略摘要、真实/降级/样例供数状态 | `MacroToolkitStrategySummariesPayload` | analytical / candidate |
 | `getMacroToolkitScripts()` -> `GET /ui/macro/toolkit/scripts` | 脚本注册表、源命中、产物列表 | `MacroToolkitPayload` | tooling |
+| `fetchMacroToolkitModelChainResults()` -> `GET /ui/macro/toolkit/model-chain-results` | 七步模型链与回测研究证据；回测 `as_of` 取运行清单的实际收益样本结束日，不取文件修改日 | `MacroToolkitModelChainResults`；`backtest.backtest_context` | analytical / observation-only |
 | `runMacroToolkitScript()` -> `POST /ui/macro/toolkit/scripts/{name}/run` | 显式运行选中脚本 | `MacroToolkitRunResponse` | operational |
 | `refreshMacroSourceBackfill()` -> `POST /ui/macro/toolkit/source-backfill/refresh` | Crisis Score / 宏观来源缺口补齐（按 alias 滚动回填） | `MacroToolkitSourceBackfillRefreshResponse` | operational / permission-gated |
 | `getMacroSourceBackfillRefreshStatus()` -> `GET /ui/macro/toolkit/source-backfill/refresh-status` | 宏观来源补齐异步任务状态 | `MacroToolkitSourceBackfillRefreshResponse` | operational |
@@ -1554,6 +1677,8 @@
 | `getCffexMemberRankRefreshStatus()` -> `GET /ui/macro/toolkit/cffex-member-rank/refresh-status` | 中金所席位异步刷新任务状态 | `MacroToolkitCffexRefreshResponse` | operational |
 | `refreshChoiceStock()` -> `POST /ui/macro/toolkit/choice-stock/refresh` | 股票历史与因子快照刷新 | `MacroToolkitChoiceStockRefreshResponse` | operational / permission-gated |
 | `getChoiceStockRefreshStatus()` -> `GET /ui/macro/toolkit/choice-stock/refresh-status` | 刷新任务状态 | `MacroToolkitChoiceStockRefreshResponse` | operational |
+| `refreshCommodityFutures()` -> `POST /ui/macro/toolkit/commodity-futures/refresh` | 显式触发商品期货刷新；服务端先对 `products` 集合做顺序规范化并纳入同一 fingerprint，在 in-flight / retry 阻断窗口内同一日期范围与产品集合仅因入参顺序不同不得绕过去重；terminal 后允许用户再次刷新；异步 queued 仅返回 `run_id` / `before_status`，不提前返回 `after_status` / `summary` | `MacroToolkitCommodityFuturesRefreshResponse` | operational / permission-gated |
+| `getCommodityFuturesRefreshStatus(runId)` -> `GET /ui/macro/toolkit/commodity-futures/refresh-status?run_id={run_id}` | 按 `run_id` 轮询且仅 run owner 可读；服务端仅以 raw record 的 `requested_by_user_id` 作为 owner 真值并用 `AuthContext.user_id` 校验；非 owner、owner 缺失或 run 不存在统一 fail-closed `404`；terminal 只回放该 run 已固化的 `after_status` / `summary` 闭环，不按当前数据库状态重算历史 run；公共响应只暴露稳定的 `failure_category` / `failure_message`，不得泄漏 raw `failure_reason` / `error_message` | `MacroToolkitCommodityFuturesRefreshResponse` | operational / permission-gated |
 
 **分析 detail 语义**
 
@@ -1566,6 +1691,7 @@
 
 - 本页不新增 `MTR-MACRO-*`，不新增 `MTR-*`，也不绑定 golden sample。
 - `coverage.hit_rate`、脚本数量、策略数量、真实链路数量、股票历史行数、因子快照行数等均为页面状态/运维证据，不能写入正式指标字典。
+- 回测价格观测数、收益交易日数、实际起止日与资产覆盖数是单次运行证据，不是 admission 阈值；不得由前端补算或把目标“近 5 年 / 8 资产”伪装为实际覆盖。
 - 若未来要把某个宏观指标升格为正式指标，必须另行补 metric dictionary 行、单位/精度/null 规则、source lineage、sample 或明确 `pending_confirmation=true` 的 candidate 决策；本页合同不授权该升格。
 
 ### G. 状态规则
@@ -1574,15 +1700,21 @@
 - **Empty**：无脚本、无策略、无指标时必须显示空态，不得补静态假数据。
 - **Report bundle**：清单缺失时显示“尚未发布”；清单、策略标志、路径、媒体类型、大小或哈希任一校验失败时显示失败态并关闭全部下载入口。
 - **Stale / fallback**：遵循 `result_meta.quality_flag`、`fallback_mode`、各源最新日期与 warnings；供数闭环必须保留样例/降级/真实链路区分。
+- **Backtest PIT gate**：`backtest_results.csv` 存在只代表研究产物可读；当 `backtest_run_manifest.json` 缺失、损坏，或宏观输入缺 `release_at/available_at/vintage/revision` 的逐时点证据时，回测必须 fail closed 为 `status=not_admitted`、`admission_status=null`、`pit_gate.status=blocked`、`formal_use_allowed=false`，并令端点 `quality_flag=warning`。列名存在本身不构成 PIT 通过证据。
 - **Error**：分析、脚本或策略读取失败时，错误页或区块必须同时显示合同边界和失败来源。
 - **Permission**：刷新和运行入口必须依赖后端权限/授权测试；前端不单独声明授权成功。
+- **Commodity refresh run closure**：queued/running/retrying 不得携带伪造的 `after_status` / `summary`；terminal 的 `after_status` / `summary` 必须在任务结束时按 `run_id` 固化，状态接口只回放该 run 的闭环证据，后续刷新不得改写历史 run。
+- **Commodity refresh idempotency**：`products` 仅按集合语义参与同一 fingerprint；服务端必须先做顺序规范化，在 in-flight / retry 阻断窗口内同一日期范围与相同产品集合不得因请求顺序不同绕过去重；terminal 后允许用户再次刷新，不承诺永久复用历史 run。
+- **Commodity refresh status authorization**：仅当 `AuthContext.user_id` 与 raw record 的 `requested_by_user_id` 一致时允许读取；`requested_by_user_id` 是 owner 的唯一真值，非 owner、owner 缺失与 run 不存在必须返回相同 fail-closed `404`，公共响应不得泄漏 `requested_by_user_id` 或 `permission.user_id`。
+- **Commodity refresh failure fields**：公共响应只允许稳定 `failure_category` / `failure_message`；raw `failure_reason` / `error_message` 仅保留在治理记录，不得对外透传。
 
 ### H. 测试与验证锚点
 
 - 前端页面：`frontend/src/test/MacroToolkitPage.test.tsx`
 - 报告资产：`frontend/src/test/MacroToolkitReportBundlePanel.test.tsx`、`frontend/src/test/MacroToolkitReportBundleIntegration.test.tsx`、`tests/test_macro_report_asset_service.py`、`tests/test_macro_report_asset_api.py`
 - 导航成熟度：`frontend/src/test/navigation.test.ts`、`tests/test_live_route_page_contract_completeness.py`
-- 后端/API/权限：`tests/test_macro_toolkit_scripts.py`
+- 后端/API/权限：`tests/test_macro_toolkit_scripts.py`、`tests/test_macro_model_chain_results.py`、`tests/test_macro_model_performance.py`
+- 前端回测披露：`frontend/src/test/MacroToolkitModelChainPanel.test.tsx`
 - 债务基线：`npm run debt:audit`
 - 浏览器检查：打开 `/macro-toolkit`，核对 `非正式口径`、核心信号、市场踩踏风险、策略供数闭环、脚本注册表和运行结果可见。
 
@@ -1598,7 +1730,7 @@
 
 - 页面 ID：`PAGE-MACRO-OBS-001`
 - 页面名称：`宏观观察`
-- 路由：前端 `/macro-observation`（`frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx`，`mode="observation"`）
+- 路由：前端 `/macro-observation`（`frontend/src/features/macro-observation/pages/MacroObservationPage.tsx`）
 - 页面状态：`candidate tooling surface`。本页只展示宏观分析与策略供数证据，不暴露脚本注册表、执行按钮或刷新动作。
 - 页面边界锚点：`macro-observation-readonly-boundary` 必须在正常页和错误页可见，并明确标出 `read-only macro observation`。
 
@@ -1635,6 +1767,11 @@
 | 报告资产只读链接 -> `GET /ui/macro/toolkit/report-bundle/{artifact_id}` | 只下载 analysis 清单中已验证的研究资产 | binary response；元数据见 `MacroToolkitReportBundle` | analytical / read-only |
 | `getMacroToolkitStrategySummaries()` -> `GET /ui/macro/toolkit/analysis/strategy-summaries` | 策略摘要、真实/降级/样例供数状态 | `MacroToolkitStrategySummariesPayload` | analytical / candidate |
 
+**共享 read endpoints / 禁止 operation endpoints**
+
+- 共享只读能力只限 `GET /ui/macro/toolkit/analysis?detail=core`、`GET /ui/macro/toolkit/analysis/strategy-summaries` 与校验后的 `GET /ui/macro/toolkit/report-bundle/{artifact_id}`。
+- `/macro-observation` 在 loading、empty、degraded、error、success 全状态都不得请求或展示 `GET /ui/macro/toolkit/scripts`、`GET /ui/macro/toolkit/choice-stock/refresh-status`、`GET /ui/macro/toolkit/cffex-member-rank/refresh-status`、`GET /ui/macro/toolkit/commodity-futures/refresh-status?run_id={run_id}`、`POST /ui/macro/toolkit/scripts/{name}/run`、`POST /ui/macro/toolkit/cffex-member-rank/refresh`、`POST /ui/macro/toolkit/choice-stock/refresh`、`POST /ui/macro/toolkit/source-backfill/refresh`、`POST /ui/macro/toolkit/commodity-futures/refresh` 等 operations 能力。
+
 ### F. 指标映射
 
 - 本页不新增 `MTR-MACRO-*`，不新增 `MTR-*`，也不绑定 golden sample。
@@ -1649,7 +1786,7 @@
 
 ### H. 测试与验证锚点
 
-- 前端页面：`frontend/src/test/MacroToolkitPage.test.tsx`
+- 前端页面：`frontend/src/test/MacroObservationPage.test.tsx`
 - 报告资产：`frontend/src/test/MacroToolkitReportBundleIntegration.test.tsx`
 - 路由：`frontend/src/test/RouteRegistry.test.tsx`
 - 导航成熟度：`frontend/src/test/navigation.test.ts`、`tests/test_live_route_page_contract_completeness.py`
@@ -2010,6 +2147,8 @@ truth contract §9.1「do not invent detail `metric_id` numbers beyond active `M
 - Backend route `backend/app/api/routes/agent.py` delegates to `backend/app/services/agent_run_service.py` and `backend/app/services/agent_service.py`.
 - Responses are `AgentEnvelope` payloads with `answer`, `cards`, `evidence`, `result_meta`, `next_drill`, and optional `suggested_actions`.
 
+2026-09-22：Agent 入口权限不替代实际业务资源权限。Dexter 股票研究分别校验 `market_data.livermore`、`choice_news.data`，宏观研究校验 `macro_vendor`；query、run、retry 与执行前使用服务端绑定身份核验。Lab／Hermes 本地恢复按实际本地意图复核权限，拒绝不能被运行失败回退吞掉。执行层不继承 HTTP 本机 bypass，资源授权缓存仍沿用原 TTL。
+
 ### D. Units, dates, and status
 
 - Units are not computed in the page. Numeric cards must display the unit supplied by the returned envelope or the originating governed intent.
@@ -2072,6 +2211,20 @@ truth contract §9.1「do not invent detail `metric_id` numbers beyond active `M
 - Backend: `tests/test_accounting_asset_movement_api.py`, `tests/test_result_meta_on_all_ui_endpoints.py`.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
 
+### G. Balance movement reconciliation (v4)
+
+- ZQTZ bucket amounts include accrued interest. AC uses amortized cost; OCI/TPL use market value. For explicitly identified voucher treasury bonds only, zero principal falls back to market value and then face value, consistent with this page's detail amount.
+- CNX month-opening balances remain as reported in the source workbook. Cross-month control may explain FX translation only when adjacent months have one independently identified foreign currency, both exact-date formal FX rates, complete CNX/CNY account coverage, continuous CNY balances, and each account's translated residual within 0.01 yuan. Mixed/unknown currency, missing evidence, or unexplained account gaps retain the original control.
+- `chain_status=fx_adjusted` means the chain reconciles after verified translation, not that the raw gap is zero. The row discloses `chain_fx_adjustment`, `chain_fx_currency`, `chain_fx_prior_rate`, and `chain_fx_current_rate`; task governance records the same evidence. Genuine breaks still veto `matched`.
+
+### H. Maturity structure and holding drilldown
+
+- `zqtz_maturity_structure` uses the same formal primary investment rows and accounting amount as the page. Each bucket exposes current holding `items`; their amounts and counts reconcile to the bucket. The UI filters and paginates those rows without recalculating financial metrics.
+- A valid maturity date is classified relative to each period's own report date. The existing `overdue_or_matured` key is labeled “到期日已过”; it is not an overdue determination. Source principal/interest overdue days remain nullable; positive days indicate a recorded overdue, while zero does not establish settlement.
+- Undated public funds matching the established `SA` code prefix and `bond_type=其他` are separated into `fund_no_maturity` (“基金未列到期日”). This does not assert that the fund has no fixed term. Other blank/invalid dates remain `unknown` (“到期日缺失”). A missing source maturity column fails closed and does not classify funds as supported.
+- `meta.covered_total` and `coverage_pct` continue to mean valid-date balance and its share of all eligible investment balance. `meta.unknown_total` retains the total without valid dates, including undated funds; it equals the sum of the two undated buckets. Neither a fund's undated balance nor the coverage complement is automatically a data-quality failure.
+- Bucket balance deltas include natural aging between periods; neutral color conveys no favorable/adverse judgment. The UI displays yuan-derived amounts in 亿元 and CNX as 本外币折人民币.
+
 ## 14.3 PAGE-LIAB-ANALYTICS-001 Liability Analytics
 
 ### A. Page identity
@@ -2088,7 +2241,9 @@ truth contract §9.1「do not invent detail `metric_id` numbers beyond active `M
   - `GET /ui/liability/business-context`
   - `GET /api/analysis/liabilities/cockpit-warnings?report_date=YYYY-MM-DD`
   - `GET /api/analysis/liabilities/contribution-split?report_date=YYYY-MM-DD`
-  - `GET /api/liabilities/monthly?year=YYYY`
+  - `GET /api/liabilities/monthly?year=YYYY&detail_level=summary`
+  - `GET /api/liabilities/monthly/detail?month=YYYY-MM`
+  - `GET /api/liabilities/monthly?year=YYYY` (兼容完整响应；默认行为保持不变)
   - `GET /api/analysis/adb/monthly?year=YYYY`
 
 - `active` records route availability only. Liability analytics remains an excluded analytical-compatibility surface; it is not approved for formal use.
@@ -2103,7 +2258,7 @@ truth contract §9.1「do not invent detail `metric_id` numbers beyond active `M
 
 - Frontend page `frontend/src/features/liability-analytics/pages/LiabilityAnalyticsPage.tsx` initializes report dates from `GET /ui/balance-analysis/dates` and reads the asset-side comparison total from `GET /ui/balance-analysis/overview`.
 - Daily view calls the exact risk, yield, counterparty, knowledge, warning, and contribution paths listed above. The registered compatibility route `GET /api/analysis/yield-by-period` is not called by this page and is therefore not a PAGE-LIAB primary API.
-- Monthly view calls `GET /api/liabilities/monthly` and `GET /api/analysis/adb/monthly` through the API client.
+- Daily view additionally calls `GET /api/analysis/adb/monthly` for the selected report-date year to render the monthly daily-average yield/cost/NIM trend. Monthly view first calls the summary mode of `GET /api/liabilities/monthly`; after the latest available month or a user-selected month is resolved, it independently calls `GET /api/liabilities/monthly/detail` for concentration and term structure. The ADB monthly path loads independently for NIM stress. The default full monthly response remains available to compatibility consumers.
 - Backend route `backend/app/api/routes/liability_analytics.py` owns the liability risk/yield/counterparty/monthly/knowledge/warning/contribution paths; `backend/app/api/routes/balance_analysis.py` owns the date and asset-overview reads; `backend/app/api/routes/adb_analysis.py` owns the monthly ADB read.
 - Frontend adapters in `frontend/src/features/liability-analytics/adapters/` shape counterparty and section-state view models.
 - The balance-analysis overview keeps its own formal asset-side provenance, but its use on this page does not promote liability analytics or ADB fields to formal truth. ADB monthly remains `basis=analytical` with `formal_use_allowed=false`.
@@ -2113,8 +2268,9 @@ truth contract §9.1「do not invent detail `metric_id` numbers beyond active `M
 - Amounts are displayed as yuan-derived business units such as yi yuan after explicit frontend presentation conversion; source numeric fields remain backend-provided values.
 - Yield, liability cost, market liability cost, NIM, and spread values must preserve percent/bp semantics from backend numeric payloads.
 - `requested_report_date` is the selected report date. Monthly mode uses selected year/month and average daily balance semantics.
+- Monthly amount cards, including current balance, MoM/YoY amount changes, and YTD average balance, display yuan source values as yi yuan. MoM compares the immediately preceding calendar month; YoY compares the same calendar month in the prior year. Missing or zero comparison bases remain null.
 - Empty state: missing report dates, missing liability rows, or missing monthly rows must show no-data states.
-- Failure state: date load, daily core query, monthly query, and knowledge-query failures must be visible and retryable where supported.
+- Failure state: date load, daily core query, monthly summary, selected-month detail, ADB monthly, and knowledge-query failures must be independently visible and retryable where supported. A slow or failed detail read must not hide an already available monthly overview.
 - Stale/fallback state: quality/fallback/vendor metadata and synthetic section notes must remain visible; the page may explain derived sections but may not hide pending metric definitions.
 
 ### E. Metric bindings
@@ -2123,17 +2279,25 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 
 | Page display item | `metric_id` | Source field |
 | --- | --- | --- |
-| Daily liability total | `MTR-LIAB-001` | `counterparty.total_value` / `risk_buckets.liabilities_structure[].amount` |
+| Daily liability total | `MTR-LIAB-001` | `risk_buckets.liabilities_structure[].amount` (interbank + issued; counterparty total stays local to concentration) |
 | Daily liability cost | `MTR-LIAB-002` | `yield_metrics.kpi.liability_cost` |
 | Daily NIM | `MTR-LIAB-003` | `yield_metrics.kpi.nim` |
-| One-year maturity pressure | `MTR-LIAB-004` | `risk_buckets.liabilities_term_buckets[]` <= 1Y bucket |
-| Top10 counterparty share | `MTR-LIAB-005` | `counterparty.top10_share` / `liabilities_monthly.months[].top10_share` |
-| Counterparty concentration HHI | `MTR-LIAB-008` | `counterparty.hhi` / `liabilities_monthly.months[].hhi` |
-| Monthly average total liabilities | `MTR-LIAB-006` | `liabilities_monthly.months[].avg_total_liabilities` |
-| Monthly average liability cost | `MTR-LIAB-007` | `liabilities_monthly.months[].avg_liability_cost` |
+| One-year maturity pressure | `MTR-LIAB-004` | `risk_buckets.liabilities_term_buckets[]`: `0-3M`, `3-6M`, `6-12M`, `Matured`; undated balances excluded |
+| Top10 counterparty share | `MTR-LIAB-005` | `counterparty.top10_share` / `liabilities_monthly_detail.detail.top10_share` |
+| Counterparty concentration HHI | `MTR-LIAB-008` | `counterparty.hhi` / `liabilities_monthly_detail.detail.hhi` |
+| Monthly average total liabilities | `MTR-LIAB-006` | `liabilities_monthly_summary.months[].avg_total_liabilities` |
+| Monthly average liability cost | `MTR-LIAB-007` | `liabilities_monthly_summary.months[].avg_liability_cost` |
+| Monthly average liability MoM change | `MTR-LIAB-009` | `liabilities_monthly_summary.months[].mom_change` / `mom_change_pct` |
+| Monthly average liability YoY change | `MTR-LIAB-010` | `liabilities_monthly_summary.months[].yoy_change` / `yoy_change_pct` |
 
-- `counterparty.population_count` / `liabilities_monthly.months[].population_count` and `counterparty.is_truncated` / `liabilities_monthly.months[].is_truncated` are sample-coverage contract state, not analytical metrics.
+- `counterparty.population_count` / `liabilities_monthly_detail.detail.population_count` and `counterparty.is_truncated` / `liabilities_monthly_detail.detail.is_truncated` are sample-coverage contract state, not analytical metrics.
 - When `is_truncated=true`, the page must visibly mark the counterparty list as partial and must not represent the visible rows as a full-population concentration calculation.
+
+- Daily headline total uses interbank plus issued liabilities, matching the structure charts; counterparty totals must not substitute for it. Static NIM uses asset yield minus market liability cost; overall liability cost includes all issued liabilities and is labeled separately.
+- Undated or invalid maturity dates are shown in a separate `到期日未提供` bucket in daily and monthly views. They remain in liability totals and share denominators but are excluded from known one-year maturity pressure and its threshold alerts. Missing-date coverage remains visible.
+- Monthly concentration scale and institution-type tooltip shares use `detail.counterparty_total`, the backend population average after excluding self counterparties. The monthly total-liability headline includes issuance and must not substitute for that denominator.
+
+2026-09-22：贡献拆分任一正本金缺失利率时，整体收益或成本及整体贡献显示缺数；页面另列已知部分贡献、利率金额覆盖率和缺失利率金额。全部利率缺失时已知贡献也为空，真实零利率则显示零。`known_contribution_yi` 不能替代 `contribution_yi`，前端不重新估算总体贡献。此接口继续为 analytical、`formal_use_allowed=false`，结果保留来源规则及独立贡献算法 v2。
 
 ### F. Tests
 
@@ -2157,11 +2321,14 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - The page answers: for an allowed fact table, what grouped rows result from the selected dimensions, measures, filters, and drill path?
 - It is a query tool surface. It must not create a new page-level KPI, metric definition, or formal business conclusion outside the returned `result_meta`.
 - Formal semantics apply only to backend-approved fact tables and response metadata; unsupported tables, dimensions, or measures must fail closed with visible errors.
+- As of the 2026-09-05 repair, `balance` and `product_category` remain excluded from formal use: `basis=formal` returns a visible 503. Supported analytical reads explicitly return `formal_use_allowed=false`; corrected aggregation does not promote this surface.
 
 ### C. Data chain
 
 - Frontend page `frontend/src/features/cube-query/pages/CubeQueryPage.tsx` builds a `CubeQueryRequest`.
 - Frontend client `frontend/src/api/cubeClient.ts` sends `POST /api/cube/query`.
+
+2026-09-22：`/cube-query` 使用 `SystemReadGenerationBoundary` 固定一次页面交互的代次。只读 `POST /api/cube/query` 与 GET 一样携带并核对 `X-MOSS-Read-Generation`，后端中间件与 `CubeQueryRepository` 使用同一受校验快照；普通写请求继续使用活动上下文。未保留、撤销或损坏的指定代次必须拒绝，不能回退到活动数据库。本项不扩大 Cube 的正式使用范围。
 - Backend route `backend/app/api/routes/cube_query.py` delegates query execution to the analytical bridge and dimensions lookup to `CubeQueryService`.
 - The response is `CubeQueryResult` with rows, columns, summary, drill path, and `result_meta`.
 
@@ -2171,6 +2338,9 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Empty result sets must be rendered as query results or explicit no-data states, not as demo rows.
 - Invalid table, dimension, measure, filter, or unavailable storage states must surface as user-visible query errors.
 - The page must keep result metadata visible enough for operators to distinguish formal, analytical, stale, fallback, and quality states.
+- Balance queries require exactly one explicit `currency_basis=CNY` filter, applied consistently to counts, rows, lineage and drill. Missing, multiple or unsupported currency bases are rejected rather than silently defaulted.
+- Product-category queries require one supported `view` and one configured `category_id`. The accepted `sum(business_net_income)` request spelling reads that unique precomputed row; parent/child sets, unsupported measures and ambiguous duplicate rows cannot be freely aggregated. The dimensions response discloses `required_filters` and `analytical_only`.
+- Ledger storage errors and uninitialized storage return identifiable 503 errors regardless of dimensions; a successfully queried empty table remains a 200 empty result with a warning.
 
 ### E. Metric bindings
 
@@ -2254,32 +2424,73 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 
 ### B. Primary business question
 
-- The page answers: which market data, macro, cross-asset, stock observation, or event context should be opened first today?
+- The page answers what changed in funding prices and government yields over their stated observation periods, which evidence supports the interpretation, and what a fixed upward rate shock implies for a verified regulatory-risk portfolio scope.
 - It is a market entry surface and must not promote observational or vendor-readiness signals into formal operating metrics.
 - Old `/market` bookmarks may redirect to `/market-data`; `/market-overview` remains the module home route.
 
 ### C. Data chain
 
-- `useMarketHomeQueries` concurrently loads Choice macro latest data, formal market-rate series, market catalog, macro toolkit **full** analysis with `historyLimit: 430`, macro strategy summaries, and one shared latest-500 Choice News sample with `include_payload_json=false`.
-- `buildModuleHomeView(... kind="market")` maps the returned envelopes into the market view; `MarketHomeLayout` renders that evidence through `MarketOverviewDenseFirstScreen`, `MarketFinancialChartsWorkbench`, and `MarketBackendDataWorkbench`.
-- The dense first screen and the twelve-chart workbench share the same compact Choice News query/cache key so their latest-500 sample cannot diverge within one page load. The News tab in `MarketBackendDataWorkbench` is intentionally separate: it uses backend pagination with `limit=50`, `offset`, and `include_payload_json=true` for field-level verification.
+- `useMarketHomeQueries` eagerly loads only `GET /ui/market-overview/snapshot`. Sections 01 and 02 consume the snapshot's `gate`, `dates`, `tape`, `pulse`, `crisis`, `signals`, `news`, `actions`, and `charts` partitions directly; the frontend may format values and map tones but must not recompute those partitions.
+- Snapshot v8 carries the already-loaded Choice latest and formal market-rate result payloads under `charts.choice_latest` and `charts.market_rates`, so the first-screen cards and charts share one response/cache clock. Section 03 enables separate reads only for expanded chart groups after the section is visited. Section 04 independently enables the source matching its active tab; it must not require visiting section 03 or trigger every chart source. The News tab keeps its separate backend pagination with `limit=50`, `offset`, and `include_payload_json=true`.
+- `gate.conclusion.basis.signal_cards` contains only effective liquidity, risk-appetite, and credit direction inputs. `basis.directional_coverage` discloses expected/valid counts and missing keys. A missing or invalid direction input holds the direction at “暂不判断”; complete inputs retain the existing direction rule. The existing indicator-hit-rate gate remains in effect. Coverage counts are analytical completeness evidence, not calibrated financial thresholds. Other signal cards remain in the originating macro analysis.
+- `buildModuleHomeView(... kind="market")` remains available to sections 03 and 04. First-screen status is derived from the snapshot, independently of deferred query readiness; the legacy curve-shape fact is omitted because the snapshot has no equivalent field. The first-screen conclusion, Crisis fact, market tape, event density, signals, and actions do not depend on that legacy view derivation.
+- The hero displays `funding_observation.summary` and `rates_observation.summary` with independent observation dates. The old directional vote cards are absent from the primary reading flow. `gate.level`, `gate.human_reason` and `gate.recovery_action` retain the use boundary and recovery path.
+- Runtime v1.4 (2026-09-09) shows funding/rate summaries, four quote slots, the two-period government curve with impact context, funding/key-rate tabs, cross-asset changes, Crisis/history/signals/actions, macro/event summaries and the on-demand scenario state. Original macro charts and event density remain in verification details; all 12 topical charts and the full data workbench remain reachable. Chapter links and direct hashes open the corresponding section.
+- Approved presentation v1.4 is implemented and functionally verified. Current Crisis availability, 60-point quality-marked history, backend 20/60-window changes, market-signal availability and review actions stay visible; missing/stale data retain section placement. See [implementation evidence](design/market-overview-implementation-v1.4.md). Three-width browser checks passed; visual parity remains approximate, not pixel-identical.
+- The v1.4 source links preserve available source context and allowlisted return sections. Returning restores search, disclosures, chart selection, scroll and focus without storing portfolio values. News URL topic and received-time bounds enter the query/cache key; invalid time ranges prevent queries. Macro source dates are context only, never a historical replay. Indicator period/publication and event time/source not independently returned by snapshot remain explicit data gaps. Scenario uses the existing report_date contract and verified regulatory scope.
+- The v1.4 Crisis drill-down uses existing full macro analysis on demand and shows five components, seven input identities/dates/proxy status, history quality and rule version. A full-analysis raw score must never refill a snapshot-masked current score. Commodity coverage, shadow contributions, admission thresholds/decisions and approval text remain read-only research detail; news compare dimensions may overlap and are not summed. The controlled return-section target adds risk; actual URL handling, focus restoration and live behavior remain implementation work.
+- Latest quotes and formal rates use an explicit seven-column business table (indicator, value, unit, change, observation date, quality, record details). Values and changes retain their original units and display up to four decimal places; a change in a percentage series is an absolute percentage-point difference, not a relative return. Zero remains distinct from a missing value. The record drawer retains the original numeric precision, all returned fields, and accessible recent observations. Extra payload fields, full result metadata, and source structure remain available on expansion. Formal-use restrictions, quality problems, fallback dates, and failed reads remain visible at the relevant business surface.
+- The page uses the existing workbench subpage navigation and one page-local chapter navigation. The hero keeps the business summary, current availability reason, and recovery action visible; technical provenance and historical details may be collapsed after the market tape. Infrastructure exception text and host addresses must not enter business summaries.
+- `gate.issues` distinguishes missing direction inputs, stale stock inputs, model artifacts needing review, research-use restrictions, and unexplained quality warnings. Each issue provides a business reason, affected use, and existing drill route; review issues also appear in `actions`. Raw infrastructure exceptions are never forwarded as issue text. Deferred capability sections alone are not missing-data issues. A successful re-read with recovered evidence clears the corresponding issues.
+- Refresh feedback distinguishes collection completion from subsequent read results. A failed snapshot re-read retains old values with a visible failure notice and must not report successful page refresh. An active news detail page is invalidated and re-read after collection completes.
 - `MarketFinancialChartsWorkbench` groups the returned evidence into rates/liquidity, cross-asset, macro signals, strategy/risk, news, and coverage sections. Raw-value charts preserve backend units. Cross-asset comparison is explicitly analytical and normalizes each selected series to its first visible observation = 100.
+- The twelve topic-chart entries retain ten complete topic cards and two references to the visible key-rate trend and cross-asset-change originals. Each reference targets the concrete chart anchor. The same-day government/policy-bank curve remains in the topic collection, distinct from the two-period government curve. Cross-asset change bars show each asset's own comparison start and end dates without requiring hover; mismatched periods must not be presented as a same-day ranking or verified market co-movement.
 - The page references market data result metadata and child-page readiness instead of defining a new market metric contract.
 - Macro conclusions, strategy summaries, commodity evidence, and news remain observation-only / analytical and must not be promoted into a formal operating conclusion or trading instruction.
 
+Snapshot v8 adds page-specific funding and curve observations. The backend returns changes, spreads, summaries, conditional interpretations, limitations and evidence. React only formats these fields. Two evidence drawers retain raw precision, dates, units, input series, sources and proxy flags. Curves and tenor tables consume the same backend rows.
+
+The portfolio scenario requests risk dates only after explicit opening, then reads the same-date result or an explicitly selected earlier date. It displays only `parallel_rate_up_10bp` from `GET /api/risk/scenario-stress`, using `regulatory_dv01` and yuan. It never derives an inverse shock or reads the mixed-unit worst-impact summary. Permission/read failures remain local.
+
 ### D. Units, dates, and status
 
+Funding and curve dates are independent. Curve changes use a common observed comparison date; each spread requires same-date legs in the same government-curve family. A banking trading calendar is not currently evidenced, so trends say “近20期” and comparisons identify explicit dates rather than asserting the previous banking trading day.
+
+The stored `CA.DR007` is an FDR007 proxy and must be visibly labeled as such; it cannot satisfy a true DR007 judgment. SHIBOR is a term quotation reference, not a certificate-of-deposit yield. Policy deviation requires an authoritative effective interval; an operation-day reverse-repo observation alone cannot supply it.
+
+When the global refresh receipt is blocked, dependent judgments remain unavailable. Current source run/version identifiers are date-based and cannot prove which same-day execution a receipt certified, so they must not restore a local judgment. With a valid global receipt, unrelated row-quality warnings do not invalidate separately verified required inputs; envelope-level failed reads, fallback and unavailable provenance still block their affected analysis.
+
+Scenario `evidence` discloses requested/actual risk dates, fallback status, formal scope rules, total/included/excluded/missing-risk counts and `amount_display_allowed`. Actual date, complete coverage, non-fallback provenance, scenario metadata and finite amount must all be verified. A missing or unusable same-date result, including incomplete risk coverage or a non-permission read failure, permits explicit selection from verified historical dates and requires a historical-holdings label. Permission failures hide cached amounts and recovery selection. Null/non-finite inputs and unavailable zero markers suppress amounts; a verified observed or matured zero remains zero. This is a regulatory DV01 linear sensitivity, not actual PnL or full repricing.
+
+
 - Rate, FX, spread, commodity, index, and macro units come from the originating payload. Mixed-unit series must not share an axis unless the backend units are coherent; the frontend must not guess a conversion.
-- Trade dates and as-of dates stay tied to the source row or result metadata. Yield-curve snapshots use one coherent latest report date; missing observations remain gaps (`null`) and must not be connected or interpolated.
-- Empty state: no rates, no catalog, or no macro toolkit result must show a missing/partial status.
-- Failure state: failed market or macro queries must be visible and must not be replaced by demo market values.
-- Stale/fallback state: vendor, fallback, catalog, source-version, and refresh-error-with-retained-data status must remain visible. Such retained evidence may stay inspectable, but it must hold the first-screen judgment and suggested action rather than drive them.
-- Formality state: macro-toolkit evidence must expose its `basis`, `formal_use_allowed`, quality/vendor/fallback state, and a visible non-formal review gate.
+- Dates are per-surface. `dates.surfaces` preserves each component's `latest`, `age_days`, and date basis, while the page header and section 02 show both ends of `dates.tape_span`; the frontend must not replace them with a single synthetic market date.
+- A surface with `age_days >= 5` adds a visible source-specific observation-date notice with “距页面计算日 N 天” to the first-screen availability summary. Missing dates stay `null`; the frontend must not interpolate them or borrow a Choice date for a missing formal-rate date. Monthly pulse dates are not evaluated by this daily surface-age rule.
+- Empty or failure state of the snapshot must remain visible and must not be replaced by old frontend-derived conclusions or demo values. A returned `unresolved` tape slot displays “未绑定” with its backend reason.
+- A detected unavailable component, explicit `vendor_unavailable`, or macro analysis with zero available inputs shortens the existing component and snapshot cache entry to at most 15 seconds after detection. This also applies to cached values produced by prewarm; repeated reads cannot extend expiry or overwrite a replacement value. Quality warnings with available inputs retain the normal cache duration.
+- `result_meta.basis`, `formal_use_allowed`, component quality/vendor status, `gate.human_reason`, and `gate.recovery_action` remain visible. A `review` gate prefixes the recommended action with “需复核”；a `blocked` gate holds the title at “暂停形成今日判断”.
+- Component and tape contracts retain `fallback_mode`, `fallback_date`, and `formal_use_allowed`; vendor-stale or fallback observations must not be shown as unrestricted current formal data merely because `quality_flag` is `ok`.
+- `crisis.delta` and `crisis.risk_gate` come from `macro_analysis_full`; `gate` and `signals` remain bound to `macro_analysis_core`. When the current score is unavailable, its regime cannot be displayed as a current judgment and its risk gate cannot trigger an action. Retained history is marked as historical evidence with its own date. The frontend never rebuilds Crisis history or eligibility.
+- `pulse` uses the page-scoped, read-only `macro_pulse` component and existing stored macro aliases: CPI同比 (`M0000612`, `%`), PPI同比 (`M0001227`, `%`), 制造业PMI (`M0017126`, `index`), and 社融存量同比 (`M5525763`, `%`). `unit` describes the levels; `change_unit` is 百分点 for the three percentage series and 点 for PMI. Each row visibly preserves its actual observation date; the analysis snapshot date must not be presented as the monthly indicator period. Missing observations remain unavailable.
+- A pulse observation from the Choice compatibility table resolves its publisher through the existing stored vendor lineage only when the observation date and displayed value match. A failed or mismatched lineage read displays “来源待核验” without changing the available value or date; an official PMI artifact must not be labeled Choice solely because of the storage table name.
+- News `unavailable` is distinct from a successful empty sample: placeholder zero counts must not become a healthy “0 项待复核” claim.
 
 ### E. Metric bindings
 
-- None. This module home has no standalone `MTR-*` binding.
+- Funding and curve observations have no new standalone `MTR-*` binding. The optional portfolio scenario reuses regulatory DV01 `MTR-RSK-001R`, remains `basis=scenario` and `formal_use_allowed=false`, and requires human review.
 - Formal-use claims remain scoped to `/market-data` or the specific returned `result_meta`.
+- Snapshot v1 tape slots are an analytical display registry owned by `backend/app/services/market_overview_service.py::MARKET_OVERVIEW_TAPE_SLOTS`; they are not `MTR-*` metrics.
+
+| Slot key | Display label | Kind | Preferred component | Page status |
+| --- | --- | --- | --- | --- |
+| `gov_10y` | 10Y国债 | rate | `market_rates` | analytical display |
+| `dr007` | Source-dependent DR007 / FDR007 proxy label | rate | `market_rates` | analytical display |
+| `omo_7d` | 7D逆回购 | rate | `market_rates` | analytical display |
+| `shibor_3m` | SHIBOR 3M | rate | `market_rates` | analytical display |
+| `csi300_close` | 沪深300 | equity | `choice_latest` | analytical display |
+| `brent` | Brent原油 | commodity | `choice_latest` | analytical display |
+| `usd_cny_mid` | USD/CNY | fx | `choice_latest` | analytical display |
+| `copper_main` | 铜主力 | commodity | `choice_latest` | analytical display |
 
 ### F. Tests
 
@@ -2287,7 +2498,13 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Focused frontend: `MarketFinancialChartsWorkbench.test.tsx`, `marketFinancialChartsModel.test.ts`, `MarketBackendDataWorkbench.test.tsx`, `marketOverviewDenseModel.test.ts`, and `marketOverviewDenseLiquidityModel.test.ts` under `frontend/src/features/workbench/module-home/`.
 - Browser: `frontend/tests/playwright/market-overview-smoke.spec.mjs`.
 - Backend Choice News compact/full contract: `tests/test_choice_news_routes.py`.
+- Backend market snapshot contract: `tests/test_market_overview_snapshot_api.py`.
+- Observation dates, units, policy intervals and receipt dependency checks: `tests/test_market_observation_service.py`.
+- Scenario provenance, coverage and finite inputs: `tests/test_risk_scenario_stress_evidence.py`, `tests/test_risk_tensor_api.py`.
+- Primary observations and scenario interactions: `MarketFundingRatesObservations.test.tsx`, `MarketPortfolioScenarioPanel.test.tsx`, `MarketOverviewDenseFirstScreen.test.tsx` under `frontend/src/features/workbench/module-home/`.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+The full chart workbench retains all six groups and twelve chart entries. The original government/policy-bank curve comparison and multi-series key-rate history render in the rates group. A reference card is allowed only when that exact chart still exists in the primary reading flow, with a link to its concrete element; a new analytical panel is not an equivalent replacement.
 
 ## 14.6.1 PAGE-CROSS-ASSET-001 Cross-Asset Drivers
 
@@ -2304,6 +2521,8 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - `csi300` binds only `CA.CSI300` (沪深300指数收盘点位). Its display unit is `point`; it is the broad-equity input for market regime, equity evidence, trend summaries, and stock analysis.
 - Raw KPI changes may be described only as `rising` / `falling` / `neutral`. `supportive` / `restrictive` is reserved for governed transmission-axis output and must not be inferred from the sign of a raw KPI change.
 - `EMM01843735` and `CA.CSI300` remain separate even when their report dates differ; freshness never makes them substitutes.
+- The equity-bond ERP verdict band edges (`4.0` and `2.75`) mirror the bond-side transmission axis `backend/app/core_finance/macro_bond_linkage.py::EQUITY_BOND_SPREAD_RULES`'s `spread_min`/`spread_max` thresholds: `ERP >= 4.0` renders equity-cheap, `ERP <= 2.75` renders equity-expensive, and the `2.75`–`4.0` middle band renders neutral. The equity-side cheap/expensive verdict itself is a frontend display-layer banding; the backend does not define that verdict, and it additionally gates `stance` on `index_pct_change` momentum, so `stance` must never be restated as the equity verdict. When the backend changes these thresholds for bond-side reasons, a human must re-check whether this mirror still applies before touching the frontend constants; the guardrail test failing red is a prompt to review, not an instruction to auto-sync.
+- The `gov_spread` bp caliber is owned by `backend/app/core_finance/market_derived.py::calculate_spreads` (`percentage difference × 100 -> bp`, long leg first). The frontend recomputes the series only as a display fallback when no precomputed spread series is served.
 
 ### C. First-screen source gate
 
@@ -2314,8 +2533,8 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 
 ### D. Tests
 
-- KPI semantics: `frontend/src/features/cross-asset/lib/crossAssetKpiModel.test.ts`.
-- Asset analytics: `frontend/src/features/cross-asset/lib/crossAssetAnalytics.test.ts`.
+- KPI semantics and the `market_derived` bp-caliber guardrail: `frontend/src/features/cross-asset/lib/crossAssetKpiModel.test.ts`.
+- Asset analytics and the `EQUITY_BOND_SPREAD_RULES` threshold-consistency guardrail: `frontend/src/features/cross-asset/lib/crossAssetAnalytics.test.ts`.
 - First-screen contract: `frontend/src/test/crossAssetDriversPageModel.test.ts`.
 - Page integration: `frontend/src/test/CrossAssetPage.test.tsx`.
 
@@ -2465,9 +2684,18 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - The approved structure endpoint returns: YTD CNY-equivalent parent-row average-balance HHI and Top-3 share; per-business negative-FTP month share and longest natural-month streak with missing months excluded from the denominator and interrupting the streak; current-YTD versus prior-year-same-period YTD average-balance share drift; and the backend-owned scale–FTP-after-return relative quadrant. The untraced-FI trend is returned as a separate reconciliation diagnostic and must not be mixed into leadership business conclusions. Its DTO exposes `available` and `availability_reason`; a storage/read failure is `source_unavailable`, while a successfully read window with no formal-FI observations is `no_observations`. Neither state may be represented as a successful empty or zero trend.
 - YTD row-level `avg_balance`, annualized yield, FTP cost, and FTP-after-PnL come from `GET /api/pnl/by-business-ytd`; the front end must not recalculate them.
 - YTD `summary` is backend-owned and covers parent business rows only. Amount, balance, and asset-count fields aggregate the non-overlapping parent rows; annualized yield and FTP fields are recalculated by the governed backend formula from the aggregate PnL, aggregate ADB, calendar days, and returned FTP rate. `proportion` is classified parent PnL divided by source total PnL. Detail/“其中项” rows are excluded, and the front end must not re-aggregate the rows.
-- `GET /api/analysis/adb/comparison` is supplemental cross-source evidence for category/rollup coverage and ADB-vs-current drivers, not a required source for the YTD row fields. If it is unavailable or returns a different interval, the page may use the YTD row `avg_balance` for this page only, but must visibly downgrade the cross-source ADB conclusion.
+- Monthly row `proportion` uses the same source-total denominator as YTD rows and the YTD summary, including unallocated PnL; a zero source total returns null. Both table descriptions disclose this basis. Live calculation and the v13 precomputed payload must agree; monthly summaries have no `proportion` field.
+- The shared ZQTZ classification recognizes the historical FI source alias `大额存单` as `同业存单`, and G2 trust products as `非底层投资资产` with a `信托计划` detail row. PnL and daily-balance classification use the same definitions; detail rows do not add a second copy to parent totals.
+- The foreign-bond list includes `292680026` and `292680027` (Indonesia sovereign CNY bonds, issuer verified from formal balance source). Their FI `企业债` alias is excluded from the nonfinancial-enterprise parent to prevent overlapping classification; denomination remains CNY.
+- On 2026-09-09 the business owner confirmed the exact codes `292680004`, `292680008`, and `HK0001145967` belong to `外国债券`. These instruments join the shared explicit list and are excluded from commercial-financial/nonfinancial-enterprise aliases to avoid double counting. This approval does not extend to codes with extra suffixes. Their H/AC accounting classification is unchanged; business precompute rule/cache v17 invalidates the former prefix-based classification.
+- All daily-average displays, drivers and exports on this page consume the PnL endpoints' book-value average, including accrued interest, under the owner-confirmed all-date rule: H amortized cost, A/T fair value, voucher Treasury face-value fallback. `/api/analysis/adb/comparison` uses another valuation basis and must not replace this page's denominator or certify its coverage.
+- Business analysis dimensions include groups present only in balance facts, even when no PnL source row exists. Daily averages, closing balances and PnL reconcile to the selected business's main-table totals; zero PnL does not imply zero funding cost. FTP remains null when the unrounded daily-average denominator is nonpositive, so a partial sum of non-null drilldown FTP fields must not be presented as the main-table total.
+- Unfiltered analysis uses the same classified balance scope as the monthly/YTD main tables. Unmatched balances do not silently enter the global denominator as other bonds. Unallocated source PnL remains included and observable; matching the balance scope must not remove that PnL or change the observed-date denominator.
+- Monthly/YTD/analysis payloads expose `avg_balance_basis=book_value_including_accrued_interest` and `balance_quality_issues`. Pending source dates raise result quality to warning and remain visible on the page and in exported workbooks. Monthly buckets carry their own issues; `management_change.balance_quality_warning_months` blocks balance/FTP comparisons affected by those dates. The source-review state is read from governed remediation events on every response, including cache hits.
 - Formal reconciliation uses `GET /api/pnl/by-business`.
 - Manual adjustment audit/actions use `/api/pnl/by-business/manual-adjustments*`; they are displayed as audit/reconciliation controls and must not create a new official metric definition.
+- Manual adjustments contribute PnL, not assets. Their synthetic identifiers must not increase monthly/YTD/drilldown asset counts, even when a group has only adjustments. Exported observed-day balances and yield estimates must retain their own period's coverage and pending-review status; a numeric exported estimate does not certify complete coverage.
+- Monthly analysis exports, including bond-bucket monthly rows and monthly drilldowns, attach each row's own month's coverage, sample-fill state, and source issues. Full-period diagnostics belong in export notes and must not replace monthly diagnostics; a missing month's evidence is explicitly unavailable.
 - Page-read-model observability uses `GET /api/pnl/by-business/precompute-status?year=...&as_of_date=...`; permission-gated operator recovery uses `POST /api/pnl/by-business/precompute-rebuild?year=...&as_of_date=...`. Status/currentness is resolved against the page's selected cutoff, never the latest date for the year by implication. `queued` also covers an automatic retry wait; only retry exhaustion or a stale in-flight run is exposed as `failed`. Polling while work is in flight reads lifecycle/metadata only and defers the full source-fingerprint verification until the run is terminal. These endpoints report/operate the existing monthly and analysis precompute only and do not define or recalculate a metric in the front end.
 - `/api/pnl/by-business-analysis?dimension=currency` uses the governed original-asset currency from the matched formal balance fact (`currency_code`) when available. This includes FI USD bonds such as non-financial enterprise bonds. Instrument code `J1` is only the fallback USD rule when governed original-currency evidence is absent; `JM`, `J4`, and other codes without such evidence fall back to `CNY`. This dimension changes grouping only; PnL, ADB, current balance, FTP cost, and FTP-after-PnL remain CNY-equivalent amounts.
 - Monthly and YTD reconciliation diagnostics are backend-owned. For each period, `source_total_pnl = classified_parent_total_pnl + unallocated_pnl + reconciliation_delta`; the front end may format these values but must not derive or rebalance them.
@@ -2487,7 +2715,7 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 | `management_change` | In YTD, show backend-computed latest-month versus previous-calendar-month changes in ADB, PnL, FTP net PnL, FTP-after annualized yield, and parent-business drivers before the long table | `/api/pnl/by-business-monthly.result.management_change` |
 | `main_table` | Show monthly/YTD/formal detail table with explicit units; the YTD footer consumes the backend-owned parent `summary` | active payload rows + YTD `summary` |
 | `selected_business_trend` | In YTD, show the selected row's monthly ADB/current balance, PnL/FTP-after-PnL, and returned yield/FTP fields immediately after the table; match by stable `row_key`, use YTD `period_start_date`/`period_end_date` as the expected boundary, preserve every missing bucket or row as `null`, and perform presentation-only yuan-to-`亿元`/`万元` conversion | `/api/pnl/by-business-ytd` period boundary + `/api/pnl/by-business-monthly` items |
-| `driver_overview` | In YTD, rank contribution, drag, yield, and ADB-vs-current-balance drivers after the selected-business decision chain | YTD rows + optional ADB comparison cross-check |
+| `driver_overview` | In YTD, rank contribution, drag, yield, and ADB-vs-current-balance drivers after the selected-business decision chain | YTD rows using the same book-balance basis as the main table |
 | `monthly_breakdown` | In monthly/YTD, allow monthly reconciliation against published monthly buckets | monthly payload |
 | `drilldown` | In YTD, show FTP bridge, bond-bucket, instrument, and multidimensional drilldowns | `/api/pnl/by-business-analysis` |
 | `evidence` | Show source, lineage, and result metadata below the decision summary | `result_meta` |
@@ -2504,6 +2732,7 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - If either compared month has `coverage_days=0`, PnL component deltas may remain comparable, but ADB, current balance, annualized yield, FTP cost, FTP net PnL, and FTP-after annualized deltas must be `null`; absence of balance observations is not a real zero balance.
 - If a background monthly refresh fails while a cached `management_change` remains available, the page may keep the cached values visible only with an explicit stale/refresh-failed warning that says the result may exclude newer supplements or manual adjustments.
 - A current source/rule fingerprint match is required before the status surface may say `预计算已就绪`. If the precompute is missing or stale, monthly/analysis endpoints keep the governed real-time calculation path and the page must say `当前使用实时计算`; a failed run must show its error and preserve the permission-gated rebuild action. Queued/running jobs are polled, and a completed current run invalidates the page queries once so the precomputed payload becomes visible.
+- Formal FI and non-standard bridge facts for every requested period must both pass the current v7 fact-version gate before monthly/YTD/analysis or precompute use them; historical dates do not bypass this check. Per the owner's 2026-09-06 confirmation, FI source 516 is sign-reversed without division by 1.06 and recognized only for T/FVTPL; FI source 517 is sign-reversed, divided by 1.06, and recognized as H/A realized PnL or T non-overlapping realized increments for all dates, with no start/end date. J1 conversion uses the governed FX version for each month and is independent of the separate 514 VAT window.
 - When `management_change` is shown in YTD, the evidence disclosure must include the monthly endpoint `result_meta` alongside the active YTD metadata so its trace, quality, fallback, generation time, and analytical/non-formal status remain auditable.
 - Monthly view date semantics use the selected report month/bucket from `/api/pnl/by-business-monthly`.
 - YTD view date semantics use selected `year` and `as_of_date` from `/api/pnl/by-business-ytd`.
@@ -2591,7 +2820,7 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 | `decision_hero` | Show the exact cutoff and primary business question | query parameters |
 | `data_status` | Show formal status, quality, cutoff, fallback, and trace | `result_meta` |
 | `concentration` | Show `MTR-PNLBIZ-001` and `MTR-PNLBIZ-002` | formal endpoint |
-| `negative_ftp_persistence` | Show `MTR-PNLBIZ-003` and `MTR-PNLBIZ-004`, including insufficient-observation state | formal endpoint |
+| `negative_ftp_persistence` | Show `MTR-PNLBIZ-003` and `MTR-PNLBIZ-004`; insufficient observations or `source_pending` must stop the conclusion, with pending source dates visible | formal endpoint |
 | `share_drift` | Show `MTR-PNLBIZ-005` and any unavailable reason | formal endpoint |
 | `scale_yield_quadrant` | Show descriptive `MTR-PNLBIZ-007` only when eligible | formal endpoint |
 | `reconciliation_diagnostics` | Show `MTR-PNLBIZ-006` in a separately labelled non-business-conclusion section | formal endpoint |
@@ -2734,14 +2963,14 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 | 语义 | 含义 | 当前实现线索 |
 | --- | --- | --- |
 | `observed` | 仅对有观测行的日期累计 | 覆盖天数 / 观测日集合 |
-| `LOCF` | 某分类在 `end_date` 无行时，取窗口内不晚于 `end_date` 的最近观测合计做期末时点 | `adb_analysis_service` 模块说明与 end-spot LOCF |
+| `LOCF` | 仅当某一来源在 `end_date` 整体无快照时，取窗口内不晚于 `end_date` 的最近观测合计；来源已有末日快照时，缺失分类按已结清/零余额处理。分类存在显式无效末日行时仍回退最近有效观测 | `adb_analysis_service` 模块说明与 end-spot LOCF |
 | `calendar-zero` | 日历分母下缺失日贡献为 0；**仅当**后端明确给出该模式时展示 | 侧翼合同定义；不得默认推断 |
 | `observed_days_scaled_to_calendar` | 稀疏观测时将观测日合计按日历天数比例放大（`sample_fill_method`） | coverage/comparison 诊断字段；属 sample completion，非正式真值 |
 | comparison fail-visible | 按侧缺数时 total 为 `null`，不静默填 0 | `total_spot_*` / `total_avg_*`；`avg_unavailable_reason` / `spot_unavailable_reason`；详见侧翼合同 |
 
 #### Comparison fail-visible（`GET /api/analysis/adb/comparison`）
 
-- **有效行**：仅 `*_is_valid=true` 且金额有限的行参与金额、`coverage_days`、LOCF `end_date_seen`；无效行不参与；显式有效的 0 仍为 `0.0`。
+- **有效行**：仅 `*_is_valid=true` 且金额有限的行参与金额与 `coverage_days`；无效金额不进入合计。LOCF 的来源末日存在性使用原始末日行判定，以区分“显式无效金额”与“完整快照中分类已消失”；显式有效的 0 仍为 `0.0`。
 - **`coverage_days`**：资产/负债两侧有效余额观测日**并集**（与 `/api/analysis/adb` 观测日口径可不同）。
 - **四个 total**（`total_spot_assets`、`total_avg_assets`、`total_spot_liabilities`、`total_avg_liabilities`）：按侧无有效余额 → `null`；单日窗口且未 `simulated` 时两侧 `total_avg_*` 为 `null`（`avg_unavailable_reason=insufficient_window`）。
 - **原因字段**：`avg_unavailable_reason` = `insufficient_window` \| `no_data` \| `null`；`spot_unavailable_reason` = `no_data` \| `null`。
@@ -2873,6 +3102,71 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - `frontend/src/test/CashflowProjectionPage.test.tsx`
 - `frontend/src/features/cashflow-projection/pages/cashflowProjectionPageModel.test.ts`
 - `tests/test_live_route_page_contract_completeness.py`
+
+## 14.13 GAP-STOCK-ANALYSIS-PAGE 股票研究观察工作台
+
+### A. 页面身份与主问题
+
+- 页面标识：`GAP-STOCK-ANALYSIS-PAGE`；该标识仅登记当前观察型页面缺口，不创建 `PAGE-STOCK-*` 正式页面。
+- 前端路由：`/stock-analysis`。
+- 合同状态：`observational_only`；`basis=analytical`；`formal_use_allowed=false`。
+- 页面首先回答：在同一观察日和策略上下文中，当前能否继续复核候选股；如果可以，先看谁，支持证据、失效条件和唯一下一步是什么；如果不可以，阻塞在哪里。
+- 本段不建立任何 `MTR-STOCK-*` 或其他正式指标绑定。
+
+### B. 必有可见 section
+
+| section | 最小可见内容 | 业务作用 |
+| --- | --- | --- |
+| `context_toolbar` | 页面名、观察日、搜索、市场、行业、信号、研究视图、复核助手和刷新 | 统一全页上下文；筛选只改变可见候选行 |
+| `review_queue` | 权威候选总数、排名、代码与名称、后端评分或 `—`、当日涨跌、观察状态和选中态 | 明确先复核哪个候选 |
+| `research_dossier` | 标的头、真实可切换的研究页签、价格验证、关键数据、综合结论、研究证据、八因子、事件与基本面 | 把价格、判断和证据组成同一复核链 |
+| `risk_and_action` | 最多四条硬门槛、三至五个当前标的风险标签、证据来源与数据日、下一步研究动作和备注 | 回答为什么还不能继续，以及只能做哪种研究动作 |
+| `research_audit` | 候选选择、证据读取、筛选变化、研究备注和模块状态变化，显示实际日期、状态和操作者 | 保留可追溯的观察留痕 |
+
+因子表现序列和机构参与结构尚无稳定页面合同。对应区块在合同获批前只能显示收缩空态和解除条件，不得用静态演示数、代理持仓或前端生成图形填充。
+
+### C. 权威读取链与 endpoint
+
+| 读取面 | endpoint / client | 页面内权威性 |
+| --- | --- | --- |
+| 首屏决策、候选、状态、证据边界 | `GET /ui/market-data/stock-analysis/workbench` | 首屏唯一主包；`first_screen.review_queue` 对成员、顺序、数量、`rank`、`source_module` 和空队列状态具有权威性 |
+| 当前规则回放认证 | 同上的 `result.replay_closure` | 唯一认证权威；不得回退到 mixed `as_produced` 候选历史，前端不重算认证 |
+| 价格序列与估值因子 | `GET /ui/market-data/livermore/stock-detail` | 选中候选后按需读取；真实收盘、MA5、MA20、PE、PB、ROE 和股息率以该返回为准 |
+| K 线观察 | `GET /ui/market-data/stock-analysis/kline-analysis` | 后端返回的状态、形态和有效性判断为准；前端不重新判形态 |
+| 候选历史 | `GET /ui/market-data/livermore/candidate-history` | 只用于历史验证和事件展示；不替代当前队列或 `replay_closure` |
+| 新闻与事件 | `GET /ui/news/choice-events/latest` | 按股票代码和观察日只读获取；必须保留 future-row 排除、空结果、错误与来源状态 |
+
+工作台查询链是 `route -> marketDataClient -> DTO -> TanStack Query -> 页面域视图模型 -> section 组件`。选中标的的详情请求至少以股票代码、实际观察日和 lookback 作为请求身份；旧候选的迟到结果不得覆盖新候选。
+
+### D. 时间、数值与观察边界
+
+- 页面必须分别保留 `requested_as_of_date`、实际 `as_of_date` 和 `fallback_date`，不得静默改日。选中标的各模块观察日不一致时，必须显示错配并从结论组装中退出。
+- 缺值统一显示 `—`；数值 `0` 必须保持为零。前端只做格式化、可见行筛选和展示排序，不新增金融计算或以原始字段覆盖详情合同。
+- 搜索、市场、行业和信号筛选只能过滤 `first_screen.review_queue` 的可见行。恢复筛选后，成员、权威顺序和总数必须与接口一致；空队列不得从 `modules.main.result` 回填。
+- 页面只使用“观察、复核、证据、失效、边界、深度研究”类语义，不输出买入、卖出、仓位、调仓、下单、配置或批准结论。
+- 刷新只重新读取已授权的观察结果；备注是研究留痕，不是审批意见。候选历史、策略评分、优化和代理回测保持历史型、诊断型或 proxy 披露，不得升格为正式验证。
+
+研究可读性与盘前发布资格分别判断。同日、来源与模块状态有效的观察候选由 workbench 的 `first_screen.review_queue` 返回，不能仅因 `pretrade_qualification` 为 `unavailable` 或 `ready_empty` 而清空研究队列、档案和观察详情。研究数量及空态以该权威队列为准，资格状态保持原值；盘前信号汇合、风险与仓位输出及助手中的盘前结论继续受资格约束。恢复观察读取不代表盘前认证通过，也不改变 `formal_use_allowed=false`。
+
+### E. 五类数据状态
+
+| 页面状态 | 合同要求 |
+| --- | --- |
+| `loading` | 使用接近真实高度的局部骨架，保持页面几何和已有有效模块；切换候选时不得让整页闪回空白 |
+| `empty` | 显示权威空队列或受影响 section 的收缩空态，说明当前合同无记录；不得用演示数据或其他 payload 回填 |
+| `error` | 保留其他有效 section，在失败 section 附近显示来源、错误和局部重试；不得将失败写成无数据或就绪 |
+| `stale/fallback` | 显示实际数据日、降级原因和保留证据，收紧综合结论与下一步；不得隐藏 `stale`、`fallback_mode`、vendor 或质量状态 |
+| `partial` | 并列显示已有结果、缺失项、影响和解除条件；`deferred`、`missing`、`unsupported` 或 as-of 错配均不得被写成页面就绪 |
+
+### F. 验收与测试锚点
+
+- 首屏不等待重诊断模块即可由 workbench 主包回答观察日、使用边界、当前标的、主结论、主要风险和下一步研究动作。
+- 候选成员、顺序、数量、复合身份和权威空态与 `first_screen.review_queue` 完全一致；筛选和恢复筛选不改变该边界。
+- 选中候选后，价格、估值、K 线、事件和历史模块可追溯到同一股票代码、观察日、来源与状态；as-of 错配会退出结论组装。
+- 每个可见指标或证据区块能区分 `null`、零、缺失、过期、回退和错误；五类页面状态均在受影响区块附近可见。
+- 不得引入静态演示数、前端金融计算、交易语义、`PAGE-STOCK-*` 或 `MTR-STOCK-*`；所有返回持续保留 `formal_use_allowed=false`。
+- 桌面基准视口 `1440×900` 下，顶部、三栏和审计区不重叠且无页面级横向滚动；中部研究档案和右栏不依赖内部滚动完成首屏任务。
+- 定向验收至少覆盖 `StockAnalysisResearchDesk.test.tsx`、`StockAnalysisPageChromeContract.test.ts`、`StockAnalysisPageSizeGuard.test.ts`、`StockAnalysisPage.test.tsx` 和 `tests/test_live_route_page_contract_completeness.py`；可见交互需在本地 `/stock-analysis` 路由完成真实候选切换、筛选、页签、抽屉、空态、错误态和刷新验证。
 
 
 ## 15. 当前缺口

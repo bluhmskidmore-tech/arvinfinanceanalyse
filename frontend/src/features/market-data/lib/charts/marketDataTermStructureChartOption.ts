@@ -1,6 +1,7 @@
 import type { YieldCurveTermStructureCurvePayload } from "../../../../api/contracts";
 import type { EChartsOption } from "../../../../lib/echarts";
 import { nocturneTokens } from "../../../../theme/designSystem";
+import { EM_DASH } from "../../../../utils/format";
 import { buildMarketDataChartTooltip, marketDataChartTheme } from "./marketDataChartTheme";
 
 const CURVE_LABEL: Record<string, string> = {
@@ -40,11 +41,11 @@ function bpNumericToAxis(value: YieldCurveTermStructureCurvePayload["points"][nu
 }
 
 const yieldTooltipValueFormatter = (value: unknown) =>
-  typeof value === "number" ? `${value.toFixed(2)}%` : "—";
+  typeof value === "number" ? `${value.toFixed(2)}%` : EM_DASH;
 
 const deltaBpTooltipValueFormatter = (value: unknown) => {
   if (typeof value !== "number") {
-    return "—";
+    return EM_DASH;
   }
   const rounded = Math.round(value);
   return `${rounded > 0 ? "+" : ""}${rounded}bp`;
@@ -136,7 +137,6 @@ export function buildMarketDataTermStructureChartOption(
       barMaxWidth: 10,
       itemStyle: {
         color: marketDataChartTheme.neutralBar,
-        borderRadius: [2, 2, 0, 0],
       },
       emphasis: { disabled: true },
       tooltip: { valueFormatter: deltaBpTooltipValueFormatter },
@@ -152,7 +152,6 @@ export function buildMarketDataTermStructureChartOption(
           value,
           itemStyle: {
             color: deltaBarFill(value),
-            borderRadius: value > 0 ? [2, 2, 0, 0] : [0, 0, 2, 2],
           },
         };
       }),
@@ -160,28 +159,15 @@ export function buildMarketDataTermStructureChartOption(
   });
 
   const sheetAxisLabel = { ...marketDataChartTheme.axisLabel, fontSize: 10, fontWeight: 600 };
-  // 曲线 + 日变动柱的图例条目在窄面板会折成两行，底部按行数预留避免压住期限轴标签。
-  const legendEntryCount = lineSeries.length + barSeries.length;
-  const legendReservedBottom = legendEntryCount >= 3 ? 54 : 36;
-
   return {
     color: [nocturneTokens.color.blue, nocturneTokens.color.green, CURVE_FALLBACK_COLOR],
     tooltip: buildMarketDataChartTooltip({
       trigger: "axis",
       axisPointer: marketDataChartTheme.axisPointerLine,
     }),
-    legend: {
-      show: !isSheetVariant,
-      bottom: 0,
-      type: "plain" as const,
-      itemWidth: 14,
-      itemHeight: 8,
-      itemGap: 10,
-      textStyle: { ...marketDataChartTheme.axisLabel, color: nocturneTokens.color.inkSoft },
-    },
     grid: isSheetVariant
-      ? { left: 34, right: 16, top: 12, bottom: 28, containLabel: true }
-      : { left: 16, right: 16, top: 24, bottom: legendReservedBottom, containLabel: true },
+      ? { left: 34, right: 16, top: 12 }
+      : { left: 16, right: 16, top: 24 },
     xAxis: {
       type: "category",
       boundaryGap: true,

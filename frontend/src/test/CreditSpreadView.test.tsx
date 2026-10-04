@@ -15,7 +15,7 @@ import type {
   CreditSpreadAnalysisResponse,
   CreditSpreadMigrationResponse,
 } from "../features/bond-analytics/types";
-import { formatRawAsNumeric } from "../utils/format";
+import { EM_DASH, formatRawAsNumeric } from "../utils/format";
 
 function numeric(
   raw: number | null,
@@ -179,6 +179,65 @@ function renderWithProviders(client: ReturnType<typeof createApiClient>, ui: Rea
 }
 
 describe("CreditSpreadView", () => {
+  it.each(["unavailable", "partial", "complete"] as const)(
+    "shows credit holdings and yield coverage without inventing zero spreads (%s)",
+    async (coverageStatus) => {
+      const available = coverageStatus !== "unavailable";
+      const missingCount = coverageStatus === "complete" ? 0 : available ? 1 : 2;
+      const client = {
+        ...createApiClient({ mode: "mock" }),
+        getBondAnalyticsCreditSpreadMigration: vi.fn(async () => ({
+          result_meta: createResultMeta(),
+          result: createCreditSpreadResult(),
+        })),
+        getCreditSpreadAnalysisDetail: vi.fn(async () => ({
+          result_meta: createResultMeta({ result_kind: "credit_spread_analysis.detail" }),
+          result: createCreditSpreadDetailResult({
+            credit_bond_count: 2,
+            total_credit_market_value: "200000000",
+            spread_bond_count: 2 - missingCount,
+            spread_market_value: String((2 - missingCount) * 100000000),
+            missing_ytm_count: missingCount,
+            missing_ytm_market_value: String(missingCount * 100000000),
+            spread_coverage_status: coverageStatus,
+            weighted_avg_spread_bps: available ? "0" : null,
+            spread_term_structure: [],
+            top_spread_bonds: [],
+            bottom_spread_bonds: [],
+            historical_context: {
+              current_spread_bps: available ? "0" : null,
+              percentile_1y: available ? "0" : null,
+              percentile_3y: available ? "0" : null,
+              median_1y: "50",
+              median_3y: "50",
+              min_1y: "50",
+              max_1y: "50",
+            },
+          }),
+        })),
+      };
+      renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
+      await screen.findByText("当前利差");
+      expect(screen.getByText("信用债数量").closest(".ant-statistic"))
+        .toHaveTextContent("2");
+      expect(screen.getByText("信用债市值").closest(".ant-statistic"))
+        .toHaveTextContent("2.00 亿");
+      for (const title of ["加权平均利差（个券）", "当前利差", "1年历史分位", "3年历史分位"]) {
+        const value = screen.getByText(title).closest(".ant-statistic")!
+          .querySelector(".ant-statistic-content-value")!;
+        expect(value.textContent).toBe(available ? (title.includes("分位") ? "0.0%" : "0.0 bp") : EM_DASH);
+      }
+      const coverage = screen.getByTestId("credit-spread-coverage");
+      expect(coverage).toHaveTextContent(`可计算利差 ${2 - missingCount} 只`);
+      expect(coverage).toHaveTextContent(`收益率缺失或无效 ${missingCount} 只`);
+      if (coverageStatus === "unavailable") {
+        expect(coverage).toHaveTextContent("当前利差及历史分位不可用");
+      } else if (coverageStatus === "partial") {
+        expect(coverage).toHaveTextContent("平均利差和分位仅代表可计算样本");
+      }
+    },
+  );
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -211,7 +270,7 @@ describe("CreditSpreadView", () => {
       "信用利差概览",
     );
     expect(screen.getByTestId("credit-spread-shell-lead")).toHaveTextContent(
-      "不在前端补算正式风险指标",
+      "查看当前报告日的信用利差、DV01、OCI 敏感度及明细",
     );
     expect(screen.getByTestId("credit-spread-scenario-lead")).toHaveTextContent(
       "利差冲击与信用分布",
@@ -292,6 +351,68 @@ describe("CreditSpreadView", () => {
     expect(within(scenarioRow as HTMLElement).queryByText("0")).not.toBeInTheDocument();
   });
 
+  // 2026-06 审计 P1-11 / 2026-09-02 审计 C2：评级×期限分布不再由前端从个券明细分桶聚合。
+  // 即使响应里夹带个券行，分布卡也只消费后端 concentration_by_rating / concentration_by_tenor。
+  it("does not derive a rating x tenor distribution from row-level bond details", async () => {
+    const withBondRows = {
+      ...createCreditSpreadResult(),
+      bond_details: [
+        { market_value: yuan(1_000_000_000), rating: "AAA", tenor_bucket: "3Y" },
+        { market_value: yuan(500_000_000), rating: "AA", tenor_bucket: "5Y" },
+      ],
+    } as unknown as CreditSpreadMigrationResponse;
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: withBondRows,
+      })),
+      getCreditSpreadAnalysisDetail: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "credit_spread_analysis.detail" }),
+        result: createCreditSpreadDetailResult(),
+      })),
+    };
+
+    renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
+
+    expect(await screen.findByTestId("credit-spread-distribution-empty")).toHaveTextContent(
+      "评级或期限集中度数据暂缺",
+    );
+  });
+
+  it("renders the rating and tenor distribution from backend concentration fields", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createCreditSpreadResult({
+          concentration_by_rating: {
+            dimension: "评级",
+            hhi: ratio(0.3, 2),
+            top5_concentration: ratio(0.9, 2),
+            top_items: [{ name: "AAA", weight: ratio(0.6, 2), market_value: yuan(3_000_000_000) }],
+          },
+          concentration_by_tenor: {
+            dimension: "期限",
+            hhi: ratio(0.25, 2),
+            top5_concentration: ratio(0.85, 2),
+            top_items: [{ name: "3Y", weight: ratio(0.4, 2), market_value: yuan(2_000_000_000) }],
+          },
+        }),
+      })),
+      getCreditSpreadAnalysisDetail: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "credit_spread_analysis.detail" }),
+        result: createCreditSpreadDetailResult(),
+      })),
+    };
+
+    renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
+
+    expect(await screen.findByText("评级（前列市值）")).toBeInTheDocument();
+    expect(screen.getByText("期限（前列市值）")).toBeInTheDocument();
+    expect(screen.queryByTestId("credit-spread-distribution-empty")).not.toBeInTheDocument();
+  });
+
   it("surfaces stale and fallback metadata from the credit spread detail envelope", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
@@ -317,8 +438,8 @@ describe("CreditSpreadView", () => {
     renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
 
     const detailMeta = await screen.findByTestId("credit-spread-detail-result-meta");
-    expect(detailMeta).toHaveTextContent("供应商陈旧");
-    expect(detailMeta).toHaveTextContent("最新快照降级");
+    expect(detailMeta).toHaveTextContent("数据源更新延迟");
+    expect(detailMeta).toHaveTextContent("使用最近可用数据");
     expect(detailMeta).toHaveTextContent("2026-03-29");
   });
 
@@ -347,4 +468,69 @@ describe("CreditSpreadView", () => {
     expect(screen.getByText("示例：利差情景为分析占位")).toBeInTheDocument();
     expect(screen.getByText("深度利差明细暂不可用：HTTP 503")).toBeInTheDocument();
   });
+
+  it.each(["vendor_unavailable", "ok"] as const)(
+    "distinguishes unavailable detail placeholders from genuine zero values (%s)",
+    async (vendorStatus) => {
+      const client = {
+        ...createApiClient({ mode: "mock" }),
+        getBondAnalyticsCreditSpreadMigration: vi.fn(async () => ({
+          result_meta: createResultMeta(),
+          result: createCreditSpreadResult(),
+        })),
+        getCreditSpreadAnalysisDetail: vi.fn(async () => ({
+          result_meta: createResultMeta({
+            result_kind: "credit_spread_analysis.detail",
+            vendor_status: vendorStatus,
+          }),
+          result: createCreditSpreadDetailResult({
+            credit_bond_count: 0,
+            total_credit_market_value: "0",
+            weighted_avg_spread_bps: "0",
+            historical_context: {
+              current_spread_bps: "0",
+              percentile_1y: "0",
+              percentile_3y: "0",
+              median_1y: "0",
+              median_3y: "0",
+              min_1y: "0",
+              max_1y: "0",
+            },
+          }),
+        })),
+      };
+
+      renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
+      await screen.findByText("当前利差");
+
+      const unavailable = vendorStatus === "vendor_unavailable";
+      for (const [title, availableValue] of [
+        ["信用债数量", "0"],
+        ["信用债市值", "0.00 亿"],
+        ["加权平均利差（个券）", "0.0 bp"],
+        ["当前利差", "0.0 bp"],
+        ["1年历史分位", "0.0%"],
+        ["3年历史分位", "0.0%"],
+        ["1年中位数", "0.0 bp"],
+      ]) {
+        const statistic = screen.getByText(title).closest(".ant-statistic")!;
+        const value = statistic.querySelector(".ant-statistic-content-value")!;
+        expect(value.textContent).toBe(unavailable ? EM_DASH : availableValue);
+      }
+      expect(screen.getByText("利差 DV01（万元/bp）").closest(".ant-statistic"))
+        .toHaveTextContent("8.00");
+      expect(screen.getByText("OCI信用债敞口").closest(".ant-statistic"))
+        .toHaveTextContent("30.00 亿");
+      if (unavailable) {
+        expect(screen.getByText(/基准曲线不可用，信用利差明细/)).toBeInTheDocument();
+        expect(screen.queryByText("高利差债A")).not.toBeInTheDocument();
+        expect(screen.queryByText("低利差债B")).not.toBeInTheDocument();
+        expect(screen.getByText("信用债市值").closest(".ant-statistic"))
+          .not.toHaveTextContent("35.0%");
+      } else {
+        expect(screen.queryByText(/基准曲线不可用，信用利差明细/)).not.toBeInTheDocument();
+        expect(screen.getByText("高利差债A")).toBeInTheDocument();
+      }
+    },
+  );
 });

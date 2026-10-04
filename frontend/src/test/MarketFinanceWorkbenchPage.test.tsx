@@ -265,7 +265,7 @@ function createControlledClient(
 function metricValue(testId: string): HTMLElement {
   const value = screen
     .getByTestId(testId)
-    .querySelector<HTMLElement>(".moss-page-v2-kpi-metric__value");
+    .querySelector<HTMLElement>("strong");
   if (!value) {
     throw new Error(`missing metric value for ${testId}`);
   }
@@ -275,17 +275,13 @@ function metricValue(testId: string): HTMLElement {
 function expectMissingMetric(testId: string) {
   const value = metricValue(testId);
   expect(value.textContent?.trim()).toBe("—");
-  expect(
-    value.querySelector(".market-finance-workbench__metric-unit"),
-  ).toBeNull();
+  expect(value.parentElement?.querySelector("span")).toBeNull();
 }
 
 function expectMetric(testId: string, expectedValue: string, unit: string) {
   const value = metricValue(testId);
   expect(value).toHaveTextContent(expectedValue);
-  expect(
-    value.querySelector(".market-finance-workbench__metric-unit"),
-  ).toHaveTextContent(unit);
+  expect(value.parentElement?.querySelector("span")).toHaveTextContent(unit);
 }
 
 describe("MarketFinanceWorkbenchPage", () => {
@@ -402,11 +398,7 @@ describe("MarketFinanceWorkbenchPage", () => {
       expectMetric("market-finance-kpi-net-income", "2.50", "亿元");
       expectMetric("market-finance-kpi-asset-market-value", "123.00", "亿元");
     });
-    expect(
-      metricValue("market-finance-kpi-market").querySelector(
-        ".market-finance-workbench__metric-unit",
-      ),
-    ).toBeNull();
+    expect(metricValue("market-finance-kpi-market").parentElement?.querySelector("span")).toBeNull();
     expect(root).not.toHaveTextContent("9.99");
     expect(root).not.toHaveTextContent("未确认测试序列");
 

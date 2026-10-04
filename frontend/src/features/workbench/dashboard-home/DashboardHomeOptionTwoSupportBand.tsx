@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { Link } from "react-router-dom";
 
 import type { DashboardHomeBodyView } from "./dashboardHomeBodyView";
@@ -9,6 +10,7 @@ import styles from "./dashboardHomeOptionTwoSupportBand.module.css";
 import { EM_DASH } from "../../../utils/format";
 type DashboardHomeOptionTwoSupportBandProps = {
   view: DashboardHomeBodyView;
+  sectionRef?: Ref<HTMLElement>;
   dataStatusKind: HomeGovernanceStatusKind;
 };
 
@@ -242,42 +244,6 @@ function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
         </div>
       )}
 
-      {view.krdState.kind === "ready" && view.krdBuckets.length > 0 ? (
-        <div
-          className={styles.krdStrip}
-          data-testid="dashboard-home-krd-strip"
-          aria-label="各期限 DV01 敞口"
-        >
-          <span className={styles.krdStripTitle}>
-            各期限 DV01
-            <small>万元/bp</small>
-          </span>
-          {view.krdBuckets.map((bucket) => (
-            <div
-              key={bucket.id}
-              className={styles.krdRow}
-              title={`${bucket.tenor} DV01 ${bucket.dv01Display}（利率上行 1bp 的估值敏感度）`}
-            >
-              <span>{bucket.tenor}</span>
-              <i aria-hidden="true">
-                {bucket.barWidthPct != null ? (
-                  <b style={{ width: `${bucket.barWidthPct.toFixed(1)}%` }} />
-                ) : null}
-              </i>
-              <strong>{bucket.dv01Display}</strong>
-            </div>
-          ))}
-        </div>
-      ) : view.krdState.kind !== "ready" && view.krdState.kind !== "empty" ? (
-        <p
-          className={styles.krdStripNotice}
-          data-state={view.krdState.kind}
-          role="status"
-        >
-          {view.krdState.label}
-        </p>
-      ) : null}
-
       <div className={styles.tableScroller}>
         <table
           className={styles.curveTable}
@@ -303,6 +269,83 @@ function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
           </tbody>
         </table>
       </div>
+    </article>
+  );
+}
+
+/**
+ * DV01 是组合敞口而非市场利率，与国债收益率同卡时标题覆盖不到卡内主体面积，
+ * 因此独立成卡；期限轴（6M–30Y）也与收益率卡的四个关键期限不是同一套。
+ */
+function KrdExposurePanel({ view }: { view: DashboardHomeBodyView }) {
+  const hasBuckets =
+    view.krdState.kind === "ready" && view.krdBuckets.length > 0;
+  // 组合层利差 DV01 原本只存在于一个 display:none 的指标条里，全页无处可见；
+  // 期限 DV01 与利差 DV01 同属敞口口径，收在这张卡的页脚而不是另开一格。
+  const spreadDv01 = view.riskExposureMetrics.find(
+    (metric) => metric.id === "spread-dv01",
+  );
+  return (
+    <article
+      className={styles.panel}
+      data-testid="dashboard-home-krd-panel"
+      data-state={hasBuckets ? "ready" : view.krdState.kind}
+      aria-labelledby="option-two-krd-title"
+    >
+      <header className={styles.panelHeader}>
+        <div>
+          <h2
+            id="option-two-krd-title"
+            title="各期限关键利率久期敞口，数值为利率上行 1bp 的估值敏感度"
+          >
+            各期限 DV01 敞口
+          </h2>
+        </div>
+        <strong>{hasBuckets ? "万元/bp" : GAP}</strong>
+      </header>
+
+      {hasBuckets ? (
+        <div
+          className={styles.krdStrip}
+          data-testid="dashboard-home-krd-strip"
+          aria-label="各期限 DV01 敞口"
+        >
+          {view.krdBuckets.map((bucket) => (
+            <div
+              key={bucket.id}
+              className={styles.krdRow}
+              title={`${bucket.tenor} DV01 ${bucket.dv01Display}（利率上行 1bp 的估值敏感度）`}
+            >
+              <span>{bucket.tenor}</span>
+              <i aria-hidden="true">
+                {bucket.barWidthPct != null ? (
+                  <b style={{ width: `${bucket.barWidthPct.toFixed(1)}%` }} />
+                ) : null}
+              </i>
+              <strong>{bucket.dv01Display}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p
+          className={styles.krdStripNotice}
+          data-state={view.krdState.kind}
+          role="status"
+        >
+          {view.krdState.label}
+        </p>
+      )}
+
+      {spreadDv01 ? (
+        <p
+          className={`${styles.gapFooter} ${styles.metricFooter}`}
+          data-testid="dashboard-home-spread-dv01"
+          title="信用利差走阔 1bp 的估值敏感度，口径与各期限 DV01 一致"
+        >
+          <span>{spreadDv01.label}</span>
+          <strong>{spreadDv01.value}</strong>
+        </p>
+      ) : null}
     </article>
   );
 }
@@ -421,9 +464,10 @@ function QuickDrilldownPanel({
   dataStatusKind,
 }: DashboardHomeOptionTwoSupportBandProps) {
   const statusLabel = governanceStatusLabel(dataStatusKind);
+  const coverage = view.marketContext.attributionCoverage;
   return (
     <section
-      className={`${styles.panel} ${styles.quickPanel}`}
+      className={styles.panel}
       data-testid="dashboard-home-bottom-grid"
       aria-labelledby="option-two-quick-drilldowns-title"
     >
@@ -445,6 +489,22 @@ function QuickDrilldownPanel({
           </Link>
         ))}
       </nav>
+      <footer
+        className={`${styles.gapFooter} ${styles.attributionCoverage}`}
+        data-testid="dashboard-home-attribution-coverage"
+        data-state={coverage.state}
+      >
+        <strong>{coverage.label}</strong>
+        <span>{coverage.summary}</span>
+        <span>{coverage.periodLabel}</span>
+        <span>{coverage.basisLabel}</span>
+        {coverage.positionLabel ? <span>{coverage.positionLabel}</span> : null}
+        {coverage.excludedValueLabel ? <span>{coverage.excludedValueLabel}</span> : null}
+        {coverage.effectNotices.map((notice) => <span key={notice}>{notice}</span>)}
+        {coverage.detailPath ? (
+          <Link to={coverage.detailPath}>查看同区间四效应明细</Link>
+        ) : null}
+      </footer>
     </section>
   );
 }
@@ -454,12 +514,14 @@ export function DashboardHomeOptionTwoSupportBand(
 ) {
   return (
     <section
+      ref={props.sectionRef}
       className={styles.supportBand}
       data-testid="dashboard-home-option-two-support-band"
-      aria-label="市场来源、资金代理与快捷下钻"
+      aria-label="市场来源、资金代理、期限敞口与快捷下钻"
     >
       <MarketCurvePanel view={props.view} />
       <FundingProxyPanel {...props} />
+      <KrdExposurePanel view={props.view} />
       <QuickDrilldownPanel {...props} />
     </section>
   );

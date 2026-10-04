@@ -31,6 +31,7 @@
 - `result.concentration.currency_basis == "CNY_EQUIVALENT"` and `result.concentration.population_basis == "YTD_AVG_BALANCE_PARENT_ROWS"`; only positive YTD parent-row average balances enter the denominator.
 - `result.concentration.hhi_pct` is `null` or within `[0, 100]`; the percentage representation must not be confused with the 0-10,000 HHI-points representation.
 - `result.negative_ftp_persistence.warning_threshold_pct == "50"` and `minimum_observed_months == 6`.
+- `result.negative_ftp_persistence.balance_quality_issues == []` for the four controlled cutoffs whose synthetic balance rows pass the quality check.
 - When `months_observed < 6`, summary/row `eligible == false`, `status == "insufficient_observations"`, and both formal share and formal longest streak are `null`.
 - A row may set `warning_triggered=true` only when `months_observed >= 6` and `negative_ftp_month_share_pct >= 50`; `warning_row_count` equals the number of triggered rows.
 - Missing months do not enter the negative-FTP denominator and break a streak. For eligible rows, the overall and row-level longest streak remain no greater than `lookback_months`.

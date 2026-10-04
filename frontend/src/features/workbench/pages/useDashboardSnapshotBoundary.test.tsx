@@ -44,6 +44,62 @@ function buildClientWithSnapshotOverride(options: {
 }
 
 describe("useDashboardSnapshotBoundary", () => {
+  it.each(["same scope", "different date", "different client", "different partial option", "new generation cache"])(
+    "restores cached data after remount only for the same read scope: %s",
+    async (scope) => {
+      const firstDate = "2026-04-30";
+      const nextDate = "2026-05-31";
+      const mockSource = createApiClient({ mode: "mock" });
+      const snapshot = await mockSource.getHomeSnapshot({ reportDate: firstDate });
+      snapshot.result.report_date = firstDate;
+      let failRead = false;
+      const getHomeSnapshot = vi.fn<ApiClient["getHomeSnapshot"]>(async (options) => {
+        if (failRead || options?.reportDate === nextDate) throw new Error("date unavailable");
+        return snapshot;
+      });
+      const client = buildClientWithSnapshotOverride({ mode: "real", getHomeSnapshot });
+      const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity, retry: false } } });
+      const wrapper = (api: ApiClient, cache: QueryClient) =>
+        function Wrapper({ children }: { children: ReactNode }) {
+          return (
+            <QueryClientProvider client={cache}>
+              <ApiClientProvider client={api}>{children}</ApiClientProvider>
+            </QueryClientProvider>
+          );
+        };
+      const first = renderHook(
+        () => useDashboardSnapshotBoundary({ reportDate: firstDate, allowPartial: false }),
+        { wrapper: wrapper(client, queryClient) },
+      );
+      await waitFor(() => expect(first.result.current.snapshotQuery.isSuccess).toBe(true));
+      first.unmount();
+      failRead = true;
+
+      const nextClient = scope === "different client"
+        ? buildClientWithSnapshotOverride({ mode: "real", getHomeSnapshot })
+        : client;
+      const nextCache = scope === "new generation cache" ? new QueryClient() : queryClient;
+      const next = renderHook(
+        () => useDashboardSnapshotBoundary({
+          reportDate: scope === "same scope" ? firstDate : nextDate,
+          allowPartial: scope === "different partial option",
+        }),
+        { wrapper: wrapper(nextClient, nextCache) },
+      );
+      await waitFor(() => expect(next.result.current.snapshotQuery.isError).toBe(true));
+      if (scope === "same scope") {
+        expect(next.result.current.snapshotResult?.report_date).toBe(firstDate);
+        expect(next.result.current.reportDateDataWarning).toBe("当前报告日刷新失败，保留该报告日上一版本数据");
+      } else {
+        expect(next.result.current.snapshotResult).toBeUndefined();
+        expect(next.result.current.adapterOutput.overview.state.kind).toBe("error");
+      }
+      next.unmount();
+      queryClient.clear();
+      nextCache.clear();
+    },
+  );
+
   it("keeps pure mock mode explicit when the source client is mock", async () => {
     const getHomeSnapshot = vi.fn<ApiClient["getHomeSnapshot"]>((options) =>
       createApiClient({ mode: "mock" }).getHomeSnapshot(options),
@@ -234,7 +290,7 @@ describe("useDashboardSnapshotBoundary", () => {
     });
   });
 
-  it("keeps the previous successful snapshot when a new report date fails", async () => {
+  it("clears the previous date snapshot when a new report date fails", async () => {
     const mockSource = createApiClient({ mode: "mock" });
     const firstReportDate = "2026-04-30";
     const failedReportDate = "2026-05-31";
@@ -281,12 +337,12 @@ describe("useDashboardSnapshotBoundary", () => {
 
     expect(result.current.dataClient.mode).toBe("real");
     expect(result.current.isLiveDataFallback).toBe(false);
-    expect(result.current.initialEffectiveReportDate).toBe(firstReportDate);
-    expect(result.current.supplementalReportDate).toBe(firstReportDate);
-    expect(result.current.snapshotResult?.report_date).toBe(firstReportDate);
+    expect(result.current.initialEffectiveReportDate).toBe("");
+    expect(result.current.supplementalReportDate).toBeUndefined();
+    expect(result.current.snapshotResult).toBeUndefined();
     expect(result.current.reportDateDataWarning).toBe(
-      "新报告日数据获取失败，当前展示上一版本数据",
+      "实时数据源当前不可用，未展示本地模拟数据",
     );
-    expect(result.current.adapterOutput.overview.state.kind).not.toBe("error");
+    expect(result.current.adapterOutput.overview.state.kind).toBe("error");
   });
 });

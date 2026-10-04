@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, DatePicker, Input, Space, Spin, Tag } from "antd";
+import { Alert, Button, DatePicker, Input, Space } from "antd";
 import dayjs from "dayjs";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import {
+  KpiStrip,
+  SectionGrid,
+  SectionHead,
+  StateSurface,
+  StateSurfaceQuotaProvider,
+  type KpiCell,
+  type SectionState,
+} from "../../../components/layout";
 import { PageHeader, PageV2Shell } from "../../../components/page/PagePrimitives";
 import { BondTradingDeskComposeStrip } from "../components/BondTradingDeskComposeStrip";
 import { BondTradingDeskDecisionRail } from "../components/BondTradingDeskDecisionRail";
@@ -14,7 +23,37 @@ import {
   buildBondTradingDeskComposeResult,
   buildBondTradingDeskPageModel,
   normalizeBondCode,
+  type BondTradingDeskGapSection,
+  type BondTradingDeskMetricTile,
 } from "../lib/bondTradingDeskPageModel";
+
+/**
+ * 六格读数横带：三列，720 以下折两列。原 `.metricGrid` 的折列点在 960px，
+ * KpiStrip 只开放 720/1024/1280 三档，折列点因此上移到 720——桌面档（本页几何锁
+ * 覆盖的 1440/1728/1920）与移动档（390）两端行为不变，只有 721-960 这一段由两列
+ * 变三列。
+ */
+const METRIC_COLS = { base: 2, md: 3, lg: 3, xl: 3 } as const;
+
+/**
+ * 待返回模块的状态徽标：原为 gap 卡片内的 antd `Tag`（api_pending 橙 /
+ * not_in_portfolio 默认灰），迁到分区头的状态位后文案逐字不变，颜色由原语的
+ * partial（琥珀）/ empty（中性）承担，页面不再自带状态色。
+ */
+const GAP_STATE: Record<BondTradingDeskGapSection["status"], SectionState> = {
+  api_pending: { label: "API 待返回", tone: "partial" },
+  not_in_portfolio: { label: "未命中持仓", tone: "empty" },
+};
+
+/** 读数格：`caption` 是来源/口径小注，落到原语的 note 槽；空串不渲染，不占版面。 */
+function toKpiCells(tiles: BondTradingDeskMetricTile[]): KpiCell[] {
+  return tiles.map((tile) => ({
+    key: tile.key,
+    label: tile.label,
+    value: tile.value,
+    note: tile.caption || null,
+  }));
+}
 
 export default function BondTradingDeskPage() {
   const client = useApiClient();
@@ -189,7 +228,10 @@ export default function BondTradingDeskPage() {
     setSearchParams(next, { replace: true });
   };
 
+  const gapStatus = pageModel?.gapSections[0]?.status ?? null;
+
   return (
+    <StateSurfaceQuotaProvider>
     <PageV2Shell
       testId="bond-trading-desk-page"
       themeScope="bond-trading-desk"
@@ -228,39 +270,41 @@ export default function BondTradingDeskPage() {
         </Space>
       </div>
 
+      {/*
+       * 读取失败/部分失败：整包失败走 error（红），部分来源失败走 partial（琥珀），
+       * 与迁移前 Alert 的 error / warning 两档逐档同色。重试按钮走 children，
+       * 状态行不遮罩它（§6 不能静默吞态）。
+       */}
       {pageError ? (
-        <Alert
-          type={composeResult?.partialFailure ? "warning" : "error"}
-          showIcon
+        <StateSurface
+          testId="bond-trading-desk-error"
+          status={composeResult?.partialFailure ? "partial" : "error"}
           message={pageError}
-          data-testid="bond-trading-desk-error"
-          action={
-            <Button
-              size="small"
-              data-testid="bond-trading-desk-retry"
-              loading={isRetryingReads}
-              onClick={retryFailedReads}
-            >
-              重试
-            </Button>
-          }
-        />
+          dedupeKey="bond-trading-desk-read-availability"
+        >
+          <Button
+            size="small"
+            data-testid="bond-trading-desk-retry"
+            loading={isRetryingReads}
+            onClick={retryFailedReads}
+          >
+            重试
+          </Button>
+        </StateSurface>
       ) : null}
 
       {!normalizedBondCode ? (
-        <Alert
-          type="info"
-          showIcon
-          data-testid="bond-trading-desk-missing-bond"
+        <StateSurface
+          testId="bond-trading-desk-missing-bond"
+          status="empty"
           message="请提供 bond_code"
-          description="可从债券分析「重仓券」行点击「单券台」深钻进入，或手动输入代码。"
+          reason="可从债券分析「重仓券」行点击「单券台」深钻进入，或手动输入代码。"
         />
       ) : null}
 
+      {/* 拼装在途：骨架背板按下方读面高度占位，信封到达时不再从 48px 弹到整屏。 */}
       {normalizedBondCode && effectiveReportDate && composeQuery.isPending ? (
-        <div data-testid="bond-trading-desk-loading" className={styles.loadingBlock}>
-          <Spin />
-        </div>
+        <StateSurface testId="bond-trading-desk-loading" status="loading" minHeight={120} />
       ) : null}
 
       {normalizedBondCode && !effectiveReportDate && !datesQuery.isLoading ? (
@@ -270,7 +314,7 @@ export default function BondTradingDeskPage() {
       ) : null}
 
       {pageModel ? (
-        <div className={styles.pageShell}>
+        <SectionGrid gap={16}>
           <BondTradingDeskIdentityStrip bondCode={pageModel.bondCode} snapshot={pageModel.snapshot} />
 
           {composeResult ? (
@@ -289,30 +333,30 @@ export default function BondTradingDeskPage() {
           </p>
 
           <div className={styles.heroGrid}>
-            <div className={styles.pageShell}>
+            <SectionGrid gap={16}>
               <section
                 data-testid="bond-trading-desk-conclusion"
                 className={styles.conclusionCard}
               >
-                <div className={styles.conclusionTitle}>{pageModel.conclusion.title}</div>
+                {/* 结论卡的 kicker 迁到分区头标题位：原 `.conclusionTitle` 的大写
+                    宽字距装饰已被 DESIGN.md §3 收回给状态/口径徽标，且大写变换在
+                    中文标题上本来就无效。 */}
+                <SectionHead
+                  title={pageModel.conclusion.title}
+                  numbered={false}
+                  contentGap="tight"
+                />
                 <div className={styles.conclusionBody}>{pageModel.conclusion.body}</div>
                 <div className={styles.conclusionDetail}>{pageModel.conclusion.detail}</div>
               </section>
 
-              <section
-                data-testid="bond-trading-desk-metrics"
-                className={styles.sectionBlock}
-              >
-                <div className={styles.sectionTitle}>单券读数</div>
-                <div className={styles.metricGrid}>
-                  {pageModel.metricTiles.map((tile) => (
-                    <div key={tile.key} className={styles.metricTile} data-testid={`bond-trading-desk-metric-${tile.key}`}>
-                      <div className={styles.metricLabel}>{tile.label}</div>
-                      <div className={styles.metricValue}>{tile.value}</div>
-                      {tile.caption ? <div className={styles.metricCaption}>{tile.caption}</div> : null}
-                    </div>
-                  ))}
-                </div>
+              <section data-testid="bond-trading-desk-metrics">
+                <SectionHead title="单券读数" numbered={false} />
+                <KpiStrip
+                  cells={toKpiCells(pageModel.metricTiles)}
+                  cols={METRIC_COLS}
+                  cellTestIdPrefix="bond-trading-desk-metric"
+                />
               </section>
 
               {pageModel.positionChange ? (
@@ -325,38 +369,27 @@ export default function BondTradingDeskPage() {
                 />
               ) : null}
 
-              <section
-                data-testid="bond-trading-desk-gaps"
-                className={styles.sectionBlock}
-              >
-                <div className={styles.sectionTitle}>待返回模块</div>
-                {/* 五个模块共用同一等待原因，合并为一张收缩卡，原因只出现一次。 */}
-                <div className={styles.gapItem}>
-                  <div className={styles.gapLabel}>
-                    {pageModel.gapSections.map((gap) => gap.label).join("、")}{" "}
-                    <Tag
-                      color={
-                        pageModel.gapSections[0]?.status === "api_pending"
-                          ? "orange"
-                          : "default"
-                      }
-                    >
-                      {pageModel.gapSections[0]?.status === "api_pending"
-                        ? "API 待返回"
-                        : "未命中持仓"}
-                    </Tag>
-                  </div>
-                  <div className={styles.gapReason}>
-                    {pageModel.gapSections[0]?.reason}
-                  </div>
-                </div>
+              <section data-testid="bond-trading-desk-gaps">
+                {/* 五个模块共用同一等待原因：模块名合并进一条空态消息，原因只出现
+                    一次（§6 状态信息去重），等待状态收到分区头的状态位上。 */}
+                <SectionHead
+                  title="待返回模块"
+                  numbered={false}
+                  state={gapStatus ? GAP_STATE[gapStatus] : null}
+                />
+                <StateSurface
+                  status="empty"
+                  message={pageModel.gapSections.map((gap) => gap.label).join("、")}
+                  reason={pageModel.gapSections[0]?.reason}
+                />
               </section>
-            </div>
+            </SectionGrid>
 
             <BondTradingDeskDecisionRail items={pageModel.decisionItems} />
           </div>
-        </div>
+        </SectionGrid>
       ) : null}
     </PageV2Shell>
+    </StateSurfaceQuotaProvider>
   );
 }

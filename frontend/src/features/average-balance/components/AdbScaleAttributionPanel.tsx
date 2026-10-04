@@ -6,9 +6,10 @@ import type {
   AdbScaleAttribution,
   AdbScaleContributionRow,
 } from "../../../api/contracts";
+import { SectionHead } from "../../../components/layout";
 import { EM_DASH, formatYi } from "../../../utils/format";
+import { ADB_SECTION_HEAD_NUMBERING } from "./adbSectionHeadNumbering";
 import AdbKpiStrip, { type AdbKpiStripItem } from "./AdbKpiStrip";
-import AdbSectionHead from "./AdbSectionHead";
 import { formatAlreadyPercent, kpiToneForSign, toneClassForSign } from "./adbDeepAnalysisFormat";
 
 import "./AverageBalanceView.css";
@@ -151,9 +152,14 @@ export default function AdbScaleAttributionPanel({
 }: AdbScaleAttributionPanelProps) {
   return (
     <section className="adb-sec" data-testid="adb-scale-attribution-panel">
-      <AdbSectionHead
+      <SectionHead
         title="规模变动归因（环比/同比）"
-        meta="贡献率=分类变动 / |总变动| ×100"
+        numbered={ADB_SECTION_HEAD_NUMBERING}
+        actions={
+          <span className="adb-sec-meta" title="贡献率=分类变动 / |总变动| ×100">
+            贡献率=分类变动 / |总变动| ×100
+          </span>
+        }
       />
       <p className="adb-note">
         口径：稀疏观测先沿用 comparison

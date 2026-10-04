@@ -19,8 +19,9 @@ import type {
   MacroToolkitCommodityFuturesRefreshRun,
   MacroToolkitDataHealth,
 } from "../../../api/macroToolkitClient";
-import { BaseChart } from "../../../components/charts/BaseChart";
-import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
+import { SectionHead } from "../../../components/layout";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { MetricTile } from "../lib/MacroToolkitStatusPrimitives";
@@ -40,7 +41,6 @@ type CrisisCommodityApprovalPack = crisisSupport.CrisisCommodityApprovalPack;
 type MacroToolkitInputEvidenceItem = crisisSupport.MacroToolkitInputEvidenceItem;
 type CrisisCommodityShadowImpact = crisisSupport.CrisisCommodityShadowImpact;
 type CrisisCommodityCoverageItem = crisisSupport.CrisisCommodityCoverageItem;
-type CommodityPromotionRuleItem = crisisSupport.CommodityPromotionRuleItem;
 type CrisisCommodityCandidateSummary = crisisSupport.CrisisCommodityCandidateSummary;
 
 const {
@@ -48,9 +48,8 @@ const {
   buildCrisisGapGroups,
   crisisScoreHistoryFromResult,
   commodityAdmissionDecisionColor,
-  commodityPromotionRuleCheckStatusLabel,
-  commodityPromotionRuleItem,
-  commodityPromotionRuleStatusLabel,
+  commodityAdmissionDecisionDisplayLabel,
+  commodityAdmissionThresholds,
   commodityRefreshCoverageText,
   commodityRefreshIdentifierText,
   commodityRefreshLatestDateText,
@@ -59,8 +58,6 @@ const {
   commodityRefreshSourceText,
   commodityRefreshStatusColor,
   commodityRefreshStatusText,
-  commodityReviewConclusionColor,
-  commodityReviewConclusionLabel,
   commodityShadowImpactDirectionLabel,
   commodityShadowStatusColor,
   findCrisisGapRepairItem,
@@ -83,8 +80,6 @@ const {
   formatCommodityShadowRefreshHint,
   formatCommodityShadowShortfallList,
   formatCommodityShadowSummary,
-  formatCommodityReviewConclusionMetrics,
-  formatCommodityReviewConclusionNextStep,
   formatCommodityShortfallEstimateList,
   formatCrisisGapSummaryDetail,
   formatCrisisInputDetail,
@@ -110,10 +105,6 @@ const {
   commodityShadowRefreshProducts,
   toDisplayNumber,
   uniqueDisplayParts,
-  MACRO_COMMODITY_SHADOW_MIN_CORRELATION,
-  MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES,
-  MACRO_COMMODITY_SHADOW_MIN_SAMPLES,
-  MACRO_COMMODITY_SHADOW_RULE_VERSION,
 } = crisisSupport;
 
 const CRISIS_SCOPE_LABELS: Record<string, string> = {
@@ -141,7 +132,7 @@ function crisisComponentCardLabel(component: { key: string; label: string }) {
 
 function buildCrisisScoreHistoryOption(points: crisisSupport.CrisisScoreHistoryPoint[]): EChartsOption {
   return {
-    grid: { left: 48, right: 16, top: 18, bottom: 28 },
+    grid: { left: 48, right: 16, top: 18 },
     tooltip: {
       trigger: "axis",
       formatter: (params: unknown) => {
@@ -326,14 +317,13 @@ function CrisisCommodityShadowDecisionPanel({
   analysisMeta?: ResultMeta | null;
   analysisAsOfDate?: string | null;
 }) {
-  const promotionItems = coverage.items.map(commodityPromotionRuleItem);
-  const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
-  const rejectedCount = promotionItems.filter((item) => item.status === "not_recommended").length;
+  const manualCount = admission?.decision_counts.watch ?? 0;
+  const rejectedCount = admission?.decision_counts.do_not_include ?? 0;
   const reviewQueueItems = coverage.items.filter(isCommodityShadowReviewReady);
   const shortQueueItems = coverage.items.filter(isCommodityShadowHistoryShort);
-  const auditPackCopyText = buildCommodityPromotionAuditPackCopyText(promotionItems, {
-    manualCount,
-    rejectedCount,
+  const admissionThresholds = commodityAdmissionThresholds(admission);
+  const ruleVersionText = admission?.rule_version ?? "暂无判定";
+  const auditPackCopyText = buildCommodityPromotionAuditPackCopyText(admission, {
     analysisMeta,
     analysisAsOfDate,
     reviewQueueItems,
@@ -392,11 +382,7 @@ function CrisisCommodityShadowDecisionPanel({
         shortItems={shortQueueItems}
         summary={summary}
       />
-      <CommodityCandidateReviewConclusion
-        admission={admission}
-        items={coverage.items}
-        promotionItems={promotionItems}
-      />
+      <CommodityCandidateReviewConclusion admission={admission} items={coverage.items} />
       <CommodityCandidateApprovalPackPanel approvalPack={approvalPack} />
       <div className="macro-toolkit-crisis-shadow-decision__grid">
         {coverage.items.map((item) => (
@@ -432,13 +418,16 @@ function CrisisCommodityShadowDecisionPanel({
             </strong>
           </div>
           <small>规则只用于审批前复核，不改变 Crisis Score 公式</small>
-          <small>规则版本 {MACRO_COMMODITY_SHADOW_RULE_VERSION}</small>
-          <small>样本阈值 &gt;={MACRO_COMMODITY_SHADOW_MIN_SAMPLES} 个重叠样本</small>
+          <small>规则版本 {ruleVersionText}</small>
           <small>
-            危机样本阈值 &gt;={MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} 个高 Crisis Score 样本
+            危机样本阈值 &gt;={admissionThresholds?.minimumCrisisSampleCount ?? "缺失"} 个高 Crisis Score 样本
           </small>
           <small>
-            相关性阈值 |corr|&gt;={MACRO_COMMODITY_SHADOW_MIN_CORRELATION.toFixed(2)} 才可直接通过
+            相关性阈值 |corr|&gt;=
+            {typeof admissionThresholds?.correlationThreshold === "number"
+              ? admissionThresholds.correlationThreshold.toFixed(2)
+              : "缺失"}{" "}
+            才可直接通过
           </small>
           <div className="macro-toolkit-crisis-promotion-rule-pack__actions">
             <Button
@@ -467,8 +456,8 @@ function CrisisCommodityShadowDecisionPanel({
             ) : null}
           </div>
         </div>
-        <div className="macro-toolkit-crisis-promotion-rule-pack__audit" aria-label="shadow_rule_v1 审计注记">
-          <strong>{MACRO_COMMODITY_SHADOW_RULE_VERSION} 审计注记</strong>
+        <div className="macro-toolkit-crisis-promotion-rule-pack__audit" aria-label={`${ruleVersionText} 审计注记`}>
+          <strong>{ruleVersionText} 审计注记</strong>
           <small>用途：商品候选进入公式前的影子复核</small>
           <small>边界：不写入 Crisis Score，不改变权重</small>
           <small>审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交</small>
@@ -491,19 +480,22 @@ function CrisisCommodityShadowDecisionPanel({
           </div>
         </div>
         <div className="macro-toolkit-crisis-promotion-rule-pack__grid">
-          {promotionItems.map((item) => (
-            <div className="macro-toolkit-crisis-promotion-rule-pack__item" key={item.field}>
-              <small>
-                {item.label} · {commodityPromotionRuleStatusLabel(item.status)}
-              </small>
-              <small>{item.reason}</small>
-              {item.checks.map((check) => (
-                <small key={`${item.field}-${check.name}`}>
-                  {item.label} · {check.name} {commodityPromotionRuleCheckStatusLabel(check.status)} {check.value}
+          {admission ? (
+            admission.items.map((item) => (
+              <div className="macro-toolkit-crisis-promotion-rule-pack__item" key={item.field}>
+                <small>
+                  {item.label} · {commodityAdmissionDecisionDisplayLabel(item)}
                 </small>
-              ))}
-            </div>
-          ))}
+                <small>{item.reason}</small>
+                <small>{formatCommodityAdmissionMetrics(item)}</small>
+                <small>下一步：{formatCommodityAdmissionNextStep(item)}</small>
+              </div>
+            ))
+          ) : (
+            <small className="macro-toolkit-crisis-promotion-rule-pack__item">
+              暂无判定：commodity_candidate_admission 缺失，请重新运行完整分析
+            </small>
+          )}
         </div>
       </div>
     </div>
@@ -514,17 +506,22 @@ function CrisisCommodityShadowImpactPanel({
   currentScore,
   coverage,
   shadowImpact,
+  admission,
 }: {
   currentScore: number | null;
   coverage: CrisisCommodityCoverage;
   shadowImpact: CrisisCommodityShadowImpact | null;
+  admission: CrisisCommodityAdmission | null;
 }) {
-  const promotionItems = coverage.items.map(commodityPromotionRuleItem);
-  const driverItems = promotionItems.filter((item) => item.status !== "not_recommended");
+  const admissionItems = admission?.items ?? [];
+  const admissionByField = new Map(admissionItems.map((item) => [item.field, item]));
+  // 未知/缺失 decision（null）不计入候选驱动筛选：既不是 do_not_include，也不能当作
+  // recommend_include/watch 驱动纳入影响评估。
+  const driverItems = admissionItems.filter((item) => item.decision === "recommend_include" || item.decision === "watch");
   const driverFields = new Set(driverItems.map((item) => item.field));
   const driverCoverageItems = coverage.items.filter((item) => driverFields.has(item.field));
-  const readyCount = promotionItems.filter((item) => item.status === "ready_for_review").length;
-  const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
+  const readyCount = admissionItems.filter((item) => item.decision === "recommend_include").length;
+  const manualCount = admissionItems.filter((item) => item.decision === "watch").length;
   const hasShadowScore = shadowImpact?.shadow_score != null;
   const impactDrivers = shadowImpact?.candidate_contributions.length
     ? shadowImpact.candidate_contributions
@@ -604,20 +601,26 @@ function CrisisCommodityShadowImpactPanel({
                 {item.used_in_official_score ? <small>已纳入正式分数</small> : null}
               </div>
             ))
-          : driverCoverageItems.map((item) => {
-          const promotionItem = promotionItems.find((candidate) => candidate.field === item.field);
-          return (
-            <div className="macro-toolkit-crisis-shadow-impact__item" key={item.field}>
-              <div className="macro-toolkit-capability-result-head">
-                <span>{item.label || item.field}</span>
-                <Tag color={commodityReviewConclusionColor(promotionItem?.status ?? "not_recommended")}>
-                  {commodityReviewConclusionLabel(promotionItem?.status ?? "not_recommended")}
-                </Tag>
-              </div>
-              <small>{formatCommodityShadowImpactDriverDetail(item)}</small>
-            </div>
-          );
-        })}
+          : admission
+            ? driverCoverageItems.map((item) => {
+                const admissionItem = admissionByField.get(item.field);
+                return (
+                  <div className="macro-toolkit-crisis-shadow-impact__item" key={item.field}>
+                    <div className="macro-toolkit-capability-result-head">
+                      <span>{item.label || item.field}</span>
+                      <Tag color={admissionItem ? commodityAdmissionDecisionColor(admissionItem.decision) : "default"}>
+                        {admissionItem ? commodityAdmissionDecisionDisplayLabel(admissionItem) : "暂无判定"}
+                      </Tag>
+                    </div>
+                    <small>{formatCommodityShadowImpactDriverDetail(item)}</small>
+                  </div>
+                );
+              })
+            : (
+                <small className="macro-toolkit-crisis-shadow-impact__note">
+                  暂无判定：commodity_candidate_admission 缺失，请重新运行完整分析
+                </small>
+              )}
       </div>
       {shadowImpact?.warnings.length ? (
         <small className="macro-toolkit-crisis-shadow-impact__note">
@@ -634,11 +637,9 @@ function CrisisCommodityShadowImpactPanel({
 function CommodityCandidateReviewConclusion({
   admission,
   items,
-  promotionItems,
 }: {
   admission: CrisisCommodityAdmission | null;
   items: CrisisCommodityCoverageItem[];
-  promotionItems: CommodityPromotionRuleItem[];
 }) {
   if (admission) {
     return (
@@ -668,7 +669,9 @@ function CommodityCandidateReviewConclusion({
             <div className="macro-toolkit-crisis-review-conclusion__item" key={item.field}>
               <div className="macro-toolkit-capability-result-head">
                 <span>{item.label || item.field}</span>
-                <Tag color={commodityAdmissionDecisionColor(item.decision)}>{item.decision_label}</Tag>
+                <Tag color={commodityAdmissionDecisionColor(item.decision)}>
+                  {commodityAdmissionDecisionDisplayLabel(item)}
+                </Tag>
               </div>
               <strong>{item.reason}</strong>
               <small>{formatCommodityAdmissionMetrics(item)}</small>
@@ -680,38 +683,27 @@ function CommodityCandidateReviewConclusion({
       </div>
     );
   }
-  const promotionByField = new Map(promotionItems.map((item) => [item.field, item]));
-  const readyCount = promotionItems.filter((item) => item.status === "ready_for_review").length;
-  const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
-  const rejectedCount = promotionItems.filter((item) => item.status === "not_recommended").length;
   return (
     <div className="macro-toolkit-crisis-review-conclusion" aria-label="商品候选复核结论">
       <div className="macro-toolkit-crisis-review-conclusion__head">
         <div>
           <span>商品候选复核结论</span>
-          <strong>
-            可进入人工复核 {readyCount} · 继续观察 {manualCount} · 不建议纳入 {rejectedCount}
-          </strong>
+          <strong>暂无判定</strong>
         </div>
-        <small>复用 shadow_rule_v1 判断，只做展示，不改变 Crisis Score 公式或权重</small>
+        <small>
+          commodity_candidate_admission 缺失（旧缓存或降级响应），不回退本地规则；请重新运行完整分析获取准入结论。
+        </small>
       </div>
       <div className="macro-toolkit-crisis-review-conclusion__grid">
-        {items.map((item) => {
-          const promotionItem = promotionByField.get(item.field) ?? commodityPromotionRuleItem(item);
-          return (
-            <div className="macro-toolkit-crisis-review-conclusion__item" key={item.field}>
-              <div className="macro-toolkit-capability-result-head">
-                <span>{item.label || item.field}</span>
-                <Tag color={commodityReviewConclusionColor(promotionItem.status)}>
-                  {commodityReviewConclusionLabel(promotionItem.status)}
-                </Tag>
-              </div>
-              <strong>{promotionItem.reason}</strong>
-              <small>{formatCommodityReviewConclusionMetrics(item)}</small>
-              <small>{formatCommodityReviewConclusionNextStep(promotionItem.status, item)}</small>
+        {items.map((item) => (
+          <div className="macro-toolkit-crisis-review-conclusion__item" key={item.field}>
+            <div className="macro-toolkit-capability-result-head">
+              <span>{item.label || item.field}</span>
+              <Tag color="default">暂无判定</Tag>
             </div>
-          );
-        })}
+            <small>{item.shadow_evaluation ? formatCommodityShadowDetail(item.shadow_evaluation) : "影子评估缺失"}</small>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -830,9 +822,49 @@ function CommodityShadowActionQueue({
   );
 }
 
+function publicCommodityRefreshFailureMessage(refresh: MacroToolkitCommodityFuturesRefreshRun) {
+  return (
+    refresh.failure_message?.trim() ||
+    refresh.failure_category?.trim() ||
+    "未提供公开失败原因"
+  );
+}
+
+function commodityRefreshSnapshotFailureWarning(refresh: MacroToolkitCommodityFuturesRefreshRun) {
+  const terminalSnapshotStatus = refresh.terminal_snapshot_status?.trim();
+  const afterStatus = refresh.after_status?.status?.trim();
+  if (
+    terminalSnapshotStatus &&
+    terminalSnapshotStatus !== "captured"
+  ) {
+    return "刷新已结束但终态快照捕获失败，不能据此判断刷新结果";
+  }
+  if (afterStatus === "snapshot_unavailable" || afterStatus === "unreadable_database") {
+    return "刷新已结束但终态快照捕获失败，不能据此判断刷新结果";
+  }
+  return null;
+}
+
+function commodityRefreshBeforeEvidenceText(refresh: MacroToolkitCommodityFuturesRefreshRun) {
+  const beforeStatus = refresh.before_status;
+  if (!beforeStatus) {
+    return null;
+  }
+  const parts = [
+    beforeStatus.status ? `刷新前状态 ${beforeStatus.status}` : null,
+    beforeStatus.latest_trade_date ? `最新日期 ${beforeStatus.latest_trade_date}` : null,
+    beforeStatus.row_count == null ? null : `行数 ${beforeStatus.row_count}`,
+  ].filter(Boolean);
+  return parts.length ? `刷新前基线：${parts.join(" · ")}` : null;
+}
+
 export function CommodityRefreshResultPanel({ refresh }: { refresh: MacroToolkitCommodityFuturesRefreshRun }) {
   const rows = normalizeCommodityRefreshRows(refresh);
   const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
+  const isFailed = refresh.status === "failed";
+  const failureReason = publicCommodityRefreshFailureMessage(refresh);
+  const snapshotFailureWarning = commodityRefreshSnapshotFailureWarning(refresh);
+  const beforeEvidenceText = commodityRefreshBeforeEvidenceText(refresh);
   const nanhuaRow = rows.find((row) => row.isNanhua);
   const summary = refresh.summary;
   const nanhuaMessage =
@@ -895,8 +927,27 @@ export function CommodityRefreshResultPanel({ refresh }: { refresh: MacroToolkit
     <div className="macro-toolkit-commodity-refresh-result" aria-label="商品期货刷新结果">
       <div className="macro-toolkit-commodity-refresh-summary">
         <span>{isDryRun ? "预估结果" : "刷新结果"}</span>
-        <strong>{formatCommodityRefreshResult(refresh)}</strong>
-        <Tag color={nanhuaRow && !isDryRun && nanhuaRow.status === "written" ? "green" : "blue"}>{nanhuaMessage}</Tag>
+        <strong>
+          {isFailed
+            ? `商品期货刷新失败：${failureReason}`
+            : snapshotFailureWarning ?? formatCommodityRefreshResult(refresh)}
+        </strong>
+        <Tag
+          color={
+            isFailed
+              ? "red"
+              : snapshotFailureWarning
+                ? "orange"
+                : nanhuaRow && !isDryRun && nanhuaRow.status === "written"
+                  ? "green"
+                  : "blue"
+          }
+        >
+          {isFailed ? "失败终态" : snapshotFailureWarning ? "终态快照失败" : nanhuaMessage}
+        </Tag>
+        {refresh.run_id ? <small>{`run ${refresh.run_id}`}</small> : null}
+        {snapshotFailureWarning ? <small>{snapshotFailureWarning}</small> : null}
+        {beforeEvidenceText ? <small>{beforeEvidenceText}</small> : null}
       </div>
       {summary ? <CommodityRefreshSummaryStrip summary={summary} isDryRun={isDryRun} /> : null}
       <Table
@@ -998,10 +1049,12 @@ export function CrisisScoreEvidencePanel({
       className="macro-toolkit-section macro-toolkit-crisis-evidence"
       aria-label="Crisis Score 数据来源"
     >
-      <PageSectionLead
-        eyebrow="危机证据"
+      <SectionHead
+        category="危机证据"
         title="Crisis Score 数据来源"
-        description="完整分析返回后展示每个输入、组件权重和缺口；缺失输入保持缺失，不折算为 0。"
+        note="完整分析返回后展示每个输入、组件权重和缺口；缺失输入保持缺失，不折算为 0。"
+        numbered={{ counter: "mt-section" }}
+        contentGap="flush"
       />
 
       <div className="macro-toolkit-crisis-evidence__summary">
@@ -1029,22 +1082,23 @@ export function CrisisScoreEvidencePanel({
         />
       </div>
 
-      {latestHistoryPoint && scoreHistory.length >= 2 ? (
-        <div className="macro-toolkit-crisis-history" aria-label="Crisis Score 走势">
-          <div className="macro-toolkit-crisis-history__head">
-            <span>Crisis Score 走势 · 近 {scoreHistory.length} 期</span>
-            <strong>
-              最新 {formatNumberValue(latestHistoryPoint.crisis_score)} · 历史分位{" "}
+      <ChartCard
+        title="危机分走势"
+        question={scoreHistory.length ? `近 ${scoreHistory.length} 期` : undefined}
+        asOf={latestHistoryPoint?.date}
+        height={CHART_CARD_HEIGHTS.default}
+        legend="none"
+        option={latestHistoryPoint && scoreHistory.length >= 2 ? buildCrisisScoreHistoryOption(scoreHistory) : null}
+        emptyMessage="历史点不足，请先运行完整分析"
+        actions={
+          latestHistoryPoint && scoreHistory.length >= 2 ? (
+            <span>
+              最新 {formatNumberValue(latestHistoryPoint.crisis_score)} / 历史分位{" "}
               {latestHistoryPoint.percentile === null ? EM_DASH : `${latestHistoryPoint.percentile.toFixed(1)}%`}
-            </strong>
-          </div>
-          <BaseChart option={buildCrisisScoreHistoryOption(scoreHistory)} height={200} />
-        </div>
-      ) : (
-        <small className="macro-toolkit-crisis-coverage-note">
-          Crisis Score 走势需完整分析返回的历史分数；当前历史点不足，先运行完整分析。
-        </small>
-      )}
+            </span>
+          ) : undefined
+        }
+      />
 
       {commodityShortfallChanges.length ? (
         <CrisisCommodityClosurePanel
@@ -1061,7 +1115,14 @@ export function CrisisScoreEvidencePanel({
           </div>
           {repairFeedback ? <CrisisGapRepairFeedback feedback={repairFeedback} /> : null}
           <div className="macro-toolkit-crisis-gap-list__grid">
-            {crisisGapGroups.map((group) => (
+            {crisisGapGroups.map((group) => {
+              // F：组内各项 detail 完全相同（如「输入证据缺失」）时只在组尾声明一次，行内不复读。
+              const groupDetails = group.items.map((item) => item.detail);
+              const sharedDetail =
+                group.items.length > 1 && groupDetails.every((detail) => detail === groupDetails[0])
+                  ? groupDetails[0]
+                  : null;
+              return (
               <div className="macro-toolkit-crisis-gap-group" key={group.key}>
                 <span>{group.label}</span>
                 {group.items.map((item) => {
@@ -1072,14 +1133,19 @@ export function CrisisScoreEvidencePanel({
                   return (
                     <small
                       key={`${item.label}-${item.warning}`}
-                      title={`${item.label} · ${item.warning}`}
+                      title={`${item.label} · ${item.warning} · ${item.detail}`}
                     >
                       {labelDuplicatesWarning ? warningZh : `${item.label} · ${warningZh}`}
-                      <br />
-                      {item.detail}
+                      {sharedDetail ? null : (
+                        <>
+                          <br />
+                          {item.detail}
+                        </>
+                      )}
                     </small>
                   );
                 })}
+                {sharedDetail ? <small>以上各项：{sharedDetail}</small> : null}
                 <CrisisGapAction
                   group={group}
                   repairItems={repairItems}
@@ -1094,7 +1160,8 @@ export function CrisisScoreEvidencePanel({
                   onRepairSourceBackfill={onRepairSourceBackfill}
                 />
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -1184,6 +1251,7 @@ export function CrisisScoreEvidencePanel({
                     currentScore={result.score}
                     coverage={commodityCoverage}
                     shadowImpact={commodityShadowImpact}
+                    admission={commodityAdmission}
                   />
                   <CrisisCommodityShadowDecisionPanel
                     admission={commodityAdmission}

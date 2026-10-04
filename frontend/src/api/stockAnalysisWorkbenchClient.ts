@@ -1,4 +1,8 @@
-import type { ApiEnvelope, StockAnalysisWorkbenchPayload } from "./contracts";
+import type {
+  ApiEnvelope,
+  StockAnalysisWorkbenchPayload,
+  StockPortfolioConstructionPayload,
+} from "./contracts";
 import { readHttpJsonDetail } from "./httpResponseError";
 
 type FetchLike = typeof fetch;
@@ -10,10 +14,18 @@ export type StockAnalysisWorkbenchOptions = {
   topK?: number;
 };
 
+export type StockPortfolioConstructionOptions = {
+  portfolioId: string;
+  asOfDate?: string;
+};
+
 export type StockAnalysisWorkbenchClientMethods = {
   getStockAnalysisWorkbench: (
     options?: StockAnalysisWorkbenchOptions,
   ) => Promise<ApiEnvelope<StockAnalysisWorkbenchPayload>>;
+  getStockAnalysisPortfolioConstruction: (
+    options: StockPortfolioConstructionOptions,
+  ) => Promise<ApiEnvelope<StockPortfolioConstructionPayload>>;
 };
 
 type StockAnalysisWorkbenchClientFactoryOptions = {
@@ -35,11 +47,19 @@ function buildStockAnalysisWorkbenchQuery(options?: StockAnalysisWorkbenchOption
   return query ? `?${query}` : "";
 }
 
-async function requestJson(
+function buildStockPortfolioConstructionQuery(options: StockPortfolioConstructionOptions) {
+  const params = new URLSearchParams();
+  params.set("portfolio_id", options.portfolioId.trim());
+  const asOfDate = options.asOfDate?.trim();
+  if (asOfDate) params.set("as_of_date", asOfDate);
+  return `?${params.toString()}`;
+}
+
+async function requestJson<TPayload>(
   fetchImpl: FetchLike,
   baseUrl: string,
   path: string,
-): Promise<ApiEnvelope<StockAnalysisWorkbenchPayload>> {
+): Promise<ApiEnvelope<TPayload>> {
   const response = await fetchImpl(`${baseUrl}${path}`, {
     headers: { Accept: "application/json" },
   });
@@ -47,7 +67,7 @@ async function requestJson(
     const detail = await readHttpJsonDetail(response);
     throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
   }
-  return (await response.json()) as ApiEnvelope<StockAnalysisWorkbenchPayload>;
+  return (await response.json()) as ApiEnvelope<TPayload>;
 }
 
 export function createRealStockAnalysisWorkbenchClient({
@@ -56,10 +76,16 @@ export function createRealStockAnalysisWorkbenchClient({
 }: StockAnalysisWorkbenchClientFactoryOptions): StockAnalysisWorkbenchClientMethods {
   return {
     getStockAnalysisWorkbench: (options) =>
-      requestJson(
+      requestJson<StockAnalysisWorkbenchPayload>(
         fetchImpl,
         baseUrl,
         `/ui/market-data/stock-analysis/workbench${buildStockAnalysisWorkbenchQuery(options)}`,
+      ),
+    getStockAnalysisPortfolioConstruction: (options) =>
+      requestJson<StockPortfolioConstructionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/stock-analysis/portfolio-construction${buildStockPortfolioConstructionQuery(options)}`,
       ),
   };
 }

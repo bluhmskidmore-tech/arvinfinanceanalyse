@@ -1,15 +1,17 @@
+import Decimal from "decimal.js";
 import { useMemo } from "react";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import type { EChartsOption } from "../../../lib/echarts";
 import type {
   DecimalLike,
   Numeric,
   ProductCategoryPnlRow,
   TPLMarketCorrelationPayload,
 } from "../../../api/contracts";
+import { numericDecimalOrNull } from "../../../api/numeric";
 import { PageDataSection } from "../../../components/page/PageDataSection";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
-import { formatProductCategoryRowDisplayValue } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
 import { numericRaw as sharedNumericRaw } from "../../../pageModel";
 import { TONE_DH_CSS_VAR } from "../../../utils/tone";
 import { EM_DASH } from "../../../utils/format";
@@ -20,6 +22,7 @@ import "./TPLMarketChart.css";
 // TONE_DH_CSS_VAR / --dh-api-* CSS 变量，背景用 --dh-api-panel-2，禁止浅色
 // semantic/50 系直灌。
 const CORR_CARD_BG = "var(--dh-api-panel-2)";
+const YUAN_PER_YI_DECIMAL = new Decimal("100000000");
 
 function correlationLabel(corr: number | null): {
   level: string;
@@ -83,7 +86,7 @@ export type ProductCategoryTplMonthlyPoint = {
 
 function numericRaw(value: Numeric | number | null | undefined): number | null {
   if (typeof value === "number") {
-    return value;
+    return Number.isFinite(value) ? value : null;
   }
   if (value && typeof value === "object") {
     return sharedNumericRaw(value);
@@ -91,12 +94,52 @@ function numericRaw(value: Numeric | number | null | undefined): number | null {
   return null;
 }
 
-function decimalLikeRaw(value: DecimalLike | null | undefined): number | null {
+function groupedFixed(value: Decimal, fractionDigits: number): string {
+  const fixed = value.abs().toFixed(fractionDigits, Decimal.ROUND_HALF_UP);
+  const [integer, fraction = ""] = fixed.split(".");
+  const groupedInteger = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return fractionDigits > 0 ? `${groupedInteger}.${fraction}` : groupedInteger;
+}
+
+function decimalLikeDecimal(value: DecimalLike | null | undefined): Decimal | null {
   if (value === null || value === undefined) {
     return null;
   }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  try {
+    const parsed = new Decimal(String(value));
+    return parsed.isFinite() ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function numericDecimal(value: Numeric | null | undefined): Decimal | null {
+  if (!value) {
+    return null;
+  }
+  return numericDecimalOrNull(value);
+}
+
+function exactNumericYiDisplay(value: Numeric | null | undefined): string | null {
+  if (!value || value.unit !== "yuan") {
+    return null;
+  }
+  const exact = numericDecimal(value);
+  if (exact === null) {
+    return null;
+  }
+  const yi = exact.dividedBy(YUAN_PER_YI_DECIMAL);
+  const prefix = yi.isNegative() && !yi.isZero() ? "-" : value.sign_aware ? "+" : "";
+  return `${prefix}${groupedFixed(yi, 2)} 亿`;
+}
+
+function tooltipNumericYiDisplay(value: Numeric | null | undefined): string {
+  return exactNumericYiDisplay(value) ?? formatYi(value?.raw ?? undefined);
+}
+
+function numericYiChartValue(value: Numeric | null | undefined): number | null {
+  const raw = numericRaw(value);
+  return raw === null ? null : raw / 100_000_000;
 }
 
 function productCategoryYi(
@@ -106,24 +149,40 @@ function productCategoryYi(
   if (!row) {
     return EM_DASH;
   }
-  const display = formatProductCategoryRowDisplayValue(row, value);
-  return display === "-" ? EM_DASH : display;
+  if (typeof value === "string") {
+    const exact = decimalLikeDecimal(value);
+    if (exact === null) {
+      return EM_DASH;
+    }
+    const adjusted = row.side === "liability" ? exact.abs() : exact;
+    return adjusted.dividedBy(YUAN_PER_YI_DECIMAL).toFixed(2, Decimal.ROUND_HALF_UP);
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const adjusted = row.side === "liability" ? Math.abs(value) : value;
+    return (adjusted / 100_000_000).toFixed(2);
+  }
+  return EM_DASH;
 }
 
 function valueDirection(
   value: DecimalLike | null | undefined,
 ): "positive" | "negative" | "neutral" {
-  const raw = decimalLikeRaw(value);
-  if (raw === null) {
+  const exact = decimalLikeDecimal(value);
+  if (exact === null) {
     return "neutral";
   }
-  return raw >= 0 ? "positive" : "negative";
+  return exact.isNegative() && !exact.isZero() ? "negative" : "positive";
 }
 
-function signedDirection(
-  raw: number | null | undefined,
+function numericDirection(
+  value: Numeric | null | undefined,
 ): "positive" | "negative" | "neutral" {
-  if (raw === null || raw === undefined) {
+  const exact = numericDecimal(value);
+  if (exact !== null) {
+    return exact.isNegative() && !exact.isZero() ? "negative" : "positive";
+  }
+  const raw = numericRaw(value);
+  if (raw === null) {
     return "neutral";
   }
   return raw >= 0 ? "positive" : "negative";
@@ -155,6 +214,34 @@ function treasuryTotalChangeBp(
   return numericRaw(legacy);
 }
 
+function tplMarketTooltip(
+  params: Array<{ dataIndex?: number; seriesName?: string }> | { dataIndex?: number; seriesName?: string },
+  dataPoints: TPLMarketCorrelationPayload["data_points"],
+): string {
+  const entries = Array.isArray(params) ? params : [params];
+  const first = entries[0];
+  const dataIndex = typeof first?.dataIndex === "number" ? first.dataIndex : -1;
+  const point = dataIndex >= 0 ? dataPoints[dataIndex] : undefined;
+  if (!point) {
+    return "";
+  }
+  const lines = [point.period_label];
+  const fvEntry = entries.find((entry) => entry.seriesName === "FVTPL公允价值变动");
+  if (fvEntry) {
+    lines.push(`FVTPL公允价值变动: ${tooltipNumericYiDisplay(point.tpl_fair_value_change)}`);
+  }
+  const bpEntry = entries.find((entry) => entry.seriesName === "国债收益率变动");
+  if (bpEntry) {
+    const raw = numericRaw(point.treasury_10y_change);
+    lines.push(
+      `国债收益率变动: ${
+        raw === null ? EM_DASH : `${raw >= 0 ? "+" : ""}${raw.toFixed(1)} BP`
+      }`,
+    );
+  }
+  return lines.join("<br/>");
+}
+
 /** TPL 公允价值变动与国债收益率走势的双轴对比。 */
 export function TPLMarketChart({
   data,
@@ -171,21 +258,18 @@ export function TPLMarketChart({
     );
     // 缺失公允价值变动传 null，ECharts 留空不画 0 值柱。
     const tpl = data.data_points.map((p) => {
-      const raw = numericRaw(p.tpl_fair_value_change);
-      return raw === null ? null : raw / 100_000_000;
+      return numericYiChartValue(p.tpl_fair_value_change);
     });
-    const bp = data.data_points.map((p) => p.treasury_10y_change?.raw ?? null);
+    const bp = data.data_points.map((p) => numericRaw(p.treasury_10y_change));
     // ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用 Nocturne TS 镜像 token。
     return {
-      tooltip: { trigger: "axis" },
-      legend: {
-        bottom: 0,
-        textStyle: {
-          fontSize: designTokens.fontSize[12],
-          color: nocturneTokens.color.inkSoft,
-        },
+      tooltip: {
+        trigger: "axis",
+        formatter: (
+          params: Array<{ dataIndex?: number; seriesName?: string }> | { dataIndex?: number; seriesName?: string },
+        ) => tplMarketTooltip(params, data.data_points),
       },
-      grid: { left: 56, right: 56, top: 28, bottom: 52 },
+      grid: { left: 56, right: 56, top: 28 },
       xAxis: {
         type: "category",
         data: periods,
@@ -227,12 +311,6 @@ export function TPLMarketChart({
           data: tpl,
           itemStyle: {
             color: nocturneTokens.color.blue,
-            borderRadius: [
-              designTokens.radius.sm,
-              designTokens.radius.sm,
-              0,
-              0,
-            ],
           },
         },
         {
@@ -289,14 +367,15 @@ export function TPLMarketChart({
               </div>
             </div>
             <div className="tpl-market-chart__card tpl-market-chart__card--compact">
-              <div className="tpl-market-chart__label">累计 FVTPL 公允价值变动</div>
-              <div
-                className="tpl-market-chart__value tpl-market-chart__value--medium"
-                data-direction={signedDirection(data.total_tpl_fv_change.raw)}
-              >
-                {formatYi(data.total_tpl_fv_change.raw ?? undefined)}
+                <div className="tpl-market-chart__label">累计 FVTPL 公允价值变动</div>
+                <div
+                  className="tpl-market-chart__value tpl-market-chart__value--medium"
+                  data-direction={numericDirection(data.total_tpl_fv_change)}
+                >
+                  {exactNumericYiDisplay(data.total_tpl_fv_change) ??
+                    formatYi(data.total_tpl_fv_change.raw ?? undefined)}
+                </div>
               </div>
-            </div>
             <div className="tpl-market-chart__card tpl-market-chart__card--compact">
               <div className="tpl-market-chart__label">累计国债收益率变动</div>
               <div
@@ -333,20 +412,14 @@ export function TPLMarketChart({
           </div>
 
           {chartOption && (
-            <div className="tpl-market-chart__card">
-              <h3 className="tpl-market-chart__section-title tpl-market-chart__section-title--spaced">
-                FVTPL 公允价值变动 vs 国债收益率变动
-              </h3>
-              <ReactECharts
-                option={chartOption}
-                className="tpl-market-chart__chart"
-                notMerge
-                lazyUpdate
-              />
-              <p className="tpl-market-chart__caption">
-                蓝柱仅解释 FVTPL 公允价值变动；下方 TPL 规模 / 损益来自产品分类正式读模型。
-              </p>
-            </div>
+            <ChartCard
+              flat
+              ariaLabel="FVTPL 公允价值变动与国债收益率变动"
+              unit="亿元 / BP"
+              height={280}
+              option={chartOption}
+              footnote="蓝柱仅解释 FVTPL 公允价值变动；下方 TPL 规模 / 损益来自产品分类正式读模型。"
+            />
           )}
 
           <div className="tpl-market-chart__card">

@@ -3,7 +3,6 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import type { ApiClient } from "../../../api/client";
 import type { MacroToolkitChoiceStockRefreshRun } from "../../../api/macroToolkitClient";
-import type { LivermoreGateSupplementRefreshAcceptance } from "../../../api/marketDataClient";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { EM_DASH } from "../../../utils/format";
 
@@ -23,40 +22,58 @@ function refreshRowsLabel(payload: MacroToolkitChoiceStockRefreshRun): string {
   return `历史 ${payload.history_row_count ?? EM_DASH} 行，因子 ${payload.factor_row_count ?? EM_DASH} 行`;
 }
 
+function normalizedStatus(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function refreshClosureStatus(payload: MacroToolkitChoiceStockRefreshRun): string {
+  return normalizedStatus(payload.livermore_closure_status);
+}
+
+function refreshFailureReason(payload: MacroToolkitChoiceStockRefreshRun): string {
+  const closureStatus = refreshClosureStatus(payload);
+  return (
+    payload.livermore_closure_reason?.trim()
+    || payload.failure_category?.trim()
+    || payload.error_message?.trim()
+    || ((!closureStatus || closureStatus === "unknown") ? "闭环状态未返回" : null)
+    || "原因待返回"
+  );
+}
+
 function refreshStatusLabel(payload: MacroToolkitChoiceStockRefreshRun): string {
   const runId = refreshRunIdLabel(payload);
-  if (payload.status === "completed") {
-    return `选股已重新计算：${runId} · ${refreshRowsLabel(payload)}`;
+  const status = normalizedStatus(payload.status);
+  const closureStatus = refreshClosureStatus(payload);
+  if (status === "completed" && closureStatus === "completed") {
+    return `选股已重新计算并完成闭环：${runId} · ${refreshRowsLabel(payload)}`;
   }
-  if (payload.status === "failed") {
-    const reason = payload.failure_category?.trim() || "原因待返回";
-    return `选股刷新失败：${reason} · ${runId}`;
+  if (status === "failed" || closureStatus === "failed") {
+    return `选股闭环失败：${refreshFailureReason(payload)} · ${runId}`;
   }
-  return `选股刷新状态：${payload.status} · ${runId}`;
+  if (status === "blocked" || closureStatus === "blocked") {
+    return `选股刷新被阻断：${refreshFailureReason(payload)} · ${runId}`;
+  }
+  if (status === "no_rows" || closureStatus === "no_rows") {
+    return `选股刷新无可用数据：${refreshFailureReason(payload)} · ${runId}`;
+  }
+  if (status === "completed" && (!closureStatus || closureStatus === "unknown")) {
+    return `选股闭环失败：闭环状态未返回 · ${runId}`;
+  }
+  if (status === "partial" || closureStatus === "partial") {
+    return `选股数据已刷新，闭环仍未完成：${refreshFailureReason(payload)} · ${runId} · ${refreshRowsLabel(payload)}`;
+  }
+  return `选股刷新状态：${payload.status} · ${runId} · 闭环 ${payload.livermore_closure_status ?? "待返回"}`;
 }
 
-function refreshToneForStatus(status: string): RefreshTone {
-  if (status === "completed") return "positive";
-  if (status === "failed") return "negative";
+function refreshToneForPayload(payload: MacroToolkitChoiceStockRefreshRun): RefreshTone {
+  const status = normalizedStatus(payload.status);
+  const closureStatus = refreshClosureStatus(payload);
+  if (status === "failed" || status === "blocked" || closureStatus === "failed" || closureStatus === "blocked") {
+    return "negative";
+  }
+  if (status === "completed" && closureStatus === "completed") return "positive";
   return "warning";
-}
-
-function gateRefreshStatusLabel(payload: LivermoreGateSupplementRefreshAcceptance): string {
-  if (payload.status === "completed") {
-    return `门禁补充已刷新 ${payload.computed_rows ?? 0} 行，run_id ${payload.run_id}`;
-  }
-  if (payload.status === "failed") {
-    const reason = payload.failure_category?.trim() || payload.error_message?.trim() || payload.status;
-    return `门禁补充刷新失败：${reason} · run_id ${payload.run_id}`;
-  }
-  if (
-    payload.status === "partial"
-    || payload.status === "insufficient_data"
-    || payload.status === "no_computable_dates"
-  ) {
-    return payload.message ?? `门禁补充状态：${payload.status} · run_id ${payload.run_id}`;
-  }
-  return `门禁补充刷新已受理并排队：run_id ${payload.run_id}`;
 }
 
 export function useStockSelectionRefresh({
@@ -105,46 +122,54 @@ export function useStockSelectionRefresh({
         },
         intervalMs: 5_000,
         maxAttempts: 240,
+        isTerminal: (status) => {
+          const normalized = normalizedStatus(status);
+          return (
+            normalized === "completed"
+            || normalized === "failed"
+            || normalized === "partial"
+            || normalized === "no_rows"
+            || normalized === "blocked"
+          );
+        },
         signal,
         onUpdate: (payload) => {
-          setRefreshTone(refreshToneForStatus(payload.status));
+          setRefreshTone(refreshToneForPayload(payload));
           setRefreshResult(refreshStatusLabel(payload));
         },
       });
 
-      if (refresh.status !== "completed") {
-        throw new Error(refreshStatusLabel(refresh));
+      const refreshStatus = normalizedStatus(refresh.status);
+      const closureStatus = refreshClosureStatus(refresh);
+      const isBlocked = refreshStatus === "blocked" || closureStatus === "blocked";
+      const isNoRows = refreshStatus === "no_rows" || closureStatus === "no_rows";
+      if (isBlocked || isNoRows) {
+        if (signal?.aborted) return;
+        setRefreshTone(isBlocked ? "negative" : "warning");
+        setRefreshResult(refreshStatusLabel(refresh));
+        return;
       }
 
-      const gateRefresh = await client.refreshGateSupplement({
-        ...(asOfDate ? { asOfDate } : {}),
-      });
-      const gateRefreshStatus = await runPollingTask<LivermoreGateSupplementRefreshAcceptance>({
-        start: async () => gateRefresh,
-        getStatus: async (runId) => client.getLivermoreGateSupplementRefreshStatus(runId),
-        intervalMs: 3_000,
-        maxAttempts: 120,
-        signal,
-        isTerminal: (status) =>
-          status === "completed"
-          || status === "failed"
-          || status === "partial"
-          || status === "insufficient_data"
-          || status === "no_computable_dates",
-        onUpdate: (payload) => {
-          setRefreshTone(payload.status === "completed" ? "positive" : "warning");
-          setRefreshResult(`${refreshStatusLabel(refresh)}；${gateRefreshStatusLabel(payload)}`);
-        },
-      });
-      if (gateRefreshStatus.status !== "completed") {
-        throw new Error(gateRefreshStatusLabel(gateRefreshStatus));
+      const isPartial =
+        refreshStatus !== "failed"
+        && closureStatus !== "failed"
+        && (refreshStatus === "partial" || closureStatus === "partial");
+
+      if (isPartial) {
+        if (signal?.aborted) return;
+        setRefreshTone("warning");
+        setRefreshResult(refreshStatusLabel(refresh));
+        await queryClient.invalidateQueries({ queryKey: ["stock-analysis"] });
+        return;
+      }
+
+      if (refreshStatus !== "completed" || closureStatus !== "completed") {
+        throw new Error(refreshStatusLabel(refresh));
       }
 
       if (signal?.aborted) return;
       setRefreshTone("positive");
-      setRefreshResult(
-        `${refreshStatusLabel(refresh)}；${gateRefreshStatusLabel(gateRefreshStatus)}`,
-      );
+      setRefreshResult(refreshStatusLabel(refresh));
       await queryClient.invalidateQueries({ queryKey: ["stock-analysis"] });
     } catch (error) {
       if (signal?.aborted) return;

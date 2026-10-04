@@ -218,7 +218,7 @@ def test_background_warmup_keeps_cadence_when_passes_are_slow(monkeypatch) -> No
     monkeypatch.setattr(module, "resolve_home_background_warmup_interval_seconds", lambda: 240.0)
 
     def slow_pass(_value: object, **_kwargs: object) -> None:
-        clock["now"] += 30.0
+        clock["now"] += 80.0
 
     monkeypatch.setattr(module, "_run_home_background_warmup_pass", slow_pass)
 
@@ -233,10 +233,9 @@ def test_background_warmup_keeps_cadence_when_passes_are_slow(monkeypatch) -> No
     with pytest.raises(_StopWarmupLoop):
         module._warm_home_background_caches_periodically(settings)
 
-    # The cadence anchor is set right after the initial pass (t=30), so the first
-    # sleep is a full interval; every later sleep shrinks by the 30s the previous
-    # pass consumed instead of stacking on top of it.
-    assert sleeps == [240.0, 210.0, 210.0]
+    # Include the initial 80s pass in the cadence. Waiting another full 240s
+    # after it would let entries warmed near t=0 expire at their 300s TTL.
+    assert sleeps == [160.0, 160.0, 160.0]
 
 
 def test_background_warmup_periodically_refreshes_home_snapshot(monkeypatch) -> None:

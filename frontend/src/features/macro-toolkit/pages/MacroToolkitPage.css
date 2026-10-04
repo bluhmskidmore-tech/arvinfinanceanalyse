@@ -31,12 +31,6 @@
   --ib-ink: var(--dh-ink);
   --ib-ink-secondary: var(--dh-ink-2);
   --ib-ink-muted: var(--dh-muted);
-  /* PagePrimitives（PageSectionLead）内联墨字与字号经 --moss-page-* 变量接管（§3 卡片标题 14-16px） */
-  --moss-page-ink: var(--dh-ink);
-  --moss-page-ink-secondary: var(--dh-ink-2);
-  --moss-page-ink-muted: var(--dh-muted);
-  --moss-page-section-title-size: 16px;
-  --moss-page-section-desc-size: 12px;
   --ib-accent: var(--dh-blue);
   --ib-accent-hover: var(--dh-blue-2);
   --ib-accent-surface: var(--dh-blue-soft);
@@ -73,23 +67,26 @@
   padding-bottom: 32px;
 }
 
-/* Two-column grid for content below the operations band */
+/* 页头收敛为首页 dhTopbar 语言：左侧 20px/700 页题 + 12px 副题，右侧状态胶囊 + 按钮同一行。 */
 .macro-toolkit-page__header {
   display: grid;
-  gap: 8px;
-  padding: 10px 12px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 14px;
   background: var(--ib-surface);
   border: 1px solid var(--ib-hairline);
   border-radius: var(--ib-radius, 2px);
 }
 
+.macro-toolkit-page__header h1 {
+  font-weight: 600;
+}
+
 .macro-toolkit-page__header-main {
   display: grid;
-  grid-template-columns: minmax(178px, 220px) minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px 14px;
-  min-height: 32px;
-  width: 100%;
+  gap: 2px;
+  min-width: 0;
 }
 
 .macro-toolkit-page__header-controls {
@@ -103,28 +100,38 @@
   min-width: 0;
 }
 
+.macro-toolkit-page__header-controls .ant-btn {
+  height: 32px;
+}
+
 .macro-toolkit-page__toolbar-info {
   display: flex;
-  flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   min-width: 0;
 }
 
 .macro-toolkit-page__header-summary {
-  grid-column: 1 / -1;
   margin: 0;
-  max-width: 760px;
+  max-width: 72em;
   color: var(--ib-ink-secondary);
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
-.macro-toolkit-page__main,
-.macro-toolkit-page__primary {
+.macro-toolkit-page__main {
   display: grid;
   gap: 16px;
+  min-width: 0;
+}
+
+/* 区块垂直节奏：主列区块间统一 24px；节头到内容 16px 由 .macro-toolkit-section gap 提供。 */
+.macro-toolkit-page__primary,
+.macro-toolkit-page__content {
+  display: grid;
+  gap: 24px;
   min-width: 0;
 }
 
@@ -134,7 +141,13 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   align-content: start;
+  align-items: start;
   min-width: 0;
+}
+
+/* ≤1280 双列折行时收尾卡通栏，避免第三卡独占左半、右半留大空白；≥1281 单列下通栏为无害。 */
+.macro-toolkit-meta-rail > :last-child {
+  grid-column: 1 / -1;
 }
 
 @media (min-width: 1281px) {
@@ -158,6 +171,7 @@
   border: 1px solid var(--macro-toolkit-border-soft);
   border-radius: var(--ib-radius, 2px);
   background: var(--macro-toolkit-card);
+  box-shadow: var(--moss-shadow-card);
 }
 
 
@@ -197,10 +211,11 @@
 }
 
 @media (min-width: 1101px) {
-  /* Desktop first-screen conclusion band: stance and summary left, primary signal right */
+  /* Desktop first-screen conclusion band: stance and summary left, primary signal right.
+     右栏 start 对齐：左侧结论长时不再把主信号 tile 拉成高空卡。 */
   .macro-toolkit-cockpit--toolkit .macro-toolkit-house-view {
     grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr);
-    align-items: stretch;
+    align-items: start;
     column-gap: 14px;
   }
 
@@ -210,7 +225,7 @@
 
   .macro-toolkit-cockpit--toolkit .macro-toolkit-house-view .macro-toolkit-brief-metrics {
     grid-template-columns: minmax(0, 1fr);
-    align-self: stretch;
+    align-self: start;
   }
 }
 
@@ -226,22 +241,23 @@
 .macro-toolkit-panel-kicker span {
   color: var(--macro-toolkit-primary);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
 .macro-toolkit-panel-kicker strong {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
+/* Hero 密度对齐首页决策条：结论 15px/600、辅助 12px、面板 padding 12px。 */
 .macro-toolkit-cockpit__conclusion {
   display: grid;
   gap: 8px;
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid var(--macro-toolkit-border-soft);
   border-left: 2px solid var(--macro-toolkit-primary);
   border-radius: var(--moss-radius-sm);
@@ -254,14 +270,14 @@
   align-items: center;
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-cockpit__conclusion strong {
   color: var(--moss-color-text-primary);
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.12;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
@@ -270,7 +286,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--moss-color-text-primary);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.55;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -282,8 +298,31 @@
   line-height: 1.4;
 }
 
+.macro-toolkit-house-view .macro-toolkit-contract-boundary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.macro-toolkit-house-view .macro-toolkit-contract-boundary span,
+.macro-toolkit-house-view .macro-toolkit-contract-boundary strong,
+.macro-toolkit-house-view .macro-toolkit-contract-boundary small {
+  white-space: normal;
+}
+
+.macro-toolkit-cockpit__boundary-note {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* hero 只有一块主信号 tile，单列即可（三等列会让 761-1100 区间 tile 只占 1/3 宽）。 */
 .macro-toolkit-cockpit__analysis .macro-toolkit-brief-metrics {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.macro-toolkit-house-view .macro-toolkit-metric strong {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .macro-toolkit-investment-brief {
@@ -383,15 +422,15 @@
   color: var(--moss-color-text-muted);
   font-size: 11px;
   font-style: normal;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
 .macro-toolkit-submission-cockpit strong {
   color: var(--moss-color-text-primary);
-  font-size: 13px;
-  font-weight: 900;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.18;
   overflow-wrap: anywhere;
 }
@@ -402,9 +441,10 @@
   line-height: 1.15;
 }
 
+/* G：责任人大面积彩字降权为墨字。 */
 .macro-toolkit-submission-cockpit__owner strong {
-  color: var(--macro-toolkit-primary);
-  font-size: 16px;
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
 }
 
 .macro-toolkit-submission-cockpit__lane em {
@@ -446,7 +486,7 @@
   background: var(--macro-toolkit-primary-soft);
   color: var(--macro-toolkit-primary);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
   text-decoration: none;
 }
@@ -471,12 +511,13 @@
   }
 }
 
+/* G：治理闸门橙色染底降权，仅保留 2px 语义左沿。 */
 .macro-toolkit-governance-gate {
   padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--macro-toolkit-warning) 30%, var(--macro-toolkit-border-soft));
+  border: 1px solid var(--macro-toolkit-border-soft);
   border-left: 2px solid var(--macro-toolkit-warning);
   border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-warning-soft);
+  background: var(--macro-toolkit-card);
 }
 
 /* Second-screen committee submission workspace pass */
@@ -497,15 +538,15 @@
 .macro-toolkit-committee-workspace__evidence-grid span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
 }
 
 .macro-toolkit-committee-workspace__evidence-head strong,
 .macro-toolkit-committee-workspace__evidence-grid strong {
   color: var(--moss-color-text-primary);
-  font-size: 13px;
-  font-weight: 900;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -584,7 +625,13 @@
 .macro-toolkit-governance-gate .macro-toolkit-contract-boundary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 8px 12px;
-  background: color-mix(in srgb, var(--macro-toolkit-card) 72%, var(--macro-toolkit-warning-soft));
+  border-color: var(--macro-toolkit-border-muted);
+  border-left-color: var(--macro-toolkit-warning);
+  background: var(--macro-toolkit-card-soft);
+}
+
+.macro-toolkit-governance-gate .macro-toolkit-contract-boundary strong {
+  color: var(--moss-color-text-primary);
 }
 
 .macro-toolkit-governance-gate .macro-toolkit-contract-boundary span,
@@ -594,6 +641,15 @@
   text-overflow: clip;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+/* 治理栏与业务段并排常驻：端点 kind 与规则版本是系统标识，
+   降到最小视觉权重，结论性披露（非正式口径）保持原权重。 */
+.macro-toolkit-governance-gate .macro-toolkit-contract-boundary small {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .macro-toolkit-governance-gate__metrics {
@@ -619,7 +675,7 @@
   border: 1px solid var(--macro-toolkit-border-muted);
   border-left: 2px solid var(--macro-toolkit-warning);
   border-radius: var(--moss-radius-sm);
-  background: color-mix(in srgb, var(--macro-toolkit-card) 78%, var(--macro-toolkit-warning-soft));
+  background: var(--macro-toolkit-card-soft);
 }
 
 .macro-toolkit-governance-audit__focus span,
@@ -627,14 +683,14 @@
 .macro-toolkit-action-receipt__field span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
 }
 
 .macro-toolkit-governance-audit__focus strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -675,7 +731,7 @@
   min-width: 0;
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -703,13 +759,13 @@
 .macro-toolkit-operations-console__head span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-operations-console__head strong {
   color: var(--moss-color-text-primary);
   font-size: 16px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -724,6 +780,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+  align-items: start;
   min-width: 0;
 }
 
@@ -780,7 +837,7 @@
 .macro-toolkit-action-receipt__head strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -794,9 +851,10 @@
 
 .macro-toolkit-action-receipt__field {
   display: grid;
-  gap: 4px;
+  gap: 3px;
+  align-content: start;
   min-width: 0;
-  padding: 8px;
+  padding: 6px 8px;
   border: 1px solid var(--macro-toolkit-border-muted);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
@@ -805,7 +863,7 @@
 .macro-toolkit-action-receipt__field strong {
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -831,14 +889,14 @@
 .macro-toolkit-action-queue__head span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
 }
 
 .macro-toolkit-action-queue__head strong {
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -867,7 +925,7 @@
 .macro-toolkit-action-queue__columns span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -890,7 +948,7 @@
 .macro-toolkit-action-queue__item strong {
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -898,7 +956,7 @@
 .macro-toolkit-action-queue__item span {
   color: var(--moss-color-text-secondary);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -913,7 +971,7 @@
 
 .macro-toolkit-action-queue__item a {
   color: var(--macro-toolkit-primary);
-  font-weight: 850;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -927,7 +985,11 @@
   text-underline-offset: 2px;
 }
 
+/* G：空态收缩为一句话居中，不再占整块高度。 */
 .macro-toolkit-action-queue__empty {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
   padding: 6px 7px;
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
@@ -1010,8 +1072,7 @@
 }
 
 
-.macro-toolkit-metric span,
-.macro-toolkit-readiness-tile span {
+.macro-toolkit-metric span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
   font-weight: 600;
@@ -1077,19 +1138,19 @@
   align-items: center;
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-contract-boundary strong {
   color: var(--macro-toolkit-warning);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .macro-toolkit-contract-boundary small {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .macro-toolkit-error-state {
@@ -1116,13 +1177,13 @@
 .macro-toolkit-error-sources span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-error-sources small {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -1153,20 +1214,20 @@
 .macro-toolkit-read-scope-blocker span {
   color: var(--macro-toolkit-warning);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-read-scope-blocker strong {
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .macro-toolkit-read-scope-blocker small,
 .macro-toolkit-read-scope-blocker__copy-status {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .macro-toolkit-read-scope-blocker__copy-status--success {
@@ -1185,7 +1246,6 @@
 }
 
 .macro-toolkit-metric > span,
-.macro-toolkit-readiness-tile > span,
 .macro-toolkit-status-strip span,
 .macro-toolkit-capability-result-head > span {
   display: inline-flex;
@@ -1197,15 +1257,9 @@
   color: var(--moss-color-text-primary);
   font-variant-numeric: tabular-nums;
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.08;
   overflow-wrap: anywhere;
-}
-
-.macro-toolkit-readiness-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
 }
 
 .macro-toolkit-analysis-stack,
@@ -1272,7 +1326,7 @@
   min-width: 0;
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .macro-toolkit-data-health-summary__grid {
@@ -1294,13 +1348,13 @@
 .macro-toolkit-data-health-summary__grid span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .macro-toolkit-data-health-summary__grid strong {
   color: var(--moss-color-text-primary);
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
@@ -1338,7 +1392,7 @@
   min-width: 0;
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -1361,14 +1415,14 @@
 .macro-toolkit-data-health__tile span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .macro-toolkit-data-health__tile strong {
   color: var(--moss-color-text-primary);
   font-variant-numeric: tabular-nums;
   font-size: 18px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.1;
   overflow-wrap: anywhere;
 }
@@ -1396,7 +1450,7 @@
 }
 
 .macro-toolkit-data-health__warning-note > summary {
-  font-weight: 750;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -1412,10 +1466,11 @@
   min-width: 0;
   color: var(--macro-toolkit-warning);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.45;
 }
 
+/* 缺口代码清单折叠明细：行面只露「待补 N 项」，展开后代码留痕。 */
 .macro-toolkit-data-health__repair-note-details {
   min-width: 0;
 }
@@ -1424,7 +1479,6 @@
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   font-weight: 600;
-  line-height: 1.45;
   cursor: pointer;
 }
 
@@ -1453,7 +1507,7 @@
 .macro-toolkit-data-health__repairs-head span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-data-health__repair-summary {
@@ -1470,13 +1524,13 @@
 .macro-toolkit-data-health__repair-summary span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .macro-toolkit-data-health__repair-summary strong {
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -1504,7 +1558,7 @@
 .macro-toolkit-data-health__repair-ticket-grid span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -1512,7 +1566,7 @@
 .macro-toolkit-data-health__repair-ticket-grid strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -1541,7 +1595,7 @@
 .macro-toolkit-data-health__repair-ticket small {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -1550,7 +1604,7 @@
   justify-self: start;
   color: var(--macro-toolkit-primary);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.25;
   text-decoration: none;
 }
@@ -1561,22 +1615,30 @@
   text-underline-offset: 2px;
 }
 
+/* A. 待处理数据项：卡海改行式清单（严重度圆点 + 能力名 + 待补数 + 日期/滞后 + 行尾动作）。 */
 .macro-toolkit-data-health__repair-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card-muted);
 }
 
 .macro-toolkit-data-health__repair {
   display: grid;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  align-items: center;
   min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--macro-toolkit-border-soft);
+  min-height: 36px;
+  padding: 5px 10px;
   border-left: 2px solid var(--macro-toolkit-warning);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-muted);
+}
+
+.macro-toolkit-data-health__repair + .macro-toolkit-data-health__repair {
+  border-top: 1px solid var(--macro-toolkit-border-muted);
 }
 
 .macro-toolkit-data-health__repair--high {
@@ -1595,8 +1657,10 @@
 }
 
 .macro-toolkit-data-health__repair-main {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  align-items: baseline;
   min-width: 0;
 }
 
@@ -1609,7 +1673,7 @@
   min-width: 0;
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -1630,6 +1694,7 @@
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  justify-content: flex-end;
   min-width: 0;
 }
 
@@ -1661,7 +1726,7 @@
 .macro-toolkit-indicator-observation__head span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .macro-toolkit-indicator-observation__head strong {
@@ -1711,7 +1776,7 @@
 .macro-toolkit-indicator-observation__item span {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -1720,7 +1785,7 @@
   color: var(--macro-toolkit-info);
   font-variant-numeric: tabular-nums;
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -1732,45 +1797,35 @@
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-readiness-tile {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--macro-toolkit-border-soft);
-  border-left: 2px solid var(--macro-toolkit-info);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-readiness-tile span {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.macro-toolkit-readiness-tile strong {
-  color: var(--moss-color-text-primary);
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-readiness-tile small {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
+/* 核心信号：首页 KPI 单框横带语言（外框 + 1px 缝隙露底色 = 发丝竖缝，折行时横缝随 gap 出现）。 */
 .macro-toolkit-signal-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--macro-toolkit-border);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-border);
 }
 
-.macro-toolkit-signal-card,
+@media (max-width: 1200px) {
+  .macro-toolkit-signal-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .macro-toolkit-signal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .macro-toolkit-signal-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .macro-toolkit-capability-result,
 .macro-toolkit-strategy-card {
   display: grid;
@@ -1783,8 +1838,13 @@
 }
 
 .macro-toolkit-signal-card {
-  padding: 13px;
+  display: grid;
+  gap: 8px;
   align-content: start;
+  min-width: 0;
+  min-height: 120px;
+  padding: 11px 14px;
+  background: var(--macro-toolkit-card-soft);
 }
 
 .macro-toolkit-capability-result {
@@ -1807,29 +1867,90 @@
   min-width: 0;
 }
 
-.macro-toolkit-signal-head span,
 .macro-toolkit-capability-result-head span {
   min-width: 0;
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
+/* 横带格标签：11px 两行 clamp + 固定 min-height，防同排数值错位（§3）；只命中标题 span，不动状态徽标。 */
+.macro-toolkit-signal-head > span:first-child {
+  display: -webkit-box;
+  min-width: 0;
+  min-height: 30px;
+  overflow: hidden;
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 横带格状态徽标：6px 语义圆点 + 11px 文字行（替代 antd Tag；em 用法归正斜体）。 */
+.macro-toolkit-signal-state {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  color: var(--moss-color-text-secondary);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.macro-toolkit-signal-state i {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--macro-toolkit-info);
+}
+
+.macro-toolkit-signal-state--positive {
+  color: var(--macro-toolkit-success);
+}
+
+.macro-toolkit-signal-state--positive i {
+  background: var(--macro-toolkit-success);
+}
+
+.macro-toolkit-signal-state--negative {
+  color: var(--macro-toolkit-danger);
+}
+
+.macro-toolkit-signal-state--negative i {
+  background: var(--macro-toolkit-danger);
+}
+
+.macro-toolkit-signal-state--missing {
+  color: var(--macro-toolkit-warning);
+}
+
+.macro-toolkit-signal-state--missing i {
+  background: var(--macro-toolkit-warning);
+}
+
 .macro-toolkit-signal-card strong {
   color: var(--moss-color-text-primary);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 26px;
 }
 
 .macro-toolkit-capability-result strong,
 .macro-toolkit-strategy-card strong {
   color: var(--moss-color-text-primary);
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -1885,14 +2006,15 @@
 .macro-toolkit-model-signal-matrix__readiness span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
 .macro-toolkit-hason-strategy__head strong {
   color: var(--moss-color-text-primary);
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -1919,6 +2041,7 @@
 .macro-toolkit-hason-module-grid {
   display: grid;
   gap: 10px;
+  align-items: start;
 }
 
 .macro-toolkit-hason-strategy__metrics {
@@ -1966,19 +2089,19 @@
   background: var(--macro-toolkit-warning-soft);
 }
 
-/* 模型就绪度：段落式「/」串改「模型名 + 状态徽标」胶囊列表（06 区模型卡同语言）。 */
+/* 模型就绪度：D 收敛为「状态组头 + 模型名」行，同状态徽标只出现一次。 */
 .macro-toolkit-model-readiness-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .macro-toolkit-model-readiness-pills li {
-  display: inline-flex;
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
   align-items: baseline;
   min-width: 0;
   padding: 3px 8px;
@@ -1991,11 +2114,22 @@
   overflow-wrap: anywhere;
 }
 
+.macro-toolkit-model-readiness-pills li > span {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-model-readiness-pills li > span + span {
+  padding-left: 8px;
+  border-left: 1px solid var(--macro-toolkit-border-muted);
+}
+
 .macro-toolkit-model-readiness-pills em {
   color: var(--moss-color-text-secondary);
   font-size: 11px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -2036,15 +2170,16 @@
 .macro-toolkit-model-chain__head span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
+/* D：技术面板头对齐第一波分区头语言（14px/700）。 */
 .macro-toolkit-model-signal-matrix__head strong,
 .macro-toolkit-model-chain__head strong {
   color: var(--moss-color-text-primary);
-  font-size: 16px;
-  font-weight: 900;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -2052,7 +2187,7 @@
 .macro-toolkit-model-chain__head small {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -2072,7 +2207,7 @@
   flex: 0 0 auto;
   color: var(--macro-toolkit-primary);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -2082,76 +2217,6 @@
   text-underline-offset: 2px;
 }
 
-.macro-toolkit-model-signal-matrix__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-
-.macro-toolkit-model-signal-matrix__row {
-  display: grid;
-  gap: 6px;
-  align-content: start;
-  min-width: 0;
-  padding: 8px 12px;
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-muted);
-}
-
-.macro-toolkit-model-signal-matrix__title {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.macro-toolkit-model-signal-matrix__title span {
-  min-width: 0;
-  color: var(--moss-color-text-primary);
-  font-size: 13px;
-  font-weight: 900;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-model-signal-matrix__row strong {
-  color: var(--macro-toolkit-info);
-  font-size: 12px;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-model-signal-matrix__row small {
-  color: var(--moss-color-text-secondary);
-  font-size: 11px;
-  font-weight: 760;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-model-signal-matrix__evidence {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding-top: 6px;
-  border-top: 1px solid var(--macro-toolkit-border-muted);
-}
-
-.macro-toolkit-model-signal-matrix__evidence em {
-  min-width: 0;
-  color: var(--moss-color-text-muted);
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 760;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-model-signal-matrix__detail-button,
 .macro-toolkit-model-chain__toggle,
 .macro-toolkit-model-chain__evidence-button,
 .macro-toolkit-model-chain__wall-toggle,
@@ -2164,12 +2229,10 @@
   color: var(--macro-toolkit-primary);
   font: inherit;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.macro-toolkit-model-signal-matrix__detail-button:hover,
-.macro-toolkit-model-signal-matrix__detail-button[aria-expanded="true"],
 .macro-toolkit-model-chain__toggle:hover,
 .macro-toolkit-model-chain__toggle[aria-expanded="true"],
 .macro-toolkit-model-chain__evidence-button:hover,
@@ -2180,6 +2243,24 @@
 .macro-toolkit-hason-strategy__audit-toggle[aria-expanded="true"] {
   border-color: color-mix(in srgb, var(--macro-toolkit-primary) 52%, var(--macro-toolkit-border-muted));
   background: var(--macro-toolkit-primary-soft);
+}
+
+/* 模型卡内的「证据」是证据层入口，在业务段降为安静的 11px 链接行；
+   链外模型证据仍保持胶囊样式（那是一排并列入口，需要可点边界）。 */
+.macro-toolkit-model-chain__model .macro-toolkit-model-chain__evidence-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--moss-color-text-muted);
+  font-weight: 600;
+}
+
+.macro-toolkit-model-chain__model .macro-toolkit-model-chain__evidence-button:hover,
+.macro-toolkit-model-chain__model .macro-toolkit-model-chain__evidence-button[aria-expanded="true"] {
+  background: none;
+  color: var(--macro-toolkit-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .macro-toolkit-model-chain__wall-toggle {
@@ -2219,7 +2300,7 @@
 .macro-toolkit-model-signal-detail__receipt span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-model-signal-detail__head strong,
@@ -2227,7 +2308,7 @@
 .macro-toolkit-model-signal-detail__receipt strong {
   color: var(--moss-color-text-primary);
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -2237,7 +2318,7 @@
 .macro-toolkit-model-signal-detail__receipt small {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -2262,7 +2343,7 @@
 .macro-toolkit-model-signal-detail__grid strong {
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -2341,7 +2422,7 @@
 .macro-toolkit-strategy-metric span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .macro-toolkit-strategy-metric b {
@@ -2351,13 +2432,15 @@
   line-height: 1.1;
 }
 
+/* E：追踪块从染色底改 panel 递进（发丝框 + panel-3），与主面板层级分明。 */
 .macro-toolkit-strategy-trace {
   display: grid;
   gap: 6px;
   min-width: 0;
   padding: 8px 12px;
+  border: 1px solid var(--macro-toolkit-border-muted);
   border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-info-soft);
+  background: var(--dh-surface-muted);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   line-height: 1.4;
@@ -2367,7 +2450,7 @@
 .macro-toolkit-evidence-limits > summary {
   color: var(--macro-toolkit-primary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.4;
   cursor: pointer;
 }
@@ -2395,7 +2478,7 @@
 .macro-toolkit-strategy-trace b {
   flex: 0 0 auto;
   color: var(--moss-color-text-muted);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-strategy-trace em {
@@ -2453,6 +2536,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 10px;
+  align-items: start;
   min-width: 0;
 }
 
@@ -2524,7 +2608,7 @@
 
 .macro-toolkit-shadow-review__facts b {
   color: var(--moss-color-text-muted);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-shadow-review__criteria {
@@ -2551,8 +2635,8 @@
 }
 
 .macro-toolkit-shadow-review__criterion b {
-  color: var(--moss-color-text);
-  font-weight: 800;
+  color: var(--moss-color-text-primary);
+  font-weight: 600;
 }
 
 .macro-toolkit-shadow-review__criterion--pass {
@@ -2612,7 +2696,7 @@
 .macro-toolkit-shadow-evidence__facts b,
 .macro-toolkit-shadow-evidence__actions b {
   color: var(--moss-color-text-muted);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-shadow-evidence__actions,
@@ -2626,10 +2710,12 @@
   background: color-mix(in srgb, var(--macro-toolkit-warning) 10%, var(--macro-toolkit-card-muted));
 }
 
+/* 02 风险区：标准 panel + 2px 语义左沿；两栏不等高走 start 对齐。 */
 .macro-toolkit-a-share-risk {
   display: grid;
   grid-template-columns: minmax(240px, 0.9fr) minmax(320px, 1.1fr);
   gap: 10px;
+  align-items: start;
   min-width: 0;
   padding: 14px;
   border: 1px solid var(--macro-toolkit-border-soft);
@@ -2646,10 +2732,11 @@
 
 .macro-toolkit-a-share-risk__summary strong {
   color: var(--moss-color-text-primary);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 26px;
 }
 
 .macro-toolkit-a-share-risk__summary p {
@@ -2676,6 +2763,12 @@
   align-content: start;
 }
 
+/* 指标格统一 min-height + 顶对齐，防止同排格因文案长短错位。 */
+.macro-toolkit-a-share-risk__metrics .macro-toolkit-strategy-metric {
+  align-content: start;
+  min-height: 64px;
+}
+
 .macro-toolkit-a-share-risk__lists {
   display: grid;
   grid-column: 1 / -1;
@@ -2696,7 +2789,7 @@
 .macro-toolkit-a-share-risk__list span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-input-evidence {
@@ -2707,10 +2800,11 @@
   border-top: 1px solid var(--macro-toolkit-border-muted);
 }
 
+/* C：证据入口降为安静的 11px 链接行。 */
 .macro-toolkit-input-evidence summary {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--macro-toolkit-primary);
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -2788,13 +2882,13 @@
 .macro-toolkit-crisis-review-conclusion__head span {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .macro-toolkit-crisis-shadow-decision__head strong {
   color: var(--moss-color-text-primary);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-crisis-shadow-action-queue {
@@ -2819,7 +2913,7 @@
 .macro-toolkit-crisis-shadow-action-queue__next strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -2861,7 +2955,7 @@
 .macro-toolkit-crisis-shadow-impact__head strong {
   color: var(--moss-color-text-primary);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -2906,7 +3000,7 @@
 .macro-toolkit-crisis-review-conclusion__head strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -2928,7 +3022,7 @@
 .macro-toolkit-crisis-review-conclusion__item strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -2949,7 +3043,7 @@
 .macro-toolkit-crisis-shadow-decision__item strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -2989,7 +3083,7 @@
 .macro-toolkit-crisis-promotion-rule-pack__copy-status {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .macro-toolkit-crisis-promotion-rule-pack__copy-status--success {
@@ -3017,7 +3111,7 @@
 .macro-toolkit-crisis-promotion-rule-pack__audit strong {
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-crisis-promotion-rule-pack__formula-boundary {
@@ -3035,13 +3129,13 @@
 .macro-toolkit-crisis-promotion-rule-pack__formula-boundary-item span {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .macro-toolkit-crisis-promotion-rule-pack__formula-boundary-item strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -3049,13 +3143,13 @@
 .macro-toolkit-crisis-promotion-rule-pack__head span {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .macro-toolkit-crisis-promotion-rule-pack__head strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-crisis-promotion-rule-pack small {
@@ -3087,7 +3181,7 @@
 .macro-toolkit-crisis-gap-group span {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-crisis-gap-list__head small,
@@ -3170,13 +3264,13 @@
 .macro-toolkit-crisis-commodity-closure span {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .macro-toolkit-crisis-commodity-closure strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-crisis-commodity-closure small {
@@ -3205,6 +3299,12 @@
   background: var(--macro-toolkit-card-muted);
 }
 
+/* F：已实现波动组件卡统一高度、顶对齐，数值等宽对读。 */
+.macro-toolkit-crisis-component {
+  align-content: start;
+  min-height: 84px;
+}
+
 .macro-toolkit-crisis-component span,
 .macro-toolkit-crisis-input small {
   color: var(--moss-color-text-secondary);
@@ -3218,7 +3318,7 @@
   color: var(--moss-color-text-primary);
   font-variant-numeric: tabular-nums;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -3260,7 +3360,7 @@
   background: var(--macro-toolkit-info-soft);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .macro-toolkit-runtime-strip span {
@@ -3276,11 +3376,10 @@
 }
 
 /* 语义左条统一收口（原 10 组分散 modifier 合并；映射与合并前逐条一致）：
-   正/完成/已解决 → 绿，负/失败/缺失口径 → 红，缺口/滞后/运行中 → 琥珀，中性 → info。 */
-.macro-toolkit-signal-card--positive,
+   正/完成/已解决 → 绿，负/失败/缺失口径 → 红，缺口/滞后/运行中 → 琥珀，中性 → info。
+   信号横带格已改 6px 语义圆点（.macro-toolkit-signal-state），不再走左沿。 */
 .macro-toolkit-capability-result--positive,
 .macro-toolkit-strategy-card--positive,
-.macro-toolkit-readiness-tile--positive,
 .macro-toolkit-data-health__tile--positive,
 .macro-toolkit-a-share-risk--positive,
 .macro-toolkit-action-receipt--completed,
@@ -3290,10 +3389,8 @@
   border-left-color: var(--macro-toolkit-success);
 }
 
-.macro-toolkit-signal-card--negative,
 .macro-toolkit-capability-result--negative,
 .macro-toolkit-strategy-card--negative,
-.macro-toolkit-readiness-tile--negative,
 .macro-toolkit-a-share-risk--negative,
 .macro-toolkit-action-receipt--failed,
 .macro-toolkit-action-queue__item--failed,
@@ -3302,10 +3399,8 @@
   border-left-color: var(--macro-toolkit-danger);
 }
 
-.macro-toolkit-signal-card--missing,
 .macro-toolkit-capability-result--missing,
 .macro-toolkit-strategy-card--missing,
-.macro-toolkit-readiness-tile--missing,
 .macro-toolkit-data-health__tile--negative,
 .macro-toolkit-data-health__tile--missing,
 .macro-toolkit-a-share-risk--missing,
@@ -3319,47 +3414,150 @@
   border-left-color: var(--macro-toolkit-warning);
 }
 
-.macro-toolkit-signal-card--neutral,
 .macro-toolkit-capability-result--neutral,
 .macro-toolkit-strategy-card--neutral {
   border-left-color: var(--macro-toolkit-info);
 }
 
-/* Nocturne 分区头语言（对照首页 overviewSectionHeader）：
-   页面主容器 counter-reset，顶级分区 counter-increment，
-   编号以 ::before 打进眉标 span；分区头下压一条发丝线。 */
+/* Nocturne 分区头语言：页面主容器提供编号域，顶级分区负责递增；
+   SectionHead 通过 numbered={{ counter: "mt-section" }} 读取同一序列。 */
 .macro-toolkit-page__main {
   counter-reset: mt-section;
 }
 
 .macro-toolkit-section {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
   counter-increment: mt-section;
 }
 
-.macro-toolkit-section > div:first-child {
+/* 信息分层：主列前段是业务观察与结论（mt-section 01…0N，常展开），
+   后段是运维与证据（mt-ops 运维 01…0N，默认折叠）。界标本身不占编号序列。 */
+.macro-toolkit-ops-layer {
+  display: grid;
+  gap: 12px;
   min-width: 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--macro-toolkit-border-muted);
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--macro-toolkit-border);
+  counter-reset: mt-ops;
 }
 
-.macro-toolkit-section > div:first-child > span:first-child::before,
-.macro-toolkit-section > div:first-child > div:first-child > span:first-child::before {
-  content: counter(mt-section, decimal-leading-zero);
+.macro-toolkit-ops-layer__lead {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.macro-toolkit-ops-layer__lead > span {
+  color: var(--dh-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.macro-toolkit-ops-layer__lead > small {
+  color: var(--dh-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* 运维段的子区块不再重复业务编号，编号只打在折叠壳标题上。 */
+.macro-toolkit-ops-layer .macro-toolkit-section > div:first-child > span:first-child::before,
+.macro-toolkit-ops-layer
+  .macro-toolkit-section
+  > div:first-child
+  > div:first-child
+  > span:first-child::before {
+  content: none;
+}
+
+.macro-toolkit-ops-block {
+  min-width: 0;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--macro-toolkit-card);
+  counter-increment: mt-ops;
+}
+
+.macro-toolkit-ops-block__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  min-width: 0;
+  padding: 8px 12px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.macro-toolkit-ops-block__summary::-webkit-details-marker {
+  display: none;
+}
+
+.macro-toolkit-ops-block__summary::after {
+  content: "展开";
+  margin-left: auto;
+  color: var(--macro-toolkit-primary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.macro-toolkit-ops-block[open] > .macro-toolkit-ops-block__summary::after {
+  content: "收起";
+}
+
+.macro-toolkit-ops-block__title {
+  color: var(--dh-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.macro-toolkit-ops-block__title::before {
+  content: "运维 " counter(mt-ops, decimal-leading-zero);
   margin-right: 8px;
   color: var(--dh-muted);
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  letter-spacing: 0;
 }
 
-.macro-toolkit-section-headline {
+.macro-toolkit-ops-block__chips {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+.macro-toolkit-ops-block__chips > span {
+  padding: 0 6px;
+  border: 1px solid var(--macro-toolkit-border-muted);
+  border-radius: var(--dh-api-radius);
+  background: var(--macro-toolkit-card-soft);
+  color: var(--dh-ink-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+
+.macro-toolkit-ops-block__flag {
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--macro-toolkit-danger) 45%, transparent);
+  border-radius: var(--dh-api-radius);
+  background: var(--macro-toolkit-danger-soft);
+  color: var(--macro-toolkit-danger);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.macro-toolkit-ops-block__body {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+  padding: 12px;
+  border-top: 1px solid var(--macro-toolkit-border-muted);
 }
 
 /* Fourth-screen execution evidence receipt workspace pass */
@@ -3371,12 +3569,12 @@
   min-width: 0;
 }
 
+/* G：头部只有一个标题子节点，改单列通栏，消除右侧空白。 */
 .macro-toolkit-execution-receipt-workspace__head {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: minmax(0, 0.74fr) minmax(360px, 1.26fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
-  align-items: stretch;
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--macro-toolkit-border-soft);
@@ -3395,21 +3593,22 @@
 .macro-toolkit-execution-receipt-workspace__section-label {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
 }
 
 .macro-toolkit-execution-receipt-workspace__head strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
+/* G：「执行闭环总览」由大标题降为标准分区头（14px/700 墨字）。 */
 .macro-toolkit-execution-receipt-workspace__head > div:first-child > strong {
-  color: var(--macro-toolkit-primary);
-  font-size: 18px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .macro-toolkit-execution-receipt-workspace__head small {
@@ -3451,15 +3650,16 @@
   background: var(--macro-toolkit-card-muted);
 }
 
+/* G：产物回执底稿从绿色染底收敛为 panel-2 + 2px 语义左沿。 */
 .macro-toolkit-receipt-workpaper {
   display: grid;
   gap: 10px;
   min-width: 0;
   padding: 10px;
-  border: 1px solid color-mix(in srgb, var(--macro-toolkit-success) 28%, var(--macro-toolkit-border-soft));
+  border: 1px solid var(--macro-toolkit-border-soft);
   border-left: 2px solid var(--macro-toolkit-success);
   border-radius: var(--moss-radius-sm);
-  background: color-mix(in srgb, var(--macro-toolkit-card) 92%, var(--macro-toolkit-success));
+  background: var(--macro-toolkit-card-soft);
 }
 
 .macro-toolkit-receipt-workpaper__head,
@@ -3473,14 +3673,14 @@
 .macro-toolkit-receipt-workpaper__item span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
 }
 
 .macro-toolkit-receipt-workpaper__head strong {
   color: var(--macro-toolkit-success);
-  font-size: 16px;
-  font-weight: 900;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -3507,7 +3707,7 @@
 .macro-toolkit-receipt-workpaper__item strong {
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -3539,14 +3739,14 @@
 .macro-toolkit-receipt-technical-details__head span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
 }
 
 .macro-toolkit-receipt-technical-details__head strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -3562,7 +3762,7 @@
   justify-self: start;
   color: var(--macro-toolkit-primary);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -3626,7 +3826,7 @@
 .macro-toolkit-commodity-selector-label {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .macro-toolkit-commodity-products {
@@ -3660,13 +3860,13 @@
 .macro-toolkit-commodity-product-text span {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .macro-toolkit-commodity-product-text small {
   color: var(--moss-color-text-secondary);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .macro-toolkit-commodity-refresh-result {
@@ -3690,13 +3890,13 @@
 .macro-toolkit-commodity-refresh-summary span {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 740;
+  font-weight: 600;
 }
 
 .macro-toolkit-commodity-refresh-summary strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 780;
+  font-weight: 600;
 }
 
 .macro-toolkit-commodity-refresh-closure {
@@ -3719,14 +3919,14 @@
 .macro-toolkit-commodity-refresh-closure > span {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
 .macro-toolkit-commodity-refresh-closure > strong {
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -3738,7 +3938,7 @@
 
 .macro-toolkit-commodity-refresh-product span {
   color: var(--moss-color-text-primary);
-  font-weight: 740;
+  font-weight: 600;
 }
 
 .macro-toolkit-commodity-refresh-product small,
@@ -3749,7 +3949,7 @@
 .macro-toolkit-commodity-refresh-product small {
   color: var(--moss-color-text-secondary);
   font-size: 11px;
-  font-weight: 640;
+  font-weight: 600;
 }
 
 /* 闭环计数与对齐状态拆两行，单行元信息不再串 6+ 个分隔项（DESIGN §7）。 */
@@ -3763,7 +3963,7 @@
   background: var(--macro-toolkit-card);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .macro-toolkit-strategy-supply-strip__row {
@@ -3810,7 +4010,7 @@
 .macro-toolkit-strategy-observation__head span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .macro-toolkit-strategy-observation__head strong {
@@ -3855,7 +4055,7 @@
 .macro-toolkit-strategy-observation__note span {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -3896,7 +4096,7 @@
 .macro-toolkit-omitted-item span {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .macro-toolkit-omitted-item small {
@@ -3941,37 +4141,6 @@
   height: auto;
 }
 
-.macro-toolkit-crisis-history {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-muted);
-}
-
-.macro-toolkit-crisis-history__head {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.macro-toolkit-crisis-history__head span {
-  color: var(--moss-color-text-muted);
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.macro-toolkit-crisis-history__head strong {
-  color: var(--moss-color-text-primary);
-  font-size: 12px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
 .macro-toolkit-crisis-shadow-toggle {
   display: flex;
   gap: 10px;
@@ -4002,27 +4171,21 @@
 .macro-toolkit-number-cell strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-number-cell strong {
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
 .macro-toolkit-number-cell small,
-.macro-toolkit-source-cell small {
-  color: var(--moss-color-text-muted);
-  font-size: 11px;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
 .macro-toolkit-date-cell span,
 .macro-toolkit-source-cell span {
   min-width: 0;
   color: var(--moss-color-text-primary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   /* 长 snake 来源 token（如 public_repo_rate_query）可断行，不外溢来源列。 */
   overflow-wrap: anywhere;
 }
@@ -4032,9 +4195,10 @@
   gap: 4px;
   align-items: center;
   color: var(--moss-color-text-secondary);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .macro-toolkit-delta-cell--up {
@@ -4118,7 +4282,7 @@
 
 /* antd 预设色收敛到 Nocturne 语义链（§4：深色页禁高饱和预设）；字号统一 11px 辅助档。 */
 .macro-toolkit-page .ant-tag {
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-size: 11px;
   line-height: 18px;
 }
@@ -4178,7 +4342,7 @@
   align-items: center;
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .macro-toolkit-console {
@@ -4199,10 +4363,6 @@
 @media (max-width: 1100px) {
   .macro-toolkit-cockpit__body {
     grid-template-columns: 1fr;
-  }
-
-  .macro-toolkit-model-signal-matrix__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .macro-toolkit-model-signal-detail__grid {
@@ -4242,8 +4402,7 @@
     grid-row: auto;
   }
 
-  .macro-toolkit-execution-receipt-workspace,
-  .macro-toolkit-execution-receipt-workspace__head {
+  .macro-toolkit-execution-receipt-workspace {
     grid-template-columns: 1fr;
   }
 
@@ -4265,14 +4424,12 @@
     grid-template-columns: 1fr 1fr;
   }
 
-  .macro-toolkit-signal-grid,
   .macro-toolkit-a-share-risk,
   .macro-toolkit-a-share-risk__lists,
   .macro-toolkit-hason-strategy__metrics,
   .macro-toolkit-strategy-observation__grid,
   .macro-toolkit-data-health-summary__grid,
-  .macro-toolkit-data-health__grid,
-  .macro-toolkit-readiness-strip {
+  .macro-toolkit-data-health__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -4332,20 +4489,6 @@
     justify-self: start;
   }
 
-  .macro-toolkit-model-signal-matrix__grid {
-    display: flex;
-    max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    padding-bottom: 2px;
-    scrollbar-width: thin;
-  }
-
-  .macro-toolkit-model-signal-matrix__row {
-    flex: 0 0 236px;
-    min-height: 152px;
-  }
-
   .macro-toolkit-model-signal-detail__grid {
     grid-template-columns: 1fr;
   }
@@ -4353,19 +4496,6 @@
   .macro-toolkit-house-view,
   .macro-toolkit-cockpit__conclusion {
     padding: 10px;
-  }
-
-  .macro-toolkit-cockpit__conclusion strong {
-    font-size: 22px;
-  }
-
-  .macro-toolkit-cockpit__conclusion p {
-    font-size: 13px;
-    line-height: 1.45;
-  }
-
-  .macro-toolkit-cockpit__analysis .macro-toolkit-brief-metrics {
-    grid-template-columns: 1fr;
   }
 
   .macro-toolkit-cockpit--toolkit .macro-toolkit-investment-brief {
@@ -4623,14 +4753,12 @@
 .macro-toolkit-governance-gate__metrics,
 .macro-toolkit-action-receipt__grid,
 .macro-toolkit-cffex-metrics,
-.macro-toolkit-signal-grid,
 .macro-toolkit-a-share-risk,
 .macro-toolkit-a-share-risk__metrics,
 .macro-toolkit-a-share-risk__lists,
 .macro-toolkit-hason-strategy__metrics,
 .macro-toolkit-data-health-summary__grid,
-.macro-toolkit-data-health__grid,
-.macro-toolkit-readiness-strip {
+.macro-toolkit-data-health__grid {
     grid-template-columns: 1fr;
   }
 
@@ -4638,8 +4766,17 @@
     display: grid;
   }
 
-  .macro-toolkit-section-headline {
-    display: grid;
+  /* 窄屏分区头折两行：编号眉标 + 标题一行，说明整行左对齐换行。 */
+  .macro-toolkit-section > div:first-child:has(> h2) {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 2px;
+  }
+
+  .macro-toolkit-section > div:first-child > p {
+    grid-column: 1 / -1;
+    justify-self: start;
+    text-align: left;
+    white-space: normal;
   }
 
   .macro-toolkit-action-receipt__head {
@@ -4804,6 +4941,7 @@
     flex: 0 0 178px;
     min-height: 44px;
     padding: 6px;
+    border-top: 0;
   }
 
   .macro-toolkit-data-health__repair-main,
@@ -4920,7 +5058,6 @@
   .macro-toolkit-page .ant-table-wrapper,
 .macro-toolkit-page .ant-table-container,
 .macro-toolkit-page .ant-table-content,
-.macro-toolkit-model-signal-matrix__grid,
 .macro-toolkit-action-queue__list,
 .macro-toolkit-data-health__repair-ticket-grid,
 .macro-toolkit-data-health__repair-list,
@@ -4966,14 +5103,14 @@
   flex: 0 0 auto;
   color: var(--macro-toolkit-primary);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .macro-toolkit-model-chain__step-head strong {
   color: var(--moss-color-text-primary);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -4981,7 +5118,7 @@
 .macro-toolkit-model-chain__offchain > span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -4991,6 +5128,11 @@
   gap: 8px;
   align-items: start;
   min-width: 0;
+}
+
+/* B. 单模型步骤通栏，杜绝右半空白。 */
+.macro-toolkit-model-chain__step-models > :only-child {
+  grid-column: 1 / -1;
 }
 
 .macro-toolkit-model-chain__model {
@@ -5014,27 +5156,108 @@
 .macro-toolkit-model-chain__model-head span {
   min-width: 0;
   color: var(--moss-color-text-primary);
-  font-size: 13px;
-  font-weight: 900;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
+}
+
+.macro-toolkit-model-chain__scope-note {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .macro-toolkit-model-chain__model-head small {
   flex: 0 0 auto;
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .macro-toolkit-model-chain__model > strong {
   color: var(--macro-toolkit-info);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+
+.macro-toolkit-model-chain__backtest-context {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--macro-toolkit-border-muted);
+}
+
+.macro-toolkit-model-chain__backtest-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  min-width: 0;
+  color: var(--macro-toolkit-warning);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.macro-toolkit-model-chain__backtest-status strong {
+  padding: 2px 6px;
+  border-left: 2px solid var(--macro-toolkit-warning);
+  background: var(--macro-toolkit-warning-soft);
+  color: var(--macro-toolkit-warning);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.macro-toolkit-model-chain__backtest-status span {
+  font-weight: 600;
+}
+
+.macro-toolkit-model-chain__backtest-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 12px;
+  min-width: 0;
+  margin: 0;
+}
+
+.macro-toolkit-model-chain__backtest-facts > div {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.macro-toolkit-model-chain__backtest-fact--wide {
+  grid-column: 1 / -1;
+}
+
+.macro-toolkit-model-chain__backtest-facts dt {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.macro-toolkit-model-chain__backtest-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-model-chain__backtest-facts dd span {
+  display: block;
+  color: var(--moss-color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .macro-toolkit-model-chain__missing {
@@ -5044,7 +5267,7 @@
   border-radius: var(--moss-radius-sm);
   color: var(--macro-toolkit-warning);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 /* 卡片墙默认折叠成 headline 行：只做视觉收起，DOM/可访问性结构原样保留
@@ -5093,17 +5316,17 @@
 
 .macro-toolkit-model-chain__table th {
   color: var(--moss-color-text-muted);
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .macro-toolkit-model-chain__table td {
   color: var(--moss-color-text-secondary);
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .macro-toolkit-model-chain__table td:first-child {
   color: var(--moss-color-text-primary);
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .macro-toolkit-model-chain__cell--numeric {
@@ -5146,7 +5369,7 @@
   background: var(--macro-toolkit-card-muted);
   color: var(--moss-color-text-secondary);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -5214,7 +5437,7 @@
   min-width: 0;
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }

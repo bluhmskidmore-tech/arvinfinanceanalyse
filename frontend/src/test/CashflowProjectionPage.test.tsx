@@ -169,6 +169,42 @@ describe("CashflowProjectionPage", () => {
     expect(screen.getByTestId("cashflow-conclusion")).toHaveTextContent("资产久期长于负债");
   });
 
+  it("prefers raw_text over raw for the first-screen conclusion boundary", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const orig = client.getCashflowProjection.bind(client);
+    client.getCashflowProjection = async (reportDate: string) => {
+      const envelope = await orig(reportDate);
+      return {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          duration_gap: {
+            ...envelope.result.duration_gap,
+            raw: 0.04,
+            raw_text: "0.06000000",
+            display: "0.06",
+          },
+        },
+      };
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId("cashflow-conclusion")).toHaveTextContent("正久期缺口");
+    expect(screen.getByTestId("cashflow-conclusion")).toHaveTextContent("正缺口");
+    expect(screen.getByTestId("cashflow-conclusion")).toHaveTextContent("0.06");
+  });
+
   it("displays the 1bp sensitivity KPI in yi-yuan even when the API display is raw yuan", async () => {
     const client = createApiClient({ mode: "mock" });
     const orig = client.getCashflowProjection.bind(client);
@@ -241,6 +277,45 @@ describe("CashflowProjectionPage", () => {
     const dv01 = await screen.findByTestId("cashflow-kpi-dv01");
     expect(dv01).toHaveTextContent("-0.80");
     expect(dv01).toHaveTextContent("利率上行 1bp → 权益减少");
+  });
+
+  it("uses raw_text for the rendered 1bp amount and loss semantics", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const orig = client.getCashflowProjection.bind(client);
+    client.getCashflowProjection = async (reportDate: string) => {
+      const envelope = await orig(reportDate);
+      return {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          rate_sensitivity_1bp: {
+            raw: 0,
+            raw_text: "-125000000.00000000",
+            unit: "yuan",
+            display: "-125,000,000.00",
+            precision: 2,
+            sign_aware: true,
+          },
+        },
+      };
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const dv01 = await screen.findByTestId("cashflow-kpi-dv01");
+    expect(dv01).toHaveTextContent("-1.25");
+    expect(dv01).toHaveTextContent("利率上行 1bp → 权益减少");
+    expect(dv01).not.toHaveTextContent("+0.00");
   });
 
   it("renders Chinese caveat summaries and collapses English originals into details", async () => {

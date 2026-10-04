@@ -22,9 +22,7 @@ mixed into monthly/YTD business contribution conclusions.
 from __future__ import annotations
 
 import uuid
-from calendar import monthrange
 from collections.abc import Mapping
-from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -34,6 +32,10 @@ from backend.app.core_finance.pnl_by_business_insights import (
     build_business_type_share_drift,
     build_negative_ftp_persistence,
     build_scale_yield_quadrant,
+    prior_year_same_period_date,
+)
+from backend.app.core_finance.pnl_by_business_insights import (
+    trailing_month_keys as _trailing_month_keys,
 )
 from backend.app.core_finance.zqtz_asset_bond_category import is_parent_zqtz_business_row
 from backend.app.repositories.pnl_repo import PnlRepository
@@ -111,10 +113,7 @@ def _resolved_ytd_date(envelope: Mapping[str, object]) -> str | None:
 
 
 def _prior_year_same_period_date(as_of_date: str) -> str:
-    current = date.fromisoformat(as_of_date)
-    baseline_year = current.year - 1
-    baseline_day = min(current.day, monthrange(baseline_year, current.month)[1])
-    return date(baseline_year, current.month, baseline_day).isoformat()
+    return prior_year_same_period_date(as_of_date)
 
 
 def compute_business_type_concentration(
@@ -144,19 +143,6 @@ def compute_business_type_concentration(
     )
 
 
-def _trailing_month_keys(as_of_date: str, lookback_months: int) -> list[str]:
-    year = int(as_of_date[:4])
-    month = int(as_of_date[5:7])
-    keys: list[str] = []
-    for _ in range(lookback_months):
-        keys.append(f"{year:04d}-{month:02d}")
-        month -= 1
-        if month == 0:
-            month = 12
-            year -= 1
-    return list(reversed(keys))
-
-
 def _collect_monthly_buckets(
     *,
     duckdb_path: str,
@@ -179,6 +165,7 @@ def _collect_monthly_inputs(
     governance_dir: str,
     as_of_date: str,
     window_month_keys: list[str],
+    source_version_cache: dict[tuple[str, int, str, str, str], str] | None = None,
 ) -> tuple[dict[str, dict[str, object]], list[dict[str, object]]]:
     if not window_month_keys:
         return {}, []
@@ -190,12 +177,21 @@ def _collect_monthly_inputs(
     for year in years_needed:
         year_as_of = as_of_date if year == as_of_year else None
         try:
-            envelope = pnl_service.pnl_by_business_monthly_envelope(
-                duckdb_path=duckdb_path,
-                governance_dir=governance_dir,
-                year=year,
-                as_of_date=year_as_of,
-            )
+            if source_version_cache is None:
+                envelope = pnl_service.pnl_by_business_monthly_envelope(
+                    duckdb_path=duckdb_path,
+                    governance_dir=governance_dir,
+                    year=year,
+                    as_of_date=year_as_of,
+                )
+            else:
+                envelope = pnl_service.pnl_by_business_monthly_envelope(
+                    duckdb_path=duckdb_path,
+                    governance_dir=governance_dir,
+                    year=year,
+                    as_of_date=year_as_of,
+                    source_version_cache=source_version_cache,
+                )
         except ValueError:
             continue
         envelopes.append(envelope)
@@ -596,11 +592,13 @@ def _build_insights_components(
     year: int,
     as_of_date: str,
 ) -> tuple[dict[str, Any], list[dict[str, object]], str, bool]:
+    source_version_cache: dict[tuple[str, int, str, str, str], str] = {}
     current_envelope = pnl_service.pnl_by_business_ytd_envelope(
         duckdb_path=duckdb_path,
         governance_dir=governance_dir,
         year=year,
         as_of_date=as_of_date,
+        source_version_cache=source_version_cache,
     )
     current_result = _envelope_result(current_envelope)
     resolved_date = _resolved_ytd_date(current_envelope)
@@ -631,6 +629,7 @@ def _build_insights_components(
             governance_dir=governance_dir,
             year=baseline_year,
             as_of_date=baseline_requested_date,
+            source_version_cache=source_version_cache,
         )
         baseline_envelope = candidate_baseline_envelope
         baseline_resolved_date = _resolved_ytd_date(candidate_baseline_envelope)
@@ -659,6 +658,7 @@ def _build_insights_components(
         governance_dir=governance_dir,
         as_of_date=resolved_date,
         window_month_keys=window_month_keys,
+        source_version_cache=source_version_cache,
     )
     negative_ftp_persistence = build_negative_ftp_persistence(
         monthly_by_key=monthly_by_key,

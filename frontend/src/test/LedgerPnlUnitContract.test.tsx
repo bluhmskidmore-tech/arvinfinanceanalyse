@@ -12,15 +12,15 @@
  *   LedgerMoneyValue.yuan = 元原值十进制字符串；
  *   LedgerMoneyValue.yi   = (元 / 1e8) 经 ROUND_HALF_UP 保留 2 位的十进制字符串。
  * - 前端展示层 LedgerPnlPage.tsx::formatMoney（页面私有，本文件经整页渲染锁定其行为）：
- *   优先透传后端 yi 并追加「 亿元」；yi 缺失时 fallback (Number(yuan) / 1e8).toFixed(2)；
- *   yuan/yi 双缺 → EM_DASH。
+ *   只透传后端 yi 并追加「 亿元」；yi 缺失或非有限数值串 → 直接 EM_DASH，
+ *   不再用 yuan/1e8 在前端自算兜底（R6：该回退路径与全页 ROUND_HALF_UP 口径不一致，已删除）。
  * - 候选跨期比较 models 层 candidatePeriodComparisonModel.ts：
  *   后端 *_yi 字段已是亿元十进制字符串（payload 契约 unit="亿元"），前端仅做
  *   4 位定点 + 千分组 + U+2212 负号显示，不得再次缩放。
  */
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -41,7 +41,7 @@ const REPORT_DATE = "2026-03-31";
 /** fixedDecimal 的负号是 U+2212 MINUS SIGN，不是 ASCII 连字符。 */
 const MINUS = "\u2212";
 
-/** 构造 LedgerMoneyValue；yi 留空可强制页面走 yuan→亿元的前端 fallback 换算。 */
+/** 构造 LedgerMoneyValue；yi 留空用于验证 R6 缺失占位（不再回退 yuan 自算）。 */
 function ledgerMoney(yuan: string, yi = ""): LedgerMoneyValue {
   return { yuan, yi };
 }
@@ -122,20 +122,24 @@ function buildUnitContractClient(): ApiClient {
       result: {
         report_date: REPORT_DATE,
         source_version: "sv_ledger_unit_contract",
-        // 正常量级：后端 yi 缺失，前端 fallback 换算 1234567890 元 / 1e8
-        // = 12.3456789 → toFixed(2) → "12.35 亿元"（缩放因子 + 四舍五入）。
-        ledger_monthly_pnl_core: ledgerMoney("1234567890"),
+        // 正常量级：后端契约保证 yi 是权威的 元/1e8 ROUND_HALF_UP 结果，前端只透传，不重算。
+        ledger_monthly_pnl_core: ledgerMoney("1234567890", "12.35"),
         // 负值：保留来源符号（sign_rule=preserve source sign）。
-        ledger_monthly_pnl_all: ledgerMoney("-987654321"),
-        // 缩放阈值边界：恰好 1 亿元，换算结果必须恰为 "1.00 亿元"。
-        ledger_total_assets: ledgerMoney("100000000"),
+        ledger_monthly_pnl_all: ledgerMoney("-987654321", "-9.88"),
+        // 缩放阈值边界：恰好 1 亿元，yi 恰为 "1.00 亿元"。
+        ledger_total_assets: ledgerMoney("100000000", "1.00"),
         // 后端预格式化优先：yi 有值时透传后端权威换算，不得用 yuan 重算，
         // 也不得对 yi 再缩放一次。yuan 故意给出与 yi 矛盾的干扰值。
         ledger_total_liabilities: ledgerMoney("999", "3.14"),
         // 真零：显示 "0.00 亿元"，必须与缺失（EM_DASH）不同形。
-        ledger_net_assets: ledgerMoney("0"),
-        // 缺失占位：yuan/yi 双缺 → EM_DASH（null_rule）。由币种汇总表行承载断言。
-        by_currency: [{ currency: "SGD", total_pnl: ledgerMoney("") }],
+        ledger_net_assets: ledgerMoney("0", "0.00"),
+        by_currency: [
+          // 缺失占位：yuan/yi 双缺 → EM_DASH（null_rule）。
+          { currency: "SGD", total_pnl: ledgerMoney("") },
+          // R6 回归证据：yuan 有效但 yi 缺失时必须直接 EM_DASH，不得回退
+          // (Number(yuan) / 1e8).toFixed(2) 在前端自算出 "1.23 亿元"。
+          { currency: "HKD", total_pnl: ledgerMoney("123456789", "") },
+        ],
         by_account: [],
       },
     })),
@@ -144,10 +148,12 @@ function buildUnitContractClient(): ApiClient {
       result: {
         report_date: REPORT_DATE,
         summary: {
-          total_pnl_cnx: ledgerMoney("0"),
-          total_pnl_cny: ledgerMoney("0"),
-          total_pnl: ledgerMoney("0"),
+          total_pnl_cnx: ledgerMoney("0", "0.00"),
+          total_pnl_cny: ledgerMoney("0", "0.00"),
+          total_pnl: ledgerMoney("0", "0.00"),
           count: 0,
+          ledger_evidence_rows: 0,
+          average_only_row_count: 0,
         },
         items: [],
       },
@@ -172,9 +178,11 @@ describe("ledger-pnl 单位一致性：summary 卡（MTR-LPN-001/002/003，displ
   it("元→亿元缩放因子、符号、真零、阈值边界、yi 透传与缺失占位全部与契约一致", async () => {
     renderLedgerPnlPage(buildUnitContractClient());
 
-    // 等 summary 数据落地（正常量级值出现即代表 formatMoney 已执行）。
-    await screen.findByText("12.35 亿元");
-    const cards = screen.getByTestId("ledger-pnl-summary-cards");
+    // 金额与单位可拆成不同节点；仍按确切卡片校验完整文字，等待 summary 数据落地。
+    const cards = await screen.findByTestId("ledger-pnl-summary-cards");
+    await waitFor(() => {
+      expect(readSummaryCardValue(cards, "核心损益")).toBe("12.35 亿元");
+    });
 
     // MTR-LPN-001 核心损益：1_234_567_890 元 / 1e8 = 12.3456789 → 12.35 亿元。
     // 若缩放因子被误改为 1e4（万元）或标签被改成「万元」，此断言必红。
@@ -199,6 +207,13 @@ describe("ledger-pnl 单位一致性：summary 卡（MTR-LPN-001/002/003，displ
     expect(missingRow).not.toBeNull();
     const missingCells = missingRow!.querySelectorAll("td");
     expect(missingCells[1]?.textContent).toBe(EM_DASH);
+
+    // R6：yuan 有效但 yi 缺失 → 直接 EM_DASH，不回退 yuan/1e8 前端自算（HKD 行）。
+    const yiMissingRow = within(currencyTable).getByText("HKD").closest("tr");
+    expect(yiMissingRow).not.toBeNull();
+    const yiMissingCells = yiMissingRow!.querySelectorAll("td");
+    expect(yiMissingCells[1]?.textContent).toBe(EM_DASH);
+    expect(yiMissingCells[1]?.textContent).not.toBe("1.23 亿元");
   });
 });
 

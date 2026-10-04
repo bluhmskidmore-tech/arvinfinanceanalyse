@@ -16,7 +16,7 @@ export type BalanceMovementReconciliationStatus =
   | "chain_broken";
 
 /** `null` = 该行写于控制结论落库之前（未记录），与 `no_prior_month` 不同。 */
-export type BalanceMovementChainStatus = "continuous" | "broken" | "no_prior_month";
+export type BalanceMovementChainStatus = "continuous" | "fx_adjusted" | "broken" | "no_prior_month";
 
 /**
  * `position_source_basis` 的哨兵取值：该报告日两个候选口径都没有资产头寸行。
@@ -45,6 +45,10 @@ export type BalanceMovementRow = {
   source_version: string;
   rule_version: string;
   chain_status: BalanceMovementChainStatus | null;
+  chain_fx_adjustment?: DecimalLike | null;
+  chain_fx_currency?: string | null;
+  chain_fx_prior_rate?: DecimalLike | null;
+  chain_fx_current_rate?: DecimalLike | null;
   position_source_basis: string | null;
 };
 
@@ -215,6 +219,7 @@ export type BalanceZqtzMaturityBucketKey =
   | "1-3y"
   | "3-5y"
   | ">5y"
+  | "fund_no_maturity"
   | "unknown";
 
 export type BalanceZqtzMaturityBucket = {
@@ -225,6 +230,16 @@ export type BalanceZqtzMaturityBucket = {
   delta_amount: DecimalLike;
   item_count: number;
   share_pct: DecimalLike | null;
+  items?: {
+    instrument_code: string;
+    instrument_name: string;
+    portfolio_name: string;
+    accounting_basis: string;
+    current_amount: DecimalLike;
+    maturity_date: string | null;
+    overdue_principal_days: number | null;
+    overdue_interest_days: number | null;
+  }[];
 };
 
 export type BalanceZqtzMaturityStructure = {
@@ -396,13 +411,23 @@ export type BalanceAnalysisOverviewPayload = {
   liability_total_amortized_cost_amount: DecimalLike;
   asset_total_accrued_interest_amount: DecimalLike;
   liability_total_accrued_interest_amount: DecimalLike;
-  metric_definitions?: BalanceAnalysisMetricDefinition[];
+  metric_definitions: BalanceAnalysisMetricDefinition[];
   /**
    * 校准说明来自信封顶层（后端 `_with_balance_analysis_response_context` 注入；
    * result payload 为 `extra=forbid` 不含该字段），由 `useBalanceAnalysisData`
    * 读取信封后合并到 overview 上；直接读 `result.calibration` 恒为 undefined。
    */
   calibration?: BalancePageCalibration | null;
+};
+
+export type BalanceAnalysisPublicationStatusPayload = {
+  enabled: boolean;
+  available: boolean;
+  generation: string | null;
+  report_dates: string[];
+  manifest_sha256: string | null;
+  quality_flag: "ok" | "stale";
+  reason: string | null;
 };
 
 export type BalanceAnalysisTableRow = {
@@ -782,6 +807,12 @@ export type LedgerPnlDatesPayload = {
   dates: string[];
 };
 
+/**
+ * `ledger` = 总账工作簿中真实观测的行；`average_only` = 仅日均工作簿存在、
+ * 总账侧填 0 的合成行（并集口径下的披露标记，不改变金额）。
+ */
+export type LedgerPnlDataSourcePresence = "ledger" | "average_only";
+
 export type LedgerPnlDataItem = {
   account_code: string;
   account_name: string;
@@ -791,6 +822,7 @@ export type LedgerPnlDataItem = {
   monthly_pnl: LedgerMoneyValue;
   daily_avg_balance: LedgerMoneyValue;
   days_in_period: number;
+  source_presence: LedgerPnlDataSourcePresence;
 };
 
 export type LedgerPnlDataPayload = {
@@ -802,6 +834,12 @@ export type LedgerPnlDataPayload = {
     total_pnl_cny: LedgerMoneyValue;
     total_pnl: LedgerMoneyValue;
     count: number;
+    /** 5* 损益科目行数；`count` 是全科目明细行数。旧后端可能暂不返回。 */
+    pnl_account_count?: number;
+    /** `source_presence === "ledger"` 的行数；与 `average_only_row_count` 之和恒等于 `count`。 */
+    ledger_evidence_rows: number;
+    /** `source_presence === "average_only"` 的行数（仅日均侧存在、总账侧填 0 的合成行）。 */
+    average_only_row_count: number;
   };
 };
 

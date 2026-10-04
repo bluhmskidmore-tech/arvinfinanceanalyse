@@ -17,7 +17,51 @@ beforeAll(async () => {
   await preloadWorkbenchRouteModules("balance-movement-analysis");
 }, 20_000);
 
+async function expandSupplementaryEvidence() {
+  const dataStates = await screen.findByTestId("balance-movement-analysis-data-states");
+  await userEvent.click(within(dataStates).getByText("契约通过条件"));
+  await screen.findByTestId("balance-movement-analysis-governance");
+}
+
 describe("BalanceMovementAnalysisPage", () => {
+  it("drills into maturity holdings and keeps recorded overdue separate from expired dates", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const client: typeof baseClient = {
+      ...baseClient,
+      getBalanceMovementAnalysis: async (params) => {
+        const envelope = await baseClient.getBalanceMovementAnalysis(params);
+        const structure = envelope.result.zqtz_maturity_structure!;
+        structure.buckets = structure.buckets.map((bucket) => ({ ...bucket, items: [],
+          ...(bucket.maturity_bucket === "overdue_or_matured" ? {
+            bucket_label: "到期日已过",
+            items: [{ instrument_code: "PAST-1", instrument_name: "待核实资产", portfolio_name: "组合一",
+              accounting_basis: "AC", current_amount: "100000000", maturity_date: "2026-01-01",
+              overdue_principal_days: null, overdue_interest_days: 0 }],
+          } : {}),
+        }));
+        structure.buckets.push({ maturity_bucket: "fund_no_maturity", bucket_label: "基金未列到期日",
+          current_amount: "200000000", prior_amount: "0", delta_amount: "200000000", item_count: 1, share_pct: "10",
+          items: [{ instrument_code: "SA-FUND", instrument_name: "基金样本", portfolio_name: "组合二", accounting_basis: "TPL",
+            current_amount: "200000000", maturity_date: null, overdue_principal_days: null, overdue_interest_days: null }],
+        });
+        return envelope;
+      },
+    };
+    renderWorkbenchApp(["/balance-movement-analysis"], { client });
+    const panel = await screen.findByTestId("balance-movement-analysis-zqtz-maturity");
+    expect(within(panel).getByText("有效到期日覆盖率")).toBeInTheDocument();
+    let detail = within(panel).getByTestId("balance-movement-maturity-detail");
+    expect(detail).toHaveTextContent("PAST-1");
+    expect(detail).toHaveTextContent("本金逾期天数");
+    await userEvent.click(within(panel).getByRole("button", { name: "基金未列到期日" }));
+    detail = within(panel).getByTestId("balance-movement-maturity-detail");
+    expect(detail).toHaveTextContent("SA-FUND");
+    expect(detail).not.toHaveTextContent("PAST-1");
+    await userEvent.type(within(detail).getByRole("textbox", { name: "搜索期限桶持仓" }), "不存在");
+    expect(detail).toHaveTextContent("当前筛选下无持仓");
+    expect(panel.querySelectorAll(".balance-movement-top-moves-table__delta--positive")).toHaveLength(0);
+  });
+
   it("keeps source-level style debt bounded to dynamic visual values", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx"),
@@ -130,7 +174,7 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(overThreeYearsBucket).not.toHaveTextContent("未映射");
     expect(
       within(maturityAndConcentration).getByTestId("balance-movement-maturity-coverage-band"),
-    ).toHaveAccessibleName(/已映射.*未映射/);
+    ).toHaveAccessibleName(/已注明到期日.*未列有效到期日/);
     expect(
       within(maturityAndConcentration).getByTestId("balance-movement-top5-gauge"),
     ).toHaveTextContent("Top5 占比");
@@ -142,6 +186,14 @@ describe("BalanceMovementAnalysisPage", () => {
 
     const evidenceStrip = await screen.findByTestId("balance-movement-analysis-evidence-strip");
     expect(evidenceStrip).toHaveTextContent("证据与数据出处");
+    const evidenceHeading = within(evidenceStrip).getByTestId(
+      "balance-movement-analysis-evidence-heading",
+    );
+    expect(evidenceHeading).toHaveAttribute("data-numbered", "external");
+    expect(evidenceHeading).toHaveAttribute("data-counter-increment", "self");
+    expect(evidenceHeading).toHaveTextContent("证据与数据出处");
+    expect(evidenceStrip.querySelector(".balance-movement-section-heading")).toBeNull();
+    expect(evidenceStrip.querySelector(".balance-movement-sec-no")).toBeNull();
     expect(evidenceStrip).toHaveTextContent("新鲜度");
     expect(evidenceStrip).toHaveTextContent("血缘");
     expect(evidenceStrip).toHaveTextContent("控制口径");
@@ -163,6 +215,20 @@ describe("BalanceMovementAnalysisPage", () => {
     );
     expect(sixMonthStructure).toHaveTextContent("六个月会计分类矩阵与结构演变");
     expect(structureBridge).toHaveTextContent("结构迁移与差异归因");
+    for (const title of ["六个月会计分类矩阵与结构演变", "结构迁移与差异归因"]) {
+      const heading = screen.getByRole("heading", { level: 2, name: title });
+      const sectionHead = heading.closest("header");
+      if (!(sectionHead instanceof HTMLElement)) {
+        throw new Error(`Missing ${title} shared section head`);
+      }
+      expect(sectionHead).toHaveAttribute("data-numbered", "external");
+      expect(sectionHead).toHaveAttribute("data-counter-increment", "self");
+      expect(sectionHead).toHaveAttribute("data-content-gap", "flush");
+      expect(sectionHead).not.toHaveClass("balance-movement-sec-no");
+      expect(sectionHead.style.getPropertyValue("--layout-section-head-counter")).toBe(
+        "bm-section",
+      );
+    }
     expect(liveDecomposition).toHaveTextContent("会计分类驱动拆解与口径状态");
     expect(
       accountingBuckets.compareDocumentPosition(sixMonthStructure) &
@@ -176,6 +242,7 @@ describe("BalanceMovementAnalysisPage", () => {
       structureBridge.compareDocumentPosition(liveDecomposition) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    await expandSupplementaryEvidence();
     const anomalyDiagnostics = await screen.findByTestId(
       "balance-movement-analysis-anomaly-diagnostics",
     );
@@ -447,6 +514,7 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(compactMixBand).toHaveAttribute("data-state", "unavailable");
     expect(compactMixBand).toHaveAccessibleName("会计分类结构：数据不可用");
 
+    await expandSupplementaryEvidence();
     const shareEvolutionTable = screen.getByTestId("balance-movement-analysis-structure-share-table");
     expect(within(shareEvolutionTable).getAllByText("0.00%").length).toBeGreaterThan(0);
     expect(within(shareEvolutionTable).queryByText("31.49%")).not.toBeInTheDocument();
@@ -1464,6 +1532,7 @@ describe("BalanceMovementAnalysisPage", () => {
       client: anomalyClient,
     });
 
+    await expandSupplementaryEvidence();
     const anomalyDiagnostics = await screen.findByTestId(
       "balance-movement-analysis-anomaly-diagnostics",
     );
@@ -1868,7 +1937,7 @@ describe("BalanceMovementAnalysisPage", () => {
     const compactPanel = await screen.findByTestId(
       "balance-movement-analysis-maturity-concentration",
     );
-    expect(compactPanel).toHaveTextContent("未映射到期日金额 123.00 亿");
+    expect(compactPanel).toHaveTextContent("未列有效到期日金额（含基金） 123.00 亿");
   });
 
   it("keeps optional drilldown modules visible when the backend omits them", async () => {

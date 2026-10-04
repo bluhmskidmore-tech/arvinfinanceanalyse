@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from backend.app.tasks.broker import register_actor_once
 
 
@@ -15,9 +17,13 @@ def run_choice_stock_refresh(
     refresh_history: bool,
     refresh_factors: bool,
     factor_max_stock_count: int | None,
-    theme_overlay_mode: str,
+    theme_overlay_mode: Literal["off", "dry_run", "archive"],
     permission: dict[str, object],
     idempotency_key: str | None = None,
+    complete_livermore_chain: bool = False,
+    retry_managed_by_broker: bool = True,
+    history_start_date: str | None = None,
+    allow_cross_era_backfill: bool = False,
 ) -> None:
     from backend.app.services.macro_toolkit_service import (
         _run_choice_stock_refresh_job,
@@ -37,6 +43,15 @@ def run_choice_stock_refresh(
         theme_overlay_mode=theme_overlay_mode,
         permission=permission,
         idempotency_key=idempotency_key,
+        retry_managed_by_broker=retry_managed_by_broker,
+        history_start_date=history_start_date,
+        allow_cross_era_backfill=allow_cross_era_backfill,
+        # The daily orchestrator owns adjustment-factor refresh before pretrade.
+        # Keep this worker core-only unless a caller explicitly requests the
+        # legacy all-in-one closure with both upstream datasets enabled.
+        complete_livermore_chain=bool(
+            complete_livermore_chain and refresh_history and refresh_factors
+        ),
     )
 
 

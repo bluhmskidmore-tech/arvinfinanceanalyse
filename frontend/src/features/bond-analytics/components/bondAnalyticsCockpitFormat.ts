@@ -165,23 +165,23 @@ export function buildCockpitConclusion(args: {
 
   if (facts.length === 0) {
     return {
-      title: "读面待确认",
-      body: "核心债券读面仍在返回。",
-      detail: "等待久期、信用债收益率中位数或组合信用摘要返回后更新首屏读面。",
+      title: "指标待确认",
+      body: "暂无完整的债券核心指标。",
+      detail: "久期、信用债收益率中位数及信用占比数据暂缺。",
     };
   }
 
   if (missingReadouts.length > 0) {
     return {
-      title: "部分读面",
-      body: "部分核心债券读面已返回。",
-      detail: `${facts.join(" · ")}；待返回 ${missingReadouts.join(" / ")}。`,
+      title: "部分指标",
+      body: "部分债券核心指标暂缺。",
+      detail: `${facts.join(" · ")}；暂缺 ${missingReadouts.join(" / ")}。`,
     };
   }
 
   return {
-    title: "核心读面",
-    body: "久期、信用债收益率中位数与信用占比读面已返回。",
+    title: "核心指标",
+    body: "当前展示久期、信用债收益率中位数和信用占比。",
     detail: "口径：市值加权久期 / 信用债 YTM 中位数 / 信用债市值占比；读数见下方 KPI 横带。",
   };
 }
@@ -218,19 +218,19 @@ export function buildDeskVerdictFields(args: {
   if (isDashboardDateFallback) {
     return [
       {
-        label: "核心读面",
+        label: "核心指标",
         value: "目标日快照缺口",
         detail: `请求 ${requestedDate}，展示 ${displayDate} 历史快照。`,
       },
       {
         label: "数据边界",
-        value: "目标报告日读面",
-        detail: "待读面补齐后再更新当前报告日首屏。",
+        value: "所选报告日数据",
+        detail: "所选报告日的数据尚待补齐。",
       },
       {
         label: "报告日状态",
         value: `快照回退 ${displayDate}`,
-        detail: headlinePending ? "headline KPI 加载中。" : "仅作历史快照参考。",
+        detail: headlinePending ? "核心指标加载中。" : "仅作历史快照参考。",
       },
       {
         label: "下钻入口",
@@ -244,17 +244,17 @@ export function buildDeskVerdictFields(args: {
   const readoutField = readoutFacts.length > 0
     ? {
         value: readoutFacts.join(" / "),
-        detail: "仅展示已返回读面。",
+        detail: "仅展示已有数据。",
       }
     : {
         value: "久期 / 利差 / 信用占比待返回",
-        detail: "核心债券读面仍在返回。",
+        detail: "暂无完整的债券核心指标。",
       };
 
   const boundaryField = !hasCurveReadout
     ? {
         value: curvePending ? "正式曲线加载中" : "正式曲线待返回",
-        detail: curvePending ? "期限点加载中。" : "正式曲线待读面。",
+        detail: curvePending ? "期限点加载中。" : "正式曲线数据待补。",
       }
     : {
         value: "正式曲线已返回",
@@ -263,7 +263,7 @@ export function buildDeskVerdictFields(args: {
 
   return [
     {
-      label: "核心读面",
+      label: "核心指标",
       value: readoutField.value,
       detail: readoutField.detail,
     },
@@ -274,13 +274,13 @@ export function buildDeskVerdictFields(args: {
     },
     {
       label: "报告日状态",
-      value: headlinePending ? "headline 加载中" : hasHeadline ? "报告日匹配" : "等 headline",
+      value: headlinePending ? "核心指标加载中" : hasHeadline ? "报告日匹配" : "等待核心指标",
       detail: `报告日 ${displayDate}。`,
     },
     {
       label: "下钻入口",
       value: hasCurveReadout ? "打开正式下钻" : "正式下钻待返回",
-      detail: hasCurveReadout ? `组合 DV01 ${dv01Display}。` : "先展示已返回读面，不补造下钻结论。",
+      detail: hasCurveReadout ? `组合 DV01 ${dv01Display}。` : "仅展示已有数据，分析结论暂缺。",
     },
   ];
 }

@@ -306,6 +306,7 @@ export function LedgerPnlAccountDetailDrawer(props: Props) {
     <AntDrawer
       placement="right"
       width="min(720px, 100vw)"
+      rootStyle={client.mode === "mock" ? { top: 28 } : undefined}
       open={open}
       onClose={handleClose}
       afterOpenChange={handleOpenChange}

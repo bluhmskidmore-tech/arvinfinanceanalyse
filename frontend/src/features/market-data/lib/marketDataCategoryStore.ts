@@ -1,3 +1,5 @@
+import dayjs from "dayjs";
+
 import type {
   ChoiceMacroLatestPoint,
   FxAnalyticalGroup,
@@ -8,6 +10,37 @@ import { EM_DASH } from "../../../utils/format";
 
 export type MarketObservationPoint = ChoiceMacroLatestPoint | FxAnalyticalSeriesPoint;
 type RefreshTier = "stable" | "fallback" | "isolated";
+
+/**
+ * 展示层时效分档（仅影响行分组与视觉降级，不改任何数据/口径字段，也不隐藏数据）：
+ * - 超过 365 天：多为年度或已停更的存量序列（如 2015 年存贷款基准利率），与当日读数
+ *   并排会误导时效感知，归入"历史存量"分档；
+ * - 90~365 天：超出月度/季度序列的常规发布间隔上限（约一个季度），保持可见但淡化。
+ */
+export const SERIES_STALE_AGE_DAYS = 90;
+export const SERIES_HISTORICAL_AGE_DAYS = 365;
+
+export type SeriesAgeTier = "current" | "stale" | "historical";
+
+export function seriesAgeTier(
+  tradeDate: string | null | undefined,
+  observationDate: string,
+): SeriesAgeTier {
+  if (!tradeDate) {
+    return "current";
+  }
+  const ageDays = dayjs(observationDate).diff(dayjs(tradeDate), "day");
+  if (!Number.isFinite(ageDays)) {
+    return "current";
+  }
+  if (ageDays > SERIES_HISTORICAL_AGE_DAYS) {
+    return "historical";
+  }
+  if (ageDays > SERIES_STALE_AGE_DAYS) {
+    return "stale";
+  }
+  return "current";
+}
 
 export type MarketDataCategoryStore = {
   visibleLatestSeries: ChoiceMacroLatestPoint[];

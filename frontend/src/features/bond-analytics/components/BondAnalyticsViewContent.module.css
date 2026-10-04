@@ -10,8 +10,8 @@
 
 .stateTitle {
   color: var(--moss-color-neutral-900);
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .stateBody {
@@ -35,7 +35,7 @@
   gap: 16px;
   padding: 12px 14px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--ib-surface);
 }
 
@@ -43,7 +43,7 @@
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   overflow: hidden;
   background: var(--ib-surface);
 }
@@ -62,13 +62,13 @@
 
 .fallbackTickerCell span {
   color: var(--moss-color-neutral-600);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .fallbackTickerCell strong {
   color: var(--moss-color-primary-900);
-  font-size: 16px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -83,14 +83,14 @@
   padding: 12px 14px;
   border: 1px solid var(--moss-color-neutral-200);
   border-left: 4px solid var(--moss-color-primary-700);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--ib-surface);
 }
 
 .fallbackSectionTitle {
   color: var(--moss-color-primary-900);
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .fallbackJudgment p {
@@ -113,31 +113,31 @@
   align-content: start;
   padding: 12px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--ib-surface);
 }
 
 .fallbackPanel span {
   color: var(--moss-color-primary-900);
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .fallbackPanel strong {
   color: var(--moss-color-neutral-600);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.5;
 }
 
 .toolbarSelect {
   min-width: 120px;
-  height: 28px;
+  height: 36px;
   border: 1px solid var(--moss-color-neutral-300);
   border-radius: var(--dh-api-radius, 6px);
   color: var(--moss-color-primary-900);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   padding: 0 var(--moss-space-2);
 }
@@ -147,19 +147,20 @@
 }
 
 .toolbarDateSelect {
-  height: 28px;
+  height: 36px;
   font: inherit;
-  font-family: var(--moss-font-mono);
-  font-size: 12px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
   font-weight: 500;
 }
 
 .toolbarDateSelect :global(.ant-select-selector) {
-  height: 28px !important;
-  min-height: 28px !important;
+  height: 36px;
+  min-height: 36px;
   padding: 0 var(--moss-space-2) !important;
   border: 1px solid var(--moss-color-neutral-400) !important;
-  border-radius: 6px !important;
+  border-radius: var(--dh-api-radius);
   background: color-mix(in srgb, var(--dh-api-panel-2) 78%, transparent) !important;
   color: var(--dashboard-blue-700) !important;
   box-shadow: none !important;
@@ -169,13 +170,14 @@
 .toolbarDateSelect :global(.ant-select-selection-placeholder),
 .toolbarDateSelect :global(.ant-select-selection-search-input) {
   color: var(--dashboard-blue-700) !important;
-  font-family: var(--moss-font-mono);
-  font-size: 12px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
   font-weight: 500;
 }
 
 .toolbarDateSelect :global(.ant-select-selection-item) {
-  line-height: 26px !important;
+  line-height: 34px;
 }
 
 .toolbarDateSelect :global(.ant-select-arrow) {
@@ -198,14 +200,15 @@
 
 .toolbarDateDropdown {
   border: 1px solid var(--moss-color-neutral-700);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--moss-color-primary-900) !important;
   box-shadow: none !important;
 }
 
 .toolbarDateDropdown :global(.ant-select-item) {
   color: var(--moss-color-neutral-100);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
 }
 
@@ -242,7 +245,7 @@
 .detailDrilldown {
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--moss-color-neutral-50);
 }
 
@@ -381,11 +384,11 @@
   align-content: start;
   grid-auto-rows: max-content;
   /* 页级区块缝统一 tokens（--moss-space-3 = 12px，首页同档）。 */
-  gap: var(--moss-space-3);
+  gap: var(--moss-space-4);
   /* 参照首页（dashboardHomeOptionTwo .layout）：满幅平底，不再使用 1178px 工作纸容器。 */
   width: 100%;
   min-height: calc(100vh - 48px);
-  padding: 14px 18px 16px;
+  padding: var(--moss-space-4) var(--moss-page-gutter);
   background: var(--ib-paper);
   color: var(--ib-ink);
   font-family: var(--moss-font-sans);
@@ -440,10 +443,11 @@
 
 .toolbarSelect {
   border-color: var(--ib-hairline);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: color-mix(in srgb, var(--dh-api-panel-2) 78%, transparent);
   color: var(--ib-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
 }
 
 .toolbarSelect:focus {
@@ -461,13 +465,7 @@
 .bondWorkbenchPage :global(.ant-alert) {
   border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent) !important;
   border-radius: var(--dh-api-radius, 6px) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--dh-api-amber) 10%, transparent),
-      color-mix(in srgb, var(--dh-api-amber) 3.5%, transparent)
-    ),
-    var(--ib-surface) !important;
+  background: var(--ib-surface);
   color: var(--ib-ink) !important;
 }
 
@@ -482,13 +480,7 @@
 .bondWorkbenchPage :global(.ant-card) {
   border-color: var(--ib-hairline) !important;
   border-radius: var(--dh-api-radius, 6px) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--dh-api-ink) 2.4%, transparent),
-      color-mix(in srgb, var(--dh-api-ink) 0.4%, transparent)
-    ),
-    var(--ib-surface) !important;
+  background: var(--ib-surface);
   box-shadow: none !important;
   color: var(--ib-ink);
 }
@@ -499,21 +491,13 @@
   background: transparent !important;
 }
 
-/* 首页 panelHeader 签名：卡头左沿 2px 强调条（top/bottom 7px 内缩）。 */
-.bondWorkbenchPage :global(.ant-card-head)::before {
-  position: absolute;
-  top: 7px;
-  bottom: 7px;
-  left: 0;
-  width: 2px;
-  background: var(--ib-accent);
-  content: "";
-}
-
 .bondWorkbenchPage :global(.ant-btn) {
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   color: var(--ib-accent);
   box-shadow: none;
+  height: 36px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .bondWorkbenchPage :global(.ant-btn-text:hover) {
@@ -542,13 +526,7 @@
 .detailDrilldown,
 .detailDrilldownSummary {
   border-color: var(--ib-hairline);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--dh-api-ink) 2.4%, transparent),
-      color-mix(in srgb, var(--dh-api-ink) 0.4%, transparent)
-    ),
-    var(--ib-surface);
+  background: var(--ib-surface);
   color: var(--ib-ink);
   box-shadow: none;
 }
@@ -660,4 +638,16 @@
 /* Suspense 整页占位：复用页面深色背板，锁高避免内容到达时重排（DESIGN.md §6）。 */
 .pageSkeleton {
   min-height: max(60vh, calc(100vh - 48px));
+}
+/* 操作区保持统一控件尺寸；窄窗口先换行，避免压缩标题与报告日。 */
+.bondWorkbenchPage :global(.dashboard-home-toolbar) {
+  flex-wrap: wrap;
+  gap: var(--moss-space-3);
+}
+.bondWorkbenchPage :global(.dashboard-home-actions) {
+  gap: var(--moss-space-2);
+}
+.bondWorkbenchPage :global(.dashboard-home-action-button) {
+  min-height: 36px;
+  font-size: 13px;
 }

@@ -13,7 +13,8 @@ export function updateStatusLabel(status: string): string {
 }
 
 export function requiresPublicationReview(run: DataUpdateRun): boolean {
-  if (run.status !== "failed") return false;
+  if (run.workflow === "choice_stock_pit_history" || run.status !== "failed") return false;
+  if (run.recovery_mode === "publication_only") return true;
   const receipt = run.failure_receipt;
   // Match the worker's completed-work replay guard; source_preview can also fail
   // before the financial body completes, so its explicit completion evidence is required.

@@ -113,7 +113,7 @@ def test_execution_rebuild_defers_limit_down_exit_with_numeric_limit_table(
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 

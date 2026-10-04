@@ -3,6 +3,7 @@ import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import { EM_DASH } from "../../../utils/format";
 import { buildMetricCards } from "./campisiEnhancedPanelSupport";
+import { buildCampisiAvailabilityNotices } from "./campisiAttributionPanelSupport";
 import "./campisiPanels.css";
 
 // 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下：
@@ -30,6 +31,7 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
   const totals = data?.totals;
   const isFormalBridge = data?.basis === FORMAL_BRIDGE_BASIS;
   const metricCards = buildMetricCards(totals, isFormalBridge);
+  const excluded = data?.effect_availability?.position_change?.status === "unavailable";
 
   return (
     <PageDataSection
@@ -51,6 +53,9 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
             分解口径：{data.decomposition_basis}
           </div>
         ) : null}
+        {buildCampisiAvailabilityNotices(data?.effect_availability).map((notice) => (
+          <p key={notice.key} className="campisi-panel__note">{notice.text}</p>
+        ))}
         <div className="campisi-metric-grid">
           {metricCards.map(({ key, label, value, notDecomposed }) => (
             <div key={key} className="campisi-metric">
@@ -59,7 +64,7 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
                 data-testid={`campisi-enhanced-amount-${key}`}
                 className="campisi-field-value"
               >
-                {notDecomposed || value === undefined ? EM_DASH : `${toYi(Number(value))} 亿`}
+                {excluded || notDecomposed || value === undefined ? EM_DASH : `${toYi(Number(value))} 亿`}
               </div>
               {notDecomposed ? (
                 <div

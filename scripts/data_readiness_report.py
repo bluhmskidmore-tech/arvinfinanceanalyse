@@ -177,9 +177,9 @@ DEFAULT_TABLE_SPECS: tuple[TableSpec, ...] = (
         required_meta_columns=("source_version", "rule_version", "vendor_version"),
         unique_key_columns=("trade_date",),
         required_data_columns=("breadth_5d", "limit_up_quality_ok"),
-        numeric_range_checks=(
-            NumericRangeCheck("breadth_5d", min_value=0, max_value=1, allow_null=False),
-        ),
+        # breadth_5d is a signed five-day advancing-minus-declining count,
+        # not a 0..1 ratio. Nullability is enforced by required_data_columns.
+        numeric_range_checks=(NumericRangeCheck("breadth_5d", allow_null=False),),
     ),
     TableSpec(
         label="Livermore active position snapshot",

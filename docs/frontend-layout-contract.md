@@ -1,6 +1,73 @@
 # Frontend Layout Contract (Opt-In)
 
-本文档定义 MOSS 前端**可逐步接入**的页面版式契约。权威视觉与色板仍以根目录 [`DESIGN.md`](../DESIGN.md) 与 `frontend/src/theme/designSystem.ts` 为准；本契约描述**页面解剖、栅格、断点、状态面与禁区**，供迁移页面对照实施。
+本文只用于新建页面或明确安排的布局迁移；局部样式修复不自动触发布局改造。视觉权威是 [DESIGN.md](../DESIGN.md)，任务分级、业务证据及验收命令统一使用 [frontend/AGENTS.md](../frontend/AGENTS.md)。已有页面按任务边界逐页接入，不以历史迁移名单判断当前状态。
+
+## 1. 原则
+
+每次只迁移一个页面/工作流，先确认要回答的业务问题和可观察验收条件。复用 `frontend/src/components/page/PagePrimitives.tsx` 及现有样式，跨页重复进入稳定原语，单页重复用局部样式；不为布局迁移改变指标定义、API 语义、adapter/selector 计算、日期/单位、路由或后端行为。
+
+<a id="2-页面解剖默认顺序"></a>
+## 2. 页面解剖（信息角色）
+
+下表用于检查需要承载的信息，不要求每页七层或七张卡片。按主要任务选择、合并或省略不适用角色，可沿用等价组件；实际适用的[页面顺序锁](frontend-design-page-rules.md) 优先。
+
+| 角色 | 主要内容 |
+|---|---|
+| Page Decision Hero | 首要问题、观察/报告日、有依据的结论和操作 |
+| Data Status Strip | 来源模式、as-of、stale/fallback/mock |
+| Filter Tray | 日期、组合、分类等实际筛选 |
+| Kpi Band | 支撑主要问题的指标，单位明确、数字对齐 |
+| Analysis Grid | 主表、主图及解释面板 |
+| Evidence Panel | 业务指标页的来源/口径/血缘，可折叠 |
+| Page State Surface | 对应数据状态及恢复操作 |
+
+总览突出结论与变化，分析页让主图获得主要空间，查询页让筛选和主表易用；不为了凑角色添加空 hero、KPI 或状态卡。控件高度稳定。次要证据可折叠，不永久隐藏；重要风险、权限/使用限制与关键数据缺口仍在相关操作或结论旁可见。治理摘要仅在契约提供时呈现。
+
+## 3. 栅格与断点
+
+沿用 Ant Design 24 栅格或已有等价布局。主图配次要解释可用 16+8，主表可占 24；12+12 或 8+8+8 适合同等重要的比较，不是默认版式。同类 KPI 的 gap/padding 一致，表格沿用壳层与全局溢出规则。
+
+| 宽度 | 默认行为 |
+|---|---|
+| ≥1280px | 按任务选择主辅栏或等分栏 |
+| 992–1279px | 双栏或单栏优先 |
+| 768–991px | 单/双栏，筛选允许折行 |
+| <768px | 单栏栈叠 |
+
+字号、内容不等高时的对齐和空态高度遵守 DESIGN §3/§5，不靠压缩字号维持列数。断点仅在任务涉及响应式时按影响范围验证。
+
+## 4. 状态面（必须显式）
+
+沿用 DESIGN §6 和前端 AGENTS 的指标状态要求。迁移不能隐藏无数据、加载失败、契约提供的 stale、fallback as-of、mock 模式或待确认定义；加载态不闪现错误结论。失败后的重试入口遵循现有产品约定。
+
+## 5. 样式与令牌
+
+使用 DESIGN 的 CSS/JS token 权威源及现有原语；跨页样式复用 `PagePrimitiveStyles.ts`、稳定全局 class 和 `PagePrimitives.tsx`，仅单页重复放 feature 样式模块。不另建色板或复制大块 inline。
+
+## 6. Opt-In 兼容（与现有 primitives）
+
+可复用 `PageDecisionHero`、`DataStatusStrip`、`KpiBand`、`KpiBandMetric`、`AnalysisGrid`、`EvidencePanel`、`PageStateSurface`；Filter Tray 角色沿用 `PageFilterTray`/`FilterBar` 或等价筛选区。v2 原语显式接入，未迁移页面维持现有行为与观感，不静默扩散全站改造。
+
+## 7. 业务页迁移时的证据门禁
+
+按 [frontend/AGENTS.md 的 Tier 1/2/3](../frontend/AGENTS.md#classify-the-change-first) 选择证据。纯布局不额外要求业务 MCP；触及指标链路时，说明受影响链路等价性或由测试锁定。数据目录仅在来源/可用性/日期有影响时使用，GitNexus 遵守根规则；工具不可用时记录本地替代证据及剩余风险。
+
+## 8. 禁区（不因版式改动而触碰）
+
+根 AGENTS 的受保护边界继续适用。布局任务不扩大为无关后端、基础设施、正式金融计算或其它页面的文案/导航重组；新端点仍放领域 client，不扩张 `src/api/client.ts`。
+
+## 9. 迁移与验收清单（摘要）
+
+按前端 AGENTS 完成定向验证和既有最终门禁，按 DESIGN §10.1 检查信息主次、阅读、图表和状态，并核对任务涉及的断点；不另要求每次跑所有宽度、所有 MCP 或业务测试。`style:audit` 是增量静态检查，不能独立证明设计合规；`style:inventory` 用于明确安排的样式盘点，不是每次页面修改的前置步骤。
+
+## 10. 参考实现路径
+
+以当前页面源码和 `PagePrimitives.tsx` 为准。[经营日报源码样板](frontend-design-page-rules.md#daily-home)展示经营概览、核心指标、归因与产品摘要如何分出主次；其它页面按自己的任务取用，不照搬顺序。只有追溯旧迁移过程时才读取下方记录及其中历史计划；历史验收输出不证明当前版本通过。
+
+<details>
+<summary>Phase 0–5 / Wave 2 历史迁移记录（非日常必读）</summary>
+
+以下保留整理前的迁移记录。文中的“当前”“已完成”和名单均指原记录时期；接手时应定向核对目标页面，不能据此要求其它页面继续迁移。原检查命令和签收状态只属于历史批次，不覆盖上方现行分级规则。
 
 **状态：** Phase 0–5 文档收口与 **Wave 2（经营分析 / 决策事项 / 跨资产驱动）代码迁移已完成**。**已挂载 v2 首屏 primitives（至少含 `PageDecisionHero`）的页面：**`DashboardPage`、`ProductCategoryPnlPage`、`MarketDataPage`、`BalanceAnalysisPage`、`OperationsAnalysisPage`、`DecisionItemsPage`、`CrossAssetDriversPage`。其余路由页仍为 **opt-in**，未挂载则保持 v1 行为与观感。
 
@@ -33,139 +100,6 @@
 - [x] 本文件记录：**已迁移页 + 下一批候选占位 + 例外**。
 - [x] **`npm run typecheck` / 定向 Vitest（本批相关页）/ `npm run debt:audit`**：`Wave 2` 合并前跑通并提供输出（或由合并 PR CI 兜底）。
 
----
+历史计划：`.omx/plans/ralplan-frontend-layout-system-2026-05-03.md`；上下文快照：`.omx/context/frontend-layout-system-plan-20260503T055355Z.md`。记录更新时间以 git 履历为线索，当前实施状态以源码为准。
 
-## 1. 原则
-
-1. **业务真值优先**：不改指标定义、API 语义、adapter、selector、计算、日期/单位口径、路由与后端行为。
-2. **先契约后重绘**：先冻结本契约与 opt-in 原语，再逐页迁移布局与呈现。
-3. **锚页参照**：工作台壳层与 **Dashboard（锚页）** 已形成可迁移参考实现；扩散至其它业务页时仍以 **一页一工单、`debt:audit` 不恶化** 为准。
-4. **在源头消灭重复布局**：禁止用「新的页面级 CSS 混乱」替代「内联混乱」；跨页重复应进入 primitives 或稳定的全局 class。
-5. **每页可验证**：测试、`npm run debt:audit`（不恶化）、浏览器多断点检视；业务页另需指标链路未改的证据（见第 7 节）。
-
----
-
-## 2. 页面解剖（默认顺序）
-
-除非该页有**已文档化的例外**，迁移后的首屏应按下述**区块角色**组织（与具体业务组件名解耦；实现时可对应 RALPLAN 中的 primitive 名）。
-
-| 顺序 | 区块 | 职责 |
-|------|------|------|
-| 1 | **决策首屏区（Page Decision Hero）** | 页标题、**首要业务问题**、观察/报告日、主结论摘要、紧凑操作区。必须让「这一页首先要回答什么」一眼可见。 |
-| 2 | **数据状态带（Data Status Strip）** | 数据源模式、报告日/as-of、stale / fallback / mock、治理或血缘摘要（若契约提供）。**不得**掩盖缺数或降级。 |
-| 3 | **筛选托盘（Filter Tray）** | 日期、组合、类别、基数、币种、模式等；高度尽量稳定，筛选区不得压过主结论。 |
-| 4 | **KPI 横带（Kpi Band）** | 首屏 **3–6** 个核心 headline 指标为上限；数字 tabular、单位显式（与 [`DESIGN.md`](../DESIGN.md) 数据字体一致）。 |
-| 5 | **分析栅格（Analysis Grid）** | 主表、主图、叙述面板；使用下方「栅格预设」。 |
-| 6 | **证据/下钻区（Evidence Panel）** | 来源、定义、血缘、审计或下钻上下文；**业务指标页必备**（可折叠，不可永久隐藏）。 |
-| 7 | **一致状态面** | 见第 4 节。 |
-
-**与 DESIGN.md 的关系：** 若某页在 `DESIGN.md` 中锁定了**区块顺序**（如债券分析首页），该页须**同时满足** `DESIGN.md` 的顺序与密度要求；本契约提供通用解剖，不覆盖已锁定的产品级版式权威。
-
----
-
-## 3. 栅格与断点
-
-### 3.1 栅格预设
-
-- **主内容：** Ant Design 24 栅格；与现有 `Row` / `Col` 用法一致。
-- **允许的分析区布局：**
-  - **单栏**：12+12 叠放或单 Col 24。
-  - **双栏**：12 + 12（常见主表 + 侧栏）。
-  - **三栏**：8 + 8 + 8（大桌面；与 `DESIGN.md` 三列区一致方向）。
-- **KPI 横带：** 使用统一 gap（与 `designTokens.space` 一致），同一横带内卡片 padding 与 gap 一致。
-- **表格区：** 遵守壳层与 `global.css` 中已有表格溢出/包含规则，不在域内另起冲突的 max-width 除非与壳冲突已文档化。
-
-### 3.2 断点（与实现一致）
-
-| 档位 | 参考宽度 | 行为 |
-|------|----------|------|
-| 大桌面 | ≥1280px | 允许三栏 8-8-8 等高密度布局 |
-| 标准桌面 | 约 992–1279px | 优先改为 12+12 或单栏优先，保持字号可读 |
-| 平板 | 约 768–991px | 以单栏 / 双栏为主，筛选托盘允许折行 |
-| 移动 | <768px | 单栏栈叠；**禁止**为保住多列而将数据字号压到 `DESIGN.md` 可读底线以下 |
-
----
-
-## 4. 状态面（必须显式）
-
-以下状态须在业务页可被感知（文案/标签/占位符皆可，但不可用演示数冒充正式口径）：
-
-| 状态 | 要求 |
-|------|------|
-| 无数据 | 明确空态，不展示伪造正式指标 |
-| 加载中 | 骨架屏或等价，不闪烁错误结论 |
-| 加载失败 | 错误信息与重试入口（若产品有约定） |
-| 过期/陈旧 | stale 明示（契约字段存在时） |
-| Fallback 日期 | 使用的 fallback as-of **必须可见** |
-| Mock / 演示模式 | 若为 mock，必须标注 |
-| 指标定义待定 | 「待业务确认」等，不得装作已定口径 |
-
-动画仅用于状态切换与聚焦，遵循 `DESIGN.md` Motion 一节（minimal-functional）。
-
----
-
-## 5. 样式与令牌
-
-- **数值色板 / 间距 / 圆角 / 动效：** 仅取自 `frontend/src/theme/designSystem.ts` 及既有 `shellTokens`，不引入第二套语义色。
-- **数据字体：** KPI 与表格数字使用 tabular + `tabular-nums`，与 DESIGN 一致。
-- **重复样式：**
-  - **跨页重复** → `PagePrimitiveStyles.ts`、稳定全局 class、`PagePrimitives.tsx` 的 opt-in 导出。
-  - **仅单页重复** → 该 feature 下的局部样式模块（如 `*.module.css`）或页内常量，但不要复制粘贴大块 inline。
-
----
-
-## 6. Opt-In 兼容（与现有 primitives）
-
-当前已有（非穷举）：`PageHeader`、`PageSectionLead`、`PageFilterTray`、`PageSurfacePanel`、`PageV2Shell`、`PageV2SurfacePanel` 等。
-
-- **契约 v2 primitives**（实现见 `frontend/src/components/page/PagePrimitives.tsx`：`PageDecisionHero`、`DataStatusStrip`、`KpiBand`、`KpiBandMetric`、`AnalysisGrid`、`EvidencePanel`、`PageStateSurface`）须以 **增量、显式引用** 方式接入。**筛选托盘**在实现层继续沿用既有 `PageFilterTray`，与契约「Filter Tray」角色同义。
-- **未引用 v2 primitives 的页面默认行为不变**（包括视觉），避免静默改变线上观感。
-
----
-
-## 7. 业务页迁移时的证据门禁
-
-当触及指标展示链路（adapter、formatter、selector、数据获取路径或可见指标呈现）时：
-
-1. **必须可陈述：** `API 响应 → adapter/transformer → state → selector/computed → 组件 → 表/图` 与迁移前等价，或由测试锁定。
-2. **MCP 证据（与 `AGENTS.md` 对齐）：** 在决定实现形态前，应使用 `moss-metric-contracts`、`moss-lineage-evidence`、`moss-data-catalog`、`gitnexus`；若变更影响可见前端行为，应使用 `playwright` 做浏览器级核对。若某 MCP 不可用，须在 PR/记录中写明**哪项不可用、沿用的本地证据、残留风险**；不得在无证据时猜测指标定义、单位、日期或血缘。
-3. **禁止猜测**指标定义、单位、日期语义与血缘。
-
----
-
-## 8. 禁区（不因版式改动而触碰）
-
-以下内容不在本契约实施范围内（除非单列工单）：
-
-- 后端 API、数据库 schema、认证与权限底座、队列/调度/缓存基础、全局 SDK 封装、无关的基础设施重构。
-- **禁止**无序扩张 `frontend/src/api/client.ts`（新端点放域内 client 模块）。
-- **禁止在前端「补算」正式金融口径**（与 `AGENTS.md` / `CLAUDE.md` 一致）。
-- 无关页面的文案/导航语义重组。
-
----
-
-## 9. 迁移与验收清单（摘要）
-
-每一迁移页结束前：
-
-- [ ] 首屏回答一个主业务问题；主结论在决策首屏区可见。
-- [ ] 状态面齐备（与该页数据契约一致）。
-- [ ] `npm run debt:audit`（`frontend/`）不恶化。
-- [ ] 针对性测试（adapter/formatter/selector/state 任一被触及则增补最小测试）。
-- [ ] 桌面 / 平板 / 移动宽度浏览器检视通过。
-
----
-
-## 10. 参考实现路径
-
-执行顺序见：`.omx/plans/ralplan-frontend-layout-system-2026-05-03.md`（Phase 0–5）；**实施后状态**以此文件顶部 **Status** 为准。
-
-上下文快照：`.omx/context/frontend-layout-system-plan-20260503T055355Z.md`。
-
-**Phase 5 文档收口：** 迁移表与本节（§ 迁移状态 / 下一批候选）与 `RALPLAN` 同步更新时间以 git 履历为准。
-
-## Style Governance Commands
-
-- `npm run style:inventory` (`frontend/`) is the Wave 0 read-only report. Use it to pick the next page/workflow and to record primitive adoption, inline style hotspots, hard-coded color hotspots, gradient usage, and duplicate CSS token definitions.
-- `npm run style:audit` (`frontend/`) is the incremental gate. It blocks newly added non-token hex colors and private shadows, and warns on new inline styles, large-radius literals, and KPI/metric additions that need explicit state-surface review.
-- Page migration remains one page/workflow at a time. Do not change metric definitions, units, API semantics, adapter calculations, or backend behavior as part of layout normalization.
+</details>

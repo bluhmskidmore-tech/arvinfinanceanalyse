@@ -117,6 +117,7 @@ const EFFECT_REASON_TEXT: Record<PnlBridgeEffectAvailabilityReason, string> = {
   market_value_base_missing: "余额行无可用市值基数",
   roll_window_missing: "缺上期余额行，无滚动窗口",
   tenor_outside_curve_support: "剩余期限超出曲线覆盖区间",
+  sensitivity_input_unavailable: "期限或久期输入不可用",
   non_fvtpl_basis: "非 FVTPL 口径不计市场效应",
   not_credit_book: "非信用簿",
   no_curve_sensitivity: "到期/零久期/空仓，无曲线敏感度",
@@ -151,7 +152,9 @@ export type CurveAvailabilityNotice = {
  * 通用告警就等于没披露。
  */
 export function buildCurveAvailabilityNotices(
-  summary: PnlBridgeSummary | undefined,
+  summary: Pick<PnlBridgeSummary,
+    "roll_down_availability" | "treasury_curve_availability" | "credit_spread_availability"
+  > | undefined,
 ): CurveAvailabilityNotice[] {
   if (!summary) return [];
   // 骑乘与国债曲线分开表态：它只用当期曲线沿自身斜率滚动，却额外需要一个有效的
@@ -183,7 +186,7 @@ export function buildCurveAvailabilityNotices(
       text:
         block.status === "unavailable"
           ? `${scope}因${reasonList(block.reasons)}无法计算，该效应本期没有可比输入，页面不以数字形式发布，不是市场没有变动。`
-          : `${scope}因${reasonList(block.reasons)}无法计算，合计因此被低估，不能按完整口径解读。`,
+          : `${scope}因${reasonList(block.reasons)}无法计算，贡献信息不完整，不能按完整口径解读。`,
     });
   }
   return notices;
@@ -275,7 +278,7 @@ export function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
         return `${label}<br/>${displayStrings[idx] ?? EM_DASH}`;
       },
     },
-    grid: { left: 48, right: 24, top: 24, bottom: 44, containLabel: true },
+    grid: { left: 48, right: 24, top: 24 },
     xAxis: {
       type: "category",
       data: [...BRIDGE_CATEGORIES],

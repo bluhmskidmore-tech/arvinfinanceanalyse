@@ -191,6 +191,7 @@ def test_cashflow_projection_envelope_carries_cashflow_surface(tmp_path, monkeyp
     assert payload["result_meta"]["tables_used"] == [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
+        "fact_formal_bond_analytics_daily",
     ]
     get_settings.cache_clear()
 

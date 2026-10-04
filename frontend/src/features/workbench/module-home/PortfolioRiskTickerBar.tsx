@@ -42,7 +42,7 @@ export function PortfolioRiskTickerBar({
         </div>
         <p className={styles.portfolioRiskTickerEmpty}>
           {unavailable
-            ? unavailableDetail ?? "风险链路未通过正式闭合校验，不构成实时风险判断。"
+            ? unavailableDetail ?? "风险数据尚未通过核验，暂不能据此判断当前风险。"
             : "风险指标待返回"}
         </p>
       </section>
@@ -90,7 +90,7 @@ export function PortfolioRiskTickerBar({
                 )}`}
                 data-change={changeDirection ?? "flat"}
               >
-                {row.source ?? row.detail ?? EM_DASH}
+                {row.tradeDate ? `报告日 ${row.tradeDate}` : row.detail ?? EM_DASH}
               </em>
             </div>
           );

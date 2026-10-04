@@ -24,9 +24,34 @@ function formatAnalysisValue(value: unknown) {
     return EM_DASH;
   }
   if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return EM_DASH;
+    }
     return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
   }
   return String(value);
+}
+
+/**
+ * sheet 的首个展示列始终是后端约定的稳定业务维度字段（科目代码/指标/行业/行业代码等，
+ * 见 backend/app/core_finance/qdb_gl_monthly_analysis.py 的 `_sheet(...)` 调用），在绝大多数
+ * sheet 中逐行唯一，因此单用该字段即可作为跨重渲染稳定的行 key。
+ * "异动预警"等 sheet 会对同一维度产生多条告警行，维度值可能重复；这里按出现次序
+ * 追加序号兜底防碰撞，仅对重复值生效，不把 rowIndex 当默认主键。
+ * 维度字段缺失（null/undefined/空串）时无稳定业务字段可用，退回该行的位置索引。
+ */
+function buildRowKeys(testId: string, dimensionColumn: string | undefined, rows: Array<Record<string, unknown>>): string[] {
+  const occurrenceCounts = new Map<string, number>();
+  return rows.map((row, rowIndex) => {
+    const dimensionValue = dimensionColumn ? row[dimensionColumn] : undefined;
+    if (dimensionValue === null || dimensionValue === undefined || dimensionValue === "") {
+      return `${testId}-row-${rowIndex}`;
+    }
+    const base = `${testId}-${String(dimensionValue)}`;
+    const occurrence = occurrenceCounts.get(base) ?? 0;
+    occurrenceCounts.set(base, occurrence + 1);
+    return occurrence === 0 ? base : `${base}-dup${occurrence}`;
+  });
 }
 
 function pickDisplayColumns(sheet: QdbGlMonthlyAnalysisSheet | undefined, limit = 4) {
@@ -42,9 +67,18 @@ function firstGroupWithData(groups: LedgerPnlWorkbookGroup[]) {
 }
 
 function WorkbookTable({ spec }: { spec: LedgerPnlWorkbookTableSpec }) {
+  const [expanded, setExpanded] = useState(false);
   const columns = pickDisplayColumns(spec.sheet, spec.columnLimit ?? 4);
-  const rows = spec.sheet?.rows.slice(0, spec.rowLimit ?? 5) ?? [];
-  const hasData = columns.length > 0 && rows.length > 0;
+  const allRows = spec.sheet?.rows ?? [];
+  const numericColumns = new Set(columns.filter((column) =>
+    allRows.some((row) => typeof row[column] === "number")
+    && allRows.every((row) => row[column] == null || row[column] === "" || typeof row[column] === "number"),
+  ));
+  const rowLimit = spec.rowLimit ?? 5;
+  const isTruncated = allRows.length > rowLimit;
+  const rows = expanded || !isTruncated ? allRows : allRows.slice(0, rowLimit);
+  const hasData = columns.length > 0 && allRows.length > 0;
+  const rowKeys = buildRowKeys(spec.testId, columns[0], rows);
 
   return (
     <section
@@ -53,26 +87,47 @@ function WorkbookTable({ spec }: { spec: LedgerPnlWorkbookTableSpec }) {
     >
       <h3 className="ledger-pnl-workbook-tables__table-title">{spec.title}</h3>
       {hasData ? (
-        <div className="ledger-pnl-workbook-tables__table-scroll">
-          <table className="ledger-pnl-workbook-tables__table-data">
-            <thead>
-              <tr>
-                {columns.map((column) => (
-                  <th key={column}>{column}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, rowIndex) => (
-                <tr key={`${spec.testId}-${rowIndex}`}>
+        <>
+          {isTruncated ? (
+            <div
+              className="ledger-pnl-workbook-tables__truncation"
+              data-testid={`${spec.testId}-truncation`}
+            >
+              <span>
+                {expanded
+                  ? `已展开全部 ${allRows.length} 行`
+                  : `共 ${allRows.length} 行，仅显示前 ${rowLimit} 行`}
+              </span>
+              <button
+                type="button"
+                className="ledger-pnl-workbook-tables__truncation-toggle"
+                onClick={() => setExpanded((prev) => !prev)}
+              >
+                {expanded ? "收起" : "展开全部"}
+              </button>
+            </div>
+          ) : null}
+          <div className="ledger-pnl-workbook-tables__table-scroll">
+            <table className="ledger-pnl-workbook-tables__table-data">
+              <thead>
+                <tr>
                   {columns.map((column) => (
-                    <td key={column}>{formatAnalysisValue(row[column])}</td>
+                    <th key={column} data-numeric={numericColumns.has(column)}>{column}</th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.map((row, rowIndex) => (
+                  <tr key={rowKeys[rowIndex]}>
+                    {columns.map((column) => (
+                      <td key={column} data-numeric={numericColumns.has(column)}>{formatAnalysisValue(row[column])}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : (
         <p className="ledger-pnl-workbook-tables__empty">暂无可展示数据</p>
       )}

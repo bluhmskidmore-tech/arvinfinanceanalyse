@@ -8,7 +8,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
 import duckdb
@@ -894,7 +894,9 @@ def _decimal_output(value: object) -> str:
     if value is None:
         return "0"
     try:
-        return format(Decimal(str(value)).quantize(Decimal("0.00000001")), "f")
+        return format(
+            Decimal(str(value)).quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP), "f"
+        )
     except (InvalidOperation, ValueError):
         return "0"
 

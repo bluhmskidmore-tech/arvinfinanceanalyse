@@ -388,12 +388,19 @@ def test_adb_read_surfaces_require_explicit_read_scope(
 
 
 def test_adb_route_keeps_duckdb_reads_in_service_layer() -> None:
+    route_mod = load_module(
+        "backend.app.api.routes.adb_analysis",
+        "backend/app/api/routes/adb_analysis.py",
+    )
     source = Path("backend/app/api/routes/adb_analysis.py").read_text(encoding="utf-8")
 
     assert "import duckdb" not in source
     assert "duckdb.connect" not in source
     assert "_execute_balance_analysis_materialization" not in source
     assert "materialize_balance_analysis_facts.fn" not in source
+    assert "materialize_balance_analysis_facts.send" not in source
+    assert "for report_date_str in missing" not in source
+    assert all(route.response_model is not None for route in route_mod.router.routes)
 
 
 def test_adb_backfill_candidate_dates_filters_formal_dates_to_cny(
@@ -454,10 +461,17 @@ def test_adb_backfill_queues_materialization_tasks_without_sync_private_call(
         },
     )
     send_calls: list[dict[str, object]] = []
+
+    class _FakeActor:
+        def send(self, **kwargs: object) -> None:
+            send_calls.append(kwargs)
+
+    fake_actor = _FakeActor()
     monkeypatch.setattr(
-        route_mod.materialize_balance_analysis_facts,
-        "send",
-        lambda **kwargs: send_calls.append(kwargs),
+        route_mod.adb_analysis_service,
+        "materialize_balance_analysis_facts",
+        fake_actor,
+        raising=False,
     )
 
     app = FastAPI()
@@ -480,6 +494,75 @@ def test_adb_backfill_queues_materialization_tasks_without_sync_private_call(
     assert all(call["duckdb_path"] == str(tmp_path / "moss.duckdb") for call in send_calls)
     assert all(call["governance_dir"] == str(tmp_path / "governance") for call in send_calls)
     assert all(call["data_root"] == str(tmp_path / "data_input") for call in send_calls)
+
+
+def test_adb_backfill_partial_dispatch_returns_stable_failure_summary(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    route_mod = load_module(
+        "backend.app.api.routes.adb_analysis",
+        "backend/app/api/routes/adb_analysis.py",
+    )
+    _configure_adb_scope_store(tmp_path, monkeypatch).grant_scope(
+        user_id="adb-backfill-user",
+        role=None,
+        resource="adb_analysis",
+        action="backfill",
+    )
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(tmp_path / "data_input"))
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        route_mod.adb_analysis_service,
+        "adb_backfill_candidate_dates",
+        lambda *_args, **_kwargs: {
+            "snapshot_dates": ["2025-06-02", "2025-06-03"],
+            "formal_dates": [],
+            "missing_dates": ["2025-06-02", "2025-06-03"],
+        },
+    )
+
+    class _PartiallyFailingActor:
+        def send(self, **kwargs: object) -> None:
+            if kwargs["report_date"] == "2025-06-03":
+                raise RuntimeError("broker password at C:\\secret\\broker.conf")
+
+    fake_actor = _PartiallyFailingActor()
+    monkeypatch.setattr(
+        route_mod.adb_analysis_service,
+        "materialize_balance_analysis_facts",
+        fake_actor,
+        raising=False,
+    )
+
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/analysis/adb/backfill",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03"},
+        headers={"X-User-Id": "adb-backfill-user"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "status": "queued",
+        "total_missing": 2,
+        "queued_count": 1,
+        "failed_count": 1,
+        "failed": [
+            {
+                "date": "2025-06-03",
+                "error_code": "ADB_BACKFILL_DISPATCH_FAILED",
+                "error_summary": "补建任务派发失败。",
+            }
+        ],
+        "message": "补建任务已派发，部分日期派发失败。",
+    }
+    assert "secret" not in response.text
 
 
 def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
@@ -856,19 +939,17 @@ def test_adb_accounting_basis_excluded_control_rows_do_not_enter_buckets(
 
 
 @pytest.mark.parametrize(
-    "path,params,service_attr,fixed_detail",
+    "path,params,service_attr",
     [
         (
             "/api/analysis/adb/comparison",
             {"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
             "adb_comparison_envelope",
-            "Failed to get adb comparison.",
         ),
         (
             "/api/analysis/adb/monthly",
             {"year": 2025},
             "adb_monthly_envelope",
-            "Failed to get monthly adb.",
         ),
     ],
 )
@@ -876,7 +957,6 @@ def test_adb_routes_map_service_errors_without_leaking_internal_detail(
     path: str,
     params: dict[str, object],
     service_attr: str,
-    fixed_detail: str,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -895,12 +975,18 @@ def test_adb_routes_map_service_errors_without_leaking_internal_detail(
     monkeypatch.setattr(route_mod.adb_analysis_service, service_attr, _raiser(RuntimeError("adb backend unavailable")))
     unavailable = client.get(path, params=params)
     assert unavailable.status_code == 503, unavailable.text
-    assert unavailable.json()["detail"] == "adb backend unavailable"
+    assert unavailable.json()["detail"] == {
+        "code": "ADB_SERVICE_UNAVAILABLE",
+        "message": "ADB 分析服务暂时不可用。",
+    }
 
     monkeypatch.setattr(route_mod.adb_analysis_service, service_attr, _raiser(ValueError("adb window invalid")))
     invalid = client.get(path, params=params)
     assert invalid.status_code == 422, invalid.text
-    assert invalid.json()["detail"] == "adb window invalid"
+    assert invalid.json()["detail"] == {
+        "code": "ADB_REQUEST_INVALID",
+        "message": "ADB 请求参数无效。",
+    }
 
     monkeypatch.setattr(
         route_mod.adb_analysis_service,
@@ -909,7 +995,10 @@ def test_adb_routes_map_service_errors_without_leaking_internal_detail(
     )
     broken = client.get(path, params=params)
     assert broken.status_code == 500, broken.text
-    assert broken.json()["detail"] == fixed_detail
+    assert broken.json()["detail"] == {
+        "code": "ADB_INTERNAL_ERROR",
+        "message": "ADB 分析请求处理失败。",
+    }
     assert "secret" not in broken.text
 
 
@@ -931,7 +1020,10 @@ def test_adb_coverage_missing_source_returns_503_with_fixed_detail(tmp_path: Pat
     )
 
     assert response.status_code == 503, response.text
-    assert response.json()["detail"] == "ADB coverage source data is unavailable."
+    assert response.json()["detail"] == {
+        "code": "ADB_SOURCE_UNAVAILABLE",
+        "message": "ADB 数据源暂时不可用。",
+    }
     assert "secret" not in response.text
 
 
@@ -1160,7 +1252,9 @@ def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
     response = client.get("/api/analysis/adb/monthly", params={"year": 2025})
 
     assert response.status_code == 200, response.text
-    payload = response.json()["result"]
+    envelope = response.json()
+    payload = envelope["result"]
+    calibration = envelope["calibration"]
     first_month = payload["months"][0]
     second_month = payload["months"][1]
 
@@ -1191,6 +1285,18 @@ def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
         if item["category"] == BOND_CERT_ZQTZ_CATEGORY
     )
     assert null_rate_item["weighted_rate"] is None
+    assert set(calibration) >= {
+        "position_scope",
+        "currency_basis",
+        "source_families",
+        "data_basis",
+        "calibration_note",
+    }
+    assert calibration["position_scope"] == "all"
+    assert isinstance(calibration["currency_basis"], str)
+    assert isinstance(calibration["source_families"], list)
+    assert isinstance(calibration["data_basis"], str)
+    assert isinstance(calibration["calibration_note"], str)
 
 
 def test_adb_monthly_excludes_missing_rate_from_denominator_and_reports_coverage(
@@ -1774,6 +1880,30 @@ def test_adb_comparison_excludes_invalid_end_row_and_locf_valid_balance(monkeypa
     assert payload["avg_unavailable_reason"] is None
     assert payload["spot_unavailable_reason"] is None
     assert payload["assets_breakdown"][0]["spot_balance"] == pytest.approx(100.0)
+
+
+def test_adb_comparison_does_not_locf_closed_category_when_source_has_end_snapshot(
+    monkeypatch,
+) -> None:
+    closed_category = "closed-delegated-account"
+    live_category = "live-bond-category"
+    closed_row = _comparison_bond_row("2025-06-01", Decimal("100"), valid=True)
+    closed_row["bond_category"] = closed_category
+    live_prior_row = _comparison_bond_row("2025-06-01", Decimal("200"), valid=True)
+    live_prior_row["bond_category"] = live_category
+    live_end_row = _comparison_bond_row("2025-06-02", Decimal("250"), valid=True)
+    live_end_row["bond_category"] = live_category
+
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        bonds_rows=[closed_row, live_prior_row, live_end_row],
+    )
+
+    assert payload["coverage_days"] == 2
+    assert payload["total_spot_assets"] == pytest.approx(250.0)
+    by_category = {row["category"]: row for row in payload["assets_breakdown"]}
+    assert by_category[live_category]["spot_balance"] == pytest.approx(250.0)
+    assert by_category[closed_category]["spot_balance"] == pytest.approx(0.0)
 
 
 def test_adb_comparison_all_invalid_balances_are_no_data(monkeypatch) -> None:

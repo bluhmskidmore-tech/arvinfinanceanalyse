@@ -207,8 +207,8 @@ class LiabilityMonthlyBreakdownRow(BaseModel):
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
-class LiabilityMonthlyItem(BaseModel):
-    model_config = ConfigDict(extra="allow")
+class LiabilityMonthlySummaryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
     month: str
     month_label: str
@@ -218,6 +218,41 @@ class LiabilityMonthlyItem(BaseModel):
     avg_liability_cost: Numeric | None = None
     mom_change: Numeric | None = None
     mom_change_pct: Numeric | None = None
+    yoy_change: Numeric | None = None
+    yoy_change_pct: Numeric | None = None
+    num_days: int = Field(ge=0)
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "avg_total_liabilities": ("yuan", False),
+        "avg_interbank_liabilities": ("yuan", False),
+        "avg_issued_liabilities": ("yuan", False),
+        "avg_liability_cost": ("pct", True, "ratio"),
+        "mom_change": ("yuan", True),
+        "mom_change_pct": ("pct", True, "ratio"),
+        "yoy_change": ("yuan", True),
+        "yoy_change_pct": ("pct", True, "ratio"),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class LiabilityMonthlyItem(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    month: str
+    month_label: str
+    counterparty_total: Numeric | None = None
+    avg_total_liabilities: Numeric | None = None
+    avg_interbank_liabilities: Numeric | None = None
+    avg_issued_liabilities: Numeric | None = None
+    avg_liability_cost: Numeric | None = None
+    mom_change: Numeric | None = None
+    mom_change_pct: Numeric | None = None
+    yoy_change: Numeric | None = None
+    yoy_change_pct: Numeric | None = None
     top10_share: Numeric | None = None
     hhi: Numeric | None = None
     population_count: int = Field(default=0, ge=0)
@@ -233,17 +268,53 @@ class LiabilityMonthlyItem(BaseModel):
     counterparty_details: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
     num_days: int
 
+    # counterparty_total excludes self counterparties, matching concentration shares.
     # avg_liability_cost: liability_analytics_compat.compute_liabilities_monthly L722
     # weighted_num/weighted_den over normalize_*_rate_decimal outputs (decimal ratio).
-    # mom_change_pct: producer emits None only (compat L727-728, cached-route parity);
-    # no confirmed numeric-scale evidence, so it stays on the legacy "auto" heuristic.
+    # mom/yoy percentages are decimal ratios from the governed monthly aggregator.
     _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "counterparty_total": ("yuan", False),
         "avg_total_liabilities": ("yuan", False),
         "avg_interbank_liabilities": ("yuan", False),
         "avg_issued_liabilities": ("yuan", False),
         "avg_liability_cost": ("pct", True, "ratio"),
         "mom_change": ("yuan", True),
-        "mom_change_pct": ("pct", True),
+        "mom_change_pct": ("pct", True, "ratio"),
+        "yoy_change": ("yuan", True),
+        "yoy_change_pct": ("pct", True, "ratio"),
+        "top10_share": ("pct", False, "ratio"),
+        "hhi": ("count", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class LiabilityMonthlyDetailItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month: str
+    month_label: str
+    counterparty_total: Numeric | None = None
+    top10_share: Numeric | None = None
+    hhi: Numeric | None = None
+    population_count: int = Field(default=0, ge=0)
+    is_truncated: bool = False
+    counterparty_top10: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
+    by_institution_type: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
+    structure_overview: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
+    term_buckets: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
+    interbank_by_type: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
+    interbank_term_buckets: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
+    issued_by_type: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
+    issued_term_buckets: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
+    counterparty_details: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
+    num_days: int = Field(ge=0)
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "counterparty_total": ("yuan", False),
         "top10_share": ("pct", False, "ratio"),
         "hhi": ("count", False),
     }
@@ -342,3 +413,30 @@ class LiabilitiesMonthlyPayload(BaseModel):
     @classmethod
     def _coerce(cls, data: Any) -> Any:
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class LiabilitiesMonthlySummaryPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int
+    months: list[LiabilityMonthlySummaryItem]
+    ytd_avg_total_liabilities: Numeric | None = None
+    ytd_avg_liability_cost: Numeric | None = None
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "ytd_avg_total_liabilities": ("yuan", False),
+        "ytd_avg_liability_cost": ("pct", True, "ratio"),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class LiabilitiesMonthlyDetailPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int
+    selected_month: str
+    detail: LiabilityMonthlyDetailItem | None = None

@@ -7,6 +7,7 @@ import { workbenchNavigation } from "../app/navigation";
 import { stockAnalysisPageCssVars } from "../features/stock-analysis/lib/stockAnalysisTokens";
 import {
   COCKPIT_SHELL_SECTION_KEYS,
+  INSTITUTIONAL_CONSOLE_SECTION_KEYS,
   SECTION_SUBNAV_EXCLUDED_SECTION_KEYS,
   TERMINAL_BAR_EXCLUDED_SECTION_KEYS,
 } from "../layouts/workbenchShellSections";
@@ -416,6 +417,56 @@ const NOCTURNE_COLOR_MIX_SLOTS: ReadonlyArray<
  * canvas 图表（JS 消费方）静默漂移，只改 JS 侧时页面样式（CSS 消费方）
  * 静默漂移——此组断言按上方槽位映射逐一值级对拍。
  */
+describe("shared alert components ↔ dark warning/danger scale mapping", () => {
+  /*
+   * 共享警示组件是「底 + 边 + 字」三件套。深色映射只补其中一档会让它们变成
+   * 混搭（浅黄底 + 深色系琥珀边 + 深色字），而这些组件恰恰在数据质量出问题时
+   * 才出现。这条断言从组件实际消费的档位反推，而不是硬编码一张清单——将来有人
+   * 给组件加一个新档位却忘了映射，这里会直接失败。
+   */
+  const ALERT_COMPONENT_CSS = [
+    "src/components/page/DataQualityBanner.css",
+    "src/components/StatusPill.css",
+  ];
+  const SCALE_PATTERN = /var\(--(moss-color-(?:warning|danger)-\d+)\)/g;
+
+  function consumedScaleVars(): Set<string> {
+    const consumed = new Set<string>();
+    for (const relativePath of ALERT_COMPONENT_CSS) {
+      const css = readFileSync(resolve(process.cwd(), relativePath), "utf8");
+      for (const match of css.matchAll(SCALE_PATTERN)) consumed.add(match[1]);
+    }
+    return consumed;
+  }
+
+  /** 深色语义映射块：把 --ib-* / --moss-* 翻成 --dh-api-* 的那一块。 */
+  function darkBridgeBlockBody(): string {
+    const css = readFileSync(TOKENS_CSS_PATH, "utf8");
+    const start = css.indexOf(".themed-route-boundary.theme-dh-api,");
+    expect(start).toBeGreaterThan(-1);
+    const open = css.indexOf("{", start);
+    return css.slice(open + 1, css.indexOf("}", open));
+  }
+
+  it("maps every warning/danger scale step the shared alert components consume", () => {
+    const consumed = consumedScaleVars();
+    expect(consumed.size).toBeGreaterThan(0);
+    const body = darkBridgeBlockBody();
+    const unmapped = [...consumed].filter(
+      (name) => !new RegExp(`^\\s*--${name}\\s*:`, "m").test(body),
+    );
+    expect(unmapped).toEqual([]);
+  });
+
+  it("keeps the mapped values on the --dh-api-* semantic chain, never bare hex", () => {
+    const body = darkBridgeBlockBody();
+    for (const match of body.matchAll(/^\s*(--moss-color-(?:warning|danger)-\d+)\s*:([^;]+);/gm)) {
+      expect(match[2]).toMatch(/var\(--dh-api-|color-mix\(/);
+      expect(match[2]).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+    }
+  });
+});
+
 describe("nocturneTokens ↔ tokens.css Nocturne scope parity", () => {
   const nocturneCssVars = parseCssVarDeclarations(
     nocturnePaletteDeclarations(collectCssSourceFiles(SRC_PATH)),
@@ -560,7 +611,16 @@ describe("workbenchTheme", () => {
   });
 
   it("keeps table chrome on the Nocturne density and row tokens", () => {
-    const { components } = workbenchTheme;
+    const { components, token } = workbenchTheme;
+    expect(designTokens.density.tableRowNormal).toBe(36);
+    expect(token?.controlHeight).toBe(36);
+    expect(token?.controlHeightLG).toBe(36);
+    expect(token?.controlHeightSM).toBe(36);
+    expect(components?.Button?.fontWeight).toBe(500);
+    expect(components?.Table?.cellFontSize).toBe(12);
+    expect(components?.Table?.cellFontSizeSM).toBe(12);
+    expect(components?.Table?.lineHeight).toBe(1.35);
+    expect(components?.Table?.fontWeightStrong).toBe(500);
     expect(components?.Table?.headerBg).toBe(nocturneTokens.color.panel3);
     expect(components?.Table?.headerColor).toBe(nocturneTokens.color.inkSoft);
     // accent 8% 行悬停，对齐 --moss-institutional-row-hover 的 mix 惯例。
@@ -607,6 +667,19 @@ describe("globalCss design token bridge (:root)", () => {
       normalizeHex(designTokens.color.warm.charcoal),
     );
     expect(mossVars.get("moss-space-4")).toBe(`${designTokens.space[4]}px`);
+    expect(mossVars.get("moss-page-gutter")).toBe(`${designTokens.layout.pageGutter}px`);
+    for (const size of [11, 12, 13, 14, 20, 24] as const) {
+      expect(mossVars.get(`moss-font-size-${size}`)).toBe(`${designTokens.fontSize[size]}px`);
+    }
+    expect([...new Set(Object.values(designTokens.fontSize))].sort((a, b) => a - b)).toEqual([
+      11, 12, 13, 14, 20, 24,
+    ]);
+    expect(mossVars.get("moss-table-row-h")).toBe(`${designTokens.table.rowHeight}px`);
+    expect(mossVars.get("moss-table-row-h-compact")).toBe(`${designTokens.table.rowHeightCompact}px`);
+    expect(mossVars.get("moss-table-font-size")).toBe(`${designTokens.table.fontSize}px`);
+    expect(mossVars.get("moss-table-line-height")).toBe(String(designTokens.table.lineHeight));
+    expect(mossVars.get("moss-table-header-weight")).toBe(String(designTokens.table.headerWeight));
+    expect(mossVars.get("moss-table-cell-weight")).toBe(String(designTokens.table.cellWeight));
     expect(mossVars.get("moss-radius-md")).toBe(`${designTokens.radius.md}px`);
     expect(mossVars.get("moss-shadow-card")).toBe(shellTokens.shadowCard);
     expect(mossVars.get("moss-shadow-panel")).toBe(shellTokens.shadowPanel);
@@ -633,10 +706,17 @@ describe("globalCss design token bridge (:root)", () => {
     expect(mossVars.get("moss-institutional-rail-bg")).toBe("var(--ib-rail-bg)");
   });
 
-  it("maps monospace stack to designTokens.fontFamily.tabular", () => {
-    const cssMono = mossVars.get("moss-font-mono") ?? "";
-    const tokenMono = designTokens.fontFamily.tabular.replace(/\s+/g, " ").trim();
-    expect(cssMono.replace(/\s+/g, " ").trim()).toBe(tokenMono);
+  it("maps tabular and monospace stacks to designTokens.fontFamily", () => {
+    const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+    expect(normalize(mossVars.get("moss-font-sans") ?? "")).toBe(
+      normalize(designTokens.fontFamily.sans),
+    );
+    expect(normalize(mossVars.get("moss-font-tabular") ?? "")).toBe(
+      normalize(designTokens.fontFamily.tabular),
+    );
+    expect(normalize(mossVars.get("moss-font-mono") ?? "")).toBe(
+      normalize(designTokens.fontFamily.mono),
+    );
   });
 
   it("exposes motion duration and easing from designTokens.motion", () => {
@@ -672,7 +752,7 @@ describe("globalCss design token bridge (:root)", () => {
     expect(fullGlobalCss).toContain(".moss-page-v2-surface");
     expect(fullGlobalCss).toContain(".moss-page-v2-decision-hero");
     expect(fullGlobalCss).toContain(".moss-page-v2-data-status");
-    expect(fullGlobalCss).toContain(".moss-page-v2-kpi-band");
+    expect(fullGlobalCss).not.toContain(".moss-page-v2-kpi-band");
     expect(fullGlobalCss).toContain(".moss-page-v2-evidence-panel");
     expect(fullGlobalCss).toContain(".moss-page-v2-state-surface");
     expect(fullGlobalCss).toContain(".workbench-shell-grid--cockpit");
@@ -703,7 +783,13 @@ describe("globalCss design token bridge (:root)", () => {
       "src/features/pnl-attribution/components/PnlAttributionView.tsx",
     ].map((filePath) => readFileSync(resolve(process.cwd(), filePath), "utf8"));
 
-    expect(shellSource).toContain("institutionalConsoleShellSectionKeys");
+    expect(INSTITUTIONAL_CONSOLE_SECTION_KEYS).toEqual([
+      "cross-asset",
+      "ledger-pnl",
+      "product-category-pnl",
+      "pnl-attribution",
+    ]);
+    expect(shellSource).toContain("INSTITUTIONAL_CONSOLE_SECTION_KEYS");
     expect(shellSource).toContain("useInstitutionalConsoleCss");
     expect(shellSource).toContain('import("../styles/workbenchInstitutionalConsole.css")');
     expect(shellSource).toContain('import("../styles/workbenchDeferredChrome.css")');
@@ -719,14 +805,11 @@ describe("globalCss design token bridge (:root)", () => {
 
   it("keeps non-home workbench chrome out of the eager global stylesheet", () => {
     const deferredSelectors = [
-      ".workbench-terminal-bar {",
-      ".workbench-terminal-bar-split {",
       ".workbench-workspace-hero {",
       ".portfolio-workbench-light-hint {",
       ".workbench-shell-status-summary {",
       ".workbench-shell-status-meta {",
       ".portfolio-workbench-board {",
-      ".workbench-section-subnav {",
       ".workbench-notice {",
       ".portfolio-workbench-lead {",
       ".portfolio-workbench-flow {",
@@ -740,11 +823,94 @@ describe("globalCss design token bridge (:root)", () => {
     expect(fullGlobalCss).toContain(".dashboard-home-shell");
   });
 
+  it("keeps terminal-bar/operator-zone/market-ticker/section-subnav first-paint geometry eager (WP-B CLS fix)", () => {
+    // 2026-09-19 WP-B：这些选择器决定终端条铬件的首帧盒子尺寸与位置，
+    // 迁出 workbenchDeferredChrome.css 到 workbenchShell.css 随入口 CSS
+    // eager 加载，避免 deferred CSS 到达前无样式堆叠再收拢产生 CLS。
+    const eagerGeometrySelectors = [
+      ".workbench-terminal-bar {",
+      ".workbench-terminal-bar-split {",
+      ".workbench-page-context-shell {",
+      ".workbench-page-title-display {",
+      '.workbench-shell-grid .workbench-page-title-display[data-variant="crumb"] {',
+      ".workbench-shell-report-chip {",
+      ".workbench-operator-zone-shell {",
+      ".workbench-operator-zone-shell .workbench-governance-pill__toggle {",
+      ".workbench-terminal-utility-navlink {",
+      ".workbench-terminal-utility-icon {",
+      ".workbench-market-ticker-shell {",
+      ".workbench-section-subnav {",
+      '.workbench-shell-grid.workbench-shell-grid [data-testid="workbench-terminal-bar"] {',
+      '.workbench-shell-grid--desktop-aligned [data-testid="workbench-page-context"] {',
+      '.workbench-shell-grid--desktop-aligned [data-testid="workbench-operator-zone"] {',
+      '.workbench-shell-grid--desktop-aligned [data-testid="workbench-market-ticker"] {',
+    ];
+    for (const selector of eagerGeometrySelectors) {
+      expect(fullGlobalCss).toContain(selector);
+    }
+
+    // 完整迁移（几何迁出后无装饰声明残留）的选择器不应再出现在 deferred 分册。
+    const fullyMigratedSelectors = [
+      ".workbench-terminal-bar-split {",
+      ".workbench-page-context-shell {",
+      ".workbench-operator-zone-shell {",
+      ".workbench-terminal-utility-icon {",
+    ];
+    for (const selector of fullyMigratedSelectors) {
+      expect(workbenchDeferredChromeCss).not.toContain(selector);
+    }
+
+    // 拆分迁移（几何进 eager、装饰留 deferred）的选择器仍留在 deferred，
+    // 但 deferred 一侧不得再重复设置尺寸类属性，避免 CSS 到达时二次偏移。
+    const splitSelectors: Array<{ selector: string; forbidden: string[] }> = [
+      {
+        selector: ".workbench-terminal-bar {",
+        forbidden: ["display: grid", "gap: 10px", "padding: 14px 18px"],
+      },
+      {
+        selector: ".workbench-shell-report-chip {",
+        forbidden: ["display: inline-flex", "padding: 4px 10px", "font-size: 12px"],
+      },
+      {
+        selector: ".workbench-operator-zone-shell .workbench-governance-pill__toggle {",
+        forbidden: ["display: inline-flex", "min-height", "padding", "font-size"],
+      },
+      {
+        selector: ".workbench-terminal-utility-navlink {",
+        forbidden: ["display: inline-flex", "gap: 6px", "padding: 4px 2px"],
+      },
+      {
+        selector: ".workbench-market-ticker-shell {",
+        forbidden: ["display: flex", "min-width: 0"],
+      },
+      {
+        selector: ".workbench-section-subnav {",
+        forbidden: ["display: flex", "align-items: center"],
+      },
+    ];
+    for (const { selector, forbidden } of splitSelectors) {
+      expect(workbenchDeferredChromeCss).toContain(selector);
+      const ruleBody = workbenchDeferredChromeCss.split(selector)[1]?.split("}")[0] ?? "";
+      for (const prop of forbidden) {
+        expect(ruleBody).not.toContain(prop);
+      }
+    }
+
+    // 未迁移选择器（纯装饰/内容型铬件）必须仍只在 deferred 出现。
+    const untouchedDeferredSelectors = [".workbench-market-ticker-label {"];
+    for (const selector of untouchedDeferredSelectors) {
+      expect(fullGlobalCss).not.toContain(selector);
+      expect(workbenchDeferredChromeCss).toContain(selector);
+    }
+  });
+
   it("keeps Nocturne shell override scope lists in parity across tokens/shell/deferred chrome", () => {
     const tokensCss = readFileSync(TOKENS_CSS_PATH, "utf8");
     const shellCss = readFileSync(WORKBENCH_SHELL_CSS_PATH, "utf8");
 
-    const palette = nocturneScopeSet(tokensCss, "--nct-bg: #161826");
+    /* 主色板块的定位锚点；三分列断言复用同一字面量，不额外引入裸 hex。 */
+    const paletteMarker = `--nct-bg: ${nocturneTokens.color.bg}`;
+    const palette = nocturneScopeSet(tokensCss, paletteMarker);
     const paper = nocturneScopeSet(tokensCss, "--moss-shell-paper-bg: var(--nct-bg)");
     const terminalVars = nocturneScopeSet(tokensCss, "--moss-shell-terminal-bg: var(--nct-rail)");
     const gridOverride = nocturneScopeSet(shellCss, "background: var(--nct-bg) !important");
@@ -781,14 +947,15 @@ describe("globalCss design token bridge (:root)", () => {
       "background: var(--nct-bg, var(--dh-api-bg))",
     );
     // 延迟分册的铬件收敛列表（workbenchDeferredChrome.css）：
-    // 终端条铬件四组（阴影 / chip+pill / utility navlink / 行情条）。
+    // 终端条铬件四组（阴影 / 报告日 / utility navlink / 行情条）。
     const terminalChromeShadow = nocturneScopeSet(
       workbenchDeferredChromeCss,
       "box-shadow: none !important",
     );
-    const terminalChromeChipPill = nocturneScopeSet(
+    const terminalChromeReportDate = nocturneScopeSet(
       workbenchDeferredChromeCss,
-      "background: var(--dh-api-panel-2)",
+      "color: var(--dh-api-soft)",
+      ".workbench-shell-report-chip",
     );
     const terminalChromeNavlink = nocturneScopeSet(
       workbenchDeferredChromeCss,
@@ -810,7 +977,8 @@ describe("globalCss design token bridge (:root)", () => {
     );
     const subnavActiveOverride = nocturneScopeSet(
       workbenchDeferredChromeCss,
-      "color-mix(in srgb, var(--dh-api-blue) 14%, transparent)",
+      "color: var(--dh-api-ink)",
+      '.workbench-section-subnav__link[data-active="true"]',
     );
     // 治理横幅四块（selectorMarker 排除 /agent 的 gated 就绪横幅同款声明）。
     const governanceSelectorMarker = '[data-notice-tone="governance"]';
@@ -845,6 +1013,8 @@ describe("globalCss design token bridge (:root)", () => {
       ),
       palette,
     );
+    // 首页没有桌面终端条，但窄屏外壳导航仍消费相同背景变量。
+    const terminalBackgroundExpected = [...terminalExpected, "dashboard-home"].sort();
     const subnavExpected = deriveNocturneScopes(
       navigationSectionKeys.filter(
         (key) => !SECTION_SUBNAV_EXCLUDED_SECTION_KEYS.includes(key),
@@ -852,12 +1022,18 @@ describe("globalCss design token bridge (:root)", () => {
       palette,
     );
     const cockpitExpected = deriveNocturneScopes(COCKPIT_SHELL_SECTION_KEYS, palette);
-    // 推导锚点：market-data 渲染终端条但抑制子导航；宏观工具相反；
+    // 推导锚点（2026-09-02 铬件统一）：终端条与子导航是全站唯一开场，只有
+    // dashboard（D1 待决）与 stock-analysis（D5 待收）两个例外；
     // dashboard / performance-home / reports-center 走别名解析入 cockpit。
     expect(terminalExpected).toContain("market-data");
-    expect(terminalExpected).not.toContain("macro-toolkit");
+    expect(terminalExpected).toContain("macro-toolkit");
+    expect(terminalExpected).toContain("portfolio-home");
+    expect(terminalExpected).not.toContain("dashboard-home");
+    expect(terminalExpected).not.toContain("stock-analysis");
     expect(subnavExpected).toContain("macro-toolkit");
-    expect(subnavExpected).not.toContain("market-data");
+    expect(subnavExpected).toContain("market-data");
+    expect(subnavExpected).not.toContain("dashboard-home");
+    expect(subnavExpected).not.toContain("stock-analysis");
     expect(cockpitExpected).toContain("dashboard-home");
     expect(cockpitExpected).toContain("module-workbench-home");
 
@@ -888,12 +1064,12 @@ describe("globalCss design token bridge (:root)", () => {
     // 首页 cockpit 壳不渲染主列纸面。
     expect(paper).toEqual(palette.filter((scope) => scope !== "dashboard-home"));
     // 渲染终端条的 scope＝showShellTerminalBar 渲染分支推导；tokens.css
-    // 终端条块与延迟分册收敛列表（含铬件四组：阴影 / chip+pill /
+    // 终端条块与延迟分册收敛列表（含铬件四组：阴影 / 报告日 /
     // utility navlink / 行情条）都必须等于这一份推导值。
-    expect(terminalVars).toEqual(terminalExpected);
+    expect(terminalVars).toEqual(terminalBackgroundExpected);
     expect(terminalOverride).toEqual(terminalExpected);
     expect(terminalChromeShadow).toEqual(terminalExpected);
-    expect(terminalChromeChipPill).toEqual(terminalExpected);
+    expect(terminalChromeReportDate).toEqual(terminalExpected);
     expect(terminalChromeNavlink).toEqual(terminalExpected);
     expect(terminalChromeTicker).toEqual(terminalExpected);
     // 子导航三组＝组内子导航渲染分支推导（market-data 抑制子导航、
@@ -927,13 +1103,21 @@ describe("globalCss design token bridge (:root)", () => {
     // 断言每一半各自等于对应权威列表。
     const isHasLeg = (leg: string) => leg.includes(":has(");
     const isPlainLeg = (leg: string) => !leg.includes(":has(");
+    const isBoundaryLeg = (leg: string) => leg.includes(".themed-route-boundary");
     const isDesktopAlignedLeg = (leg: string) => leg.includes("--desktop-aligned");
-    expect(nocturneScopeSetForLegs(tokensCss, "--nct-bg: #161826", isPlainLeg)).toEqual(
-      palette,
-    );
-    expect(nocturneScopeSetForLegs(tokensCss, "--nct-bg: #161826", isHasLeg)).toEqual(
-      palette,
-    );
+    // 主色板块是三分列（页根 / 外壳 grid / boundary）；boundary 分列让
+    // --dh-api-* 在 boundary 上就是 Nocturne，深色重映射块因而不会把 --ib-*
+    // 算成钢蓝字面值再继承给页根。三列各自断言，避免并集提取对「只往一列
+    // 加/删 scope」不敏感。
+    expect(nocturneScopeSetForLegs(tokensCss, paletteMarker, isPlainLeg)).toEqual(palette);
+    expect(
+      nocturneScopeSetForLegs(
+        tokensCss,
+        paletteMarker,
+        (leg) => isHasLeg(leg) && !isBoundaryLeg(leg),
+      ),
+    ).toEqual(palette);
+    expect(nocturneScopeSetForLegs(tokensCss, paletteMarker, isBoundaryLeg)).toEqual(palette);
     expect(
       nocturneScopeSetForLegs(tokensCss, "--moss-shell-paper-bg: var(--nct-bg)", isPlainLeg),
     ).toEqual(paper);
@@ -946,14 +1130,14 @@ describe("globalCss design token bridge (:root)", () => {
         "--moss-shell-terminal-bg: var(--nct-rail)",
         isPlainLeg,
       ),
-    ).toEqual(terminalExpected);
+    ).toEqual(terminalBackgroundExpected);
     expect(
       nocturneScopeSetForLegs(
         tokensCss,
         "--moss-shell-terminal-bg: var(--nct-rail)",
         isHasLeg,
       ),
-    ).toEqual(terminalExpected);
+    ).toEqual(terminalBackgroundExpected);
     expect(
       nocturneScopeSetForLegs(
         workbenchDeferredChromeCss,
@@ -984,6 +1168,11 @@ describe("globalCss design token bridge (:root)", () => {
     expect(fullGlobalCss).toContain(".themed-route-boundary.theme-dh-api");
     expect(fullGlobalCss).toContain("--ib-paper: var(--dh-api-bg);");
     expect(fullGlobalCss).toContain("--moss-color-text-primary: var(--dh-api-ink);");
+    // 结论 17 ①②：三个真桥接空白补进 boundary 重映射块，共享 loading / 空态 / 重试 /
+    // 空表组件在深色路由才拿到 Nocturne 圆角与墨色（结论 18）；:root 侧 2px 仍由 ibTokens 断言锁定。
+    expect(fullGlobalCss).toContain("--ib-radius: var(--dh-api-radius);");
+    expect(fullGlobalCss).toContain("--ib-serif: var(--moss-font-sans);");
+    expect(fullGlobalCss).toContain("--moss-color-neutral-900: var(--dh-api-ink);");
   });
 
   it("gives shell owners a dark AG Grid variable bridge for themed routes", () => {

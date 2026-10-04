@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 
+import { EM_DASH } from "../../../pageModel";
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
-import { createMockHomeMarketTickerClient } from "../../../api/homeMarketTickerMockClient";
-import { createMockMarketDataClient } from "../../../api/marketDataMockClient";
+import { createMockHomeMarketTickerClient } from "../../../mocks/homeMarketTickerMockClient";
+import { createMockMarketDataClient } from "../../../mocks/marketDataMockClient";
 
-import { crossAssetTrendLines, maxCrossAssetHeadlineTradeDate, resolveCrossAssetKpis } from "./crossAssetKpiModel";
+import {
+  PRECOMPUTED_SPREAD_MISSING_NOTE,
+  crossAssetTrendLines,
+  maxCrossAssetHeadlineTradeDate,
+  resolveCrossAssetKpis,
+} from "./crossAssetKpiModel";
 
 function macroPoint(
   seriesId: string,
@@ -243,9 +249,32 @@ describe("crossAssetKpiModel", () => {
     expect(spread?.sourceKind).toBe("choice");
     expect(spread?.tradeDate).toBe("2026-03-01");
     expect(spread?.sparkline.length).toBeGreaterThan(0);
+    expect(spread?.missingNote).toBeUndefined();
   });
 
-  it("labels CN–US spread when both legs exist", () => {
+  it("uses CA.CN_US_SPREAD when EM1 is absent", () => {
+    const series = [
+      macroPoint("CA.CN_US_SPREAD", -198, [
+        ["2026-02-28", -196],
+        ["2026-03-01", -198],
+      ], { unit: "bp" }),
+      macroPoint("EMM00166466", 2.0, [
+        ["2026-02-28", 2.02],
+        ["2026-03-01", 2.0],
+      ]),
+      macroPoint("CA.US_GOV_10Y", 4.0, [
+        ["2026-02-28", 3.98],
+        ["2026-03-01", 4.0],
+      ]),
+    ];
+    const spread = resolveCrossAssetKpis(series).find((k) => k.key === "gov_spread");
+    expect(spread?.valueLabel).toBe("-198bp");
+    expect(spread?.resolvedSeriesId).toBe("CA.CN_US_SPREAD");
+    expect(spread?.sourceKind).toBe("public");
+    expect(spread?.missingNote).toBeUndefined();
+  });
+
+  it("shows EM_DASH and the precomputed-missing note when only yield legs exist", () => {
     const series = [
       macroPoint("EMM00166466", 2.0, [
         ["2026-02-28", 2.02],
@@ -258,46 +287,14 @@ describe("crossAssetKpiModel", () => {
     ];
     const spread = resolveCrossAssetKpis(series).find((k) => k.key === "gov_spread");
     expect(spread?.label).toBe("中美10Y利差");
-    expect(spread?.valueLabel).toBe("-200bp");
-    expect(spread?.sourceKind).toBe("derived");
-    expect(spread?.tradeDate).toBe("2026-03-01");
-    expect(spread?.sparkline.length).toBeGreaterThan(0);
+    expect(spread?.valueLabel).toBe(EM_DASH);
+    expect(spread?.changeLabel).toBe(EM_DASH);
+    expect(spread?.sourceKind).toBe("missing");
+    expect(spread?.missingNote).toBe(PRECOMPUTED_SPREAD_MISSING_NOTE);
+    expect(spread?.sparkline).toEqual([]);
   });
 
-  it("keeps only common trade dates on a derived spread series", () => {
-    const spread = resolveCrossAssetKpis([
-      macroPoint("EMM00166466", 2.5, [
-        ["2026-04-01", 2.0],
-        ["2026-04-02", 2.1],
-        ["2026-04-04", 2.2],
-        ["2026-04-05", 2.3],
-        ["2026-04-06", 2.4],
-        ["2026-04-07", 2.5],
-      ]),
-      macroPoint("CA.US_GOV_10Y", 4.5, [
-        ["2026-04-01", 4.0],
-        ["2026-04-03", 4.1],
-        ["2026-04-04", 4.2],
-        ["2026-04-05", 4.3],
-        ["2026-04-06", 4.4],
-        ["2026-04-07", 4.5],
-      ]),
-    ]).find((kpi) => kpi.key === "gov_spread");
-
-    expect(spread?.sparklinePoints?.map((point) => point.tradeDate)).toEqual([
-      "2026-04-01",
-      "2026-04-04",
-      "2026-04-05",
-      "2026-04-06",
-      "2026-04-07",
-    ]);
-    expect(spread?.sparklinePoints).toHaveLength(5);
-    for (const point of spread?.sparklinePoints ?? []) {
-      expect(point.value).toBeCloseTo(-200, 8);
-    }
-  });
-
-  it("falls back to CDB–gov spread when US leg is missing", () => {
+  it("does not subtract CDB and gov yields when the precomputed spread is missing", () => {
     const series = [
       macroPoint("EMM00166466", 2.0, [
         ["2026-02-28", 2.02],
@@ -309,8 +306,35 @@ describe("crossAssetKpiModel", () => {
       ]),
     ];
     const spread = resolveCrossAssetKpis(series).find((k) => k.key === "gov_spread");
-    expect(spread?.label).toBe("国开-国债10Y");
-    expect(spread?.valueLabel).toBe("35bp");
+    expect(spread?.valueLabel).toBe(EM_DASH);
+    expect(spread?.label).not.toBe("国开-国债10Y");
+    expect(spread?.missingNote).toBe(PRECOMPUTED_SPREAD_MISSING_NOTE);
+  });
+
+  it("does not emit a derived spread trend line from yield legs", () => {
+    const lines = crossAssetTrendLines([
+      macroPoint("EMM00166466", 2.0, [
+        ["2026-02-28", 2.02],
+        ["2026-03-01", 2.0],
+      ]),
+      macroPoint("CA.US_GOV_10Y", 4.0, [
+        ["2026-02-28", 3.98],
+        ["2026-03-01", 4.0],
+      ]),
+    ]);
+    expect(lines.map((line) => line.name)).not.toContain("中美10Y利差");
+    expect(lines.map((line) => line.name)).not.toContain("国开-国债10Y");
+  });
+
+  it("emits the precomputed spread trend line when EM1 is present", () => {
+    const lines = crossAssetTrendLines([
+      macroPoint("EM1", -215, [
+        ["2026-02-28", -212],
+        ["2026-03-01", -215],
+      ], { unit: "bp" }),
+    ]);
+    const spreadLine = lines.find((line) => line.name === "中美10Y利差");
+    expect(spreadLine?.values).toEqual([-212, -215]);
   });
 
   it("maxCrossAssetHeadlineTradeDate picks latest among resolved headline legs", () => {

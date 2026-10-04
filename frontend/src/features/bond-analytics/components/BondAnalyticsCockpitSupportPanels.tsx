@@ -6,7 +6,7 @@ import type {
   ChoiceMacroLatestPoint,
   DV01RiskPayload,
 } from "../../../api/contracts";
-import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
+import { bondNumericDisplay, bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import {
@@ -18,6 +18,7 @@ import {
 import { BOND_HOLDINGS_EMPTY_NOTE } from "../lib/bondHoldingsEvidenceCopy";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { EM_DASH } from "../../../utils/format";
+import { TONE_DH_CSS_VAR } from "../../../utils/tone";
 import { formatDv01Wan } from "../utils/formatters";
 import {
   assetClassLabel,
@@ -25,7 +26,6 @@ import {
   formatDurationDisplay,
   formatMoneyDisplay,
   formatMoneyEvidenceDisplay,
-  formatNumericEvidenceDisplay,
   formatNumericString,
   formatPctEvidenceDisplay,
   formatSignedPct,
@@ -40,7 +40,19 @@ import { cardBodyStyle } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
 
 const TOP_HOLDINGS_MOBILE_LABEL = "前十大持仓";
-const TOP_HOLDINGS_HOME_NOTE = "前十大持仓暂未返回，首页先保留组合规模与浮盈快照。";
+const TOP_HOLDINGS_HOME_NOTE = "暂无前十大持仓明细；组合规模与浮盈仍可查看。";
+
+function holdingDurationDisplay(item: BondTopHoldingItem | null | undefined): string {
+  if (!item) return EM_DASH;
+  if (item.maturity_category === "fund_no_maturity") {
+    return "未覆盖（基金底层久期）";
+  }
+  if (item.duration_quality_flag === "maturity_unavailable") return "未计算（到期日待核实）";
+  if (item.duration_quality_flag === "coupon_unavailable") return "未计算（票息输入待核实）";
+  if (item.modified_duration === null || (typeof item.modified_duration === "object" && item.modified_duration.raw === null)) return EM_DASH;
+  if (bondNumericRaw(item.modified_duration) === null) return EM_DASH;
+  return bondNumericDisplay(item.modified_duration);
+}
 
 export type AccountingDv01SummaryRow = {
   label: string;
@@ -74,11 +86,12 @@ function AccountingDv01MobileReadout({
   hasError: boolean;
 }) {
   const largestRow = pickLargestDv01Row(rows);
-  const stateLabel = hasError ? "读面暂未返回" : isLoading ? "读取中" : "移动摘要";
+  /* hasError 来自 query isError：如实说「读取失败」，不再写成像在等待的「暂未返回」。 */
+  const stateLabel = hasError ? "读取失败" : isLoading ? "读取中" : "移动摘要";
   const largestDv01Display = largestRow
     ? `${formatDv01EvidenceDisplay(largestRow.payload?.total_dv01)} 万元/bp`
     : hasError
-      ? "读面暂未返回"
+      ? "读取失败"
       : isLoading
         ? "读取中"
         : "暂无可用分类";
@@ -123,11 +136,14 @@ export function AccountingDv01SummaryPanel({
   rows,
   isLoading,
   hasError,
+  errorSummary = null,
   onOpenModuleDetail,
 }: {
   rows: AccountingDv01SummaryRow[];
   isLoading: boolean;
   hasError: boolean;
+  /** 失败摘要（如 HTTP 500），hasError 时随失败说明一起列出。 */
+  errorSummary?: string | null;
   onOpenModuleDetail?: (key: BondAnalyticsModuleKey) => void;
 }) {
   return (
@@ -174,7 +190,11 @@ export function AccountingDv01SummaryPanel({
         ))}
       </div>
       {isLoading ? <div className={styles.accountingDv01Note}>分类 DV01 正在读取。</div> : null}
-      {hasError ? <div className={styles.accountingDv01Note}>分类 DV01 读面暂未返回。</div> : null}
+      {hasError ? (
+        <div className={styles.accountingDv01Note}>
+          分类 DV01 读取失败{errorSummary ? `（${errorSummary}）` : ""}。
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -192,7 +212,7 @@ export function HoldingsMobileReadout({
   const leadName = leadHolding
     ? leadHolding.instrument_name ?? leadHolding.instrument_code
     : unavailable
-      ? "读面暂未返回"
+      ? "暂无数据"
       : "暂无持仓明细";
   const leadDetail = leadHolding ? (
     <Link
@@ -202,7 +222,7 @@ export function HoldingsMobileReadout({
       {leadHolding.instrument_code}
     </Link>
   ) : undefined;
-  const statusLabel = unavailable ? "读面暂未返回" : `${holdings.length} 只可见`;
+  const statusLabel = unavailable ? "暂无数据" : `${holdings.length} 只可见`;
 
   return (
     <div data-testid="bond-analysis-holdings-mobile-readout" className={styles.mobileTableReadout}>
@@ -215,7 +235,7 @@ export function HoldingsMobileReadout({
         <MobileReadoutField label="评级" value={formatTextEvidenceDisplay(leadHolding?.rating)} />
         <MobileReadoutField label="市值" value={formatMoneyEvidenceDisplay(leadHolding?.market_value)} />
         <MobileReadoutField label="收益率" value={formatPctEvidenceDisplay(leadHolding?.ytm)} />
-        <MobileReadoutField label="久期" value={formatNumericEvidenceDisplay(leadHolding?.modified_duration)} />
+        <MobileReadoutField label="久期" value={holdingDurationDisplay(leadHolding)} />
         <MobileReadoutField label="权重" value={formatPctEvidenceDisplay(leadHolding?.weight)} />
       </div>
     </div>
@@ -253,7 +273,12 @@ export function ReferenceMarketTicker({
           <div key={item.shortLabel} className={styles.referenceTickerCell}>
             <span>{item.shortLabel}</span>
             <strong>{point ? formatChoiceMacroValue(point, { spaceBeforeUnit: false }) : EM_DASH}</strong>
-            <small data-tone={tone}>
+            <small
+              data-tone={tone}
+              style={item.changeSemantics === "rate"
+                ? { color: TONE_DH_CSS_VAR[tone === "up" ? "warning" : "neutral"] }
+                : undefined}
+            >
               {displayPoint
                 ? formatChoiceMacroDelta(displayPoint, {
                     emptyDisplay: unavailable || !hasAnyLevel ? "待读取" : EM_DASH,
@@ -290,30 +315,30 @@ export function ReferenceJudgmentMatrix({
   const rows = [
     {
       label: "利率证据",
-      value: Number.isFinite(duration) ? "已返回" : "待返回",
-      detail: Number.isFinite(duration) ? `返回字段：组合久期 ${duration.toFixed(2)} 年` : `返回字段：${EM_DASH}`,
+      value: Number.isFinite(duration) ? "数据可用" : "数据暂缺",
+      detail: Number.isFinite(duration) ? `当前数据：组合久期 ${duration.toFixed(2)} 年` : `当前数据：${EM_DASH}`,
       missing: Number.isFinite(duration) ? `缺失项：${EM_DASH}` : "缺失项：久期",
       isReturned: Number.isFinite(duration),
     },
     {
       label: "曲线证据",
-      value: hasCurveReadout ? "正式曲线可读" : "正式曲线待返回",
-      detail: hasCurveReadout ? "返回字段：期限点收益率与日变动" : "返回字段：期限桶仅作暴露观察",
+      value: hasCurveReadout ? "收益率曲线可用" : "收益率曲线暂缺",
+      detail: hasCurveReadout ? "当前数据：期限点收益率与日变动" : "当前数据：期限桶仅作暴露观察",
       missing: hasCurveReadout ? "缺失项：正式 KRD" : "缺失项：正式曲线 / 正式 KRD",
       isReturned: hasCurveReadout,
     },
     {
       label: "信用证据",
-      value: Number.isFinite(spreadMedianBp) || Number.isFinite(creditWeight) ? "已返回" : "待返回",
-      detail: `返回字段：${buildReadoutFacts({ duration: Number.NaN, creditWeight, spreadMedianBp }).join(" · ") || EM_DASH}`,
+      value: Number.isFinite(spreadMedianBp) || Number.isFinite(creditWeight) ? "数据可用" : "数据暂缺",
+      detail: `当前数据：${buildReadoutFacts({ duration: Number.NaN, creditWeight, spreadMedianBp }).join(" · ") || EM_DASH}`,
       missing: `缺失项：${creditMissing.length > 0 ? creditMissing.join(" / ") : EM_DASH}`,
       isReturned: Number.isFinite(spreadMedianBp) || Number.isFinite(creditWeight),
     },
     {
       label: "资金证据",
-      value: hasDv01Readout ? "DV01已返回" : "DV01待返回",
+      value: hasDv01Readout ? "DV01可用" : "DV01暂缺",
       /* DV01 数值已在 KPI 带与风险切片卡可见（§6 ≤2 处）：证据矩阵只报字段事实，数值不再第三次直出。 */
-      detail: hasDv01Readout ? "返回字段：组合 DV01" : `返回字段：${EM_DASH}`,
+      detail: hasDv01Readout ? "当前数据：组合 DV01" : `当前数据：${EM_DASH}`,
       missing: hasDv01Readout ? `缺失项：${EM_DASH}` : "缺失项：DV01",
       isReturned: hasDv01Readout,
     },
@@ -323,7 +348,7 @@ export function ReferenceJudgmentMatrix({
     <div data-testid="bond-analysis-judgment-matrix" className={styles.referenceJudgmentPanel}>
       <div className={styles.referenceEvidenceNotice}>
         <span>证据边界</span>
-        <strong>只展示后端返回事实，不生成交易判断或风险阈值。</strong>
+        <strong>本区展示指标和数据缺口，不作为交易建议或风险限额判断。</strong>
       </div>
       <div className={styles.referenceJudgmentMatrix}>
         {rows.map((row) => (
@@ -347,6 +372,7 @@ export function ReferenceReturnAttributionPanel({
   actionPnlDisplay,
   actionPnlTone,
   actionCount,
+  actionError = null,
   marketValueMomPct,
   dv01Mom,
   unrealizedPnlDisplay,
@@ -356,6 +382,8 @@ export function ReferenceReturnAttributionPanel({
   actionPnlDisplay: string;
   actionPnlTone: "default" | "positive" | "negative";
   actionCount: number | null;
+  /** 动作归因接口失败摘要（如 HTTP 500）；非空时改说「读取失败」而非「待返回」。 */
+  actionError?: string | null;
   marketValueMomPct: number | null;
   dv01Mom: number;
   unrealizedPnlDisplay: string;
@@ -375,7 +403,13 @@ export function ReferenceReturnAttributionPanel({
         <div className={styles.attributionLead}>
           <span>动作归因</span>
           <strong data-tone={actionPnlTone}>{actionPnlDisplay}</strong>
-          <small>{actionCount !== null ? `${actionCount} 笔动作` : "动作归因待返回"}</small>
+          <small>
+            {actionCount !== null
+              ? `${actionCount} 笔动作`
+              : actionError
+                ? `动作归因读取失败（${actionError}）`
+                : "动作归因数据暂缺"}
+          </small>
         </div>
         <div className={styles.attributionEvidenceGrid}>
           <div>
@@ -402,7 +436,7 @@ export function ReferenceReturnAttributionPanel({
           </div>
         </div>
         <div className={styles.attributionBoundaryNote}>
-          收益、动作与 DV01 仅按返回读面列示；未返回字段保持缺口，不在前端补算归因。
+          收益、动作与 DV01 按当前数据列示；缺失项目保留为空，不纳入归因。
         </div>
         <Button size="small" type="text" data-testid="bond-analysis-home-open-action-attribution" onClick={() => onOpenModuleDetail?.("action-attribution")}>
           打开动作归因
@@ -446,7 +480,7 @@ export function HoldingRows({
           <span>{formatTextEvidenceDisplay(item.rating)}</span>
           <span className={styles.holdingNumericCell}>{formatMoneyEvidenceDisplay(item.market_value)}</span>
           <span className={styles.holdingNumericCell}>{formatPctEvidenceDisplay(item.ytm)}</span>
-          <span className={styles.holdingNumericCell}>{formatNumericEvidenceDisplay(item.modified_duration)}</span>
+          <span className={styles.holdingNumericCell}>{holdingDurationDisplay(item)}</span>
           <span className={styles.holdingNumericCell}>{formatPctEvidenceDisplay(item.weight)}</span>
         </div>
       ))}

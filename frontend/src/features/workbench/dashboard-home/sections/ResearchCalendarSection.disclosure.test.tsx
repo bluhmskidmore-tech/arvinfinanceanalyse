@@ -19,16 +19,30 @@ describe("ResearchCalendarSection history disclosure", () => {
         message: null,
       },
     });
+    const firstHistoryItem = macroBriefing.releaseHistoryItems[0];
+    const releaseHistoryItems = firstHistoryItem
+      ? [
+          ...macroBriefing.releaseHistoryItems,
+          { ...firstHistoryItem, id: "additional-history-1", title: "补充历史指标一" },
+          { ...firstHistoryItem, id: "additional-history-2", title: "补充历史指标二" },
+        ]
+      : macroBriefing.releaseHistoryItems;
 
-    render(<ResearchCalendarSection macroBriefing={macroBriefing} />);
+    render(
+      <ResearchCalendarSection
+        macroBriefing={{ ...macroBriefing, releaseHistoryItems }}
+      />,
+    );
 
     const disclosure = screen.getByTestId("dashboard-home-release-history-disclosure");
     expect(disclosure).not.toHaveAttribute("open");
     const trigger = within(disclosure).getByRole("button");
-    expect(within(trigger).getByText(`共 ${macroBriefing.releaseHistoryItems.length} 项`)).toBeInTheDocument();
+    expect(within(trigger).getByText("过往数据与变动")).toBeInTheDocument();
+    expect(within(trigger).getByText("共 8 项")).toBeInTheDocument();
+    expect(within(trigger).queryByText(macroBriefing.releaseWindowLabel)).not.toBeInTheDocument();
     expect(within(disclosure).getByText("ISM Manufacturing PMI")).toBeInTheDocument();
     expect(screen.getAllByTestId("dashboard-home-release-history-row")).toHaveLength(
-      macroBriefing.releaseHistoryItems.length,
+      8,
     );
 
     fireEvent.click(trigger);

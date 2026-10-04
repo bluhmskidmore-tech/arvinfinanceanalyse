@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Input, Spin, Table, Typography } from "antd";
+import { Input, Table } from "antd";
 import type { TableColumnsType } from "antd";
 
-import { useApiClient } from "../../../api/client";
+import { StateSurface } from "../../../components/layout";
+import { TABLE_SKELETON_MIN_HEIGHT } from "./positionsTableState";
+import { useApiClient } from "../../../api/clientContext";
 import type {
   CounterpartyStatItem,
   CounterpartyStatsResponse,
@@ -27,12 +29,6 @@ import {
 type CounterpartyRow = CounterpartyStatItem & { key: string };
 
 const BONDS_COUNTERPARTY_COLUMNS: TableColumnsType<CounterpartyRow> = [
-  {
-    title: "客户",
-    dataIndex: "customer_name",
-    ellipsis: true,
-    render: (v: string) => <Typography.Link>{v}</Typography.Link>,
-  },
   {
     title: "区间累计(亿元)",
     dataIndex: "total_amount",
@@ -232,6 +228,29 @@ export default function PositionsBondsConcentrationSection({
     [filteredItems],
   );
 
+  const columns = useMemo<TableColumnsType<CounterpartyRow>>(() => [
+    {
+      title: "客户",
+      dataIndex: "customer_name",
+      className: "positions-view__customer-cell",
+      ellipsis: true,
+      render: (customerName: string) => (
+        <button
+          type="button"
+          className="positions-view__customer-link"
+          aria-haspopup="dialog"
+          onClick={(event) => {
+            event.stopPropagation();
+            onCustomerOpen(customerName);
+          }}
+        >
+          {customerName}
+        </button>
+      ),
+    },
+    ...BONDS_COUNTERPARTY_COLUMNS,
+  ], [onCustomerOpen]);
+
   /*
    * 垂直结构：质量六格横带在上、授信主体全宽表在下。左右分栏会让右栏
    * 在长表旁边留出大段裸空白（DESIGN.md §5 反模式），横带 + 全宽表更整。
@@ -248,24 +267,23 @@ export default function PositionsBondsConcentrationSection({
       <div className="positions-view__panel">
         <div className="positions-view__panel-head">
           <h3 className="positions-view__panel-title">授信主体</h3>
-          <span className="positions-view__panel-hint">Top 50，点击行下钻客户明细</span>
+          <span className="positions-view__panel-hint">展示前 50 名，可打开客户明细</span>
         </div>
         <label className="positions-view__field">
-          <span className="positions-view__field-label">客户搜索</span>
+          <span className="positions-view__field-label">筛选前 50 名客户</span>
           <Input
             className="positions-view__search-input"
-            placeholder="输入客户名称…"
+            aria-label="筛选前 50 名客户"
+            placeholder="在前 50 名中输入客户名称"
             value={searchText}
             onChange={(e) => onSearchTextChange(e.target.value)}
           />
         </label>
         {statsLoading ? (
-          <div className="positions-view__table-state positions-view__table-state--loading">
-            <Spin />
-          </div>
+          <StateSurface status="loading" minHeight={TABLE_SKELETON_MIN_HEIGHT} />
         ) : statsError ? (
           /* 读取失败是错误态不是空态：与分区头「读取失败」一致，不画空态框。 */
-          <p className="positions-view__table-state">读取失败，请稍后重试</p>
+          <StateSurface status="error" message="读取失败，请稍后重试" density="compact" />
         ) : stats && filteredItems.length > 0 ? (
           <Table
             size="small"
@@ -276,10 +294,15 @@ export default function PositionsBondsConcentrationSection({
             onRow={(record) => ({
               onClick: () => onCustomerOpen(record.customer_name),
             })}
-            columns={BONDS_COUNTERPARTY_COLUMNS}
+            columns={columns}
           />
         ) : (
-          <p className="positions-view__table-state">暂无数据</p>
+          <StateSurface
+            status="empty"
+            message={searchText.trim() && (stats?.items.length ?? 0) > 0
+              ? "前 50 名中无匹配客户，可清空搜索查看当前排名。"
+              : "当前区间暂无客户数据"}
+          />
         )}
       </div>
     </div>

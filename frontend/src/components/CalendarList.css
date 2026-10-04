@@ -34,7 +34,7 @@
 .calendar-list__event-title {
   color: var(--moss-color-neutral-900);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   word-break: break-word;
 }
 

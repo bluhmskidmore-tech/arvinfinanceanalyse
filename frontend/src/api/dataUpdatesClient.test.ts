@@ -60,4 +60,49 @@ describe("data update client", () => {
     const api = createDataUpdatesClient({ fetchImpl });
     await expect(api.requestCore("2026-08-31", false, "retry-key")).rejects.toThrow("尚未到齐");
   });
+
+  it("recovers publication with the original receipt and an idempotency key without resubmitting financial work", async () => {
+    const receipt = { run_id: "recovery-1", report_date: "2026-08-31", workflow: "core_financial",
+      recovery_mode: "publication_only", recovery_of_run_id: "original/1", status: "queued",
+      updated_at: "2026-09-01T00:00:00Z", message: "仅恢复发布已受理。", steps: [] };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(receipt), { status: 202 }));
+    const api = createDataUpdatesClient({ baseUrl: "http://fixture", fetchImpl });
+    expect(await api.recoverPublication("original/1", "recovery-key")).toEqual(receipt);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe("http://fixture/api/data-updates/runs/original%2F1/recover-publication");
+    expect(init.method).toBe("POST");
+    expect(init.headers["Idempotency-Key"]).toBe("recovery-key");
+    expect(init.body).toBeUndefined();
+  });
+
+  it("rejects an accepted publication recovery without a request receipt", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: "queued" }), { status: 202 }));
+    const api = createDataUpdatesClient({ fetchImpl });
+
+    await expect(api.recoverPublication("original/1", "recovery-key")).rejects.toThrow("run_id");
+  });
+
+  it.each([
+    { run_id: "" },
+    { run_id: "   " },
+    { run_id: "original/1" },
+    { recovery_mode: undefined },
+    { recovery_mode: "full_financial" },
+    { recovery_of_run_id: undefined },
+    { recovery_of_run_id: "another-original" },
+  ])("rejects a publication recovery with an inconsistent receipt (%j)", async (override) => {
+    const receipt = { run_id: "recovery-1", report_date: "2026-08-31", workflow: "core_financial",
+      recovery_mode: "publication_only", recovery_of_run_id: "original/1", status: "queued",
+      updated_at: "2026-09-01T00:00:00Z", message: "仅恢复发布已受理。", steps: [], ...override };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(receipt), { status: 202 }));
+    const api = createDataUpdatesClient({ fetchImpl });
+
+    await expect(api.recoverPublication("original/1", "recovery-key")).rejects.toThrow("发布恢复回执与所选请求不一致");
+  });
+
+  it("preserves a source-version rejection from publication recovery", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "来源版本已变化，不能恢复发布。" }), { status: 409 }));
+    const api = createDataUpdatesClient({ fetchImpl });
+    await expect(api.recoverPublication("original", "recovery-key")).rejects.toThrow("来源版本已变化");
+  });
 });

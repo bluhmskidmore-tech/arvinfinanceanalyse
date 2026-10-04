@@ -53,7 +53,7 @@ export function PageOutput({
       >
         {items.map((item) => (
           <div key={item.label} style={{ marginBottom: item.label === "关注窗口" ? 0 : t.space[4] }}>
-            <dt style={{ fontWeight: 700, color: "var(--dh-api-ink)", margin: 0 }}>{item.label}</dt>
+            <dt style={{ fontWeight: 600, color: "var(--dh-api-ink)", margin: 0 }}>{item.label}</dt>
             <dd style={{ margin: `${t.space[2]}px 0 0` }}>{item.body}</dd>
           </div>
         ))}

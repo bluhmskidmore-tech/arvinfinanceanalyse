@@ -108,7 +108,7 @@
 
 .referenceKpiValue {
   color: var(--ib-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 18px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;

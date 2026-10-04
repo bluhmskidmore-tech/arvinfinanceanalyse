@@ -80,27 +80,9 @@
 
 .panelTitle {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--dh-api-ink);
   margin-bottom: 10px;
-}
-
-.chartPanel {
-  min-height: 240px;
-}
-
-.chartPanelTerminal {
-  flex: 1;
-  min-height: 200px;
-}
-
-.netPositionFoot {
-  margin-top: 6px;
-  text-align: right;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--dh-api-green);
-  font-variant-numeric: tabular-nums;
 }
 
 .riskBadge {
@@ -108,33 +90,27 @@
   align-items: center;
   justify-content: flex-end;
   min-width: 0;
-  padding: 2px 6px;
-  border-radius: var(--dh-api-radius, 8px);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
 }
 
 .riskBadgeLow {
   color: var(--dh-api-green);
-  background: var(--dh-api-green-soft);
 }
 
 .riskBadgeMid {
   color: var(--dh-api-amber);
-  background: var(--dh-api-amber-soft);
 }
 
 .riskBadgeHigh {
   color: var(--dh-api-red);
-  background: var(--dh-api-red-soft);
 }
 
-/* 中性描边档：非利好也非警示（期限缺口非负 ≠ 利好，2026-07-19 决议不给绿）。 */
+/* 中性文字档：非利好也非警示（期限缺口非负 ≠ 利好，2026-07-19 决议不给绿）。 */
 .riskBadgeNeutral {
   color: var(--dh-api-soft);
-  background: transparent;
-  border: 1px solid var(--dh-api-line);
 }
 
 .riskMetricList {
@@ -157,14 +133,14 @@
 }
 
 .riskMetricLabel {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--dh-api-muted);
 }
 
 .riskMetricValue {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--dh-api-ink);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -174,8 +150,6 @@
   width: 100%;
   max-height: 280px;
   overflow: auto;
-  border-radius: var(--dh-api-radius, 8px);
-  border: 1px solid var(--dh-api-line-soft);
 }
 
 /* 表头允许两行折行、数据行 nowrap：6 列在 1.8fr 面板内排下，不出横向滚动条。 */
@@ -192,7 +166,7 @@
 .contributionTableShell .contributionTable tbody tr.contributionRowGap > td,
 .contributionTableShell .contributionTable tbody tr.contributionRowGap:hover > td {
   background: var(--dh-api-panel-2);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .contributionTableShell .contributionTable tbody tr.contributionRowGap > td:first-child {
@@ -214,7 +188,7 @@
   align-content: start;
 }
 
-@media (max-width: 1366px) {
+@media (max-width: 1100px) {
   .rowGrid,
   .rowGridTerminal,
   .rowGridContributionTerminal,

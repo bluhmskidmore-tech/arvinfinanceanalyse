@@ -1,0 +1,685 @@
+{
+  "schema_version": 1,
+  "eval_set_id": "agent-intent-eval-set-v1",
+  "purpose": "固定问法 -> 预期本地路由结果的回归基线（docs/prd-ontology-agent-pnl.md 第十一节要求的路由基线）。",
+  "scope": "只覆盖 backend/app/agent/runtime/local_request_resolution.py 的本地意图路由判定，不覆盖下游取数、口径与展示。",
+  "case_schema": {
+    "case_id": "唯一用例标识",
+    "question": "用户问法原文",
+    "context": "可选，写入 AgentQueryRequest.context",
+    "filters": "可选，写入 AgentQueryRequest.filters",
+    "page_context": "可选，写入 AgentQueryRequest.page_context",
+    "expected.route": "local 或 provider",
+    "expected.intent": "本地路由命中的 intent；provider 或澄清用例为 null",
+    "expected.clarification_reason": "澄清用例的 semantic_reason_code；其余为 null",
+    "note": "该用例锁定的具体行为"
+  },
+  "cases": [
+    {
+      "case_id": "gitnexus-pos-repo-graph",
+      "question": "请给我看 GitNexus 仓库图谱状态",
+      "expected": {"route": "local", "intent": "gitnexus_status"},
+      "note": "gitnexus 域词 + 仓库图谱同现"
+    },
+    {
+      "case_id": "gitnexus-pos-code-graph-en",
+      "question": "code graph 里这个符号的调用者是谁",
+      "expected": {"route": "local", "intent": "gitnexus_status"},
+      "note": "英文同义词 code graph"
+    },
+    {
+      "case_id": "gitnexus-pos-context-term",
+      "question": "GitNexus context",
+      "expected": {"route": "local", "intent": "gitnexus_status"},
+      "note": "歧义词 context 与 gitnexus 域词同现"
+    },
+    {
+      "case_id": "gitnexus-pos-repository-processes",
+      "question": "repository processes",
+      "expected": {"route": "local", "intent": "gitnexus_status"},
+      "note": "歧义词 processes 与 repository 域词同现"
+    },
+    {
+      "case_id": "gitnexus-pos-impact-repo",
+      "question": "帮我做仓库影响分析",
+      "expected": {"route": "local", "intent": "gitnexus_status"},
+      "note": "影响分析 + 仓库域词"
+    },
+    {
+      "case_id": "gitnexus-pos-impact-code",
+      "question": "代码影响分析",
+      "expected": {"route": "local", "intent": "gitnexus_status"},
+      "note": "影响分析 + 代码域词"
+    },
+    {
+      "case_id": "gitnexus-neg-bare-context",
+      "question": "context",
+      "expected": {"route": "provider", "intent": null},
+      "note": "近似反例：裸歧义词不得路由代码图谱"
+    },
+    {
+      "case_id": "gitnexus-neg-bare-processes",
+      "question": "processes",
+      "expected": {"route": "provider", "intent": null},
+      "note": "近似反例：裸歧义词不得路由代码图谱"
+    },
+    {
+      "case_id": "gitnexus-neg-finance-impact-duration",
+      "question": "帮我做一下组合久期影响分析",
+      "expected": {"route": "local", "intent": "duration_risk"},
+      "note": "金融语义的影响分析归久期风险，不归代码图谱"
+    },
+    {
+      "case_id": "gitnexus-neg-finance-impact-credit",
+      "question": "信用利差影响分析",
+      "expected": {"route": "local", "intent": "credit_exposure"},
+      "note": "金融语义的影响分析归信用敞口"
+    },
+    {
+      "case_id": "pretrade-pos-today",
+      "question": "今天盘前该做什么",
+      "expected": {"route": "local", "intent": "pretrade_checklist"},
+      "note": "盘前观察面的今天即最新可用，不要求明确报告日"
+    },
+    {
+      "case_id": "pretrade-pos-checklist",
+      "question": "给我盘前操作清单",
+      "expected": {"route": "local", "intent": "pretrade_checklist"},
+      "note": "同义词 操作清单"
+    },
+    {
+      "case_id": "pretrade-pos-open-checklist",
+      "question": "开盘 checklist 有哪些拦截",
+      "expected": {"route": "local", "intent": "pretrade_checklist"},
+      "note": "中英混写 开盘 checklist"
+    },
+    {
+      "case_id": "pretrade-pos-buyable",
+      "question": "盘前可以买什么",
+      "expected": {"route": "local", "intent": "pretrade_checklist"},
+      "note": "可以买 / 买什么 同族多命中仍是单一意图"
+    },
+    {
+      "case_id": "pretrade-pos-en",
+      "question": "pretrade blockers",
+      "expected": {"route": "local", "intent": "pretrade_checklist"},
+      "note": "英文 pretrade"
+    },
+    {
+      "case_id": "pretrade-pos-over-pnl",
+      "question": "盘前损益怎么看",
+      "expected": {"route": "local", "intent": "pretrade_checklist"},
+      "note": "特化表：盘前问法优先于泛化的损益词表"
+    },
+    {
+      "case_id": "walkforward-pos-oos",
+      "question": "策略样本外表现怎么样",
+      "expected": {"route": "local", "intent": "walk_forward_verdict"},
+      "note": "样本外判定"
+    },
+    {
+      "case_id": "walkforward-pos-hyphen-en",
+      "question": "walk-forward 验证结果如何",
+      "expected": {"route": "local", "intent": "walk_forward_verdict"},
+      "note": "带连字符的英文词按词边界命中"
+    },
+    {
+      "case_id": "walkforward-pos-reliable",
+      "question": "哪个策略靠谱",
+      "expected": {"route": "local", "intent": "walk_forward_verdict"},
+      "note": "同义词 策略靠谱"
+    },
+    {
+      "case_id": "walkforward-pos-backtest",
+      "question": "回测验证的结论是什么",
+      "expected": {"route": "local", "intent": "walk_forward_verdict"},
+      "note": "同义词 回测验证"
+    },
+    {
+      "case_id": "walkforward-pos-over-pnl-return",
+      "question": "策略样本外收益怎么样",
+      "expected": {"route": "local", "intent": "walk_forward_verdict"},
+      "note": "特化表：不得被 pnl_summary 的收益守卫截走"
+    },
+    {
+      "case_id": "walkforward-pos-en-phrase",
+      "question": "out of sample verdict",
+      "expected": {"route": "local", "intent": "walk_forward_verdict"},
+      "note": "英文短语 out of sample"
+    },
+    {
+      "case_id": "walkforward-neg-unsupported-strategy",
+      "question": "帮我算一个目前不支持的复杂策略",
+      "expected": {"route": "provider", "intent": null},
+      "note": "近似反例：只有策略二字不构成本地意图"
+    },
+    {
+      "case_id": "product-pnl-pos-view",
+      "question": "产品损益视图",
+      "expected": {"route": "local", "intent": "product_pnl"},
+      "note": "特化表：产品损益优先于泛化损益"
+    },
+    {
+      "case_id": "product-pnl-pos-with-iso-date",
+      "question": "产品损益 2026-03-31 明细",
+      "expected": {"route": "local", "intent": "product_pnl"},
+      "note": "显式 ISO 报告日"
+    },
+    {
+      "case_id": "product-pnl-pos-ftp-lower",
+      "question": "ftp",
+      "expected": {"route": "local", "intent": "product_pnl"},
+      "note": "短 ASCII 词按词边界命中"
+    },
+    {
+      "case_id": "product-pnl-pos-ftp-upper",
+      "question": "FTP 口径怎么算的",
+      "expected": {"route": "local", "intent": "product_pnl"},
+      "note": "大小写归一后命中"
+    },
+    {
+      "case_id": "product-pnl-neg-sftp",
+      "question": "sftp upload failed",
+      "expected": {"route": "provider", "intent": null},
+      "note": "近似反例：ftp 不得命中更长的 sftp token"
+    },
+    {
+      "case_id": "pnl-bridge-pos-attribution-cn",
+      "question": "损益归因拆解",
+      "expected": {"route": "local", "intent": "pnl_bridge"},
+      "note": "特化表：损益归因优先于泛化损益"
+    },
+    {
+      "case_id": "pnl-bridge-pos-decompose",
+      "question": "请做归因拆解",
+      "expected": {"route": "local", "intent": "pnl_bridge"},
+      "note": "同族多命中（归因、拆解）仍是单一意图"
+    },
+    {
+      "case_id": "pnl-bridge-pos-en-bridge",
+      "question": "pnl bridge residual",
+      "expected": {"route": "local", "intent": "pnl_bridge"},
+      "note": "英文 bridge 优先于 pnl"
+    },
+    {
+      "case_id": "pnl-bridge-pos-en-attribution",
+      "question": "attribution breakdown",
+      "expected": {"route": "local", "intent": "pnl_bridge"},
+      "note": "英文 attribution"
+    },
+    {
+      "case_id": "risk-tensor-pos-cn",
+      "question": "风险张量怎么样",
+      "expected": {"route": "local", "intent": "risk_tensor"},
+      "note": "风险张量"
+    },
+    {
+      "case_id": "risk-tensor-pos-krd",
+      "question": "risk tensor KRD",
+      "expected": {"route": "local", "intent": "risk_tensor"},
+      "note": "短 ASCII 词 krd 按词边界命中"
+    },
+    {
+      "case_id": "risk-tensor-pos-over-duration",
+      "question": "风险张量里的久期贡献",
+      "expected": {"route": "local", "intent": "risk_tensor"},
+      "note": "特化表：张量视图承载久期，不澄清"
+    },
+    {
+      "case_id": "risk-tensor-neg-krda",
+      "question": "krda 是什么缩写",
+      "expected": {"route": "provider", "intent": null},
+      "note": "近似反例：krd 不得命中更长的 krda token"
+    },
+    {
+      "case_id": "duration-pos-cn-dv01",
+      "question": "组合久期和DV01风险怎么样",
+      "expected": {"route": "local", "intent": "duration_risk"},
+      "note": "久期"
+    },
+    {
+      "case_id": "duration-pos-rate-risk",
+      "question": "利率风险敞口有多大",
+      "expected": {"route": "local", "intent": "duration_risk"},
+      "note": "特化表：利率风险不得因含利率落到 market_data"
+    },
+    {
+      "case_id": "duration-pos-dv01-en",
+      "question": "dv01 exposure",
+      "expected": {"route": "local", "intent": "duration_risk"},
+      "note": "英文 dv01"
+    },
+    {
+      "case_id": "duration-pos-bond-duration",
+      "question": "bond duration",
+      "expected": {"route": "local", "intent": "duration_risk"},
+      "note": "英文 duration 需域词同现"
+    },
+    {
+      "case_id": "duration-pos-now",
+      "question": "现在的久期风险",
+      "expected": {"route": "local", "intent": "duration_risk"},
+      "note": "模糊时间词保持 latest 语义"
+    },
+    {
+      "case_id": "duration-neg-bare",
+      "question": "duration",
+      "expected": {"route": "provider", "intent": null},
+      "note": "近似反例：裸 duration 无域词不路由"
+    },
+    {
+      "case_id": "duration-neg-brisk",
+      "question": "brisk duration",
+      "expected": {"route": "provider", "intent": null},
+      "note": "近似反例：无金融域词不路由"
+    },
+    {
+      "case_id": "credit-pos-exposure",
+      "question": "信用暴露情况如何",
+      "expected": {"route": "local", "intent": "credit_exposure"},
+      "note": "信用"
+    },
+    {
+      "case_id": "credit-pos-spread",
+      "question": "信用利差怎么样",
+      "expected": {"route": "local", "intent": "credit_exposure"},
+      "note": "利差属信用敞口语义"
+    },
+    {
+      "case_id": "credit-pos-concentration",
+      "question": "集中度是否超限",
+      "expected": {"route": "local", "intent": "credit_exposure"},
+      "note": "同义词 集中度"
+    },
+    {
+      "case_id": "credit-pos-en",
+      "question": "credit spread concentration",
+      "expected": {"route": "local", "intent": "credit_exposure"},
+      "note": "同族多命中的英文词表"
+    },
+    {
+      "case_id": "credit-pos-spread-move",
+      "question": "Explain spread move",
+      "expected": {"route": "local", "intent": "credit_exposure"},
+      "note": "英文 spread"
+    },
+    {
+      "case_id": "credit-pos-current",
+      "question": "目前的信用敞口",
+      "expected": {"route": "local", "intent": "credit_exposure"},
+      "note": "模糊时间词保持 latest 语义"
+    },
+    {
+      "case_id": "portfolio-pos-cn-overview",
+      "question": "请看组合概览",
+      "expected": {"route": "local", "intent": "portfolio_overview"},
+      "note": "组合概览"
+    },
+    {
+      "case_id": "portfolio-pos-asset-size",
+      "question": "资产规模有多大",
+      "expected": {"route": "local", "intent": "portfolio_overview"},
+      "note": "同义词 资产规模"
+    },
+    {
+      "case_id": "portfolio-pos-en-overview",
+      "question": "portfolio overview",
+      "expected": {"route": "local", "intent": "portfolio_overview"},
+      "note": "英文 portfolio overview"
+    },
+    {
+      "case_id": "portfolio-pos-market-value",
+      "question": "portfolio market value",
+      "expected": {"route": "local", "intent": "portfolio_overview"},
+      "note": "market value 需资产域词同现"
+    },
+    {
+      "case_id": "portfolio-pos-current",
+      "question": "当前组合概览",
+      "expected": {"route": "local", "intent": "portfolio_overview"},
+      "note": "模糊时间词保持 latest 语义"
+    },
+    {
+      "case_id": "portfolio-pos-iso-date",
+      "question": "2026-03-31 的组合概览",
+      "expected": {"route": "local", "intent": "portfolio_overview"},
+      "note": "显式 ISO 报告日"
+    },
+    {
+      "case_id": "portfolio-neg-bare-market-value",
+      "question": "market value",
+      "expected": {"route": "provider", "intent": null},
+      "note": "近似反例：裸 market value 无域词不路由"
+    },
+    {
+      "case_id": "portfolio-neg-fundamental-market-value",
+      "question": "fundamental market value",
+      "expected": {"route": "provider", "intent": null},
+      "note": "近似反例：无资产域词不路由"
+    },
+    {
+      "case_id": "pnl-summary-pos-overview",
+      "question": "请给我看一下损益概览",
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "损益"
+    },
+    {
+      "case_id": "pnl-summary-pos-summarize",
+      "question": "请汇总损益",
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "无相对日词时沿用 latest 兜底"
+    },
+    {
+      "case_id": "pnl-summary-pos-en",
+      "question": "PnL summary",
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "英文 pnl 按词边界命中"
+    },
+    {
+      "case_id": "pnl-summary-pos-return-word",
+      "question": "请汇总收益",
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "歧义守卫：非收益率的收益仍归损益"
+    },
+    {
+      "case_id": "pnl-summary-pos-investment-return",
+      "question": "投资收益怎么样",
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "歧义守卫：投资收益归损益"
+    },
+    {
+      "case_id": "pnl-summary-pos-recent",
+      "question": "最近的损益怎么样",
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "模糊时间词保持 latest 语义"
+    },
+    {
+      "case_id": "pnl-summary-pos-iso-date",
+      "question": "请汇总 2026-03-31 的损益",
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "显式 ISO 报告日"
+    },
+    {
+      "case_id": "market-data-pos-curve",
+      "question": "国债收益率曲线怎么走",
+      "expected": {"route": "local", "intent": "market_data"},
+      "note": "歧义守卫：收益率是市场语义，不得进损益"
+    },
+    {
+      "case_id": "market-data-pos-yield-level",
+      "question": "最新收益率水平如何",
+      "expected": {"route": "local", "intent": "market_data"},
+      "note": "歧义守卫：收益率"
+    },
+    {
+      "case_id": "market-data-pos-macro",
+      "question": "最新宏观市场数据",
+      "expected": {"route": "local", "intent": "market_data"},
+      "note": "宏观 / 市场数据同族多命中"
+    },
+    {
+      "case_id": "market-data-pos-en-macro",
+      "question": "macro data 更新了吗",
+      "expected": {"route": "local", "intent": "market_data"},
+      "note": "英文 macro data"
+    },
+    {
+      "case_id": "market-data-pos-en-rates",
+      "question": "rates data 在哪看",
+      "expected": {"route": "local", "intent": "market_data"},
+      "note": "英文 rates data"
+    },
+    {
+      "case_id": "market-data-pos-today-rate",
+      "question": "今天的利率怎么样",
+      "expected": {"route": "local", "intent": "market_data"},
+      "note": "行情不是报告日绑定型意图，今天即最新可用"
+    },
+    {
+      "case_id": "news-pos-latest-cn",
+      "question": "最新新闻",
+      "expected": {"route": "local", "intent": "news"},
+      "note": "新闻"
+    },
+    {
+      "case_id": "news-pos-today",
+      "question": "今天有什么新闻",
+      "expected": {"route": "local", "intent": "news"},
+      "note": "新闻不是报告日绑定型意图"
+    },
+    {
+      "case_id": "news-pos-en",
+      "question": "latest news 摘要",
+      "expected": {"route": "local", "intent": "news"},
+      "note": "英文 latest news"
+    },
+    {
+      "case_id": "news-pos-event",
+      "question": "有哪些重大事件",
+      "expected": {"route": "local", "intent": "news"},
+      "note": "同义词 事件"
+    },
+    {
+      "case_id": "multi-pnl-and-news",
+      "question": "请看损益和新闻",
+      "expected": {"route": "local", "clarification_reason": "multiple_intents"},
+      "note": "跨族多意图不得静默取词表更靠前的一个"
+    },
+    {
+      "case_id": "multi-portfolio-and-news",
+      "question": "组合概览和新闻都看一下",
+      "expected": {"route": "local", "clarification_reason": "multiple_intents"},
+      "note": "跨族多意图"
+    },
+    {
+      "case_id": "multi-news-and-duration",
+      "question": "新闻和久期风险",
+      "expected": {"route": "local", "clarification_reason": "multiple_intents"},
+      "note": "跨族多意图"
+    },
+    {
+      "case_id": "multi-macro-and-credit",
+      "question": "宏观数据和信用敞口一起看",
+      "expected": {"route": "local", "clarification_reason": "multiple_intents"},
+      "note": "跨族多意图：行情序列与信用敞口"
+    },
+    {
+      "case_id": "multi-news-and-macro-en",
+      "question": "news 和 macro data 都要",
+      "expected": {"route": "local", "clarification_reason": "multiple_intents"},
+      "note": "跨族多意图：新闻与行情分属不同族"
+    },
+    {
+      "case_id": "multi-product-pnl-and-news",
+      "question": "产品损益和新闻",
+      "expected": {"route": "local", "clarification_reason": "multiple_intents"},
+      "note": "特化压制泛化后仍跨族，需澄清"
+    },
+    {
+      "case_id": "multi-page-default-disambiguates",
+      "question": "组合概览和新闻都看一下",
+      "page_context": {"page_id": "dashboard"},
+      "expected": {"route": "local", "intent": "portfolio_overview"},
+      "note": "页面默认意图在候选内时用它消歧，不澄清"
+    },
+    {
+      "case_id": "negation-pnl-then-news",
+      "question": "不要看损益，看新闻",
+      "expected": {"route": "local", "intent": "news"},
+      "note": "被否定的候选移出命中集合"
+    },
+    {
+      "case_id": "negation-pnl-then-product-pnl",
+      "question": "不要看损益，只看产品损益",
+      "expected": {"route": "local", "intent": "product_pnl"},
+      "note": "后一小句的正向选择不受前一小句否定影响"
+    },
+    {
+      "case_id": "negation-only-candidate-cn",
+      "question": "不要看损益",
+      "expected": {"route": "local", "clarification_reason": "negated_intent_reference"},
+      "note": "否定后候选为空即澄清"
+    },
+    {
+      "case_id": "negation-bie-kan",
+      "question": "别看新闻",
+      "expected": {"route": "local", "clarification_reason": "negated_intent_reference"},
+      "note": "别看 是保守否定模式之一"
+    },
+    {
+      "case_id": "negation-en-do-not-show",
+      "question": "do not show pnl",
+      "expected": {"route": "local", "clarification_reason": "negated_intent_reference"},
+      "note": "英文 do not show"
+    },
+    {
+      "case_id": "negation-exclusion-phrase",
+      "question": "除了损益之外的都看一下",
+      "expected": {"route": "local", "clarification_reason": "negated_intent_reference"},
+      "note": "除了…之外 的排除语义无法确定单一意图，澄清"
+    },
+    {
+      "case_id": "negation-not-triggered-by-lei-bie",
+      "question": "按类别损益怎么看",
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "近似反例：类别 里的 别 不是否定词"
+    },
+    {
+      "case_id": "relative-date-pnl-today",
+      "question": "请汇总今日损益",
+      "expected": {
+        "route": "local",
+        "clarification_reason": "relative_date_requires_explicit_report_date"
+      },
+      "note": "相对日 + 报告日绑定型意图，不得静默取 latest"
+    },
+    {
+      "case_id": "relative-date-portfolio-yesterday",
+      "question": "昨天的组合概览",
+      "expected": {
+        "route": "local",
+        "clarification_reason": "relative_date_requires_explicit_report_date"
+      },
+      "note": "昨天"
+    },
+    {
+      "case_id": "relative-date-credit-day-before",
+      "question": "前天的信用利差",
+      "expected": {
+        "route": "local",
+        "clarification_reason": "relative_date_requires_explicit_report_date"
+      },
+      "note": "前天"
+    },
+    {
+      "case_id": "relative-date-risk-tensor-today",
+      "question": "今日风险张量",
+      "expected": {
+        "route": "local",
+        "clarification_reason": "relative_date_requires_explicit_report_date"
+      },
+      "note": "今日"
+    },
+    {
+      "case_id": "relative-date-product-pnl-last-week-friday",
+      "question": "上周五的产品损益",
+      "expected": {
+        "route": "local",
+        "clarification_reason": "relative_date_requires_explicit_report_date"
+      },
+      "note": "上周X 指向具体某天"
+    },
+    {
+      "case_id": "relative-date-duration-yesterday-en",
+      "question": "show yesterday duration risk",
+      "expected": {
+        "route": "local",
+        "clarification_reason": "relative_date_requires_explicit_report_date"
+      },
+      "note": "英文 yesterday"
+    },
+    {
+      "case_id": "relative-date-with-filter-report-date",
+      "question": "请汇总今日损益",
+      "filters": {"report_date": "2026-03-31"},
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "filters 里有明确报告日时不澄清"
+    },
+    {
+      "case_id": "relative-date-with-context-report-date",
+      "question": "请汇总昨日损益",
+      "context": {"report_date": "2026-03-31"},
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "context 里有明确报告日时不澄清"
+    },
+    {
+      "case_id": "relative-date-with-page-filter-report-date",
+      "question": "昨天的久期风险",
+      "page_context": {
+        "page_id": "bond-analytics",
+        "current_filters": {"report_date": "2026-03-31"}
+      },
+      "expected": {"route": "local", "intent": "duration_risk"},
+      "note": "页面筛选里有明确报告日时不澄清"
+    },
+    {
+      "case_id": "page-default-dashboard",
+      "question": "这个页面的数据怎么样",
+      "page_context": {"page_id": "dashboard"},
+      "expected": {"route": "local", "intent": "portfolio_overview"},
+      "note": "页面上下文默认意图"
+    },
+    {
+      "case_id": "page-default-pnl-attribution",
+      "question": "解释当前页面的主要结论",
+      "page_context": {"page_id": "pnl-attribution"},
+      "expected": {"route": "local", "intent": "pnl_bridge"},
+      "note": "页面上下文默认意图"
+    },
+    {
+      "case_id": "page-default-risk-tensor",
+      "question": "当前页面有什么风险",
+      "page_context": {"page_id": "risk-tensor"},
+      "expected": {"route": "local", "intent": "risk_tensor"},
+      "note": "页面上下文默认意图"
+    },
+    {
+      "case_id": "page-default-product-category-pnl",
+      "question": "本页重点是什么",
+      "page_context": {"page_id": "product-category-pnl"},
+      "expected": {"route": "local", "intent": "product_pnl"},
+      "note": "页面上下文默认意图"
+    },
+    {
+      "case_id": "page-default-market-data",
+      "question": "当前页面怎么看",
+      "page_context": {"page_id": "market-data"},
+      "expected": {"route": "local", "intent": "market_data"},
+      "note": "页面上下文默认意图"
+    },
+    {
+      "case_id": "analysis-chat-risk-judgement",
+      "question": "帮我判断今天的主要风险",
+      "expected": {"route": "local", "intent": "analysis_chat"},
+      "note": "无词表命中的解释类问答仍走分析对话，不受相对日守卫影响"
+    },
+    {
+      "case_id": "provider-open-chat",
+      "question": "tell me a joke",
+      "expected": {"route": "provider", "intent": null},
+      "note": "开放聊天交给 provider"
+    },
+    {
+      "case_id": "ontology-value-total-pnl",
+      "question": "2026-03-31 的正式总损益是多少",
+      "expected": {"route": "local", "intent": "pnl_summary"},
+      "note": "本体数值路由优先于词表，且未显式传币种时按 CNY 处理"
+    },
+    {
+      "case_id": "ontology-definition-total-pnl",
+      "question": "解释 MTR-PNL-005 的定义",
+      "expected": {"route": "local", "intent": "ontology_definition"},
+      "note": "本体定义路由"
+    }
+  ]
+}

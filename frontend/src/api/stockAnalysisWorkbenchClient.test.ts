@@ -66,6 +66,34 @@ describe("stockAnalysisWorkbenchClient", () => {
     ]);
   });
 
+  it("preserves the governed portfolio-construction query contract", async () => {
+    const payload = {
+      result_meta: { basis: "analytical" },
+      result: { page_id: "GAP-STOCK-ANALYSIS-PORTFOLIO", route: "/stock-analysis/portfolio" },
+    };
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ) as unknown as typeof fetch;
+    const client = createRealStockAnalysisWorkbenchClient({
+      fetchImpl,
+      baseUrl: "http://backend.local",
+    });
+
+    const result = await client.getStockAnalysisPortfolioConstruction({
+      portfolioId: " SHADOW-STOCK-RESEARCH ",
+      asOfDate: " 2026-08-24 ",
+    });
+
+    expect(result).toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/ui/market-data/stock-analysis/portfolio-construction?portfolio_id=SHADOW-STOCK-RESEARCH&as_of_date=2026-08-24",
+      { headers: { Accept: "application/json" } },
+    );
+  });
+
   it("surfaces backend error detail", async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(JSON.stringify({ detail: "workbench unavailable" }), {

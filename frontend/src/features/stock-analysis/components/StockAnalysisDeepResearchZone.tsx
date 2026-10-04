@@ -28,6 +28,7 @@ import {
 } from "@ant-design/icons";
 
 import { StockAnalysisBacktestCaliberDisclosure } from "./StockAnalysisBacktestCaliberDisclosure";
+import { StockAnalysisReadOnlyResearchZone } from "./StockAnalysisReadOnlyResearchZone";
 import {
   StockAnalysisAccordion as Accordion,
   StockAnalysisAccordionItem as AccordionItem,
@@ -81,15 +82,18 @@ import {
   localizeImplementationStage,
   localizeStockBackendText,
   localizeThemeRadarBadge,
+  type StockCandidateReviewQueueItem,
   type StockSectorRow,
   type StockSectorViewKind,
 } from "../lib/stockAnalysisPageModel";
+import type { StockAnalysisResearchDeskModel } from "../lib/stockAnalysisResearchDeskModel";
 import {
   buildThemeBreakoutBlockerCopy,
   compactStockText as compactText,
   rawStockErrorMessage as rawErrorMessage,
   stockStrategyPanelErrorMessage as strategyPanelErrorMessage,
 } from "../lib/stockAnalysisPageCopy";
+import type { StockFirstScreenDecisionGate } from "../lib/stockAnalysisFirstScreenModel";
 import {
   cycleBoundaryLabel,
   cycleConstraintLabel,
@@ -218,6 +222,7 @@ type DeferredSectionSlice = {
 export type StockAnalysisDeepResearchZoneProps = {
   strategyPayload: LivermoreStrategyPayload | null;
   confluencePayload: LivermoreSignalConfluencePayload | null;
+  decisionGate: StockFirstScreenDecisionGate;
   client: ApiClient;
   analyticsAsOf: string | null;
   currentMarketState: string | null;
@@ -268,11 +273,16 @@ export type StockAnalysisDeepResearchZoneProps = {
   sectorSeriesTrendLines: SectorSeriesTrendLine[];
   sectorSeriesTrendChartOption: EChartsOption;
   sectorSeriesTableRows: LivermoreSectorRankSeriesPoint[];
+  readOnlyResearch?: {
+    model: StockAnalysisResearchDeskModel;
+    selectedCandidate: StockCandidateReviewQueueItem | null;
+  } | null;
 };
 
 export function StockAnalysisDeepResearchZone({
   strategyPayload,
   confluencePayload,
+  decisionGate,
   client,
   analyticsAsOf,
   currentMarketState,
@@ -323,6 +333,7 @@ export function StockAnalysisDeepResearchZone({
   sectorSeriesTrendLines,
   sectorSeriesTrendChartOption,
   sectorSeriesTableRows,
+  readOnlyResearch,
 }: StockAnalysisDeepResearchZoneProps) {
   const gateState = strategyPayload?.market_gate.state;
   const meanReversionPayload = strategyPayload?.mean_reversion_candidates;
@@ -685,9 +696,35 @@ export function StockAnalysisDeepResearchZone({
     ],
   );
 
+  if (readOnlyResearch) {
+    return (
+      <StockAnalysisReadOnlyResearchZone
+        analyticsAsOf={analyticsAsOf}
+        model={readOnlyResearch.model}
+        sectorRows={sectorRowsFull}
+        selectedCandidate={readOnlyResearch.selectedCandidate}
+      />
+    );
+  }
+
   return (
               <AnalysisGrid columns={2} className="stock-analysis-page__workspace">
               <div className="stock-analysis-page__deep-zone" data-testid="stock-analysis-deep-zone">
+                <div
+                  className="stock-analysis-page__signal-pill-row"
+                  data-testid="stock-analysis-deep-confluence-context"
+                  aria-label="深研闭环上下文"
+                >
+                  <span className="stock-analysis-page__signal-pill">
+                    <DatabaseOutlined aria-hidden="true" /> 闭环数据日 {confluencePayload?.as_of_date ?? "待确认"}
+                  </span>
+                  <span className="stock-analysis-page__signal-pill">
+                    <SafetyCertificateOutlined aria-hidden="true" /> 闭环判定 {decisionGate.statusLabel}
+                  </span>
+                  <span className="stock-analysis-page__signal-pill">
+                    有效候选 {decisionGate.effectiveCandidateCount ?? "待核"} · 观察用途 · 不可执行
+                  </span>
+                </div>
                 <LazyStockAnalysisDeepZoneHeader
                   gateSummary={deepAnalysisGateSummary!}
                   auditRows={deepZoneAuditRows}

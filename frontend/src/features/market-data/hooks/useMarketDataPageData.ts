@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { runPollingTask } from "../../../app/jobs/polling";
 import {
@@ -83,7 +83,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
     ...marketDataQueryFocusOptions,
   });
   const latestQuery = useQuery({
-    queryKey: ["market-data", "choice-macro-latest", client.mode],
+    queryKey: ["workbench-shell", "choice-macro-latest", client.mode],
     queryFn: () => client.getChoiceMacroLatest(),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
@@ -252,7 +252,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
 
   const resolveLinkageReportDate = useCallback(() => {
     const latestEnvelope = queryClient.getQueryData<Awaited<ReturnType<typeof client.getChoiceMacroLatest>>>([
-      "market-data",
+      "workbench-shell",
       "choice-macro-latest",
       client.mode,
     ]);
@@ -290,12 +290,13 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
         getStatus: (runId) => client.getChoiceMacroRefreshStatus(runId),
         intervalMs: 3000,
         maxAttempts: 120,
+        isTerminal: (status) => ["completed", "partial", "degraded", "failed"].includes(status),
         signal,
         onUpdate: (p) => {
           setRefreshStatus([p.status, p.run_id].filter(Boolean).join(" · "));
         },
       });
-      if (payload.status !== "completed") {
+      if (payload.status === "failed") {
         throw new Error(payload.error_message ?? `刷新未完成：${payload.status}`);
       }
       if (signal?.aborted) return;
@@ -312,7 +313,13 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
         livermoreEnabled ? livermoreStrategyQuery.refetch(nonCancellingRefetchOptions) : Promise.resolve(),
       ]);
       await refreshMacroBondLinkage();
-      setRefreshStatus("刷新完成");
+      setRefreshStatus(
+        payload.status === "partial"
+          ? "刷新部分完成，请复核可用数据"
+          : payload.status === "degraded"
+            ? "刷新完成，但数据质量需复核"
+            : "刷新完成",
+      );
     } catch (err) {
       if (signal?.aborted) return;
       const msg = err instanceof Error ? err.message : String(err);

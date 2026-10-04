@@ -1,6 +1,8 @@
 """`/ui/news/choice-events/latest-batch` 契约测试：批量结果必须与逐个单查逐字段一致。"""
 from __future__ import annotations
 
+from datetime import date
+
 import duckdb
 
 from backend.app.governance.settings import get_settings
@@ -129,6 +131,76 @@ def test_latest_batch_applies_per_entry_limit(tmp_path, monkeypatch) -> None:
     assert batches[0]["events"] == _single_events(client, topic_code="TOPIC_A", limit=1)
     assert batches[1]["events"] == _single_events(client, group_id="g2", limit=2)
     get_settings.cache_clear()
+
+
+def test_latest_queries_use_beijing_date_part_for_as_of_boundary(tmp_path, monkeypatch) -> None:
+    class MockDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 5, 8)
+
+    monkeypatch.setattr("backend.app.services.choice_news_service.date", MockDate)
+    _seed_choice_news_batch_events(tmp_path)
+    conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=False)
+    try:
+        conn.executemany(
+            "insert into choice_news_event values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "ev_bjt_today",
+                    "2026-05-08T23:59:59+08:00",
+                    "g_tz",
+                    "sectornews",
+                    10,
+                    1,
+                    0,
+                    "",
+                    "TOPIC_TZ",
+                    0,
+                    "beijing today",
+                    None,
+                ),
+                (
+                    "ev_bjt_tomorrow",
+                    "2026-05-09T00:00:00+08:00",
+                    "g_tz",
+                    "sectornews",
+                    11,
+                    1,
+                    0,
+                    "",
+                    "TOPIC_TZ",
+                    0,
+                    "beijing tomorrow",
+                    None,
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    client = _choice_news_read_client(tmp_path, monkeypatch)
+    single_response = client.get(_SINGLE_PATH, params={"topic_code": "TOPIC_TZ"})
+    batch_response = client.get(_BATCH_PATH, params={"topics": "TOPIC_TZ:5"})
+
+    assert single_response.status_code == 200
+    single_payload = single_response.json()
+    assert [event["event_key"] for event in single_payload["result"]["events"]] == [
+        "ev_bjt_today"
+    ]
+    assert single_payload["result"]["events"][0]["received_at"] == (
+        "2026-05-08T23:59:59+08:00"
+    )
+    assert single_payload["result"]["excluded_future_rows"] == 1
+
+    assert batch_response.status_code == 200
+    batch_payload = batch_response.json()
+    assert [event["event_key"] for event in batch_payload["result"]["batches"][0]["events"]] == [
+        "ev_bjt_today"
+    ]
+    assert batch_payload["result_meta"]["filters_applied"]["future_rows_excluded"] == 1
+    get_settings.cache_clear()
+
 
 def test_latest_batch_unknown_topic_returns_empty_events(tmp_path, monkeypatch) -> None:
     _seed_choice_news_batch_events(tmp_path)

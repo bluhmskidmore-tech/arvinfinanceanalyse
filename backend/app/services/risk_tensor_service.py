@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import date
 from pathlib import Path
 
+from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
 from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -13,9 +14,8 @@ from backend.app.repositories.governance_repo import (
 from backend.app.repositories.risk_tensor_repo import (
     FACT_TABLE,
     RiskTensorRepository,
-    load_current_tyw_liability_lineage_by_report_date,
-    load_current_tyw_liability_rule_version,
-    load_current_tyw_liability_source_version,
+    load_current_tyw_liability_lineage_snapshot_by_report_date,
+    load_current_tyw_liability_lineage_state,
     load_latest_bond_analytics_lineage,
     load_latest_bond_analytics_lineage_by_report_date,
 )
@@ -27,9 +27,10 @@ from backend.app.services.formal_result_runtime import (
 from backend.app.services.runtime_cache import get_runtime_cache
 
 # 与 risk_tensor_materialize 对齐；只读路径不得 import tasks（broker/actor 注册）。
-CACHE_KEY = "risk_tensor:materialize:formal"
-CACHE_VERSION = "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
-RULE_VERSION = "rv_risk_tensor_formal_materialize_v6"
+_RISK_TENSOR_VERSION = FIXED_INCOME_VERSION_SET.risk_tensor
+CACHE_KEY = _RISK_TENSOR_VERSION.cache_key
+CACHE_VERSION = _RISK_TENSOR_VERSION.cache_version
+RULE_VERSION = _RISK_TENSOR_VERSION.rule_version
 
 _RISK_TENSOR_CACHE_TTL_SECONDS = 300.0
 _RISK_TENSOR_CACHE = get_runtime_cache(
@@ -148,25 +149,25 @@ def _risk_tensor_dates_envelope_uncached(
         )
     except TimeoutError as exc:
         raise RuntimeError("Risk tensor lineage store is temporarily unavailable.") from exc
-    tyw_liability_lineage_by_report_date = load_current_tyw_liability_lineage_by_report_date(
+    tyw_liability_lineage_snapshot = load_current_tyw_liability_lineage_snapshot_by_report_date(
         duckdb_path=str(duckdb_path),
     )
     for row in candidate_rows:
         candidate_report_date = str(row["report_date"])
         bond_lineage = bond_lineage_by_report_date.get(candidate_report_date, {})
-        tyw_liability_lineage = tyw_liability_lineage_by_report_date.get(candidate_report_date, {})
+        tyw_liability_lineage = tyw_liability_lineage_snapshot.for_report_date(
+            candidate_report_date
+        )
         stale_reason = _risk_tensor_freshness_error_from_values(
             report_date_text=candidate_report_date,
             row=row,
             upstream_source_version=str(bond_lineage.get("source_version") or ""),
             upstream_rule_version=str(bond_lineage.get("rule_version") or ""),
             upstream_cache_version=str(bond_lineage.get("cache_version") or ""),
-            current_tyw_liability_source_version=str(
-                tyw_liability_lineage.get("source_version") or ""
-            ),
-            current_tyw_liability_rule_version=str(
-                tyw_liability_lineage.get("rule_version") or ""
-            ),
+            current_tyw_liability_source_version=tyw_liability_lineage.source_version,
+            current_tyw_liability_rule_version=tyw_liability_lineage.rule_version,
+            tyw_liability_availability=tyw_liability_lineage.availability,
+            tyw_liability_row_count=tyw_liability_lineage.row_count,
         )
         if stale_reason is not None:
             blocked_report_dates.append(
@@ -275,6 +276,8 @@ def _risk_tensor_envelope_uncached(
     projection_quality_fields = (
         "missing_maturity_market_value",
         "missing_maturity_count",
+        "missing_liability_maturity_principal_amount",
+        "missing_liability_maturity_count",
         "floating_rate_proxy_market_value",
         "floating_rate_proxy_count",
         "payment_frequency_fallback_market_value",
@@ -283,16 +286,38 @@ def _risk_tensor_envelope_uncached(
         "bullet_value_date_fallback_count",
     )
     projection_quality_available = all(row.get(field) is not None for field in projection_quality_fields)
+    maturity_breakdown_fields = (
+        "fund_no_maturity_market_value",
+        "fund_no_maturity_count",
+        "unknown_maturity_market_value",
+        "unknown_maturity_count",
+        "matured_outstanding_market_value",
+        "matured_outstanding_count",
+        "nonpositive_duration_market_value",
+        "nonpositive_duration_count",
+    )
+    maturity_breakdown_available = all(row.get(field) is not None for field in maturity_breakdown_fields)
     row_warnings = list(row["warnings"])
     if not projection_quality_available:
         row_warnings.append(
-            "Projection-quality proxy metrics are unavailable for this legacy risk tensor row; "
+            "Projection-quality disclosure metrics are unavailable for this legacy risk tensor row; "
             "zero must not be inferred."
         )
     payload_quality_flag = str(row["quality_flag"])
     if not projection_quality_available:
-        payload_quality_flag = "warning"
+        if payload_quality_flag == "ok":
+            payload_quality_flag = "warning"
+    if not maturity_breakdown_available:
+        row_warnings.append(
+            "Maturity-exclusion breakdown is unavailable for this legacy risk tensor row; "
+            "zero must not be inferred."
+        )
+        if payload_quality_flag == "ok":
+            payload_quality_flag = "warning"
 
+    bond_count = row["bond_count"]
+    if not isinstance(bond_count, (str, int, float)):
+        raise ValueError("Risk tensor bond_count is invalid.")
     payload = RiskTensorPayload.model_validate(
         promote_flat_payload(
             {
@@ -325,6 +350,23 @@ def _risk_tensor_envelope_uncached(
                 "duration_excluded_count": row["duration_excluded_count"],
                 "missing_maturity_market_value": row.get("missing_maturity_market_value"),
                 "missing_maturity_count": row.get("missing_maturity_count"),
+                "fund_no_maturity_market_value": row.get("fund_no_maturity_market_value"),
+                "fund_no_maturity_count": row.get("fund_no_maturity_count"),
+                "unknown_maturity_market_value": row.get("unknown_maturity_market_value"),
+                "unknown_maturity_count": row.get("unknown_maturity_count"),
+                "matured_outstanding_market_value": row.get("matured_outstanding_market_value"),
+                "matured_outstanding_count": row.get("matured_outstanding_count"),
+                "nonpositive_duration_market_value": row.get("nonpositive_duration_market_value"),
+                "nonpositive_duration_count": row.get("nonpositive_duration_count"),
+                "maturity_breakdown_status": (
+                    "available" if maturity_breakdown_available else "unavailable_legacy"
+                ),
+                "missing_liability_maturity_principal_amount": row.get(
+                    "missing_liability_maturity_principal_amount"
+                ),
+                "missing_liability_maturity_count": row.get(
+                    "missing_liability_maturity_count"
+                ),
                 "floating_rate_proxy_market_value": row.get("floating_rate_proxy_market_value"),
                 "floating_rate_proxy_count": row.get("floating_rate_proxy_count"),
                 "payment_frequency_fallback_market_value": row.get(
@@ -338,7 +380,7 @@ def _risk_tensor_envelope_uncached(
                 "projection_quality_status": (
                     "available" if projection_quality_available else "unavailable_legacy"
                 ),
-                "bond_count": int(row["bond_count"]),
+                "bond_count": int(bond_count),
                 "quality_flag": payload_quality_flag,
                 "warnings": row_warnings,
             },
@@ -445,6 +487,38 @@ def _risk_tensor_history_envelope_uncached(
     if not rows_desc:
         raise ValueError(f"No risk tensor history found for report_date={report_date_text}.")
 
+    try:
+        bond_lineage_by_report_date = load_latest_bond_analytics_lineage_by_report_date(
+            governance_dir=governance_dir,
+        )
+    except TimeoutError as exc:
+        raise RuntimeError("Risk tensor lineage store is temporarily unavailable.") from exc
+    tyw_liability_lineage_snapshot = load_current_tyw_liability_lineage_snapshot_by_report_date(
+        duckdb_path=str(duckdb_path),
+    )
+    for history_row in rows_desc:
+        history_report_date = str(history_row["report_date"])
+        bond_lineage = bond_lineage_by_report_date.get(history_report_date, {})
+        tyw_liability_lineage = tyw_liability_lineage_snapshot.for_report_date(
+            history_report_date
+        )
+        stale_reason = _risk_tensor_freshness_error_from_values(
+            report_date_text=history_report_date,
+            row=history_row,
+            upstream_source_version=str(bond_lineage.get("source_version") or ""),
+            upstream_rule_version=str(bond_lineage.get("rule_version") or ""),
+            upstream_cache_version=str(bond_lineage.get("cache_version") or ""),
+            current_tyw_liability_source_version=tyw_liability_lineage.source_version,
+            current_tyw_liability_rule_version=tyw_liability_lineage.rule_version,
+            tyw_liability_availability=tyw_liability_lineage.availability,
+            tyw_liability_row_count=tyw_liability_lineage.row_count,
+        )
+        if stale_reason is not None:
+            raise RuntimeError(
+                "Risk tensor history includes an unverifiable point for "
+                f"report_date={history_report_date}: {stale_reason}"
+            )
+
     points = [
         {
             "report_date": str(row["report_date"]),
@@ -520,11 +594,7 @@ def _risk_tensor_freshness_error(
         upstream_rule_version = upstream_lineage["rule_version"]
         upstream_cache_version = upstream_lineage["cache_version"]
 
-    current_tyw_liability_source_version = load_current_tyw_liability_source_version(
-        duckdb_path=str(duckdb_path),
-        report_date=report_date_text,
-    )
-    current_tyw_liability_rule_version = load_current_tyw_liability_rule_version(
+    tyw_liability_lineage = load_current_tyw_liability_lineage_state(
         duckdb_path=str(duckdb_path),
         report_date=report_date_text,
     )
@@ -535,8 +605,10 @@ def _risk_tensor_freshness_error(
         upstream_source_version=upstream_source_version,
         upstream_rule_version=upstream_rule_version,
         upstream_cache_version=upstream_cache_version,
-        current_tyw_liability_source_version=current_tyw_liability_source_version,
-        current_tyw_liability_rule_version=current_tyw_liability_rule_version,
+        current_tyw_liability_source_version=tyw_liability_lineage.source_version,
+        current_tyw_liability_rule_version=tyw_liability_lineage.rule_version,
+        tyw_liability_availability=tyw_liability_lineage.availability,
+        tyw_liability_row_count=tyw_liability_lineage.row_count,
     )
 
 
@@ -549,6 +621,8 @@ def _risk_tensor_freshness_error_from_values(
     upstream_cache_version: str,
     current_tyw_liability_source_version: str,
     current_tyw_liability_rule_version: str,
+    tyw_liability_availability: str = "available",
+    tyw_liability_row_count: int = 0,
 ) -> str | None:
     if row is None:
         return f"Risk tensor fact missing for report_date={report_date_text}."
@@ -594,16 +668,46 @@ def _risk_tensor_freshness_error_from_values(
     if str(row.get("upstream_cache_version") or "").strip() != upstream_cache_version:
         return f"Risk tensor stale against bond analytics cache lineage for report_date={report_date_text}."
 
-    stored_tyw_liability_source_version = str(row.get("liability_source_version") or "").strip()
-    if current_tyw_liability_source_version and (
-        stored_tyw_liability_source_version != current_tyw_liability_source_version
+    configured_bond_analytics = FIXED_INCOME_VERSION_SET.bond_analytics
+    if (
+        upstream_rule_version != configured_bond_analytics.rule_version
+        or upstream_cache_version != configured_bond_analytics.cache_version
     ):
+        return (
+            "Risk tensor upstream bond analytics lineage is not configured-current for "
+            f"report_date={report_date_text}; rematerialize bond_analytics before risk_tensor."
+        )
+
+    if tyw_liability_availability != "available":
+        return (
+            "TYW liability formal source "
+            f"{tyw_liability_availability} for report_date={report_date_text}; "
+            "cannot validate risk tensor freshness."
+        )
+
+    stored_tyw_liability_source_version = str(row.get("liability_source_version") or "").strip()
+    stored_tyw_liability_rule_version = str(row.get("liability_rule_version") or "").strip()
+    stored_tyw_liability_lineage_exists = bool(
+        stored_tyw_liability_source_version or stored_tyw_liability_rule_version
+    )
+    if tyw_liability_row_count == 0:
+        if stored_tyw_liability_lineage_exists:
+            return (
+                "Risk tensor stale against verified-empty TYW liability input for "
+                f"report_date={report_date_text}."
+            )
+        return None
+
+    if not current_tyw_liability_source_version or not current_tyw_liability_rule_version:
+        return (
+            "TYW liability lineage missing for "
+            f"report_date={report_date_text}; cannot validate risk tensor freshness."
+        )
+
+    if stored_tyw_liability_source_version != current_tyw_liability_source_version:
         return f"Risk tensor stale against TYW liability lineage for report_date={report_date_text}."
 
-    stored_tyw_liability_rule_version = str(row.get("liability_rule_version") or "").strip()
-    if current_tyw_liability_rule_version and (
-        stored_tyw_liability_rule_version != current_tyw_liability_rule_version
-    ):
+    if stored_tyw_liability_rule_version != current_tyw_liability_rule_version:
         return f"Risk tensor stale against TYW liability lineage for report_date={report_date_text}."
     return None
 

@@ -25,6 +25,15 @@ function renderPanel(
   return render(strictMode ? <StrictMode>{panel}</StrictMode> : panel);
 }
 
+/**
+ * 默认视图已改为「经营分析」（2026-08-26 经营观察者优先）；治理视图内容
+ * （就绪清单/证据与待办/核验沙箱）需先切换到治理 tab 再断言，契约本身不放宽。
+ */
+async function openGovernanceView() {
+  const switcher = await screen.findByRole("tablist", { name: "候选财务指标视图" });
+  fireEvent.click(within(switcher).getByRole("tab", { name: /治理与补证/ }));
+}
+
 async function openAnalysisView() {
   fireEvent.click(await screen.findByRole("tab", { name: /^经营分析/ }));
 }
@@ -144,6 +153,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
   it("disables dry-run revalidation for demo data with a direct Chinese explanation", async () => {
     const client = createApiClient({ mode: "mock" });
     renderPanel(client);
+    await openGovernanceView();
 
     const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
     expect(within(section).getByText("演示数据不支持本次核验，请切换真实 API")).toBeInTheDocument();
@@ -159,6 +169,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     const client = { ...baseClient, mode: "real" as const, revalidateLedgerPnlCandidateFinancialIndicators: revalidate };
 
     renderPanel(client);
+    await openGovernanceView();
 
     const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
     expect(within(section).getByText(/刷新页面后丢失/)).toBeInTheDocument();
@@ -186,7 +197,8 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     expect(await within(section).findByText("本次结果 · 未保存")).toBeInTheDocument();
     expect(screen.getByText(/已补·待证据核验 1/)).toBeInTheDocument();
     expect(screen.getByText(/校验失败 1/)).toBeInTheDocument();
-    expect(screen.getAllByText("999.99").length).toBeGreaterThan(0);
+    // R4: 指标目录默认按 ROUND_HALF_UP 显示 4 位小数（999.99 → 999.9900），完整原始串走 title。
+    expect(screen.getAllByText("999.9900").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /批准|上传|提交审批|确认审批/ })).not.toBeInTheDocument();
   });
 
@@ -195,6 +207,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     const baseClient = createApiClient({ mode: "mock" });
     const revalidate = vi.fn();
     renderPanel({ ...baseClient, mode: "real" as const, revalidateLedgerPnlCandidateFinancialIndicators: revalidate });
+    await openGovernanceView();
 
     const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
     await user.clear(within(section).getByRole("textbox", { name: "手工覆盖 JSON" }));
@@ -214,6 +227,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
       mode: "real" as const,
       revalidateLedgerPnlCandidateFinancialIndicators: vi.fn(async () => receipt),
     });
+    await openGovernanceView();
     const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
     await user.click(within(section).getByRole("button", { name: "运行本次核验（不保存）" }));
     expect(await within(section).findByText("本次结果 · 未保存")).toBeInTheDocument();
@@ -234,6 +248,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
       .mockResolvedValueOnce(receipt)
       .mockRejectedValueOnce(new Error("Request failed: candidate revalidation (422)"));
     renderPanel({ ...baseClient, mode: "real" as const, revalidateLedgerPnlCandidateFinancialIndicators: revalidate });
+    await openGovernanceView();
     const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
     const run = within(section).getByRole("button", { name: "运行本次核验（不保存）" });
     await user.click(run);
@@ -255,6 +270,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
         () => new Promise<never>(() => undefined),
       ),
     });
+    await openGovernanceView();
 
     const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
     await user.click(within(section).getByRole("button", { name: "运行本次核验（不保存）" }));
@@ -273,6 +289,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     }));
     const client = { ...baseClient, mode: "real" as const, revalidateLedgerPnlCandidateFinancialIndicators: revalidate };
     const view = renderPanel(client, "202606");
+    await openGovernanceView();
 
     const dryRun = await screen.findByRole("region", { name: "本次核验（不保存）" });
     await user.click(within(dryRun).getByRole("button", { name: "运行本次核验（不保存）" }));
@@ -303,6 +320,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
       .mockRejectedValueOnce(new Error("Request failed: candidate revalidation (409): base evidence expired"))
       .mockResolvedValueOnce(receipt);
     renderPanel({ ...baseClient, mode: "real" as const, revalidateLedgerPnlCandidateFinancialIndicators: revalidate });
+    await openGovernanceView();
 
     const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
     const run = within(section).getByRole("button", { name: "运行本次核验（不保存）" });
@@ -323,6 +341,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
       mode: "real" as const,
       revalidateLedgerPnlCandidateFinancialIndicators: vi.fn(async () => receipt),
     });
+    await openGovernanceView();
 
     const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
     await user.click(within(section).getByRole("button", { name: "运行本次核验（不保存）" }));
@@ -344,6 +363,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
       mode: "real" as const,
       revalidateLedgerPnlCandidateFinancialIndicators: vi.fn(async () => receipt),
     });
+    await openGovernanceView();
 
     const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
     await user.click(within(section).getByRole("button", { name: "运行本次核验（不保存）" }));
@@ -362,6 +382,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
       mode: "real" as const,
       revalidateLedgerPnlCandidateFinancialIndicators: vi.fn(async () => receipt),
     });
+    await openGovernanceView();
 
     const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
     await user.click(within(section).getByRole("button", { name: "运行本次核验（不保存）" }));
@@ -383,6 +404,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
         getLedgerPnlCandidateFinancialIndicators: vi.fn(async () => baseResponse),
         revalidateLedgerPnlCandidateFinancialIndicators: vi.fn(async () => receipt),
       });
+      await openGovernanceView();
       const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
       await user.click(within(section).getByRole("button", { name: "运行本次核验（不保存）" }));
 
@@ -409,6 +431,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
         mode: "real" as const,
         revalidateLedgerPnlCandidateFinancialIndicators: vi.fn(async () => receipt),
       });
+      await openGovernanceView();
       const dryRun = await screen.findByRole("region", { name: "本次核验（不保存）" });
       await user.click(within(dryRun).getByRole("button", { name: "运行本次核验（不保存）" }));
       const worklist = await screen.findByRole("region", { name: "待补证据清单" });
@@ -440,6 +463,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     };
 
     renderPanel(client, "202606", "CNY");
+    await openGovernanceView();
 
     expect(await screen.findByRole("heading", { name: "候选财务指标" })).toBeInTheDocument();
     expect(screen.getByText("财务指标引擎")).toBeInTheDocument();
@@ -482,6 +506,57 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
       includeLineage: true,
       metricId: "income.interest.net",
     });
+  });
+
+  it("R4: 指标目录默认按 ROUND_HALF_UP 显示 4 位小数，hover 与展开态可见完整 Decimal 原始串", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const rawValue = "43.41947313";
+    const client: ApiClient = {
+      ...baseClient,
+      getLedgerPnlCandidateFinancialIndicators: vi.fn(async (reportMonth, options) => {
+        const response = await baseClient.getLedgerPnlCandidateFinancialIndicators(reportMonth, options);
+        return {
+          ...response,
+          result: {
+            ...response.result,
+            metrics: response.result.metrics.map((metric) => (
+              metric.metric_id === "income.interest.net"
+                ? { ...metric, value: rawValue }
+                : metric
+            )),
+          },
+        };
+      }),
+    };
+
+    renderPanel(client);
+    await openAnalysisView();
+
+    const headline = await screen.findByTestId("candidate-headline-income.interest.net");
+    const headlineValue = within(headline).getByText("43.4195");
+    expect(headlineValue).toHaveAttribute("title", rawValue);
+    expect(within(headline).queryByText(rawValue)).not.toBeInTheDocument();
+
+    const catalogSection = screen.getByRole("heading", { name: "全部指标" }).closest("section");
+    expect(catalogSection).not.toBeNull();
+    const search = within(catalogSection as HTMLElement).getByRole("searchbox", {
+      name: "搜索全部财务指标",
+    });
+    await user.type(search, "income.interest.net");
+    // 限定在"全部指标"目录区域内查找，metric_id 在目录里唯一，避免与首屏卡片、跨期对比区
+    // 复用同一 metric_id 的其他区块产生歧义匹配。
+    const catalogButton = within(catalogSection as HTMLElement)
+      .getByText("income.interest.net")
+      .closest("button");
+    expect(catalogButton).not.toBeNull();
+    const catalogValue = within(catalogButton as HTMLElement).getByText("43.4195");
+    expect(catalogValue).toHaveAttribute("title", rawValue);
+    expect(within(catalogButton as HTMLElement).queryByText(rawValue)).not.toBeInTheDocument();
+
+    await user.click(catalogButton as HTMLElement);
+    const detail = await screen.findByRole("dialog", { name: "指标追溯详情" });
+    expect(await within(detail).findByText(`${rawValue} 亿元`)).toBeInTheDocument();
   });
 
   it("accepts the active v1.0.1 evidence pack without weakening the candidate gate", async () => {
@@ -532,7 +607,9 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     );
   });
 
-  it("opens on governance when the source-version numeric digest does not match", async () => {
+  it("stays on analysis even when the source-version numeric digest does not match (governance visible via tab badge)", async () => {
+    // 经营观察者优先（2026-08-26 业主指示）：来源未确认不再把默认视图切到治理；
+    // 未确认状态的可见性由治理 tab 的阻断计数徽标与经营分析视图内的影响卡承担。
     const baseClient = createApiClient({ mode: "mock" });
     const activeResponse = await buildCurrentSourceImpactResponse(baseClient);
     activeResponse.result.source_version_impact = {
@@ -551,12 +628,14 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     renderPanel(client);
 
     const switcher = await screen.findByRole("tablist", { name: "候选财务指标视图" });
-    expect(within(switcher).getByRole("tab", { name: /^治理与补证/ })).toHaveAttribute(
+    expect(within(switcher).getByRole("tab", { name: /^经营分析/ })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    expect(screen.getByTestId("candidate-governance-view")).not.toHaveAttribute("hidden");
-    expect(screen.getByTestId("candidate-analysis-view")).toHaveAttribute("hidden");
+    expect(screen.getByTestId("candidate-analysis-view")).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("candidate-governance-view")).toHaveAttribute("hidden");
+    // 治理入口的阻断计数在 tab 标签上保持可见，不因默认视图切换而丢失。
+    expect(within(switcher).getByRole("tab", { name: /治理与补证/ })).toHaveTextContent(/项门禁仍阻断/);
   });
 
   it("fails closed when an unchanged source-impact claim has inconsistent digests", async () => {
@@ -573,6 +652,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     };
 
     renderPanel(client);
+    await openGovernanceView();
 
     const switcher = await screen.findByRole("tablist", { name: "候选财务指标视图" });
     expect(within(switcher).getByRole("tab", { name: /^治理与补证/ })).toHaveAttribute(
@@ -603,6 +683,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
 
     try {
       renderPanel(baseClient);
+      await openGovernanceView();
       await user.click(await screen.findByRole("button", { name: "下载阻断证据 JSON" }));
 
       const expected = JSON.stringify(response.result.promotion_readiness.evidence_pack, null, 2);
@@ -625,6 +706,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     const client = createApiClient({ mode: "mock" });
 
     renderPanel(client);
+    await openGovernanceView();
 
     const worklist = await screen.findByRole("region", { name: "待补证据清单" });
     const filterGroup = within(worklist).getByRole("group", { name: "筛选待补证据类别" });
@@ -668,6 +750,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     const client = createApiClient({ mode: "mock" });
 
     renderPanel(client);
+    await openGovernanceView();
 
     const worklist = await screen.findByRole("region", { name: "待补证据清单" });
     await user.click(within(worklist).getByRole("button", { name: "手工输入 19" }));
@@ -693,6 +776,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
 
     try {
       renderPanel(client);
+      await openGovernanceView();
       const worklist = await screen.findByRole("region", { name: "待补证据清单" });
       await user.click(within(worklist).getByRole("button", { name: "手工输入 19" }));
       await user.click(within(worklist).getByRole("button", { name: "复制当前清单" }));
@@ -732,6 +816,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
 
     try {
       renderPanel(client, "202606", "CNX", true);
+      await openGovernanceView();
       const worklist = await screen.findByRole("region", { name: "待补证据清单" });
       await user.click(within(worklist).getByRole("button", { name: "复制当前清单" }));
 
@@ -758,6 +843,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
 
     try {
       renderPanel(client);
+      await openGovernanceView();
       const worklist = await screen.findByRole("region", { name: "待补证据清单" });
       await user.click(within(worklist).getByRole("button", { name: "复制当前清单" }));
 
@@ -784,6 +870,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
 
     try {
       renderPanel(client);
+      await openGovernanceView();
       const worklist = await screen.findByRole("region", { name: "待补证据清单" });
       await user.click(within(worklist).getByRole("button", { name: "复制当前清单" }));
 
@@ -817,6 +904,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
 
     try {
       renderPanel(client);
+      await openGovernanceView();
       const worklist = await screen.findByRole("region", { name: "待补证据清单" });
       await user.click(within(worklist).getByRole("button", { name: "复制当前清单" }));
       await user.click(within(worklist).getByRole("button", { name: "手工输入 19" }));
@@ -849,6 +937,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
 
     try {
       renderPanel(client);
+      await openGovernanceView();
       const worklist = await screen.findByRole("region", { name: "待补证据清单" });
       const copyButton = within(worklist).getByRole("button", { name: "复制当前清单" });
       await user.click(copyButton);
@@ -1428,6 +1517,108 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
       (await within(dialog).findAllByText(`${metricLineageValues[0]} 亿元`)).length,
     ).toBeGreaterThan(0);
     expect(within(dialog).getAllByText(`${metricLineageValues[1]} 亿元`).length).toBeGreaterThan(0);
+  });
+
+  it("B4: locks the current default tab (analysis when source impact is confirmed unchanged)", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const activeResponse = await buildCurrentSourceImpactResponse(baseClient);
+    const client: ApiClient = {
+      ...baseClient,
+      getLedgerPnlCandidateFinancialIndicators: vi.fn(async () => activeResponse),
+    };
+
+    renderPanel(client);
+
+    const switcher = await screen.findByRole("tablist", { name: "候选财务指标视图" });
+    expect(within(switcher).getByRole("tab", { name: /^经营分析/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("B4: folds the six-card promotion readiness grid behind an explicit expand while keeping the status line visible", async () => {
+    const client = createApiClient({ mode: "mock" });
+    renderPanel(client);
+    await openGovernanceView();
+
+    const readiness = await screen.findByTestId(
+      "candidate-financial-indicators-promotion-readiness",
+    );
+    // 一行摘要（状态文案 + 阻断数）默认可见，不需要展开。
+    expect(within(readiness).getByText(/正式化未就绪 · \d+ 项阻断/)).toBeVisible();
+
+    const detail = within(readiness).getByTestId(
+      "candidate-promotion-readiness-detail",
+    ) as HTMLDetailsElement;
+    expect(detail.open).toBe(false);
+    // 六卡与"下载阻断证据 JSON"入口默认收进展开区。
+    expect(within(detail).getByText("规则资产与候选计算")).not.toBeVisible();
+    expect(
+      within(detail).getByRole("button", { name: "下载阻断证据 JSON" }),
+    ).not.toBeVisible();
+
+    fireEvent.click(detail.querySelector("summary") as HTMLElement);
+    expect(detail.open).toBe(true);
+    expect(within(detail).getByText("规则资产与候选计算")).toBeVisible();
+    expect(
+      within(detail).getByRole("button", { name: "下载阻断证据 JSON" }),
+    ).toBeVisible();
+  });
+
+  it("B4: folds 证据与待办 behind a counted summary line with a warning dot", async () => {
+    const client = createApiClient({ mode: "mock" });
+    renderPanel(client);
+    await openGovernanceView();
+
+    const evidenceSummary = await screen.findByTestId("candidate-evidence-summary");
+    expect(evidenceSummary).toHaveTextContent(/证据 2 项 · 待办 \d+ 项/);
+
+    const detail = screen.getByTestId("candidate-evidence-detail") as HTMLDetailsElement;
+    expect(detail.open).toBe(false);
+    // SHA-256 哈希、缺失来源等明细默认不可见。
+    expect(within(detail).getByText("synthetic-ledger-202606.xlsx")).not.toBeVisible();
+
+    fireEvent.click(detail.querySelector("summary") as HTMLElement);
+    expect(detail.open).toBe(true);
+    expect(within(detail).getByText("synthetic-ledger-202606.xlsx")).toBeVisible();
+  });
+
+  it("B4: folds the revalidation sandbox behind an explicit expand", async () => {
+    const client = createApiClient({ mode: "mock" });
+    renderPanel(client);
+    await openGovernanceView();
+
+    const section = await screen.findByRole("region", { name: "本次核验（不保存）" });
+    const detail = section.querySelector(
+      ".candidate-indicators__revalidation-detail",
+    ) as HTMLDetailsElement;
+    expect(detail).not.toBeNull();
+    expect(detail.open).toBe(false);
+    expect(
+      within(detail).getByRole("textbox", { name: "手工覆盖 JSON" }),
+    ).not.toBeVisible();
+    expect(within(section).getByText("核验工具（不保存，不改变候选结果）")).toBeVisible();
+
+    fireEvent.click(detail.querySelector("summary") as HTMLElement);
+    expect(detail.open).toBe(true);
+    expect(
+      within(detail).getByRole("textbox", { name: "手工覆盖 JSON" }),
+    ).toBeVisible();
+  });
+
+  it("B4: keeps candidate/warning compliance badges visible without expanding anything", async () => {
+    const client = createApiClient({ mode: "mock" });
+    renderPanel(client);
+    await openGovernanceView();
+
+    // 头部候选口径徽标：默认可见，禁止折叠。
+    expect(await screen.findByText("候选口径 · 禁止正式使用")).toBeVisible();
+    // 视图切换条上的门禁阻断计数：默认可见。
+    expect(await screen.findByRole("tab", { name: /^治理与补证/ })).toBeVisible();
+    // 正式化就绪清单一行状态摘要：默认可见（不在折叠区内）。
+    expect(screen.getByText(/正式化未就绪 · \d+ 项阻断/)).toBeVisible();
+    // 证据与待办摘要行：默认可见。
+    expect(screen.getByTestId("candidate-evidence-summary")).toBeVisible();
   });
 
   it("uses modal dialog keyboard behavior and restores focus to the opener", async () => {

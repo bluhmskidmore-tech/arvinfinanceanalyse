@@ -964,7 +964,12 @@ def test_balance_analysis_workbook_api_returns_governed_sections(
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        # dev fallback 读权限已收紧为 loopback-only（P1 安全收紧）；TestClient 默认
+        # client host 是 "testclient"，需显式 127.0.0.1 才能命中匿名回退。
+        client=("127.0.0.1", 12345),
+    )
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
@@ -989,6 +994,13 @@ def test_balance_analysis_workbook_api_returns_governed_sections(
     card_map = {card["key"]: card for card in payload["result"]["cards"]}
     assert Decimal(str(card_map["issuance_liabilities"]["value"])) > Decimal("0")
     assert Decimal(str(card_map["bond_assets_excluding_issue"]["value"])) == _EXPECTED_CNY_BOND_ASSETS_WANYUAN
+    expected_full_scope_net = (
+        Decimal(str(card_map["bond_assets_excluding_issue"]["value"]))
+        + Decimal(str(card_map["interbank_assets"]["value"]))
+        - Decimal(str(card_map["interbank_liabilities"]["value"]))
+        - Decimal(str(card_map["issuance_liabilities"]["value"]))
+    )
+    assert Decimal(str(card_map["net_position"]["value"])) == expected_full_scope_net
 
     native_response = client.get(
         "/ui/balance-analysis/workbook",
@@ -1042,7 +1054,12 @@ def test_balance_analysis_workbook_contract_keeps_generated_decision_items_in_op
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        # dev fallback 读权限已收紧为 loopback-only（P1 安全收紧）；TestClient 默认
+        # client host 是 "testclient"，需显式 127.0.0.1 才能命中匿名回退。
+        client=("127.0.0.1", 12345),
+    )
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
@@ -1101,7 +1118,12 @@ def test_balance_analysis_workbook_does_not_silently_expose_future_gap_sections(
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        # dev fallback 读权限已收紧为 loopback-only（P1 安全收紧）；TestClient 默认
+        # client host 是 "testclient"，需显式 127.0.0.1 才能命中匿名回退。
+        client=("127.0.0.1", 12345),
+    )
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
@@ -1140,7 +1162,12 @@ def test_maturity_gap_includes_issuance_and_full_scope_liabilities(
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        # dev fallback 读权限已收紧为 loopback-only（P1 安全收紧）；TestClient 默认
+        # client host 是 "testclient"，需显式 127.0.0.1 才能命中匿名回退。
+        client=("127.0.0.1", 12345),
+    )
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
@@ -1182,7 +1209,12 @@ def test_workbook_exposes_cashflow_calendar_section(
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        # dev fallback 读权限已收紧为 loopback-only（P1 安全收紧）；TestClient 默认
+        # client host 是 "testclient"，需显式 127.0.0.1 才能命中匿名回退。
+        client=("127.0.0.1", 12345),
+    )
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
@@ -1232,7 +1264,12 @@ def test_workbook_exposes_liquidity_layers_section(
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        # dev fallback 读权限已收紧为 loopback-only（P1 安全收紧）；TestClient 默认
+        # client host 是 "testclient"，需显式 127.0.0.1 才能命中匿名回退。
+        client=("127.0.0.1", 12345),
+    )
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
@@ -1298,7 +1335,12 @@ def test_workbook_exposes_issuer_concentration_section(
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        # dev fallback 读权限已收紧为 loopback-only（P1 安全收紧）；TestClient 默认
+        # client host 是 "testclient"，需显式 127.0.0.1 才能命中匿名回退。
+        client=("127.0.0.1", 12345),
+    )
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
@@ -1344,7 +1386,12 @@ def test_workbook_exposes_rule_reference_section(
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        # dev fallback 读权限已收紧为 loopback-only（P1 安全收紧）；TestClient 默认
+        # client host 是 "testclient"，需显式 127.0.0.1 才能命中匿名回退。
+        client=("127.0.0.1", 12345),
+    )
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
@@ -1396,7 +1443,12 @@ def test_workbook_exposes_ifrs9_classification_section(
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        # dev fallback 读权限已收紧为 loopback-only（P1 安全收紧）；TestClient 默认
+        # client host 是 "testclient"，需显式 127.0.0.1 才能命中匿名回退。
+        client=("127.0.0.1", 12345),
+    )
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
@@ -1463,7 +1515,12 @@ def test_workbook_exposes_account_category_comparison_section(
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        # dev fallback 读权限已收紧为 loopback-only（P1 安全收紧）；TestClient 默认
+        # client host 是 "testclient"，需显式 127.0.0.1 才能命中匿名回退。
+        client=("127.0.0.1", 12345),
+    )
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},

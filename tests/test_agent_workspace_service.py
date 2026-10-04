@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from threading import Event, Thread
 from types import SimpleNamespace
 
@@ -9,6 +10,7 @@ from backend.app.agent.schemas.agent_workspace import (
     AgentProjectCreateRequest,
     AgentProjectUpdateRequest,
 )
+from backend.app.governance.agent_audit import AGENT_AUDIT_STREAM
 from backend.app.repositories.agent_workspace_repo import (
     AGENT_RUN_STREAM,
     AGENT_WORKSPACE_CONVERSATION_STREAM,
@@ -276,6 +278,49 @@ def test_conversation_lifecycle_enforces_owner_and_archived_write_boundary(
             project_id=project.project_id,
             request=AgentConversationCreateRequest(title="Blocked"),
         )
+
+
+def test_workspace_lifecycle_writes_go_through_the_agent_audit_entrypoint(
+    tmp_path,
+) -> None:
+    settings = _settings(tmp_path)
+    project = _create_project(settings)
+    conversation = _create_conversation(settings, project.project_id)
+    for request in (
+        AgentProjectUpdateRequest(name="Rates and FX"),
+        AgentProjectUpdateRequest(archived=True),
+        AgentProjectUpdateRequest(archived=False),
+        # 无变化的更新不写盘，也不应产生审计行。
+        AgentProjectUpdateRequest(name="Rates and FX"),
+    ):
+        update_project(
+            settings=settings,
+            owner_user_id="user-1",
+            project_id=project.project_id,
+            request=request,
+        )
+
+    rows = GovernanceRepository(base_dir=tmp_path).read_all(AGENT_AUDIT_STREAM)
+
+    assert [row["result_meta"]["result_kind"] for row in rows] == [
+        "agent.workspace.project_created",
+        "agent.workspace.conversation_created",
+        "agent.workspace.project_updated",
+        "agent.workspace.project_archived",
+        "agent.workspace.project_restored",
+    ]
+    assert {row["user_id"] for row in rows} == {"user-1"}
+    assert all(row["trace_id"].startswith("tr_agent_workspace_") for row in rows)
+    assert all(row["result_meta"]["formal_use_allowed"] is False for row in rows)
+    assert all(row["tables_used"] == [] for row in rows)
+    assert rows[0]["result_meta"]["project_id"] == project.project_id
+    assert rows[1]["result_meta"]["conversation_id"] == conversation.conversation_id
+    assert rows[2]["result_meta"]["changed_fields"] == ["name"]
+    assert rows[3]["result_meta"]["changed_fields"] == ["archived_at"]
+    # 审计只记录标识与变更字段名，不复制项目/会话标题等用户正文。
+    serialized = json.dumps(rows, ensure_ascii=False)
+    assert "Rates" not in serialized
+    assert "Daily review" not in serialized
 
 
 def test_archive_serializes_against_new_conversation(

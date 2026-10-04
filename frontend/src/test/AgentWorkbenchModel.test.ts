@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildGovernanceNotices,
+  formatAgentRunStopReason,
+  getLocalAgentQueryIntent,
   isAgentEvidence,
+  isLocalOpenChatQuestion,
   isAgentQueryResult,
   isAgentResultCard,
   isAgentRunPayload,
@@ -35,6 +38,31 @@ function buildResult(
 }
 
 describe("agent workbench evidence governance", () => {
+  it("distinguishes a greeting from a provider outage without hiding stale data", () => {
+    const result: AgentQueryResult = buildResult("local_fallback");
+    result.result_meta.result_kind = "agent.local_chat";
+    result.evidence.tables_used = ["agent_local_chat"];
+    result.evidence.filters_applied.fallback_reason = "short_open_chat";
+    expect(buildGovernanceNotices(result)).toEqual(["本地快捷回复，未查询业务数据"]);
+    result.evidence.quality_flag = "stale";
+    expect(buildGovernanceNotices(result)).toContain("证据数据可能陈旧，请核对报告日期后再使用");
+    result.result_meta.result_kind = "agent.hermes_fallback";
+    expect(buildGovernanceNotices(result)).toContain("当前为本地降级回答，未运行受治理指标查询");
+  });
+
+  it("never consumes a substantive short prompt as a canned greeting", () => {
+    for (const question of ["帮我想想标题", "你好，解释彩虹", "怎么用 Excel 筛选", "今天该关注什么", "随便聊聊"]) {
+      expect(isLocalOpenChatQuestion(question), question).toBe(false);
+    }
+    expect(isLocalOpenChatQuestion("你好！")).toBe(true);
+    expect(isLocalOpenChatQuestion("你能做什么？")).toBe(true);
+  });
+
+  it("classifies pnl questions as local governed queries", () => {
+    expect(getLocalAgentQueryIntent("损益数据呢")).toBe("pnl_summary");
+    expect(getLocalAgentQueryIntent("pnl summary")).toBe("pnl_summary");
+  });
+
   it("warns when a result only carries provider runtime evidence", () => {
     expect(buildGovernanceNotices(buildResult("provider_runtime"))).toContain(
       "当前仅有外部模型与工具运行证据，未证明 MOSS 指标口径",
@@ -162,5 +190,30 @@ describe("agent result guard and normalization compatibility", () => {
         ],
       }),
     ).toBe(false);
+  });
+});
+
+describe("agent run stop_reason copy", () => {
+  it("maps non-completed stop_reason values to workbench copy and hides completed", () => {
+    expect(formatAgentRunStopReason("provider_error")).toBe("provider 执行失败");
+    expect(formatAgentRunStopReason("cancel_requested_provider_stop_unconfirmed")).toBe(
+      "已请求取消，provider 停止未确认",
+    );
+    expect(formatAgentRunStopReason("completed")).toBeNull();
+    expect(formatAgentRunStopReason(undefined)).toBeNull();
+  });
+
+  it("accepts stop_reason on managed run payloads", () => {
+    expect(
+      isAgentRunPayload({
+        run_id: "agent_run:stop_reason",
+        status: "failed",
+        provider: "hermes",
+        model: "default",
+        transport: "bridge",
+        toolsets: "default",
+        stop_reason: "provider_error",
+      }),
+    ).toBe(true);
   });
 });

@@ -66,7 +66,10 @@ class LedgerPnlAnalysisBasisComparisonRow(_StrictLedgerPnlAnalysisModel):
     cny: LedgerPnlAnalysisMoney | None
     cnx_minus_cny: LedgerPnlAnalysisMoney | None
     availability: LedgerPnlAnalysisBasisAvailability
+    # evidence_rows 为总账∪日均并集口径行数；ledger_evidence_rows 仅统计
+    # 总账工作簿真实观测行（source_presence == "ledger"）。
     evidence_rows: LedgerPnlAnalysisBasisEvidenceRows
+    ledger_evidence_rows: LedgerPnlAnalysisBasisEvidenceRows
 
     @model_validator(mode="after")
     def validate_availability(self) -> LedgerPnlAnalysisBasisComparisonRow:
@@ -77,6 +80,10 @@ class LedgerPnlAnalysisBasisComparisonRow(_StrictLedgerPnlAnalysisModel):
                 raise ValueError(f"{basis} ready requires an amount and evidence rows")
             if availability == "no_data" and amount is not None:
                 raise ValueError(f"{basis} no_data requires a null amount")
+            if getattr(self.ledger_evidence_rows, basis) > evidence_rows:
+                raise ValueError(
+                    f"{basis} ledger evidence rows cannot exceed union-caliber evidence rows"
+                )
 
         both_ready = self.availability.CNX == "ready" and self.availability.CNY == "ready"
         if both_ready != (self.cnx_minus_cny is not None):
@@ -145,6 +152,7 @@ class LedgerPnlAnalysisCalculationBasis(_StrictLedgerPnlAnalysisModel):
     basis_difference_formula: str
     basis_boundary: str
     basis_availability_boundary: str
+    evidence_rows_boundary: str
     previous_period_rule: str
     metric_boundary: str
 

@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import uuid4
 
-from backend.app.agent.runtime.toolset_policy import normalize_read_only_toolsets
+from backend.app.agent.runtime.local_request_resolution import (
+    SEMANTIC_EXECUTION_CONTEXT_KEY,
+    validate_semantic_execution_request,
+)
+from backend.app.agent.runtime.toolset_policy import (
+    normalize_hermes_read_only_toolsets,
+    normalize_read_only_toolsets,
+)
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentEnvelope
 from backend.app.agent.schemas.agent_run import (
@@ -18,7 +26,9 @@ from backend.app.agent.schemas.agent_run import (
     AgentRunDeltaRecord,
     AgentRunListResponse,
     AgentRunRecord,
+    AgentRunStatus,
     AgentRunStatusResponse,
+    AgentRunStopReason,
 )
 from backend.app.governance.agent_audit import AGENT_AUDIT_STREAM, AgentAuditPayload
 from backend.app.governance.locks import LockDefinition, acquire_lock
@@ -54,9 +64,14 @@ AGENT_RUN_DELTA_MAX_TOTAL_BYTES = 256 * 1024
 _AGENT_RUN_LATEST_RECORDS: dict[str, dict[str, object]] = {}
 _ACTIVE_AGENT_RUN_STATUSES = frozenset({"queued", "starting", "running"})
 _TERMINAL_AGENT_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
+_DISPATCH_PHASE_REQUESTED = "requested"
+_DISPATCH_PHASE_ACCEPTED = "accepted"
+# 可选的取消钩子：executor 显式声明该关键字才会收到事件，local 不变。
+_CANCEL_EVENT_KEYWORD = "cancel_event"
 _DISPATCH_FAILURE_CODE = "AGENT_RUN_DISPATCH_FAILED"
 _EXECUTION_FAILURE_CODE = "AGENT_RUN_EXECUTION_FAILED"
 _PREPARATION_FAILURE_CODE = "AGENT_RUN_PREPARATION_FAILED"
+_SEMANTIC_EXECUTION_CONFLICT_CODE = "AGENT_RUN_SEMANTIC_EXECUTION_CONFLICT"
 # 与 AgentQueryRequest.question 的 min_length=1 / max_length=8000 约束对齐：
 # 该约束晚于部分历史 run 记录引入，重建历史 request（stale 对账 audit、
 # 失败回退）时必须截断/兜底，否则状态读取会抛 ValidationError。
@@ -71,6 +86,10 @@ AgentExecutor = Callable[[AgentQueryRequest, str, Any], AgentEnvelope]
 
 class AgentRunStateConflict(RuntimeError):
     """Raised when a requested run lifecycle transition is not allowed."""
+
+
+class AgentRunSemanticExecutionConflict(AgentRunStateConflict):
+    """Raised when a persisted semantic execution snapshot is unsafe to execute."""
 
 
 class AgentRunDispatchError(RuntimeError):
@@ -251,6 +270,13 @@ def _provider_runtime_fields(settings: Any, provider: str | None = None) -> tupl
             "inline",
             normalize_read_only_toolsets(""),
         )
+    if normalized_provider == "pi":
+        return (
+            "pi",
+            str(getattr(settings, "agent_pi_model", "") or "default"),
+            "rpc",
+            "none",
+        )
     if normalized_provider == "dexter":
         return (
             "dexter",
@@ -262,7 +288,9 @@ def _provider_runtime_fields(settings: Any, provider: str | None = None) -> tupl
         "hermes",
         str(getattr(settings, "agent_hermes_model", "") or "default"),
         str(getattr(settings, "agent_hermes_transport", "bridge") or "bridge"),
-        normalize_read_only_toolsets(str(getattr(settings, "agent_hermes_toolsets", "") or "")),
+        normalize_hermes_read_only_toolsets(
+            str(getattr(settings, "agent_hermes_toolsets", "") or "")
+        ),
     )
 
 
@@ -321,6 +349,12 @@ def stage_agent_run_creation(
     touches the broker. Callers must pass the result to
     `complete_agent_run_creation` outside such locks.
     """
+    request = _validated_semantic_execution_request(request)
+    provider, model, transport, toolsets = _provider_runtime_fields(
+        settings,
+        provider,
+    )
+    _ensure_semantic_execution_provider(request, provider)
     repo = GovernanceRepository(base_dir=settings.governance_path)
 
     with AGENT_RUN_TRANSITION_LOCK:
@@ -358,10 +392,8 @@ def stage_agent_run_creation(
                     }
                 }
             )
-            provider, model, transport, toolsets = _provider_runtime_fields(
-                settings,
-                provider,
-            )
+            if provider in {"hermes", "pi"} and run_request.model:
+                model = run_request.model
             conversation_id = _context_identifier(
                 run_request.context,
                 "conversation_id",
@@ -419,6 +451,10 @@ def complete_agent_run_creation(
     assert queued_record is not None
     assert run_request is not None
 
+    # Persist the attempt first: the acceptance row can only be written after
+    # send returns, and a crash in that window must not look like "never
+    # dispatched" to a repeated client request.
+    _append_dispatch_request(repo=repo, run_id=queued_record.run_id)
     try:
         execute_agent_run_task.send(run_id=queued_record.run_id)
     except Exception as exc:
@@ -479,14 +515,26 @@ def get_agent_run_owner(*, run_id: str, settings: Any) -> str | None:
     record = _latest_run_record(run_id=run_id, settings=settings)
     if record is None:
         raise ValueError(f"Unknown agent run_id={run_id}")
-    request = record.get("request")
-    if not isinstance(request, dict):
-        return None
-    context = request.get("context")
-    if not isinstance(context, dict):
-        return None
-    user_id = str(context.get("user_id") or "").strip()
-    return user_id or None
+    return _owner_from_run_record(record)
+
+
+def get_agent_run_owner_and_status(
+    *,
+    run_id: str,
+    settings: Any,
+) -> tuple[str | None, AgentRunStatusResponse]:
+    """Owner and status from one pass over the run stream.
+
+    Read endpoints need both to authorize and answer; reading the append-only
+    ``agent_run`` stream twice per request costs one full scan for nothing.
+    Stale reconciliation stays identical to `get_agent_run_status`.
+    """
+    record = _latest_run_record(run_id=run_id, settings=settings)
+    if record is None:
+        raise ValueError(f"Unknown agent run_id={run_id}")
+    owner_user_id = _owner_from_run_record(record)
+    reconciled = _reconcile_stale_run_record(record=record, settings=settings)
+    return owner_user_id, _status_from_record(reconciled)
 
 
 def execute_agent_run_by_id(
@@ -507,6 +555,15 @@ def execute_agent_run_by_id(
         )
 
     request = _request_from_run_record(record=record, run_id=run_id)
+    try:
+        request = _validated_semantic_execution_request(request)
+        _ensure_semantic_execution_provider(request, record.get("provider"))
+    except AgentRunSemanticExecutionConflict as exc:
+        # Version and shape validation must happen before the starting/running
+        # transitions and before any provider or governed data service is called.
+        # Persist a terminal record so polling and SSE clients do not wait forever.
+        fail_agent_run(run_id=run_id, settings=settings, error=exc)
+        return _status_from_run_record(run_id=run_id, settings=settings)
     _execute_agent_run(
         run_id=run_id,
         request=request,
@@ -529,27 +586,16 @@ def list_agent_runs(
     if not normalized_owner or normalized_limit == 0:
         return AgentRunListResponse(items=[])
 
-    latest_by_run_id: dict[str, dict[str, object]] = {}
-    records = GovernanceRepository(base_dir=settings.governance_path).read_all(
-        AGENT_RUN_STREAM
-    )
-    for record in records:
-        run_id = str(record.get("run_id") or "").strip()
-        if run_id:
-            latest_by_run_id[run_id] = record
-
-    owned_records = [
-        record
-        for record in latest_by_run_id.values()
-        if _owner_from_run_record(record) == normalized_owner
-        and (
+    selected = GovernanceRepository(base_dir=settings.governance_path).read_latest_by_run_id(
+        AGENT_RUN_STREAM,
+        matches=lambda record: _owner_from_run_record(record) == normalized_owner and (
             normalized_conversation_id is None
             or _conversation_id_from_run_record(record)
             == normalized_conversation_id
-        )
-    ]
-    owned_records.sort(key=_run_record_sort_time, reverse=True)
-    selected = owned_records[:normalized_limit]
+        ),
+        sort_key=_run_record_sort_time,
+        limit=normalized_limit,
+    )
     for record in selected:
         _remember_run_record(record)
     # 列表与单条状态端点共用同一 stale 判定，避免同一 run 两端点状态矛盾。
@@ -589,11 +635,20 @@ def cancel_agent_run(*, run_id: str, settings: Any) -> AgentRunStatusResponse:
             record.get("started_at"),
             finished_at,
         ),
+        stop_reason=(
+            "cancel_requested_provider_stop_unconfirmed"
+            if status == "running" and str(record.get("provider") or "local") != "local"
+            else None
+        ),
     )
     appended = _append_record_if_latest_status(
         settings=settings,
         record=cancelled_record,
         allowed_statuses=set(_ACTIVE_AGENT_RUN_STATUSES),
+        audit_payload=_build_cancelled_run_audit_payload(
+            run_id=run_id,
+            request=request,
+        ),
     )
     if appended:
         return _status_from_record(
@@ -653,13 +708,82 @@ def retry_agent_run(*, run_id: str, settings: Any) -> AgentRunCreateResponse:
     return complete_agent_run_creation(staged=staged, settings=settings)
 
 
-def stage_agent_run_retry(*, run_id: str, settings: Any) -> StagedAgentRunCreation:
+def build_agent_run_retry_request(
+    *,
+    run_id: str,
+    settings: Any,
+) -> AgentQueryRequest:
+    """Rebuild a retry candidate without reusing a prior semantic decision.
+
+    The route layer owns fresh parsing, resource authorization, and server-side
+    snapshot attachment. This helper only reconstructs the governed source
+    request and removes the reserved execution snapshot before that work.
+    """
+    _record, source_request = _retry_source_record_and_request(
+        run_id=run_id,
+        settings=settings,
+    )
+    return _retry_request_from_source(source_request=source_request, run_id=run_id)
+
+
+def stage_agent_run_retry(
+    *,
+    run_id: str,
+    settings: Any,
+    request: AgentQueryRequest | None = None,
+    provider: str | None = None,
+) -> StagedAgentRunCreation:
     """Lock-friendly first half of a retry: validate source run and stage.
 
     Mirrors `stage_agent_run_creation`'s contract: safe to call under the
     agent workspace lifecycle lock (no dispatch waits, no broker send); pass
     the result to `complete_agent_run_creation` outside such locks.
     """
+    record, source_request = _retry_source_record_and_request(
+        run_id=run_id,
+        settings=settings,
+    )
+    source_has_semantic_snapshot = (
+        SEMANTIC_EXECUTION_CONTEXT_KEY in source_request.context
+    )
+    if request is None:
+        if source_has_semantic_snapshot:
+            raise AgentRunSemanticExecutionConflict(
+                "Agent semantic execution must be resolved and authorized again before retry."
+            )
+        retry_request = _retry_request_from_source(
+            source_request=source_request,
+            run_id=run_id,
+        )
+    else:
+        if (
+            source_has_semantic_snapshot
+            and SEMANTIC_EXECUTION_CONTEXT_KEY not in request.context
+        ):
+            raise AgentRunSemanticExecutionConflict(
+                "Agent semantic execution must be resolved and authorized again before retry."
+            )
+        retry_request = request.model_copy(
+            update={
+                "context": {
+                    **request.context,
+                    "retry_of_run_id": run_id,
+                    "client_request_id": f"retry:{run_id}",
+                }
+            }
+        )
+    return stage_agent_run_creation(
+        request=retry_request,
+        settings=settings,
+        provider=provider or _optional_text(record.get("provider")),
+    )
+
+
+def _retry_source_record_and_request(
+    *,
+    run_id: str,
+    settings: Any,
+) -> tuple[dict[str, object], AgentQueryRequest]:
     record = _latest_run_record(run_id=run_id, settings=settings)
     if record is None:
         raise ValueError(f"Unknown agent run_id={run_id}")
@@ -675,22 +799,26 @@ def stage_agent_run_retry(*, run_id: str, settings: Any) -> StagedAgentRunCreati
         raise AgentRunStateConflict(
             "Agent Lab streaming is only available when the configured provider is Hermes."
         )
+    return record, _request_from_run_record(record=record, run_id=run_id)
 
-    request = _request_from_run_record(record=record, run_id=run_id)
-    retry_request = request.model_copy(
-        update={
-            "context": {
-                **request.context,
-                "retry_of_run_id": run_id,
-                "client_request_id": f"retry:{run_id}",
-            }
+
+def _retry_request_from_source(
+    *,
+    source_request: AgentQueryRequest,
+    run_id: str,
+) -> AgentQueryRequest:
+    retry_context = {
+        key: value
+        for key, value in source_request.context.items()
+        if key not in {SEMANTIC_EXECUTION_CONTEXT_KEY, "run_id"}
+    }
+    retry_context.update(
+        {
+            "retry_of_run_id": run_id,
+            "client_request_id": f"retry:{run_id}",
         }
     )
-    return stage_agent_run_creation(
-        request=retry_request,
-        settings=settings,
-        provider=_optional_text(record.get("provider")),
-    )
+    return source_request.model_copy(update={"context": retry_context})
 
 
 def fail_agent_run(*, run_id: str, settings: Any, error: BaseException) -> None:
@@ -717,16 +845,18 @@ def fail_agent_run(*, run_id: str, settings: Any, error: BaseException) -> None:
             context={"run_id": run_id},
         )
     provider = str(record.get("provider") or "hermes")
-    error_message = _safe_run_error_message(
-        _PREPARATION_FAILURE_CODE,
-        provider=provider,
+    error_code = (
+        _SEMANTIC_EXECUTION_CONFLICT_CODE
+        if isinstance(error, AgentRunSemanticExecutionConflict)
+        else _PREPARATION_FAILURE_CODE
     )
+    error_message = _safe_run_error_message(error_code, provider=provider)
     _LOGGER.error(
         "Agent run preparation failed run_id=%s provider=%s error_type=%s error_code=%s",
         run_id,
         provider,
         error.__class__.__name__,
-        _PREPARATION_FAILURE_CODE,
+        error_code,
     )
     finished_at = _utc_now()
     failed_record = _transition_record(
@@ -748,7 +878,7 @@ def fail_agent_run(*, run_id: str, settings: Any, error: BaseException) -> None:
             request=request,
             provider=failed_record.provider,
             error_type=error.__class__.__name__,
-            error_code=_PREPARATION_FAILURE_CODE,
+            error_code=error_code,
         ),
     )
 
@@ -912,11 +1042,10 @@ def _agent_run_stale_after_seconds(
         except (TypeError, ValueError):
             local_timeout = AGENT_RUN_LOCAL_STALE_SECONDS
         return max(local_timeout, 1.0) + AGENT_RUN_STALE_GRACE_SECONDS
-    setting_name = (
-        "agent_dexter_timeout_seconds"
-        if provider == "dexter"
-        else "agent_hermes_timeout_seconds"
-    )
+    setting_name = {
+        "dexter": "agent_dexter_timeout_seconds",
+        "pi": "agent_pi_timeout_seconds",
+    }.get(provider, "agent_hermes_timeout_seconds")
     try:
         provider_timeout = float(getattr(settings, setting_name, 180.0) or 180.0)
     except (TypeError, ValueError):
@@ -938,10 +1067,10 @@ def _parse_utc_datetime(value: object) -> datetime | None:
 
 
 def _latest_run_record(*, run_id: str, settings: Any) -> dict[str, object] | None:
-    records = _load_run_records(settings, run_id=run_id)
-    if records:
-        latest_record = records[-1]
-        _remember_run_record(latest_record)
+    latest_record = _latest_run_record_from_repo(
+        repo=GovernanceRepository(base_dir=settings.governance_path), run_id=run_id,
+    )
+    if latest_record is not None:
         return latest_record
 
     cached_record = _load_cached_run_record(run_id)
@@ -981,6 +1110,43 @@ def _request_from_run_record(
             }
         }
     )
+
+
+def _validated_semantic_execution_request(
+    request: AgentQueryRequest,
+) -> AgentQueryRequest:
+    if SEMANTIC_EXECUTION_CONTEXT_KEY not in request.context:
+        return request
+    try:
+        snapshot = validate_semantic_execution_request(
+            request,
+            require_current_versions=True,
+        )
+    except (TypeError, ValueError) as exc:
+        raise AgentRunSemanticExecutionConflict(
+            "Agent semantic execution snapshot is invalid or no longer current. "
+            "Submit the request again or retry it."
+        ) from exc
+    return request.model_copy(
+        update={
+            "context": {
+                **request.context,
+                SEMANTIC_EXECUTION_CONTEXT_KEY: snapshot,
+            }
+        }
+    )
+
+
+def _ensure_semantic_execution_provider(
+    request: AgentQueryRequest,
+    provider: object,
+) -> None:
+    if SEMANTIC_EXECUTION_CONTEXT_KEY not in request.context:
+        return
+    if str(provider or "").strip().lower() != "local":
+        raise AgentRunSemanticExecutionConflict(
+            "Agent semantic execution snapshot requires the governed local provider."
+        )
 
 
 def _owner_from_run_record(record: dict[str, object]) -> str | None:
@@ -1023,10 +1189,11 @@ def _run_record_allows_deltas(record: dict[str, object]) -> bool:
 def _run_record_supports_delta_history(record: dict[str, object]) -> bool:
     return (
         str(record.get("provider") or "").strip().lower() == "hermes"
-        and _run_record_uses_agent_stream_protocol(
-            record,
-            protocol=AGENT_RUN_DELTA_PROTOCOL,
-            surface=AGENT_RUN_DELTA_SURFACE,
+        and any(
+            _run_record_uses_agent_stream_protocol(
+                record, protocol=AGENT_RUN_DELTA_PROTOCOL, surface=surface,
+            )
+            for surface in (AGENT_RUN_DELTA_SURFACE, "workbench")
         )
     )
 
@@ -1083,35 +1250,18 @@ def _find_existing_idempotent_run_record(
     surface — the create path then allows a fresh run, while the dispatch
     waiter still sees a dispatch-failure record to propagate.
     """
-    latest_by_run_id: dict[str, dict[str, object]] = {}
-    for record in repo.read_all(AGENT_RUN_STREAM):
-        run_id = str(record.get("run_id") or "").strip()
-        if not run_id:
-            continue
-        if _owner_from_run_record(record) != owner_user_id:
-            continue
-        if _conversation_id_from_run_record(record) != conversation_id:
-            continue
-        if _client_request_id_from_run_record(record) != client_request_id:
-            continue
-        latest_by_run_id[run_id] = record
-    if not latest_by_run_id:
-        return None
-
-    def _sort_key(record: dict[str, object]) -> tuple[datetime, str]:
-        return (
+    return repo.read_idempotent_agent_run(
+        matches=lambda record: (
+            _owner_from_run_record(record) == owner_user_id
+            and _conversation_id_from_run_record(record) == conversation_id
+            and _client_request_id_from_run_record(record) == client_request_id
+        ),
+        sort_key=lambda record: (
+            str(record.get("status") or "") in {"failed", "cancelled"},
             _run_record_sort_time(record),
             str(record.get("run_id") or ""),
-        )
-
-    reusable = [
-        record
-        for record in latest_by_run_id.values()
-        if str(record.get("status") or "") not in {"failed", "cancelled"}
-    ]
-    if reusable:
-        return min(reusable, key=_sort_key)
-    return min(latest_by_run_id.values(), key=_sort_key)
+        ),
+    )
 
 
 def _create_response_for_existing_record(
@@ -1137,6 +1287,12 @@ def _is_dispatch_pending_record(
     repo: GovernanceRepository,
     record: dict[str, object],
 ) -> bool:
+    """Whether a duplicate must still wait for this record's dispatch outcome.
+
+    Any status other than ``queued`` is already an implicit dispatch outcome:
+    ``starting``/``running`` prove the broker delivered the job, and a terminal
+    status carries its own result, so neither needs the acceptance row.
+    """
     if str(record.get("status") or "") != "queued":
         return False
     run_id = str(record.get("run_id") or "").strip()
@@ -1145,10 +1301,44 @@ def _is_dispatch_pending_record(
     return not _is_dispatch_accepted(repo=repo, run_id=run_id)
 
 
+def _dispatch_phases(*, repo: GovernanceRepository, run_id: str) -> set[str]:
+    phases: set[str] = set()
+    for record in repo.read_by_run_id(AGENT_RUN_DISPATCH_STREAM, run_id, strip_run_id=True):
+        # Rows written before the two-phase marker only ever landed after a
+        # successful send, so a missing phase means "accepted".
+        phase = str(record.get("phase") or "").strip() or _DISPATCH_PHASE_ACCEPTED
+        phases.add(phase)
+    return phases
+
+
 def _is_dispatch_accepted(*, repo: GovernanceRepository, run_id: str) -> bool:
-    return any(
-        str(record.get("run_id") or "").strip() == run_id
-        for record in repo.read_all(AGENT_RUN_DISPATCH_STREAM)
+    return _DISPATCH_PHASE_ACCEPTED in _dispatch_phases(repo=repo, run_id=run_id)
+
+
+def _is_dispatch_requested(*, repo: GovernanceRepository, run_id: str) -> bool:
+    return bool(_dispatch_phases(repo=repo, run_id=run_id))
+
+
+def _append_dispatch_request(
+    *,
+    repo: GovernanceRepository,
+    run_id: str,
+) -> None:
+    """Record the dispatch attempt before the broker call.
+
+    Without it, a crash between ``send`` and the acceptance row is
+    indistinguishable from "never dispatched", and repeated client requests
+    report a dispatch failure for a job that is actually queued.
+    """
+    if _is_dispatch_requested(repo=repo, run_id=run_id):
+        return
+    repo.append(
+        AGENT_RUN_DISPATCH_STREAM,
+        {
+            "run_id": run_id,
+            "phase": _DISPATCH_PHASE_REQUESTED,
+            "requested_at": _utc_now(),
+        },
     )
 
 
@@ -1161,6 +1351,7 @@ def _append_dispatch_acceptance(
         AGENT_RUN_DISPATCH_STREAM,
         {
             "run_id": run_id,
+            "phase": _DISPATCH_PHASE_ACCEPTED,
             "accepted_at": _utc_now(),
         },
     )
@@ -1174,7 +1365,8 @@ def _wait_for_idempotent_dispatch_resolution(
     client_request_id: str,
 ) -> dict[str, object] | None:
     deadline = time.monotonic() + AGENT_RUN_DISPATCH_WAIT_SECONDS
-    while time.monotonic() < deadline:
+    pending: dict[str, object] | None = None
+    while True:
         existing = _find_existing_idempotent_run_record(
             repo=repo,
             owner_user_id=owner_user_id,
@@ -1186,7 +1378,26 @@ def _wait_for_idempotent_dispatch_resolution(
             record=existing,
         ):
             return existing
+        pending = existing
+        if time.monotonic() >= deadline:
+            break
         time.sleep(AGENT_RUN_DISPATCH_POLL_SECONDS)
+
+    if pending is None:
+        return None
+    pending_run_id = str(pending.get("run_id") or "").strip()
+    if pending_run_id and _is_dispatch_requested(repo=repo, run_id=pending_run_id):
+        # The first caller did attempt the broker send; its acceptance row is
+        # missing because the process died between the two writes. Reporting a
+        # dispatch failure here would be a lie, so hand back the queued run and
+        # let the client keep polling; a job that never reached the broker is
+        # converged by queued stale reconciliation.
+        _LOGGER.warning(
+            "Agent run dispatch acceptance missing after wait run_id=%s; "
+            "treating the recorded dispatch request as implicit acceptance",
+            pending_run_id,
+        )
+        return pending
     return None
 
 
@@ -1322,17 +1533,22 @@ def _execute_agent_run(
         return
 
     error = outcome.get("error")
+    envelope = cast(AgentEnvelope, outcome.get("envelope"))
+    if error is None and not isinstance(envelope, AgentEnvelope):
+        # Preserve schema hot-reload compatibility at the executor boundary.
+        # Invalid results enter the same failed-run receipt as executor errors.
+        try:
+            envelope = AgentEnvelope.model_validate(envelope.model_dump(mode="python"))
+        except (AttributeError, TypeError, ValueError) as exc:
+            error = exc
     if isinstance(error, Exception):
         finished_at = _utc_now()
         provider = str(running_record.provider or "hermes")
-        error_message = str(error) or error.__class__.__name__
-        error_code: str | None = None
-        if provider != "local":
-            error_message = _safe_run_error_message(
-                _EXECUTION_FAILURE_CODE,
-                provider=provider,
-            )
-            error_code = _EXECUTION_FAILURE_CODE
+        error_message = _safe_run_error_message(
+            _EXECUTION_FAILURE_CODE,
+            provider=provider,
+        )
+        error_code = _EXECUTION_FAILURE_CODE
         _LOGGER.error(
             "Agent run execution failed run_id=%s provider=%s error_type=%s error_code=%s",
             run_id,
@@ -1349,6 +1565,7 @@ def _execute_agent_run(
             finished_at=finished_at,
             elapsed_seconds=_elapsed_seconds(started),
             error_message=error_message,
+            stop_reason="provider_error" if provider != "local" else None,
         )
         _append_record_if_latest_status(
             settings=settings,
@@ -1364,25 +1581,6 @@ def _execute_agent_run(
         )
         return
 
-    envelope = outcome.get("envelope")
-    if not isinstance(envelope, AgentEnvelope):
-        # Class identity may rotate when the schemas module is reloaded (e.g.
-        # module fresh-loads in tests or hot reload); accept any same-shaped
-        # envelope by re-validating it instead of dropping the result.
-        try:
-            envelope = AgentEnvelope.model_validate(envelope.model_dump(mode="python"))
-        except Exception:
-            # The executor thread ended without a usable result (e.g.
-            # interrupted by a BaseException); the run converges later via
-            # stale reconciliation. Log loudly: a dropped result must stay
-            # observable.
-            _LOGGER.warning(
-                "Agent run executor ended without a usable envelope run_id=%s outcome_type=%s outcome_type_module=%s",
-                run_id,
-                type(envelope).__name__,
-                getattr(type(envelope), "__module__", "<unknown>"),
-            )
-            return
     finished_at = _utc_now()
     completed_record = _transition_record(
         settings=settings,
@@ -1392,6 +1590,7 @@ def _execute_agent_run(
         started_at=started_at,
         finished_at=finished_at,
         elapsed_seconds=_elapsed_seconds(started),
+        stop_reason="completed" if str(running_record.provider or "local") != "local" else None,
         result=envelope.model_dump(mode="json"),
     )
     _append_record_if_latest_status(
@@ -1415,9 +1614,19 @@ def _run_executor_until_run_is_terminal(
     while the provider call was still in flight. In that case the worker slot is
     released immediately; the abandoned provider result is discarded later by
     the status-guarded append.
+
+    Providers that accept a ``cancel_event`` keyword also get the event set on
+    that path, so an abandoned provider call can stop its own work (Hermes
+    terminates the child process) instead of running to completion unnoticed.
     """
     outcome: dict[str, object] = {}
     done = threading.Event()
+    cancel_event = threading.Event()
+    executor_kwargs: dict[str, object] = (
+        {_CANCEL_EVENT_KEYWORD: cancel_event}
+        if _executor_accepts_cancel_event(executor)
+        else {}
+    )
 
     def _invoke() -> None:
         try:
@@ -1425,8 +1634,9 @@ def _run_executor_until_run_is_terminal(
                 request,
                 str(getattr(settings, "governance_path", "")),
                 settings,
+                **executor_kwargs,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- arbitrary executor failures must reach the main thread's sanitized failed-run receipt
             outcome["error"] = exc
         finally:
             done.set()
@@ -1460,8 +1670,29 @@ def _run_executor_until_run_is_terminal(
             latest is not None
             and str(latest.get("status") or "") in _TERMINAL_AGENT_RUN_STATUSES
         ):
+            # 先置位再放弃监督：provider 线程是 daemon，若不通知它，取消后
+            # 子进程仍会跑到自然结束并占用资源。置位后 provider 以取消错误码
+            # 抛出，其结果被状态守卫丢弃（run 已是终态）。
+            cancel_event.set()
             return None
     return outcome
+
+
+def _executor_accepts_cancel_event(executor: AgentExecutor) -> bool:
+    """Whether ``executor`` opted into the optional run cancellation hook.
+
+    Only an explicitly declared ``cancel_event`` parameter counts: a ``**kwargs``
+    passthrough (test doubles, mocks) must keep the historical three-argument
+    behavior.
+    """
+    try:
+        parameter = inspect.signature(executor).parameters.get(_CANCEL_EVENT_KEYWORD)
+    except (TypeError, ValueError):
+        return False
+    return parameter is not None and parameter.kind in {
+        inspect.Parameter.KEYWORD_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    }
 
 
 def _build_failed_run_audit_payload(
@@ -1497,7 +1728,58 @@ def _build_failed_run_audit_payload(
             "scenario_flag": request.basis == "scenario",
             "provider": provider,
             "error_type": error_type,
+            **_semantic_execution_audit_fields(request),
             **({"error_code": error_code} if error_code is not None else {}),
+        },
+    )
+
+
+def _semantic_execution_audit_fields(
+    request: AgentQueryRequest,
+) -> dict[str, str]:
+    snapshot = request.context.get(SEMANTIC_EXECUTION_CONTEXT_KEY)
+    if not isinstance(snapshot, dict):
+        return {}
+    fields: dict[str, str] = {}
+    for source_key, audit_key in (
+        ("operation", "semantic_operation"),
+        ("metric_id", "semantic_metric_id"),
+        ("reason", "semantic_reason"),
+        ("ontology_revision", "semantic_ontology_revision"),
+        ("binding_revision", "semantic_binding_revision"),
+        ("parser_revision", "semantic_parser_revision"),
+    ):
+        value = str(snapshot.get(source_key) or "").strip()
+        if value:
+            fields[audit_key] = value
+    return fields
+
+
+def _build_cancelled_run_audit_payload(
+    *,
+    run_id: str,
+    request: AgentQueryRequest,
+) -> AgentAuditPayload:
+    trace_id = f"tr_agent_run_cancelled_{uuid4().hex[:12]}"
+    return AgentAuditPayload(
+        user_id=str(request.context.get("user_id") or "agent_user"),
+        query_text=request.question,
+        tools_used=["agent_run", "status:cancelled"],
+        tables_used=[],
+        filters_applied={
+            key: value
+            for key, value in request.filters.items()
+            if value not in (None, "", False)
+        },
+        trace_id=trace_id,
+        run_id=run_id,
+        result_meta={
+            "trace_id": trace_id,
+            "basis": request.basis,
+            "result_kind": "agent.run_cancelled",
+            "formal_use_allowed": False,
+            "quality_flag": "cancelled",
+            "scenario_flag": request.basis == "scenario",
         },
     )
 
@@ -1512,6 +1794,11 @@ def _safe_run_error_message(
         return "Agent run dispatch failed."
     if error_code == _PREPARATION_FAILURE_CODE:
         return "Agent run preparation failed."
+    if error_code == _SEMANTIC_EXECUTION_CONFLICT_CODE:
+        return (
+            "Agent semantic execution version changed. "
+            "Submit the request again or retry it."
+        )
     if error_code == _EXECUTION_FAILURE_CODE and normalized_provider != "local":
         return "Agent provider execution failed."
     return "Agent run failed."
@@ -1522,11 +1809,12 @@ def _transition_record(
     settings: Any,
     run_id: str,
     request: AgentQueryRequest,
-    status: str,
+    status: AgentRunStatus,
     started_at: str | None = None,
     finished_at: str | None = None,
     elapsed_seconds: float | None = None,
     error_message: str | None = None,
+    stop_reason: AgentRunStopReason | None = None,
     result: dict[str, object] | None = None,
 ) -> AgentRunRecord:
     initial = _load_cached_run_record(run_id) or _load_run_records(settings, run_id=run_id)[0]
@@ -1566,6 +1854,7 @@ def _transition_record(
         finished_at=finished_at,
         elapsed_seconds=elapsed_seconds,
         error_message=error_message,
+        stop_reason=stop_reason,
         result=result,
     )
 
@@ -1584,14 +1873,9 @@ def _append_record_if_latest_status(
             base_dir=repo.base_dir,
             timeout_seconds=5.0,
         ):
-            matching = [
-                item
-                for item in repo.read_all(AGENT_RUN_STREAM)
-                if str(item.get("run_id") or "") == record.run_id
-            ]
-            if not matching:
+            latest = _latest_run_record_from_repo(repo=repo, run_id=record.run_id)
+            if latest is None:
                 return False
-            latest = matching[-1]
             if str(latest.get("status") or "") not in allowed_statuses:
                 _remember_run_record(latest)
                 return False
@@ -1641,12 +1925,9 @@ def _load_cached_run_record(run_id: str) -> dict[str, object] | None:
 
 
 def _load_run_records(settings: Any, *, run_id: str) -> list[dict[str, object]]:
-    records = [
-        record
-        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(AGENT_RUN_STREAM)
-        if str(record.get("run_id") or "") == run_id
-    ]
-    return records
+    return GovernanceRepository(base_dir=settings.governance_path).read_by_run_id(
+        AGENT_RUN_STREAM, run_id,
+    )
 
 
 def _load_run_delta_records(
@@ -1666,19 +1947,11 @@ def _load_run_delta_records(
         owner_user_id = _owner_from_run_record(latest_run)
         if owner_user_id is None:
             return []
-    records = GovernanceRepository(base_dir=settings.governance_path).read_all(
-        AGENT_RUN_DELTA_STREAM
-    )
-    deltas: list[AgentRunDeltaRecord] = []
     minimum_seq = max(int(after_seq), 0)
-    for record in records:
-        if str(record.get("run_id") or "") != run_id:
-            continue
-        delta = AgentRunDeltaRecord.model_validate(record)
-        if delta.owner_user_id != owner_user_id:
-            continue
-        if delta.seq > minimum_seq:
-            deltas.append(delta)
+    deltas = GovernanceRepository(base_dir=settings.governance_path).read_run_deltas(
+        run_id, owner_user_id=owner_user_id, after_seq=minimum_seq,
+        validate=AgentRunDeltaRecord.model_validate,
+    )
     deltas.sort(key=lambda item: item.seq)
     return deltas
 
@@ -1688,10 +1961,8 @@ def _latest_run_record_from_repo(
     repo: GovernanceRepository,
     run_id: str,
 ) -> dict[str, object] | None:
-    latest: dict[str, object] | None = None
-    for record in repo.read_all(AGENT_RUN_STREAM):
-        if str(record.get("run_id") or "") == run_id:
-            latest = record
+    records = repo.read_by_run_id(AGENT_RUN_STREAM, run_id, latest_only=True)
+    latest = records[-1] if records else None
     if latest is not None:
         _remember_run_record(latest)
     return latest
@@ -1699,24 +1970,25 @@ def _latest_run_record_from_repo(
 
 def _status_from_record(record: dict[str, object]) -> AgentRunStatusResponse:
     result = record.get("result")
-    return AgentRunStatusResponse(
-        run_id=str(record.get("run_id") or ""),
-        status=str(record.get("status") or "failed"),
-        conversation_id=_conversation_id_from_run_record(record),
-        retry_of_run_id=_retry_of_run_id_from_record(record),
-        artifact_refs=_artifact_refs_from_run_record(record),
-        question=_optional_text(record.get("question")),
-        provider=str(record.get("provider") or "hermes"),
-        model=str(record.get("model") or "default"),
-        transport=str(record.get("transport") or "bridge"),
-        toolsets=str(record.get("toolsets") or "default"),
-        queued_at=_optional_text(record.get("queued_at")),
-        started_at=_optional_text(record.get("started_at")),
-        finished_at=_optional_text(record.get("finished_at")),
-        elapsed_seconds=_optional_float(record.get("elapsed_seconds")),
-        error_message=_optional_text(record.get("error_message")),
-        result=result if isinstance(result, dict) else None,
-    )
+    return AgentRunStatusResponse.model_validate({
+        "run_id": str(record.get("run_id") or ""),
+        "status": str(record.get("status") or "failed"),
+        "conversation_id": _conversation_id_from_run_record(record),
+        "retry_of_run_id": _retry_of_run_id_from_record(record),
+        "artifact_refs": _artifact_refs_from_run_record(record),
+        "question": _optional_text(record.get("question")),
+        "provider": str(record.get("provider") or "hermes"),
+        "model": str(record.get("model") or "default"),
+        "transport": str(record.get("transport") or "bridge"),
+        "toolsets": str(record.get("toolsets") or "default"),
+        "queued_at": _optional_text(record.get("queued_at")),
+        "started_at": _optional_text(record.get("started_at")),
+        "finished_at": _optional_text(record.get("finished_at")),
+        "elapsed_seconds": _optional_float(record.get("elapsed_seconds")),
+        "error_message": _optional_text(record.get("error_message")),
+        "stop_reason": record.get("stop_reason"),
+        "result": result if isinstance(result, dict) else None,
+    })
 
 
 def _create_response_from_record(record: dict[str, object]) -> AgentRunCreateResponse:

@@ -1,6 +1,6 @@
 import { useMemo, type CSSProperties, type ReactNode } from "react";
 
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import type { EChartsOption } from "../../../lib/echarts";
 import { nocturneTokens } from "../../../theme/designSystem";
@@ -17,8 +17,8 @@ export type DistributionItem = {
   color?: string;
 };
 
-const DONUT_HEIGHT = 150;
-const MATURITY_CHART_HEIGHT = 168;
+const DONUT_HEIGHT = 160;
+const MATURITY_CHART_HEIGHT = 160;
 const MATURITY_BAR_LIMIT = 7;
 const DONUT_SLICE_LIMIT = 5;
 
@@ -134,8 +134,7 @@ function buildMaturityBarOption(items: DistributionItem[]): EChartsOption {
   const captionByLabel = new Map(visible.map((item) => [item.label, item.caption]));
 
   return nocturneChartTheme.createBarChartOption({
-    legend: { show: false },
-    grid: { left: 4, right: 8, top: 14, bottom: 0, containLabel: true },
+    grid: { left: 4, right: 8, top: 14 },
     tooltip: {
       formatter: (params: unknown) => {
         const list = (Array.isArray(params) ? params : [params]) as Array<{
@@ -163,7 +162,7 @@ function buildMaturityBarOption(items: DistributionItem[]): EChartsOption {
         type: "bar",
         name: "期限桶市值",
         barMaxWidth: 34,
-        itemStyle: { color: nocturneTokens.color.blue, borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: nocturneTokens.color.blue },
         data: visible.map((item) => item.value),
       },
     ],
@@ -185,7 +184,13 @@ export function MaturityColumnChart({
 
   return (
     <div className={styles.maturityChart} aria-label="期限桶市值柱状图">
-      <BaseChart option={option} height={MATURITY_CHART_HEIGHT} />
+      <ChartCard
+        flat
+        ariaLabel="期限桶市值柱状图"
+        option={option}
+        height={MATURITY_CHART_HEIGHT}
+        legend="none"
+      />
     </div>
   );
 }
@@ -195,7 +200,6 @@ function buildDistributionDonutOption(items: DistributionItem[]): EChartsOption 
 
   return nocturneChartTheme.createBaseChartOption({
     /* 图例只留左侧 DOM 行（信息量更高：标签 + 规模），不与 echarts legend 双份。 */
-    legend: { show: false },
     tooltip: {
       trigger: "item",
       formatter: (params: unknown) => {
@@ -266,8 +270,14 @@ export function DistributionDonut({
         ))}
       </div>
       <div className={styles.referenceDonut} aria-label="资产结构环形图">
-        <BaseChart option={option} height={DONUT_HEIGHT} />
-        <span className={styles.referenceDonutCenter}>{center}</span>
+        <ChartCard
+          flat
+          ariaLabel="资产结构环形图"
+          option={option}
+          height={DONUT_HEIGHT}
+          legend="none"
+          canvasOverlay={<span className={styles.referenceDonutCenter}>{center}</span>}
+        />
       </div>
     </div>
   );

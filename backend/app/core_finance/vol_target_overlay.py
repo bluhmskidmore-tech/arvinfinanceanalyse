@@ -3,8 +3,21 @@ from __future__ import annotations
 import math
 import statistics
 from collections.abc import Mapping, Sequence
+from typing import TypedDict, cast
 
 TRADING_DAYS_PER_YEAR = 252
+VOL_TARGET_RULE_VERSION = "vol_target_v2_effective_date_contract"
+
+
+class _IndexCurvePoint(TypedDict):
+    date: str
+    daily_return: float
+    gate_exposure: float
+    realized_vol: float | None
+    vol_multiplier: float
+    vol_target_exposure: float
+    gate_index: float
+    gate_voltarget_index: float
 
 
 def calculate_vol_target_multipliers(
@@ -93,7 +106,7 @@ def build_vol_target_index_comparison(
     state_by_date = _market_state_by_date(market_state_rows)
     gate_value = float(initial_capital)
     vol_target_value = float(initial_capital)
-    curves: list[dict[str, object]] = []
+    curves: list[_IndexCurvePoint] = []
     gate_exposures: list[float] = []
     vol_target_exposures: list[float] = []
     multiplier_values: list[float] = []
@@ -126,7 +139,7 @@ def build_vol_target_index_comparison(
                 "date": date_key,
                 "daily_return": round(daily_return, 6),
                 "gate_exposure": round(exposure, 6),
-                "realized_vol": multiplier_row["realized_vol"],
+                "realized_vol": cast(float | None, multiplier_row["realized_vol"]),
                 "vol_multiplier": round(multiplier, 6),
                 "vol_target_exposure": round(vol_target_exposure, 6),
                 "gate_index": round(gate_value, 6),
@@ -136,6 +149,9 @@ def build_vol_target_index_comparison(
 
     return {
         "status": "ready",
+        "rule_version": VOL_TARGET_RULE_VERSION,
+        "exposure_date_basis": "effective_date",
+        "formal_use_allowed": False,
         "target_vol": target_vol,
         "window": window,
         "curves": curves,

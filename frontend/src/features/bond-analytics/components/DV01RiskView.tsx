@@ -39,7 +39,7 @@ import {
   withNumericColumns,
 } from "./BondAnalyticsDetailPrimitives";
 import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
-import { SectionLead } from "./SectionLead";
+import { SectionHead } from "../../../components/layout";
 import styles from "./DV01RiskView.module.css";
 
 const DEFAULT_SHOCK_BPS = "1,10,25,50";
@@ -102,6 +102,10 @@ function nullableText(value: string | null | undefined): string {
 
 function joinDisplayList(values: string[] | null | undefined): string {
   return values && values.length > 0 ? values.join("、") : "无";
+}
+
+function accountingClassLabel(value: string): string {
+  return ACCOUNTING_CLASS_OPTIONS.find((option) => option.value === value)?.label ?? value;
 }
 
 function hasDv01RiskData(data: DV01RiskResponse): boolean {
@@ -346,6 +350,11 @@ const reconciliationColumns: ColumnsType<DV01ReconciliationRow> = [
     onCell: () => ({ style: tabularNumsStyle }),
     width: 110,
   },
+];
+
+const reconciliationDiagnosticColumns: ColumnsType<DV01ReconciliationRow> = [
+  { title: "债券代码", dataIndex: "instrument_code", key: "instrument_code", width: 120 },
+  { title: "会计分类", dataIndex: "accounting_class", key: "accounting_class", width: 90 },
   { title: "source_version", dataIndex: "source_version", key: "source_version", width: 150 },
   { title: "rule_version", dataIndex: "rule_version", key: "rule_version", width: 130 },
   { title: "trace_id", dataIndex: "trace_id", key: "trace_id", width: 140 },
@@ -368,7 +377,7 @@ const movementAttributionColumns: ColumnsType<DV01MovementAttributionItem> = [
     onCell: () => ({ style: tabularNumsStyle }),
   },
   {
-    title: "涉及债券",
+    title: "涉及持仓",
     dataIndex: "position_count",
     key: "position_count",
     render: formatCount,
@@ -664,15 +673,15 @@ function isDv01LimitUnconfigured(data: DV01ActionPlanResponse | null | undefined
 function actionPolicyBasisLabel(value: string | null | undefined): string {
   if (value === "formal_limit") return "正式限额口径";
   if (value === DV01_NO_LIMIT_CONFIGURED) return "限额未配置，无判级口径";
-  return "页面预警阈值 fallback";
+  return "参考预警阈值";
 }
 
 function actionPolicyBasisDescription(value: string | null | undefined): string {
   if (value === "formal_limit") return "动作计划按已接入的正式 DV01 限额计算。";
   if (value === DV01_NO_LIMIT_CONFIGURED) {
-    return "正式限额和页面阈值都没有，本页不判定限额突破、不输出减仓或对冲建议，只披露 DV01 敞口；先在治理流补齐正式限额配置才能恢复监控。";
+    return "正式限额和页面阈值都没有，本页不判定限额突破、不输出减仓或对冲建议，只披露 DV01 敞口；补齐正式限额后才能恢复监控。";
   }
-  return "正式限额未接入，风险动作仅用于预警排查；正式超限结论以 business-approved 限额验收通过后为准。";
+  return "正式限额尚未配置，风险动作仅供预警排查；通过业务审批并完成限额核验后，才能判定是否正式超限。";
 }
 
 function actionBreachCountLabel(data: DV01ActionPlanResponse | null): string {
@@ -970,7 +979,7 @@ function DV01LimitConfigStatusPanel({
           </div>
         </div>
         <span className={styles.reconciliationCount}>
-          当前 {accountingClass}
+          当前 {accountingClassLabel(accountingClass)}
         </span>
       </div>
 
@@ -1001,20 +1010,29 @@ function DV01LimitConfigStatusPanel({
           ) : null}
           <div className={styles.movementSummaryGrid}>
             <KpiCard label="验收结论" value={limitConfigAcceptanceLabel(acceptanceStatus)} />
-            <KpiCard label="正式配置流" value={nullableText(data.config_stream)} />
-            <KpiCard label="已接入分类" value={joinDisplayList(data.configured_accounting_classes)} />
-            <KpiCard label="待补分类" value={joinDisplayList(data.missing_accounting_classes)} />
-            <KpiCard label="无效分类" value={joinDisplayList(data.invalid_accounting_classes)} />
-            <KpiCard label="会计分类" value={selectedRow.accounting_class} />
+            <KpiCard label="已接入分类" value={joinDisplayList(data.configured_accounting_classes?.map(accountingClassLabel))} />
+            <KpiCard label="待补分类" value={joinDisplayList(data.missing_accounting_classes?.map(accountingClassLabel))} />
+            <KpiCard label="无效分类" value={joinDisplayList(data.invalid_accounting_classes?.map(accountingClassLabel))} />
+            <KpiCard label="会计分类" value={accountingClassLabel(selectedRow.accounting_class)} />
             <KpiCard label="配置状态" value={limitConfigStatusLabel(selectedRow.status)} />
             <KpiCard label="正式限额 DV01（元/bp）" value={formatNumeric(selectedRow.limit_dv01)} />
             <KpiCard label="预警 DV01（元/bp）" value={formatNumeric(selectedRow.warning_dv01)} />
             <KpiCard label="对冲目标 DV01（元/bp）" value={formatNumeric(selectedRow.hedge_target_dv01)} />
+            <KpiCard label="生效日" value={limitEffectiveDateLabel(selectedRow.limit_effective_date)} />
+          </div>
+          {acceptanceStatus === "blocked" ? (
+            <div className={styles.reconciliationMeta}>
+              部分分类的限额配置尚未通过核验；缺失或无效分类不能据此判定超限或提供减仓、对冲建议。
+            </div>
+          ) : null}
+          <details className={styles.operatorBlock} data-testid="dv01-limit-config-diagnostics">
+            <summary>技术诊断</summary>
+            <div className={styles.movementSummaryGrid}>
+              <KpiCard label="正式配置流" value={nullableText(data.config_stream)} />
             <KpiCard label="限额来源" value={nullableText(selectedRow.limit_source)} />
             <KpiCard label="来源版本" value={nullableText(selectedRow.limit_source_version)} />
             <KpiCard label="规则版本" value={nullableText(selectedRow.limit_rule_version)} />
-            <KpiCard label="生效日" value={limitEffectiveDateLabel(selectedRow.limit_effective_date)} />
-          </div>
+            </div>
           <div className={styles.reconciliationMeta}>
             验收说明 {nullableText(limitConfigAcceptanceMessage(data, acceptanceStatus))}
           </div>
@@ -1072,6 +1090,7 @@ function DV01LimitConfigStatusPanel({
               ) : null}
             </div>
           ) : null}
+          </details>
           <div className={styles.reconciliationMeta}>{selectedRow.message}</div>
         </>
       )}
@@ -1087,10 +1106,9 @@ function DV01ActionLimitKpis({ data }: { data: DV01ActionPlanResponse }) {
   const limitDerived = (value: Numeric | null | undefined, placeholder: string) =>
     unconfigured ? placeholder : formatNumeric(value);
   return (
+    <>
     <div className={styles.movementSummaryGrid}>
       <KpiCard label="风险状态" value={riskLevelLabel(data.risk_level)} />
-      <KpiCard label="限额来源" value={nullableText(data.limit_source)} />
-      <KpiCard label="限额版本" value={nullableText(data.limit_source_version)} />
       <KpiCard label="预警 DV01（元/bp）" value={limitDerived(data.warning_dv01, DV01_UNCONFIGURED_TEXT)} />
       <KpiCard label="限额 DV01（元/bp）" value={limitDerived(data.limit_dv01, DV01_UNCONFIGURED_TEXT)} />
       <KpiCard label="使用率" value={limitDerived(data.limit_usage, DV01_NOT_APPLICABLE_TEXT)} />
@@ -1108,6 +1126,15 @@ function DV01ActionLimitKpis({ data }: { data: DV01ActionPlanResponse }) {
         value={limitDerived(data.suggested_hedge_units, DV01_NOT_APPLICABLE_TEXT)}
       />
     </div>
+    <details className={styles.operatorBlock} data-testid="dv01-action-plan-diagnostics">
+      <summary>技术诊断</summary>
+      <div className={styles.movementSummaryGrid}>
+        <KpiCard label="限额来源" value={nullableText(data.limit_source)} />
+        <KpiCard label="限额版本" value={nullableText(data.limit_source_version)} />
+        <KpiCard label="规则版本" value={nullableText(data.limit_rule_version)} />
+      </div>
+    </details>
+    </>
   );
 }
 
@@ -1187,7 +1214,7 @@ function DV01ActionPlanPanel({
           <h3 className={styles.panelTitle}>DV01 风险动作</h3>
           <div className={styles.reconciliationMeta}>
             {data?.threshold_note || "页面预警阈值，不代表正式限额。"} · 当前状态 {riskLevelLabel(data?.risk_level)} · 触发{" "}
-            {actionBreachCountLabel(data)} · 规则 {nullableText(data?.limit_rule_version)} · 生效{" "}
+            {actionBreachCountLabel(data)} · 生效{" "}
             {limitEffectiveDateLabel(data?.limit_effective_date)}
           </div>
         </div>
@@ -1364,12 +1391,12 @@ function DV01ReconciliationPanel({
         <div>
           <h3 className={styles.panelTitle}>单券明细对账</h3>
           <div className={styles.reconciliationMeta}>
-            后端合计：面值 {formatMoneyYi(data?.total_face_value)} · 市值 {formatMoneyYi(data?.total_market_value)} · 久期{" "}
+            组合合计：面值 {formatMoneyYi(data?.total_face_value)} · 市值 {formatMoneyYi(data?.total_market_value)} · 久期{" "}
             {formatDurationYears(data?.face_weighted_modified_duration)} · DV01（元/bp） {formatNumeric(data?.total_dv01)} · 持仓{" "}
             {formatCount(data?.position_count ?? 0)}
           </div>
           <div className={styles.reconciliationMeta}>
-            搜索只改变明细可见行；后端合计和上方 KPI 仍为当前报告日/分类全量口径。
+            搜索只改变明细可见行；组合合计和上方指标仍按当前报告日及分类的全部持仓计算。
           </div>
         </div>
         <div className={styles.reconciliationControls}>
@@ -1411,6 +1438,7 @@ function DV01ReconciliationPanel({
           该报告日/分类暂无债券 DV01 明细数据
         </DetailEmptyNote>
       ) : (
+        <>
         <Table<DV01ReconciliationRow>
           data-testid="dv01-reconciliation-table"
           dataSource={filteredRows}
@@ -1418,8 +1446,21 @@ function DV01ReconciliationPanel({
           rowKey={reconciliationRowKey}
           pagination={{ pageSize: 20, showSizeChanger: true }}
           size="small"
-          scroll={{ x: 1600, y: 520 }}
+          scroll={{ x: 1300, y: 520 }}
         />
+        <details className={styles.operatorBlock} data-testid="dv01-reconciliation-diagnostics">
+          <summary>技术诊断</summary>
+          <Table<DV01ReconciliationRow>
+            data-testid="dv01-reconciliation-diagnostics-table"
+            dataSource={filteredRows}
+            columns={reconciliationDiagnosticColumns}
+            rowKey={reconciliationRowKey}
+            pagination={{ pageSize: 20, showSizeChanger: true }}
+            size="small"
+            scroll={{ x: 700 }}
+          />
+        </details>
+        </>
       )}
     </section>
   );
@@ -1516,11 +1557,12 @@ export function DV01RiskView({ reportDate }: Props) {
 
   return (
     <div className={`${styles.shell} ${detailStyles.view}`} data-testid="dv01-risk-view">
-      <SectionLead
-        eyebrow="DV01 风险"
+      <SectionHead
+        category="DV01 风险"
         title="当前报告日利率风险横截面"
-        description="读取后端 formal 债券分析事实表中的行级 DV01，展示会计分类、利率冲击、期限桶、债券和发行人集中度；页面不重新计算 DV01。"
+        note="按会计分类查看 DV01、利率冲击影响，以及期限、债券和发行人集中风险。"
         testId="dv01-risk-shell-lead"
+        numbered={false}
       />
 
       <div className={styles.toolbar}>

@@ -185,6 +185,7 @@ def test_choice_macro_latest_payload_default_read_target():
         ],
     )
     assert payload.read_target == "duckdb"
+    assert payload.derived_spreads == {}
 
 
 def test_fx_formal_status_payload_defaults():

@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 
 const mockModule = vi.hoisted(() => ({ importCount: 0 }));
 
-vi.mock("./mockApiClient", async (importOriginal) => {
+vi.mock("../mocks/mockApiClient", async (importOriginal) => {
   mockModule.importCount += 1;
   return importOriginal();
 });

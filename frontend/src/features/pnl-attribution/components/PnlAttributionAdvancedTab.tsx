@@ -23,6 +23,7 @@ import { CampisiAttributionPanel } from "./CampisiAttributionPanel";
 import { CampisiDecisionGradePanel } from "./CampisiDecisionGradePanel";
 import { CampisiEnhancedPanel } from "./CampisiEnhancedPanel";
 import { CampisiMaturityBucketPanel } from "./CampisiMaturityBucketPanel";
+import { buildCampisiResultQualityNotice } from "./campisiAttributionPanelSupport";
 
 export function AdvancedAttributionTabPanels(props: {
   carryData: CarryRollDownPayload | null;
@@ -94,6 +95,12 @@ export function AdvancedAttributionTabPanels(props: {
     errorMessage: props.errorMessage,
     isEmpty: !props.campisiMaturityBuckets,
   });
+  const campisiEnhancedQualityNotice = props.campisiEnhanced?.basis === "formal_report_pnl_bridge"
+    ? buildCampisiResultQualityNotice(props.campisiEnhancedMeta)
+    : null;
+  const campisiMaturityQualityNotice = props.campisiMaturityBuckets?.basis === "formal_report_pnl_bridge"
+    ? buildCampisiResultQualityNotice(props.campisiMaturityMeta)
+    : null;
 
   const campisiDecisionGradeState: DataSectionState = derivePnlDataSectionState({
     meta: props.campisiDecisionGradeMeta,
@@ -116,11 +123,23 @@ export function AdvancedAttributionTabPanels(props: {
         state={campisiFourState}
         onRetry={props.onRetry}
       />
+      {campisiEnhancedQualityNotice ? (
+        <div role="alert" data-testid="campisi-enhanced-quality-warning" className="campisi-callout--warning">
+          <div className="campisi-callout__title">Campisi 六效应来源质量需复核</div>
+          <div>{campisiEnhancedQualityNotice}</div>
+        </div>
+      ) : null}
       <CampisiEnhancedPanel
         data={props.campisiEnhanced}
         state={campisiEnhancedState}
         onRetry={props.onRetry}
       />
+      {campisiMaturityQualityNotice ? (
+        <div role="alert" data-testid="campisi-maturity-quality-warning" className="campisi-callout--warning">
+          <div className="campisi-callout__title">Campisi 到期桶来源质量需复核</div>
+          <div>{campisiMaturityQualityNotice}</div>
+        </div>
+      ) : null}
       <CampisiMaturityBucketPanel
         data={props.campisiMaturityBuckets}
         state={campisiMaturityState}

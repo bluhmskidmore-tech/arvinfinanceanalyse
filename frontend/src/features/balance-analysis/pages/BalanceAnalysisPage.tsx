@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Collapse } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
@@ -17,6 +17,7 @@ import type {
   BalanceAnalysisWorkbookTable,
 } from "../../../api/contracts";
 import { runPollingTask } from "../../../app/jobs/polling";
+import { SystemReadInteractionContext } from "../../../router/systemReadInteractionContext";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import {
   AnalysisGrid,
@@ -28,7 +29,8 @@ import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
 import BalanceAnalysisCockpit from "../cockpit/BalanceAnalysisCockpit";
 import { BalanceAnalysisToolbar } from "../cockpit/BalanceAnalysisToolbar";
-import { BalanceSectionHead } from "../components/BalanceSectionHead";
+import { SectionHead } from "../../../components/layout";
+import { BALANCE_SECTION_NUMBERING } from "../components/balanceSectionNumbering";
 import { DeferredBalanceAnalysisGrid } from "../components/DeferredBalanceAnalysisGrid";
 import { useBalanceAnalysisData } from "../hooks/useBalanceAnalysisData";
 import { tabularNumsStyle } from "../../../theme/designSystem";
@@ -91,11 +93,11 @@ const workbookSecondaryPanelNotes: Record<(typeof secondaryWorkbookPanelKeys)[nu
 };
 
 const workbookRightRailNotes: Record<RightRailWorkbookKey, string> = {
-  event_calendar: "内部治理事件日历，只展示由现有正式结果和工作簿输入派生的事件。",
-  risk_alerts: "阈值型风险预警，不在前端补正式金融判断。",
+  event_calendar: "依据正式结果和工作簿，查看资产、负债到期等事件及其影响。",
+  risk_alerts: "查看触及预警阈值的项目，结合相关数据复核风险。",
 };
 
-const decisionRailNote = "规则驱动的运营建议项通过处理流确认、忽略和跟踪，不把处理结果写回正式事实表。";
+const decisionRailNote = "逐项核对处理建议，记录确认或忽略结果，并跟踪办理进度；处理记录不改变正式业务数据。";
 
 type BalanceAttentionSentinelKey = "stale" | "fallback" | "error";
 
@@ -131,14 +133,14 @@ function formatAttentionQuality(value: string | undefined): string {
   if (value === "ok") return "正常";
   if (value === "warning") return "预警";
   if (value === "error") return "错误";
-  if (value === "stale") return "陈旧";
+  if (value === "stale") return "已过期";
   if (value === "missing") return "缺失";
   return "未提供";
 }
 
 function formatAttentionFallback(value: string | undefined): string {
-  if (value === "none") return "未降级";
-  if (value === "latest_snapshot") return "最新快照降级";
+  if (value === "none") return "所选日期的数据";
+  if (value === "latest_snapshot") return "最近可用日期的数据";
   return "未提供";
 }
 
@@ -152,7 +154,7 @@ function formatEvidenceTraceDisplay(value: string): string {
 function formatRefreshStatusDisplay(status: string | undefined): string {
   if (status === "queued") return "刷新任务已排队";
   if (status === "running") return "刷新任务进行中";
-  if (status === "completed") return "刷新结果已生成";
+  if (status === "completed") return "计算任务已完成";
   if (status === "failed") return "刷新暂未完成";
   return "刷新任务已有反馈";
 }
@@ -1174,14 +1176,32 @@ function renderWorkbookRightRailPanel(table: BalanceAnalysisWorkbookOperationalS
   return null;
 }
 
+function renderDistributionEvidence(
+  evidence: ReturnType<typeof useBalanceAnalysisData>["distributionEvidence"]["bond_business_types"],
+  tableKey: string,
+) {
+  return (
+    <div data-testid={`balance-analysis-distribution-evidence-${tableKey}`}>
+      <p className="balance-analysis-workbook-panel__note" title={`来源版本：${evidence.meta?.source_version ?? EM_DASH}`}>
+        来源：{evidence.source} · 实际报告日：{evidence.reportDate}
+      </p>
+      {evidence.stateSurfaces.map((state) => (
+        <PageStateSurface key={state.key} variant={state.variant} title={state.title} description={state.description} />
+      ))}
+    </div>
+  );
+}
+
 export default function BalanceAnalysisPage() {
   const client = useApiClient();
+  const systemReadInteraction = useContext(SystemReadInteractionContext);
   const [summaryOffset, setSummaryOffset] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExportingCsv, setIsExportingCsv] = useState(false);
   const [isExportingWorkbook, setIsExportingWorkbook] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshAwaitingPublication, setRefreshAwaitingPublication] = useState(false);
   const [decisionActionError, setDecisionActionError] = useState<string | null>(null);
   const [updatingDecisionKey, setUpdatingDecisionKey] = useState<string | null>(null);
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
@@ -1198,6 +1218,10 @@ export default function BalanceAnalysisPage() {
     setSelectedReportDate,
     setPositionScope,
     datesQuery,
+    publicationStatusQuery,
+    publicationStatus,
+    availableReportDates,
+    overviewGeneration,
     overviewQuery,
     detailQuery,
     workbookQuery,
@@ -1215,6 +1239,8 @@ export default function BalanceAnalysisPage() {
     decisionItemsMeta,
     workbookMeta,
     summaryMeta,
+    movementMeta,
+    distributionEvidence,
     currentUser,
     decisionRows,
     workbook,
@@ -1268,13 +1294,14 @@ export default function BalanceAnalysisPage() {
       !secondaryWorkbookPanelKeys.includes(table.key as (typeof secondaryWorkbookPanelKeys)[number]),
   );
   const resultMetaSections = [
-    overviewMeta ? { key: "overview", title: "总览结果元信息", meta: overviewMeta } : null,
+    overviewMeta ? { key: "overview", title: "总览", meta: overviewMeta } : null,
     decisionItemsMeta
-      ? { key: "decision-items", title: "决策结果元信息", meta: decisionItemsMeta }
+      ? { key: "decision-items", title: "决策事项", meta: decisionItemsMeta }
       : null,
-    workbookMeta ? { key: "workbook", title: "工作簿结果元信息", meta: workbookMeta } : null,
-    summaryMeta ? { key: "summary", title: "汇总结果元信息", meta: summaryMeta } : null,
-    detailMeta ? { key: "detail", title: "明细结果元信息", meta: detailMeta } : null,
+    workbookMeta ? { key: "workbook", title: "工作簿", meta: workbookMeta } : null,
+    summaryMeta ? { key: "summary", title: "汇总", meta: summaryMeta } : null,
+    detailMeta ? { key: "detail", title: "明细", meta: detailMeta } : null,
+    movementMeta ? { key: "movement", title: "余额变动", meta: movementMeta } : null,
   ].filter(
     (
       section,
@@ -1307,19 +1334,32 @@ export default function BalanceAnalysisPage() {
     overview,
     workbook,
     stageModel: pageModel.stageModel,
+    positionScope,
     decisionCount: decisionRows.length,
     topRiskTitle,
     topDecisionTitle,
   });
   const pageReadModel = pageModel.readModel;
+  const hasPublicationDiagnostics = Boolean(
+    overviewGeneration || publicationStatus?.reason || publicationStatusQuery.isError,
+  );
   const evidenceMetas = resultMetaSections.map((section) => section.meta);
   const balanceAttentionReasons: BalanceAttentionReason[] = [
+    ...(publicationStatus?.enabled && selectedReportDate && !overviewGeneration
+      ? [
+          {
+            key: "overview-publication-unavailable",
+            sentinel: "stale" as const,
+            detail: `所选报告日 ${selectedReportDate} 暂无可用的已发布总览数据，请联系数据负责人核对。`,
+          },
+        ]
+      : []),
     ...(pageReadModel.dateStatus === "mismatch"
       ? [
           {
             key: "date-mismatch",
             sentinel: "error" as const,
-            detail: "请求报告日与返回报告日不一致。",
+            detail: `所选报告日为 ${pageReadModel.requestedReportDate}，实际数据日期为 ${pageReadModel.resolvedReportDate}，请按实际数据日期使用。`,
           },
         ]
       : []),
@@ -1334,7 +1374,7 @@ export default function BalanceAnalysisPage() {
       .map((badge): BalanceAttentionReason => ({
         key: `status-badge-${badge.key}`,
         sentinel: badge.key === "stale" ? "stale" : badge.key === "fallback" ? "fallback" : "error",
-        detail: `读面标记需关注：${badge.label}`,
+        detail: `数据需核对：${badge.label}`,
       })),
     ...resultMetaSections.flatMap((section): BalanceAttentionReason[] => {
       const reasons: BalanceAttentionReason[] = [];
@@ -1349,20 +1389,20 @@ export default function BalanceAnalysisPage() {
         reasons.push({
           key: `meta-stale-${section.key}`,
           sentinel: "stale",
-          detail: `${section.title} 标记为陈旧。`,
+          detail: `${section.title}数据已过期，请核对后使用。`,
         });
       } else if (section.meta.quality_flag !== "ok") {
         reasons.push({
           key: `meta-quality-${section.key}`,
           sentinel: "error",
-          detail: `${section.title} 质量标记为${formatAttentionQuality(section.meta.quality_flag)}。`,
+          detail: `${section.title}数据${formatAttentionQuality(section.meta.quality_flag)}，请联系数据负责人核对。`,
         });
       }
       if (section.meta.fallback_mode !== "none") {
         reasons.push({
           key: `meta-fallback-${section.key}`,
           sentinel: "fallback",
-          detail: `${section.title} 使用${formatAttentionFallback(section.meta.fallback_mode)}。`,
+          detail: `${section.title}使用${formatAttentionFallback(section.meta.fallback_mode)}，实际数据日期为 ${section.meta.as_of_date || "未提供"}，请核对后使用。`,
         });
       }
       return reasons;
@@ -1393,7 +1433,12 @@ export default function BalanceAnalysisPage() {
         ]
       : []),
     ...[
-      { key: "dates-query", label: "报告日读面暂未返回", query: datesQuery },
+      { key: "dates-query", label: "报告日暂不可用，请稍后重试。", query: datesQuery },
+      {
+        key: "publication-status-query",
+        label: "总览数据暂不可用，请稍后重试或联系数据负责人。",
+        query: publicationStatusQuery,
+      },
       { key: "overview-query", label: "首屏总览暂未返回", query: overviewQuery },
       { key: "workbook-query", label: "工作簿图谱暂未返回", query: workbookQuery },
       { key: "decision-items-query", label: "治理队列暂未返回", query: decisionItemsQuery },
@@ -1422,30 +1467,41 @@ export default function BalanceAnalysisPage() {
     evidenceMetas.length > 0
       ? evidenceLedgerNeedsAttention
         ? [
-            `${evidenceMetas.length} 个读面`,
-            evidenceMetas.every((meta) => meta.basis === "formal") ? "formal" : "混合口径",
+            `${evidenceMetas.length} 组数据`,
+            evidenceMetas.every((meta) => meta.basis === "formal") ? "正式口径" : "混合口径",
             evidenceMetas.every((meta) => meta.quality_flag === "ok")
               ? "质量正常"
               : "质量需复核",
             evidenceMetas.every((meta) => meta.fallback_mode === "none")
-              ? "未降级"
-              : "存在降级",
+              ? "未使用替代数据"
+              : "存在替代日期",
             evidenceMetas.every((meta) => Boolean(meta.trace_id))
               ? "链路可追溯"
               : "链路待补齐",
           ].join(" · ")
         : [
-            `${evidenceMetas.length} 个读面`,
+            `${evidenceMetas.length} 组数据`,
             evidenceMetas.every((meta) => Boolean(meta.trace_id))
               ? "链路可追溯"
               : "链路待补齐",
           ].join(" · ")
-      : "等待正式读面元数据";
-  const attentionStatusBadges = pageReadModel.statusBadges.filter((badge) =>
-    ["danger", "warning"].includes(badge.tone) &&
-    (badge.key !== "date" || pageReadModel.dateStatus === "mismatch"),
-  );
-  const availableReportDates = datesQuery.data?.result.report_dates ?? [];
+      : "等待数据来源与日期信息";
+  const attentionStatusBadges = [
+    ...pageReadModel.statusBadges.filter(
+      (badge) =>
+        ["danger", "warning"].includes(badge.tone) &&
+        (badge.key !== "date" || pageReadModel.dateStatus === "mismatch"),
+    ),
+    ...(resultMetaSections.some((section) => section.meta.quality_flag === "warning")
+      ? [
+          {
+            key: "quality-warning",
+            label: "数据质量需复核",
+            tone: "warning" as const,
+          },
+        ]
+      : []),
+  ];
   const latestAvailableReportDate = availableReportDates[0] ?? "";
   const hasUnavailableRequestedReportDate = Boolean(unavailableRequestedReportDate);
   const reportDateUnavailable =
@@ -1480,17 +1536,17 @@ export default function BalanceAnalysisPage() {
   const stateSentinels: BalanceStateSentinel[] = [
     {
       key: "stale",
-      label: "陈旧",
+      label: "已过期",
       active: hasStaleAttention,
       status: hasStaleAttention ? "error" : "ready",
-      detail: firstAttentionDetail(balanceAttentionReasons, "stale", "未发现陈旧读面。"),
+      detail: firstAttentionDetail(balanceAttentionReasons, "stale", "未发现过期数据。"),
     },
     {
       key: "fallback",
-      label: "降级",
+      label: "替代日期",
       active: hasFallbackAttention,
       status: hasFallbackAttention ? "error" : "ready",
-      detail: firstAttentionDetail(balanceAttentionReasons, "fallback", "未发现降级读面。"),
+      detail: firstAttentionDetail(balanceAttentionReasons, "fallback", "未使用替代日期的数据。"),
     },
     {
       key: "error",
@@ -1507,6 +1563,7 @@ export default function BalanceAnalysisPage() {
     }
     setIsRefreshing(true);
     setRefreshError(null);
+    setRefreshAwaitingPublication(false);
     try {
       const payload = await runPollingTask({
         start: () => client.refreshBalanceAnalysis(selectedReportDate),
@@ -1515,8 +1572,13 @@ export default function BalanceAnalysisPage() {
           setRefreshStatus(formatRefreshStatusDisplay(nextPayload.status));
         },
       });
+      setRefreshStatus(formatRefreshStatusDisplay(payload.status));
       if (payload.status !== "completed") {
         throw new Error(payload.error_message ?? payload.detail ?? `刷新未完成：${payload.status}`);
+      }
+      if (systemReadInteraction?.generation) {
+        setRefreshAwaitingPublication(true);
+        return;
       }
       await Promise.all([
         datesQuery.refetch(),
@@ -1553,7 +1615,7 @@ export default function BalanceAnalysisPage() {
     try {
       await client.updateBalanceAnalysisDecisionStatus({
         reportDate: selectedReportDate,
-        positionScope,
+        positionScope: "all",
         currencyBasis,
         decisionKey: row.decision_key,
         status,
@@ -1596,7 +1658,7 @@ export default function BalanceAnalysisPage() {
     try {
       const payload = await client.exportBalanceAnalysisWorkbookXlsx({
         reportDate: selectedReportDate,
-        positionScope,
+        positionScope: "all",
         currencyBasis,
       });
       downloadBlobFile(payload.filename, payload.content);
@@ -1644,12 +1706,46 @@ export default function BalanceAnalysisPage() {
 
       {(refreshStatus || refreshError) && (
         <PageStateSurface
-          variant={refreshError ? "error" : isRefreshing ? "loading" : "neutral"}
-          title={refreshError ? "刷新未完成" : isRefreshing ? "刷新进行中" : "刷新已完成"}
-          description={refreshError ?? refreshStatus}
+          variant={
+            refreshError
+              ? "error"
+              : isRefreshing
+                ? "loading"
+                : refreshAwaitingPublication
+                  ? "stale"
+                  : "neutral"
+          }
+          title={refreshError ? "刷新未完成" : isRefreshing ? "刷新进行中" : "计算任务完成"}
+          description={
+            refreshError ??
+            (refreshAwaitingPublication
+              ? "当前页面仍显示已发布的数据。请在数据中心完成发布后重新进入本页。"
+              : refreshStatus)
+          }
+          testId="balance-analysis-refresh-state"
           className="balance-analysis-refresh-state"
         />
       )}
+
+      {publicationStatusQuery.isError ? (
+        <PageStateSurface
+          variant="error"
+          title="总览数据暂不可用"
+          description="请稍后重试或联系数据负责人；其他分析结果请按各自数据日期核对。"
+          className="balance-analysis-refresh-state"
+        />
+      ) : publicationStatus?.enabled && selectedReportDate && !overviewGeneration ? (
+        <PageStateSurface
+          variant="stale"
+          title="所选报告日暂无可用的已发布总览数据"
+          description={`报告日 ${selectedReportDate} 的总览暂不可用，请联系数据负责人核对；其他分析结果请按各自数据日期核对。`}
+          className="balance-analysis-refresh-state"
+        />
+      ) : overviewGeneration ? (
+        <p className="balance-analysis-topbar__subtitle">
+          总览采用已发布数据，其他分析结果请按各自数据日期核对。
+        </p>
+      ) : null}
 
       {reportDateUnavailable ? (
         <section
@@ -1710,11 +1806,11 @@ export default function BalanceAnalysisPage() {
           <h2 className="balance-analysis-details__title">证据链路</h2>
           <strong className="balance-analysis-details__meta">{evidenceLedgerSummary}</strong>
           <span className="balance-analysis-details__hint">
-            常规校验默认收起，需处理事项、降级或日期不一致时自动展开。
+            查看数据来源、口径与日期；需要处理的问题在此展开。
           </span>
         </summary>
         <AnalysisGrid columns={2} className="balance-analysis-ledger-grid">
-          <EvidencePanel heading="读面证据" className="balance-analysis-ledger-panel">
+          <EvidencePanel heading="数据依据" className="balance-analysis-ledger-panel">
             <p className="balance-analysis-ledger-copy">{pageReadModel.conclusionDetail}</p>
             <div className="balance-analysis-state-stack">
               {pageReadModel.stateSurfaces.map((state) => (
@@ -1738,7 +1834,7 @@ export default function BalanceAnalysisPage() {
                     </div>
                     <dl>
                       <div>
-                        <dt>读面类型</dt>
+                        <dt>结果类型</dt>
                         <dd>{card.resultKind}</dd>
                       </div>
                       <div>
@@ -1746,7 +1842,7 @@ export default function BalanceAnalysisPage() {
                         <dd>{card.qualityLabel}</dd>
                       </div>
                       <div>
-                        <dt>降级</dt>
+                        <dt>日期替代情况</dt>
                         <dd>{card.fallbackLabel}</dd>
                       </div>
                       <div>
@@ -1764,7 +1860,7 @@ export default function BalanceAnalysisPage() {
                 <PageStateSurface
                   variant="loading"
                   title="证据账本等待数据"
-                  description="正式读面元数据返回后，会在这里展示来源、质量、降级和追踪记录。"
+                  description="数据依据暂未齐备，取得后将在这里展示来源、质量及实际数据日期。"
                 />
               )}
             </div>
@@ -1782,9 +1878,9 @@ export default function BalanceAnalysisPage() {
         className="balance-analysis-details balance-analysis-details--sec"
       >
         <summary className="balance-analysis-details__summary">
-          <h2 className="balance-analysis-details__title">正式汇总驾驶舱</h2>
+          <h2 className="balance-analysis-details__title">资产负债汇总与明细</h2>
           <span className="balance-analysis-details__hint">
-            分页汇总、明细汇总和明细下钻默认收起；首屏先保留缺口判断、规模证据和治理行动。
+            查看资产负债规模汇总，并逐项核对组合、分类及持仓明细。
           </span>
         </summary>
         <div className="balance-analysis-details__content">
@@ -1848,7 +1944,7 @@ export default function BalanceAnalysisPage() {
           <div className="balance-analysis-detail-drilldown">
             <div className="balance-analysis-detail-drilldown__eyebrow">明细下钻预留</div>
             {deferredAnalysisQueriesPending ? (
-              <div>明细下钻等待首屏数据完成…</div>
+              <div>正在加载资产负债明细…</div>
             ) : !detailQuery.isLoading &&
             !detailQuery.isError &&
             detailSummaryGridRows.length > 0 ? (
@@ -1893,7 +1989,7 @@ export default function BalanceAnalysisPage() {
         <summary className="balance-analysis-details__summary">
           <h2 className="balance-analysis-details__title">辅助分析口径</h2>
           <span className="balance-analysis-details__hint">
-            日均预览、会计口径拆解和高阶归因默认收起，作为解释正式结果的辅助材料，不替代正式结论。
+            通过日均分析、会计口径拆解和高阶归因解释变化，仅供分析参考，不替代正式结论。
           </span>
         </summary>
         <div className="balance-analysis-details__content balance-analysis-supplemental__grid">
@@ -1980,12 +2076,13 @@ export default function BalanceAnalysisPage() {
       </details>
 
       <div className="balance-analysis-sec balance-analysis-governance-workbench-section">
-        <BalanceSectionHead
-          title="治理闭环与工作簿底稿"
-          hint="先处理决策事项、事件日历和风险预警；工作簿结构默认收起，作为下方可展开底稿。"
+        <SectionHead
+          title="待处理事项与工作簿"
+          numbered={BALANCE_SECTION_NUMBERING}
+          note="核对待处理事项、到期事件和风险预警，并在工作簿中查看相关数据。"
         />
         <PageAsyncSection
-          title="治理闭环"
+          title="待处理事项"
           isLoading={
             datesQuery.isLoading ||
             workbookQuery.isLoading ||
@@ -2009,9 +2106,9 @@ export default function BalanceAnalysisPage() {
           <div data-testid="balance-analysis-workbook-cockpit" className="balance-analysis-workbook-cockpit">
             <details className="balance-analysis-details balance-analysis-details--sub balance-analysis-workbook-main-details">
               <summary className="balance-analysis-details__summary">
-                <h3 className="balance-analysis-details__title">工作簿结构与分布面板</h3>
+                <h3 className="balance-analysis-details__title">资产负债结构与分布</h3>
                 <span className="balance-analysis-details__hint">
-                  默认收起，治理行动保持常驻；展开后查看债券分类、评级、期限缺口和支持面板。
+                  查看债券分类、评级分布和期限缺口，分析资产负债结构。
                 </span>
               </summary>
               <div className="balance-analysis-workbook-main">
@@ -2039,6 +2136,9 @@ export default function BalanceAnalysisPage() {
                           {table.key === "bond_business_types" && isBondBusinessLinkedToMovement ? "movement" : "workbook"}
                         </span>
                       </div>
+                      {table.key === "bond_business_types"
+                        ? renderDistributionEvidence(distributionEvidence.bond_business_types, table.key)
+                        : null}
                       {renderWorkbookPrimaryPanel(table)}
                     </article>
                   ))}
@@ -2067,6 +2167,9 @@ export default function BalanceAnalysisPage() {
                           {table.key === "industry_distribution" && isIndustryLinkedToMovement ? "movement" : "supporting"}
                         </span>
                       </div>
+                      {table.key === "industry_distribution"
+                        ? renderDistributionEvidence(distributionEvidence.industry_distribution, table.key)
+                        : null}
                       {renderWorkbookSecondaryPanel(table)}
                     </article>
                   ))}
@@ -2343,7 +2446,7 @@ export default function BalanceAnalysisPage() {
             <summary className="balance-analysis-details__summary">
               <h3 className="balance-analysis-details__title">完整工作簿明细</h3>
               <span className="balance-analysis-details__hint">
-                展开查看工作簿宽表，默认收起以保持结论和治理证据优先。
+                查看各项指标及分类明细，用于核对汇总结果。
               </span>
             </summary>
             <div
@@ -2376,34 +2479,43 @@ export default function BalanceAnalysisPage() {
       >
         <summary className="balance-analysis-details__summary">
           <h2 className="balance-analysis-details__title">场景核对</h2>
-          <strong className="balance-analysis-details__meta">完整场景阅读（与首屏同源）</strong>
+          <strong className="balance-analysis-details__meta">数据日期与口径</strong>
           <span className="balance-analysis-details__hint">
-            首屏已展示摘要、贡献、期限与风险读面；此处保留口径说明与核对提示，不再重复渲染同一组区块。
+            查看资产负债摘要、贡献、期限与风险分析所用的数据日期和口径。
           </span>
         </summary>
         <div className="balance-analysis-details__content">
           <div className="balance-analysis-stage-warning">
-            当前区块与首屏驾驶舱共用同一 stageModel 读面，报告日为{" "}
-            {pageModel.stageModel.summary.tags[0]?.label ?? EM_DASH}；仍以页面上方正式总览、汇总、明细和受治理信号作为正式判断来源。
-            {pageModel.stageModel.hasRealData ? "" : " 当前筛选条件下未返回可展示的真实阶段切片。"}
+            本区与上方概览采用相同数据，报告日为{" "}
+            {pageModel.stageModel.summary.tags[0]?.label ?? EM_DASH}。正式判断请结合总览、汇总、明细和相关风险提示。
+            {pageModel.stageModel.hasRealData ? "" : " 当前筛选条件下暂无可用数据。"}
           </div>
         </div>
       </details>
 
-          {resultMetaSections.length > 0 && (
+          {(resultMetaSections.length > 0 || hasPublicationDiagnostics) && (
             <Collapse
               data-testid="balance-analysis-result-meta-collapse"
               defaultActiveKey={[]}
               items={[
                 {
                   key: "result-meta",
-                  label: "结果元信息（运维排障）",
+                  label: "技术诊断",
                   forceRender: true,
                   children: (
-                    <FormalResultMetaPanel
-                      testId="balance-analysis-result-meta"
-                      sections={resultMetaSections}
-                    />
+                    <>
+                      {hasPublicationDiagnostics ? (
+                        <div className="balance-analysis-publication-diagnostics">
+                          {overviewGeneration ? <p>发布代次：{overviewGeneration}</p> : null}
+                          {publicationStatus?.reason ? <p>原始发布诊断：{publicationStatus.reason}</p> : null}
+                          {publicationStatusQuery.isError ? <p>发布状态请求失败。</p> : null}
+                        </div>
+                      ) : null}
+                      <FormalResultMetaPanel
+                        testId="balance-analysis-result-meta"
+                        sections={resultMetaSections}
+                      />
+                    </>
                   ),
                 },
               ]}

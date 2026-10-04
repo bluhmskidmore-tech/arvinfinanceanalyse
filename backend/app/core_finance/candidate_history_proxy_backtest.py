@@ -2,7 +2,8 @@
 
 These functions implement the reduced cycle-rotation proxy (non-overlapping
 T+5 baskets) and the monthly candidate-history portfolio proxy (equal-weight
-top-6, daily adjusted-close mark-to-market with raw-close fallback). They are not the full path backtest
+top-6, daily adjusted-close mark-to-market with a per-stock locked raw-close
+fallback). They are not the full path backtest
 engine in ``portfolio_backtest.py`` — the proxy simulation structures
 (non-overlapping baskets, monthly target-weight rebalances) are not
 expressible in the signal-driven slot model — but all return, cost, and
@@ -33,7 +34,12 @@ from backend.app.core_finance.strategy_policy import POLICY
 CYCLE_PROXY_FORMULA_VERSION = "fv_livermore_cycle_proxy_backtest_execution_first_v4"
 # v2: portfolio proxy marks to market on adjustment-factor adjusted closes,
 # falling back to raw closes only when the adjusted price is missing.
-PORTFOLIO_PROXY_FORMULA_VERSION = "fv_livermore_candidate_history_portfolio_adj_mtm_v2"
+# v3: the mark-to-market price caliber is locked per stock across the whole
+# window — adjusted closes only when every usable row carries one, otherwise
+# raw closes for every row. Row-by-row switching let a stock with a large
+# adjustment factor flip its marked value by that factor on days where the
+# adjusted close was missing (observed ±800% single-day NAV swings).
+PORTFOLIO_PROXY_FORMULA_VERSION = "fv_livermore_candidate_history_portfolio_adj_mtm_v3"
 
 CYCLE_PROXY_ENTRY_PRICE_WARNING = (
     "Executable next-open return_5d_net_adj from livermore_candidate_execution_history is preferred. "
@@ -55,6 +61,8 @@ CYCLE_PROXY_RETURN_FIELD = "return_5d_adj"
 CYCLE_PROXY_RETURN_FALLBACK_FIELD = "return_5d"
 PORTFOLIO_PROXY_PRICE_FIELD = "adj_close_value"
 PORTFOLIO_PROXY_PRICE_FALLBACK_FIELD = "close_value"
+# Cycle proxy summary uses a 365-day calendar span; portfolio summary uses 252 trading days.
+# Harmonizing those annualization conventions requires a separate metric decision.
 PROXY_ANNUALIZATION_DAYS_PER_YEAR = 365.0
 PROXY_ANNUALIZATION_MIN_BASKETS = 2
 TRADING_DAYS_PER_YEAR = 252
@@ -110,27 +118,45 @@ def cycle_proxy_return_field_stats(items: Sequence[Mapping[str, Any]]) -> dict[s
     }
 
 
-def candidate_history_portfolio_price(row: Mapping[str, Any]) -> tuple[float, str] | None:
-    """Return the mark-to-market price and source field for a close row."""
-    adjusted = _safe_float(row.get(PORTFOLIO_PROXY_PRICE_FIELD))
-    if adjusted is not None:
-        return adjusted, PORTFOLIO_PROXY_PRICE_FIELD
-    fallback = _safe_float(row.get(PORTFOLIO_PROXY_PRICE_FALLBACK_FIELD))
-    if fallback is not None:
-        return fallback, PORTFOLIO_PROXY_PRICE_FALLBACK_FIELD
-    return None
+def candidate_history_portfolio_price_field_by_code(
+    close_rows: Sequence[Mapping[str, Any]],
+) -> dict[str, str]:
+    """Lock one mark-to-market price field per stock for the whole window.
+
+    A stock uses ``adj_close_value`` only when every one of its usable rows
+    carries it; otherwise all of its rows use ``close_value``. The entry price
+    and every subsequent mark must share the same caliber — mixing them lets a
+    large adjustment factor flip the marked value of an unchanged share count
+    by that factor day over day.
+    """
+    field_by_code: dict[str, str] = {}
+    for row in close_rows:
+        code = str(row.get("stock_code") or "").strip()
+        if not code:
+            continue
+        adjusted = _safe_float(row.get(PORTFOLIO_PROXY_PRICE_FIELD))
+        fallback = _safe_float(row.get(PORTFOLIO_PROXY_PRICE_FALLBACK_FIELD))
+        if adjusted is None and fallback is None:
+            continue
+        if adjusted is None:
+            field_by_code[code] = PORTFOLIO_PROXY_PRICE_FALLBACK_FIELD
+        else:
+            field_by_code.setdefault(code, PORTFOLIO_PROXY_PRICE_FIELD)
+    return field_by_code
 
 
 def candidate_history_portfolio_price_field_stats(
     close_rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, int]:
+    field_by_code = candidate_history_portfolio_price_field_by_code(close_rows)
     adjusted_rows = 0
     fallback_rows = 0
     for row in close_rows:
-        selected = candidate_history_portfolio_price(row)
-        if selected is None:
+        code = str(row.get("stock_code") or "").strip()
+        field = field_by_code.get(code)
+        if field is None or _safe_float(row.get(field)) is None:
             continue
-        if selected[1] == PORTFOLIO_PROXY_PRICE_FIELD:
+        if field == PORTFOLIO_PROXY_PRICE_FIELD:
             adjusted_rows += 1
         else:
             fallback_rows += 1
@@ -288,13 +314,19 @@ def build_candidate_history_portfolio_series(
     if not rebalances or not close_rows:
         return [], [], []
 
+    field_by_code = candidate_history_portfolio_price_field_by_code(close_rows)
     closes_by_date: dict[str, dict[str, float]] = {}
     for row in close_rows:
-        selected = candidate_history_portfolio_price(row)
-        if selected is None:
+        code = str(row.get("stock_code") or "").strip()
+        field = field_by_code.get(code)
+        if field is None:
             continue
-        date_key = str(row["trade_date"])
-        closes_by_date.setdefault(date_key, {})[str(row["stock_code"])] = selected[0]
+        # Rows missing the locked field are skipped (forward-fill below);
+        # never cross back to the other caliber for a single day.
+        value = _safe_float(row.get(field))
+        if value is None:
+            continue
+        closes_by_date.setdefault(str(row["trade_date"]), {})[code] = value
 
     rebalance_by_date = {str(rebalance["date"]): rebalance for rebalance in rebalances}
     positions: dict[str, float] = {}
@@ -311,10 +343,11 @@ def build_candidate_history_portfolio_series(
 
     for trade_date in sorted(closes_by_date):
         closes = closes_by_date[trade_date]
-        # After this update, last_close holds today's close when fresh and the
-        # forward-filled previous close otherwise.
-        last_close.update(closes)
-        codes_seen_since_rebalance.update(closes)
+        valid_closes = {code: close for code, close in closes.items() if close > 0}
+        # Non-positive closes are invalid marks and do not count as seen; held
+        # names therefore forward-fill and remain eligible for stale disclosure.
+        last_close.update(valid_closes)
+        codes_seen_since_rebalance.update(valid_closes)
         market_value_before = sum(shares * last_close.get(code, 0.0) for code, shares in positions.items())
         nav_before_rebalance = cash + market_value_before
         rebalance = rebalance_by_date.get(trade_date)
@@ -332,8 +365,9 @@ def build_candidate_history_portfolio_series(
             }
             target_values = {code: nav_before_rebalance * target_weight for code in target_codes}
             buy_value = sum(
-                max(target_values.get(code, 0.0) - current_values.get(code, 0.0), 0.0)
-                for code in set(current_values) | set(target_values)
+                max(target_value - current_values.get(code, 0.0), 0.0)
+                for code, target_value in target_values.items()
+                if closes[code] > 0
             )
             sell_value = sum(
                 max(current_values.get(code, 0.0) - target_values.get(code, 0.0), 0.0)
@@ -345,10 +379,20 @@ def build_candidate_history_portfolio_series(
                 POLICY.sell_cost_rate + POLICY.slippage_rate
             )
             investable_nav = max(nav_before_rebalance - cost, 0.0)
+            zero_close_skipped_codes: list[str] = []
             if target_codes:
                 target_value_after_cost = investable_nav / len(target_codes)
-                positions = {code: target_value_after_cost / closes[code] for code in target_codes if closes[code] > 0}
+                positions = {}
                 cash = 0.0
+                for code in target_codes:
+                    close = closes[code]
+                    if close > 0:
+                        positions[code] = target_value_after_cost / close
+                    else:
+                        # Dirty close<=0 cannot be sized; return that sleeve to cash
+                        # so the allocated NAV does not evaporate.
+                        cash += target_value_after_cost
+                        zero_close_skipped_codes.append(code)
             else:
                 positions = {}
                 cash = investable_nav
@@ -361,6 +405,8 @@ def build_candidate_history_portfolio_series(
                     "buy_turnover": round(buy_turnover, 6),
                     "sell_turnover": round(sell_turnover, 6),
                     "transaction_cost": round(cost, 6),
+                    "zero_close_skipped_count": len(zero_close_skipped_codes),
+                    "zero_close_skipped_codes": zero_close_skipped_codes,
                 }
             )
             codes_seen_since_rebalance = set()

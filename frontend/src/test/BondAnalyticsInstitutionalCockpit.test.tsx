@@ -17,6 +17,8 @@ import { createDeferredApiClient } from "../api/clientContext";
 import type { BondTopHoldingItem, DV01RiskPayload, Numeric, ResultMeta } from "../api/contracts";
 import { BondAnalyticsInstitutionalCockpit } from "../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit";
 import { formatRawAsNumeric } from "../utils/format";
+import { TONE_DH_CSS_VAR } from "../utils/tone";
+import { ReferenceMarketTicker } from "../features/bond-analytics/components/BondAnalyticsCockpitSupportPanels";
 
 const COCKPIT_CSS = readFileSync(
   resolve(
@@ -217,7 +219,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       expect(getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledWith("2026-02-28");
     });
 
-    expect(screen.queryByText("部分驾驶舱指标未就绪")).not.toBeInTheDocument();
+    expect(screen.queryByText("部分债券指标暂不可用")).not.toBeInTheDocument();
     expect(screen.getByTestId("bond-analysis-daily-judgment")).toHaveTextContent(
       "快照回退 2026-02-28",
     );
@@ -281,7 +283,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     });
 
     const dailyJudgment = screen.getByTestId("bond-analysis-daily-judgment");
-    expect(dailyJudgment).toHaveTextContent("核心读面");
+    expect(dailyJudgment).toHaveTextContent("核心指标");
     expect(dailyJudgment).toHaveTextContent("报告日 快照回退 2026-03-31");
     expect(dailyJudgment).toHaveTextContent("2026-03-31");
     expect(dailyJudgment).not.toHaveTextContent("今日先把久期");
@@ -305,10 +307,10 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       expect(screen.queryByText("请求失败")).not.toBeInTheDocument();
       expect(screen.queryByText("不可用")).not.toBeInTheDocument();
       expect(
-        screen.getByText("组合信用摘要暂未返回，资产结构稍后补齐。"),
+        screen.getByText("组合信用摘要暂缺，无法展示资产结构。"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("组合信用摘要暂未返回，债券只数、集中度和 DV01 稍后补齐。"),
+        screen.getByText("组合信用摘要暂缺，无法展示债券只数、集中度和 DV01。"),
       ).toBeInTheDocument();
     });
   });
@@ -330,10 +332,10 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       expect(screen.queryByText("请求失败")).not.toBeInTheDocument();
       expect(screen.queryByText("不可用")).not.toBeInTheDocument();
       expect(
-        screen.getByText("前十大持仓暂未返回，首页先保留组合规模与浮盈快照。"),
+        screen.getByText("暂无前十大持仓明细；组合规模与浮盈仍可查看。"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("持仓明细暂未返回，评级分布稍后补齐。"),
+        screen.getByText("持仓明细暂缺，无法展示评级分布。"),
       ).toBeInTheDocument();
     });
   });
@@ -389,6 +391,54 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(row).not.toHaveTextContent("0.00%");
     expect(row).not.toHaveTextContent("0.00 亿");
     expect(within(holdings).queryByText("-", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("renders string durations and masks a fund's unmodelled zero in both holding readouts", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const holdings: BondTopHoldingItem[] = [
+      {
+        instrument_code: "SA-FUND",
+        instrument_name: "基金持仓",
+        issuer_name: null,
+        rating: null,
+        asset_class: "other",
+        market_value: yuan(200),
+        face_value: yuan(200),
+        ytm: pct(0),
+        modified_duration: "0.00000000",
+        maturity_category: "fund_no_maturity",
+        duration_quality_flag: "maturity_unavailable",
+        weight: ratio(0.5),
+      },
+      {
+        instrument_code: "BOND-VALID",
+        instrument_name: "债券持仓",
+        issuer_name: null,
+        rating: "AAA",
+        asset_class: "rate",
+        market_value: yuan(100),
+        face_value: yuan(100),
+        ytm: pct(0.03),
+        modified_duration: "2.50000000",
+        maturity_category: "1-3y",
+        duration_quality_flag: "observed",
+        weight: ratio(0.25),
+      },
+    ];
+    renderCockpit({
+      ...base,
+      getBondAnalyticsTopHoldings: vi.fn(async (reportDate: string, limit?: number) => {
+        const response = await base.getBondAnalyticsTopHoldings(reportDate, limit);
+        return { ...response, result: { ...response.result, items: holdings } };
+      }),
+    });
+
+    const table = await screen.findByTestId("bond-analysis-holdings-table");
+    await waitFor(() => expect(table).toHaveTextContent("未覆盖（基金底层久期）"));
+    expect(table).toHaveTextContent("2.50000000");
+    expect(table).not.toHaveTextContent("0.00000000");
+    const mobile = screen.getByTestId("bond-analysis-holdings-mobile-readout");
+    expect(mobile).toHaveTextContent("未覆盖（基金底层久期）");
   });
 
   it("renders deferred trading-desk and yield-curve sections through the cockpit", async () => {
@@ -506,20 +556,22 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     expect(within(topbar).getByText("01 本日判断")).toBeInTheDocument();
     await waitFor(() => {
-      expect(heroConclusion).toHaveTextContent("久期、信用债收益率中位数与信用占比读面已返回");
+      expect(heroConclusion).toHaveTextContent("当前展示久期、信用债收益率中位数和信用占比");
       expect(topbar).toHaveTextContent("报告日");
-      expect(topbar).toHaveTextContent("核心读面");
+      expect(topbar).toHaveTextContent("核心指标");
       expect(topbar).not.toHaveTextContent("数据更新时间");
     });
     expect(within(dashboard).getByTestId("bond-analysis-market-ticker")).toHaveTextContent("10年国债");
     expect(within(dashboard).getByTestId("bond-analysis-market-ticker")).toHaveTextContent("DR007");
     await waitFor(() => {
-      expect(dailyJudgment).toHaveTextContent("核心读面");
+      expect(dailyJudgment).toHaveTextContent("核心指标");
       expect(dailyJudgment).toHaveTextContent("报告日匹配");
-      expect(dailyJudgment).toHaveTextContent("核心读面可用");
+      expect(dailyJudgment).toHaveTextContent("核心指标可用");
     });
-    expect(dailyJudgment).not.toHaveTextContent("核心读面 · 核心读面");
-    expect(dashboard.textContent?.match(/久期、信用债收益率中位数与信用占比读面已返回。/g) ?? []).toHaveLength(1);
+    expect(dailyJudgment).not.toHaveTextContent("报告日 报告日匹配");
+    expect(dailyJudgment).not.toHaveTextContent("核心指标 已返回");
+    expect(dailyJudgment).not.toHaveTextContent("核心指标 · 核心指标");
+    expect(dashboard.textContent?.match(/当前展示久期、信用债收益率中位数和信用占比。/g) ?? []).toHaveLength(1);
     expect(dailyJudgment).not.toHaveTextContent("今日先把久期放在交易台第一盯盘位");
     expect(dailyJudgment).not.toHaveTextContent("信用仓位先按利差与集中度开盘复核");
     expect(dailyJudgment).not.toHaveTextContent("看期限/KRD");
@@ -530,6 +582,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(kpiRibbon).toHaveTextContent("久期");
     expect(kpiRibbon).toHaveTextContent("组合到期收益率");
     expect(kpiRibbon).toHaveTextContent("信用债收益率中位数");
+    expect(within(kpiRibbon).getByTestId("bond-analysis-credit-yield-basis")).toHaveTextContent("非对基准利差");
+    expect(within(kpiRibbon).getByTestId("bond-analysis-unrealized-pnl-basis")).toHaveTextContent("非本期损益");
     /* 水平值不带前导 +（C13，2026-08 视觉走查）：符号只保留给变动量读数。 */
     await waitFor(() => {
       expect(kpiRibbon).toHaveTextContent("0.85%");
@@ -540,21 +594,21 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(kpiRibbon).toHaveTextContent("Carry+Roll");
     /* Carry+Roll 已接入收益分解读面（carry + roll_down），不再是缺口瓦片。 */
     await waitFor(() => {
-      expect(kpiRibbon).toHaveTextContent("票息+骑乘（收益分解读面）");
+      expect(kpiRibbon).toHaveTextContent("票息与骑乘收益");
     });
     expect(within(kpiRibbon).getByText("Carry+Roll").closest('[data-state="gap"]')).toBeNull();
     expect(kpiRibbon).not.toHaveTextContent("未接入该读面");
-    expect(kpiRibbon).toHaveTextContent("待读面");
+    expect(kpiRibbon).toHaveTextContent("数据待补");
     expect(within(dashboard).getByTestId("bond-analysis-yield-curve-panel")).toHaveTextContent("收益率曲线 / KRD");
     expect(within(dashboard).getByTestId("bond-analysis-evidence-boundary-panel")).toHaveTextContent("证据边界");
     expect(within(dashboard).getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("利率证据");
     expect(within(dashboard).getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("曲线证据");
     expect(within(dashboard).getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("信用证据");
     expect(within(dashboard).getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("资金证据");
-    expect(within(dashboard).getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("只展示后端返回事实");
+    expect(within(dashboard).getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("本区展示指标和数据缺口");
     expect(within(dashboard).getByTestId("bond-analysis-return-attribution-panel")).toHaveTextContent("收益归因");
     expect(within(dashboard).getByTestId("bond-analysis-return-attribution-panel")).toHaveTextContent("DV01 变动证据");
-    expect(within(dashboard).getByTestId("bond-analysis-return-attribution-panel")).toHaveTextContent("不在前端补算归因");
+    expect(within(dashboard).getByTestId("bond-analysis-return-attribution-panel")).toHaveTextContent("缺失项目保留为空，不纳入归因");
     expect(within(dashboard).getByTestId("bond-analysis-currency-basis-banner")).toHaveTextContent(
       "金额指标按人民币/CNY口径展示，外币债券市值、摊余成本、应计利息等已折算为人民币。",
     );
@@ -564,16 +618,16 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(distributionGrid).toHaveTextContent("风险切片");
     expect(distributionGrid).toHaveTextContent("行业集中度");
     expect(distributionGrid).toHaveTextContent("今日焦点");
-    expect(distributionGrid).toHaveTextContent("只列后端返回风险字段");
+    expect(distributionGrid).toHaveTextContent("暂缺指标保持为空");
 
     expect(screen.getByTestId("bond-analysis-holdings-table")).toHaveTextContent("持仓证据明细");
-    expect(screen.getByTestId("bond-analysis-holdings-evidence-strip")).toHaveTextContent("返回持仓");
+    expect(screen.getByTestId("bond-analysis-holdings-evidence-strip")).toHaveTextContent("持仓数量");
     expect(screen.getByTestId("bond-analysis-holdings-evidence-strip")).toHaveTextContent("评级缺口");
     expect(screen.getByTestId("bond-analysis-holdings-evidence-strip")).toHaveTextContent("数值缺口");
     expect(screen.getByTestId("bond-analysis-risk-slice-stack")).toHaveTextContent("组合久期");
-    expect(screen.getByTestId("bond-analysis-risk-guardrails")).toHaveTextContent("不延伸为审批或阈值结论");
+    expect(screen.getByTestId("bond-analysis-risk-guardrails")).toHaveTextContent("本区不作为审批或限额判断依据");
     expect(screen.getByTestId("bond-analysis-event-calendar")).toBeInTheDocument();
-    expect(screen.getByTestId("bond-analysis-return-trend-boundary")).toHaveTextContent("不绘制趋势占位");
+    expect(screen.getByTestId("bond-analysis-return-trend-boundary")).toHaveTextContent("暂无收益趋势数据");
   });
 
   it("keeps the desktop cockpit and matrix on factual readout copy only", async () => {
@@ -586,17 +640,17 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const matrix = within(dashboard).getByTestId("bond-analysis-judgment-matrix");
 
     await waitFor(() => {
-      expect(heroConclusion).toHaveTextContent("久期、信用债收益率中位数与信用占比读面已返回");
-      expect(dailyJudgment).toHaveTextContent("核心读面 已返回");
-      expect(matrix).toHaveTextContent("正式曲线待返回");
+      expect(heroConclusion).toHaveTextContent("当前展示久期、信用债收益率中位数和信用占比");
+      expect(dailyJudgment).toHaveTextContent("核心指标可用");
+      expect(matrix).toHaveTextContent("收益率曲线暂缺");
     });
 
     expect(dailyJudgment).toHaveTextContent("报告日匹配");
-    expect(matrix).toHaveTextContent("已返回");
-    expect(matrix).toHaveTextContent("DV01已返回");
-    expect(matrix).toHaveTextContent("返回字段：组合 DV01");
+    expect(matrix).toHaveTextContent("数据可用");
+    expect(matrix).toHaveTextContent("DV01可用");
+    expect(matrix).toHaveTextContent("当前数据：组合 DV01");
     expect(matrix).toHaveTextContent("缺失项：正式曲线 / 正式 KRD");
-    expect(matrix).toHaveTextContent("只展示后端返回事实");
+    expect(matrix).toHaveTextContent("本区展示指标和数据缺口");
     expect(matrix).not.toHaveTextContent("久期偏高");
     expect(matrix).not.toHaveTextContent("久期中性");
     expect(matrix).not.toHaveTextContent("信用占比偏重");
@@ -674,11 +728,11 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const heroConclusion = within(topbar).getByTestId("bond-analysis-cockpit-conclusion");
 
     await waitFor(() => {
-      expect(heroConclusion).toHaveTextContent("部分核心债券读面已返回");
-      expect(heroConclusion).toHaveTextContent("待返回 信用债收益率中位数 / 信用占比");
-      expect(dailyJudgment).toHaveTextContent("核心读面 已返回");
+      expect(heroConclusion).toHaveTextContent("部分债券核心指标暂缺。");
+      expect(heroConclusion).toHaveTextContent("暂缺 信用债收益率中位数 / 信用占比");
+      expect(dailyJudgment).toHaveTextContent("核心指标可用");
     });
-    expect(dailyJudgment).not.toHaveTextContent("久期、信用债收益率中位数与信用占比读面已返回");
+    expect(dailyJudgment).not.toHaveTextContent("当前展示久期、信用债收益率中位数和信用占比");
     expect(screen.getByTestId("bond-analysis-reference-dashboard")).not.toHaveTextContent("NaN 年");
     await waitFor(() => {
       expect(screen.getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("最重期限桶 1-3年");
@@ -736,13 +790,13 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     await waitFor(() => {
       expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
       expect(within(panel).getByTestId("bond-analysis-yield-curve-empty")).toHaveTextContent(
-        "正式曲线 / KRD 读面待返回",
+        "收益率曲线暂无数据",
       );
     });
-    expect(panel).toHaveTextContent("正式曲线 / KRD 读面待返回");
-    expect(matrix).toHaveTextContent("正式曲线待返回");
+    expect(panel).toHaveTextContent("收益率曲线暂无数据");
+    expect(matrix).toHaveTextContent("收益率曲线暂缺");
     expect(matrix).toHaveTextContent("缺失项：正式曲线 / 正式 KRD");
-    expect(matrix).not.toHaveTextContent("正式曲线可读");
+    expect(matrix).not.toHaveTextContent("收益率曲线可用");
   });
 
   it("keeps DV01 pending when all DV01 readout sources are null", async () => {
@@ -796,13 +850,13 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const attribution = await screen.findByTestId("bond-analysis-return-attribution-panel");
 
     await waitFor(() => {
-      expect(matrix).toHaveTextContent("DV01待返回");
+      expect(matrix).toHaveTextContent("DV01暂缺");
       expect(matrix).toHaveTextContent("缺失项：DV01");
     });
     expect(kpiRibbon).toHaveTextContent("DV01");
-    expect(kpiRibbon).toHaveTextContent("待读面");
-    expect(kpiRibbon).not.toHaveTextContent("DV01已返回");
-    expect(matrix).not.toHaveTextContent("DV01已返回");
+    expect(kpiRibbon).toHaveTextContent("数据待补");
+    expect(kpiRibbon).not.toHaveTextContent("DV01可用");
+    expect(matrix).not.toHaveTextContent("DV01可用");
     expect(within(attribution).getByText("DV01变动（万元/bp）").parentElement).toHaveTextContent("DV01变动（万元/bp）—");
     expect(attribution).toHaveTextContent("DV01变动（万元/bp）");
     expect(attribution).toHaveTextContent("—");
@@ -836,6 +890,32 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     });
     expect(kpiRibbon).not.toHaveTextContent("85.0 bp");
     expect(kpiRibbon).not.toHaveTextContent("85.00%");
+  });
+
+  it.each([0.1, -0.1, 0, null])("uses rate semantics only for the confirmed interest-rate ticker series: %s", (change) => {
+    const ids = ["EMM00166466", "EMM00166502", "M002", "CA.USDCNY", "CA.CSI300"];
+    const series = ids.map((seriesId) => ({
+      series_id: seriesId,
+      // 展示名刻意不提供利率暗示，语义必须来自已确认的序列配置。
+      series_name: "测试序列",
+      trade_date: "2026-03-31",
+      value_numeric: 2.31,
+      unit: "%",
+      source_version: "test-source",
+      vendor_version: "test-vendor",
+      latest_change: change,
+    }));
+    render(<ReferenceMarketTicker series={series} unavailable={false} />);
+    const rateColor = change !== null && change > 0 ? TONE_DH_CSS_VAR.warning : TONE_DH_CSS_VAR.neutral;
+    for (const label of ["10年国债", "10年国开", "DR007"]) {
+      expect(screen.getByText(label).parentElement?.querySelector("small")?.style.color).toBe(rateColor);
+    }
+    const direction = change === null || change === 0 ? "flat" : change > 0 ? "up" : "down";
+    for (const label of ["美元/人民币", "沪深300"]) {
+      const changeElement = screen.getByText(label).parentElement?.querySelector("small");
+      expect(changeElement).toHaveAttribute("data-tone", direction);
+      expect(changeElement?.style.color).toBe("");
+    }
   });
 
   it("keeps the market ticker in a pending readout state when macro latest is empty", async () => {
@@ -1025,11 +1105,11 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(within(panel).getByTestId("bond-analysis-curve-tenor-matrix")).toHaveTextContent(
       "日变动",
     );
-    expect(panel).toHaveTextContent("全部返回点扫描");
+    expect(panel).toHaveTextContent("比较全部可用期限点");
     expect(panel).toHaveTextContent("正式 KRD");
-    expect(panel).toHaveTextContent("待返回");
+    expect(panel).toHaveTextContent("正式 KRD 暂缺");
     expect(panel).toHaveTextContent("期限桶校验 / 暴露观察");
-    expect(screen.getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("正式曲线可读");
+    expect(screen.getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("收益率曲线可用");
   });
 
   it("picks the largest curve move from all returned points, not only the displayed tenor strip", async () => {
@@ -1080,7 +1160,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     });
     expect(panel).toHaveTextContent("最大日变动");
     expect(panel).toHaveTextContent("正式 KRD");
-    expect(panel).toHaveTextContent("待返回");
+    expect(panel).toHaveTextContent("正式 KRD 暂缺");
   });
 
   it("renders returned treasury and CDB curves in one desktop comparison matrix", async () => {
@@ -1141,19 +1221,19 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(matrix).toHaveTextContent("国开 日变动");
     expect(matrix).toHaveTextContent("2.62%");
     expect(matrix).toHaveTextContent("+3.1 bp");
-    expect(panel).toHaveTextContent("返回曲线：2 条");
+    expect(panel).toHaveTextContent("可用曲线：2 条");
     expect(panel).toHaveTextContent("最大日变动");
-    // source_version / vendor 原始 ID 不进正文，只进 title 供复核；状态用人话表达。
-    expect(panel).not.toHaveTextContent("curve_sv_treasury");
-    expect(panel).not.toHaveTextContent("curve_sv_cdb");
-    expect(panel).not.toHaveTextContent("choice");
-    expect(panel).toHaveTextContent("曲线期限点已返回");
-    expect(panel).toHaveTextContent("正式 KRD 待返回");
-    const sourceReviewAnchor = within(panel).getByTitle(/curve_sv_treasury/);
-    expect(sourceReviewAnchor).toHaveAttribute(
-      "title",
-      "国债 来源版本 curve_sv_treasury；国开 来源版本 curve_sv_cdb；vendor choice",
-    );
+    // 技术来源可展开复核，默认关闭且不进入悬浮提示。
+    const diagnostics = within(panel).getByTestId("bond-analysis-curve-diagnostics");
+    expect(diagnostics).not.toHaveAttribute("open");
+    expect(diagnostics).toHaveTextContent("国债 来源版本 curve_sv_treasury；国开 来源版本 curve_sv_cdb；vendor choice");
+    const sourceVersions = within(diagnostics).getByText(/curve_sv_treasury/);
+    expect(sourceVersions).not.toBeVisible();
+    await userEvent.setup().click(within(diagnostics).getByText("技术诊断"));
+    expect(sourceVersions).toBeVisible();
+    expect(within(panel).queryByTitle(/curve_sv_treasury/)).not.toBeInTheDocument();
+    expect(panel).toHaveTextContent("曲线数据可用");
+    expect(panel).toHaveTextContent("正式 KRD 暂缺");
   });
 
   it("keeps the homepage curve panel explicit when formal curve points are absent", async () => {
@@ -1163,15 +1243,15 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const empty = within(panel).getByTestId("bond-analysis-yield-curve-empty");
 
     expect(empty).toHaveTextContent(
-      "正式曲线 / KRD 读面待返回",
+      "收益率曲线暂无数据",
     );
     expect(empty).toHaveTextContent("正式曲线期限点");
     expect(empty).toHaveTextContent("正式 KRD");
-    expect(empty).toHaveTextContent("前端处理");
-    expect(empty).toHaveTextContent("不补造");
-    expect(panel).toHaveTextContent("期限桶占位 / 不冒充 KRD");
-    expect(panel).toHaveTextContent("不把 maturity bucket 说成 KRD");
-    expect(screen.getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("正式曲线待返回");
+    expect(empty).toHaveTextContent("收益率曲线及日变动数据暂缺");
+    expect(empty).toHaveTextContent("期限分布不能替代 KRD");
+    expect(panel).toHaveTextContent("期限分布 / 暴露观察");
+    expect(panel).toHaveTextContent("期限分布仅用于观察组合暴露，不能替代 KRD");
+    expect(screen.getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("收益率曲线暂缺");
   });
 
   it("locks the first screen to market strip, compact judgment, then KPI", () => {
@@ -1203,18 +1283,22 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(responsiveBlock).toContain('"market"');
     expect(heroRule).not.toContain("border-left:");
     expect(heroRule).toContain("background: var(--moss-color-card-bg)");
-    expect(heroRule).toContain("padding: 8px 12px");
+    expect(heroRule).toContain("padding: var(--moss-space-3) var(--moss-space-4)");
     expect(heroRule).toContain('grid-template-areas:');
     expect(heroRule).toContain('"identity"');
     expect(heroRule).toContain('"main"');
     expect(heroRule).not.toContain("linear-gradient");
     expect(heroRule).not.toMatch(/box-shadow:/);
-    expect(heroMainRule).toContain("gap: 6px");
+    expect(heroMainRule).toContain("gap: var(--moss-space-2)");
     expect(heroConclusionMetaRule).toContain("display: flex");
-    // 结论主句对齐首页结论字级 15px/600。
-    expect(heroHeadlineRule).toContain("font-size: 15px");
-    expect(heroHeadlineRule).toContain("-webkit-line-clamp: 2");
+    // 结论遵循统一的 14px/500 字级，并完整换行，不截断结论。
+    expect(heroHeadlineRule).toContain("font-size: 14px");
+    expect(heroHeadlineRule).toContain("font-weight: 500");
+    expect(heroHeadlineRule).not.toContain("-webkit-line-clamp");
     expect(heroDetailRule).toContain("font-size: 12px");
+    const importantBasisRule = cssRuleBody('.holdingsKpiRail [data-testid="bond-analysis-unrealized-pnl-basis"]');
+    expect(importantBasisRule).toContain("white-space: normal");
+    expect(importantBasisRule).toContain("overflow: visible");
     // 分区头标题对齐首页 overviewSectionHeader：14px/600。
     expect(heroTitleRule).toContain("font-size: 14px");
     expect(heroRule).not.toMatch(/display:\s*none/);
@@ -1298,24 +1382,30 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(curveBannerStatsStrongRule).toContain("font-size: 14px");
     expect(curveBannerRule).not.toContain("linear-gradient");
     expect(curveBannerRule).not.toMatch(/box-shadow:/);
-    expect(evidenceNoticeRule).toContain("border-left: 2px solid var(--moss-color-neutral-200)");
-    // 证据矩阵改单列 4 行均分：整列填满等高面板，长文案获得整行宽度（§5 消空底）。
+    expect(evidenceNoticeRule).toContain("border-left: 0");
+    expect(evidenceNoticeRule).toContain("background: transparent");
+    // 证据矩阵保留四行顺序；按内容取高，用细线而非内层面板分组。
     expect(judgmentMatrixRule).toContain("grid-template-columns: minmax(0, 1fr)");
-    expect(judgmentMatrixRule).toContain("grid-auto-rows: minmax(0, 1fr)");
-    expect(judgmentCardRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
-    expect(judgmentCardRule).toContain("border-radius: var(--dh-api-radius, 6px)");
+    expect(judgmentMatrixRule).toContain("grid-auto-rows: auto");
+    // 一级面板内取消异色子框，保留内容与行分隔。
+    expect(judgmentCardRule).not.toContain("border:");
+    expect(judgmentCardRule).toContain("border-radius: 0");
+    expect(judgmentCardRule).toContain("background: transparent");
+    expect(judgmentCardRule).toContain("border-bottom: 1px solid var(--moss-color-neutral-200)");
     expect(judgmentCardRule).toContain("box-shadow: none");
     expect(judgmentCardRule).toContain("min-height: 56px");
     expect(judgmentCardSmallRule).toContain("white-space: normal");
     expect(judgmentCardSmallRule).toContain("overflow-wrap: anywhere");
     expect(COCKPIT_CSS).not.toContain(".strategyTagGrid");
     expect(attributionLeadRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
-    expect(attributionLeadRule).toContain("padding: 4px 8px");
+    expect(attributionLeadRule).toContain("padding: 0 0 var(--moss-space-3)");
+    expect(attributionLeadRule).toContain("background: transparent");
     expect(attributionLeadSmallRule).toContain("overflow-wrap: anywhere");
     expect(attributionLeadSmallRule).not.toContain("white-space: nowrap");
-    expect(attributionLeadStrongRule).toContain("font-size: 16px");
-    expect(attributionLedgerRowRule).toContain("padding: 4px 8px");
-    expect(attributionGridCellRule).toContain("padding: 4px 8px");
+    expect(attributionLeadStrongRule).toContain("font-size: 20px");
+    expect(attributionLedgerRowRule).toContain("padding: var(--moss-space-2) 0");
+    expect(attributionGridCellRule).toContain("padding: 0");
+    expect(attributionGridCellRule).toContain("background: transparent");
     expect(attributionBoundaryNoteRule).toContain("grid-column: 1 / -1");
     expect(attributionBoundaryNoteRule).not.toContain("display: none");
     expect(attributionButtonRule).toContain("grid-column: 1 / -1");
@@ -1350,9 +1440,9 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(readoutHeaderRule).toContain("gap: 4px");
     expect(readoutBlockRule).not.toContain("linear-gradient");
     expect(readoutBlockRule).not.toMatch(/box-shadow:/);
-    expect(compactChartRule).toContain("height: 210px");
-    expect(compactChartRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
-    expect(disclosureRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
+    expect(compactChartRule).toBe("");
+    // 折叠容器不描边（§5），用面板底成组；展开分区由 summary 发丝底线承担。
+    expect(disclosureRule).not.toContain("border:");
     expect(disclosureRule).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(disclosureSummaryRule).toContain("min-height: 26px");
     expect(matrixRule).not.toContain("border:");
@@ -1360,7 +1450,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(rowRule).toContain("min-height: 24px");
     expect(pointCountRule).toContain("display: flex");
     expect(pointCountRule).toContain("line-height: 1.1");
-    expect(valueRule).toContain("font-family: var(--moss-font-mono)");
+    expect(valueRule).toContain("font-family: var(--moss-font-tabular)");
     expect(valueRule).toContain("text-align: right");
     expect(evidenceTagRule).toContain("border-left: 2px solid var(--moss-color-neutral-200)");
     expect(curveLayoutRule).toContain("grid-template-columns: minmax(0, 1fr)");
@@ -1388,14 +1478,14 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(distributionGrid).toHaveTextContent("结构证据");
     expect(distributionGrid).toHaveTextContent("风险切片");
     expect(distributionGrid).toHaveTextContent("行业集中度");
-    expect(distributionGrid).toHaveTextContent("缺失保持证据缺口");
+    expect(distributionGrid).toHaveTextContent("暂缺指标保持为空");
 
     expect(holdings).toHaveTextContent("持仓证据明细");
-    expect(holdings).toHaveTextContent("前十大返回持仓");
-    expect(evidenceStrip).toHaveTextContent("返回持仓");
+    expect(holdings).toHaveTextContent("前十大持仓");
+    expect(evidenceStrip).toHaveTextContent("持仓数量");
     expect(evidenceStrip).toHaveTextContent("评级缺口");
     expect(evidenceStrip).toHaveTextContent("数值缺口");
-    expect(evidenceStrip).toHaveTextContent("不补造评级");
+    expect(evidenceStrip).toHaveTextContent("暂无评级");
 
     expect(sideStack).toHaveTextContent("组合久期");
     expect(sideStack).toHaveTextContent("组合 DV01");
@@ -1403,7 +1493,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     expect(summary).toHaveTextContent("本期估值收益");
     expect(within(dashboard).getByTestId("bond-analysis-return-trend-boundary")).toHaveTextContent(
-      "收益时序未返回：不绘制趋势占位",
+      "暂无收益趋势数据",
     );
     expect(summary).not.toHaveTextContent("健康");
     expect(summary).not.toHaveTextContent("稳定");
@@ -1446,10 +1536,10 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(distributionGridRule).toContain("grid-template-columns: minmax(360px, 1.18fr) repeat(2, minmax(280px, 0.91fr))");
     expect(structureLeadRule).toContain("min-width: 0");
     expect(distributionSupportRule).toContain("min-width: 0");
-    expect(donutPanelRule).toContain("grid-template-columns: minmax(0, 1fr) 150px");
+    expect(donutPanelRule).toContain("grid-template-columns: minmax(0, 1fr) 160px");
     expect(donutPanelRule).toContain("min-height: 132px");
-    expect(donutRule).toContain("width: 150px");
-    expect(donutRule).toContain("height: 150px");
+    expect(donutRule).toContain("width: 160px");
+    expect(donutRule).toContain("height: 160px");
     expect(footerGridRule).toContain("grid-template-columns: minmax(0, 1.36fr) minmax(320px, 0.84fr)");
     expect(footerGridRule).toContain("gap: 1px");
     expect(footerGridRule).toContain("align-items: stretch");
@@ -1497,7 +1587,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(moduleNoteRule).toContain("border-top: 1px solid var(--moss-color-neutral-100)");
     expect(pendingReadModelPanelRule).not.toContain("dashed");
     expect(pendingReadModelPanelRule).toContain("text-align: center");
-    expect(riskEvidenceListRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
+    // 风险切片台账去外框（§5）：只留 1px 发丝行缝。
+    expect(riskEvidenceListRule).not.toContain("border:");
     expect(riskEvidenceRowRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(sideStackRule).toContain("gap: 1px");
     expect(sideStackRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
@@ -1505,7 +1596,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(sideHeaderRule).toContain("border-left: 2px solid var(--ib-accent)");
     expect(numericCellRule).toContain("text-align: right");
     expect(footerEvidenceNoteRule).not.toContain("dashed");
-    expect(footerEvidenceNoteRule).toContain("background: var(--moss-color-neutral-50)");
+    expect(footerEvidenceNoteRule).toContain("background: transparent");
     expect(COCKPIT_CSS).not.toContain(".footerSparkline");
   });
 
@@ -1522,10 +1613,10 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(summaryCard).toBeInTheDocument();
     expect(actionAttributionCard).toContainElement(summaryCard);
     expect(actionAttributionCard).toContainElement(trendBoundary);
-    expect(trendBoundary).toHaveTextContent("不绘制趋势占位");
+    expect(trendBoundary).toHaveTextContent("暂无收益趋势数据");
     expect(summaryCard).toHaveTextContent("本期估值收益");
     expect(actionAttributionCard).toHaveTextContent("动作归因");
-    expect(riskGuardrails).toHaveTextContent("只列后端返回风险字段；缺失保持证据缺口，不延伸为审批或阈值结论。");
+    expect(riskGuardrails).toHaveTextContent("暂缺指标保持为空；本区不作为审批或限额判断依据。");
     expect(riskGuardrails).not.toHaveTextContent("风险可控");
     expect(riskGuardrails).not.toHaveTextContent("健康");
     expect(riskGuardrails).not.toHaveTextContent("稳定");

@@ -6,8 +6,9 @@ import {
   createEmptyChartOption,
   createLineChartOption,
   mossChartPalette,
+  nocturneChartTheme,
 } from "../components/charts/chartTheme";
-import { designTokens, ibTokens } from "../theme/designSystem";
+import { designTokens, ibTokens, nocturneTokens } from "../theme/designSystem";
 
 describe("chartTheme", () => {
   it("builds chart defaults from design tokens", () => {
@@ -24,9 +25,22 @@ describe("chartTheme", () => {
     });
     expect(option.legend).toMatchObject({
       type: "scroll",
-      textStyle: { color: ibTokens.color.inkMuted },
+      textStyle: { color: ibTokens.color.inkSecondary, fontSize: 12 },
     });
     expect(option.grid).toMatchObject({ containLabel: true });
+  });
+
+  it("uses the Nocturne axis and legend typography without changing caller series", () => {
+    const series = [{ name: "Total", type: "line" as const, data: [1, 2] }];
+    const option = nocturneChartTheme.createLineChartOption({ series });
+
+    expect(option.xAxis).toMatchObject({
+      axisLabel: { color: nocturneTokens.color.inkMuted, fontSize: 11 },
+    });
+    expect(option.legend).toMatchObject({
+      textStyle: { color: nocturneTokens.color.inkSoft, fontSize: 12 },
+    });
+    expect(option.series).toEqual(series);
   });
 
   it("keeps caller data while applying line and bar axis defaults", () => {

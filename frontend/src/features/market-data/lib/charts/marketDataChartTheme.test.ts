@@ -37,16 +37,16 @@ describe("marketDataChartTheme", () => {
     expect(marketDataChartTheme.titleMuted.color).toBe(nocturneTokens.color.inkSoft);
   });
 
-  it("builds dark tooltips on panel3 with Nocturne ink and radius", () => {
+  it("leaves tooltip chrome to ChartCard while preserving behavior overrides", () => {
     const tooltip = buildMarketDataChartTooltip();
-    expect(tooltip.backgroundColor).toBe(nocturneTokens.color.panel3);
-    expect(tooltip.borderColor).toBe(nocturneTokens.color.line);
-    expect(tooltip.textStyle?.color).toBe(nocturneTokens.color.ink);
-    expect(tooltip.extraCssText).toContain(`border-radius: ${nocturneTokens.radius}px`);
+    expect(tooltip.confine).toBe(true);
+    expect(tooltip.backgroundColor).toBeUndefined();
+    expect(tooltip.borderColor).toBeUndefined();
+    expect(tooltip.textStyle).toBeUndefined();
 
     const merged = buildMarketDataChartTooltip({ trigger: "axis", textStyle: { fontSize: 11 } });
     expect(merged.trigger).toBe("axis");
     expect(merged.textStyle?.fontSize).toBe(11);
-    expect(merged.textStyle?.color).toBe(nocturneTokens.color.ink);
+    expect(merged.textStyle?.color).toBeUndefined();
   });
 });

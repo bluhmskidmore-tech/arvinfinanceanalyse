@@ -20,8 +20,7 @@ type PageAsyncSectionProps = {
 /**
  * Phase 2.1 迁移桥：props 与旧 `AsyncSection`（isLoading / isError / isEmpty
  * 布尔契约）保持兼容，外壳换成 page-v2 `EvidencePanel`，状态分支换成
- * `PageStateSurface`。loading / error / empty 用户可见文案与旧实现逐字一致，
- * 状态优先级同旧实现（loading > error > empty > children）。
+ * `PageStateSurface`。状态优先级同旧实现（loading > error > empty > children）。
  *
  * `fillHeight` 仅保留旧的高度语义（默认撑满父容器，局部可退出），通过桥接根
  * 上的最小 class 实现，不新建布局框架。
@@ -85,7 +84,7 @@ function renderStateBody(opts: {
         variant="error"
         testId="page-async-section-error"
         title="数据载入失败。"
-        description="当前页面保留重试入口，不在浏览器端自行拼接正式口径。"
+        description="暂时无法获取数据，请重试。"
         actions={
           <button
             type="button"

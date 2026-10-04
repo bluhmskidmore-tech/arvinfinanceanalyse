@@ -27,8 +27,10 @@
   font-size: 12px;
 }
 
+/* G：模块头降为标准分区头语言（14px/700），口径徽标降为 11px 元信息文字。 */
 .macro-toolkit-report-bundle__head strong {
-  font-size: 17px;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -40,22 +42,24 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 6px 10px;
 }
 
 .macro-toolkit-report-bundle__badges span {
-  padding: 3px 8px;
-  border: 1px solid var(--macro-toolkit-border);
-  border-radius: 999px;
-  background: var(--macro-toolkit-card-soft);
-  color: var(--ib-ink-secondary);
+  color: var(--ib-ink-muted);
+  font-size: 11px;
   font-weight: 600;
 }
 
+/* G：日期/校验四格收成单框发丝网格（1px 缝隙露底色）。 */
 .macro-toolkit-report-bundle__metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--macro-toolkit-border);
+  border-radius: var(--ib-radius, 6px);
+  background: var(--macro-toolkit-border);
 }
 
 .macro-toolkit-report-bundle__metrics > div {
@@ -63,7 +67,6 @@
   gap: 4px;
   min-width: 0;
   padding: 10px;
-  border-radius: var(--ib-radius, 6px);
   background: var(--macro-toolkit-card-soft);
 }
 
@@ -88,10 +91,15 @@
   background: var(--macro-toolkit-primary-soft);
 }
 
+/* G：文件卡改统一单框网格，发丝分割对齐 KPI 横带语言。 */
 .macro-toolkit-report-bundle__artifacts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--macro-toolkit-border);
+  border-radius: var(--ib-radius, 6px);
+  background: var(--macro-toolkit-border);
 }
 
 .macro-toolkit-report-bundle__artifacts a {
@@ -99,8 +107,6 @@
   gap: 4px;
   min-width: 0;
   padding: 10px;
-  border: 1px solid var(--macro-toolkit-border-soft);
-  border-radius: var(--ib-radius, 6px);
   background: var(--macro-toolkit-card-soft);
   color: inherit;
   text-decoration: none;
@@ -108,14 +114,14 @@
 
 .macro-toolkit-report-bundle__artifacts a:hover,
 .macro-toolkit-report-bundle__artifacts a:focus-visible {
-  border-color: var(--macro-toolkit-primary);
+  background: var(--macro-toolkit-primary-soft);
   outline: none;
 }
 
 .macro-toolkit-report-bundle__artifacts span {
   color: var(--macro-toolkit-primary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .macro-toolkit-report-bundle__artifacts strong,

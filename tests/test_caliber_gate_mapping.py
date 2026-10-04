@@ -1,4 +1,4 @@
-"""Guard tests for the caliber path-trigger gate (scripts/check_caliber_gate.py).
+"""Guard tests for caliber and selected formal-compute path-trigger checks.
 
 Covers three surfaces:
 
@@ -16,6 +16,7 @@ Covers three surfaces:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -33,6 +34,29 @@ EXPECTED_CALIBER_TESTS = {
     "tests/test_caliber_rule_issuance_exclusion.py",
     "tests/test_caliber_rule_subject_514_516_517_merge.py",
 }
+
+
+@pytest.mark.parametrize("source_path, required", [
+    ("backend/app/main.py", {"tests/test_system_online_read_boundary.py", "tests/test_system_online_publication_concurrency.py"}),
+    ("backend/app/tasks/system_read_publication.py", {"tests/test_system_read_publication_process_crash.py", "tests/test_system_online_publication_concurrency.py"}),
+    ("backend/app/services/campisi_attribution_service.py", {"tests/test_campisi_formal_bridge_coverage.py"}),
+    ("backend/app/services/product_category_pnl_service.py", {"tests/test_product_category_read_boundary.py"}),
+    ("scripts/backend_release_suite.py", {"tests/test_backend_release_suite.py"}),
+])
+def test_audited_read_and_publication_boundaries_are_selected(source_path, required):
+    assert required <= set(gate.resolve_required_tests([source_path]))
+
+
+@pytest.mark.parametrize("test_path", [
+    "tests/test_system_online_read_boundary.py",
+    "tests/test_system_online_publication_concurrency.py",
+    "tests/test_system_read_publication_process_crash.py",
+    "tests/test_campisi_formal_bridge_coverage.py",
+    "tests/test_product_category_read_boundary.py",
+    "tests/test_backend_release_suite.py",
+])
+def test_audited_boundary_test_changes_select_themselves(test_path):
+    assert set(gate.resolve_required_tests([test_path])) == {test_path, "tests/test_caliber_gate_mapping.py"}
 
 
 def test_every_mapped_source_path_exists_in_repo() -> None:
@@ -57,8 +81,10 @@ def test_map_covers_every_caliber_rule_test_file() -> None:
     # Guard the guard: the six known red-line tests must be on disk, so the
     # coverage assertion below cannot pass vacuously against an empty glob.
     assert EXPECTED_CALIBER_TESTS <= on_disk
-    assert on_disk <= mapped_tests, (
-        "CALIBER_GATE_MAP must cover every caliber rule test on disk; "
+    assert {
+        path for path in mapped_tests if Path(path).name.startswith("test_caliber_rule_")
+    } == on_disk, (
+        "CALIBER_GATE_MAP must retain every caliber rule test on disk; "
         "update scripts/check_caliber_gate.py when adding a caliber test"
     )
     for test_file in mapped_tests:
@@ -74,8 +100,13 @@ def test_curve_and_pnl_bridge_source_changes_select_existing_goldens() -> None:
     assert gate.resolve_required_tests(
         ["backend/app/core_finance/pnl_bridge.py"]
     ) == [
+        "tests/test_campisi_dirty_input.py",
+        "tests/test_pnl_api_contract.py",
+        "tests/test_pnl_bridge_ambiguity.py",
+        "tests/test_pnl_bridge_core.py",
         "tests/test_pnl_bridge_golden.py",
         "tests/test_pnl_bridge_modified_duration.py",
+        "tests/test_yield_curve_consumer_symmetry.py",
     ]
 
 
@@ -89,31 +120,45 @@ def test_data_update_and_balance_paths_select_first_scope_regressions() -> None:
     ]
     assert gate.resolve_required_tests(
         ["tests/test_data_health_schtasks_query.py"]
-    ) == ["tests/test_data_health_schtasks_query.py"]
+    ) == [
+        "tests/test_caliber_gate_mapping.py",
+        "tests/test_data_health_schtasks_query.py",
+    ]
     assert gate.resolve_required_tests(
         ["backend/app/api/routes/balance_analysis.py"]
-    ) == ["tests/test_balance_analysis_api.py"]
+    ) == [
+        "tests/test_balance_analysis_api.py",
+        "tests/test_balance_analysis_overview_publication.py",
+    ]
     assert gate.resolve_required_tests(
         ["docs/unrelated-note.md"]
     ) == []
 
 
 @pytest.mark.parametrize(
-    "source",
+    ("source", "publication_checks"),
     [
-        "backend/app/api/__init__.py",
-        "backend/app/api/routes/data_updates.py",
-        "backend/app/repositories/data_update_repo.py",
-        "backend/app/schemas/data_updates.py",
-        "backend/app/services/data_update_service.py",
-        "backend/app/tasks/data_update_center.py",
+        ("backend/app/api/__init__.py", []),
+        ("backend/app/api/routes/data_updates.py", []),
+        ("backend/app/repositories/data_update_repo.py", [
+            "tests/test_system_read_publication.py",
+            "tests/test_system_read_publication_process_crash.py",
+        ]),
+        ("backend/app/schemas/data_updates.py", []),
+        ("backend/app/services/data_update_service.py", []),
+        ("backend/app/tasks/data_update_center.py", [
+            "tests/test_system_read_publication.py",
+            "tests/test_system_read_publication_process_crash.py",
+        ]),
     ],
 )
-def test_data_update_source_selects_same_date_integration(source: str) -> None:
+def test_data_update_source_selects_same_date_integration(
+    source: str, publication_checks: list[str],
+) -> None:
     assert gate.resolve_required_tests([source]) == [
         "tests/test_data_update_balance_integration.py",
         "tests/test_data_updates.py",
-    ]
+    ] + publication_checks
 
 
 def test_queue_scheduler_and_test_changes_select_focused_regressions() -> None:
@@ -131,7 +176,9 @@ def test_queue_scheduler_and_test_changes_select_focused_regressions() -> None:
         "tests/test_data_update_queue_launcher_logging.py",
         "tests/test_install_data_update_queue.py",
     ):
-        assert gate.resolve_required_tests([test_file]) == [test_file]
+        assert gate.resolve_required_tests([test_file]) == [
+            "tests/test_caliber_gate_mapping.py", test_file,
+        ]
     assert gate.resolve_required_tests(["scripts/scheduling/unrelated.ps1"]) == []
 
 
@@ -184,6 +231,15 @@ def test_formal_release_scope_uses_canonical_boundary() -> None:
     )
 
 
+def test_every_selected_test_exists_and_selects_itself_with_the_mapping_guard() -> None:
+    for test_paths in gate.CALIBER_GATE_MAP.values():
+        for test_path in test_paths:
+            assert (REPO_ROOT / test_path).is_file(), f"missing check: {test_path}"
+            assert set(gate.resolve_required_tests([test_path])) == {
+                test_path, "tests/test_caliber_gate_mapping.py"
+            }
+
+
 def test_resolve_required_tests_exact_prefix_dedup_and_order() -> None:
     small_map = {
         "src/exact.py": ("tests/test_b.py",),
@@ -196,6 +252,452 @@ def test_resolve_required_tests_exact_prefix_dedup_and_order() -> None:
     assert matched == ["tests/test_a.py", "tests/test_b.py"]
     assert gate.resolve_required_tests(["unrelated.md"], gate_map=small_map) == []
     assert gate.resolve_required_tests([], gate_map=small_map) == []
+
+
+@pytest.mark.parametrize(
+    ("changed_path", "expected_tests"),
+    [
+        (
+            "backend/app/core_finance/curve_engine/bootstrapper.py",
+            {"tests/test_curve_engine_golden.py"},
+        ),
+        (
+            "backend/app/core_finance/bond_duration.py",
+            {"tests/test_bond_duration_goldens.py", "tests/test_krd_golden.py"},
+        ),
+        (
+            "backend/app/core_finance/pnl_bridge.py",
+            {"tests/test_pnl_bridge_golden.py"},
+        ),
+        (
+            "backend/app/core_finance/curve_engine/new_interpolation.py",
+            {"tests/test_curve_engine_golden.py", "tests/test_pnl_bridge_golden.py"},
+        ),
+        (
+            "backend/app/core_finance/bond_analytics/common.py",
+            {
+                "tests/test_bond_duration_goldens.py",
+                "tests/test_krd_golden.py",
+                "tests/test_pnl_bridge_golden.py",
+            },
+        ),
+        (
+            "backend/app/core_finance/decimal_utils.py",
+            {
+                "tests/test_decimal_utils_strict.py",
+                "tests/test_fx_rates_golden.py",
+                "tests/test_pnl_materialize_flow.py",
+            },
+        ),
+        (
+            "backend/app/core_finance/fx_calendar.py",
+            {
+                "tests/test_fx_rates_golden.py",
+                "tests/test_balance_analysis_materialize_flow.py",
+                "tests/test_pnl_materialize_flow.py",
+            },
+        ),
+        (
+            "backend/app/repositories/balance_analysis_repo.py",
+            {
+                "tests/test_balance_analysis_snapshot_fact_consistency.py",
+                "tests/test_balance_analysis_materialize_flow.py",
+            },
+        ),
+    ],
+)
+def test_formal_compute_change_selects_existing_independent_checks(
+    changed_path: str, expected_tests: set[str]
+) -> None:
+    selected = gate.resolve_required_tests([changed_path])
+    assert expected_tests <= set(selected)
+    assert selected == sorted(set(selected))
+
+
+@pytest.mark.parametrize(
+    ("changed_path", "required_checks"),
+    [
+        ("backend/app/core_finance/campisi.py", {
+            "tests/test_campisi.py", "tests/test_campisi_formula_golden.py",
+        }),
+        ("backend/app/core_finance/bond_four_effects.py", {
+            "tests/test_campisi_formula_golden.py",
+        }),
+        ("backend/app/services/campisi_attribution_service.py", {
+            "tests/test_campisi_attribution_service.py",
+        }),
+        ("backend/app/core_finance/pnl_attribution/workbench.py", {
+            "tests/test_pnl_attribution_workbench_contract.py",
+        }),
+        ("backend/app/services/pnl_attribution_service.py", {
+            "tests/test_pnl_attribution_service_explicit_numeric.py",
+        }),
+        ("backend/app/core_finance/credit_spread_analysis.py", {
+            "backend/tests/core_finance/test_credit_spread_analysis.py",
+        }),
+        ("backend/app/core_finance/balance_analysis_workbook.py", {
+            "tests/test_balance_workbook_decimal_nan_guard.py",
+        }),
+        ("backend/app/core_finance/pnl_bridge.py", {
+            "tests/test_pnl_bridge_modified_duration.py",
+            "tests/test_pnl_bridge_core.py", "tests/test_pnl_api_contract.py",
+            "tests/test_pnl_bridge_ambiguity.py",
+            "tests/test_campisi_dirty_input.py",
+        }),
+        ("backend/app/services/pnl_bridge_service.py", {
+            "tests/test_pnl_bridge_core.py", "tests/test_pnl_api_contract.py",
+            "tests/test_pnl_bridge_ambiguity.py",
+            "tests/test_campisi_dirty_input.py",
+        }),
+        ("backend/app/core_finance/rate_units.py", {
+            "tests/test_rate_units.py", "tests/test_campisi.py",
+        }),
+        ("backend/app/core_finance/fx_calendar.py", {
+            "tests/test_fx_calendar.py", "tests/test_formal_fx_rate_validity.py",
+        }),
+        ("backend/app/core_finance/fx_rates.py", {
+            "tests/test_fx_rates.py", "tests/test_formal_fx_rate_validity.py",
+        }),
+        ("backend/app/tasks/fx_mid_materialize.py", {
+            "tests/test_fx_mid_materialize.py",
+        }),
+        ("backend/app/repositories/balance_analysis_repo.py", {
+            "tests/test_formal_fx_rate_validity.py",
+        }),
+        ("backend/app/repositories/pnl_repo.py", {
+            "tests/test_formal_fx_rate_validity.py",
+        }),
+    ],
+)
+def test_audited_calculation_paths_select_their_numerical_regressions(
+    changed_path: str, required_checks: set[str],
+) -> None:
+    """A path gate must exercise the numeric boundary implicated by the audit."""
+    assert required_checks <= set(gate.resolve_required_tests([changed_path]))
+
+
+@pytest.mark.parametrize(
+    ("changed_path", "expected_tests"),
+    [
+        (
+            "backend/app/repositories/pnl_precompute_state.py",
+            {
+                "tests/test_pnl_fact_precompute_invalidation.py",
+                "tests/test_pnl_by_business_precompute_state.py",
+            },
+        ),
+        (
+            "backend/app/repositories/financial_result_publication_repo.py",
+            {"tests/test_financial_result_publication.py"},
+        ),
+        (
+            "backend/app/tasks/pnl_by_business_page_publication.py",
+            {
+                "tests/test_financial_result_publication.py",
+                "tests/test_pnl_by_business_page_lifecycle.py",
+            },
+        ),
+        (
+            "backend/app/services/pnl_task_dispatch.py",
+            {
+                "tests/test_pnl_by_business_page_lifecycle.py",
+                "tests/test_pnl_publication_api_contract.py",
+            },
+        ),
+        (
+            "backend/app/services/pnl_by_business_precompute_lifecycle.py",
+            {
+                "tests/test_pnl_by_business_precompute_state.py",
+                "tests/test_pnl_by_business_adjustment_handoff.py",
+                "tests/test_pnl_by_business_page_lifecycle.py",
+            },
+        ),
+        (
+            "backend/app/core_finance/pnl_independent_reconciliation.py",
+            {"tests/test_pnl_independent_reconciliation.py"},
+        ),
+        (
+            "backend/app/repositories/pnl_independent_reference_repo.py",
+            {
+                "tests/test_pnl_independent_reconciliation.py",
+                "tests/test_pnl_overview_independent_reference_api.py",
+            },
+        ),
+    ],
+)
+def test_runtime_remediation_change_selects_its_bounded_checks(
+    changed_path: str, expected_tests: set[str]
+) -> None:
+    selected = gate.resolve_required_tests([changed_path])
+    assert expected_tests <= set(selected)
+    assert selected == sorted(set(selected))
+
+
+@pytest.mark.parametrize(
+    "source_path",
+    [
+        "backend/app/tasks/balance_analysis_materialize.py",
+        "backend/app/tasks/pnl_materialize.py",
+        "backend/app/tasks/bond_analytics_materialize.py",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    ],
+)
+def test_four_real_materializers_select_the_joint_replay(source_path: str) -> None:
+    assert "tests/test_formal_compute_joint_replay.py" in gate.resolve_required_tests(
+        [source_path]
+    )
+
+
+@pytest.mark.parametrize(
+    "source_path",
+    [
+        "backend/app/repositories/balance_analysis_repo.py",
+        "backend/app/repositories/financial_result_publication_repo.py",
+        "backend/app/tasks/balance_analysis_materialize.py",
+        "backend/app/tasks/balance_analysis_overview_publication.py",
+        "backend/app/tasks/financial_result_publication.py",
+        "backend/app/services/balance_analysis_publication_service.py",
+        "backend/app/services/balance_analysis_service.py",
+        "backend/app/api/routes/balance_analysis.py",
+        "backend/app/schemas/balance_analysis.py",
+        "backend/app/governance/settings.py",
+    ],
+)
+def test_balance_publication_changes_select_its_bounded_checks(source_path: str) -> None:
+    assert "tests/test_balance_analysis_overview_publication.py" in (
+        gate.resolve_required_tests([source_path])
+    )
+
+
+@pytest.mark.parametrize(
+    "source_path",
+    [
+        "backend/app/tasks/broker.py",
+        "backend/app/tasks/worker_bootstrap.py",
+        "backend/app/tasks/worker_recovery.py",
+    ],
+)
+def test_worker_recovery_changes_select_bootstrap_checks(source_path: str) -> None:
+    assert gate.resolve_required_tests([source_path]) == [
+        "tests/test_worker_bootstrap.py"
+    ]
+
+
+def test_resource_scope_changes_select_budget_and_publication_checks() -> None:
+    assert gate.resolve_required_tests(
+        ["backend/app/tasks/pnl_by_business_resource_scope.py"]
+    ) == [
+        "tests/test_financial_result_publication.py",
+        "tests/test_pnl_by_business_precompute_state.py",
+    ]
+
+
+def test_curve_prefix_does_not_claim_unrelated_financial_modules_are_covered() -> None:
+    assert gate.resolve_required_tests(
+        ["backend/app/core_finance/curve_engineering.py", "docs/metric_dictionary.md"]
+    ) == []
+
+
+@pytest.mark.parametrize("source_path", [
+    "backend/app/api/routes/data_updates.py",
+    "backend/app/services/data_update_service.py",
+    "backend/app/repositories/data_update_repo.py",
+    "backend/app/tasks/data_update_center.py",
+    "scripts/run_global_data_refresh.py",
+])
+def test_data_update_changes_select_request_and_retry_regressions(source_path: str) -> None:
+    assert "tests/test_data_updates.py" in gate.resolve_required_tests([source_path])
+
+
+@pytest.mark.parametrize("source_path", [
+    "backend/app/tasks/data_update_center.py",
+    "backend/app/repositories/data_update_repo.py",
+    "backend/app/tasks/system_read_publication.py",
+    "backend/app/repositories/system_read_publication_repo.py",
+    "backend/app/tasks/financial_result_publication.py",
+    "backend/app/repositories/financial_result_publication_repo.py",
+    "scripts/run_global_data_refresh.py",
+])
+def test_system_publication_changes_select_no_replay_regressions(source_path: str) -> None:
+    assert "tests/test_system_read_publication.py" in gate.resolve_required_tests([source_path])
+
+
+@pytest.mark.parametrize("source_path", [
+    "backend/app/core_finance/product_category_pnl.py",
+    "backend/app/core_finance/field_normalization.py",
+    "backend/app/core_finance/config/product_category_contract.py",
+    "backend/app/core_finance/config/product_category_mapping.py",
+    "backend/app/core_finance/config/classification_rules.py",
+    "backend/app/config/product_category_mapping.py",
+    "backend/app/repositories/product_category_pnl_repo.py",
+    "backend/app/services/product_category_source_service.py",
+    "backend/app/services/source_file_hash.py",
+    "backend/app/tasks/product_category_pnl.py",
+    "backend/app/tasks/product_category_refresh_state.py",
+    "backend/app/schema_registry/duckdb/08_product_category_pnl.sql",
+])
+def test_product_refresh_dependencies_select_year_reuse_regressions(source_path: str) -> None:
+    assert "tests/test_product_category_incremental_materialization.py" in (
+        gate.resolve_required_tests([source_path])
+    )
+
+
+@pytest.mark.parametrize("test_path", [
+    "tests/test_data_updates.py",
+    "tests/test_system_read_publication.py",
+    "tests/test_product_category_incremental_materialization.py",
+])
+def test_refresh_regression_changes_select_itself_and_mapping_guard(test_path: str) -> None:
+    assert gate.resolve_required_tests([test_path]) == sorted([
+        test_path, "tests/test_caliber_gate_mapping.py",
+    ])
+
+
+def test_refresh_gate_does_not_expand_to_unrelated_or_excluded_surfaces() -> None:
+    assert gate.resolve_required_tests([
+        "backend/app/tasks/choice_news.py",
+        "backend/app/tasks/source_preview_refresh.py",
+        "backend/app/services/macro_toolkit_refresh_receipt_service.py",
+        "backend/app/services/data_update_service_extra.py",
+    ]) == []
+
+
+@pytest.mark.parametrize("source_path", [
+    "backend/app/api/routes/product_category_pnl.py",
+    "backend/app/schemas/product_category_pnl.py",
+    "backend/app/schemas/materialize.py",
+    "backend/app/services/product_category_pnl_service.py",
+    "scripts/api_contract_check.py",
+    "tests/test_product_category_api_contract.py",
+])
+def test_product_api_contract_dependencies_select_http_contract_guard(source_path: str) -> None:
+    assert "tests/test_product_category_api_contract.py" in gate.resolve_required_tests([source_path])
+
+
+@pytest.mark.parametrize("source_path", [
+    "backend/app/core_finance/bond_duration.py",
+    "backend/app/core_finance/bond_analytics/common.py",
+    "backend/app/core_finance/bond_analytics/engine.py",
+    "backend/app/core_finance/bond_four_effects.py",
+    "backend/app/core_finance/krd.py",
+    "backend/app/core_finance/cashflow_projection.py",
+])
+def test_coupon_calendar_changes_select_cross_entrypoint_date_checks(source_path: str) -> None:
+    assert "tests/test_bond_coupon_date_boundary.py" in gate.resolve_required_tests([source_path])
+
+
+@pytest.mark.parametrize("source_path", [
+    "backend/app/core_finance/campisi.py",
+    "backend/app/core_finance/bond_four_effects.py",
+    "backend/app/core_finance/bond_duration.py",
+    "backend/app/core_finance/bond_analytics/common.py",
+    "backend/app/core_finance/cashflow_projection.py",
+    "tests/test_decimal_first_batch_lock.py",
+])
+def test_campisi_duration_changes_select_decimal_locks(source_path: str) -> None:
+    assert "tests/test_decimal_first_batch_lock.py" in gate.resolve_required_tests([source_path])
+
+
+@pytest.mark.parametrize("source_path", [
+    "backend/app/repositories/snapshot_repo.py",
+    "backend/app/tasks/snapshot_materialize.py",
+    "tests/test_snapshot_dq_guardrails.py",
+    "tests/test_snapshot_materialize_flow.py",
+])
+def test_snapshot_merge_changes_select_quality_and_materialization_checks(source_path: str) -> None:
+    selected = gate.resolve_required_tests([source_path])
+    if source_path.startswith("backend/"):
+        assert {"tests/test_snapshot_dq_guardrails.py", "tests/test_snapshot_materialize_flow.py"} <= set(selected)
+    else:
+        assert source_path in selected
+
+
+@pytest.mark.parametrize("source_path, regression", [
+    ("backend/app/core_finance/bond_analytics/common.py", "tests/test_bond_analytics_core.py"),
+    ("backend/app/core_finance/bond_analytics/engine.py", "tests/test_bond_analytics_engine.py"),
+    ("backend/app/core_finance/bond_duration.py", "tests/test_bond_duration.py"),
+    ("backend/app/core_finance/bond_four_effects.py", "tests/test_bond_four_effects.py"),
+    ("backend/app/core_finance/krd.py", "tests/test_krd.py"),
+    ("backend/app/core_finance/credit_spread.py", "tests/test_credit_spread.py"),
+])
+def test_observed_zero_ytm_paths_select_null_distinction_regressions(
+    source_path: str, regression: str,
+) -> None:
+    assert regression in gate.resolve_required_tests([source_path])
+
+
+@pytest.mark.parametrize("source_path, expected_tests", [
+    ("backend/app/core_finance/config/product_category_mapping.py",
+     ["tests/test_product_category_incremental_materialization.py",
+      "tests/test_product_category_manual_reference_flow.py"]),
+    ("backend/app/core_finance/config/product_category_contract.py",
+     ["tests/test_product_category_incremental_materialization.py",
+      "tests/test_product_category_manual_reference_flow.py"]),
+    ("backend/app/core_finance/pnl_constants.py", ["tests/test_pnl_materialize_flow.py"]),
+])
+def test_canonical_pnl_authority_changes_select_materialized_reference(
+    source_path: str, expected_tests: list[str],
+) -> None:
+    assert gate.resolve_required_tests([source_path]) == expected_tests
+
+
+def test_changed_golden_runs_itself_and_the_mapping_guard() -> None:
+    assert gate.resolve_required_tests(["tests/test_curve_engine_golden.py"]) == [
+        "tests/test_caliber_gate_mapping.py",
+        "tests/test_curve_engine_golden.py",
+    ]
+
+
+def test_changed_gate_runs_all_registered_checks_and_the_mapping_guard() -> None:
+    selected = set(gate.resolve_required_tests(["scripts/check_caliber_gate.py"]))
+    assert EXPECTED_CALIBER_TESTS <= selected
+    assert {
+        "tests/test_caliber_gate_mapping.py",
+        "tests/test_curve_engine_golden.py",
+        "tests/test_bond_duration_goldens.py",
+        "tests/test_pnl_bridge_golden.py",
+        "tests/test_krd_golden.py",
+        "tests/test_balance_analysis_snapshot_fact_consistency.py",
+        "tests/test_balance_analysis_overview_publication.py",
+        "tests/test_formal_compute_joint_replay.py",
+        "tests/test_worker_bootstrap.py",
+    } <= selected
+    assert selected == {
+        test_path
+        for test_paths in gate.CALIBER_GATE_MAP.values()
+        for test_path in test_paths
+    }
+
+
+def test_cli_runs_selected_numeric_checks_and_propagates_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        gate,
+        "list_changed_files",
+        lambda _base_ref, *, cwd: ["backend/app/core_finance/bond_duration.py"],
+    )
+    calls: list[list[str]] = []
+
+    def failed_pytest(command: list[str], *, cwd: Path, check: bool):
+        assert cwd == REPO_ROOT
+        assert check is False
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(gate.subprocess, "run", failed_pytest)
+    assert gate.main(["--base-ref", "base"]) == 1
+    assert calls == [[
+        gate.sys.executable,
+        "-m",
+        "pytest",
+        "tests/test_bond_coupon_date_boundary.py",
+        "tests/test_bond_duration.py",
+        "tests/test_bond_duration_goldens.py",
+        "tests/test_decimal_first_batch_lock.py",
+        "tests/test_krd_golden.py",
+        "-q",
+    ]]
 
 
 def _run_git(repo: Path, *args: str) -> None:
@@ -258,6 +760,35 @@ def test_dry_run_reports_matched_tests_for_gated_change(
     assert payload["base_ref"] == "base"
     assert payload["changed_files"] == ["src/gated_module.py"]
     assert payload["matched_tests"] == ["tests/test_caliber_rule_hat_mapping.py"]
+
+
+def test_cli_propagates_real_selected_pytest_failure(
+    gate_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """Run one synthetic failure through git diff, selection and actual pytest."""
+    (gate_repo / "src" / "gated_module.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _run_git(gate_repo, "commit", "--quiet", "-am", "touch gated module")
+    test_dir = gate_repo / "tests"
+    test_dir.mkdir()
+    (test_dir / "test_caliber_rule_hat_mapping.py").write_text(
+        "def test_bounded_gate_failure():\n"
+        "    assert False, 'bounded gate failure reached real pytest'\n",
+        encoding="utf-8",
+    )
+    (gate_repo / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    # This subprocess uses only the synthetic test above. Keep the repository's
+    # DuckDB guard explicitly enabled even outside its usual conftest tree.
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-p _pytest_duckdb_guard")
+    python_path = os.pathsep.join(filter(None, [str(REPO_ROOT), os.getenv("PYTHONPATH")]))
+    monkeypatch.setenv("PYTHONPATH", python_path)
+
+    assert gate.main(["--base-ref", "base"]) == 1
+
+    captured = capfd.readouterr()
+    assert "bounded gate failure reached real pytest" in captured.out
+    assert "1 failed" in captured.out
 
 
 def test_dry_run_reports_no_tests_for_unrelated_change(

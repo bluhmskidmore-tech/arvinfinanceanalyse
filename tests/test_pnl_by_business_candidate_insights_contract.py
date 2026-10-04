@@ -254,7 +254,12 @@ def test_candidate_insights_envelope_hardcodes_formal_use_allowed_false(
         _ytd_item("row_b", "政策性金融债", "300"),
     ]
 
-    def fake_ytd_envelope(*, duckdb_path, governance_dir, year, as_of_date=None):
+    seen_source_version_caches: list[dict[tuple[str, int, str, str, str], str]] = []
+
+    def fake_ytd_envelope(
+        *, duckdb_path, governance_dir, year, as_of_date=None, source_version_cache=None
+    ):
+        seen_source_version_caches.append(source_version_cache)
         envelope = _ytd_envelope(
             items,
             report_date=as_of_date or f"{year}-12-31",
@@ -264,7 +269,10 @@ def test_candidate_insights_envelope_hardcodes_formal_use_allowed_false(
         envelope["result_meta"]["formal_use_allowed"] = True
         return envelope
 
-    def fake_monthly_envelope(*, duckdb_path, governance_dir, year, as_of_date=None):
+    def fake_monthly_envelope(
+        *, duckdb_path, governance_dir, year, as_of_date=None, source_version_cache=None
+    ):
+        seen_source_version_caches.append(source_version_cache)
         envelope = _monthly_envelope(
             [
                 _monthly_bucket(
@@ -283,6 +291,17 @@ def test_candidate_insights_envelope_hardcodes_formal_use_allowed_false(
     monkeypatch.setattr(
         insights.pnl_service, "pnl_by_business_monthly_envelope", fake_monthly_envelope
     )
+    monkeypatch.setattr(
+        insights,
+        "compute_untraced_reconciliation_trend",
+        lambda *, duckdb_path, as_of_date: {
+            "as_of_date": as_of_date,
+            "lookback_months": 12,
+            "available": False,
+            "availability_reason": "source_unavailable",
+            "rows": [],
+        },
+    )
 
     envelope = insights.pnl_by_business_candidate_insights_envelope(
         duckdb_path="unused.duckdb",
@@ -296,6 +315,17 @@ def test_candidate_insights_envelope_hardcodes_formal_use_allowed_false(
     assert envelope["result_meta"]["cache_version"].endswith("_v2")
     assert envelope["result_meta"]["rule_version"].endswith("_v2")
     assert envelope["result"]["result_version"] == "v2"
+    assert seen_source_version_caches
+    assert all(cache is seen_source_version_caches[0] for cache in seen_source_version_caches)
+
+    previous_call_count = len(seen_source_version_caches)
+    insights.pnl_by_business_candidate_insights_envelope(
+        duckdb_path="unused.duckdb",
+        governance_dir="unused-governance",
+        year=2026,
+        as_of_date="2026-02-28",
+    )
+    assert seen_source_version_caches[previous_call_count] is not seen_source_version_caches[0]
 
 
 def _create_untraced_reconciliation_tables(conn: duckdb.DuckDBPyConnection) -> None:
@@ -378,17 +408,17 @@ def test_untraced_trend_handles_month_with_zero_total_rows_gracefully(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        PnlRepository,
+        insights.PnlRepository,
         "list_formal_fi_report_dates",
         lambda self, **_kwargs: ["2026-01-31"],
     )
     monkeypatch.setattr(
-        PnlRepository,
+        insights.PnlRepository,
         "count_untraced_formal_fi_rows_for_dates",
         lambda self, report_dates: {rd: 0 for rd in report_dates},
     )
     monkeypatch.setattr(
-        PnlRepository,
+        insights.PnlRepository,
         "count_formal_fi_rows_for_dates",
         lambda self, report_dates: {rd: 0 for rd in report_dates},
     )
@@ -412,7 +442,11 @@ def test_untraced_trend_marks_storage_failure_as_source_unavailable(
     def unavailable(_self, **_kwargs) -> list[str]:
         raise RuntimeError("Formal pnl storage is unavailable.")
 
-    monkeypatch.setattr(PnlRepository, "list_formal_fi_report_dates", unavailable)
+    monkeypatch.setattr(
+        insights.PnlRepository,
+        "list_formal_fi_report_dates",
+        unavailable,
+    )
 
     result = insights.compute_untraced_reconciliation_trend(
         duckdb_path="missing.duckdb",
@@ -429,7 +463,7 @@ def test_untraced_trend_marks_empty_window_as_no_observations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        PnlRepository,
+        insights.PnlRepository,
         "list_formal_fi_report_dates",
         lambda _self, **_kwargs: [],
     )
@@ -467,7 +501,7 @@ def test_untraced_trend_marks_batch_read_failure_as_source_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        PnlRepository,
+        insights.PnlRepository,
         "list_formal_fi_report_dates",
         lambda _self, **_kwargs: ["2026-01-31"],
     )
@@ -476,7 +510,7 @@ def test_untraced_trend_marks_batch_read_failure_as_source_unavailable(
         raise RuntimeError("Formal pnl storage is unavailable.")
 
     monkeypatch.setattr(
-        PnlRepository,
+        insights.PnlRepository,
         "count_untraced_formal_fi_rows_for_dates",
         unavailable,
     )
@@ -534,6 +568,10 @@ def test_count_untraced_formal_fi_rows_for_dates_matches_single_date_calls(
             "insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?)",
             ["2026-02-28", "BOND-2", "Desk", "CC-2", "CNY"],
         )
+        conn.execute(
+            "insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?)",
+            ["2026-02-28", "BOND-2", "Desk", "CC-2", "CNY"],
+        )
         # Day 3: traced via relaxed match, ignoring BOND- prefix and cost_center mismatch,
         # but ambiguous because two distinct business types exist for the same instrument.
         conn.execute(
@@ -563,6 +601,70 @@ def test_count_untraced_formal_fi_rows_for_dates_matches_single_date_calls(
 
     assert batch_result == single_date_result
     assert single_date_result["2026-01-31"] == 0
-    assert single_date_result["2026-02-28"] == 1
+    assert single_date_result["2026-02-28"] == 2
     assert single_date_result["2026-03-31"] == 1
     assert single_date_result["2026-04-30"] == 0
+
+
+def test_untraced_batch_sql_preserves_normalization_and_relaxed_match_edges(tmp_path) -> None:
+    duckdb_path = tmp_path / "untraced-batch-edge-regression.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        _create_untraced_reconciliation_tables(conn)
+        pnl_rows = [
+            ("2026-05-31", None, "Desk", None, "CNY"),
+            ("2026-06-30", "EMPTY-TYPE", "Desk", "CC", "CNY"),
+            ("2026-07-31", "LIABILITY", "Desk", "CC", "CNY"),
+            ("2026-08-31", "X-BOND-Y", "Desk", "CC", "CNY"),
+            ("2026-09-30", "BOND-BOND-Z", "Desk", "CC", "CNY"),
+            ("2026-10-31", "BOND-RELAXED", "Desk", "PNL-CC", "CNY"),
+            ("2026-11-30", "BOND-AMBIGUOUS", "Desk", "PNL-CC", "CNY"),
+            ("2026-12-31", "DUPLICATE", "Desk", "CC", "CNY"),
+            ("2026-12-31", "DUPLICATE", "Desk", "CC", "CNY"),
+        ]
+        conn.executemany("insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?)", pnl_rows)
+        balance_rows = [
+            # NULL/empty instrument and cost-center values normalize identically.
+            ("2026-05-31", None, "Desk", None, "CNY", "asset", "TYPE-A"),
+            ("2026-05-31", "", "Desk", "", "CNY", "asset", "TYPE-A"),
+            # Empty business types and non-asset rows never qualify as matches.
+            ("2026-06-30", "EMPTY-TYPE", "Desk", "CC", "CNY", "asset", None),
+            ("2026-06-30", "EMPTY-TYPE", "Desk", "CC", "CNY", "asset", ""),
+            ("2026-07-31", "LIABILITY", "Desk", "CC", "CNY", "liability", "TYPE-A"),
+            # replace(..., 'BOND-', '') also applies to an embedded occurrence.
+            ("2026-08-31", "X-Y", "Desk", "CC", "CNY", "asset", "TYPE-A"),
+            # The third legacy branch removes exactly one leading BOND- prefix.
+            ("2026-09-30", "BOND-Z", "Desk", "CC", "CNY", "asset", "TYPE-A"),
+            # A unique relaxed business type is traced despite a cost-center mismatch.
+            ("2026-10-31", "RELAXED", "Desk", "BAL-CC-1", "CNY", "asset", "TYPE-A"),
+            ("2026-10-31", "RELAXED", "Desk", "BAL-CC-2", "CNY", "asset", "TYPE-A"),
+            # Two relaxed business types remain ambiguous and therefore untraced.
+            ("2026-11-30", "AMBIGUOUS", "Desk", "BAL-CC", "CNY", "asset", "TYPE-A"),
+            ("2026-11-30", "AMBIGUOUS", "Desk", "BAL-CC", "CNY", "asset", "TYPE-B"),
+        ]
+        conn.executemany(
+            "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?)",
+            balance_rows,
+        )
+    finally:
+        conn.close()
+
+    repo = PnlRepository(str(duckdb_path))
+    report_dates = sorted({row[0] for row in pnl_rows})
+    batch_result = repo.count_untraced_formal_fi_rows_for_dates(report_dates)
+    single_date_result = {
+        report_date: repo.count_untraced_formal_fi_rows(report_date)
+        for report_date in report_dates
+    }
+
+    assert batch_result == single_date_result
+    assert single_date_result == {
+        "2026-05-31": 0,
+        "2026-06-30": 1,
+        "2026-07-31": 1,
+        "2026-08-31": 0,
+        "2026-09-30": 0,
+        "2026-10-31": 0,
+        "2026-11-30": 1,
+        "2026-12-31": 2,
+    }

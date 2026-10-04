@@ -121,6 +121,7 @@ export function StockAnalysisKlineRadarPanel({
   const summary = useMemo(() => buildStockAnalysisKlineRadar(strategyPayload), [strategyPayload]);
   const focusItems = summary.focusItems.slice(0, FOCUS_TABLE_LIMIT);
   const riskUnavailable = summary.riskTriggerCount == null && summary.riskUnavailableReason != null;
+  const moduleStates = summary.moduleStates;
   const topology = summary.topology;
   const topologyEdgesByKind = {
     feeds: topology.edges.filter((edge) => edge.kind === "feeds").length,
@@ -513,6 +514,50 @@ export function StockAnalysisKlineRadarPanel({
             <small title="modules">策略模块</small>
             <strong>{topology.moduleCount}</strong>
           </span>
+        </div>
+
+        <div
+          className="stock-analysis-page__kline-radar-topology"
+          data-testid="stock-analysis-kline-radar-module-states"
+          aria-label="后端策略模块状态"
+        >
+          <div className="stock-analysis-page__kline-radar-topology-summary">
+            <p>系统策略模块状态</p>
+            <strong>后端 module_states 1:1 映射</strong>
+            <span>
+              已登记 {moduleStates.length} 项；命中 0、证据模式与模块不可用分别披露。
+            </span>
+          </div>
+          <div className="stock-analysis-page__kline-radar-topology-map">
+            <div
+              className="stock-analysis-page__kline-radar-topology-stage"
+              data-topology-stage="module_state"
+            >
+              <span
+                className="stock-analysis-page__kline-radar-topology-stage-label"
+                title="module_states"
+              >
+                模块状态
+              </span>
+              {moduleStates.map((moduleState) => (
+                <span
+                  key={moduleState.key}
+                  className="stock-analysis-page__kline-radar-topology-node"
+                  data-tone={moduleState.tone}
+                  data-module-state-key={moduleState.key}
+                  data-testid={`stock-analysis-kline-radar-module-state-${testIdFragment(moduleState.key)}`}
+                  title={moduleState.reason ?? moduleState.key}
+                >
+                  <strong>{moduleState.label}</strong>
+                  <small>
+                    {moduleState.stateLabel} · {moduleState.outputLabel} · 数据日{" "}
+                    {moduleState.sourceDate ?? "待返回"}
+                    {moduleState.reason ? ` · ${moduleState.reason}` : ""}
+                  </small>
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div

@@ -403,6 +403,8 @@ class FakeTushareStockClient:
                     "pb": 0.8,
                     "ps": 1.2,
                     "dv_ttm": 3.5,
+                    "total_mv": 1000.0,
+                    "circ_mv": 800.0,
                 },
                 {
                     "ts_code": "600000.SH",
@@ -413,6 +415,8 @@ class FakeTushareStockClient:
                     "pb": 1.1,
                     "ps": 1.8,
                     "dv_ttm": 2.5,
+                    "total_mv": 2000.0,
+                    "circ_mv": 1600.0,
                 },
             ]
         )
@@ -614,6 +618,30 @@ class FlakyLimitTushareStockClient(MultiDateTushareStockClient):
         return super().stk_limit(**kwargs)
 
 
+def _seed_daily_observation(
+    duckdb_path: Path,
+    *,
+    trade_date: str,
+    vendor_version: str,
+) -> None:
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        ensure_choice_stock_schema(conn)
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation values (
+              ?, '000001.SZ', 10.0, 11.0, 9.0, 10.5, 1000.0, 10000.0,
+              5.0, 1.2, 20.0, 'Trading', 11.0, 9.0,
+              '["daily_return_turnover_amplitude","daily_ohlcv_amount","daily_trade_status","daily_limit_flags"]',
+              'sv-existing', ?, 'rv-existing', 'run-existing'
+            )
+            """,
+            [trade_date, vendor_version],
+        )
+    finally:
+        conn.close()
+
+
 class TsRequiredFinaFakeTushare(FakeTushareStockClient):
     """Simulates APIs that refuse fina_indicator without ts_code (comma-batch path)."""
 
@@ -711,6 +739,7 @@ def test_v20_database_upgrades_to_v21_choice_stock_schema(tmp_path: Path) -> Non
         "v42: Persist movement chain-continuity and position-source conclusions",
         "v43: Constrain core ALM fact natural-key grains",
         "v44: Point-in-time concept membership SCD intervals",
+        "v45: Persist ZQTZ interest receivable/payable on the standardized snapshot",
     ]
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
@@ -916,6 +945,215 @@ def test_choice_stock_materialize_can_fill_tushare_ths_concept_fallback(tmp_path
     assert audit == ("tushare", "ths_index,ths_member", "completed_tushare_ths_fallback", 1)
 
 
+def test_same_day_rerun_without_concept_source_preserves_existing_snapshot(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    _write_confirmed_catalog_with_theme_inputs(catalog_path)
+
+    materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=ThemeChoiceStockClient(),
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        before = conn.execute(
+            """
+            select stock_code, concept_code, concept_name, concept_source, run_id
+            from choice_stock_concept_membership
+            where as_of_date = '2026-04-28'
+            order by stock_code, concept_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    _write_confirmed_catalog(catalog_path)
+    result = materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=FakeChoiceStockClient(),
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        after = conn.execute(
+            """
+            select stock_code, concept_code, concept_name, concept_source, run_id
+            from choice_stock_concept_membership
+            where as_of_date = '2026-04-28'
+            order by stock_code, concept_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert before
+    assert after == before
+    assert result["concept_snapshot_status"] == "preserved"
+
+
+def test_same_day_rerun_with_failed_concept_fallback_preserves_existing_snapshot(tmp_path: Path) -> None:
+    class FailingThsConceptClient:
+        def ths_index(self, **_kwargs: object) -> object:
+            raise RuntimeError("THS concept source unavailable")
+
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    _write_confirmed_catalog_with_theme_inputs(catalog_path)
+    materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=ThemeChoiceStockClient(),
+    )
+
+    _write_confirmed_catalog(catalog_path)
+    result = materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=FakeChoiceStockClient(),
+        tushare_client=FailingThsConceptClient(),
+        enable_tushare_concept_fallback=True,
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select stock_code, concept_code, concept_name, concept_source
+            from choice_stock_concept_membership
+            where as_of_date = '2026-04-28'
+            order by stock_code, concept_code
+            """
+        ).fetchall()
+        failed_audit = conn.execute(
+            """
+            select status, row_count
+            from choice_stock_request_audit
+            where as_of_date = '2026-04-28'
+              and field_key = 'tushare_ths_concept_membership'
+            limit 1
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("000001.SZ", "C001", "Semiconductor", "choice"),
+        ("600000.SH", "C002", "Banking", "choice"),
+    ]
+    assert failed_audit == ("failed", 0)
+    assert result["concept_snapshot_status"] == "preserved"
+
+
+def test_same_day_rerun_with_unusable_empty_concept_payload_preserves_existing_snapshot(
+    tmp_path: Path,
+) -> None:
+    class EmptyConceptChoiceStockClient(ThemeChoiceStockClient):
+        def css(self, *args: object, options: str = "") -> Any:
+            indicators = str(args[1]).split(",")
+            if "CONCEPTCODE" in indicators or "CONCEPTNAME" in indicators:
+                self.calls.append(("css", args, options))
+                return SimpleNamespace(ErrorCode=0, Indicators=indicators, Data={})
+            return super().css(*args, options=options)
+
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    _write_confirmed_catalog_with_theme_inputs(catalog_path)
+    materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=ThemeChoiceStockClient(),
+    )
+
+    result = materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=EmptyConceptChoiceStockClient(),
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select stock_code, concept_code
+            from choice_stock_concept_membership
+            where as_of_date = '2026-04-28'
+            order by stock_code, concept_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [("000001.SZ", "C001"), ("600000.SH", "C002")]
+    assert result["concept_snapshot_status"] == "preserved"
+    assert result["concept_snapshot_row_count"] == 0
+
+
+def test_same_day_rerun_with_usable_concept_snapshot_replaces_existing_snapshot(tmp_path: Path) -> None:
+    class ReplacementThemeChoiceStockClient(ThemeChoiceStockClient):
+        def css(self, *args: object, options: str = "") -> Any:
+            indicators = str(args[1]).split(",")
+            if "CONCEPTCODE" in indicators or "CONCEPTNAME" in indicators:
+                self.calls.append(("css", args, options))
+                return SimpleNamespace(
+                    ErrorCode=0,
+                    Indicators=indicators,
+                    Data={
+                        "000001.SZ": ["C101", "New concept"],
+                        "600000.SH": ["C102", "Another concept"],
+                    },
+                )
+            return super().css(*args, options=options)
+
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    _write_confirmed_catalog_with_theme_inputs(catalog_path)
+    materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=ThemeChoiceStockClient(),
+    )
+
+    result = materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=ReplacementThemeChoiceStockClient(),
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select stock_code, concept_code, concept_name
+            from choice_stock_concept_membership
+            where as_of_date = '2026-04-28'
+            order by stock_code, concept_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("000001.SZ", "C101", "New concept"),
+        ("600000.SH", "C102", "Another concept"),
+    ]
+    assert result["concept_snapshot_status"] == "replaced"
+    assert result["concept_snapshot_row_count"] == 2
+
+
 def test_choice_stock_materialize_batches_csd_history_requests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     catalog_path = tmp_path / "choice_stock_catalog.json"
     duckdb_path = tmp_path / "moss.duckdb"
@@ -1118,7 +1356,12 @@ def test_choice_stock_materialize_falls_back_to_tushare_when_choice_universe_is_
         duckdb_path=str(duckdb_path),
         as_of_date="2026-04-28",
     )
-    assert coverage.full_coverage is True
+    assert coverage.full_coverage is False
+    assert set(coverage.missing_request_items) == {
+        "stock_universe:a_share_universe_sector_001004",
+        "sector_membership:sw2021_industry_membership",
+        "limit_up_quality:point_in_time_limit_streaks",
+    }
 
 
 def test_choice_stock_tushare_fallback_loads_limit_flags_for_each_trade_date(tmp_path: Path) -> None:
@@ -1182,6 +1425,248 @@ def test_choice_stock_tushare_fallback_retries_transient_limit_timeout(tmp_path:
     limit_call_dates = [kwargs["trade_date"] for name, kwargs in tushare_client.calls if name == "stk_limit"]
     assert result["status"] == "completed"
     assert limit_call_dates == ["20260427", "20260427", "20260428"]
+
+
+def test_tushare_gap_repair_uses_exact_window_and_preserves_outside_rows(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    _seed_daily_observation(
+        duckdb_path,
+        trade_date="2026-04-26",
+        vendor_version="vv_choice_stock_20260426_0123456789ab",
+    )
+    _seed_daily_observation(
+        duckdb_path,
+        trade_date="2026-04-29",
+        vendor_version="vv_choice_stock_20260429_0123456789ab",
+    )
+    choice_client = PermissionDeniedCsdChoiceStockClient()
+    tushare_client = MultiDateTushareStockClient()
+
+    result = materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        history_start_date="2026-04-27",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=choice_client,
+        tushare_client=tushare_client,
+        allow_cross_era_backfill=True,
+    )
+
+    assert result["gap_repair_mode"] is True
+    assert result["history_start_date"] == "2026-04-27"
+    assert result["history_end_date"] == "2026-04-28"
+    assert result["history_trade_dates"] == ["2026-04-27", "2026-04-28"]
+    assert result["gap_repair_preflight"] == {
+        "status": "passed",
+        "existing_daily_row_count": 0,
+        "existing_vendor_versions": [],
+    }
+    assert not [call for call in choice_client.calls if call[0] == "csd"]
+    trade_cal_calls = [kwargs for name, kwargs in tushare_client.calls if name == "trade_cal"]
+    assert trade_cal_calls == [
+        {
+            "exchange": "SSE",
+            "is_open": "1",
+            "start_date": "20260427",
+            "end_date": "20260428",
+            "fields": "cal_date,is_open",
+        }
+    ]
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        daily_rows = conn.execute(
+            """
+            select trade_date, vendor_version, count(*)::integer
+            from choice_stock_daily_observation
+            group by 1, 2
+            order by 1, 2
+            """
+        ).fetchall()
+        gap_audits = conn.execute(
+            """
+            select field_key, status, request_arguments_json
+            from choice_stock_request_audit
+            where call = 'csd'
+            order by field_key
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert daily_rows[0] == ("2026-04-26", "vv_choice_stock_20260426_0123456789ab", 1)
+    assert [(row[0], row[2]) for row in daily_rows[1:3]] == [
+        ("2026-04-27", 2),
+        ("2026-04-28", 2),
+    ]
+    assert all("tushare" in str(row[1]) for row in daily_rows[1:3])
+    assert daily_rows[3] == ("2026-04-29", "vv_choice_stock_20260429_0123456789ab", 1)
+    assert {row[1] for row in gap_audits} == {"completed_tushare_gap_repair"}
+    assert all(json.loads(row[2])[2:] == ["2026-04-27", "2026-04-28"] for row in gap_audits)
+
+
+def test_tushare_gap_repair_writer_recheck_rejects_raced_native_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        ensure_choice_stock_schema(conn)
+    finally:
+        conn.close()
+    real_preflight = choice_stock_materialize_module._preflight_choice_stock_gap_repair_window
+
+    def inject_native_after_preflight(**kwargs: object) -> dict[str, object]:
+        result = real_preflight(**kwargs)
+        _seed_daily_observation(
+            duckdb_path,
+            trade_date="2026-04-28",
+            vendor_version="vv_choice_stock_20260428_0123456789ab",
+        )
+        return result
+
+    monkeypatch.setattr(
+        choice_stock_materialize_module,
+        "_preflight_choice_stock_gap_repair_window",
+        inject_native_after_preflight,
+    )
+
+    with pytest.raises(
+        choice_stock_materialize_module.ChoiceStockGapRepairConflictError,
+        match="refused to overwrite existing non-Tushare daily rows",
+    ):
+        materialize_choice_stock_inputs(
+            as_of_date="2026-04-28",
+            history_start_date="2026-04-28",
+            duckdb_path=str(duckdb_path),
+            catalog_path=str(catalog_path),
+            client=PermissionDeniedCsdChoiceStockClient(),
+            tushare_client=FakeTushareStockClient(),
+            allow_cross_era_backfill=True,
+        )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            "select trade_date, vendor_version from choice_stock_daily_observation"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [("2026-04-28", "vv_choice_stock_20260428_0123456789ab")]
+
+
+def test_tushare_gap_repair_rejects_out_of_window_trade_calendar_date(tmp_path: Path) -> None:
+    class OutOfWindowCalendarClient(FakeTushareStockClient):
+        def trade_cal(self, **kwargs: object) -> pd.DataFrame:
+            self.calls.append(("trade_cal", kwargs))
+            return pd.DataFrame([{"cal_date": "20260427", "is_open": 1}])
+
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    with pytest.raises(RuntimeError, match="trade_cal returned a date outside"):
+        materialize_choice_stock_inputs(
+            as_of_date="2026-04-28",
+            history_start_date="2026-04-28",
+            duckdb_path=str(duckdb_path),
+            catalog_path=str(catalog_path),
+            client=PermissionDeniedCsdChoiceStockClient(),
+            tushare_client=OutOfWindowCalendarClient(),
+            allow_cross_era_backfill=True,
+        )
+
+
+def test_tushare_gap_repair_rejects_mismatched_daily_response_date(tmp_path: Path) -> None:
+    class MismatchedDailyClient(FakeTushareStockClient):
+        def daily(self, **kwargs: object) -> pd.DataFrame:
+            frame = super().daily(**kwargs)
+            frame["trade_date"] = "20260427"
+            return frame
+
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    with pytest.raises(RuntimeError, match="daily returned trade_date=20260427"):
+        materialize_choice_stock_inputs(
+            as_of_date="2026-04-28",
+            history_start_date="2026-04-28",
+            duckdb_path=str(duckdb_path),
+            catalog_path=str(catalog_path),
+            client=PermissionDeniedCsdChoiceStockClient(),
+            tushare_client=MismatchedDailyClient(),
+            allow_cross_era_backfill=True,
+        )
+
+
+def test_tushare_gap_repair_partial_rerun_preserves_existing_tushare_rows(tmp_path: Path) -> None:
+    class PartialDailyClient(FakeTushareStockClient):
+        def daily(self, **kwargs: object) -> pd.DataFrame:
+            frame = super().daily(**kwargs)
+            return frame.loc[frame["ts_code"] == "600000.SH"].reset_index(drop=True)
+
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    existing_vendor = "vv_choice_tushare_stock_20260428_0123456789ab"
+    _seed_daily_observation(
+        duckdb_path,
+        trade_date="2026-04-28",
+        vendor_version=existing_vendor,
+    )
+
+    with pytest.raises(
+        choice_stock_materialize_module.ChoiceStockGapRepairConflictError,
+        match="partial replacement",
+    ):
+        materialize_choice_stock_inputs(
+            as_of_date="2026-04-28",
+            history_start_date="2026-04-28",
+            duckdb_path=str(duckdb_path),
+            catalog_path=str(catalog_path),
+            client=PermissionDeniedCsdChoiceStockClient(),
+            tushare_client=PartialDailyClient(),
+            allow_cross_era_backfill=True,
+        )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            "select stock_code, trade_date, vendor_version from choice_stock_daily_observation"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [("000001.SZ", "2026-04-28", existing_vendor)]
+
+
+def test_factor_snapshot_rejects_mismatched_daily_basic_trade_date(tmp_path: Path) -> None:
+    class MismatchedFactorDateClient(FakeTushareStockClient):
+        def daily_basic(self, **kwargs: object) -> pd.DataFrame:
+            frame = super().daily_basic(**kwargs)
+            frame["trade_date"] = "20260427"
+            return frame
+
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=FakeChoiceStockClient(),
+    )
+
+    with pytest.raises(RuntimeError, match="daily_basic.factor_snapshot returned trade_date=20260427"):
+        materialize_choice_stock_factor_snapshot(
+            as_of_date="2026-04-28",
+            duckdb_path=str(duckdb_path),
+            tushare_client=MismatchedFactorDateClient(),
+            use_choice_financial_fallback=False,
+        )
 
 
 def test_choice_stock_factor_snapshot_materializes_into_stock_database(tmp_path: Path) -> None:
@@ -1255,7 +1740,8 @@ def test_choice_stock_factor_snapshot_materializes_into_stock_database(tmp_path:
         rows = conn.execute(
             """
             select stock_code, industry, pe, pb, ps, roe, gross_margin,
-                   three_month_return, twelve_month_return, volatility, dividend_yield
+                   three_month_return, twelve_month_return, volatility, dividend_yield,
+                   total_mv, circ_mv, as_of_date
             from choice_stock_factor_snapshot
             order by stock_code
             """
@@ -1268,11 +1754,13 @@ def test_choice_stock_factor_snapshot_materializes_into_stock_database(tmp_path:
     assert rows[0][8] == pytest.approx(1.0)
     assert rows[0][9] > 0
     assert rows[0][10] == 0.035
+    assert rows[0][11:14] == (10_000_000.0, 8_000_000.0, "2026-04-28")
     assert rows[1][:7] == ("600000.SH", "Bank", 12.0, 1.1, 1.8, 0.12, 0.35)
     assert rows[1][7] == pytest.approx(0.5)
     assert rows[1][8] == pytest.approx(1.0)
     assert rows[1][9] > 0
     assert rows[1][10] == 0.025
+    assert rows[1][11:14] == (20_000_000.0, 16_000_000.0, "2026-04-28")
 
 
 def test_choice_stock_factor_snapshot_keeps_rows_when_dividend_yield_missing(tmp_path: Path) -> None:
@@ -1280,6 +1768,8 @@ def test_choice_stock_factor_snapshot_keeps_rows_when_dividend_yield_missing(tmp
         def daily_basic(self, **kwargs: object) -> pd.DataFrame:
             frame = super().daily_basic(**kwargs)
             frame.loc[frame["ts_code"] == "000001.SZ", "dv_ttm"] = float("nan")
+            frame.loc[frame["ts_code"] == "000001.SZ", "total_mv"] = float("nan")
+            frame.loc[frame["ts_code"] == "000001.SZ", "circ_mv"] = float("nan")
             return frame
 
     catalog_path = tmp_path / "choice_stock_catalog.json"
@@ -1308,15 +1798,20 @@ def test_choice_stock_factor_snapshot_keeps_rows_when_dividend_yield_missing(tmp
     conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
         rows = conn.execute(
-            "select stock_code, dividend_yield from choice_stock_factor_snapshot order by stock_code"
+            "select stock_code, dividend_yield, total_mv, circ_mv "
+            "from choice_stock_factor_snapshot order by stock_code"
         ).fetchall()
     finally:
         conn.close()
 
     assert rows[0][0] == "000001.SZ"
     assert rows[0][1] is None or (isinstance(rows[0][1], float) and math.isnan(rows[0][1]))
+    assert rows[0][2] is None
+    assert rows[0][3] is None
     assert rows[1][0] == "600000.SH"
     assert rows[1][1] is not None
+    assert rows[1][2] == 20_000_000.0
+    assert rows[1][3] == 16_000_000.0
 
 
 class SparseFinaFakeTushare(FakeTushareStockClient):
@@ -1864,6 +2359,199 @@ def test_choice_stock_materialization_coverage_requires_all_request_items(tmp_pa
     assert "limit_up_quality:point_in_time_limit_streaks" in coverage.missing_request_items
 
 
+@pytest.mark.parametrize(
+    "audit_status",
+    ["completed", "completed_tushare_fallback", "completed_tushare_gap_repair"],
+)
+def test_choice_stock_materialization_coverage_treats_terminal_completed_audit_statuses_as_complete(
+    tmp_path: Path,
+    audit_status: str,
+) -> None:
+    duckdb_path = tmp_path / f"{audit_status}.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        ensure_choice_stock_schema(conn)
+        audit_rows = [
+            (
+                "stock_universe",
+                "a_share_universe_sector_001004",
+                "sector",
+                "001004",
+                '["001004","2026-04-28"]',
+                "{}",
+            ),
+            (
+                "sector_membership",
+                "sw2021_industry_membership",
+                "css",
+                "SW2021,SW2021CODE",
+                '["000001.SZ","SW2021,SW2021CODE"]',
+                '{"EndDate":"2026-04-28","ClassiFication":1}',
+            ),
+            ("sector_strength", "daily_return_turnover_amplitude", "csd", "PCTCHANGE,TURN,AMPLITUDE", "[]", "{}"),
+            ("stock_ohlcv", "daily_ohlcv_amount", "csd", "OPEN,HIGH,LOW,CLOSE,VOLUME,AMOUNT", "[]", "{}"),
+            ("stock_status", "daily_trade_status", "csd", "TRADESTATUS", "[]", "{}"),
+            ("limit_up_quality", "daily_limit_flags", "csd", "HIGHLIMIT,LOWLIMIT", "[]", "{}"),
+            (
+                "limit_up_quality",
+                "point_in_time_limit_streaks",
+                "css",
+                "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS",
+                '["000001.SZ","ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS"]',
+                '{"TradeDate":"2026-04-28"}',
+            ),
+        ]
+        conn.executemany(
+            """
+            insert into choice_stock_request_audit values (
+              'run-1', '2026-04-28', ?, ?,
+              ?, ?, ?, ?, ?, 1, 0, '',
+              'sv', 'vv', 'rv'
+            )
+            """,
+            [(*row, audit_status) for row in audit_rows],
+        )
+        conn.execute(
+            """
+            insert into choice_stock_universe values
+            ('2026-04-28', '000001.SZ', 'Alpha', 'a_share_universe_sector_001004', 'sv', 'vv', 'rv', 'run-1')
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_sector_membership values
+            ('2026-04-28', '000001.SZ', '电子', '801080', 'sw2021_industry_membership', 'sv', 'vv', 'rv', 'run-1')
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_limit_quality values
+            ('2026-04-28', '000001.SZ', 1, 0, 2, 0, 'point_in_time_limit_streaks', 'sv', 'vv', 'rv', 'run-1')
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation values
+            ('2026-04-28', '000001.SZ', 10.0, 11.0, 9.0, 10.5, 1000.0, 10000.0, 5.0, 1.2, 20.0, 'Trading', 11.0, 9.0,
+             '["daily_return_turnover_amplitude","daily_ohlcv_amount","daily_trade_status","daily_limit_flags"]',
+             'sv', 'vv', 'rv', 'run-1')
+            """
+        )
+    finally:
+        conn.close()
+
+    coverage = load_choice_stock_materialization_coverage(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-04-28",
+    )
+
+    expected_pit_gaps = {
+        "stock_universe:a_share_universe_sector_001004",
+        "sector_membership:sw2021_industry_membership",
+        "limit_up_quality:point_in_time_limit_streaks",
+    }
+    if audit_status == "completed":
+        assert coverage.full_coverage is True
+        assert coverage.status == "ready"
+        assert coverage.missing_request_items == []
+    else:
+        assert coverage.full_coverage is False
+        assert coverage.status == "partial"
+        assert set(coverage.missing_request_items) == expected_pit_gaps
+
+
+@pytest.mark.parametrize(
+    ("pit_status", "pit_call", "pit_vendor", "source_version", "expected_missing_count"),
+    [
+        ("future_completed", "css", "SW2021,SW2021CODE", "sv", 7),
+        ("completed", "unknown", "unknown", "sv", 3),
+        ("completed", "css", "SW2021,SW2021CODE", "", 3),
+    ],
+)
+def test_choice_stock_materialization_coverage_rejects_unknown_pit_audit_provenance(
+    tmp_path: Path,
+    pit_status: str,
+    pit_call: str,
+    pit_vendor: str,
+    source_version: str,
+    expected_missing_count: int,
+) -> None:
+    duckdb_path = tmp_path / "unknown-pit-provenance.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        ensure_choice_stock_schema(conn)
+        conn.executemany(
+            """
+            insert into choice_stock_request_audit values (
+              'run-1', '2026-04-28', ?, ?, ?, ?, ?, ?, ?, 1, 0, '', ?, 'vv', 'rv'
+            )
+            """,
+            [
+                (
+                    "stock_universe",
+                    "a_share_universe_sector_001004",
+                    "sector" if pit_call != "unknown" else pit_call,
+                    "001004" if pit_vendor != "unknown" else pit_vendor,
+                    '["001004","2026-04-28"]',
+                    "{}",
+                    pit_status,
+                    source_version,
+                ),
+                (
+                    "sector_membership",
+                    "sw2021_industry_membership",
+                    pit_call,
+                    pit_vendor,
+                    '["000001.SZ","SW2021,SW2021CODE"]',
+                    '{"EndDate":"2026-04-28","ClassiFication":1}',
+                    pit_status,
+                    source_version,
+                ),
+                ("sector_strength", "daily_return_turnover_amplitude", "csd", "PCTCHANGE,TURN,AMPLITUDE", "[]", "{}", pit_status, source_version),
+                ("stock_ohlcv", "daily_ohlcv_amount", "csd", "OPEN,HIGH,LOW,CLOSE,VOLUME,AMOUNT", "[]", "{}", pit_status, source_version),
+                ("stock_status", "daily_trade_status", "csd", "TRADESTATUS", "[]", "{}", pit_status, source_version),
+                ("limit_up_quality", "daily_limit_flags", "csd", "HIGHLIMIT,LOWLIMIT", "[]", "{}", pit_status, source_version),
+                (
+                    "limit_up_quality",
+                    "point_in_time_limit_streaks",
+                    "css" if pit_call != "unknown" else pit_call,
+                    "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS" if pit_vendor != "unknown" else pit_vendor,
+                    '["000001.SZ","ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS"]',
+                    '{"TradeDate":"2026-04-28"}',
+                    pit_status,
+                    source_version,
+                ),
+            ],
+        )
+        conn.execute(
+            "insert into choice_stock_universe values ('2026-04-28','000001.SZ','Alpha','a_share_universe_sector_001004','sv','vv','rv','run-1')"
+        )
+        conn.execute(
+            "insert into choice_stock_sector_membership values ('2026-04-28','000001.SZ','Bank','801780','sw2021_industry_membership','sv','vv','rv','run-1')"
+        )
+        conn.execute(
+            "insert into choice_stock_limit_quality values ('2026-04-28','000001.SZ','0','0',0,0,'point_in_time_limit_streaks','sv','vv','rv','run-1')"
+        )
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation values (
+              '2026-04-28','000001.SZ',10,11,9,10.5,1000,10000,5,1.2,20,'Trading',11,9,
+              '["daily_return_turnover_amplitude","daily_ohlcv_amount","daily_trade_status","daily_limit_flags"]',
+              'sv','vv','rv','run-1'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    coverage = load_choice_stock_materialization_coverage(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-04-28",
+    )
+    assert coverage.full_coverage is False
+    assert len(coverage.missing_request_items) == expected_missing_count
+
+
 def test_choice_stock_materialization_coverage_requires_landed_daily_request_items(tmp_path: Path) -> None:
     catalog_path = tmp_path / "choice_stock_catalog.json"
     duckdb_path = tmp_path / "moss.duckdb"
@@ -1894,6 +2582,69 @@ def test_choice_stock_materialization_coverage_requires_landed_daily_request_ite
     assert "sector_strength:daily_return_turnover_amplitude" in coverage.missing_request_items
     assert "stock_status:daily_trade_status" in coverage.missing_request_items
     assert "limit_up_quality:daily_limit_flags" in coverage.missing_request_items
+
+
+def test_choice_stock_materialization_coverage_keeps_failed_audit_status_fail_closed(tmp_path: Path) -> None:
+    duckdb_path = tmp_path / "failed.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        ensure_choice_stock_schema(conn)
+        conn.executemany(
+            """
+            insert into choice_stock_request_audit values (
+              'run-1', '2026-04-28', ?, ?,
+              'test', 'unit', '[]', '{}', 'failed', 1, 1001, 'boom',
+              'sv', 'vv', 'rv'
+            )
+            """,
+            [
+                ("stock_universe", "a_share_universe_sector_001004"),
+                ("sector_membership", "sw2021_industry_membership"),
+                ("sector_strength", "daily_return_turnover_amplitude"),
+                ("stock_ohlcv", "daily_ohlcv_amount"),
+                ("stock_status", "daily_trade_status"),
+                ("limit_up_quality", "daily_limit_flags"),
+                ("limit_up_quality", "point_in_time_limit_streaks"),
+            ],
+        )
+        conn.execute(
+            """
+            insert into choice_stock_universe values
+            ('2026-04-28', '000001.SZ', 'Alpha', 'a_share_universe_sector_001004', 'sv', 'vv', 'rv', 'run-1')
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_sector_membership values
+            ('2026-04-28', '000001.SZ', '电子', '801080', 'sw2021_industry_membership', 'sv', 'vv', 'rv', 'run-1')
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_limit_quality values
+            ('2026-04-28', '000001.SZ', 1, 0, 2, 0, 'point_in_time_limit_streaks', 'sv', 'vv', 'rv', 'run-1')
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation values
+            ('2026-04-28', '000001.SZ', 10.0, 11.0, 9.0, 10.5, 1000.0, 10000.0, 5.0, 1.2, 20.0, 'Trading', 11.0, 9.0,
+             '["daily_return_turnover_amplitude","daily_ohlcv_amount","daily_trade_status","daily_limit_flags"]',
+             'sv', 'vv', 'rv', 'run-1')
+            """
+        )
+    finally:
+        conn.close()
+
+    coverage = load_choice_stock_materialization_coverage(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-04-28",
+    )
+
+    assert coverage.full_coverage is False
+    assert coverage.status == "partial"
+    assert "stock_universe:a_share_universe_sector_001004" in coverage.missing_request_items
+    assert "limit_up_quality:point_in_time_limit_streaks" in coverage.missing_request_items
 
 
 def test_choice_stock_materialization_persists_failed_request_audit(tmp_path: Path) -> None:

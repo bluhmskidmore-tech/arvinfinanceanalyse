@@ -147,6 +147,33 @@ class TestBuildKrdDistribution:
         assert total == Decimal("4500")
 
 
+class TestBuildKrdDistributionOrdering:
+    """按期限年数升序排列桶（2026-08 审计：字符串序把 10Y 排到 6M 前面，
+    前端 KRDCurveRiskView 直接用返回顺序当 x 轴类目，未重排）。
+    """
+
+    def test_buckets_sorted_by_tenor_years_ascending_not_lexicographically(self):
+        rows = [
+            {**BOND_5Y, "tenor_bucket": tenor, "instrument_code": f"B_{tenor}"}
+            for tenor in ["10Y", "1Y", "20Y", "2Y", "30Y", "3Y", "5Y", "6M", "7Y"]
+        ]
+
+        tenors = [row["tenor_bucket"] for row in build_krd_distribution(rows)]
+
+        assert tenors == ["6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"]
+
+    def test_unknown_tenor_label_does_not_raise_and_sorts_after_known_buckets(self):
+        rows = [
+            {**BOND_5Y, "tenor_bucket": "5Y", "instrument_code": "B_5Y_2"},
+            {**BOND_5Y, "tenor_bucket": "ZZ_UNKNOWN", "instrument_code": "B_UNKNOWN"},
+            {**BOND_5Y, "tenor_bucket": "6M", "instrument_code": "B_6M_2"},
+        ]
+
+        tenors = [row["tenor_bucket"] for row in build_krd_distribution(rows)]
+
+        assert tenors == ["6M", "5Y", "ZZ_UNKNOWN"]
+
+
 class TestBuildAssetClassRiskSummary:
     def test_duration_denominator_excludes_unusable_rows(self):
         by_class = {row["asset_class"]: row for row in build_asset_class_risk_summary(PORTFOLIO)}

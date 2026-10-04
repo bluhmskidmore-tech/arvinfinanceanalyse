@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
+from types import SimpleNamespace
 
 import pytest
 
@@ -206,6 +208,21 @@ def test_pretrade_checklist_intent_summarizes_service_payload(tmp_path, monkeypa
         "backend.app.services.pretrade_checklist_service",
         "backend/app/services/pretrade_checklist_service.py",
     )
+    publication_repo = load_module(
+        "backend.app.repositories.system_read_publication_repo",
+        "backend/app/repositories/system_read_publication_repo.py",
+    )
+    selected_generation = "system-read-2026-08-07-0123456789abcdef0123"
+    monkeypatch.setattr(
+        publication_repo,
+        "system_read_scope",
+        lambda _settings, generation: nullcontext(),
+    )
+    monkeypatch.setattr(
+        publication_repo,
+        "current_system_read_context",
+        lambda: SimpleNamespace(generation=selected_generation),
+    )
 
     calls: list[tuple[str, str | None]] = []
 
@@ -233,6 +250,12 @@ def test_pretrade_checklist_intent_summarizes_service_payload(tmp_path, monkeypa
         request_module.AgentQueryRequest(
             question="今天盘前该做什么",
             filters={"as_of_date": "2026-08-07"},
+            page_context={
+                "page_id": "GAP-STOCK-ANALYSIS-PAGE",
+                "current_filters": {
+                    "system_read_generation": selected_generation,
+                },
+            },
         )
     )
 
@@ -264,6 +287,10 @@ def test_pretrade_checklist_intent_summarizes_service_payload(tmp_path, monkeypa
     assert envelope.evidence.filters_applied["checklist_status"] == "stale"
     assert envelope.evidence.filters_applied["report_date"] == "2026-08-07"
     assert envelope.evidence.filters_applied["report_date_resolution"] == "explicit"
+    assert (
+        envelope.evidence.filters_applied["system_read_generation"]
+        == selected_generation
+    )
     card_titles = [card.title for card in envelope.cards]
     assert "Stale Signal Warning" in card_titles
     assert "Gate Exposure Degraded" in card_titles
@@ -301,11 +328,67 @@ def test_pretrade_checklist_unavailable_degrades_with_friendly_answer(tmp_path, 
     assert envelope.result_meta.result_kind == "agent.pretrade_checklist"
     assert envelope.result_meta.quality_flag == "warning"
     assert envelope.result_meta.formal_use_allowed is False
-    assert "盘前操作清单数据未生成" in envelope.answer
+    assert "system_read_generation_missing" in envelope.answer
     assert envelope.evidence.evidence_rows == 0
     assert any(card.title == "Pretrade Checklist Unavailable" for card in envelope.cards)
     # 不得因数据缺失落入 error envelope（降级是业务空态，不是查询失败）。
     assert "查询失败" not in envelope.answer
+
+
+def test_pretrade_checklist_selected_generation_preserves_qualification_unavailable(
+    tmp_path, monkeypatch
+):
+    service_module, _tool_module, request_module = _load_agent_modules()
+    pretrade_module = load_module(
+        "backend.app.services.pretrade_checklist_service",
+        "backend/app/services/pretrade_checklist_service.py",
+    )
+    publication_repo = load_module(
+        "backend.app.repositories.system_read_publication_repo",
+        "backend/app/repositories/system_read_publication_repo.py",
+    )
+    selected_generation = "system-read-2026-08-07-0123456789abcdef0123"
+    monkeypatch.setattr(
+        publication_repo,
+        "system_read_scope",
+        lambda _settings, generation: nullcontext(),
+    )
+    monkeypatch.setattr(
+        publication_repo,
+        "current_system_read_context",
+        lambda: SimpleNamespace(generation=selected_generation),
+    )
+    monkeypatch.setattr(
+        pretrade_module,
+        "pretrade_checklist_envelope",
+        lambda **_: {
+            "result_meta": {"basis": "analytical", "formal_use_allowed": False},
+            "result": {
+                "as_of_date": "2026-08-07",
+                "signal_kind": "factor_screen",
+                "checklist_status": "unavailable",
+                "items": [],
+                "qualification": {
+                    "status": "unavailable",
+                    "reason": "pretrade_strategy_projection_mismatch",
+                },
+            },
+        },
+    )
+    request = request_module.AgentQueryRequest(
+        question="今天盘前该做什么",
+        page_context={
+            "page_id": "GAP-STOCK-ANALYSIS-PAGE",
+            "current_filters": {"system_read_generation": selected_generation},
+        },
+    )
+
+    payload = service_module._pretrade_checklist_payload(request, "test.duckdb")
+
+    assert "pretrade_strategy_projection_mismatch" in payload["answer"]
+    assert payload["row_count"] == 0
+    assert payload["next_drill"] == []
+    assert len(payload["cards"]) == 1
 
 
 def _walk_forward_report_stub() -> dict[str, object]:

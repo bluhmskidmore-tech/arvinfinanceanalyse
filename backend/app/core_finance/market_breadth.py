@@ -5,9 +5,10 @@ observations with a non-null ``pctchange``):
 
 - ``advancing_count``  = #{pctchange > 0}
 - ``declining_count``  = #{pctchange < 0}
-- ``limit_up_sealed_count`` = #{vendor limit-up flag says the board sealed}
-- ``limit_up_broken_count`` = #{intraday high reached the derived limit-up
-  price but the vendor flag does not say sealed}
+- ``limit_up_sealed_count`` = #{boards sealed on the verified numeric price
+  basis, or on the existing Choice vendor-flag basis}
+- ``limit_up_broken_count`` = #{boards touched intraday without sealing on
+  their respective numeric or Choice/derived-price basis}
 
 Gate condition inputs derived here:
 
@@ -34,6 +35,9 @@ Limit-up classification basis (mainstream A-share convention):
 - A row whose own ``pctchange`` sits outside its board band is not governed by
   that band (new listing with no first-day cap, board transfer, vendor error),
   so it is reported separately instead of being counted as a broken board.
+- Verified Tushare numeric observations use the independently landed, same-day
+  ``stk_limit`` price and actual high/close. They never fall back to Choice
+  flags or a derived board ratio when that numeric basis is unavailable.
 
 Price comparison tolerance when classifying sealed/broken from OHLC vs the
 exchange limit price: half of the minimum tick (0.01 / 2 = 0.005).
@@ -41,6 +45,7 @@ exchange limit price: half of the minimum tick (0.01 / 2 = 0.005).
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
@@ -103,6 +108,10 @@ class LimitUpObservation:
     stock_name: str | None = None
     is_st: bool | None = None
     listing_date: str | None = None
+    numeric_up_limit: float | None = None
+    requires_numeric_limit: bool = False
+    numeric_limit_source: str | None = None
+    numeric_limit_unavailable_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -119,7 +128,7 @@ class LimitUpDaySummary:
 
     @property
     def evaluable(self) -> bool:
-        """False when the vendor flag basis is absent for the whole day."""
+        """False when no observation has a usable classification basis."""
         return (self.sealed_count + self.broken_count + self.no_touch_count) > 0
 
 
@@ -187,9 +196,11 @@ def derive_limit_up_price(previous_close: float, ratio: float) -> float:
 def classify_limit_touch(observation: LimitUpObservation) -> str:
     """Classify one stock-day against its limit-up board.
 
-    The vendor flag decides sealed boards; everything else is decided by the
-    derived limit price.
+    Verified numeric observations use the actual exchange price; the existing
+    Choice branch uses its vendor flag and derived limit price.
     """
+    if observation.requires_numeric_limit:
+        return _classify_numeric_limit_touch(observation)
     flag_state = _flag_state(observation.limit_flag)
     if flag_state == _FLAG_UNSUPPORTED:
         return LIMIT_TOUCH_UNCLASSIFIED
@@ -205,18 +216,53 @@ def classify_limit_touch(observation: LimitUpObservation) -> str:
     return LIMIT_TOUCH_UNCLASSIFIED
 
 
+def _classify_numeric_limit_touch(observation: LimitUpObservation) -> str:
+    """Classify only an explicitly verified, positive finite numeric basis."""
+    if (
+        observation.numeric_limit_source != "tushare_stk_limit"
+        or observation.numeric_limit_unavailable_reason is not None
+    ):
+        return LIMIT_TOUCH_UNCLASSIFIED
+    limit_price = observation.numeric_up_limit
+    high = observation.high_value
+    close = observation.close_value
+    if limit_price is None or high is None or close is None:
+        return LIMIT_TOUCH_UNCLASSIFIED
+    values = (limit_price, high, close)
+    if any(
+        isinstance(value, bool) or not math.isfinite(value) or value <= 0
+        for value in values
+    ):
+        return LIMIT_TOUCH_UNCLASSIFIED
+    if close > high + LIMIT_PRICE_TOLERANCE:
+        return LIMIT_TOUCH_UNCLASSIFIED
+    if high > limit_price + LIMIT_PRICE_TOLERANCE or close > limit_price + LIMIT_PRICE_TOLERANCE:
+        return LIMIT_TOUCH_OUT_OF_BAND
+    if high < limit_price - LIMIT_PRICE_TOLERANCE:
+        return LIMIT_TOUCH_NO_TOUCH
+    if abs(close - limit_price) < LIMIT_PRICE_TOLERANCE:
+        return LIMIT_TOUCH_SEALED
+    return LIMIT_TOUCH_BROKEN
+
+
 def summarize_limit_up_day(observations: Iterable[LimitUpObservation]) -> LimitUpDaySummary:
     """Aggregate one trade date's limit-up classification with coverage evidence."""
     sealed = broken = no_touch = out_of_band = unclassified = 0
     absent_flag = 0
     sealed_without_derived_touch = 0
     for observation in observations:
-        if _flag_state(observation.limit_flag) == _FLAG_ABSENT:
+        if (
+            not observation.requires_numeric_limit
+            and _flag_state(observation.limit_flag) == _FLAG_ABSENT
+        ):
             absent_flag += 1
         outcome = classify_limit_touch(observation)
         if outcome == LIMIT_TOUCH_SEALED:
             sealed += 1
-            if _derived_touch_state(observation) != _DERIVED_TOUCHED:
+            if (
+                not observation.requires_numeric_limit
+                and _derived_touch_state(observation) != _DERIVED_TOUCHED
+            ):
                 sealed_without_derived_touch += 1
         elif outcome == LIMIT_TOUCH_BROKEN:
             broken += 1

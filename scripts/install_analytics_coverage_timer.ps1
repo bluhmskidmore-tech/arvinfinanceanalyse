@@ -3,12 +3,19 @@
 
 param(
     [string]$TaskName = "MOSS-AnalyticsCoverage",
-    [string]$RepoRoot = "F:\MOSS-V3",
-    [string]$PythonExe = "C:\Users\arvin\AppData\Local\Python\pythoncore-3.14-64\python.exe",
+    [string]$RepoRoot = "",
+    [string]$PythonExe = "",
     [string]$Time = "07:15"
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+    $RepoRoot = Split-Path -Parent $PSScriptRoot
+}
+if ([string]::IsNullOrWhiteSpace($PythonExe)) {
+    $PythonExe = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+}
 $logDir = Join-Path $RepoRoot "data\logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logPath = Join-Path $logDir "analytics_coverage.log"

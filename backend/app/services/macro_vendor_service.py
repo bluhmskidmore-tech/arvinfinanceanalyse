@@ -3,12 +3,16 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
+from collections.abc import Collection, Mapping
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Literal, SupportsFloat, SupportsIndex, cast
 
 import duckdb
 from backend.app.core_finance.fx_rates import get_usd_cny_rate
+from backend.app.core_finance.market_derived import calculate_spreads
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import (
     RULE_VERSION as CFFEX_MEMBER_RANK_RULE_VERSION,
@@ -27,11 +31,14 @@ from backend.app.repositories.choice_fx_catalog import (
     classify_fx_series_group,
     discover_formal_fx_candidates,
 )
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
 )
 from backend.app.schemas.macro_vendor import (
+    ChoiceMacroFetchGranularity,
+    ChoiceMacroFetchMode,
     ChoiceMacroLatestPayload,
     ChoiceMacroLatestPoint,
     ChoiceMacroRecentPoint,
@@ -51,13 +58,71 @@ logger = logging.getLogger(__name__)
 
 RULE_VERSION = "rv_phase1_macro_vendor_v1"
 CACHE_VERSION = "cv_phase1_macro_vendor_v1"
-LIVE_RULE_VERSION = "rv_choice_macro_thin_slice_v1"
-LIVE_CACHE_VERSION = "cv_choice_macro_thin_slice_v1"
+LIVE_RULE_VERSION = "rv_choice_macro_latest_derived_spreads_v1"
+LIVE_CACHE_VERSION = "cv_choice_macro_latest_derived_spreads_v1"
 CHOICE_MACRO_REFRESH_TIERS = {"stable", "fallback", "isolated"}
 CHOICE_MACRO_FETCH_MODES = {"date_slice", "latest"}
 CHOICE_MACRO_FETCH_GRANULARITIES = {"batch", "single"}
 CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
 CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
+CHOICE_MACRO_REFRESH_STATUS_DEADLINE_ERROR_CODE = (
+    "choice_macro_refresh_status_deadline_exceeded"
+)
+
+
+class ChoiceMacroRefreshStatusUnavailableError(RuntimeError):
+    """A non-terminal refresh record exceeded its governed status deadline."""
+
+    def __init__(self, *, run_id: str, last_status: str) -> None:
+        super().__init__("Choice macro refresh terminal status is unavailable after its governed deadline.")
+        self.error_code = CHOICE_MACRO_REFRESH_STATUS_DEADLINE_ERROR_CODE
+        self.run_id = run_id
+        self.last_status = last_status
+
+
+def _choice_macro_refresh_now() -> datetime:
+    return datetime.now(UTC)
+
+
+_CHOICE_TERM_SPREAD_SERIES_IDS: dict[str, tuple[str, ...]] = {
+    "treasury_1y": ("EMM00166458", "M003"),
+    "treasury_2y": ("EMM00588704",),
+    "treasury_5y": ("EMM00166462",),
+    "treasury_10y": ("E1000180", "EMM00166466", "CA.CN_GOV_10Y"),
+}
+_CHOICE_TERM_SPREAD_FIELDS: tuple[tuple[str, str], ...] = (
+    ("term_spread_10y_1y", "treasury_1y"),
+    ("term_spread_10y_2y", "treasury_2y"),
+    ("term_spread_10y_5y", "treasury_5y"),
+)
+_CHOICE_YIELD_UNITS = {"%", "pct", "percent", "percentage"}
+_CHOICE_UNUSABLE_QUALITY_FLAGS = {"error", "stale"}
+_MACRO_SERIES_ENGLISH_DISPLAY_NAMES = {
+    "brent spot price": "布伦特原油现货",
+    "csi 500 index close": "中证500收盘",
+    "shibor fixing": "Shibor 定盘",
+}
+_MACRO_SERIES_CONTEXT_PREFIXES = ("中国:", "公开市场操作:")
+_MACRO_SERIES_TRAILING_CODE = re.compile(r":[A-Z]{2,}\d+$")
+
+
+def macro_series_display_name(series_name: str) -> str:
+    """Return a conservative UI label while preserving uncertain source names."""
+    normalized = series_name.strip()
+    mapped = _MACRO_SERIES_ENGLISH_DISPLAY_NAMES.get(normalized.casefold())
+    if mapped is not None:
+        return mapped
+
+    display_name = normalized
+    changed = False
+    for prefix in _MACRO_SERIES_CONTEXT_PREFIXES:
+        if display_name.startswith(prefix):
+            display_name = display_name.removeprefix(prefix)
+            changed = True
+            break
+    without_code = _MACRO_SERIES_TRAILING_CODE.sub("", display_name)
+    changed = changed or without_code != display_name
+    return without_code if changed and without_code else series_name
 
 
 def _warn_duckdb_query_failure(
@@ -92,7 +157,7 @@ def _load_macro_vendor_payload_with_warnings(
         return MacroVendorPayload(series=[]), []
 
     try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_file)), read_only=True)
     except duckdb.Error as exc:
         warning = _warn_duckdb_query_failure(
             surface="macro_vendor_catalog",
@@ -163,6 +228,7 @@ def _load_macro_vendor_payload_with_warnings(
             MacroVendorSeries(
                 series_id=str(series_id),
                 series_name=str(series_name),
+                display_name=macro_series_display_name(str(series_name)),
                 vendor_name=str(vendor_name),
                 vendor_version=str(vendor_version),
                 frequency=str(frequency),
@@ -219,7 +285,7 @@ def _load_macro_vendor_source_version(duckdb_path: str, series_ids: list[str]) -
         return "sv_macro_vendor_empty"
 
     try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_file)), read_only=True)
     except duckdb.Error as exc:
         _warn_duckdb_query_failure(
             surface="macro_vendor_source_version",
@@ -271,6 +337,78 @@ def load_choice_macro_latest_payload(
     return payload
 
 
+def _latest_choice_macro_point(
+    series: list[ChoiceMacroLatestPoint],
+    canonical_field: str,
+    *,
+    aliases_by_field: Mapping[str, tuple[str, ...]] | None = None,
+    allowed_units: Collection[str] | None = _CHOICE_YIELD_UNITS,
+) -> ChoiceMacroLatestPoint | None:
+    """Return the preferred alias on the latest landed date, without stale fallback.
+
+    ``aliases_by_field`` lets other read-only consumers share the same identity
+    rule without copying it.  The yield-unit default preserves the existing
+    term-spread selection boundary; callers that already own a heterogeneous
+    slot registry can pass ``allowed_units=None``.
+    """
+    aliases = (aliases_by_field or _CHOICE_TERM_SPREAD_SERIES_IDS).get(
+        canonical_field,
+        (),
+    )
+    if not aliases:
+        return None
+    normalized_allowed_units = (
+        {str(unit).strip().lower() for unit in allowed_units}
+        if allowed_units is not None
+        else None
+    )
+    candidates = [item for item in series if item.series_id in aliases]
+    dated_candidates = [
+        (normalized_date, item)
+        for item in candidates
+        if (normalized_date := _normalize_iso_date(item.trade_date)) is not None
+    ]
+    if not dated_candidates:
+        return None
+    latest_date = max(normalized_date for normalized_date, _item in dated_candidates)
+    same_date = {
+        item.series_id: item
+        for normalized_date, item in dated_candidates
+        if normalized_date == latest_date
+        and item.quality_flag not in _CHOICE_UNUSABLE_QUALITY_FLAGS
+        and (
+            normalized_allowed_units is None
+            or item.unit.strip().lower() in normalized_allowed_units
+        )
+    }
+    return next((same_date[series_id] for series_id in aliases if series_id in same_date), None)
+
+
+def _derive_choice_term_spreads(
+    series: list[ChoiceMacroLatestPoint],
+) -> dict[str, float | None]:
+    """Calculate analytical term spreads only from same-date, usable yield legs."""
+    treasury_10y = _latest_choice_macro_point(series, "treasury_10y")
+    spreads: dict[str, float | None] = {}
+    for spread_field, short_leg_field in _CHOICE_TERM_SPREAD_FIELDS:
+        short_leg = _latest_choice_macro_point(series, short_leg_field)
+        if (
+            treasury_10y is None
+            or short_leg is None
+            or _normalize_iso_date(treasury_10y.trade_date)
+            != _normalize_iso_date(short_leg.trade_date)
+        ):
+            spreads[spread_field] = None
+            continue
+        spreads[spread_field] = calculate_spreads(
+            {
+                "treasury_10y": treasury_10y.value_numeric,
+                short_leg_field: short_leg.value_numeric,
+            }
+        )[spread_field]
+    return spreads
+
+
 def _load_choice_macro_latest_payload_with_warnings(
     duckdb_path: str,
     category: ChoiceMacroRefreshTier | None = None,
@@ -280,7 +418,7 @@ def _load_choice_macro_latest_payload_with_warnings(
         return ChoiceMacroLatestPayload(series=[]), []
 
     try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_file)), read_only=True)
     except duckdb.Error as exc:
         warning = _warn_duckdb_query_failure(
             surface="choice_macro_latest",
@@ -377,16 +515,20 @@ def _load_choice_macro_latest_payload_with_warnings(
             ChoiceMacroLatestPoint(
                 series_id=series_id,
                 series_name=str(latest["series_name"]),
+                display_name=macro_series_display_name(str(latest["series_name"])),
                 trade_date=str(latest["trade_date"]),
-                value_numeric=float(latest["value_numeric"]),
+                value_numeric=_required_float(latest["value_numeric"]),
                 frequency=str(catalog["frequency"] or latest["frequency"]),
                 unit=str(catalog["unit"] or latest["unit"]),
                 source_version=str(latest["source_version"]),
                 vendor_version=str(latest["vendor_version"]),
                 vendor_name=_as_optional_string(catalog.get("vendor_name")),
-                refresh_tier=refresh_tier,
-                fetch_mode=_as_optional_string(catalog.get("fetch_mode")),
-                fetch_granularity=_as_optional_string(catalog.get("fetch_granularity")),
+                refresh_tier=cast(ChoiceMacroRefreshTier | None, refresh_tier),
+                fetch_mode=cast(ChoiceMacroFetchMode | None, _as_optional_string(catalog.get("fetch_mode"))),
+                fetch_granularity=cast(
+                    ChoiceMacroFetchGranularity | None,
+                    _as_optional_string(catalog.get("fetch_granularity")),
+                ),
                 policy_note=_as_optional_string(catalog.get("policy_note")),
                 quality_flag=_normalize_quality_flag(str(latest["quality_flag"])),
                 latest_change=latest_change,
@@ -394,7 +536,10 @@ def _load_choice_macro_latest_payload_with_warnings(
             )
         )
 
-    return ChoiceMacroLatestPayload(series=series), []
+    return ChoiceMacroLatestPayload(
+        series=series,
+        derived_spreads=_derive_choice_term_spreads(series),
+    ), []
 
 
 def choice_macro_latest_envelope(
@@ -486,7 +631,7 @@ def _load_formal_yield_curve_points(
         return [], None, []
 
     try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_file)), read_only=True)
     except duckdb.Error as exc:
         warning = _warn_duckdb_query_failure(
             surface="formal_yield_curve",
@@ -591,8 +736,9 @@ def _load_formal_yield_curve_points(
             ChoiceMacroLatestPoint(
                 series_id=series_id,
                 series_name=series_name,
+                display_name=macro_series_display_name(series_name),
                 trade_date=str(latest["trade_date"]),
-                value_numeric=float(latest["value_numeric"]),
+                value_numeric=_required_float(latest["value_numeric"]),
                 frequency="daily",
                 unit="%",
                 source_version=str(latest["source_version"]),
@@ -656,8 +802,10 @@ def _merge_formal_yield_curve_payload(
             else formal
         )
 
+    merged_series = sorted(points_by_id.values(), key=lambda point: point.series_id)
     return ChoiceMacroLatestPayload(
-        series=sorted(points_by_id.values(), key=lambda point: point.series_id)
+        series=merged_series,
+        derived_spreads=_derive_choice_term_spreads(merged_series),
     )
 
 
@@ -1063,7 +1211,7 @@ def _load_tushare_supplement_payload(
         return payload, source_versions, vendor_versions, None, warnings, tables_used
 
     try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_file)), read_only=True)
     except duckdb.Error as exc:
         warning = _warn_duckdb_query_failure(
             surface="tushare_supplement",
@@ -1229,7 +1377,7 @@ def _load_tushare_money_supply_table(
         candidates_by_month.setdefault(month, []).append(candidate)
 
     selected: list[dict[str, object]] = []
-    warnings: list[str] = []
+    warnings = []
     for month in sorted(candidates_by_month, reverse=True):
         candidate, warning = _resolve_tushare_candidate(
             candidates_by_month[month],
@@ -1355,8 +1503,8 @@ def _load_tushare_eco_calendar_rows(
     int,
 ]:
     if "std_tushare_eco_cal_event" not in tables:
-        warnings = [] if limit <= 0 else ["Tushare economic calendar table is not materialized."]
-        return [], [], [], None, [], warnings, 0
+        missing_warnings = [] if limit <= 0 else ["Tushare economic calendar table is not materialized."]
+        return [], [], [], None, [], missing_warnings, 0
     columns = _duckdb_table_columns(conn, "std_tushare_eco_cal_event")
     select_columns = [
         _column_or_null("event_id", columns),
@@ -1499,7 +1647,7 @@ def _load_bond_futures_rankings_payload(
         return payload, source_versions, vendor_versions, None, warnings, []
 
     try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_file)), read_only=True)
     except duckdb.Error as exc:
         warning = _warn_duckdb_query_failure(
             surface="cffex_member_rankings",
@@ -1959,6 +2107,12 @@ def _column_or_null(column_name: str, columns: set[str]) -> str:
     return f"NULL as {column_name}"
 
 
+def _required_float(value: object) -> float:
+    if not isinstance(value, (str, bytes, bytearray, SupportsFloat, SupportsIndex)):
+        raise TypeError("macro numeric value is not convertible to float")
+    return float(value)
+
+
 def _float_or_none(value: object) -> float | None:
     if value is None:
         return None
@@ -2105,7 +2259,7 @@ def _load_fx_analytical_payload_with_warnings(
         return FxAnalyticalPayload(groups=[]), []
 
     try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_file)), read_only=True)
     except duckdb.Error as exc:
         warning = _warn_duckdb_query_failure(
             surface="fx_analytical",
@@ -2314,6 +2468,23 @@ def choice_macro_refresh_status(governance_path: str | Path, *, run_id: str = ""
         }
     latest = records[-1]
     status = str(latest.get("status", "unknown"))
+    if status in {"queued", "running"}:
+        deadline_text = str(latest.get("status_deadline_at") or "").strip()
+        if deadline_text:
+            try:
+                deadline = datetime.fromisoformat(deadline_text.replace("Z", "+00:00"))
+                if deadline.tzinfo is None:
+                    deadline = deadline.replace(tzinfo=UTC)
+            except ValueError as exc:
+                raise ChoiceMacroRefreshStatusUnavailableError(
+                    run_id=str(latest.get("run_id") or run_id),
+                    last_status=status,
+                ) from exc
+            if _choice_macro_refresh_now() >= deadline.astimezone(UTC):
+                raise ChoiceMacroRefreshStatusUnavailableError(
+                    run_id=str(latest.get("run_id") or run_id),
+                    last_status=status,
+                )
     return {
         **latest,
         "trigger_mode": "async" if status in {"queued", "running"} else "terminal",
@@ -2331,7 +2502,7 @@ def _load_latest_fx_mid_rows(
     if not duckdb_file.exists():
         return {}, []
     try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_file)), read_only=True)
     except duckdb.Error as exc:
         warning = _warn_duckdb_query_failure(
             surface="fx_formal_mid",
@@ -2640,9 +2811,13 @@ def _aggregate_quality_flags(values: list[str]) -> str:
     return "ok"
 
 
-def _normalize_quality_flag(value: str) -> str:
-    if value in {"ok", "warning", "error", "stale"}:
-        return value
+def _normalize_quality_flag(value: str) -> Literal["ok", "warning", "error", "stale"]:
+    if value == "ok":
+        return "ok"
+    if value == "error":
+        return "error"
+    if value == "stale":
+        return "stale"
     return "warning"
 
 
@@ -2670,16 +2845,33 @@ def _parse_string_list_json(value: object) -> list[str]:
     ]
 
 
-def _sanitize_choice_macro_refresh_tier(value: object) -> str | None:
-    return _sanitize_choice_macro_literal(value, CHOICE_MACRO_REFRESH_TIERS)
+def _sanitize_choice_macro_refresh_tier(value: object) -> ChoiceMacroRefreshTier | None:
+    text = _sanitize_choice_macro_literal(value, CHOICE_MACRO_REFRESH_TIERS)
+    if text == "stable":
+        return "stable"
+    if text == "fallback":
+        return "fallback"
+    if text == "isolated":
+        return "isolated"
+    return None
 
 
-def _sanitize_choice_macro_fetch_mode(value: object) -> str | None:
-    return _sanitize_choice_macro_literal(value, CHOICE_MACRO_FETCH_MODES)
+def _sanitize_choice_macro_fetch_mode(value: object) -> ChoiceMacroFetchMode | None:
+    text = _sanitize_choice_macro_literal(value, CHOICE_MACRO_FETCH_MODES)
+    if text == "date_slice":
+        return "date_slice"
+    if text == "latest":
+        return "latest"
+    return None
 
 
-def _sanitize_choice_macro_fetch_granularity(value: object) -> str | None:
-    return _sanitize_choice_macro_literal(value, CHOICE_MACRO_FETCH_GRANULARITIES)
+def _sanitize_choice_macro_fetch_granularity(value: object) -> ChoiceMacroFetchGranularity | None:
+    text = _sanitize_choice_macro_literal(value, CHOICE_MACRO_FETCH_GRANULARITIES)
+    if text == "batch":
+        return "batch"
+    if text == "single":
+        return "single"
+    return None
 
 
 def _sanitize_choice_macro_literal(value: object, allowed_values: set[str]) -> str | None:

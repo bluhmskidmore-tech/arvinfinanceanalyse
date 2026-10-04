@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Literal
+from typing import Literal, cast
 
 from backend.app.core_finance.field_normalization import is_approved_status
 
@@ -38,6 +38,9 @@ class CanonicalFactRow:
     daily_avg_balance: Decimal
     annual_avg_balance: Decimal
     days_in_period: int
+    # "ledger" = 总账工作簿中真实观测的行；"average_only" = 仅日均工作簿存在、
+    # 总账侧填 0 的合成行（并集口径披露标记，不改变任何金额语义）。
+    source_presence: Literal["ledger", "average_only"] = "ledger"
 
 
 @dataclass(slots=True)
@@ -83,6 +86,35 @@ class ProductCategoryInterestSpreadMetrics:
 
 def derive_monthly_pnl(period_debit: Decimal, period_credit: Decimal) -> Decimal:
     return period_credit - period_debit
+
+
+def derive_monthly_ledger_from_annual(
+    annual_rows: Mapping[tuple[str, str], Mapping[str, object]],
+    prior_month_rows: list[Mapping[tuple[str, str], Mapping[str, object]]],
+) -> dict[tuple[str, str], dict[str, object]]:
+    """Difference validated annual flows without changing source balance fields.
+
+    The source reader validates complete, non-overlapping January-November
+    coverage first. An account absent from the annual source has zero annual
+    flow under the existing full-workbook union convention.
+    """
+    monthly_rows = {key: dict(row) for key, row in annual_rows.items()}
+    for rows in prior_month_rows:
+        for key, row in rows.items():
+            prior_pnl = Decimal(str(row["monthly_pnl"]))
+            if prior_pnl == ZERO:
+                continue
+            current = monthly_rows.setdefault(
+                key,
+                {
+                    "account_name": str(row.get("account_name", "")),
+                    "beginning_balance": ZERO,
+                    "ending_balance": ZERO,
+                    "monthly_pnl": ZERO,
+                },
+            )
+            current["monthly_pnl"] = Decimal(str(current["monthly_pnl"])) - prior_pnl
+    return monthly_rows
 
 
 def calculate_product_category_interest_spread_metrics(
@@ -240,6 +272,15 @@ def calculate_read_model(
         raise ValueError(f"Missing canonical facts for report_date={report_date}")
 
     report_rows = _build_report_rows(facts_by_report_date, report_date, view)
+    account_rows = _index_account_rows(
+        report_rows,
+        (
+            pattern
+            for category in config
+            if not category.get("children")
+            for pattern in cast(Iterable[str | None], category["pnl_accounts"])
+        ),
+    )
     days_for_view = _days_for_view(report_date, view)
     config_by_id = {str(item["id"]): item for item in config}
     child_map = {
@@ -255,8 +296,12 @@ def calculate_read_model(
         category = config_by_id[category_id]
         child_ids = child_map.get(category_id, [])
         scale_field = _scale_field(report_date, view)
-        scale_cnx = _calculate_sum(report_rows, category["scale_accounts"], scale_field, "CNX", exact=True)
-        scale_cny = _calculate_sum(report_rows, category["scale_accounts"], scale_field, "CNY", exact=True)
+        scale_cnx = _calculate_sum(
+            report_rows, cast(Iterable[str | None], category["scale_accounts"]), scale_field, "CNX", exact=True, account_rows=account_rows
+        )
+        scale_cny = _calculate_sum(
+            report_rows, cast(Iterable[str | None], category["scale_accounts"]), scale_field, "CNY", exact=True, account_rows=account_rows
+        )
         scale_foreign = scale_cnx - scale_cny
         ftp_rate_pct = Decimal(str(category["ftp_rate_pct"]))
         ftp_rate = ftp_rate_pct / Decimal("100")
@@ -274,8 +319,12 @@ def calculate_read_model(
             # _build_report_rows 预先按期间内各月 monthly_pnl 累加。历史 qtd 曾走
             # "季末月期末余额取负"路径，与期间收益率公式（cash/days*365/scale，
             # docs/metric_dictionary.md §12.3.2）不自洽，已移除。
-            cnx_cash = _calculate_sum(report_rows, category["pnl_accounts"], "monthly_pnl", "CNX", exact=False)
-            cny_cash = _calculate_sum(report_rows, category["pnl_accounts"], "monthly_pnl", "CNY", exact=False)
+            cnx_cash = _calculate_sum(
+                report_rows, cast(Iterable[str | None], category["pnl_accounts"]), "monthly_pnl", "CNX", exact=False, account_rows=account_rows
+            )
+            cny_cash = _calculate_sum(
+                report_rows, cast(Iterable[str | None], category["pnl_accounts"]), "monthly_pnl", "CNY", exact=False, account_rows=account_rows
+            )
             foreign_cash = cnx_cash - cny_cash
             cny_ftp = _calculate_ftp(scale_cny, ftp_rate, days_for_view)
             foreign_ftp = _calculate_ftp(scale_foreign, ftp_rate, days_for_view)
@@ -674,13 +723,43 @@ def _days_for_view(report_date: date, view: str) -> int:
     return (month_end - year_start).days + 1
 
 
+def _index_account_rows(
+    rows: list[CanonicalFactRow],
+    prefix_patterns: Iterable[str | None],
+) -> dict[tuple[str, str, bool], list[CanonicalFactRow]]:
+    """Prepare matches once, retaining source order within every account pattern.
+
+    Index rows, not subtotals: regrouping Decimal additions by account could change
+    rounding when a prefix covers interleaved accounts. Pattern signs, duplicates
+    and overlaps remain the responsibility of the ordered sum below.
+    """
+    prefixes = {target for pattern in prefix_patterns if (target := _normalize_pattern(pattern)[1])}
+    prefix_lengths = sorted({len(prefix) for prefix in prefixes})
+    account_rows: dict[tuple[str, str, bool], list[CanonicalFactRow]] = {}
+    for row in rows:
+        if row.account_code is None:
+            continue
+        code = str(row.account_code).strip()
+        if not code:
+            continue
+        account_rows.setdefault((row.currency, code, True), []).append(row)
+        for length in prefix_lengths:
+            if length > len(code):
+                break
+            prefix = code[:length]
+            if prefix in prefixes:
+                account_rows.setdefault((row.currency, prefix, False), []).append(row)
+    return account_rows
+
+
 def _calculate_sum(
     rows: list[CanonicalFactRow],
-    patterns: list[str],
+    patterns: Iterable[str | None],
     field_name: str,
     currency: str,
     *,
     exact: bool,
+    account_rows: Mapping[tuple[str, str, bool], list[CanonicalFactRow]] | None = None,
 ) -> Decimal:
     total = ZERO
     for pattern in patterns:
@@ -689,12 +768,17 @@ def _calculate_sum(
             continue
         sign = Decimal(sign_value)
         subtotal = ZERO
-        for row in rows:
-            if row.currency != currency:
-                continue
-            matched = _matches_account(row.account_code, target, exact=exact)
-            if matched:
-                subtotal += Decimal(str(getattr(row, field_name)))
+        matching_rows = (
+            (
+                row
+                for row in rows
+                if row.currency == currency and _matches_account(row.account_code, target, exact=exact)
+            )
+            if account_rows is None
+            else account_rows.get((currency, target, exact), ())
+        )
+        for row in matching_rows:
+            subtotal += Decimal(str(getattr(row, field_name)))
         total += sign * subtotal
     return total
 

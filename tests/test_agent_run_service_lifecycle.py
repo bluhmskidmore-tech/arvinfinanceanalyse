@@ -9,6 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.app.agent.runtime.local_request_resolution import (
+    pin_semantic_execution_request,
+)
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
     AgentEnvelope,
@@ -51,6 +54,51 @@ def _request(
         question=question,
         context=context,
     )
+
+
+def _semantic_snapshot(**updates: object) -> dict[str, object]:
+    snapshot: dict[str, object] = {
+        "schema_version": 1,
+        "operation": "value",
+        "metric_id": "MTR-PNL-005",
+        "intent": "pnl_summary",
+        "report_date": "2026-07-31",
+        "reason": "metric_name",
+        "required_resources": ["pnl"],
+        "ontology_revision": "ontology-test",
+        "binding_revision": "binding-test",
+        "parser_revision": "parser-test",
+    }
+    snapshot.update(updates)
+    return snapshot
+
+
+def _request_with_semantic_snapshot(
+    question: str,
+    *,
+    snapshot: dict[str, object] | None = None,
+) -> AgentQueryRequest:
+    request = _request(question)
+    return request.model_copy(
+        update={
+            "context": {
+                **request.context,
+                agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY: (
+                    snapshot or _semantic_snapshot()
+                ),
+            }
+        }
+    )
+
+
+def _real_semantic_request() -> AgentQueryRequest:
+    pinned, _resolution = pin_semantic_execution_request(
+        _request("查询 2026-07-31 正式总损益").model_copy(
+            update={"currency_basis": "CNY"}
+        )
+    )
+    assert agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY in pinned.context
+    return pinned
 
 
 def _envelope(answer: str = "done") -> AgentEnvelope:
@@ -136,6 +184,249 @@ def _clear_agent_run_cache() -> None:
     agent_run_service._AGENT_RUN_LATEST_RECORDS.clear()
 
 
+@pytest.mark.parametrize("history_size", [100, 1000])
+def test_run_and_delta_poll_copy_only_requested_history(monkeypatch, tmp_path, history_size):
+    from time import perf_counter
+    from backend.app.repositories import governance_repo
+
+    settings = _settings(tmp_path)
+    repo = GovernanceRepository(settings.governance_path)
+    request = _request("history read")
+    record = AgentRunRecord(
+        run_id="target", status="completed", question=request.question,
+        request=request.model_dump(mode="json"), provider="hermes", model="gpt-test",
+        transport="bridge", toolsets="evidence", queued_at="2026-07-25T10:00:00+00:00",
+    ).model_dump(mode="json", exclude_none=True)
+    record["result"] = _envelope().model_dump(mode="json")
+    entries = []
+    for index in range(history_size):
+        entries.extend([
+            (agent_run_service.AGENT_RUN_STREAM, {
+                **record, "run_id": f"noise-{index}",
+                "result": {**record["result"], "answer": "historic result " * 200},
+            }),
+            (agent_run_service.AGENT_RUN_DELTA_STREAM, {
+                "run_id": f"noise-{index}", "owner_user_id": "owner-1", "seq": 1,
+                "channel": "answer", "text": "historic delta " * 200,
+                "created_at": record["queued_at"],
+            }),
+        ])
+    entries.extend([
+        (agent_run_service.AGENT_RUN_STREAM, {**record, "status": "running"}),
+        (agent_run_service.AGENT_RUN_STREAM, record),
+        *[(agent_run_service.AGENT_RUN_DELTA_STREAM, {
+            "run_id": "target", "owner_user_id": owner, "seq": seq,
+            "channel": "answer", "text": "selected", "created_at": record["queued_at"],
+        }) for owner, seq in [("owner-1", 1), ("owner-1", 2), ("other-owner", 3)]],
+    ])
+    repo.append_many_atomic(entries)
+    # Warm the parsing cache; the assertion measures repeated SSE/poll reads.
+    agent_run_service._latest_run_record(run_id="target", settings=settings)
+    agent_run_service._load_run_delta_records(settings, run_id="target", expected_owner_user_id="owner-1")
+    copied = []
+    validated = []
+    original_copy = governance_repo.deepcopy
+    original_validate = agent_run_service.AgentRunDeltaRecord.model_validate
+
+    def counting_copy(row):
+        copied.append(row["run_id"])
+        return original_copy(row)
+
+    def counting_validate(row):
+        validated.append(row["run_id"])
+        return original_validate(row)
+
+    monkeypatch.setattr(governance_repo, "deepcopy", counting_copy)
+    monkeypatch.setattr(agent_run_service.AgentRunDeltaRecord, "model_validate", staticmethod(counting_validate))
+    start = perf_counter()
+    latest = agent_run_service._latest_run_record(run_id="target", settings=settings)
+    run_copies = len(copied)
+    copied.clear()
+    deltas = agent_run_service._load_run_delta_records(
+        settings, run_id="target", after_seq=1, expected_owner_user_id="owner-1",
+    )
+    delta_copies = len(copied)
+    delta_validations = len(validated)
+    copied.clear()
+    validated.clear()
+    assert agent_run_service._load_run_delta_records(
+        settings, run_id="target", after_seq=2, expected_owner_user_id="owner-1",
+    ) == []
+    print(f"history={history_size} run_copies={run_copies} delta_copies={delta_copies} "
+          f"idle_delta_copies={len(copied)} delta_validations={delta_validations} "
+          f"idle_delta_validations={len(validated)} elapsed_ms={(perf_counter() - start) * 1000:.3f}")
+    assert latest["status"] == "completed"
+    assert [delta.seq for delta in deltas] == [2]
+    assert (run_copies, delta_copies, len(copied)) == (1, 0, 0)
+    assert (delta_validations, len(validated)) == (3, 3)
+    deltas[0].text = "mutated"
+    assert agent_run_service._load_run_delta_records(
+        settings, run_id="target", after_seq=1, expected_owner_user_id="owner-1",
+    )[0].text == "selected"
+
+
+@pytest.mark.parametrize("invalid_fields", [{"seq": 0}, {"text": "", "owner_user_id": "foreign"}])
+def test_delta_query_rejects_invalid_same_run_history_before_filtering(tmp_path, invalid_fields):
+    from pydantic import ValidationError
+
+    settings = _settings(tmp_path)
+    GovernanceRepository(settings.governance_path).append(
+        agent_run_service.AGENT_RUN_DELTA_STREAM,
+        {"run_id": "target", "owner_user_id": "owner-1", "seq": 1,
+         "channel": "answer", "text": "answer", "created_at": "2026-07-25T10:00:00+00:00",
+         **invalid_fields},
+    )
+    with pytest.raises(ValidationError):
+        agent_run_service._load_run_delta_records(
+            settings, run_id="target", after_seq=10, expected_owner_user_id="owner-1",
+        )
+
+
+def test_list_copies_only_limit_latest_owned_runs(monkeypatch, tmp_path):
+    from backend.app.repositories import governance_repo
+
+    settings = _settings(tmp_path)
+    for index in range(12):
+        for status in ["running", "completed"]:
+            _append_status(
+                settings=settings, run_id=f"run-{index}", status=status,
+                request=_request("listed", owner="owner-1" if index < 8 else "owner-2",
+                                 conversation_id="selected" if index % 2 == 0 else "other"),
+                queued_at=f"2026-07-25T10:00:{index:02d}+00:00",
+            )
+    GovernanceRepository(settings.governance_path).read_all(agent_run_service.AGENT_RUN_STREAM)
+    copied = []
+    original_copy = governance_repo.deepcopy
+
+    def counting_copy(row):
+        copied.append(row["run_id"])
+        return original_copy(row)
+
+    monkeypatch.setattr(governance_repo, "deepcopy", counting_copy)
+    response = agent_run_service.list_agent_runs(
+        settings=settings, owner_user_id="owner-1", conversation_id="selected", limit=2,
+    )
+    assert [item.run_id for item in response.items] == ["run-6", "run-4"]
+    assert [item.status for item in response.items] == ["completed", "completed"]
+    assert copied == ["run-6", "run-4"]
+
+
+@pytest.mark.parametrize("history_size", [100, 1000])
+def test_idempotency_and_dispatch_queries_copy_only_selected_history(monkeypatch, tmp_path, history_size):
+    from backend.app.repositories import governance_repo
+
+    repo = GovernanceRepository(_settings(tmp_path).governance_path)
+    request = _request("duplicate", conversation_id="conv", client_request_id="key")
+
+    def record(run_id, status, second, owner="owner-1"):
+        return {
+            "run_id": run_id, "status": status,
+            "request": {"context": {**request.context, "user_id": owner}},
+            "queued_at": f"2026-07-25T10:00:{second:02d}+00:00",
+            "result": {"details": [{"text": "historic output " * 100}]},
+        }
+
+    entries = []
+    for index in range(history_size):
+        entries.extend([
+            (agent_run_service.AGENT_RUN_STREAM, record(f"noise-{index}", "completed", 0, "foreign")),
+            (agent_run_service.AGENT_RUN_DISPATCH_STREAM, {"run_id": f"noise-{index}", "phase": "accepted"}),
+        ])
+    entries.extend([
+        (agent_run_service.AGENT_RUN_STREAM, record("run-a", "failed", 9)),
+        # Preserve filter-before-latest: this later foreign scope must not
+        # erase the earlier matching record from the idempotency candidate set.
+        (agent_run_service.AGENT_RUN_STREAM, record("run-a", "queued", 9, "foreign")),
+        (agent_run_service.AGENT_RUN_STREAM, record("run-b", "running", 10)),
+        (agent_run_service.AGENT_RUN_STREAM, record("run-b", "completed", 10)),
+        (agent_run_service.AGENT_RUN_STREAM, record("run-c", "cancelled", 1)),
+        (agent_run_service.AGENT_RUN_STREAM, record("", "queued", 0)),
+        (agent_run_service.AGENT_RUN_STREAM, record("   ", "queued", 0)),
+        (agent_run_service.AGENT_RUN_DISPATCH_STREAM, {"run_id": " run-b ", "phase": "requested"}),
+        # A phase-less historical row still proves acceptance.
+        (agent_run_service.AGENT_RUN_DISPATCH_STREAM, {"run_id": "run-b"}),
+        (agent_run_service.AGENT_RUN_DISPATCH_STREAM, {"run_id": "   ", "phase": "accepted"}),
+    ])
+    repo.append_many_atomic(entries)
+
+    def find():
+        return agent_run_service._find_existing_idempotent_run_record(
+            repo=repo, owner_user_id="owner-1", conversation_id="conv", client_request_id="key",
+        )
+
+    find()
+    agent_run_service._is_dispatch_accepted(repo=repo, run_id="run-b")
+    copied = []
+    original_copy = governance_repo.deepcopy
+
+    def counting_copy(row):
+        copied.append(row["run_id"])
+        return original_copy(row)
+
+    monkeypatch.setattr(governance_repo, "deepcopy", counting_copy)
+    selected = find()
+    idempotency_copies = len(copied)
+    copied.clear()
+    accepted = agent_run_service._is_dispatch_accepted(repo=repo, run_id="run-b")
+    print(f"history={history_size} idempotency_copies={idempotency_copies} dispatch_copies={len(copied)}")
+    assert selected["run_id"] == "run-b"
+    assert selected["status"] == "completed"
+    assert accepted is True
+    assert (idempotency_copies, len(copied)) == (1, 2)
+    selected["request"]["context"]["user_id"] = "mutated"
+    assert find()["request"]["context"]["user_id"] == "owner-1"
+
+    repo.append(agent_run_service.AGENT_RUN_STREAM, record("run-b", "failed", 10))
+    assert find()["run_id"] == "run-c"
+    repo.append(agent_run_service.AGENT_RUN_STREAM, record("run-c", "queued", 1, "foreign"))
+    assert find()["run_id"] == "run-c"
+    repo.append(agent_run_service.AGENT_RUN_STREAM, record("run-z", "queued", 11))
+    assert find()["run_id"] == "run-z"
+    assert agent_run_service._find_existing_idempotent_run_record(
+        repo=repo, owner_user_id="owner-1", conversation_id=None, client_request_id="key",
+    ) is None
+
+
+def test_explicit_executor_cancel_event_is_set_when_run_becomes_terminal(monkeypatch, tmp_path):
+    observed = {}
+    stopped = threading.Event()
+
+    def executor(request, governance_dir, settings, *, cancel_event=None):
+        observed["event"] = cancel_event
+        assert cancel_event is not None
+        assert cancel_event.wait(timeout=2)
+        stopped.set()
+        return _envelope()
+
+    monkeypatch.setattr(agent_run_service, "_latest_run_record", lambda **_kwargs: {"status": "cancelled"})
+    outcome = agent_run_service._run_executor_until_run_is_terminal(
+        run_id="cancelled", request=_request("cancel"), settings=_settings(tmp_path), executor=executor,
+    )
+    assert outcome is None
+    assert stopped.wait(timeout=2)
+    assert observed["event"].is_set()
+
+
+@pytest.mark.parametrize("signature", ["three_args", "kwargs"])
+def test_executor_without_explicit_cancel_parameter_keeps_call_shape(tmp_path, signature):
+    observed = []
+
+    def three_args(request, governance_dir, settings):
+        observed.append({})
+        return _envelope()
+
+    def accepts_kwargs(request, governance_dir, settings, **kwargs):
+        observed.append(kwargs)
+        return _envelope()
+
+    outcome = agent_run_service._run_executor_until_run_is_terminal(
+        run_id="done", request=_request("execute"), settings=_settings(tmp_path),
+        executor=three_args if signature == "three_args" else accepts_kwargs,
+    )
+    assert outcome["envelope"].answer == "done"
+    assert observed == [{}]
+
+
 def test_create_dispatches_lazy_task_with_only_run_id(monkeypatch, tmp_path):
     settings = _settings(tmp_path)
     dispatched: list[str] = []
@@ -157,6 +448,243 @@ def test_create_dispatches_lazy_task_with_only_run_id(monkeypatch, tmp_path):
     )[-1]
     assert record["status"] == "queued"
     assert record["request"]["context"]["run_id"] == created.run_id
+
+
+@pytest.mark.parametrize("result", [None, {"answer": "wrong executor type"}, SimpleNamespace(model_dump=lambda **_kwargs: {"answer": "invalid envelope"})])
+def test_invalid_executor_result_fails_immediately_with_audit(monkeypatch, tmp_path, result):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(agent_run_service.execute_agent_run_task, "send", lambda **_kwargs: None)
+    created = agent_run_service.create_agent_run(request=_request("invalid result"), settings=settings, provider="hermes")
+    status = agent_run_service.execute_agent_run_by_id(run_id=created.run_id, settings=settings, executor=lambda *_args: result)
+    assert status.status == "failed"
+    assert status.error_message == "Agent provider execution failed."
+    repo = GovernanceRepository(settings.governance_path)
+    assert [row["status"] for row in repo.read_all(agent_run_service.AGENT_RUN_STREAM)] == ["queued", "starting", "running", "failed"]
+    audit = repo.read_all(agent_run_service.AGENT_AUDIT_STREAM)
+    assert len(audit) == 1
+    assert audit[0]["result_meta"]["result_kind"] == "agent.run_failed"
+    assert audit[0]["result_meta"]["error_code"] == "AGENT_RUN_EXECUTION_FAILED"
+
+
+@pytest.mark.parametrize("terminal", ["cancelled", "completed"])
+def test_invalid_executor_result_cannot_overwrite_a_concurrent_terminal(monkeypatch, tmp_path, terminal):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(agent_run_service.execute_agent_run_task, "send", lambda **_kwargs: None)
+    created = agent_run_service.create_agent_run(request=_request("race invalid result"), settings=settings, provider="hermes")
+    def execute(request, *_args):
+        if terminal == "cancelled":
+            agent_run_service.cancel_agent_run(run_id=created.run_id, settings=settings)
+        else:
+            record = agent_run_service._transition_record(settings=settings, run_id=created.run_id, request=request, status="completed", result=_envelope().model_dump(mode="json"))
+            assert agent_run_service._append_record_if_latest_status(settings=settings, record=record, allowed_statuses={"running"})
+        return None
+    status = agent_run_service.execute_agent_run_by_id(run_id=created.run_id, settings=settings, executor=execute)
+    assert status.status == terminal
+    repo = GovernanceRepository(settings.governance_path)
+    assert [row["status"] for row in repo.read_all(agent_run_service.AGENT_RUN_STREAM)] == ["queued", "starting", "running", terminal]
+    assert all(row["result_meta"]["result_kind"] != "agent.run_failed" for row in repo.read_all(agent_run_service.AGENT_AUDIT_STREAM))
+
+
+def test_invalid_executor_result_audit_failure_remains_fail_closed(monkeypatch, tmp_path):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(agent_run_service.execute_agent_run_task, "send", lambda **_kwargs: None)
+    created = agent_run_service.create_agent_run(request=_request("invalid audit result"), settings=settings, provider="hermes")
+    real_append = GovernanceRepository.append_many_atomic
+    def append(repo, entries):
+        if any(stream == agent_run_service.AGENT_AUDIT_STREAM for stream, _row in entries):
+            raise OSError("synthetic audit write failure")
+        return real_append(repo, entries)
+    monkeypatch.setattr(GovernanceRepository, "append_many_atomic", append)
+    with pytest.raises(OSError, match="synthetic audit write failure"):
+        agent_run_service.execute_agent_run_by_id(run_id=created.run_id, settings=settings, executor=lambda *_args: None)
+    repo = GovernanceRepository(settings.governance_path)
+    assert repo.read_all(agent_run_service.AGENT_AUDIT_STREAM) == []
+    assert [row["status"] for row in repo.read_all(agent_run_service.AGENT_RUN_STREAM)] == ["queued", "starting", "running"]
+
+
+def test_create_persists_only_a_validated_semantic_execution_snapshot(
+    monkeypatch,
+    tmp_path,
+):
+    settings = _settings(tmp_path)
+    validation_calls: list[tuple[object, bool]] = []
+
+    def validate(request, *, require_current_versions=True):
+        snapshot = request.context[agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY]
+        validation_calls.append((snapshot, require_current_versions))
+        return {**snapshot, "reason": "server_validated"}
+
+    monkeypatch.setattr(
+        agent_run_service,
+        "validate_semantic_execution_request",
+        validate,
+    )
+    monkeypatch.setattr(
+        agent_run_service.execute_agent_run_task,
+        "send",
+        lambda *, run_id: None,
+    )
+    request = _request_with_semantic_snapshot("正式总损益是多少")
+
+    created = agent_run_service.create_agent_run(
+        request=request,
+        settings=settings,
+        provider="local",
+    )
+
+    record = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    )[-1]
+    persisted = record["request"]["context"][
+        agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY
+    ]
+    assert persisted["reason"] == "server_validated"
+    assert validation_calls == [
+        (
+            request.context[agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY],
+            True,
+        )
+    ]
+    assert record["run_id"] == created.run_id
+
+
+def test_create_rejects_invalid_semantic_execution_before_run_is_persisted(
+    monkeypatch,
+    tmp_path,
+):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(
+        agent_run_service,
+        "validate_semantic_execution_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("untrusted or stale")
+        ),
+    )
+
+    with pytest.raises(agent_run_service.AgentRunSemanticExecutionConflict):
+        agent_run_service.create_agent_run(
+            request=_request_with_semantic_snapshot("正式总损益是多少"),
+            settings=settings,
+            provider="local",
+        )
+
+    assert GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "snapshot_updates",
+    [
+        pytest.param({"schema_version": 999}, id="schema-version"),
+        pytest.param({"report_date": "2026-02-30"}, id="invalid-report-date"),
+        pytest.param({"operation": "definition"}, id="operation-status-intent"),
+        pytest.param({"metric_id": "MTR-PNL-999"}, id="unbound-metric"),
+        pytest.param({"required_resources": ["risk"]}, id="required-resources"),
+        pytest.param(
+            {"ontology_revision": "sha256:outdated"},
+            id="ontology-revision",
+        ),
+        pytest.param(
+            {"binding_revision": "ontology-pnl-bindings-outdated"},
+            id="binding-revision",
+        ),
+        pytest.param(
+            {"parser_revision": "ontology-local-parser-outdated"},
+            id="parser-revision",
+        ),
+    ],
+)
+def test_real_semantic_validator_blocks_malformed_snapshot_before_persist_or_execute(
+    monkeypatch,
+    tmp_path,
+    snapshot_updates,
+):
+    settings = _settings(tmp_path)
+    valid_request = _real_semantic_request()
+    valid_snapshot = valid_request.context[
+        agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY
+    ]
+    assert isinstance(valid_snapshot, dict)
+    malformed_request = valid_request.model_copy(
+        update={
+            "context": {
+                **valid_request.context,
+                agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY: {
+                    **valid_snapshot,
+                    **snapshot_updates,
+                },
+            }
+        }
+    )
+    dispatched: list[str] = []
+    monkeypatch.setattr(
+        agent_run_service.execute_agent_run_task,
+        "send",
+        lambda *, run_id: dispatched.append(run_id),
+    )
+
+    with pytest.raises(agent_run_service.AgentRunSemanticExecutionConflict):
+        agent_run_service.create_agent_run(
+            request=malformed_request,
+            settings=settings,
+            provider="local",
+        )
+
+    repo = GovernanceRepository(settings.governance_path)
+    assert repo.read_all(agent_run_service.AGENT_RUN_STREAM) == []
+    assert dispatched == []
+
+    corrupt_run_id = "agent_run:malformed-semantic-snapshot"
+    _append_status(
+        settings=settings,
+        run_id=corrupt_run_id,
+        status="queued",
+        request=malformed_request,
+        queued_at="2026-07-25T10:00:00+00:00",
+        provider="local",
+    )
+    executor_calls: list[str] = []
+    status = agent_run_service.execute_agent_run_by_id(
+        run_id=corrupt_run_id,
+        settings=settings,
+        executor=lambda *_args: executor_calls.append("called") or _envelope(),
+    )
+
+    assert status.status == "failed"
+    assert executor_calls == []
+    assert [record["status"] for record in repo.read_all(agent_run_service.AGENT_RUN_STREAM)] == [
+        "queued",
+        "failed",
+    ]
+
+
+def test_create_rejects_semantic_execution_with_external_provider(
+    monkeypatch,
+    tmp_path,
+):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(
+        agent_run_service,
+        "validate_semantic_execution_request",
+        lambda request, *, require_current_versions=True: request.context[
+            agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY
+        ],
+    )
+
+    with pytest.raises(
+        agent_run_service.AgentRunSemanticExecutionConflict,
+        match="governed local provider",
+    ):
+        agent_run_service.create_agent_run(
+            request=_request_with_semantic_snapshot("正式总损益是多少"),
+            settings=settings,
+            provider="hermes",
+        )
+
+    assert GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    ) == []
 
 
 def test_create_dispatch_failure_is_persisted_as_failed(monkeypatch, tmp_path, caplog):
@@ -344,7 +872,9 @@ def test_concurrent_duplicate_does_not_report_success_when_dispatch_fails(
     repo = GovernanceRepository(settings.governance_path)
     records = repo.read_all(agent_run_service.AGENT_RUN_STREAM)
     assert [record["status"] for record in records] == ["queued", "failed"]
-    assert repo.read_all(agent_run_service.AGENT_RUN_DISPATCH_STREAM) == []
+    # 派发尝试被记录（崩溃窗口证据），但 send 失败后不得出现 accepted 确认。
+    dispatch_rows = repo.read_all(agent_run_service.AGENT_RUN_DISPATCH_STREAM)
+    assert [row["phase"] for row in dispatch_rows] == ["requested"]
 
 
 def test_create_does_not_dedupe_different_owner_conversation_or_client_request_id(
@@ -579,18 +1109,160 @@ def test_execute_by_id_restores_governed_request_and_preserves_cancelled(monkeyp
     assert calls[0].question == "restore me"
     assert calls[0].context["run_id"] == created.run_id
     assert status.status == "cancelled"
-    statuses = [
-        record["status"]
-        for record in GovernanceRepository(settings.governance_path).read_all(
-            agent_run_service.AGENT_RUN_STREAM
-        )
-    ]
+    assert status.stop_reason == "cancel_requested_provider_stop_unconfirmed"
+    records = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    )
+    statuses = [record["status"] for record in records]
     assert statuses == ["queued", "starting", "running", "cancelled"]
+    assert records[-1]["stop_reason"] == "cancel_requested_provider_stop_unconfirmed"
 
     agent_run_service.execute_agent_run_by_id(
         run_id=created.run_id,
         settings=settings,
         executor=lambda *_args: pytest.fail("cancelled run must not execute"),
+    )
+
+
+def test_execute_by_id_fails_stale_semantic_snapshot_before_executor(
+    monkeypatch,
+    tmp_path,
+):
+    settings = _settings(tmp_path)
+    validation_count = 0
+
+    def validate(request, *, require_current_versions=True):
+        nonlocal validation_count
+        validation_count += 1
+        assert require_current_versions is True
+        if validation_count > 1:
+            raise ValueError("parser revision changed")
+        return request.context[agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY]
+
+    monkeypatch.setattr(
+        agent_run_service,
+        "validate_semantic_execution_request",
+        validate,
+    )
+    monkeypatch.setattr(
+        agent_run_service.execute_agent_run_task,
+        "send",
+        lambda *, run_id: None,
+    )
+    created = agent_run_service.create_agent_run(
+        request=_request_with_semantic_snapshot("正式总损益是多少"),
+        settings=settings,
+        provider="local",
+    )
+    executor_calls: list[str] = []
+
+    status = agent_run_service.execute_agent_run_by_id(
+        run_id=created.run_id,
+        settings=settings,
+        executor=lambda *_args: executor_calls.append("called") or _envelope(),
+    )
+
+    assert status.status == "failed"
+    assert status.error_message == (
+        "Agent semantic execution version changed. Submit the request again or retry it."
+    )
+    assert executor_calls == []
+    repo = GovernanceRepository(settings.governance_path)
+    records = repo.read_all(agent_run_service.AGENT_RUN_STREAM)
+    assert [record["status"] for record in records] == ["queued", "failed"]
+    audit = repo.read_all(agent_run_service.AGENT_AUDIT_STREAM)[-1]
+    assert audit["result_meta"]["error_code"] == (
+        "AGENT_RUN_SEMANTIC_EXECUTION_CONFLICT"
+    )
+    assert audit["result_meta"]["semantic_metric_id"] == "MTR-PNL-005"
+    assert audit["result_meta"]["semantic_binding_revision"] == "binding-test"
+    assert audit["result_meta"]["semantic_parser_revision"] == "parser-test"
+
+
+def test_execute_by_id_rejects_semantic_snapshot_with_persisted_external_provider(
+    monkeypatch,
+    tmp_path,
+):
+    settings = _settings(tmp_path)
+    request = _request_with_semantic_snapshot("正式总损益是多少")
+    _append_status(
+        settings=settings,
+        run_id="agent_run:wrong-provider",
+        status="queued",
+        request=request,
+        queued_at="2026-07-25T10:00:00+00:00",
+        provider="hermes",
+    )
+    monkeypatch.setattr(
+        agent_run_service,
+        "validate_semantic_execution_request",
+        lambda request, *, require_current_versions=True: request.context[
+            agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY
+        ],
+    )
+    executor_calls: list[str] = []
+
+    status = agent_run_service.execute_agent_run_by_id(
+        run_id="agent_run:wrong-provider",
+        settings=settings,
+        executor=lambda *_args: executor_calls.append("called") or _envelope(),
+    )
+
+    assert status.status == "failed"
+    assert executor_calls == []
+    assert [
+        record["status"]
+        for record in GovernanceRepository(settings.governance_path).read_all(
+            agent_run_service.AGENT_RUN_STREAM
+        )
+    ] == ["queued", "failed"]
+
+
+@pytest.mark.parametrize(
+    "request_updates",
+    [
+        pytest.param({"currency_basis": "USD"}, id="currency-drift"),
+        pytest.param({"position_scope": "selected"}, id="position-scope-drift"),
+        pytest.param(
+            {"question": "查询 2026-08-31 正式总损益"},
+            id="report-date-drift",
+        ),
+    ],
+)
+def test_execute_by_id_rejects_persisted_request_drift_before_executor(
+    tmp_path,
+    request_updates,
+):
+    settings = _settings(tmp_path)
+    malicious_request = _real_semantic_request().model_copy(update=request_updates)
+    run_id = "agent_run:semantic-request-drift"
+    _append_status(
+        settings=settings,
+        run_id=run_id,
+        status="queued",
+        request=malicious_request,
+        queued_at="2026-07-25T10:00:00+00:00",
+        provider="local",
+    )
+    executor_calls: list[str] = []
+
+    status = agent_run_service.execute_agent_run_by_id(
+        run_id=run_id,
+        settings=settings,
+        executor=lambda *_args: executor_calls.append("called") or _envelope(),
+    )
+
+    assert status.status == "failed"
+    assert executor_calls == []
+    records = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    )
+    assert [record["status"] for record in records] == ["queued", "failed"]
+    audit = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_AUDIT_STREAM
+    )[-1]
+    assert audit["result_meta"]["error_code"] == (
+        "AGENT_RUN_SEMANTIC_EXECUTION_CONFLICT"
     )
 
 
@@ -617,10 +1289,27 @@ def test_cancel_is_cooperative_idempotent_and_rejects_illegal_terminal_state(
     )
 
     assert first.status == second.status == "cancelled"
-    records = GovernanceRepository(settings.governance_path).read_all(
-        agent_run_service.AGENT_RUN_STREAM
-    )
+    assert first.stop_reason is second.stop_reason is None
+    repo = GovernanceRepository(settings.governance_path)
+    records = repo.read_all(agent_run_service.AGENT_RUN_STREAM)
     assert [record["status"] for record in records] == ["queued", "cancelled"]
+    assert "stop_reason" not in records[-1]
+    audit_rows = repo.read_all(agent_run_service.AGENT_AUDIT_STREAM)
+    assert len(audit_rows) == 1
+    audit = audit_rows[0]
+    assert audit["user_id"] == "owner-1"
+    assert audit["run_id"] == "agent_run:cancel"
+    assert audit["query_text"] == "cancel me"
+    assert audit["tools_used"] == ["agent_run", "status:cancelled"]
+    assert audit["tables_used"] == []
+    assert audit["filters_applied"] == {}
+    assert audit["trace_id"].startswith("tr_agent_run_cancelled_")
+    assert audit["result_meta"]["trace_id"] == audit["trace_id"]
+    assert audit["result_meta"]["basis"] == request.basis
+    assert audit["result_meta"]["result_kind"] == "agent.run_cancelled"
+    assert audit["result_meta"]["formal_use_allowed"] is False
+    assert audit["result_meta"]["quality_flag"] == "cancelled"
+    assert audit["result_meta"]["scenario_flag"] is False
 
     _append_status(
         settings=settings,
@@ -911,6 +1600,82 @@ def test_retry_reuses_request_provider_and_records_source_run(
     assert latest["request"]["context"]["client_request_id"] == f"retry:agent_run:{source_status}"
 
 
+def test_semantic_retry_requires_fresh_snapshot_and_retry_builder_strips_old_one(
+    monkeypatch,
+    tmp_path,
+):
+    settings = _settings(tmp_path)
+    source_request = _request_with_semantic_snapshot("正式总损益是多少")
+    _append_status(
+        settings=settings,
+        run_id="agent_run:semantic-source",
+        status="failed",
+        request=source_request,
+        queued_at="2026-07-25T10:00:00+00:00",
+        finished_at="2026-07-25T10:01:00+00:00",
+        provider="hermes",
+    )
+
+    candidate = agent_run_service.build_agent_run_retry_request(
+        run_id="agent_run:semantic-source",
+        settings=settings,
+    )
+
+    assert agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY not in candidate.context
+    assert "run_id" not in candidate.context
+    assert candidate.context["retry_of_run_id"] == "agent_run:semantic-source"
+    assert candidate.context["client_request_id"] == "retry:agent_run:semantic-source"
+    with pytest.raises(
+        agent_run_service.AgentRunSemanticExecutionConflict,
+        match="resolved and authorized again",
+    ):
+        agent_run_service.stage_agent_run_retry(
+            run_id="agent_run:semantic-source",
+            settings=settings,
+        )
+    with pytest.raises(
+        agent_run_service.AgentRunSemanticExecutionConflict,
+        match="resolved and authorized again",
+    ):
+        agent_run_service.stage_agent_run_retry(
+            run_id="agent_run:semantic-source",
+            settings=settings,
+            request=candidate,
+        )
+
+    repinned = candidate.model_copy(
+        update={
+            "context": {
+                **candidate.context,
+                agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY: _semantic_snapshot(
+                    parser_revision="parser-retry"
+                ),
+            }
+        }
+    )
+    monkeypatch.setattr(
+        agent_run_service,
+        "validate_semantic_execution_request",
+        lambda request, *, require_current_versions=True: request.context[
+            agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY
+        ],
+    )
+    staged = agent_run_service.stage_agent_run_retry(
+        run_id="agent_run:semantic-source",
+        settings=settings,
+        request=repinned,
+        provider="local",
+    )
+
+    assert staged.queued_record is not None
+    assert staged.queued_record.retry_of_run_id == "agent_run:semantic-source"
+    assert staged.queued_record.provider == "local"
+    persisted_snapshot = staged.queued_record.request["context"][
+        agent_run_service.SEMANTIC_EXECUTION_CONTEXT_KEY
+    ]
+    assert persisted_snapshot["parser_revision"] == "parser-retry"
+
+
 def test_retry_is_concurrent_idempotent_for_same_source_run(monkeypatch, tmp_path):
     settings = _settings(tmp_path)
     source_request = _request(
@@ -1157,11 +1922,13 @@ def test_cancel_during_execution_releases_worker_slot_without_waiting_for_provid
             settings=settings,
         )
         assert cancelled.status == "cancelled"
+        assert cancelled.stop_reason == "cancel_requested_provider_stop_unconfirmed"
         # The worker slot must be released while the provider call is still
         # blocked (release_executor is intentionally not set yet).
         status = future.result(timeout=5)
 
     assert status.status == "cancelled"
+    assert status.stop_reason == "cancel_requested_provider_stop_unconfirmed"
     release_executor.set()
     assert executor_finished.wait(timeout=5)
     records = GovernanceRepository(settings.governance_path).read_all(
@@ -1173,6 +1940,7 @@ def test_cancel_during_execution_releases_worker_slot_without_waiting_for_provid
         "running",
         "cancelled",
     ]
+    assert records[-1]["stop_reason"] == "cancel_requested_provider_stop_unconfirmed"
 
 
 def test_execution_is_not_globally_serialized_across_runs(monkeypatch, tmp_path):
@@ -1215,9 +1983,35 @@ def test_execution_is_not_globally_serialized_across_runs(monkeypatch, tmp_path)
         )
 
     assert [status.status for status in statuses] == ["completed", "completed"]
+    assert [status.stop_reason for status in statuses] == ["completed", "completed"]
 
 
-def test_delta_publisher_persists_separate_stream_with_seq_owner_and_caps(
+def test_external_provider_execution_error_sets_provider_stop_reason(monkeypatch, tmp_path):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(
+        agent_run_service.execute_agent_run_task,
+        "send",
+        lambda *, run_id: None,
+    )
+    created = agent_run_service.create_agent_run(
+        request=_request("provider fails"),
+        settings=settings,
+        provider="hermes",
+    )
+
+    status = agent_run_service.execute_agent_run_by_id(
+        run_id=created.run_id,
+        settings=settings,
+        executor=lambda *_args: (_ for _ in ()).throw(RuntimeError("provider secret")),
+    )
+
+    assert status.status == "failed"
+    assert status.stop_reason == "provider_error"
+    assert status.error_message == "Agent provider execution failed."
+
+
+@pytest.mark.parametrize("surface", ["lab", "workbench"])
+def test_delta_publisher_persists_separate_stream_with_seq_owner_and_caps(surface,
     monkeypatch,
     tmp_path,
 ):
@@ -1233,7 +2027,7 @@ def test_delta_publisher_persists_separate_stream_with_seq_owner_and_caps(
                     **request.context,
                     "run_id": "agent_run:delta",
                     "agent_stream_protocol": "run_delta_v1",
-                    "agent_stream_surface": "lab",
+                    "agent_stream_surface": surface,
                 }
             }
         ),
@@ -1269,7 +2063,8 @@ def test_delta_publisher_persists_separate_stream_with_seq_owner_and_caps(
     assert "partial_answer" not in latest
 
 
-def test_delta_publisher_stops_after_cancel_and_is_active_false(tmp_path):
+@pytest.mark.parametrize("surface", ["lab", "workbench"])
+def test_delta_publisher_stops_after_cancel_and_is_active_false(surface, tmp_path):
     settings = _settings(tmp_path)
     request = _request("cancel my stream")
     _append_status(
@@ -1282,7 +2077,7 @@ def test_delta_publisher_stops_after_cancel_and_is_active_false(tmp_path):
                     **request.context,
                     "run_id": "agent_run:delta-cancel",
                     "agent_stream_protocol": "run_delta_v1",
-                    "agent_stream_surface": "lab",
+                    "agent_stream_surface": surface,
                 }
             }
         ),
@@ -1309,7 +2104,8 @@ def test_delta_publisher_stops_after_cancel_and_is_active_false(tmp_path):
     assert [record["text"] for record in deltas] == ["before cancel"]
 
 
-def test_iter_agent_run_events_keeps_default_contract_and_opt_in_deltas_order(tmp_path):
+@pytest.mark.parametrize("surface", ["lab", "workbench"])
+def test_iter_agent_run_events_keeps_default_contract_and_opt_in_deltas_order(surface, tmp_path):
     settings = _settings(tmp_path)
     request = _request("completed stream")
     _append_status(
@@ -1322,7 +2118,7 @@ def test_iter_agent_run_events_keeps_default_contract_and_opt_in_deltas_order(tm
                     **request.context,
                     "run_id": "agent_run:delta-events",
                     "agent_stream_protocol": "run_delta_v1",
-                    "agent_stream_surface": "lab",
+                    "agent_stream_surface": surface,
                 }
             }
         ),
@@ -1394,7 +2190,8 @@ def test_iter_agent_run_events_keeps_default_contract_and_opt_in_deltas_order(tm
     assert "越权数据" not in opted_in_events[0]
 
 
-def test_execute_agent_run_task_wraps_hermes_only_for_delta_protocol(monkeypatch):
+@pytest.mark.parametrize("surface", ["lab", "workbench"])
+def test_execute_agent_run_task_wraps_hermes_only_for_delta_protocol(surface, monkeypatch):
     from backend.app.tasks import agent_run as task_module
 
     settings = SimpleNamespace()
@@ -1447,7 +2244,7 @@ def test_execute_agent_run_task_wraps_hermes_only_for_delta_protocol(monkeypatch
                     "page": "agent-workbench",
                     "run_id": run_id,
                     "agent_stream_protocol": "run_delta_v1",
-                    "agent_stream_surface": "lab",
+                    "agent_stream_surface": surface,
                 }
             }
         )

@@ -164,9 +164,11 @@ describe("DerivedChartPanel 懒挂载", () => {
   });
 });
 
-describe("LazyReactECharts 按需下载", () => {
+describe("LazyChartCard 按需下载", () => {
   afterEach(() => {
-    vi.doUnmock("../lib/echarts");
+    vi.doUnmock(
+      "../features/product-category-pnl/pages/lazyReactEChartsLoader",
+    );
     vi.resetModules();
   });
 
@@ -176,21 +178,28 @@ describe("LazyReactECharts 按需下载", () => {
     const sharedModuleGate = new Promise<void>((resolve) => {
       releaseSharedModule = resolve;
     });
-    vi.doMock("../lib/echarts", async () => {
-      await sharedModuleGate;
-      return {
-        default: () => <div data-testid="product-category-echarts-stub" />,
-      };
-    });
+    vi.doMock(
+      "../features/product-category-pnl/pages/lazyReactEChartsLoader",
+      () => ({
+        getLoadedReactECharts: () => null,
+        loadReactECharts: async () => {
+          await sharedModuleGate;
+          return () => <div data-testid="product-category-echarts-stub" />;
+        },
+      }),
+    );
 
-    const { LazyReactECharts } = await import(
+    const { LazyChartCard } = await import(
       "../features/product-category-pnl/pages/LazyReactECharts"
     );
 
     const { container } = render(
-      <LazyReactECharts
+      <LazyChartCard
+        flat
+        ariaLabel="产品分类趋势"
+        height={220}
         option={OPTION}
-        className="product-category-derived-chart__canvas"
+        canvasClassName="product-category-derived-chart__canvas"
       />,
     );
 

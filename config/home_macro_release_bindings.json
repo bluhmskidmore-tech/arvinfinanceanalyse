@@ -33,13 +33,25 @@
       "priority": 2,
       "availability": "automatic",
       "publisher_name": "National Bureau of Statistics of China",
-      "vendor_name": "Tushare",
+      "vendor_name": "NBS official release",
       "metrics": [
         {
           "metric_key": "cpi_yoy",
           "label": "CPI YoY",
-          "table": "std_external_macro_daily",
-          "series_id": "tushare.macro.cn_cpi.monthly",
+          "source_candidates": [
+            {
+              "table": "std_external_macro_daily",
+              "series_id": "nbs.macro.cn_cpi.monthly",
+              "vendor_name": "NBS official release",
+              "priority": 1
+            },
+            {
+              "table": "std_external_macro_daily",
+              "series_id": "tushare.macro.cn_cpi.monthly",
+              "vendor_name": "Tushare",
+              "priority": 2
+            }
+          ],
           "cadence": "monthly",
           "display_unit": "pct",
           "change_unit": "pct_point",
@@ -48,8 +60,20 @@
         {
           "metric_key": "ppi_yoy",
           "label": "PPI YoY",
-          "table": "std_external_macro_daily",
-          "series_id": "tushare.macro.cn_ppi.monthly",
+          "source_candidates": [
+            {
+              "table": "std_external_macro_daily",
+              "series_id": "nbs.macro.cn_ppi.monthly",
+              "vendor_name": "NBS official release",
+              "priority": 1
+            },
+            {
+              "table": "std_external_macro_daily",
+              "series_id": "tushare.macro.cn_ppi.monthly",
+              "vendor_name": "Tushare",
+              "priority": 2
+            }
+          ],
           "cadence": "monthly",
           "display_unit": "pct",
           "change_unit": "pct_point",

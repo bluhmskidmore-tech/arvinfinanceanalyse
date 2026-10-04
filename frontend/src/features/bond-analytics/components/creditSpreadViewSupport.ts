@@ -4,7 +4,6 @@ import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type {
   CreditSpreadAnalysisResponse,
   ConcentrationMetrics,
-  CreditSpreadBondDetailRow,
   CreditSpreadMigrationResponse,
 } from "../types";
 import { designTokens, nocturneTokens, tabularNumsStyle } from "../../../theme/designSystem";
@@ -144,82 +143,6 @@ export function hasAnyConcentrationField(data: CreditSpreadMigrationResponse): b
   return CONCENTRATION_KEYS.some((k) => data[k] != null);
 }
 
-/** X 轴期限桶（与后端 tenor_bucket 对齐后映射到此顺序） */
-const CREDIT_DIST_TENOR_LABELS = ["1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"] as const;
-
-/** Y 轴评级桶 */
-const CREDIT_DIST_RATING_LABELS = ["AAA", "AA+", "AA", "AA-", "A+", "其他"] as const;
-
-const PRIMARY_RATING_SET = new Set<string>(CREDIT_DIST_RATING_LABELS.filter((r) => r !== "其他"));
-
-function mapTenorBucketToXIndex(raw: string | undefined): number | null {
-  if (raw == null || String(raw).trim() === "") return null;
-  const t = String(raw).trim().toUpperCase();
-  const table: Record<string, number> = {
-    "1M": 0,
-    "3M": 0,
-    "6M": 0,
-    "9M": 0,
-    "1Y": 0,
-    "2Y": 1,
-    "3Y": 2,
-    "4Y": 2,
-    "5Y": 3,
-    "6Y": 3,
-    "7Y": 4,
-    "10Y": 5,
-    "15Y": 5,
-    "20Y": 6,
-    "30Y": 7,
-  };
-  const idx = table[t];
-  return idx === undefined ? null : idx;
-}
-
-function mapRatingToBucket(raw: string | undefined): string | null {
-  if (raw == null || String(raw).trim() === "") return null;
-  const up = String(raw).trim().toUpperCase();
-  if (PRIMARY_RATING_SET.has(up)) return up;
-  return "其他";
-}
-
-/** 将 bond 明细按评级×期限累加市值，再按信用债总市值换算占比（仅展示层聚合） */
-export function buildRatingTenorHeatmapData(
-  bondDetails: CreditSpreadBondDetailRow[],
-  creditMarketValueField: Numeric | string,
-): { seriesData: [number, number, number][]; maxPct: number } | null {
-  const denom = bondNumericRaw(creditMarketValueField);
-  if (denom === null || denom <= 0) return null;
-
-  const sums = new Map<string, number>();
-  let anyMapped = false;
-  for (const row of bondDetails) {
-    const yKey = mapRatingToBucket(row.rating);
-    const xi = mapTenorBucketToXIndex(row.tenor_bucket);
-    if (yKey == null || xi == null) continue;
-    const mv = bondNumericRaw(row.market_value);
-    if (mv === null || mv <= 0) continue;
-    anyMapped = true;
-    const key = `${yKey}|${xi}`;
-    sums.set(key, (sums.get(key) ?? 0) + mv);
-  }
-  if (!anyMapped) return null;
-
-  const seriesData: [number, number, number][] = [];
-  let maxPct = 0;
-  for (let yi = 0; yi < CREDIT_DIST_RATING_LABELS.length; yi++) {
-    const rating = CREDIT_DIST_RATING_LABELS[yi];
-    for (let xi = 0; xi < CREDIT_DIST_TENOR_LABELS.length; xi++) {
-      const v = sums.get(`${rating}|${xi}`) ?? 0;
-      const pct = (v / denom) * 100;
-      if (pct > maxPct) maxPct = pct;
-      seriesData.push([xi, yi, Number(pct.toFixed(4))]);
-    }
-  }
-  if (maxPct <= 0) return null;
-  return { seriesData, maxPct };
-}
-
 function formatPctPoint(value: string | null | undefined): string {
   const num = parseFloat(String(value ?? ""));
   if (!Number.isFinite(num)) return EM_DASH;
@@ -245,11 +168,8 @@ export function spreadTermStructureOption(
       left: dt.space[9],
       right: dt.space[4],
       top: dt.space[6],
-      bottom: dt.space[6] + dt.space[1],
-      containLabel: false,
     },
     tooltip: { trigger: "axis" },
-    legend: { top: 0, textStyle: { fontSize: dt.fontSize[11], color: nct.inkMuted } },
     xAxis: {
       type: "category",
       data: points.map((point) => point.tenor_bucket),
@@ -305,8 +225,6 @@ export function concentrationBarOption(
       left: dt.space[9],
       right: dt.space[3],
       top: dt.space[6] + dt.space[1],
-      bottom: names.some((n) => n.length > 6) ? dt.space[9] + dt.space[1] : dt.space[4] + dt.space[5],
-      containLabel: false,
     },
     tooltip: {
       trigger: "axis",
@@ -343,80 +261,6 @@ export function concentrationBarOption(
         barMaxWidth: 40,
         itemStyle: { color },
         data: pcts,
-      },
-    ],
-  };
-}
-
-export function ratingTenorHeatmapOption(seriesData: [number, number, number][], maxPct: number): EChartsOption {
-  const vmax = Math.max(maxPct, 1e-6);
-  return {
-    tooltip: {
-      position: "top",
-      formatter: (raw: unknown) => {
-        const p = raw as { value?: [number, number, number] | number };
-        const val = Array.isArray(p.value) ? p.value : [];
-        const xi = Number(val[0]);
-        const yi = Number(val[1]);
-        const v = Number(val[2]);
-        const tenor = CREDIT_DIST_TENOR_LABELS[xi] ?? "";
-        const rating = CREDIT_DIST_RATING_LABELS[yi] ?? "";
-        return `${rating} × ${tenor}<br/>市值占比：${Number.isFinite(v) ? v.toFixed(2) : EM_DASH}%`;
-      },
-    },
-    grid: {
-      left: dt.space[9] + dt.space[2],
-      right: dt.space[6],
-      top: dt.space[4],
-      bottom: dt.space[9] + dt.space[2],
-      containLabel: true,
-    },
-    xAxis: {
-      type: "category",
-      data: [...CREDIT_DIST_TENOR_LABELS],
-      splitArea: { show: true },
-      axisLabel: { color: nct.inkMuted, fontSize: dt.fontSize[11] },
-      axisLine: { lineStyle: { color: nct.lineSoft } },
-    },
-    yAxis: {
-      type: "category",
-      data: [...CREDIT_DIST_RATING_LABELS],
-      splitArea: { show: true },
-      axisLabel: { color: nct.inkMuted, fontSize: dt.fontSize[11] },
-      axisLine: { lineStyle: { color: nct.lineSoft } },
-    },
-    visualMap: {
-      min: 0,
-      max: vmax,
-      calculable: true,
-      orient: "horizontal",
-      left: "center",
-      bottom: dt.space[1],
-      itemWidth: dt.space[3],
-      itemHeight: 120,
-      inRange: { color: [nct.accent300, nct.blue] },
-      textStyle: { fontSize: dt.fontSize[11], color: nct.inkMuted },
-      formatter: (min, _max) => `${Number(min).toFixed(1)}%`,
-    },
-    series: [
-      {
-        type: "heatmap",
-        data: seriesData,
-        label: {
-          show: true,
-          fontSize: dt.fontSize[11],
-          color: nct.inkSoft,
-          formatter: (params: unknown) => {
-            const raw = (params as { value?: unknown }).value;
-            const tuple = Array.isArray(raw) ? raw : [];
-            const v = Number(tuple[2]);
-            if (!Number.isFinite(v) || v === 0) return "";
-            return v < 0.05 ? "" : `${v.toFixed(1)}%`;
-          },
-        },
-        emphasis: {
-          itemStyle: { shadowBlur: dt.space[2], shadowColor: nct.lineSoft },
-        },
       },
     ],
   };

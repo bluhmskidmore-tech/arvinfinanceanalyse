@@ -11,6 +11,7 @@ import {
   toneForProductCategoryForeignDisplayValue,
   toneForProductCategoryValue,
 } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
+import styles from "./BusinessContributionTable.module.css";
 
 function formatSide(side: string): string {
   if (side === "asset") {
@@ -65,7 +66,7 @@ export function BusinessContributionTable({
 
   return (
     <PageAsyncSection
-      title="经营贡献（产品分类损益读面）"
+      title="经营贡献（产品分类损益）"
       fillHeight={false}
       isLoading={loading}
       isError={error}
@@ -80,13 +81,8 @@ export function BusinessContributionTable({
       }
     >
       {reportDate ? (
-        <p
-          data-testid="operations-contribution-table-provenance"
-          style={{ margin: "0 0 12px", fontSize: 13, color: "var(--dh-api-soft)", lineHeight: 1.6 }}
-        >
-          报告日 <strong>{reportDate}</strong>，数据来自{" "}
-          <code>/ui/pnl/product-category</code>
-          ，view={view}；由总账对账 + 日均配对链路生成，表格直接展示后端产品分类行，不在前端重算合计或改写类别。
+        <p data-testid="operations-contribution-table-provenance" className={styles.provenance}>
+          报告日 <strong>{reportDate}</strong>，{view === "monthly" ? "月度" : view}产品分类损益，金额单位为亿元。
           {readProvenanceLine ? (
             <>
               <br />
@@ -95,45 +91,32 @@ export function BusinessContributionTable({
           ) : null}
         </p>
       ) : (
-        <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--dh-api-soft)" }}>暂无可用报告日。</p>
+        <p className={styles.provenanceEmpty}>暂无可用报告日。</p>
       )}
 
-      <div
-        data-testid="operations-contribution-total-summary"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(180px, 1.4fr) repeat(3, minmax(120px, 1fr))",
-          gap: 12,
-          margin: "0 0 12px",
-          padding: "12px 14px",
-          border: "1px solid var(--dh-api-line-soft)",
-          borderRadius: 8,
-          background: "var(--dh-api-panel-2)",
-          alignItems: "center",
-        }}
-      >
+      <div data-testid="operations-contribution-total-summary" className={styles.summary}>
         <div>
-          <div style={{ fontSize: 12, color: "var(--dh-api-muted)", fontWeight: 600 }}>总收益（合计）</div>
+          <div className={styles.summaryLabel}>总收益（合计）</div>
           <div
             style={{
               marginTop: 2,
               color: totalIncomeTone,
               fontSize: 22,
-              fontWeight: 800,
+              fontWeight: 600,
               fontVariantNumeric: "tabular-nums",
             }}
           >
             {formatProductCategoryValue(grandTotal?.business_net_income)}
-            <span style={{ marginLeft: 4, color: "var(--dh-api-muted)", fontSize: 12, fontWeight: 600 }}>亿元</span>
+            <span className={styles.summaryUnit}>亿元</span>
           </div>
         </div>
-        <div style={{ fontSize: 12, color: "var(--dh-api-soft)", fontWeight: 700 }}>
-          当前场景：<span style={{ color: "var(--dh-api-ink)" }}>{formatRatePct(currentRate)}</span>
+        <div className={styles.summaryMeta}>
+          当前场景：<span className={styles.summaryMetaValue}>{formatRatePct(currentRate)}</span>
         </div>
-        <div style={{ fontSize: 12, color: "var(--dh-api-soft)", fontWeight: 700 }}>
-          基准场景：<span style={{ color: "var(--dh-api-ink)" }}>{formatRatePct(baselineRate)}</span>
+        <div className={styles.summaryMeta}>
+          基准场景：<span className={styles.summaryMetaValue}>{formatRatePct(baselineRate)}</span>
         </div>
-        <div style={{ fontSize: 12, color: "var(--dh-api-soft)", fontWeight: 700, textAlign: "right" }}>
+        <div className={`${styles.summaryMeta} ${styles.summaryMetaRight}`}>
           资产 / 负债：
           <span style={{ color: toneForProductCategoryValue(assetTotal?.business_net_income) }}>
             {formatProductCategoryValue(assetTotal?.business_net_income)}
@@ -145,37 +128,24 @@ export function BusinessContributionTable({
         </div>
       </div>
 
-      <div
-        style={{
-          overflowX: "auto",
-          borderRadius: 8,
-          border: "1px solid var(--dh-api-line-soft)",
-        }}
-      >
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: 13,
-            background: "var(--dh-api-panel)",
-          }}
-        >
+      <div className={styles.tableWrap}>
+        <table className={styles.table}>
           <thead>
-            <tr style={{ background: "var(--dh-api-panel-2)", color: "var(--dh-api-soft)", textAlign: "left" }}>
-              <th style={{ padding: "10px 12px", fontWeight: 600 }}>产品分类</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600 }}>侧别</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>综本日均</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>人民币FTP</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>人民币净收入</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>外币净收入</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>经营净收入</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>加权收益率</th>
+            <tr className={styles.headRow}>
+              <th className={styles.th}>产品分类</th>
+              <th className={styles.th}>侧别</th>
+              <th className={styles.thRight}>综本日均</th>
+              <th className={styles.thRight}>人民币FTP</th>
+              <th className={styles.thRight}>人民币净收入</th>
+              <th className={styles.thRight}>外币净收入</th>
+              <th className={styles.thRight}>经营净收入</th>
+              <th className={styles.thRight}>加权收益率</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && !loading ? (
               <tr>
-                <td colSpan={8} style={{ padding: 16, color: "var(--dh-api-muted)", textAlign: "center" }}>
+                <td colSpan={8} className={styles.emptyCell}>
                   暂无产品分类行
                 </td>
               </tr>
@@ -189,16 +159,12 @@ export function BusinessContributionTable({
                     fontWeight: row.is_total ? 700 : 400,
                   }}
                 >
-                  <td style={{ padding: "10px 12px", fontWeight: 600, color: "var(--dh-api-ink)" }}>
+                  <td className={styles.nameCell}>
                     <span style={{ paddingLeft: row.level * 14 }}>{row.category_name}</span>
                   </td>
-                  <td style={{ padding: "10px 12px", color: "var(--dh-api-soft)" }}>{formatSide(row.side)}</td>
-                  <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
-                    {formatProductCategoryRowDisplayValue(row, row.cnx_scale)}
-                  </td>
-                  <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
-                    {formatProductCategoryRowDisplayValue(row, row.cny_ftp)}
-                  </td>
+                  <td className={styles.sideCell}>{formatSide(row.side)}</td>
+                  <td className={styles.numCell}>{formatProductCategoryRowDisplayValue(row, row.cnx_scale)}</td>
+                  <td className={styles.numCell}>{formatProductCategoryRowDisplayValue(row, row.cny_ftp)}</td>
                   <td
                     style={{
                       padding: "10px 12px",
@@ -229,26 +195,13 @@ export function BusinessContributionTable({
                   >
                     {formatProductCategoryRowDisplayValue(row, row.business_net_income)}
                   </td>
-                  <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
-                    {formatProductCategoryYieldValue(row.weighted_yield)}
-                  </td>
+                  <td className={styles.numCell}>{formatProductCategoryYieldValue(row.weighted_yield)}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
-        <div
-          data-testid="operations-contribution-footer-total"
-          style={{
-            padding: "12px 16px",
-            background: "var(--dh-api-panel-3)",
-            color: "var(--dh-api-ink)",
-            fontSize: 14,
-            fontWeight: 800,
-            textAlign: "center",
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
+        <div data-testid="operations-contribution-footer-total" className={styles.footerTotal}>
           全部市场科目 + 投资收益合计：{formatProductCategoryValue(grandTotal?.business_net_income)}
         </div>
       </div>

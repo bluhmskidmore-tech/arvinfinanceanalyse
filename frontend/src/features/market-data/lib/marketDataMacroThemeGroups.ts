@@ -120,8 +120,10 @@ function nameLooksLikeRates(name: string): boolean {
   return /国债|国开|回购|SHIBOR|DR007|收益率|逆回购|R007|LPR|同业|中间价|掉期/.test(name);
 }
 
+// 不含单独的「收盘」：商品期货序列名（如「铜主力期货收盘价」）也带该词，
+// 权益序列依赖指数类词（沪深/上证/指数…）即可命中。
 function nameLooksLikeEquity(name: string): boolean {
-  return /沪深|指数|收盘|权重|市盈率|\bPE\b|成分|上证|深证|创业板|恒生|总市值/.test(name);
+  return /沪深|指数|权重|市盈率|\bPE\b|成分|上证|深证|创业板|恒生|总市值/.test(name);
 }
 
 function nameLooksLikeCommodity(name: string, unit: string): boolean {
@@ -198,11 +200,13 @@ export function classifyMacroThemeGroup(
   if (nameLooksLikeRates(name) || hasSpecificMacroTag(tags, "rates")) {
     return "rates";
   }
-  if (nameLooksLikeEquity(name) || hasSpecificMacroTag(tags, "equity")) {
-    return "equity";
-  }
+  // commodity 先于 equity：商品名可能同时命中权益词（如「南华商品指数」「期货收盘价」），
+  // 反向（纯权益名带商品词）不存在。
   if (nameLooksLikeCommodity(name, unit) || hasSpecificMacroTag(tags, "commodity")) {
     return "commodity";
+  }
+  if (nameLooksLikeEquity(name) || hasSpecificMacroTag(tags, "equity")) {
+    return "equity";
   }
   if (nameLooksLikeCredit(name) || hasSpecificMacroTag(tags, "credit")) {
     return "credit";

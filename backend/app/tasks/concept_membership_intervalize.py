@@ -176,22 +176,44 @@ def intervalize_concept_membership(
     *,
     duckdb_path: str,
     run_id: str | None = None,
+    dry_run: bool = False,
 ) -> dict[str, object]:
     """Rebuild the interval table from the full snapshot set.
 
     Returns a summary dict. ``status`` is ``no_snapshots`` when the snapshot
     table is missing or empty; in that case existing intervals are left
     untouched so a partially unavailable source cannot wipe the read model.
+    ``dry_run=True`` opens DuckDB read-only, does not acquire a writer lock or
+    create the interval schema, and returns the exact interval preview plus
+    observation-date evidence without asserting freshness.
     """
     path = Path(duckdb_path)
     if not path.is_file():
-        return {
-            "status": "no_snapshots",
-            "message": f"DuckDB file not found: {path}",
-            "table": INTERVAL_TABLE,
-            "rule_version": RULE_VERSION,
-            "interval_row_count": 0,
-        }
+        return _no_snapshots_summary(
+            message=f"DuckDB file not found: {path}",
+            dry_run=dry_run,
+        )
+
+    if dry_run:
+        conn = duckdb.connect(str(path), read_only=True)
+        try:
+            snapshot_rows = _load_snapshot_rows(conn)
+        finally:
+            conn.close()
+        if not snapshot_rows:
+            return _no_snapshots_summary(
+                message=f"{SNAPSHOT_TABLE} is missing or has no usable rows.",
+                dry_run=True,
+            )
+        intervals = build_membership_intervals(snapshot_rows)
+        return _interval_summary(
+            snapshot_rows=snapshot_rows,
+            intervals=intervals,
+            status="preview",
+            run_id=None,
+            dry_run=True,
+        )
+
     effective_run = run_id or f"concept_membership_intervalize:{uuid.uuid4().hex[:12]}"
 
     with acquire_lock(CONCEPT_MEMBERSHIP_INTERVALIZE_LOCK, base_dir=path.parent):
@@ -199,26 +221,54 @@ def intervalize_concept_membership(
         try:
             snapshot_rows = _load_snapshot_rows(conn)
             if not snapshot_rows:
-                return {
-                    "status": "no_snapshots",
-                    "message": f"{SNAPSHOT_TABLE} is missing or has no usable rows.",
-                    "table": INTERVAL_TABLE,
-                    "rule_version": RULE_VERSION,
-                    "interval_row_count": 0,
-                }
+                return _no_snapshots_summary(
+                    message=f"{SNAPSHOT_TABLE} is missing or has no usable rows.",
+                    dry_run=False,
+                )
             intervals = build_membership_intervals(snapshot_rows)
             ensure_concept_membership_interval_schema(conn)
             _replace_interval_rows(conn, intervals, run_id=effective_run)
         finally:
             conn.close()
 
-    snapshot_dates = sorted({row.as_of_date for row in snapshot_rows})
-    open_count = sum(1 for row in intervals if row.valid_to is None)
+    return _interval_summary(
+        snapshot_rows=snapshot_rows,
+        intervals=intervals,
+        status="completed",
+        run_id=effective_run,
+        dry_run=False,
+    )
+
+
+def _no_snapshots_summary(*, message: str, dry_run: bool) -> dict[str, object]:
     return {
-        "status": "completed",
-        "run_id": effective_run,
+        "status": "no_snapshots",
+        "message": message,
         "table": INTERVAL_TABLE,
         "rule_version": RULE_VERSION,
+        "dry_run": dry_run,
+        "interval_row_count": 0,
+        "last_observed_date_distribution": {},
+        "open_interval_last_observed_date_distribution": {},
+        "staleness_risk": _staleness_risk_summary([]),
+    }
+
+
+def _interval_summary(
+    *,
+    snapshot_rows: list[MembershipSnapshotRow],
+    intervals: list[MembershipIntervalRow],
+    status: str,
+    run_id: str | None,
+    dry_run: bool,
+) -> dict[str, object]:
+    snapshot_dates = sorted({row.as_of_date for row in snapshot_rows})
+    open_count = sum(1 for row in intervals if row.valid_to is None)
+    summary: dict[str, object] = {
+        "status": status,
+        "table": INTERVAL_TABLE,
+        "rule_version": RULE_VERSION,
+        "dry_run": dry_run,
         "snapshot_date_count": len(snapshot_dates),
         "snapshot_dates": snapshot_dates,
         "interval_row_count": len(intervals),
@@ -226,6 +276,48 @@ def intervalize_concept_membership(
         "closed_interval_count": len(intervals) - open_count,
         "coverage_first_date": snapshot_dates[0],
         "coverage_last_snapshot_date": snapshot_dates[-1],
+        "last_observed_date_distribution": _last_observed_date_distribution(intervals),
+        "open_interval_last_observed_date_distribution": _last_observed_date_distribution(
+            [row for row in intervals if row.valid_to is None]
+        ),
+        "staleness_risk": _staleness_risk_summary(intervals),
+    }
+    if run_id is not None:
+        summary["run_id"] = run_id
+    return summary
+
+
+def _last_observed_date_distribution(
+    intervals: list[MembershipIntervalRow],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in intervals:
+        counts[row.last_observed_date] = counts.get(row.last_observed_date, 0) + 1
+    return {observed_date: counts[observed_date] for observed_date in sorted(counts)}
+
+
+def _staleness_risk_summary(
+    intervals: list[MembershipIntervalRow],
+) -> dict[str, object]:
+    observed_dates = sorted({row.last_observed_date for row in intervals})
+    open_observed_dates = sorted(
+        {row.last_observed_date for row in intervals if row.valid_to is None}
+    )
+    return {
+        "status": "not_assessed",
+        "threshold_days": None,
+        "oldest_last_observed_date": observed_dates[0] if observed_dates else None,
+        "latest_last_observed_date": observed_dates[-1] if observed_dates else None,
+        "oldest_open_interval_last_observed_date": (
+            open_observed_dates[0] if open_observed_dates else None
+        ),
+        "latest_open_interval_last_observed_date": (
+            open_observed_dates[-1] if open_observed_dates else None
+        ),
+        "reason": (
+            "No approved concept-membership staleness threshold; "
+            "last_observed_date is disclosed without a freshness classification."
+        ),
     }
 
 

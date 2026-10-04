@@ -7,7 +7,7 @@
     "source_version": "sv_balance_union__sv_exec_dashboard_v1",
     "vendor_version": "vv_none",
     "rule_version": "rv_balance_union__rv_exec_dashboard_v1",
-    "cache_version": "cv_exec_dashboard_v1",
+    "cache_version": "cv_exec_dashboard_nim_percent_points_v2",
     "quality_flag": "ok",
     "vendor_status": "ok",
     "fallback_mode": "none",

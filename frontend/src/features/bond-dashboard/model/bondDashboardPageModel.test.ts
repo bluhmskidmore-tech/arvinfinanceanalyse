@@ -390,6 +390,33 @@ describe("buildBondDashboardCaliberItems", () => {
       buildBondDashboardCaliberItems({ reportDate: "", prevReportDate: null, dataSource: undefined }),
     ).toEqual([`报告日：${EM_DASH}`, `环比基准：${EM_DASH}`]);
   });
+
+  it("data_built_at 存在时在报告日之后披露数据物化时刻", () => {
+    const items = buildBondDashboardCaliberItems({
+      reportDate: "2026-04-30",
+      prevReportDate: "2026-03-31",
+      dataSource: undefined,
+      dataBuiltAt: "2026-05-06T11:20:00Z",
+    });
+
+    expect(items[0]).toBe("报告日：2026-04-30");
+    // 报告日与物化时刻是两个事实：数据覆盖到 4-30，算出来是 5-6。
+    const builtAtItem = items.find((item) => item.startsWith("数据物化："));
+    expect(builtAtItem).toBeDefined();
+    expect(builtAtItem).not.toContain("2026-04-30");
+  });
+
+  it("data_built_at 缺失时整项省略而非补破折号", () => {
+    const items = buildBondDashboardCaliberItems({
+      reportDate: "2026-04-30",
+      prevReportDate: "2026-03-31",
+      dataSource: undefined,
+      dataBuiltAt: null,
+    });
+
+    expect(items).toEqual(["报告日：2026-04-30", "环比基准：2026-03-31"]);
+    expect(items.some((item) => item.startsWith("数据物化："))).toBe(false);
+  });
 });
 
 describe("buildBondDashboardScreenNotices", () => {

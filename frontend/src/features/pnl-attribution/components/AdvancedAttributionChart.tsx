@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import type { EChartsOption } from "../../../lib/echarts";
 import type {
   AdvancedAttributionSummary,
   CarryRollDownPayload,
@@ -8,6 +8,7 @@ import type {
   SpreadAttributionPayload,
 } from "../../../api/contracts";
 import { PageDataSection } from "../../../components/page/PageDataSection";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
@@ -24,12 +25,23 @@ const { createBarChartOption } = nocturneChartTheme;
 const CONTRIBUTION_PCT_CALIBER_NOTE =
   "占比按各效应绝对值计算，方向相反时合计可能超过 100%";
 
-const BAR_RADIUS = [
-  designTokens.radius.sm,
-  designTokens.radius.sm,
-  0,
-  0,
-];
+const SPREAD_EXCLUSION_LABELS: Record<string, string> = {
+  missing_position_key: "持仓匹配键缺失",
+  duplicate_position_key: "持仓匹配键重复",
+  added_position: "区间新增持仓",
+  exited_position: "区间退出持仓",
+  unsupported_currency: "缺少同币种基准曲线",
+  invalid_market_value: "市值无效",
+  missing_start_ytm: "期初收益率缺失或非观测值",
+  missing_end_ytm: "期末收益率缺失或非观测值",
+  invalid_start_risk: "期初期限或久期无效",
+  estimated_start_duration: "期初久期为假设值",
+  invalid_end_tenor: "期末期限无效",
+  missing_start_curve: "期初国债曲线缺失",
+  missing_end_curve: "期末国债曲线缺失",
+  benchmark_start_tenor_uncovered: "期初期限超出基准覆盖",
+  benchmark_end_tenor_uncovered: "期末期限超出基准覆盖",
+};
 
 function valueDirection(value: number | null | undefined) {
   if (value === null || value === undefined) {
@@ -123,7 +135,6 @@ export function AdvancedAttributionChart({
         left: 48,
         right: designTokens.space[6],
         top: designTokens.space[6],
-        bottom: 48,
       },
       xAxis: {
         data: rows.map((r) =>
@@ -142,7 +153,6 @@ export function AdvancedAttributionChart({
           data: rows.map((r) => pctPoints(r.carry)),
           itemStyle: {
             color: nocturneTokens.color.green,
-            borderRadius: BAR_RADIUS,
           },
         },
         {
@@ -151,7 +161,6 @@ export function AdvancedAttributionChart({
           data: rows.map((r) => pctPoints(r.rolldown)),
           itemStyle: {
             color: nocturneTokens.color.blue,
-            borderRadius: BAR_RADIUS,
           },
         },
       ],
@@ -169,7 +178,7 @@ export function AdvancedAttributionChart({
     // 双轴柱线组合仍走 createBarChartOption：主题 mergeAxis 会给数组 yAxis
     // 逐项补齐 value 轴默认（轴色/字号），此处只保留轴名与 splitLine 差异。
     return createBarChartOption({
-      grid: { left: 52, right: 52, top: designTokens.space[6], bottom: 48 },
+      grid: { left: 52, right: 52, top: designTokens.space[6] },
       xAxis: { data: tenors },
       yAxis: [
         {
@@ -193,7 +202,6 @@ export function AdvancedAttributionChart({
                 v !== null && v < 0
                   ? nocturneTokens.color.red
                   : nocturneTokens.color.green,
-              borderRadius: BAR_RADIUS,
             },
           })),
         },
@@ -219,7 +227,6 @@ export function AdvancedAttributionChart({
         left: 48,
         right: designTokens.space[6],
         top: designTokens.space[6],
-        bottom: 48,
       },
       xAxis: { data: krdData.buckets.map((b) => b.tenor) },
       yAxis: {
@@ -232,7 +239,6 @@ export function AdvancedAttributionChart({
           data: krdData.buckets.map((b) => pctPoints(b.contribution_pct)),
           itemStyle: {
             color: nocturneTokens.color.blue,
-            borderRadius: BAR_RADIUS,
           },
         },
         {
@@ -242,7 +248,6 @@ export function AdvancedAttributionChart({
           data: krdData.buckets.map((b) => pctPoints(b.weight)),
           itemStyle: {
             color: nocturneTokens.color.green,
-            borderRadius: BAR_RADIUS,
           },
         },
       ],
@@ -386,11 +391,12 @@ export function AdvancedAttributionChart({
             <h3 className="advanced-attribution-chart__section-title">
               {"Carry & Roll-down"} 分解
             </h3>
-            <ReactECharts
+            <ChartCard
+              flat
+              ariaLabel="Carry 与 Roll-down 分解"
+              unit="%"
+              height={280}
               option={carryOption}
-              className="advanced-attribution-chart__chart advanced-attribution-chart__chart--carry"
-              notMerge
-              lazyUpdate
             />
             <div className="advanced-attribution-chart__table-wrap advanced-attribution-chart__table-wrap--bounded">
               <table className="advanced-attribution-chart__table advanced-attribution-chart__table--sticky">
@@ -480,6 +486,42 @@ export function AdvancedAttributionChart({
             <p className="advanced-attribution-chart__section-meta">
               区间 {spreadData.start_date} ~ {spreadData.end_date}
             </p>
+            <p className="advanced-attribution-chart__caliber-note" data-testid="spread-method-note">
+              {spreadData.method_note}
+            </p>
+            {spreadData.attribution_coverage && (
+              <div data-testid="spread-matching-coverage">
+                <p className="advanced-attribution-chart__section-copy" role={spreadData.calculation_status === "complete" ? "status" : "alert"}>
+                  {spreadData.calculation_status === "unavailable" ? "无有效匹配，归因效应缺失。" : "逐券匹配期初暴露估算。"}
+                  有效匹配 {spreadData.attribution_coverage.attributed_position_count} 项，期初覆盖市值
+                  {formatYi(spreadData.attribution_coverage.covered_start_market_value.raw ?? undefined)}
+                  （{pctDisplay(spreadData.attribution_coverage.start_coverage_pct)}）；期末覆盖
+                  {pctDisplay(spreadData.attribution_coverage.end_coverage_pct)}。
+                </p>
+                {spreadData.attribution_coverage.exclusions.length > 0 && (
+                  <div className="advanced-attribution-chart__table-wrap">
+                    <table className="advanced-attribution-chart__table" aria-label="利差归因未覆盖原因">
+                      <thead><tr>
+                        <th className="advanced-attribution-chart__table-left">未覆盖原因</th>
+                        <th className="advanced-attribution-chart__table-num">期初条数</th>
+                        <th className="advanced-attribution-chart__table-num">期末条数</th>
+                        <th className="advanced-attribution-chart__table-num">期初市值（亿元）</th>
+                        <th className="advanced-attribution-chart__table-num">期末市值（亿元）</th>
+                      </tr></thead>
+                      <tbody>{spreadData.attribution_coverage.exclusions.map((item) => (
+                        <tr key={item.reason}>
+                          <td title={item.reason}>{SPREAD_EXCLUSION_LABELS[item.reason] ?? item.reason}</td>
+                          <td className="advanced-attribution-chart__table-num">{item.start_row_count}</td>
+                          <td className="advanced-attribution-chart__table-num">{item.end_row_count}</td>
+                          <td className="advanced-attribution-chart__table-num">{yiOrNull(item.start_market_value)?.toFixed(2) ?? EM_DASH}</td>
+                          <td className="advanced-attribution-chart__table-num">{yiOrNull(item.end_market_value)?.toFixed(2) ?? EM_DASH}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
             {(spreadData.items?.length ?? 0) > 0 ? (
               <div className="advanced-attribution-chart__table-wrap">
                 <table className="advanced-attribution-chart__table">
@@ -488,6 +530,10 @@ export function AdvancedAttributionChart({
                       <th className="advanced-attribution-chart__table-left">
                         类别
                       </th>
+                      <th className="advanced-attribution-chart__table-num">匹配期初市值（亿元）</th>
+                      <th className="advanced-attribution-chart__table-num">归因期初久期</th>
+                      <th className="advanced-attribution-chart__table-num">国债效应（亿元）</th>
+                      <th className="advanced-attribution-chart__table-num">利差效应（亿元）</th>
                       <th className="advanced-attribution-chart__table-num">
                         国债贡献占比%
                       </th>
@@ -502,6 +548,10 @@ export function AdvancedAttributionChart({
                         <td>
                           {item.category}
                         </td>
+                        <td className="advanced-attribution-chart__table-num">{yiOrNull(item.matched_start_market_value)?.toFixed(2) ?? EM_DASH}</td>
+                        <td className="advanced-attribution-chart__table-num">{numericDisplay(item.attribution_duration)}</td>
+                        <td className="advanced-attribution-chart__table-num">{yiOrNull(item.treasury_effect)?.toFixed(2) ?? EM_DASH}</td>
+                        <td className="advanced-attribution-chart__table-num">{yiOrNull(item.spread_effect)?.toFixed(2) ?? EM_DASH}</td>
                         <td className="advanced-attribution-chart__table-num">
                           {pctDisplay(item.treasury_contribution_pct)}
                         </td>
@@ -518,6 +568,11 @@ export function AdvancedAttributionChart({
           </div>
         )}
 
+        {krdData?.calculation_status === "unavailable" ? (
+          <p role="alert" data-testid="krd-curve-unavailable" className="campisi-callout--warning">
+            {(krdData.warnings?.length ? krdData.warnings : [krdData.curve_interpretation]).join(" ")}
+          </p>
+        ) : null}
         {krdOption && krdData && (
           <div className="advanced-attribution-chart__panel">
             <h3 className="advanced-attribution-chart__section-title">
@@ -536,18 +591,20 @@ export function AdvancedAttributionChart({
               </p>
             )}
             <div className="advanced-attribution-chart__chart-grid">
-              <ReactECharts
+              <ChartCard
+                flat
+                ariaLabel="KRD 久期贡献与收益率变动"
+                unit="亿元 / BP"
+                height={280}
                 option={krdOption}
-                className="advanced-attribution-chart__chart"
-                notMerge
-                lazyUpdate
               />
               {krdCompareOption && (
-                <ReactECharts
+                <ChartCard
+                  flat
+                  ariaLabel="KRD 贡献占比与市值占比"
+                  unit="%"
+                  height={280}
                   option={krdCompareOption}
-                  className="advanced-attribution-chart__chart"
-                  notMerge
-                  lazyUpdate
                 />
               )}
             </div>

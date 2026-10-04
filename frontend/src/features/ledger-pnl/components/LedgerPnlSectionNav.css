@@ -4,11 +4,12 @@
   z-index: 20;
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
+  border-radius: 0;
+  background: var(--dh-api-bg);
   scrollbar-color: var(--dh-api-line) var(--dh-api-panel);
   scrollbar-width: thin;
+  border: 0;
+  border-bottom: 1px solid var(--dh-api-line);
 }
 
 .ledger-pnl-section-nav::-webkit-scrollbar {
@@ -27,8 +28,8 @@
 .ledger-pnl-section-nav__items {
   display: flex;
   min-width: max-content;
-  gap: 4px;
-  padding: 8px;
+  gap: var(--moss-space-3);
+  padding: 0;
 }
 
 .ledger-pnl-section-nav__item {
@@ -36,27 +37,28 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 6px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--dh-api-radius);
+  min-height: 36px;
+  padding: var(--moss-space-2) 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--dh-api-soft);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 500;
   line-height: 1.25;
   white-space: nowrap;
   transition:
     border-color var(--moss-motion-duration-fast) var(--moss-motion-ease-out),
     background-color var(--moss-motion-duration-fast) var(--moss-motion-ease-out),
     color var(--moss-motion-duration-fast) var(--moss-motion-ease-out);
+  border-bottom: 2px solid transparent;
 }
 
 .ledger-pnl-section-nav__item:hover:not(:disabled) {
-  border-color: var(--dh-api-line);
-  background: var(--dh-api-panel-2);
+  border-color: transparent;
+  background: transparent;
   color: var(--dh-api-ink);
 }
 
@@ -66,8 +68,8 @@
 }
 
 .ledger-pnl-section-nav__item--active {
-  border-color: var(--dh-api-line);
-  background: var(--dh-api-blue-soft);
+  border-color: var(--dh-api-blue);
+  background: transparent;
   color: var(--dh-api-ink);
 }
 
@@ -78,12 +80,12 @@
 }
 
 .ledger-pnl-section-nav__badge {
-  padding: 2px 5px;
-  border: 1px solid currentColor;
+  padding: 0;
+  border: 0;
   border-radius: var(--dh-api-radius);
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1.2;
 }
 
@@ -102,5 +104,11 @@
 @media (prefers-reduced-motion: reduce) {
   .ledger-pnl-section-nav__item {
     transition: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: var(--moss-space-2) 0;
+    min-height: 36px;
+    font-weight: 500;
   }
 }

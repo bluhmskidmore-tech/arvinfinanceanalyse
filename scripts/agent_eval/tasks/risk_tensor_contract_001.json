@@ -1,7 +1,7 @@
 {
   "id": "risk_tensor_contract_001",
   "page": "risk-tensor",
-  "goal": "Fix a Risk Tensor display-contract defect (yuan to \u4e07\u5143/\u4ebf\u5143 unit scaling, precision, or missing-value placeholder semantics) without broad refactoring.",
+  "goal": "Fix a Risk Tensor display-contract defect (yuan to 万元/亿元 unit scaling, precision, or missing-value placeholder semantics) without broad refactoring.",
   "metric_ids": [
     "MTR-RSK-001",
     "MTR-RSK-001R",
@@ -25,6 +25,8 @@
   "allowed_scope": [
     "frontend/src/features/risk-tensor/",
     "frontend/src/api/",
+    "frontend/src/mocks/mockApiClient.ts",
+    "frontend/src/mocks/executiveMockClient.ts",
     "frontend/src/test/"
   ],
   "pr_trigger_scope": [
@@ -34,11 +36,12 @@
     "frontend/src/api/clientFactoryOptions.ts",
     "frontend/src/api/transport.ts",
     "frontend/src/api/httpResponseError.ts",
-    "frontend/src/api/mockApiClient.ts",
+    "frontend/src/mocks/mockApiClient.ts",
     "frontend/src/api/contracts.ts",
     "frontend/src/api/contracts/core.ts",
     "frontend/src/api/contracts/riskTensor.ts",
     "frontend/src/api/executiveClient.ts",
+    "frontend/src/mocks/executiveMockClient.ts",
     "frontend/src/api/numeric.ts",
     "frontend/src/test/RiskTensor*",
     "frontend/src/test/renderWorkbenchApp.tsx",

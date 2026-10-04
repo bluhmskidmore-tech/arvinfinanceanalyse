@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
 import importlib
 import subprocess
 import sys
@@ -8,15 +10,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 from backend.app.api.routes import macro_toolkit as route
 from backend.app.api.routes.macro_toolkit import router
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
 )
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services import macro_toolkit_service as service
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 pytestmark = [
     pytest.mark.excluded_surface_acceptance,
@@ -248,6 +252,82 @@ def test_write_refresh_idempotency_replay_quality_matches_terminal_status(
     assert replay.payload["status"] == terminal_status
     assert replay.payload["idempotency_replay"] is True
     assert replay.quality_flag == expected_quality
+
+
+def test_source_refresh_idempotency_key_does_not_replay_across_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actor = RecordingActor()
+    monkeypatch.setattr(service, "run_macro_source_backfill_refresh_task", actor, raising=False)
+    kwargs = {
+        "duckdb_path": str(tmp_path / "moss.duckdb"),
+        "governance_path": str(tmp_path / "gov"),
+        "alias": "M0041813",
+        "series_id": "NCD.SHIBOR.3M",
+        "series_name": "SHIBOR:3M",
+        "backfill_mode": "macro_series",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-30",
+        "sources": ("tushare_macro",),
+        "idempotency_key": " source-key ",
+    }
+
+    first = service.queue_macro_source_backfill(
+        **kwargs,
+        requested_by_user_id="source-owner-one",
+    )
+    repo = GovernanceRepository(base_dir=tmp_path / "gov")
+    queued = repo.read_all(CACHE_BUILD_RUN_STREAM)[-1]
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **queued,
+            "status": "completed",
+            "trigger_mode": "terminal",
+            "finished_at": datetime.now(UTC).isoformat(),
+        },
+    )
+    second = service.queue_macro_source_backfill(
+        **kwargs,
+        requested_by_user_id="source-owner-two",
+    )
+
+    assert first.payload["run_id"] != second.payload["run_id"]
+    assert len(actor.calls) == 2
+
+
+def test_source_refresh_shared_target_still_conflicts_across_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actor = RecordingActor()
+    monkeypatch.setattr(service, "run_macro_source_backfill_refresh_task", actor, raising=False)
+    kwargs = {
+        "duckdb_path": str(tmp_path / "moss.duckdb"),
+        "governance_path": str(tmp_path / "gov"),
+        "alias": "M0041813",
+        "series_id": "NCD.SHIBOR.3M",
+        "series_name": "SHIBOR:3M",
+        "backfill_mode": "macro_series",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-30",
+        "sources": ("tushare_macro",),
+        "idempotency_key": " source-key ",
+    }
+
+    first = service.queue_macro_source_backfill(
+        **kwargs,
+        requested_by_user_id="source-owner-one",
+    )
+
+    with pytest.raises(service.MacroToolkitConflictError, match="Macro source backfill is already in progress."):
+        service.queue_macro_source_backfill(
+            **kwargs,
+            requested_by_user_id="source-owner-two",
+        )
+
+    assert first.payload["status"] == "queued"
     assert len(actor.calls) == 1
 
 
@@ -396,7 +476,7 @@ def test_write_refresh_status_services_raise_clear_not_found(
         )
     with pytest.raises(
         ValueError,
-        match="Macro source backfill refresh run not found: missing-source",
+        match="Macro source backfill refresh run not found\\.",
     ):
         service.macro_source_backfill_refresh_status(
             governance_path,
@@ -408,6 +488,7 @@ def test_write_refresh_status_endpoints_return_envelopes_and_map_not_found(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     settings = SimpleNamespace(
         duckdb_path=tmp_path / "moss.duckdb",
         governance_path=tmp_path / "gov",
@@ -443,6 +524,7 @@ def test_write_refresh_status_endpoints_return_envelopes_and_map_not_found(
             "end_date": "2026-04-30",
             "sources": ["tushare_macro"],
             "total_added": 5,
+            "requested_by_user_id": "macro-reader",
         },
     )
     permission_checks: list[str] = []
@@ -451,6 +533,14 @@ def test_write_refresh_status_endpoints_return_envelopes_and_map_not_found(
         route,
         "_ensure_macro_toolkit_read_allowed",
         lambda *_args, **_kwargs: permission_checks.append("read"),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_cffex_member_rank_status",
+        lambda *_args, **_kwargs: {
+            "row_count": 9,
+            "latest_trade_date": "2026-04-10",
+        },
     )
     monkeypatch.setattr(
         route,
@@ -463,7 +553,7 @@ def test_write_refresh_status_endpoints_return_envelopes_and_map_not_found(
     app = FastAPI()
     app.include_router(router)
     client = TestClient(app)
-    headers = {"X-User-Id": "macro-reader"}
+    headers = {"X-User-Id": "macro-reader", "X-User-Role": "viewer"}
 
     cffex_response = client.get(
         "/ui/macro/toolkit/cffex-member-rank/refresh-status",
@@ -633,7 +723,7 @@ def test_cffex_worker_invalidates_market_home_cache_after_completed_append(
         assert events == [("append", "running", "async")]
         events.append(("invalidate",))
 
-    from backend.app.api.response_cache import market_home_response_cache
+    from backend.app.observability.response_cache import market_home_response_cache
 
     # Patch the class binding the worker actually uses: earlier tests may have
     # replaced backend.app.repositories.governance_repo in sys.modules via
@@ -680,7 +770,7 @@ def test_cffex_worker_invalidates_market_home_cache_for_partial_write(
     def fake_invalidate() -> None:
         events.append(("invalidate",))
 
-    from backend.app.api.response_cache import market_home_response_cache
+    from backend.app.observability.response_cache import market_home_response_cache
 
     # Same rationale as the completed-append test above: patch the class the
     # worker binds, not this file's import-time GovernanceRepository reference.
@@ -846,6 +936,7 @@ def test_cffex_missing_read_helper_does_not_materialize(
     tmp_path, monkeypatch
 ) -> None:
     import pandas as pd
+
     from backend.app.services import cffex_member_rank_service as cffex_service
 
     monkeypatch.setattr(

@@ -122,6 +122,8 @@ function createLedgerCurrencyBasisClient() {
         total_pnl_cny: money("90000000.00"),
         total_pnl: money("100000000.00"),
         count: 0,
+        ledger_evidence_rows: 0,
+        average_only_row_count: 0,
       },
       items: [],
     },

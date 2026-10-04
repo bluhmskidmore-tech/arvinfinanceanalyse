@@ -21,15 +21,7 @@ export function buildPortfolioPieOption(rows: ModuleHomeDistributionRow[]): ECha
     animationDuration: 180,
     tooltip: {
       trigger: "item",
-      backgroundColor: nocturneTokens.color.panel2,
-      borderColor: nocturneTokens.color.line,
-      borderWidth: 1,
       padding: [8, 10],
-      textStyle: {
-        color: nocturneTokens.color.ink,
-        fontSize: 11,
-        fontWeight: 650,
-      },
       formatter: (params: unknown) => {
         const item = params as { name: string; percent: number };
         const row = rows.find((entry) => entry.label === item.name);

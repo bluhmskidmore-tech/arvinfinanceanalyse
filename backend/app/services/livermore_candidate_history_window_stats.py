@@ -8,12 +8,12 @@
 from __future__ import annotations
 
 from typing import Any
+
 from backend.app.services.livermore_candidate_history_read_support import (
     TABLE_HIST,
     _missing_bar_count,
     _safe_optional_date,
 )
-
 
 _DEFAULT_SIGNAL_KINDS = ["hybrid_fusion", "stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"]
 
@@ -67,6 +67,20 @@ def _decision_usable_adjusted_item(item: dict[str, Any]) -> dict[str, Any] | Non
         return None
     return adjusted_item
 
+def _research_adjusted_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Adjusted-only view for research-basis (adjusted_close_return) statistics.
+
+    Overwrites ``return_*`` with ``return_*_adj`` and drops rows carrying no
+    adjusted value at any horizon, mirroring the decision_usable semantics so
+    stats labelled research/adjusted_close_return never read raw close returns.
+    """
+    adjusted_items: list[dict[str, Any]] = []
+    for item in items:
+        adjusted_item = _decision_usable_adjusted_item(item)
+        if adjusted_item is not None:
+            adjusted_items.append(adjusted_item)
+    return adjusted_items
+
 def _decision_usable_dates(backtest_window_summary: dict[str, Any]) -> set[str]:
     return {
         str(item)[:10]
@@ -88,11 +102,16 @@ def _horizon_usable_items(
         trade_date = str(reason.get("trade_date") or "").strip()[:10]
         if trade_date:
             usable_dates.add(trade_date)
-    return [
-        item
-        for item in items
-        if str(item.get("snapshot_as_of_date") or "").strip()[:10] in usable_dates
-    ]
+    # All consumers of this filter feed research-basis (adjusted_close_return)
+    # statistics, so the rows are switched to the adjusted view here; execution
+    # stats flow through _build_execution_usable_stats instead.
+    return _research_adjusted_items(
+        [
+            item
+            for item in items
+            if str(item.get("snapshot_as_of_date") or "").strip()[:10] in usable_dates
+        ]
+    )
 
 def _classify_replay_date(
     *,
@@ -134,10 +153,13 @@ def _classify_replay_date(
     if not rows:
         return _classification(
             trade_date=trade_date,
-            status="completed",
-            reason_code="no_strategy_signals",
-            message=f"Full replay coverage produced no Livermore strategy signal rows for {trade_date}.",
-            affects_completed_stats=True,
+            status="unsupported",
+            reason_code="missing_candidate_history_receipt",
+            message=(
+                "Full source coverage exists, but no certified candidate-history materialization "
+                f"receipt proves a completed zero-signal replay for {trade_date}."
+            ),
+            affects_completed_stats=False,
             signal_kinds=_DEFAULT_SIGNAL_KINDS,
         )
 

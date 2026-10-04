@@ -51,6 +51,7 @@ function Assert-DevRuntimeAllowed {
 
 function Invoke-DevRuntimeProcess {
   param([Parameter(Mandatory = $true)][string[]]$Command)
+  if ($Command[0] -ne $devEnvPython) { throw "Selected dev-env interpreter was replaced" }
   $payload = @{ argv = @($Command); path = $env:PATH } | ConvertTo-Json -Compress
   [IO.File]::WriteAllText($env:TEST_COMMAND_CAPTURE, $payload, [Text.UTF8Encoding]::new($false))
   & $env:TEST_POWERSHELL -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $env:TEST_WORKER_SCRIPT
@@ -68,6 +69,7 @@ if ($env:TEST_FAILURE_STAGE -eq "startup") {
   $message = -join ([char[]]@(0x542F, 0x52A8, 0x5931, 0x8D25))
   throw $message
 }
+$devEnvPython = Join-Path $root $env:TEST_PYTHON_RELATIVE_PATH
 """.lstrip(),
         encoding="utf-8",
         newline="\n",
@@ -130,6 +132,10 @@ def _run_launcher(
             "TEST_QUEUE_LOG_DIRECTORY": str(log_directory),
             "TEST_SECRET_TEXT": secret_text,
             "TEST_COMMAND_CAPTURE": str(tmp_path / "command.json"),
+            "TEST_PYTHON_RELATIVE_PATH": (
+                "backend/.venv/Scripts/python.exe" if python_layout == "backend"
+                else ".venv/Scripts/python.exe"
+            ),
         }
     )
     completed = subprocess.run(

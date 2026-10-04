@@ -4,8 +4,8 @@ import type {
   ChoiceMacroLatestPoint,
   FxAnalyticalPayload,
   FxFormalStatusPayload,
+  LivermoreStrategyPayload,
   MacroBondLinkagePayload,
-  MacroBondLinkageTopCorrelation,
   MarketDataBondFuturesRankingsPayload,
   MarketDataCoverageSection,
   MarketDataCoverageSummaryPayload,
@@ -19,17 +19,11 @@ import {
   buildMarketDataChartTooltip,
   marketDataChartTheme,
 } from "../lib/charts/marketDataChartTheme";
-import type { MarketOverviewMetric } from "./MarketDataHeroSection";
 import { RATE_TREND_DEFINITIONS } from "./marketDataMacroConstants";
 import {
   buildMarketDataCategoryStore,
   type MarketDataCategoryStore,
 } from "../lib/marketDataCategoryStore";
-import {
-  buildLivermoreStrategyModel,
-  type LivermoreStrategyModel,
-} from "../lib/livermoreStrategyModel";
-import { isLinkageSelfCorrelation } from "../lib/marketDataLinkageFormat";
 import {
   buildMarketDataTerminalModel,
   buildTerminalTickerItems,
@@ -38,15 +32,22 @@ import {
   type MarketTerminalTickerItem,
 } from "../lib/marketDataTerminalModel";
 
-export type SpreadTenorSlot = "3Y" | "5Y" | "10Y";
-export type { MarketCreditSegmentFilter };
+export type MarketOverviewTone = "default" | "positive" | "negative" | "warning" | "error";
 
-const SPREAD_TENOR_SLOTS: SpreadTenorSlot[] = ["3Y", "5Y", "10Y"];
-
-export type SpreadSlot = {
-  tenor: SpreadTenorSlot;
-  point: MacroBondLinkageTopCorrelation | null;
+export type MarketOverviewMetric = {
+  testId: string;
+  title: string;
+  value: string;
+  detail: string;
+  /** 供 title 使用的完整元信息（vendor 序列代码等技术标识收进 title，不占正文）。 */
+  detailTitle?: string;
+  tone?: MarketOverviewTone;
+  valueVariant?: "metric" | "text";
+  sparklineValues?: readonly number[];
+  sparklineTone?: "up" | "down" | "flat";
 };
+
+export type { MarketCreditSegmentFilter };
 
 export type MarketDataStatusBadges = {
   readinessVerdict: string;
@@ -72,13 +73,10 @@ export type MarketDataPageModel = MarketDataCategoryStore & {
   coverageSummary: MarketDataCoverageSummaryPayload | null;
   coverageSections: MarketDataCoverageSection[];
   rateTrendChartOption: EChartsOption | null;
-  livermoreStrategy: LivermoreStrategyModel | null;
   macroBondLinkage: Partial<MacroBondLinkagePayload>;
   macroBondLinkageMeta: ResultMeta | undefined;
   macroBondLinkageWarnings: string[];
   hasPortfolioImpact: boolean;
-  spreadSlots: SpreadSlot[];
-  nonSpreadTopCorrelations: MacroBondLinkageTopCorrelation[];
   macroMeta: ResultMeta | undefined;
   formalRatesMeta: ResultMeta | undefined;
   fxFormalStatus: FxFormalStatusPayload | null;
@@ -104,7 +102,8 @@ type BuildMarketDataPageModelInput = {
   bondFuturesRankingsEnvelope?: ApiEnvelope<MarketDataBondFuturesRankingsPayload>;
   coverageSummaryEnvelope?: ApiEnvelope<MarketDataCoverageSummaryPayload>;
   macroBondLinkageEnvelope?: ApiEnvelope<MacroBondLinkagePayload>;
-  livermoreStrategyEnvelope?: Parameters<typeof buildLivermoreStrategyModel>[0]["envelope"];
+  /** 策略读面已迁 /cross-asset；本页只保留 result_meta 供治理证据轨披露该链路口径。 */
+  livermoreStrategyEnvelope?: ApiEnvelope<LivermoreStrategyPayload>;
   ncdFundingProxyMeta?: ResultMeta;
 };
 
@@ -187,14 +186,7 @@ export function buildMarketDataRateTrendChartOption(
       trigger: "axis",
       axisPointer: marketDataChartTheme.axisPointerLine,
     }),
-    legend: {
-      bottom: 0,
-      type: "plain" as const,
-      itemWidth: 14,
-      itemHeight: 8,
-      textStyle: { ...marketDataChartTheme.axisLabel, color: nocturneTokens.color.inkSoft },
-    },
-    grid: { left: 52, right: 20, top: 28, bottom: 52 },
+    grid: { left: 52, right: 20, top: 28 },
     xAxis: {
       type: "category",
       boundaryGap: false,
@@ -213,54 +205,6 @@ export function buildMarketDataRateTrendChartOption(
     },
     series: lineSeries,
   };
-}
-
-function correlationStrength(point: MacroBondLinkageTopCorrelation) {
-  return Math.max(
-    Math.abs(point.correlation_1y ?? 0),
-    Math.abs(point.correlation_6m ?? 0),
-    Math.abs(point.correlation_3m ?? 0),
-  );
-}
-
-function creditSegmentMatches(seriesName: string, creditSegment: MarketCreditSegmentFilter): boolean {
-  if (creditSegment === "both") {
-    return true;
-  }
-  if (creditSegment === "mtn") {
-    return seriesName.includes("中票");
-  }
-  return seriesName.includes("城投");
-}
-
-export function buildSpreadSlots(
-  topCorrelations: MacroBondLinkageTopCorrelation[] | undefined,
-  creditSegment: MarketCreditSegmentFilter = "both",
-  spreadTenorCorrelations?: MacroBondLinkageTopCorrelation[] | undefined,
-): SpreadSlot[] {
-  const dedicatedPool = (spreadTenorCorrelations ?? []).filter(
-    (item) =>
-      item.target_family === "credit_spread" && creditSegmentMatches(item.series_name, creditSegment),
-  );
-  if (dedicatedPool.length > 0) {
-    return SPREAD_TENOR_SLOTS.map((tenor) => ({
-      tenor,
-      point: dedicatedPool.find((item) => item.target_tenor === tenor) ?? null,
-    }));
-  }
-
-  const spreadPool = (topCorrelations ?? []).filter(
-    (item) =>
-      item.target_family === "credit_spread" && creditSegmentMatches(item.series_name, creditSegment),
-  );
-
-  return SPREAD_TENOR_SLOTS.map((tenor) => ({
-    tenor,
-    point:
-      spreadPool
-        .filter((item) => item.target_tenor === tenor)
-        .sort((left, right) => correlationStrength(right) - correlationStrength(left))[0] ?? null,
-  }));
 }
 
 /** 格式化后 ±0（如 "+0.0bp"）视为零变动：不给方向色（DESIGN §4 零变动归中性）。 */
@@ -554,11 +498,6 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     fxAnalyticalGroups,
   });
   const macroBondLinkage: Partial<MacroBondLinkagePayload> = input.macroBondLinkageEnvelope?.result ?? {};
-  const spreadSlots = buildSpreadSlots(
-    macroBondLinkage.top_correlations,
-    "both",
-    macroBondLinkage.spread_tenor_correlations,
-  );
   const formalRatesMeta = input.formalRatesEnvelope?.result_meta;
   const fxFormalStatus = input.fxFormalStatusEnvelope?.result ?? null;
   const fxFormalMeta = input.fxFormalStatusEnvelope?.result_meta;
@@ -583,17 +522,10 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     coverageSummary,
     coverageSections,
     rateTrendChartOption: buildMarketDataRateTrendChartOption(latestSeries),
-    livermoreStrategy: input.livermoreStrategyEnvelope
-      ? buildLivermoreStrategyModel({ envelope: input.livermoreStrategyEnvelope })
-      : null,
     macroBondLinkage,
     macroBondLinkageMeta: input.macroBondLinkageEnvelope?.result_meta,
     macroBondLinkageWarnings: macroBondLinkage.warnings ?? [],
     hasPortfolioImpact: Object.keys(macroBondLinkage.portfolio_impact ?? {}).length > 0,
-    spreadSlots,
-    nonSpreadTopCorrelations: (macroBondLinkage.top_correlations ?? []).filter(
-      (item) => item.target_family !== "credit_spread" && !isLinkageSelfCorrelation(item),
-    ),
     macroMeta,
     formalRatesMeta,
     fxFormalStatus,

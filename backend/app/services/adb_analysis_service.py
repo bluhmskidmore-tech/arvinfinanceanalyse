@@ -6,8 +6,9 @@ ADB 优先读 `fact_formal_zqtz_balance_daily` / `fact_formal_tyw_balance_daily`
 人民币口径行（CNY/CNX）原样并入；外币行按当日 formal FX 中间价折算为 CNY 后并入（calc_rules §12.4），
 缺当日中间价的外币行剔除，折算/剔除情况通过 payload `snapshot_fx_conversion` 与 calibration 披露（§14）。
 
-期末时点与区间日均对比：若某分类在 ``end_date`` 当天无任何快照行，但区间内曾有余额，则该分类期末时点取
-区间内**不晚于** ``end_date`` 的**最近观测日**的同类合计（LOCF），避免「时点=0、日均>0」的伪偏离。
+期末时点与区间日均对比：仅当某一来源在 ``end_date`` 当天整体无快照时，分类期末时点才取区间内
+**不晚于** ``end_date`` 的**最近观测日**同类合计（LOCF）。若来源已有 ``end_date`` 快照，缺失分类按已结清/零余额
+处理；若该分类在 ``end_date`` 有显式无效金额行，则仍回退到最近有效观测，避免把数据损坏误认作清零。
 
 - 债券：`position_scope = liability` 或 `is_issuance_like` → 负债，其余 → 资产。
 - 同业：`position_scope` / `position_side` 推断 `ASSET` / `LIABILITY`。
@@ -66,6 +67,27 @@ from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.liability_analytics_service import build_nim_stress_percent_points
 
 logger = logging.getLogger(__name__)
+
+
+class _MaterializeBalanceAnalysisFactsProxy:
+    """延迟代理：导入 ADB 只读服务时不得触发 tasks broker/actor 注册。"""
+
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.balance_analysis_materialize import (
+            materialize_balance_analysis_facts as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.balance_analysis_materialize import (
+            materialize_balance_analysis_facts as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+materialize_balance_analysis_facts = _MaterializeBalanceAnalysisFactsProxy()
 
 IB_ASSET_PRED = (
     "(instr(lower(coalesce(position_side, '')), 'asset') > 0 "
@@ -974,6 +996,13 @@ def _frame_spot_total_for_date(frame: pd.DataFrame, amount_attr: str, target_dat
     return float(total)
 
 
+def _frame_rows_for_date(frame: pd.DataFrame, target_date: date) -> pd.DataFrame:
+    if frame.empty or "report_date" not in frame.columns:
+        return frame.iloc[0:0].copy()
+    report_dates = pd.to_datetime(frame["report_date"], errors="coerce").dt.normalize()
+    return frame.loc[report_dates.eq(pd.Timestamp(target_date))].copy()
+
+
 def _frame_breakdown_rows(
     frame: pd.DataFrame,
     *,
@@ -1075,8 +1104,9 @@ def _finalize_spot_map_locf_for_frame(
     category_resolver,
     spot_map: dict[str, Decimal],
     sum_map: dict[str, Decimal],
+    locf_categories: set[str] | None = None,
 ) -> None:
-    """仅针对当前 frame 内出现的分类：若在 end_date 无行则做 LOCF（见模块说明）。"""
+    """对允许回退的分类做 LOCF；``None`` 表示来源末日整体缺数，允许全部分类回退。"""
     if frame.empty:
         return
     frame_categories: set[str] = set()
@@ -1094,6 +1124,8 @@ def _finalize_spot_map_locf_for_frame(
             end_date_seen.add(cat)
 
     for cat in frame_categories:
+        if locf_categories is not None and cat not in locf_categories:
+            continue
         if sum_map.get(cat, Decimal("0")) == Decimal("0"):
             continue
         if cat in end_date_seen:
@@ -1377,12 +1409,30 @@ def _build_comparison_spot_sum_maps(
     bonds_df: pd.DataFrame,
     interbank_df: pd.DataFrame,
     end_date: date,
+    *,
+    raw_bonds_df: pd.DataFrame | None = None,
+    raw_interbank_df: pd.DataFrame | None = None,
 ) -> tuple[dict[str, Decimal], dict[str, Decimal], dict[str, Decimal], dict[str, Decimal]]:
     """Accumulate spot (end_date) and period-sum maps for assets and liabilities."""
     spot_assets: dict[str, Decimal] = {}
     spot_liabilities: dict[str, Decimal] = {}
     sum_assets: dict[str, Decimal] = {}
     sum_liabilities: dict[str, Decimal] = {}
+
+    bonds_presence_df = raw_bonds_df if raw_bonds_df is not None else bonds_df
+    interbank_presence_df = raw_interbank_df if raw_interbank_df is not None else interbank_df
+
+    bonds_asset_locf_categories: set[str] | None = None
+    bonds_liability_locf_categories: set[str] | None = None
+    bonds_end_rows = _frame_rows_for_date(bonds_presence_df, end_date)
+    if not bonds_end_rows.empty:
+        bonds_end_issued = _issued_mask(bonds_end_rows)
+        bonds_asset_locf_categories = {
+            _clean_cat(value) for value in bonds_end_rows.loc[~bonds_end_issued, "bond_category"]
+        }
+        bonds_liability_locf_categories = {
+            _clean_cat(value) for value in bonds_end_rows.loc[bonds_end_issued, "bond_category"]
+        }
 
     if not bonds_df.empty:
         issued_mask = _issued_mask(bonds_df)
@@ -1403,6 +1453,7 @@ def _build_comparison_spot_sum_maps(
             category_resolver=lambda row: getattr(row, "bond_category", None),
             spot_map=spot_assets,
             sum_map=sum_assets,
+            locf_categories=bonds_asset_locf_categories,
         )
         _accumulate_spot_and_sum_maps(
             bonds_liab_frame,
@@ -1419,7 +1470,22 @@ def _build_comparison_spot_sum_maps(
             category_resolver=lambda row: getattr(row, "bond_category", None),
             spot_map=spot_liabilities,
             sum_map=sum_liabilities,
+            locf_categories=bonds_liability_locf_categories,
         )
+
+    ib_asset_locf_categories: set[str] | None = None
+    ib_liability_locf_categories: set[str] | None = None
+    interbank_end_rows = _frame_rows_for_date(interbank_presence_df, end_date)
+    if not interbank_end_rows.empty:
+        end_direction = interbank_end_rows["direction"].fillna("").astype(str).str.upper()
+        ib_asset_locf_categories = {
+            _clean_cat(value)
+            for value in interbank_end_rows.loc[end_direction.eq("ASSET"), "product_type"]
+        }
+        ib_liability_locf_categories = {
+            _clean_cat(value)
+            for value in interbank_end_rows.loc[end_direction.eq("LIABILITY"), "product_type"]
+        }
 
     if not interbank_df.empty:
         ib_asset_frame = interbank_df[interbank_df["direction"] == "ASSET"]
@@ -1439,6 +1505,7 @@ def _build_comparison_spot_sum_maps(
             category_resolver=lambda row: getattr(row, "product_type", None),
             spot_map=spot_assets,
             sum_map=sum_assets,
+            locf_categories=ib_asset_locf_categories,
         )
         _accumulate_spot_and_sum_maps(
             ib_liab_frame,
@@ -1455,6 +1522,7 @@ def _build_comparison_spot_sum_maps(
             category_resolver=lambda row: getattr(row, "product_type", None),
             spot_map=spot_liabilities,
             sum_map=sum_liabilities,
+            locf_categories=ib_liability_locf_categories,
         )
 
     return spot_assets, spot_liabilities, sum_assets, sum_liabilities
@@ -1581,7 +1649,11 @@ def get_adb_comparison(
         validity_attr="amount_is_valid",
     )
     spot_assets, spot_liabilities, sum_assets, sum_liabilities = _build_comparison_spot_sum_maps(
-        valid_bonds_df, valid_interbank_df, end_date
+        valid_bonds_df,
+        valid_interbank_df,
+        end_date,
+        raw_bonds_df=bonds_df,
+        raw_interbank_df=interbank_df,
     )
 
     calendar_denom = max(calendar_days_inclusive, 1)
@@ -2407,6 +2479,62 @@ def adb_backfill_candidate_dates(start_date: str, end_date: str) -> dict[str, An
         "snapshot_dates": sorted(snapshot_dates),
         "formal_dates": sorted(formal_dates),
         "missing_dates": sorted(snapshot_dates - formal_dates),
+    }
+
+
+def dispatch_adb_backfill(start_date: str, end_date: str) -> dict[str, Any]:
+    """发现缺失日期并逐日派发物化任务，保留部分成功语义。"""
+    settings = get_settings()
+    candidate_dates = adb_backfill_candidate_dates(start_date, end_date)
+    missing = [str(value) for value in candidate_dates["missing_dates"]]
+    if not missing:
+        return {
+            "status": "no_action",
+            "message": "指定区间没有需要补建的日期。",
+            "snapshot_dates": len(candidate_dates["snapshot_dates"]),
+            "formal_dates": len(candidate_dates["formal_dates"]),
+        }
+
+    queued = 0
+    failed: list[dict[str, str]] = []
+    for report_date in missing:
+        try:
+            materialize_balance_analysis_facts.send(
+                report_date=report_date,
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                data_root=str(settings.data_input_root),
+            )
+            logger.info("Queued ADB formal balance backfill %s", report_date)
+            queued += 1
+        except Exception as exc:
+            logger.warning(
+                "Queue ADB backfill %s failed error_type=%s: %s",
+                report_date,
+                type(exc).__name__,
+                exc,
+            )
+            failed.append(
+                {
+                    "date": report_date,
+                    "error_code": "ADB_BACKFILL_DISPATCH_FAILED",
+                    "error_summary": "补建任务派发失败。",
+                }
+            )
+
+    if queued and failed:
+        message = "补建任务已派发，部分日期派发失败。"
+    elif queued:
+        message = "补建任务已全部派发。"
+    else:
+        message = "补建任务派发失败。"
+    return {
+        "status": "queued" if queued else "failed",
+        "total_missing": len(missing),
+        "queued_count": queued,
+        "failed_count": len(failed),
+        "failed": failed[:20],
+        "message": message,
     }
 
 

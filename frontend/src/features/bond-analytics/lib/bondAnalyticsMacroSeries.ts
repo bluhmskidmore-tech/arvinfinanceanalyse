@@ -6,15 +6,16 @@ import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
  * `series_ids` 为候选 ID 回退列表（与 workbenchShellTicker/dashboardHomeMarket 同模式）：
  * 真实数据集与 mock 数据集的同一指标 ID 不同（如 DR007 真实为 CA.DR007、mock 为 M002），
  * 渲染时取第一个命中的序列，两套数据集都能点亮。
+ * changeSemantics 只标注确定的市场利率：国债、国开及 DR007；其它指标保留方向色。
  */
 export const BOND_ANALYTICS_MACRO_BAR_SERIES = [
-  { series_ids: ["EMM00166466"], shortLabel: "10年国债" },
-  { series_ids: ["EMM00166502"], shortLabel: "10年国开" },
-  { series_ids: ["EM1", "CA.CN_US_SPREAD"], shortLabel: "中美10年利差" },
-  { series_ids: ["CA.DR007", "M002", "EMM00167613"], shortLabel: "DR007" },
-  { series_ids: ["EMM00058124", "CA.USDCNY"], shortLabel: "美元/人民币" },
-  { series_ids: ["CA.BRENT"], shortLabel: "原油" },
-  { series_ids: ["CA.CSI300"], shortLabel: "沪深300" },
+  { series_ids: ["EMM00166466"], shortLabel: "10年国债", changeSemantics: "rate" },
+  { series_ids: ["EMM00166502"], shortLabel: "10年国开", changeSemantics: "rate" },
+  { series_ids: ["EM1", "CA.CN_US_SPREAD"], shortLabel: "中美10年利差", changeSemantics: "directional" },
+  { series_ids: ["CA.DR007", "M002", "EMM00167613"], shortLabel: "DR007", changeSemantics: "rate" },
+  { series_ids: ["EMM00058124", "CA.USDCNY"], shortLabel: "美元/人民币", changeSemantics: "directional" },
+  { series_ids: ["CA.BRENT"], shortLabel: "原油", changeSemantics: "directional" },
+  { series_ids: ["CA.CSI300"], shortLabel: "沪深300", changeSemantics: "directional" },
 ] as const;
 
 export function resolveMacroSeriesPoint(

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypedDict
 
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentEnvelope
@@ -12,6 +13,7 @@ from backend.app.services.dexter_agent_service import execute_dexter_agent_query
 from backend.app.services.hermes_agent_service import (
     execute_hermes_agent_query as _execute_hermes_agent_query_direct,
 )
+from backend.app.services.pi_agent_service import execute_pi_agent_query
 from backend.app.tasks.broker import register_actor_once
 
 AGENT_RUN_TIME_LIMIT_MS = 3_600_000
@@ -20,6 +22,10 @@ _AGENT_LAB_STREAM_PROTOCOL = "run_delta_v1"
 _AGENT_LAB_STREAM_SURFACE = "lab"
 
 AgentExecutor = Callable[[AgentQueryRequest, str, Any], AgentEnvelope]
+
+
+class _CancelKwargs(TypedDict, total=False):
+    cancel_event: threading.Event
 
 
 def _execute_local_agent_query(
@@ -38,17 +44,34 @@ def execute_hermes_agent_query(
     request: AgentQueryRequest,
     governance_dir: str,
     settings: Any,
+    *,
+    cancel_event: threading.Event | None = None,
 ) -> AgentEnvelope:
+    # cancel_event 由 run 监督循环在 run 进入终态时置位，Hermes 借此终止子进程；
+    # 没有事件（同步 /query 路径或旧调用方）时不传该关键字，保持原调用形状。
+    cancel_kwargs: _CancelKwargs = (
+        {"cancel_event": cancel_event} if cancel_event is not None else {}
+    )
     if (
         str(request.context.get("agent_stream_protocol") or "").strip()
         != _AGENT_LAB_STREAM_PROTOCOL
         or str(request.context.get("agent_stream_surface") or "").strip()
-        != _AGENT_LAB_STREAM_SURFACE
+        not in {_AGENT_LAB_STREAM_SURFACE, "workbench"}
     ):
-        return _execute_hermes_agent_query_direct(request, governance_dir, settings)
+        return _execute_hermes_agent_query_direct(
+            request,
+            governance_dir,
+            settings,
+            **cancel_kwargs,
+        )
     run_id = str(request.context.get("run_id") or "").strip()
     if not run_id:
-        return _execute_hermes_agent_query_direct(request, governance_dir, settings)
+        return _execute_hermes_agent_query_direct(
+            request,
+            governance_dir,
+            settings,
+            **cancel_kwargs,
+        )
     publisher = agent_run_service.build_agent_run_delta_publisher(
         run_id=run_id,
         settings=settings,
@@ -59,6 +82,7 @@ def execute_hermes_agent_query(
         settings,
         stream_delta_callback=publisher.publish,
         stream_should_continue=publisher.is_active,
+        **cancel_kwargs,
     )
 
 
@@ -68,6 +92,7 @@ def _executor_for_provider(provider: object) -> AgentExecutor:
         "local": _execute_local_agent_query,
         "hermes": execute_hermes_agent_query,
         "dexter": execute_dexter_agent_query,
+        "pi": execute_pi_agent_query,
     }
     try:
         return executors[normalized_provider]

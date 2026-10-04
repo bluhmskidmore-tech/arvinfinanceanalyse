@@ -14,19 +14,46 @@ export default function PositionsEvidenceSection({
   tab,
   listMeta,
   aggregateMeta,
+  caliberItems,
+  open,
+  onOpenChange,
 }: {
   tab: PositionsTabKey;
   listMeta: ResultMeta | null | undefined;
   aggregateMeta: ResultMeta | null | undefined;
+  caliberItems: string[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const listTitle = tab === "bonds" ? "债券持仓明细（分析口径）" : "同业持仓明细（分析口径）";
   const aggregateTitle = tab === "bonds" ? "授信主体聚合（分析口径）" : "资产负债结构（分析口径）";
 
   return (
-    <div className="positions-evidence">
+    <details
+      className="positions-evidence"
+      open={open}
+      onToggle={(event) => onOpenChange(event.currentTarget.open)}
+    >
+      <summary className="positions-evidence__summary">数据与口径说明</summary>
+      <div data-testid="positions-data-status" className="positions-view__caliber">
+        {caliberItems.filter((item) => !item.startsWith("数据来源：")).map((item) => (
+          <span key={item} className="positions-view__caliber-item">
+            {item}
+          </span>
+        ))}
+      </div>
       <p className="positions-evidence__note" data-testid="positions-evidence-note">
-        列表为分析口径（candidate），聚合亦为分析口径（快照直读，未经正式化批准，不可作为正式口径使用）；证据字段来自后端信封原样透出。
+        明细与区间统计仅供分析参考，尚未获准作为正式业务依据。
       </p>
+      <details className="positions-evidence__diagnostics">
+        <summary className="positions-evidence__summary">技术诊断</summary>
+        <p className="positions-evidence__note">
+          {caliberItems.filter((item) => item.startsWith("数据来源：")).join("；")}
+        </p>
+        <p data-testid="positions-list-candidate-boundary" className="positions-evidence__note">
+          GAP-POS-LIST 尚未关闭；MTR-POS-001、MTR-POS-002 仍为 candidate，pending_confirmation=true，bound_sample_id=GS-POSITIONS-BONDS-LIST-A / GS-POSITIONS-INTERBANK-LIST-A（capture-ready，待业主审批）。
+        </p>
+      </details>
       <FormalResultMetaPanel
         testId="positions-evidence-panel"
         sections={[
@@ -34,6 +61,6 @@ export default function PositionsEvidenceSection({
           { key: "aggregate", title: aggregateTitle, meta: aggregateMeta },
         ]}
       />
-    </div>
+    </details>
   );
 }

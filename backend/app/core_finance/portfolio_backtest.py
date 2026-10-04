@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 from backend.app.core_finance.adjusted_returns import net_return_after_costs
 from backend.app.core_finance.portfolio_paths import (
@@ -20,11 +21,11 @@ from backend.app.core_finance.strategy_policy import POLICY
 
 DEFAULT_INITIAL_CAPITAL = 100.0
 DEFAULT_MAX_POSITIONS = 5
-PORTFOLIO_ENGINE_VERSION = "pbt_v2_path_mode"
+PORTFOLIO_ENGINE_VERSION = "pbt_v4_prior_decision_close_settlement"
 VOL_TARGET_NOT_WIRED_WARNING = (
     "vol_target 仅作为标注写入 metrics，模拟循环不会据此缩放仓位；"
     "实际波动率目标暴露需通过 vol_target_overlay.build_vol_target_index_comparison "
-    "计算出的 exposure_by_date 传入才会生效。"
+    "计算出的映射经 effective_exposure_by_date 传入才会按生效日生效。"
 )
 HORIZON_REALIZED_ONLY_WARNING = (
     "horizon 模式下持仓按买入成本记账、不做盯市，equity 曲线仅在卖出日反映损益；"
@@ -154,6 +155,7 @@ def run_portfolio_backtests(
     max_positions: int = DEFAULT_MAX_POSITIONS,
     exposure_by_market_state: Mapping[str, object] = POLICY.exposure_by_market_state,
     exposure_by_date: Mapping[str, float] | None = None,
+    effective_exposure_by_date: Mapping[str, float] | None = None,
     mode: str = "horizon",
     price_paths: Mapping[str, Sequence[Mapping[str, object]]] | None = None,
     sizing: str = "equal_weight",
@@ -176,6 +178,7 @@ def run_portfolio_backtests(
             max_positions=max_positions,
             exposure_by_market_state=exposure_by_market_state,
             exposure_by_date=exposure_by_date,
+            effective_exposure_by_date=effective_exposure_by_date,
             mode=mode,
             price_paths=price_paths,
             sizing=sizing,
@@ -202,6 +205,7 @@ def run_portfolio_backtest(
     max_positions: int = DEFAULT_MAX_POSITIONS,
     exposure_by_market_state: Mapping[str, object] = POLICY.exposure_by_market_state,
     exposure_by_date: Mapping[str, float] | None = None,
+    effective_exposure_by_date: Mapping[str, float] | None = None,
     mode: str = "horizon",
     price_paths: Mapping[str, Sequence[Mapping[str, object]]] | None = None,
     sizing: str = "equal_weight",
@@ -274,7 +278,12 @@ def run_portfolio_backtest(
             exposure = _safe_float(value)
             if exposure is not None:
                 daily_exposure_by_date[_date_text(key)] = min(max(exposure, 0.0), 1.0)
-    exposure_basis = "per_date_actual" if daily_exposure_by_date else "state_max_fallback"
+    effective_exposures = {
+        _date_text(key): min(max(exposure, 0.0), 1.0)
+        for key, value in (effective_exposure_by_date or {}).items()
+        if (exposure := _safe_float(value)) is not None
+    }
+    exposure_basis = "per_date_actual" if daily_exposure_by_date or effective_exposures else "state_max_fallback"
     candidates = [
         candidate
         for row in execution_rows
@@ -283,7 +292,7 @@ def run_portfolio_backtest(
     candidates_by_entry_date: dict[str, list[_Candidate]] = {}
     for candidate in candidates:
         candidates_by_entry_date.setdefault(candidate.entry_date, []).append(candidate)
-        market_state_by_date.setdefault(candidate.entry_date, candidate.market_state)
+        market_state_by_date.setdefault(candidate.signal_date, candidate.market_state)
     for rows in candidates_by_entry_date.values():
         rows.sort(key=lambda item: (item.candidate_rank, item.stock_code))
 
@@ -316,6 +325,7 @@ def run_portfolio_backtest(
         "duplicate_stock": 0,
         "exposure_cap_skip": 0,
         "entry_premium_blocked": 0,
+        "missing_opening_valuation": 0,
     }
     stop_ref_fallback_count = 0
     exposure_cap_clipped_count = 0
@@ -328,14 +338,25 @@ def run_portfolio_backtest(
     mtm_position_days = 0
     mtm_cost_fallback_position_days = 0
     mtm_cost_fallback_exit_trades = 0
+    opening_previous_close_fallback_position_days = 0
+    opening_missing_price_position_days = 0
+    effective_exposure_days = 0
 
-    for trade_index, trade_date in enumerate(trade_dates):
-        # 敞口由 T 日收盘决定、T+1 日生效（与 gate_timing_csi300 基准和
-        # vol_target_overlay 同一口径，2026-07-19 审计 宏观 H-1）：建仓规模只能
-        # 使用上一交易日已知的敞口决策，否则策略侧存在前视偏差且与已加一天
-        # 滞后的基准不可比（2026-08 审计 MAC-01）。序列首日无 T-1 决策，退回当日。
-        prior_trade_date = trade_dates[trade_index - 1] if trade_index > 0 else None
-        trade_date_has_actual_exposure = trade_date in daily_exposure_by_date
+    decision_dates = sorted(set(daily_exposure_by_date) | set(market_state_by_date))
+    for trade_date in trade_dates:
+        # Decisions must precede the open, including those before the equity window.
+        # Effective exposure maps have already applied their timing shift.
+        decision_index = bisect_right(decision_dates, trade_date) - 1
+        if decision_index >= 0 and decision_dates[decision_index] == trade_date:
+            decision_index -= 1
+        prior_trade_date = decision_dates[decision_index] if decision_index >= 0 else None
+        has_effective_exposure = trade_date in effective_exposures
+        effective_exposure_days += int(has_effective_exposure)
+        entry_exposure_basis = (
+            "effective_date" if has_effective_exposure else
+            "prior_decision_fallback" if effective_exposure_by_date is not None else "decision_date"
+        )
+        trade_date_has_actual_exposure = trade_date in daily_exposure_by_date or has_effective_exposure
         if trade_date_has_actual_exposure:
             exposure_actual_days += 1
         else:
@@ -406,31 +427,19 @@ def run_portfolio_backtest(
                         continue
                 updated_positions.append(position)
             positions = updated_positions
-        if mode != "path":
-            remaining_positions: list[_Position] = []
-            for position in positions:
-                if position.exit_date <= trade_date:
-                    proceeds = _position_exit_proceeds(position, mode=mode)
-                    cash += proceeds
-                    realized_pnl += proceeds - position.amount
-                    risk_budget_loss, risk_budget_planned, risk_budget_hit = _risk_budget_sale_stats(
-                        position,
-                        return_net=_sell_return_net(position, proceeds),
-                    )
-                    if risk_budget_hit is not None:
-                        risk_budget_trade_count += 1
-                        if risk_budget_hit:
-                            risk_budget_hit_count += 1
-                    trades.append(_sell_trade_row(position, trade_date=trade_date, proceeds=proceeds))
-                else:
-                    remaining_positions.append(position)
-            positions = remaining_positions
-
-        day_start_equity = cash + _invested_value(positions, trade_date, mode=mode)
+        opening_invested, previous_close_count, missing_price_count = _opening_invested_value(
+            positions, trade_date, mode=mode
+        )
+        opening_previous_close_fallback_position_days += previous_close_count
+        opening_missing_price_position_days += missing_price_count
+        day_start_equity = cash + opening_invested
         day_buy_notional = 0.0
         for candidate in candidates_by_entry_date.get(trade_date, []):
             if not candidate.entry_executable:
                 skip_counts["entry_blocked"] += 1
+                continue
+            if missing_price_count:
+                skip_counts["missing_opening_valuation"] += 1
                 continue
             exit_date = candidate.exit_date
             return_net = candidate.return_net
@@ -442,9 +451,10 @@ def run_portfolio_backtest(
                 path_exit = path_exit_by_key.get(path_key)
                 if path_exit is not None:
                     exit_date = str(path_exit["exit_date"])
-                    return_net = float(path_exit["return_net"])
-                    entry_price = float(path_exit["entry_price"])
-                    exit_price = float(path_exit["exit_price"])
+                    # calculate_path_horizon_exit validates prices and computes a float return.
+                    return_net = float(cast(float, path_exit["return_net"]))
+                    entry_price = float(cast(float, path_exit["entry_price"]))
+                    exit_price = float(cast(float, path_exit["exit_price"]))
                 else:
                     exit_price = None
             else:
@@ -455,7 +465,14 @@ def run_portfolio_backtest(
             if entry_style == "probe_pyramid" and candidate.signal_high is None:
                 skip_counts["missing_exit_or_return"] += 1
                 continue
-            entry_premium = _entry_premium(entry_price=entry_price, signal_close=candidate.signal_close)
+            # Execution quotes are raw; adjusted path prices are used for PnL only.
+            premium_entry_price = candidate.entry_price
+            if (premium_entry_price is None or premium_entry_price <= 0) and mode == "path":
+                entry_index = _path_row_index(path_rows, candidate.entry_date)
+                if entry_index is not None:
+                    entry_row = path_rows[entry_index]
+                    premium_entry_price = _first_float(entry_row.get("open"), entry_row.get("open_value"))
+            entry_premium = _entry_premium(entry_price=premium_entry_price, signal_close=candidate.signal_close)
             if (
                 max_entry_premium is not None
                 and entry_premium is not None
@@ -476,14 +493,20 @@ def run_portfolio_backtest(
                 exposure_decision_date = prior_trade_date
                 exposure_state = market_state_by_date.get(prior_trade_date, "OFF")
             else:
-                exposure_decision_date = trade_date
-                exposure_state = state
+                exposure_decision_date = ""
+                exposure_state = "OFF"
             exposure = _exposure_for_date(
                 exposure_decision_date,
                 state=exposure_state,
                 exposure_by_date=daily_exposure_by_date,
                 exposure_by_market_state=exposure_by_market_state,
             )
+            if prior_trade_date is None:
+                exposure = 0.0
+            # Overlay maps are already effective on their keys. Missing dates retain
+            # the original prior-decision fallback, never a future effective point.
+            if has_effective_exposure:
+                exposure = effective_exposures[trade_date]
             if exposure <= 0:
                 skip_counts["no_exposure"] += 1
                 continue
@@ -589,8 +612,8 @@ def run_portfolio_backtest(
                 }
             )
 
-        # Runs for every mode so a same-day exit_date == entry_date position
-        # bought above is not left open until the next trade_date.
+        # Horizon and path exits settle after opening orders. Today's close cannot
+        # supply cash or a position slot to an earlier opening order.
         remaining_positions = []
         for position in positions:
             if position.exit_date <= trade_date:
@@ -640,6 +663,7 @@ def run_portfolio_backtest(
                 "slot_utilization": round(len(positions) / max_positions, 6),
                 "market_state": date_state,
                 "exposure": round(
+                    effective_exposures[trade_date] if has_effective_exposure else
                     _exposure_for_date(
                         trade_date,
                         state=date_state,
@@ -649,6 +673,20 @@ def run_portfolio_backtest(
                     6,
                 ),
                 "exposure_basis": date_exposure_basis,
+                "entry_exposure_basis": entry_exposure_basis,
+                "entry_exposure_date": trade_date if has_effective_exposure else prior_trade_date,
+                "entry_exposure": round(
+                    effective_exposures[trade_date] if has_effective_exposure else
+                    0.0 if prior_trade_date is None else _exposure_for_date(
+                        prior_trade_date,
+                        state=market_state_by_date.get(prior_trade_date, "OFF"),
+                        exposure_by_date=daily_exposure_by_date,
+                        exposure_by_market_state=exposure_by_market_state,
+                    ),
+                    6,
+                ),
+                "opening_previous_close_fallback_positions": previous_close_count,
+                "opening_missing_price_positions": missing_price_count,
                 "max_single_name_weight": round(max_single_name_weight, 6),
                 "buy_notional": round(day_buy_notional, 6),
                 "realized_pnl": round(realized_pnl, 6),
@@ -668,6 +706,22 @@ def run_portfolio_backtest(
     metrics.update(
         {
             "portfolio_engine_version": PORTFOLIO_ENGINE_VERSION,
+            "formal_use_allowed": False,
+            "exposure_date_basis": (
+                "effective_date_with_prior_decision_fallback"
+                if effective_exposure_by_date is not None else "decision_date"
+            ),
+            "effective_exposure_days": effective_exposure_days,
+            "effective_exposure_fallback_days": (
+                len(trade_dates) - effective_exposure_days if effective_exposure_by_date is not None else None
+            ),
+            "opening_valuation_basis": (
+                "same_day_open_or_previous_close_skip_if_missing" if mode == "path" else "cost_realized_only"
+            ),
+            "opening_previous_close_fallback_position_days": (
+                opening_previous_close_fallback_position_days if mode == "path" else None
+            ),
+            "opening_missing_price_position_days": opening_missing_price_position_days if mode == "path" else None,
             "mode": mode,
             "risk_metrics_basis": "mark_to_market" if mode == "path" else "realized_only",
             "risk_metrics_warning": _risk_metrics_warning(
@@ -687,7 +741,9 @@ def run_portfolio_backtest(
             "entry_style": entry_style,
             "max_entry_premium": max_entry_premium,
             "vol_target": vol_target,
-            "vol_target_warning": VOL_TARGET_NOT_WIRED_WARNING if vol_target is not None else None,
+            "vol_target_warning": (
+                VOL_TARGET_NOT_WIRED_WARNING if vol_target is not None and not effective_exposures else None
+            ),
             "entry_premium_blocked": skip_counts["entry_premium_blocked"],
             "probe_fraction": probe_fraction_value if entry_style == "probe_pyramid" else None,
             "confirm_days": confirm_days_value if entry_style == "probe_pyramid" else None,
@@ -942,6 +998,11 @@ def write_equity_curve_csv(path: str | Path, rows: Sequence[Mapping[str, object]
         "market_state",
         "exposure",
         "exposure_basis",
+        "entry_exposure_basis",
+        "entry_exposure_date",
+        "entry_exposure",
+        "opening_previous_close_fallback_positions",
+        "opening_missing_price_positions",
         "max_single_name_weight",
         "buy_notional",
         "realized_pnl",
@@ -1433,6 +1494,44 @@ def _position_value(position: _Position, trade_date: str, *, mode: str) -> float
     if mode != "path":
         return position.amount
     mark = _path_mark_for_date(position.path_rows, trade_date)
+    return _position_value_at_mark(position, mark)
+
+
+def _opening_invested_value(
+    positions: Sequence[_Position], trade_date: str, *, mode: str
+) -> tuple[float, int, int]:
+    if mode != "path":
+        return sum(position.amount for position in positions), 0, 0
+    invested = 0.0
+    previous_close_count = 0
+    missing_price_count = 0
+    for position in positions:
+        mark, basis = _path_open_mark_for_date(position.path_rows, trade_date)
+        if mark is None:
+            missing_price_count += 1
+            continue
+        previous_close_count += int(basis == "previous_close")
+        invested += _position_value_at_mark(position, mark)
+    return invested, previous_close_count, missing_price_count
+
+
+def _path_open_mark_for_date(
+    rows: Sequence[Mapping[str, object]], trade_date: str
+) -> tuple[float | None, str]:
+    # Paths are sorted and bounded by the holding horizon. Only today's open or
+    # a strictly earlier valid close is observable when opening orders are sized.
+    for row in reversed(rows):
+        row_date = _date_text(row.get("trade_date") or row.get("date"))
+        if not row_date or row_date > trade_date:
+            continue
+        basis = "open" if row_date == trade_date else "previous_close"
+        mark = path_entry_price(row, fallback=None) if basis == "open" else path_mark_price(row)
+        if mark is not None and math.isfinite(mark) and mark > 0:
+            return mark, basis
+    return None, "missing"
+
+
+def _position_value_at_mark(position: _Position, mark: float | None) -> float:
     if mark is None or mark <= 0:
         return position.amount
     if position.lots:

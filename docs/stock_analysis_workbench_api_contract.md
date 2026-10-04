@@ -1,12 +1,13 @@
 # Stock Analysis Workbench API Contract
 
 Date: 2026-07-16
+Updated: 2026-08-22
 
 Route: `/stock-analysis`
 
 Primary endpoint: `GET /ui/market-data/stock-analysis/workbench`
 
-Status: implemented, observational only; governance closure pending
+Status: implemented, observational only; current-rule replay read closure implemented, live cohort activation pending
 
 ## Plain Answer
 
@@ -105,6 +106,27 @@ Existing endpoint map:
 
 The workbench endpoint is the page primary source. It intentionally does not replace drilldowns; stock detail and heavy diagnostics remain separate lazy reads.
 
+### M1-C current-rule replay authority
+
+The workbench top-level `result.replay_closure` is the page's only authority for
+current-rule replay certification. It reads the dedicated controlled cohort
+objects only and never falls back to the mixed `as_produced` candidate-history
+path.
+
+- zero active certified cohorts returns `insufficient`;
+- exactly one active certified cohort is validated against its manifest, replay
+  facts, date certificates, version tuple, date basis, and 20/100 thresholds;
+- more than one active cohort, a version/count mismatch, or future-dated
+  evidence fails closed;
+- natural T+20 tail dates remain visible but do not by themselves block a ready
+  cohort;
+- the frontend displays the backend status and counts and does not recalculate
+  certification.
+
+The controlled v46 objects are not created by ordinary startup migration. Until
+an approved cohort is materialized and promoted, the live page must show
+`schema_unavailable` or `no_active_certified` rather than a ready replay state.
+
 ## Implemented Endpoint
 
 ```http
@@ -160,6 +182,58 @@ type StockAnalysisWorkbenchPayload = {
   as_of_date: string | null;
   fallback_date: string | null;
   stale: boolean;
+
+  replay_closure: {
+    cohort_mode: "current_rule_certified";
+    selection_status:
+      | "schema_unavailable"
+      | "no_active_certified"
+      | "unique_active_certified"
+      | "governance_conflict"
+      | "governance_error"
+      | "as_of_mismatch";
+    data_availability: "fresh" | "stale" | "fallback" | "no_data" | "unsupported";
+    status: "ready" | "insufficient" | "blocked";
+    active_cohort_count: number;
+    cohort_id: string | null;
+    requested_start_date: string | null;
+    requested_end_date: string | null;
+    observed_start_date: string | null;
+    observed_end_date: string | null;
+    certified_start_date: string | null;
+    certified_end_date: string | null;
+    evaluation_as_of_date: string | null;
+    governed_era_start: string | null;
+    governed_era_end: string | null;
+    decision_metric_basis: string | null;
+    versions: Record<string, string | null>;
+    sources: Record<string, string | null>;
+    counts: {
+      completed_dates: number;
+      completed_with_signals_dates: number;
+      completed_no_signal_dates: number;
+      pending_tail_dates: number;
+      blocking_pending_dates: number;
+      unsupported_dates: number;
+      proxy_only_dates: number;
+      matched_entry_count: number;
+      t5_usable_count: number;
+      t20_usable_count: number;
+      stale_execution_row_count: number;
+      stale_matched_baseline_row_count: number;
+    };
+    thresholds: { completed_dates: 20; matched_entry_count: 100 };
+    primary_blocker_code: string | null;
+    reason_codes: string[];
+    run_id: string | null;
+    promotion_run_id: string | null;
+    receipt: {
+      path: string | null;
+      sha256: string | null;
+      calendar_path: string | null;
+      calendar_sha256: string | null;
+    };
+  };
 
   page_question: {
     question: string;
@@ -351,4 +425,11 @@ Existing endpoints remain useful for drawer, expanded diagnostics, and lazy deta
 - `GS-STOCK-ANALYSIS-OBS-A` freezes the underlying `/ui/market-data/livermore` DTO only; it is not an independent golden sample for the workbench wrapper.
 - The workbench endpoint has no direct execution governance record, manual audit closure, or business-owner approval.
 - Current theme overlay availability depends on an overlay archive matching the latest Choice observation date; missing overlays must stay explicit and fail closed.
+- The M1-C read path does not authorize or execute v46 schema activation,
+  materialization, or promotion. The live database therefore remains expected to
+  show an explicit non-ready state until the separately controlled D6 operation
+  is approved and run.
+- Daily refresh terminal-state persistence is not yet a current-rule cohort
+  writer; the visible cohort run and promotion identities prove activation, not
+  a new unattended daily promotion workflow.
 - `/stock-analysis` remains `GAP-STOCK-ANALYSIS-PAGE`, observational, and `formal_use_allowed=false`; no standalone `PAGE-STOCK-*` or `MTR-STOCK-*` promotion is implied.

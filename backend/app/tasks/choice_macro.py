@@ -5,14 +5,21 @@ import hashlib
 import inspect
 import json
 import logging
-from datetime import date, timedelta
+import math
+import time
+from datetime import UTC, date, datetime, timedelta
 from io import StringIO
 from pathlib import Path
+from typing import cast
 
 import duckdb
 import requests
 from backend.app.config.choice_runtime import _init_runtime
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import (
+    LockDefinition,
+    acquire_lock,
+    resolve_duckdb_writer_lock,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_adapter import VendorAdapter
 from backend.app.repositories.duckdb_migrations import (
@@ -38,6 +45,11 @@ from backend.app.schemas.macro_vendor import (
     ChoiceMacroSnapshot,
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
+from backend.app.services.macro_vendor_refresh_service import (
+    CHOICE_MACRO_REFRESH_TASK_GRACE_SECONDS,
+    CHOICE_MACRO_REFRESH_TASK_TIME_LIMIT_MS,
+    CHOICE_MACRO_REFRESH_TASK_TIME_LIMIT_SECONDS,
+)
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
 
@@ -50,6 +62,8 @@ CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
 CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
 CHOICE_MACRO_SCOPED_REFRESH_JOB_NAME = "choice_macro_scoped_refresh"
 CHOICE_MACRO_SCOPED_CACHE_KEY = "choice_macro.scoped"
+CHOICE_MACRO_GOVERNANCE_APPEND_ATTEMPTS = 3
+CHOICE_MACRO_GOVERNANCE_RETRY_DELAYS_SECONDS = (0.05, 0.15)
 SCOPED_CHOICE_SCOPE_REQUIRED_MESSAGE = (
     "Scoped Choice macro refresh requires at least one non-empty batch_ids or series_ids value."
 )
@@ -310,14 +324,14 @@ _PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
     },
     "EMM00058124": {
         "series_name": "中间价:美元兑人民币",
-        "vendor_name": "fx_daily_mid",
-        "vendor_series_code": "fx_daily_mid:USD/CNY",
+        "vendor_name": "public_currency_boc_safe",
+        "vendor_series_code": "currency_boc_safe:USD/CNY",
         "frequency": "daily",
         "unit": "CNY/USD",
         "theme": "macro_market",
         "is_core": True,
         "tags": ["public", "macro", "market", "fx", "cross_asset"],
-        "policy_note": "cross-asset headline history supplement from local fx_daily_mid materialized table",
+        "policy_note": "SAFE RMB central parity via currency_boc_safe; CNY per 100 USD normalized to CNY/USD",
     },
 }
 
@@ -360,6 +374,8 @@ def _refresh_choice_macro_snapshot(
     backfill_days: int = 0,
     batch_ids: list[str] | None = None,
     series_ids: list[str] | None = None,
+    run_id: str | None = None,
+    record_build_run: bool = True,
 ) -> dict[str, object]:
     logger.info("starting refresh_choice_macro_snapshot, backfill_days=%s", backfill_days)
     _init_runtime()
@@ -399,7 +415,7 @@ def _refresh_choice_macro_snapshot(
         status="running",
         cache_key=CHOICE_MACRO_SCOPED_CACHE_KEY if scoped_refresh else CHOICE_MACRO_REFRESH_CACHE_KEY,
     )
-    run_id = f"{run.job_name}:{run.created_at}"
+    run_id = run_id or f"{run.job_name}:{run.created_at}"
 
     try:
         if backfill_days > 1:
@@ -448,7 +464,7 @@ def _refresh_choice_macro_snapshot(
         vendor_version = snapshot.vendor_version
         source_version = _build_source_version(snapshot.raw_payload)
 
-        vendor_version_registry = {
+        vendor_version_registry: dict[str, object] = {
             "vendor_name": snapshot.vendor_name,
             "vendor_version": snapshot.vendor_version,
             "source_version": source_version,
@@ -462,7 +478,10 @@ def _refresh_choice_macro_snapshot(
                 if point.trade_date:
                     backfill_trade_dates.add(str(point.trade_date))
 
-        with acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent):
+        with (
+            acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent),
+            acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent),
+        ):
             conn = duckdb.connect(str(duckdb_file), read_only=False)
             try:
                 _ensure_tables(conn)
@@ -623,8 +642,7 @@ def _refresh_choice_macro_snapshot(
             capture_mode="live" if backfill_days <= 1 else "backfill",
         )
 
-        repo.append_many_atomic(
-            [
+        governance_entries: list[tuple[str, dict[str, object]]] = [
                 (
                     VENDOR_SNAPSHOT_MANIFEST_STREAM,
                     vendor_snapshot_manifest,
@@ -643,6 +661,9 @@ def _refresh_choice_macro_snapshot(
                         rule_version=RULE_VERSION,
                     ).model_dump(),
                 ),
+            ]
+        if record_build_run:
+            governance_entries.append(
                 (
                     CACHE_BUILD_RUN_STREAM,
                     CacheBuildRunRecord(
@@ -655,9 +676,9 @@ def _refresh_choice_macro_snapshot(
                         source_version=source_version,
                         vendor_version=snapshot.vendor_version,
                     ).model_dump(),
-                ),
-            ]
-        )
+                )
+            )
+        repo.append_many_atomic(governance_entries)
     except Exception as exc:
         failed_run = CacheBuildRunRecord(
             run_id=run_id,
@@ -669,10 +690,11 @@ def _refresh_choice_macro_snapshot(
             source_version=source_version,
             vendor_version=vendor_version,
         )
-        try:
-            repo.append(CACHE_BUILD_RUN_STREAM, failed_run.model_dump())
-        except Exception as append_error:
-            raise RuntimeError("Failed to append failed choice_macro lineage") from append_error
+        if record_build_run:
+            try:
+                repo.append(CACHE_BUILD_RUN_STREAM, failed_run.model_dump())
+            except Exception as append_error:
+                raise RuntimeError("Failed to append failed choice_macro lineage") from append_error
         raise exc
 
     gate_supplement_result: dict[str, object] | None = None
@@ -771,7 +793,18 @@ def refresh_public_cross_asset_headlines(
     duckdb_path: str | None = None,
     lookback_days: int = PUBLIC_HEADLINE_LOOKBACK_DAYS,
     report_date: str | None = None,
+    *,
+    csi300_only: bool = False,
+    fx_only: bool = False,
 ) -> dict[str, object]:
+    """Refresh headlines, or repair only CSI300 or USD/CNY for one explicit date."""
+    if csi300_only and fx_only:
+        raise ValueError("Choose one single-date recovery scope: CSI300 or FX.")
+    if fx_only and not report_date:
+        raise ValueError("FX single-date recovery requires an explicit report_date.")
+    scoped_recovery = csi300_only or fx_only
+    if csi300_only and not report_date:
+        raise ValueError("CSI300 single-date recovery requires an explicit report_date.")
     settings = get_settings()
     target_date = date.fromisoformat(report_date) if report_date else date.today()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
@@ -779,17 +812,61 @@ def refresh_public_cross_asset_headlines(
 
     warnings: list[str] = []
     source_failures: list[dict[str, object]] = []
-    history_rows = _load_public_cross_asset_history_rows(
-        duckdb_path=str(duckdb_file),
-        report_date=target_date,
-        lookback_days=lookback_days,
-        warnings=warnings,
-        source_failures=source_failures,
-    )
+    source_evidence: list[dict[str, object]] = []
+    required_series_ids: frozenset[str] | set[str] = PUBLIC_CROSS_ASSET_REQUIRED_SERIES_IDS
+    scope: dict[str, object] | None = None
+    if csi300_only:
+        required_series_ids = {"CA.CSI300", "CA.CSI300_PCT_CHG", "CA.CSI300_PE"}
+        scope = {
+            "mode": "csi300_single_date",
+            "series_ids": sorted(required_series_ids),
+            "start_date": target_date.isoformat(),
+            "end_date": target_date.isoformat(),
+            "ts_code": "000300.SH",
+            "endpoints": ["index_daily", "index_dailybasic"],
+            "pe_field": "pe",
+        }
+        # Validate the entire exact-date response before opening a write connection.
+        history_rows = _fetch_tushare_csi300_single_date_rows(
+            report_date=target_date, source_evidence=source_evidence,
+        )
+    elif fx_only:
+        required_series_ids = {"EMM00058124"}
+        scope = {
+            "mode": "fx_single_date",
+            "series_ids": sorted(required_series_ids),
+            "start_date": target_date.isoformat(),
+            "end_date": target_date.isoformat(),
+            "source": "SAFE currency_boc_safe",
+            "value_basis": "CNY per USD",
+        }
+        history_rows = [
+            row for row in _fetch_public_fx_history_rows(
+                duckdb_path=str(duckdb_file), report_date=target_date,
+                lookback_days=lookback_days,
+            )
+            if row.get("trade_date") == target_date.isoformat()
+            and row.get("series_id") == "EMM00058124"
+        ]
+        if len(history_rows) != 1:
+            raise ValueError("FX recovery requires exactly one USD/CNY row for report_date.")
+        value = _coerce_public_number(history_rows[0].get("value_numeric"))
+        if value is None or not math.isfinite(value) or value <= 0:
+            raise ValueError("FX recovery requires a finite positive USD/CNY value.")
+    else:
+        history_rows = _load_public_cross_asset_history_rows(
+            duckdb_path=str(duckdb_file),
+            report_date=target_date,
+            lookback_days=lookback_days,
+            warnings=warnings,
+            source_failures=source_failures,
+        )
     run_id = f"public_cross_asset_refresh:{target_date.isoformat()}"
+    if scoped_recovery:
+        run_id += ":csi300_single_date" if csi300_only else ":fx_single_date"
     loaded_series_ids = {str(row.get("series_id") or "") for row in history_rows}
     covered_required_series = sorted(
-        PUBLIC_CROSS_ASSET_REQUIRED_SERIES_IDS.intersection(loaded_series_ids)
+        required_series_ids.intersection(loaded_series_ids)
     )
     failed_sources = [str(item["source"]) for item in source_failures]
     diagnostics: dict[str, object] = {
@@ -797,12 +874,16 @@ def refresh_public_cross_asset_headlines(
         "warning_count": len(warnings),
         "failed_sources": failed_sources,
         "source_failures": source_failures,
-        "required_series_count": len(PUBLIC_CROSS_ASSET_REQUIRED_SERIES_IDS),
+        "required_series_count": len(required_series_ids),
         "covered_required_series": covered_required_series,
         "missing_required_series": sorted(
-            PUBLIC_CROSS_ASSET_REQUIRED_SERIES_IDS.difference(loaded_series_ids)
+            required_series_ids.difference(loaded_series_ids)
         ),
     }
+    if scope is not None:
+        diagnostics["scope"] = scope
+        diagnostics["source_versions"] = sorted({str(row["source_version"]) for row in history_rows})
+        diagnostics["source_evidence"] = source_evidence
     if not covered_required_series:
         failure_result = {
             "status": "failed",
@@ -823,30 +904,48 @@ def refresh_public_cross_asset_headlines(
         return failure_result
 
     latest_rows = _latest_public_cross_asset_rows(history_rows)
-    series_ids = sorted({row["series_id"] for row in history_rows})
-
-    with acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent):
+    with (
+        acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent),
+        acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent),
+    ):
         conn = duckdb.connect(str(duckdb_file), read_only=False)
         try:
-            _ensure_tables(conn)
+            if not scoped_recovery:
+                _ensure_tables(conn)
+            # A scoped repair requires the existing schema; it must not run global migrations.
             conn.execute("begin transaction")
-            placeholders = ", ".join(["?"] * len(series_ids))
-            _delete_fact_rows_in_fetched_window(conn, history_rows)
-            conn.execute(
-                f"delete from choice_market_snapshot where series_id in ({placeholders})",
-                series_ids,
-            )
-            conn.execute(
-                f"delete from phase1_macro_vendor_catalog where series_id in ({placeholders})",
-                series_ids,
-            )
-            conn.execute(
-                f"delete from market_data_series_category where series_id in ({placeholders})",
-                series_ids,
-            )
+            snapshot_rows = latest_rows
+            if scoped_recovery:
+                for row in history_rows:
+                    conn.execute(
+                        "delete from fact_choice_macro_daily where series_id = ? and trade_date = ?",
+                        [row["series_id"], row["trade_date"]],
+                    )
+                # Historical repair must not roll back a newer snapshot or its catalog lineage.
+                snapshot_rows = [row for row in latest_rows if not conn.execute(
+                    "select 1 from choice_market_snapshot where series_id = ? and trade_date > ? limit 1",
+                    [row["series_id"], row["trade_date"]],
+                ).fetchone()]
+            else:
+                _delete_fact_rows_in_fetched_window(conn, history_rows)
+            snapshot_series_ids = [row["series_id"] for row in snapshot_rows]
+            if snapshot_series_ids:
+                placeholders = ", ".join(["?"] * len(snapshot_series_ids))
+                conn.execute(
+                    f"delete from choice_market_snapshot where series_id in ({placeholders})",
+                    snapshot_series_ids,
+                )
+                conn.execute(
+                    f"delete from phase1_macro_vendor_catalog where series_id in ({placeholders})",
+                    snapshot_series_ids,
+                )
+                conn.execute(
+                    f"delete from market_data_series_category where series_id in ({placeholders})",
+                    snapshot_series_ids,
+                )
 
             for row in history_rows:
-                meta = _PUBLIC_HEADLINE_SERIES_META[row["series_id"]]
+                meta = _PUBLIC_HEADLINE_SERIES_META[cast(str, row["series_id"])]
                 conn.execute(
                     """
                     insert into fact_choice_macro_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -866,8 +965,8 @@ def refresh_public_cross_asset_headlines(
                     ],
                 )
 
-            for row in latest_rows:
-                meta = _PUBLIC_HEADLINE_SERIES_META[row["series_id"]]
+            for row in snapshot_rows:
+                meta = _PUBLIC_HEADLINE_SERIES_META[cast(str, row["series_id"])]
                 conn.execute(
                     """
                     insert into choice_market_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -922,7 +1021,7 @@ def refresh_public_cross_asset_headlines(
                         str(meta["theme"]),
                         bool(meta["is_core"]),
                         json.dumps(meta["tags"], ensure_ascii=False, separators=(",", ":")),
-                        f"lookback_days={lookback_days}",
+                        json.dumps(scope, sort_keys=True) if scope else f"lookback_days={lookback_days}",
                         "latest",
                         "batch",
                         "stable",
@@ -955,6 +1054,7 @@ def refresh_public_cross_asset_headlines(
         "run_id": run_id,
         "series_count": len(latest_rows),
         "row_count": len(history_rows),
+        **({"snapshot_row_count": len(snapshot_rows)} if scoped_recovery else {}),
         **diagnostics,
     }
 
@@ -985,7 +1085,10 @@ def refresh_tushare_ncd_shibor_proxy(
         raise RuntimeError(f"Incomplete Tushare Shibor refresh; missing series: {', '.join(missing_series_ids)}")
     run_id = f"tushare_ncd_shibor_refresh:{target_date.isoformat()}"
 
-    with acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent):
+    with (
+        acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent),
+        acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent),
+    ):
         conn = duckdb.connect(str(duckdb_file), read_only=False)
         try:
             _ensure_tables(conn)
@@ -1047,7 +1150,7 @@ def refresh_tushare_ncd_shibor_proxy(
                         run_id,
                     ],
                 )
-                registry_entry = {
+                registry_entry: dict[str, object] = {
                     "refresh_tier": "stable",
                     "fetch_mode": "date_slice",
                     "fetch_granularity": "batch",
@@ -1117,6 +1220,145 @@ def refresh_tushare_ncd_shibor_proxy(
         "series_count": len(latest_rows),
         "row_count": len(history_rows),
     }
+
+
+def _append_choice_macro_governance_state(
+    repo: GovernanceRepository,
+    payload: dict[str, object],
+) -> None:
+    """Persist a workflow state with bounded retries for transient write failures."""
+
+    last_error: Exception | None = None
+    for attempt in range(CHOICE_MACRO_GOVERNANCE_APPEND_ATTEMPTS):
+        try:
+            repo.append(CACHE_BUILD_RUN_STREAM, payload)
+            return
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "choice macro governance append failed: run_id=%s status=%s attempt=%s/%s",
+                payload.get("run_id"),
+                payload.get("status"),
+                attempt + 1,
+                CHOICE_MACRO_GOVERNANCE_APPEND_ATTEMPTS,
+            )
+            if attempt < len(CHOICE_MACRO_GOVERNANCE_RETRY_DELAYS_SECONDS):
+                time.sleep(CHOICE_MACRO_GOVERNANCE_RETRY_DELAYS_SECONDS[attempt])
+    raise RuntimeError("Choice macro refresh governance state could not be persisted.") from last_error
+
+
+def run_choice_macro_refresh_workflow(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    run_id: str,
+    backfill_days: int,
+    queued_at: str = "",
+    status_deadline_at: str = "",
+) -> dict[str, object]:
+    """Execute the composite Choice/public refresh entirely inside a worker."""
+
+    from backend.app.services.macro_vendor_refresh_service import (
+        CHOICE_MACRO_REFRESH_RULE_VERSION,
+        run_choice_macro_refresh,
+    )
+
+    repo = GovernanceRepository(base_dir=governance_dir)
+    started_at_value = datetime.now(UTC)
+    running_deadline_at = (
+        started_at_value
+        + timedelta(
+            seconds=(
+                CHOICE_MACRO_REFRESH_TASK_TIME_LIMIT_SECONDS
+                + CHOICE_MACRO_REFRESH_TASK_GRACE_SECONDS
+            )
+        )
+    ).isoformat()
+    base: dict[str, object] = {
+        "run_id": run_id,
+        "job_name": CHOICE_MACRO_REFRESH_JOB_NAME,
+        "cache_key": CHOICE_MACRO_REFRESH_CACHE_KEY,
+        "rule_version": CHOICE_MACRO_REFRESH_RULE_VERSION,
+        "backfill_days": backfill_days,
+        "queued_at": queued_at or None,
+        "queue_status_deadline_at": status_deadline_at or None,
+        "status_deadline_at": running_deadline_at,
+    }
+    _append_choice_macro_governance_state(
+        repo,
+        {
+            **base,
+            "status": "running",
+            "trigger_mode": "async",
+            "started_at": started_at_value.isoformat(),
+            "source_version": "sv_pending",
+            "vendor_version": "vv_pending",
+        },
+    )
+
+    def _choice_refresh(*, backfill_days: int) -> dict[str, object]:
+        return _refresh_choice_macro_snapshot(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            backfill_days=backfill_days,
+            run_id=run_id,
+            record_build_run=False,
+        )
+
+    def _public_refresh() -> dict[str, object]:
+        return refresh_public_cross_asset_headlines(duckdb_path=duckdb_path)
+
+    def _tushare_refresh() -> dict[str, object]:
+        return refresh_tushare_ncd_shibor_proxy(duckdb_path=duckdb_path)
+
+    try:
+        payload, refresh_succeeded = run_choice_macro_refresh(
+            backfill_days=backfill_days,
+            choice_refresh_task=_choice_refresh,
+            public_refresh_task=_public_refresh,
+            tushare_ncd_shibor_refresh_task=_tushare_refresh,
+        )
+        if refresh_succeeded:
+            from backend.app.observability.response_cache import market_home_response_cache
+
+            market_home_response_cache.invalidate()
+    except Exception as exc:
+        failed = {
+            **base,
+            "status": "failed",
+            "trigger_mode": "terminal",
+            "finished_at": datetime.now(UTC).isoformat(),
+            "source_version": "sv_failed",
+            "vendor_version": "vv_none",
+            "error_message": str(exc),
+            "failure_category": "refresh_workflow_failure",
+            "failure_reason": type(exc).__name__,
+        }
+        _append_choice_macro_governance_state(repo, failed)
+        raise
+
+    status = str(payload.get("status") or "failed")
+    terminal = {
+        **base,
+        **payload,
+        "run_id": run_id,
+        "job_name": CHOICE_MACRO_REFRESH_JOB_NAME,
+        "cache_key": CHOICE_MACRO_REFRESH_CACHE_KEY,
+        "status": status,
+        "trigger_mode": "terminal",
+        "finished_at": datetime.now(UTC).isoformat(),
+        "result": payload,
+    }
+    _append_choice_macro_governance_state(repo, terminal)
+    return terminal
+
+
+run_choice_macro_refresh_workflow = register_actor_once(
+    "run_choice_macro_refresh_workflow",
+    run_choice_macro_refresh_workflow,
+    max_retries=0,
+    time_limit_ms=CHOICE_MACRO_REFRESH_TASK_TIME_LIMIT_MS,
+)
 
 
 def _ncd_shibor_meta_by_series_id(series_id: str) -> dict[str, str]:
@@ -1987,6 +2229,54 @@ def _fetch_public_brent_history_rows(
         if value is None:
             continue
         rows.append(_public_history_row("CA.BRENT", trade_date, value, vendor_version, source_version))
+    return rows
+
+
+def _fetch_tushare_csi300_single_date_rows(
+    *, report_date: date, source_evidence: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Require one exact-date CSI300 record per endpoint; never reuse stale PE."""
+    token = resolve_tushare_token_with_settings_fallback(get_settings())
+    if not token:
+        raise RuntimeError("MOSS_TUSHARE_TOKEN is not configured.")
+    pro = import_tushare_pro().pro_api(token)
+    request_date = report_date.strftime("%Y%m%d")
+    iso_date = report_date.isoformat()
+    rows: list[dict[str, object]] = []
+    for endpoint, fields in (
+        ("index_daily", (("CA.CSI300", "close"), ("CA.CSI300_PCT_CHG", "pct_chg"))),
+        ("index_dailybasic", (("CA.CSI300_PE", "pe"),)),
+    ):
+        request = {
+            "ts_code": "000300.SH", "start_date": request_date, "end_date": request_date,
+            "fields": ",".join(["ts_code", "trade_date", *(field for _, field in fields)]),
+        }
+        records = _records_from_tushare_frame(getattr(pro, endpoint)(**request))
+        retrieved_at = datetime.now(UTC).isoformat()
+        if len(records) != 1:
+            raise ValueError(f"CSI300 {endpoint} requires exactly one row for {iso_date}; got {len(records)}.")
+        record = records[0]
+        if (str(record.get("ts_code") or "") != "000300.SH"
+                or _coerce_public_trade_date(record.get("trade_date")) != iso_date):
+            raise ValueError(f"CSI300 {endpoint} returned a row outside the requested index/date scope.")
+        vendor_version = f"vv_tushare_{endpoint}_000300SH_{request_date}"
+        source_version = _source_version_from_records(f"tushare_{endpoint}", records)
+        for series_id, field in fields:
+            try:
+                value = _coerce_public_number(record.get(field))
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"CSI300 {endpoint}.{field} is invalid for {iso_date}.") from exc
+            if (value is None or not math.isfinite(value)
+                    or (field in {"close", "pe"} and value <= 0)
+                    or (field == "pct_chg" and value <= -100)):
+                raise ValueError(f"CSI300 {endpoint}.{field} is missing or invalid for {iso_date}.")
+            rows.append(_public_history_row(series_id, iso_date, value, vendor_version, source_version))
+        serialized_records = json.dumps(records, ensure_ascii=False, sort_keys=True, default=str)
+        source_evidence.append({
+            "endpoint": endpoint, "request": request, "retrieved_at": retrieved_at,
+            "records": json.loads(serialized_records), "source_version": source_version,
+            "records_sha256": hashlib.sha256(serialized_records.encode("utf-8")).hexdigest(),
+        })
     return rows
 
 

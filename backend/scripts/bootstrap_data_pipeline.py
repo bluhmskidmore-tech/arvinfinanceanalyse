@@ -201,7 +201,10 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
         if not report_dates:
             print("  ⚠ No report dates, skipping PnL.")
         else:
-            from backend.app.services.pnl_source_service import load_latest_pnl_refresh_input, resolve_pnl_data_input_root
+            from backend.app.services.pnl_source_service import (
+                load_latest_pnl_refresh_input,
+                resolve_pnl_data_input_root,
+            )
             from backend.app.tasks.pnl_materialize import run_pnl_materialize_sync
             for rd in report_dates[:3]:
                 try:
@@ -209,6 +212,7 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
                         governance_dir=governance_dir,
                         data_root=resolve_pnl_data_input_root(),
                         report_date=rd,
+                        archive_root=settings.local_archive_path,
                     )
                     result = run_pnl_materialize_sync(
                         report_date=refresh_input.report_date,

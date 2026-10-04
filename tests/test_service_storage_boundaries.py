@@ -329,32 +329,81 @@ def test_market_data_livermore_route_delegates_choice_stock_readiness_to_service
 
 
 def test_choice_news_reserved_ingest_route_has_no_service_ingest_path():
+    """choice-news ingest 路由刻意先做 ``import`` 作用域 RBAC、再抛保留 503，
+    因此这里不再禁止 ``import`` 作用域本身，而是要求：凡带 ``import`` 检查的 handler
+    必须同时调用 ``_raise_choice_news_reserved_surface``，且路由不得从 services 导入 ingest 符号。
+    顺序由 tests/test_choice_news_routes.py::test_tushare_npr_ingest_requires_import_scope_before_reserved_503 钉住。
+    """
     text = _read_source(CHOICE_NEWS_ROUTE)
     tree = ast.parse(text)
-    import_scopes: set[tuple[str, str]] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func_name = ""
-        if isinstance(node.func, ast.Name):
-            func_name = node.func.id
-        elif isinstance(node.func, ast.Attribute):
-            func_name = node.func.attr
-        if func_name != "ensure_user_allowed":
-            continue
+
+    def _called_name(call: ast.Call) -> str:
+        if isinstance(call.func, ast.Name):
+            return call.func.id
+        if isinstance(call.func, ast.Attribute):
+            return call.func.attr
+        return ""
+
+    def _is_import_scope_check(call: ast.Call) -> bool:
+        if _called_name(call) != "ensure_user_allowed":
+            return False
         literals = {
             keyword.arg: keyword.value.value
-            for keyword in node.keywords
+            for keyword in call.keywords
             if keyword.arg in {"resource", "action"}
             and isinstance(keyword.value, ast.Constant)
             and isinstance(keyword.value.value, str)
         }
-        if "resource" in literals and "action" in literals:
-            import_scopes.add((literals["resource"], literals["action"]))
+        return literals.get("action") == "import"
+
+    def _is_route_handler(function: ast.FunctionDef) -> bool:
+        return any(
+            isinstance(decorator, ast.Call)
+            and _called_name(decorator) in {"get", "post", "put", "delete", "patch", "api_route"}
+            for decorator in function.decorator_list
+        )
+
+    functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+    calls_by_function = {
+        function.name: [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+        for function in functions
+    }
+    route_handlers = {function.name for function in functions if _is_route_handler(function)}
+
+    direct_import_checkers = {
+        name for name, calls in calls_by_function.items() if any(_is_import_scope_check(call) for call in calls)
+    }
+    # handler 直接内联做 import 检查，或经助手间接做，都算带 import 作用域的写入口。
+    import_guarded_handlers = {
+        name
+        for name, calls in calls_by_function.items()
+        if name in route_handlers
+        and (
+            name in direct_import_checkers
+            or any(_called_name(call) in direct_import_checkers for call in calls)
+        )
+    }
 
     assert "ingest_tushare_npr_to_choice_news" not in text
     assert "_tushare_npr_ingest_handler" not in text
-    assert ("choice_news.data", "import") not in import_scopes
+    assert direct_import_checkers, "Expected a helper doing the choice_news import-scope RBAC check"
+    assert import_guarded_handlers, "Expected at least one route handler behind the import-scope RBAC check"
+    for handler_name in sorted(import_guarded_handlers):
+        assert any(
+            _called_name(call) == "_raise_choice_news_reserved_surface"
+            for call in calls_by_function[handler_name]
+        ), f"{handler_name} performs import-scope RBAC but does not raise the reserved 503"
+
+    service_ingest_imports = sorted(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module is not None
+        and node.module.startswith("backend.app.services")
+        for alias in node.names
+        if "ingest" in alias.name.lower()
+    )
+    assert not service_ingest_imports, f"Route imports ingest symbols from services: {service_ingest_imports}"
 
 
 def test_adb_analysis_route_keeps_duckdb_reads_in_service_layer():

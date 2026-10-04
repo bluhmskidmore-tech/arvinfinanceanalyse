@@ -4,13 +4,23 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Literal
 
-from backend.app.api.perf_logging import timed_api_call
-from backend.app.api.response_cache import (
+from backend.app.core_finance.action_attribution import ActionAttributionPnlUnavailableError
+from backend.app.governance.settings import get_settings
+from backend.app.observability.perf_logging import timed_api_call
+from backend.app.observability.response_cache import (
     bond_analytics_credit_spread_migration_cache_key,
     bond_analytics_position_changes_cache_key,
     market_home_response_cache,
 )
-from backend.app.governance.settings import get_settings
+from backend.app.schemas.home_bond_read_contracts import (
+    BondCreditSpreadMigrationReadEnvelope,
+    BondKRDCurveRiskReadEnvelope,
+    BondPortfolioHeadlinesReadEnvelope,
+    BondPositionChangesReadEnvelope,
+    BondReturnDecompositionReadEnvelope,
+    BondTopHoldingsReadEnvelope,
+    BondYieldCurveTermStructureReadEnvelope,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.bond_analytics_service import (
     BondAnalyticsRefreshConflictError,
@@ -65,7 +75,7 @@ def dates(
     return bond_analytics_dates_envelope()
 
 
-@router.get("/return-decomposition")
+@router.get("/return-decomposition", response_model=BondReturnDecompositionReadEnvelope, response_model_exclude_unset=True)
 def return_decomposition(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -78,9 +88,12 @@ def return_decomposition(
     ),
 ):
     _ensure_bond_analytics_read_allowed(auth)
-    if detail == "summary":
-        return get_return_decomposition_summary(report_date, period_type, asset_class, accounting_class)
-    return get_return_decomposition(report_date, period_type, asset_class, accounting_class)
+    try:
+        if detail == "summary":
+            return get_return_decomposition_summary(report_date, period_type, asset_class, accounting_class)
+        return get_return_decomposition(report_date, period_type, asset_class, accounting_class)
+    except ActionAttributionPnlUnavailableError as exc:
+        raise HTTPException(status_code=503, detail={"code": "pnl517_period_unavailable", "message": str(exc)}) from exc
 
 
 @router.get("/benchmark-excess")
@@ -94,7 +107,7 @@ def benchmark_excess(
     return get_benchmark_excess(report_date, period_type, benchmark_id)
 
 
-@router.get("/krd-curve-risk")
+@router.get("/krd-curve-risk", response_model=BondKRDCurveRiskReadEnvelope, response_model_exclude_unset=True)
 def krd_curve_risk(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -186,7 +199,7 @@ def dv01_limit_config_status(
     return get_dv01_limit_config_status(report_date)
 
 
-@router.get("/credit-spread-migration")
+@router.get("/credit-spread-migration", response_model=BondCreditSpreadMigrationReadEnvelope, response_model_exclude_unset=True)
 def credit_spread_migration(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -207,7 +220,7 @@ def credit_spread_migration(
     )
 
 
-@router.get("/yield-curve-term-structure")
+@router.get("/yield-curve-term-structure", response_model=BondYieldCurveTermStructureReadEnvelope, response_model_exclude_unset=True)
 def yield_curve_term_structure(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -221,7 +234,7 @@ def yield_curve_term_structure(
     return get_yield_curve_term_structure(report_date=report_date, curve_types=types_tuple)
 
 
-@router.get("/portfolio-headlines")
+@router.get("/portfolio-headlines", response_model=BondPortfolioHeadlinesReadEnvelope, response_model_exclude_unset=True)
 def portfolio_headlines(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -233,7 +246,7 @@ def portfolio_headlines(
     )
 
 
-@router.get("/top-holdings")
+@router.get("/top-holdings", response_model=BondTopHoldingsReadEnvelope, response_model_exclude_unset=True)
 def top_holdings(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -243,7 +256,7 @@ def top_holdings(
     return get_top_holdings(report_date, top_n=top_n)
 
 
-@router.get("/position-changes")
+@router.get("/position-changes", response_model=BondPositionChangesReadEnvelope, response_model_exclude_unset=True)
 def position_changes(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -269,7 +282,10 @@ def action_attribution(
     period_type: Literal["MoM", "YTD", "TTM"] = Query("MoM", description="MoM / YTD / TTM"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
-    return get_action_attribution(report_date, period_type)
+    try:
+        return get_action_attribution(report_date, period_type)
+    except ActionAttributionPnlUnavailableError as exc:
+        raise HTTPException(status_code=503, detail={"code": "pnl517_period_unavailable", "message": str(exc)}) from exc
 
 
 @router.get("/accounting-class-audit")

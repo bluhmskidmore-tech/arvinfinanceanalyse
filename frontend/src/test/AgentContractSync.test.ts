@@ -30,6 +30,7 @@ import type {
   AgentMessage,
   AgentMessageListResponse,
   AgentMessageRole,
+  AgentOntologyEntityStatus,
   AgentPageContext,
   AgentProject,
   AgentProjectCreateRequest,
@@ -42,6 +43,11 @@ import type {
   AgentRunListResponse,
   AgentRunStatus,
   AgentRunStatusResponse,
+  AgentRunStopReason,
+  AgentSemanticContext,
+  AgentSemanticReference,
+  AgentSemanticResultCheck,
+  AgentSemanticStatus,
   AgentSuggestedAction,
   ResultMeta,
 } from "../api/contracts";
@@ -125,6 +131,73 @@ function parseLiteralValues(source: string, symbol: string): string[] {
   return [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
 }
 
+type PydanticFieldSpec = {
+  /** 类型标注含 `| None` 或 `Optional[...]`：正常序列化（无 `exclude_none`）会显式输出 null。 */
+  nullable: boolean;
+  hasDefault: boolean;
+  /** 默认值字面量原文（如 `"warning"`、`None`、`True`）；无默认值时为 null。 */
+  defaultLiteral: string | null;
+};
+
+/**
+ * 解析一个 Pydantic 模型类体内声明字段的可空性、是否有默认值及默认值字面量。
+ * 与 parsePydanticModelFields 共用同一类体范围，但额外读取类型标注和默认值，
+ * 用于捕获"字段名一致但可空性/默认值漂移"（如 `value?: string` vs 后端
+ * `str | None = None`，审计 F04 案例1）。
+ */
+function parsePydanticModelFieldSpecs(
+  source: string,
+  className: string,
+): Record<string, PydanticFieldSpec> {
+  const classStart = source.indexOf(`class ${className}(`);
+  if (classStart < 0) {
+    throw new Error(`backend schema is missing class ${className}`);
+  }
+  const rest = source.slice(classStart);
+  const nextClassOffset = rest.slice(1).search(/\r?\nclass /);
+  const block = nextClassOffset >= 0 ? rest.slice(0, nextClassOffset + 1) : rest;
+  const specs: Record<string, PydanticFieldSpec> = {};
+  for (const line of block.split(/\r?\n/)) {
+    const match = /^ {4}([a-z_][a-zA-Z0-9_]*):\s*([^=]+?)\s*(?:=\s*(.+?)\s*)?$/.exec(line);
+    if (!match || match[1] === "model_config") {
+      continue;
+    }
+    const [, name, annotation, defaultLiteral] = match;
+    specs[name] = {
+      nullable: /\bNone\b/.test(annotation) || /\bOptional\[/.test(annotation),
+      hasDefault: defaultLiteral !== undefined,
+      defaultLiteral: defaultLiteral ?? null,
+    };
+  }
+  return specs;
+}
+
+/** 断言：后端该模型"可空字段"的集合与期望清单完全一致（多、少、拼错均失败）。 */
+function expectNullableFieldParity(
+  source: string,
+  className: string,
+  expectedNullableFields: string[],
+) {
+  const specs = parsePydanticModelFieldSpecs(source, className);
+  const actualNullable = Object.entries(specs)
+    .filter(([, spec]) => spec.nullable)
+    .map(([name]) => name)
+    .sort();
+  expect(actualNullable).toEqual([...expectedNullableFields].sort());
+}
+
+/** 断言：指定字段的后端默认值字面量与期望一致（防止治理默认口径静默漂移）。 */
+function expectFieldDefaultParity(
+  source: string,
+  className: string,
+  expectedDefaults: Record<string, string>,
+) {
+  const specs = parsePydanticModelFieldSpecs(source, className);
+  for (const [field, expectedDefault] of Object.entries(expectedDefaults)) {
+    expect(specs[field]?.defaultLiteral, `${className}.${field} default`).toBe(expectedDefault);
+  }
+}
+
 function expectFieldParity(
   source: string,
   className: string,
@@ -177,6 +250,32 @@ const AGENT_RUN_STATUS_VALUES = {
   cancelled: true,
 } as const satisfies Record<AgentRunStatus, true>;
 
+const AGENT_RUN_STOP_REASON_VALUES = {
+  completed: true,
+  provider_error: true,
+  cancel_requested_provider_stop_unconfirmed: true,
+} as const satisfies Record<AgentRunStopReason, true>;
+
+const AGENT_SEMANTIC_STATUS_VALUES = {
+  resolved: true,
+  clarification_required: true,
+  unsupported: true,
+  unavailable: true,
+} as const satisfies Record<AgentSemanticStatus, true>;
+
+const AGENT_SEMANTIC_RESULT_CHECK_VALUES = {
+  matched: true,
+  blocked: true,
+  not_applicable: true,
+} as const satisfies Record<AgentSemanticResultCheck, true>;
+
+const AGENT_ONTOLOGY_ENTITY_STATUS_VALUES = {
+  approved: true,
+  gap: true,
+  candidate: true,
+  deprecated: true,
+} as const satisfies Record<AgentOntologyEntityStatus, true>;
+
 const AGENT_MESSAGE_ROLE_VALUES = {
   user: true,
   assistant: true,
@@ -191,6 +290,9 @@ const AGENT_QUERY_REQUEST_FIELDS = {
   currency_basis: true,
   context: true,
   page_context: true,
+  routing_surface: true,
+  model: true,
+  reasoning_effort: true,
 } as const satisfies Record<keyof AgentQueryRequest, true>;
 
 const AGENT_PAGE_CONTEXT_FIELDS = {
@@ -219,7 +321,57 @@ const AGENT_CARD_FIELDS = {
   value: true,
   data: true,
   spec: true,
+  metric_id: true,
 } as const satisfies Record<keyof AgentCard, true>;
+
+/**
+ * 编译期锁定：AgentCard.value/data/spec 必须允许 null（对应后端
+ * `str | None = None` 等）。若契约类型退化为仅 `?: T`（无 `| null`），
+ * 这个字面量赋值会在 tsc 阶段失败——不必等到运行时才发现可空性漂移。
+ */
+const AGENT_CARD_NULLABLE_PROBE = {
+  type: "probe",
+  title: "probe",
+  value: null,
+  data: null,
+  spec: null,
+  metric_id: null,
+} satisfies AgentCard;
+void AGENT_CARD_NULLABLE_PROBE;
+
+const AGENT_SEMANTIC_REFERENCE_FIELDS = {
+  entity_id: true,
+  name: true,
+  business_definition: true,
+  status: true,
+  unit: true,
+  basis: true,
+  time_semantics: true,
+  authority: true,
+} as const satisfies Record<keyof AgentSemanticReference, true>;
+
+const AGENT_SEMANTIC_REFERENCE_NULLABLE_PROBE = {
+  entity_id: "MTR-PNL-003",
+  name: "正式总损益",
+  business_definition: "Formal total PnL definition snapshot.",
+  status: "approved",
+  unit: null,
+  basis: null,
+  time_semantics: null,
+  authority: [],
+} satisfies AgentSemanticReference;
+void AGENT_SEMANTIC_REFERENCE_NULLABLE_PROBE;
+
+const AGENT_SEMANTIC_CONTEXT_FIELDS = {
+  status: true,
+  result_check: true,
+  references: true,
+  ontology_revision: true,
+  binding_revision: true,
+  reason_code: true,
+  upstream_result_kind: true,
+  upstream_trace_id: true,
+} as const satisfies Record<keyof AgentSemanticContext, true>;
 
 const AGENT_EVIDENCE_FIELDS = {
   tables_used: true,
@@ -257,6 +409,7 @@ const RESULT_META_BASE_FIELDS = {
   date_basis: true,
   fallback_date: true,
   generated_at: true,
+  data_built_at: true,
   filters_applied: true,
   tables_used: true,
   evidence_rows: true,
@@ -284,7 +437,11 @@ const AGENT_ENVELOPE_FIELDS = {
   result_meta: true,
   next_drill: true,
   suggested_actions: true,
+  semantic_context: true,
 } as const satisfies Record<keyof AgentEnvelope, true>;
+
+const AGENT_ENVELOPE_SEMANTIC_CONTEXT_NULLABLE_PROBE: AgentEnvelope["semantic_context"] = null;
+void AGENT_ENVELOPE_SEMANTIC_CONTEXT_NULLABLE_PROBE;
 
 const AGENT_DISABLED_RESPONSE_FIELDS = {
   enabled: true,
@@ -308,6 +465,7 @@ const AGENT_RUN_STATUS_RESPONSE_FIELDS = {
   finished_at: true,
   elapsed_seconds: true,
   error_message: true,
+  stop_reason: true,
   result: true,
 } as const satisfies Record<keyof AgentRunStatusResponse, true>;
 
@@ -435,6 +593,30 @@ describe("Agent 前后端契约防漂移（backend schemas ↔ contracts/agent.t
     );
   });
 
+  it("AgentRunStopReason 取值与后端 Literal 一致", () => {
+    expect(Object.keys(AGENT_RUN_STOP_REASON_VALUES).sort()).toEqual(
+      parseLiteralValues(BACKEND_SCHEMA_SOURCES.agentRun, "AgentRunStopReason").sort(),
+    );
+  });
+
+  it("AgentSemanticStatus 取值与后端 Literal 一致", () => {
+    expect(Object.keys(AGENT_SEMANTIC_STATUS_VALUES).sort()).toEqual(
+      parseLiteralValues(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentSemanticStatus").sort(),
+    );
+  });
+
+  it("AgentSemanticResultCheck 取值与后端 Literal 一致", () => {
+    expect(Object.keys(AGENT_SEMANTIC_RESULT_CHECK_VALUES).sort()).toEqual(
+      parseLiteralValues(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentSemanticResultCheck").sort(),
+    );
+  });
+
+  it("AgentOntologyEntityStatus 取值与后端 Literal 一致", () => {
+    expect(Object.keys(AGENT_ONTOLOGY_ENTITY_STATUS_VALUES).sort()).toEqual(
+      parseLiteralValues(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentOntologyEntityStatus").sort(),
+    );
+  });
+
   it("AgentMessageRole 取值与后端 Literal 一致", () => {
     expect(Object.keys(AGENT_MESSAGE_ROLE_VALUES).sort()).toEqual(
       parseLiteralValues(BACKEND_SCHEMA_SOURCES.agentWorkspace, "AgentMessageRole").sort(),
@@ -457,11 +639,70 @@ describe("Agent 前后端契约防漂移（backend schemas ↔ contracts/agent.t
   it("agent_response.py 模型字段与前端契约一致", () => {
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentDrill", AGENT_DRILL_FIELDS);
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentSuggestedAction", AGENT_SUGGESTED_ACTION_FIELDS);
+    expectFieldParity(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentSemanticReference", AGENT_SEMANTIC_REFERENCE_FIELDS);
+    expectFieldParity(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentSemanticContext", AGENT_SEMANTIC_CONTEXT_FIELDS);
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentCard", AGENT_CARD_FIELDS);
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentEvidence", AGENT_EVIDENCE_FIELDS);
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentResultMeta", AGENT_RESULT_META_EXTRA_FIELDS);
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentEnvelope", AGENT_ENVELOPE_FIELDS);
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentResponse, "AgentDisabledResponse", AGENT_DISABLED_RESPONSE_FIELDS);
+  });
+
+  it("agent_response.py 可空字段与前端契约可空性一致（value/data/spec 等 str|None 字段）", () => {
+    const source = BACKEND_SCHEMA_SOURCES.agentResponse;
+    expectNullableFieldParity(source, "AgentDrill", []);
+    expectNullableFieldParity(source, "AgentSuggestedAction", ["confirmation_token"]);
+    expectNullableFieldParity(source, "AgentSemanticReference", ["unit", "basis", "time_semantics"]);
+    expectNullableFieldParity(source, "AgentSemanticContext", [
+      "ontology_revision",
+      "binding_revision",
+      "reason_code",
+      "upstream_result_kind",
+      "upstream_trace_id",
+    ]);
+    expectNullableFieldParity(source, "AgentCard", ["value", "data", "spec", "metric_id"]);
+    expectNullableFieldParity(source, "AgentEvidence", []);
+    expectNullableFieldParity(source, "AgentResultMeta", []);
+    expectNullableFieldParity(source, "AgentEnvelope", ["semantic_context"]);
+    expectNullableFieldParity(source, "AgentDisabledResponse", []);
+  });
+
+  it("agent_response.py 治理默认值防漂移（quality_flag/evidence_strength 默认口径）", () => {
+    const source = BACKEND_SCHEMA_SOURCES.agentResponse;
+    expectFieldDefaultParity(source, "AgentEvidence", {
+      quality_flag: '"warning"',
+      evidence_strength: '"local_fallback"',
+    });
+    expectFieldDefaultParity(source, "AgentResultMeta", {
+      evidence_strength: '"local_fallback"',
+    });
+    expectFieldDefaultParity(source, "AgentSuggestedAction", {
+      requires_confirmation: "True",
+      confirmation_token: "None",
+    });
+    expectFieldDefaultParity(source, "AgentCard", {
+      value: "None",
+      data: "None",
+      spec: "None",
+      metric_id: "None",
+    });
+    expectFieldDefaultParity(source, "AgentSemanticReference", {
+      unit: "None",
+      basis: "None",
+      time_semantics: "None",
+      authority: "Field(default_factory=list)",
+    });
+    expectFieldDefaultParity(source, "AgentSemanticContext", {
+      references: "Field(default_factory=list)",
+      ontology_revision: "None",
+      binding_revision: "None",
+      reason_code: "None",
+      upstream_result_kind: "None",
+      upstream_trace_id: "None",
+    });
+    expectFieldDefaultParity(source, "AgentEnvelope", {
+      semantic_context: "None",
+    });
   });
 
   it("agent_run.py 模型字段与前端契约一致", () => {

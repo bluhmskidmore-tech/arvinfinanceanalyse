@@ -35,8 +35,9 @@ from decimal import Decimal
 from typing import Any
 
 from .attribution_core import get_tenor_bucket
+from .bond_analytics.common import resolve_ytm_with_par_fallback
 from .bond_duration import estimate_duration, modified_duration_from_macaulay
-from .krd import classify_asset_class, map_accounting_class
+from .krd import _dirty_floor_ytm, _optional_decimal, classify_asset_class, map_accounting_class
 from .rate_units import bp_to_decimal
 from .safe_decimal import safe_decimal
 
@@ -247,7 +248,7 @@ def _build_credit_position_metrics(
 
         bond_code = str(_get_value(position, "bond_code", default=""))
         coupon_rate = safe_decimal(_get_value(position, "coupon_rate"))
-        ytm = safe_decimal(_get_value(position, "yield_to_maturity"))
+        ytm = _dirty_floor_ytm(_optional_decimal(_get_value(position, "yield_to_maturity")))
         effective_report_date = _coerce_date(
             _get_value(position, "report_date", "biz_date", "report_date_end", default=report_date)
         )
@@ -264,9 +265,11 @@ def _build_credit_position_metrics(
             wind_metrics={bond_code: wind_bond} if wind_bond else None,
             coupon_frequency=coupon_frequency,
         )
+        # 与 estimate_duration 的 par 回退同源：缺 ytm 行的修正久期除数用生效 ytm=coupon。
+        effective_ytm, _par_fallback_used = resolve_ytm_with_par_fallback(coupon_rate, ytm)
         spread_duration = modified_duration_from_macaulay(
             duration=duration,
-            ytm=ytm,
+            ytm=effective_ytm,
             coupon_frequency=coupon_frequency,
             wind_mod_dur=safe_decimal(wind_bond.get("mod_duration")) if wind_bond else None,
         )

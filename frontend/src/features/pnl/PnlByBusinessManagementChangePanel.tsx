@@ -201,7 +201,8 @@ export function PnlByBusinessManagementChangePanel({
   }
 
   const summary = managementChange.summary;
-  const coverageSensitiveMetricsBlocked = managementChange.coverage_warning_months.length > 0;
+  const pendingBalanceMonths = managementChange.balance_quality_warning_months ?? [];
+  const coverageSensitiveMetricsBlocked = managementChange.coverage_warning_months.length > 0 || pendingBalanceMonths.length > 0;
   const metrics: DeltaMetric[] = [
     {
       label: "日均变化",
@@ -277,7 +278,7 @@ export function PnlByBusinessManagementChangePanel({
         <strong>
           {managementChange.current_month_key} 已分类父级损益较上月{formatPnlMovement(summary.total_pnl_delta)}
           {coverageSensitiveMetricsBlocked
-            ? `；日均及 FTP 指标因 ${managementChange.coverage_warning_months.join("、")} 覆盖不足暂不比较，期末余额${formatMovement(
+            ? `；日均及 FTP 指标因 ${[...managementChange.coverage_warning_months, ...pendingBalanceMonths].join("、")} ${pendingBalanceMonths.length > 0 ? "余额来源待核实而" : "覆盖不足"}暂不比较，期末余额${formatMovement(
                 summary.current_balance_delta,
                 100_000_000,
                 2,
@@ -342,7 +343,8 @@ export function PnlByBusinessManagementChangePanel({
             {managementChange.reconciliation_warning_months.length > 0
               ? `${managementChange.reconciliation_warning_months.join("、")} 存在未分类记录、对账差异或证据不完整。`
               : ""}
-            已分类父级损益环比仍按系统结果展示；日均、FTP 净损益及 FTP 后年化变化在覆盖补齐前已停止用于汇报。
+            {pendingBalanceMonths.length > 0 ? `${pendingBalanceMonths.join("、")} 余额来源待核实。` : ""}
+            已分类父级损益环比仍按系统结果展示；日均、FTP 净损益及 FTP 后年化变化在覆盖补齐前已停止用于汇报，余额来源待核实的问题也须先解决。
           </span>
         </div>
       ) : null}

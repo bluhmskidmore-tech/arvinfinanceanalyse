@@ -29,7 +29,7 @@ type BalanceAnalysisToolbarProps = {
 
 /**
  * 首页标准包页头：20px 页题 + 12px 副题 + 模式徽标（无胶囊/大写宽字距），
- * 下方 32px 工具条（原生 select + 操作按钮）。
+ * 下方 36px 工具条（原生 select + 操作按钮），口径说明独立成行。
  */
 export function BalanceAnalysisToolbar({
   reportDates,
@@ -92,7 +92,7 @@ export function BalanceAnalysisToolbar({
           </select>
         </label>
         <label className="balance-analysis-topbar__field">
-          <span className="balance-analysis-topbar__field-label">头寸范围</span>
+          <span className="balance-analysis-topbar__field-label">明细范围</span>
           <select
             aria-label="balance-position-scope"
             className="balance-analysis-topbar__select"
@@ -115,17 +115,11 @@ export function BalanceAnalysisToolbar({
             <option value="CNY">人民币（CNY）</option>
           </select>
         </label>
-        <p
-          data-testid="balance-analysis-currency-basis-note"
-          className="balance-analysis-topbar__subtitle"
-        >
-          原币需逐币种明细，当前不做跨币种总量。
-        </p>
         <div className="balance-analysis-topbar__actions">
           <button
             data-testid="balance-analysis-refresh-button"
             type="button"
-            className="balance-analysis-btn"
+            className="balance-analysis-btn balance-analysis-btn--primary"
             onClick={onRefresh}
             disabled={!selectedReportDate || isRefreshing}
           >
@@ -145,14 +139,22 @@ export function BalanceAnalysisToolbar({
           <button
             data-testid="balance-analysis-workbook-export-button"
             type="button"
-            className="balance-analysis-btn balance-analysis-btn--primary"
+            className="balance-analysis-btn"
             onClick={onExportWorkbook}
             disabled={!selectedReportDate || isExportingWorkbook}
           >
             <FileExcelOutlined aria-hidden />
-            {isExportingWorkbook ? "导出中…" : "导出 Workbook"}
+            {isExportingWorkbook ? "导出中…" : "导出工作簿"}
           </button>
         </div>
+      </div>
+      <div className="balance-analysis-topbar__notes">
+        <p data-testid="balance-analysis-position-scope-note">
+          明细范围仅筛选正式概览、明细、汇总和单边分布；净头寸、期限缺口、待处理事项及工作簿固定为全口径。
+        </p>
+        <p data-testid="balance-analysis-currency-basis-note">
+          原币需逐币种明细，当前不做跨币种总量。
+        </p>
       </div>
     </header>
   );

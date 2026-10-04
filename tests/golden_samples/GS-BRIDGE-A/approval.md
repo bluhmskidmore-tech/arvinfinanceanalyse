@@ -18,3 +18,13 @@
 ## Truth note
 
 - This sample protects the current governed bridge behavior, not an idealized future bridge.
+
+## Metadata-only recapture record — 2026-09-02
+
+- Reason: commit `2ffbd848` (`fix(core-finance): govern fi_cumulative_realized_517 and bump the materialize rv to v4`) moved `rv_pnl_phase2_materialize` v3→v4 but did not re-record `response.json`, so the capture-ready gate was red at HEAD.
+- Key changes: `result_meta.rule_version` / `cache_version` v3→v4; Numeric fields now carry the exact-decimal `raw_text` sidecar; `result_meta.data_built_at` is emitted explicitly. No bridge amount changed (diffed field-by-field against the previous file before replacement).
+- Approval boundary: this records the re-capture only; final approver and approval timestamp remain pending.
+
+## Technical recapture — 2026-09-27
+
+The monthly PnL window now discloses missing exact beginning balance and a mismatch warning; frozen bridge amounts did not change. This is a deterministic technical recapture only; business-owner approval and formal-use permissions remain unchanged. Evidence: output/audits/2026-09-27/release-repair/backend/golden-diffs/ and golden-semantic-review/REPORT.md.

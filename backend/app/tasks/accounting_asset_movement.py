@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -26,6 +26,7 @@ from backend.app.core_finance.reconciliation_checks import (
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.accounting_asset_movement_repo import load_movement_chain_fx_evidence
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -37,7 +38,7 @@ from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline_sync
 from backend.app.tasks.product_category_pnl import materialize_product_category_pnl_sync
 
-RULE_VERSION = "rv_accounting_asset_movement_v3"
+RULE_VERSION = "rv_accounting_asset_movement_v4"
 CACHE_KEY = "accounting_asset_movement.monthly"
 CACHE_VERSION = "cv_accounting_asset_movement_v1"
 JOB_NAME = "accounting_asset_movement_refresh"
@@ -65,8 +66,12 @@ POSITION_CURRENCY_BASIS_CANDIDATES: dict[str, tuple[str, ...]] = {
 }
 
 CONTROL_GATE_ENV = "MOSS_MOVEMENT_CONTROL_GATE"
+CONTROL_GATE_ENFORCE_FROM_ENV = "MOSS_MOVEMENT_CONTROL_GATE_ENFORCE_FROM"
 CONTROL_GATE_MODES = ("off", "warn", "enforce")
 DEFAULT_CONTROL_GATE_MODE = "warn"
+# 与 service.EXCLUDED_CONTROLS（SQL LIKE '144020%'）对齐的科目前缀；传给
+# core_finance 构建函数，避免 core 硬编码 service 常量。
+EXCLUDED_GL_ACCOUNT_PREFIXES = ("144020",)
 
 
 class AccountingAssetMovementSourceMissingError(RuntimeError):
@@ -788,13 +793,15 @@ def materialize_accounting_asset_movement_on_connection(
         report_date=report_date,
         currency_basis=currency_basis,
     )
-    rows = build_accounting_asset_movement_rows(
+    result = build_accounting_asset_movement_rows(
         report_date=parsed_report_date,
         zqtz_rows=zqtz_rows,
         gl_rows=gl_rows,
         position_source_available=position_source.available,
         position_source_basis=position_source.resolved_currency_basis,
+        excluded_gl_account_prefixes=EXCLUDED_GL_ACCOUNT_PREFIXES,
     )
+    rows = result.rows
     # 勾稽判定与门禁模式无关：mode='off' 只表示"不拦截"，不表示"不判断"。结论
     # 要跟着行落库，页面才能把跨月断裂和横截面不平区分开。
     prior_report_date, prior_balances = _prior_bucket_balances(
@@ -802,19 +809,27 @@ def materialize_accounting_asset_movement_on_connection(
         report_date=report_date,
         currency_basis=currency_basis,
     )
+    fx_evidence = load_movement_chain_fx_evidence(conn, report_date=report_date, currency_basis=currency_basis)
+    fx_adjustments = (fx_evidence.get("adjustments", {})
+                      if prior_report_date == fx_evidence.get("prior_report_date") else {})
     chain_breaches = evaluate_chain_continuity(
         rows=rows,
         prior_report_date=prior_report_date,
         prior_current_balances=prior_balances,
         tolerance=DEFAULT_TOLERANCE,
         relative_tolerance=DEFAULT_RELATIVE_TOLERANCE,
+        fx_adjustments=fx_adjustments,
     )
     rows = apply_chain_continuity_status(
         rows,
         breaches=chain_breaches,
         prior_report_date=prior_report_date,
         prior_current_balances=prior_balances,
+        fx_adjustments=fx_adjustments,
     )
+    rows = [replace(row, rule_version=f"{RULE_VERSION}__{row.rule_version}",
+                    source_version="__".join(filter(None, [row.source_version, *fx_evidence.get("source_versions", [])])))
+            for row in rows]
     _apply_chain_continuity_gate(
         chain_breaches,
         report_date=report_date,
@@ -833,15 +848,60 @@ def materialize_accounting_asset_movement_on_connection(
 
 
 def _control_gate_mode() -> str:
-    """off / warn / enforce。
+    """off / warn / enforce（全局基准模式）。
 
     默认 warn：跨月勾稽在真实库里 90/90 全断、头寸源在 2024 全年缺失，
     默认 enforce 会让整条回补链路无法运行；warn 模式下断点仍然会写进
     governance manifest 的 lineage 并抛 Python warning，是可审计的检测型
-    控制。生产上要把它升级成预防型控制，把该环境变量设成 enforce。
+    控制。
+
+    生产升级为预防型控制的推荐路径：先设
+    MOSS_MOVEMENT_CONTROL_GATE_ENFORCE_FROM=<报告期分界>（如 2026-03），
+    让分界起的新报告期按 enforce 拒绝落库、分界前的历史回补保持 warn；
+    历史断点修复后再把本环境变量全局切成 enforce（此时分界值不再参与）。
+    分界值的路由语义见 _effective_control_gate_mode。
     """
     mode = str(os.environ.get(CONTROL_GATE_ENV, DEFAULT_CONTROL_GATE_MODE)).strip().lower()
     return mode if mode in CONTROL_GATE_MODES else DEFAULT_CONTROL_GATE_MODE
+
+
+def _control_gate_enforce_from() -> date | None:
+    """MOSS_MOVEMENT_CONTROL_GATE_ENFORCE_FROM 的报告期分界；未设置返回 None。
+
+    接受 YYYY-MM-DD 或 YYYY-MM（按当月第一天处理，月末报告日天然落在
+    分界之内）。格式错误直接抛 ValueError（fail-loud）：静默忽略会让运维
+    误以为分级门禁已生效。
+    """
+    raw = str(os.environ.get(CONTROL_GATE_ENFORCE_FROM_ENV, "")).strip()
+    if not raw:
+        return None
+    normalized = f"{raw}-01" if len(raw) == 7 else raw
+    try:
+        return date.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError(
+            f"{CONTROL_GATE_ENFORCE_FROM_ENV} must be a report-date boundary "
+            f"in YYYY-MM or YYYY-MM-DD form; got {raw!r}."
+        ) from exc
+
+
+def _effective_control_gate_mode(report_date: str) -> str:
+    """该报告期实际生效的门禁模式（报告期分级路由）。
+
+    与全局基准模式（MOSS_MOVEMENT_CONTROL_GATE）的协同规则：
+    - 未设置分界值时，与 _control_gate_mode() 完全一致；
+    - 基准模式为 off / enforce 时分界值不参与：off 是显式关闭、enforce
+      已是最严，分界值只升级、从不降级；
+    - 基准模式为 warn 且设置了分界值时，report_date >= 分界的报告期按
+      enforce 拒绝落库，更早的报告期（历史回补）保持 warn。
+    """
+    enforce_from = _control_gate_enforce_from()
+    mode = _control_gate_mode()
+    if enforce_from is None or mode != "warn":
+        return mode
+    if date.fromisoformat(report_date) >= enforce_from:
+        return "enforce"
+    return mode
 
 
 def _apply_position_source_gate(
@@ -866,7 +926,7 @@ def _apply_position_source_gate(
         breaches = enforce_reconciliation_gate(
             check,
             context=f"accounting asset movement {report_date}",
-            mode=_control_gate_mode(),
+            mode=_effective_control_gate_mode(report_date),
         )
     except ReconciliationGateError as exc:
         raise AccountingAssetMovementPositionSourceMissingError(message) from exc
@@ -880,7 +940,7 @@ def _apply_chain_continuity_gate(
     report_date: str,
     currency_basis: str,
 ) -> None:
-    mode = _control_gate_mode()
+    mode = _effective_control_gate_mode(report_date)
     if mode == "off" or not breaches:
         return
     message = _chain_breach_message(
@@ -950,7 +1010,7 @@ def _control_evidence(
             [report_date, currency_basis],
         ).fetchall()
     except duckdb.Error:
-        return {"gate_mode": _control_gate_mode(), "status": "unavailable"}
+        return {"gate_mode": _effective_control_gate_mode(report_date), "status": "unavailable"}
 
     prior_report_date, prior_balances = _prior_bucket_balances(
         conn,
@@ -980,7 +1040,9 @@ def _control_evidence(
         key = str(chain_status) if chain_status is not None else "unrecorded"
         chain_status_counts[key] = chain_status_counts.get(key, 0) + 1
     return {
-        "gate_mode": _control_gate_mode(),
+        # 记录该报告期实际生效的模式（分级路由后），而非全局基准模式：
+        # lineage 要如实反映这批行落库时被哪种控制放行。
+        "gate_mode": _effective_control_gate_mode(report_date),
         "status_counts": {str(row[0]): int(row[1]) for row in status_rows},
         "unmatched_row_count": sum(
             int(row[1]) for row in status_rows if str(row[0]) != "matched"
@@ -990,11 +1052,19 @@ def _control_evidence(
         ),
         "chain_prior_report_date": prior_report_date,
         "chain_gaps": chain_gaps,
+        "chain_fx_evidence": _serializable_chain_fx_evidence(conn, report_date, currency_basis),
         "chain_status_counts": dict(sorted(chain_status_counts.items())),
         "position_source_bases": sorted(
             {str(basis) for _b, _p, _c, basis in persisted_rows if basis is not None}
         ),
     }
+
+
+def _serializable_chain_fx_evidence(conn, report_date: str, currency_basis: str) -> dict[str, object]:
+    evidence = load_movement_chain_fx_evidence(conn, report_date=report_date, currency_basis=currency_basis)
+    return {key: ({bucket: str(amount) for bucket, amount in value.items()}
+                  if key == "adjustments" else str(value) if isinstance(value, Decimal) else value)
+            for key, value in evidence.items()}
 
 
 def _prior_bucket_balances(
@@ -1141,8 +1211,15 @@ def _load_zqtz_formal_rows(
     report_date: str,
     currency_basis: str,
 ) -> list[ZqtzAccountingAssetBalance]:
+    columns = {str(row[1]) for row in conn.execute("pragma table_info('fact_formal_zqtz_balance_daily')").fetchall()}
+    amount_columns = ", ".join(name if name in columns else f"0 as {name}"
+                               for name in ("accrued_interest_amount", "face_value_amount"))
+    voucher_terms = [f"{name} = '凭证式国债'" for name in ("bond_type", "business_type_primary") if name in columns]
+    if "instrument_name" in columns:
+        voucher_terms.append("instrument_name like '%凭证式%'")
+    voucher_predicate = " or ".join(voucher_terms) or "false"
     rows = conn.execute(
-        """
+        f"""
         select
           cast(report_date as varchar),
           accounting_basis,
@@ -1151,7 +1228,9 @@ def _load_zqtz_formal_rows(
           market_value_amount,
           amortized_cost_amount,
           source_version,
-          rule_version
+          rule_version,
+          {amount_columns},
+          ({voucher_predicate}) as is_voucher_treasury
         from fact_formal_zqtz_balance_daily
         where cast(report_date as varchar) = ?
           and currency_basis = ?
@@ -1166,9 +1245,12 @@ def _load_zqtz_formal_rows(
             position_scope=str(row[2]),
             currency_basis=str(row[3]),
             market_value_amount=Decimal(str(row[4] or "0")),
-            amortized_cost_amount=Decimal(str(row[5] or "0")),
+            amortized_cost_amount=Decimal(str(row[5] if row[5] is not None else row[4] or "0")),
             source_version=str(row[6] or ""),
             rule_version=str(row[7] or ""),
+            accrued_interest_amount=Decimal(str(row[8] or "0")),
+            face_value_amount=Decimal(str(row[9] or "0")),
+            is_voucher_treasury=bool(row[10]),
         )
         for row in rows
     ]
@@ -1197,7 +1279,7 @@ def _load_gl_rows(
             account_code like '141%'
             or account_code like '142%'
             or account_code like '143%'
-            or account_code like '1440101%'
+            or account_code like '144%'
           )
         """,
         [report_date, currency_basis],

@@ -2,19 +2,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from datetime import UTC, date, datetime
-from decimal import Decimal
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import duckdb
+
 from backend.app.config.product_category_mapping import build_product_category_config_for_report_date
 from backend.app.core_finance.product_category_pnl import (
-    CanonicalFactRow,
-    ManualAdjustment,
     apply_manual_adjustments,
     calculate_read_model,
-    calculate_product_category_interest_spread_metrics,
-    calculate_product_category_liability_cost_decomposition,
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
@@ -24,12 +21,18 @@ from backend.app.repositories.governance_repo import (
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
+from backend.app.repositories.product_category_pnl_repo import (
+    PRODUCT_CATEGORY_ADJUSTMENT_STREAM as PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
+)
+from backend.app.repositories.product_category_pnl_repo import (
+    load_product_category_manual_adjustments,
+)
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
-from backend.app.schemas.product_category_pnl import (
-    ProductCategoryInterestSpreadPayload,
-    ProductCategoryLiabilityCostDecompositionPayload,
-    ProductCategoryPnlPayload,
-    ProductCategoryPnlRow,
+from backend.app.services.product_category_pnl_read_service import (
+    PRODUCT_CATEGORY_AVAILABLE_VIEWS as PRODUCT_CATEGORY_AVAILABLE_VIEWS,
+)
+from backend.app.services.product_category_pnl_read_service import (
+    product_category_pnl_payload_from_canonical_ytd_anchor as product_category_pnl_payload_from_canonical_ytd_anchor,
 )
 from backend.app.services.product_category_source_service import (
     RULE_VERSION,
@@ -38,13 +41,21 @@ from backend.app.services.product_category_source_service import (
 )
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
+from backend.app.tasks.product_category_refresh_state import (
+    PRODUCT_CATEGORY_TABLES,
+    REFRESH_STATE_VERSION,
+    implementation_signature,
+    input_signature,
+    reusable_years,
+    stored_state,
+)
 
 PRODUCT_CATEGORY_PNL_LOCK = LockDefinition(
     key="lock:duckdb:product-category-pnl",
     ttl_seconds=900,
 )
-PRODUCT_CATEGORY_ADJUSTMENT_STREAM = "product_category_pnl_adjustments"
-PRODUCT_CATEGORY_AVAILABLE_VIEWS = ["monthly", "qtd", "ytd", "year_to_report_month_end"]
+# Compatibility for callers that previously loaded adjustments through this task.
+_load_manual_adjustments = load_product_category_manual_adjustments
 
 
 def _materialize_product_category_pnl(
@@ -57,7 +68,6 @@ def _materialize_product_category_pnl(
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
     governance_path = Path(governance_dir or settings.governance_path)
-    pairs = discover_source_pairs(Path(source_dir or settings.product_category_source_dir))
     repo = GovernanceRepository(base_dir=governance_path)
     run = BuildRunRecord(job_name="product_category_pnl", status="running")
     run_id = run_id or f"{run.job_name}:{run.created_at}"
@@ -68,6 +78,16 @@ def _materialize_product_category_pnl(
     )
 
     with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+        previous_manifest = repo.read_latest_manifest("product_category_pnl.formal")
+        previous_run = next(
+            (
+                row for row in reversed(repo.read_all(CACHE_BUILD_RUN_STREAM))
+                if row.get("cache_key") == "product_category_pnl.formal"
+                and row.get("job_name") == run.job_name
+                and row.get("status") != "queued"
+            ),
+            None,
+        )
         repo.append(
             CACHE_BUILD_RUN_STREAM,
             {
@@ -84,54 +104,100 @@ def _materialize_product_category_pnl(
             },
         )
         conn = duckdb.connect(str(duckdb_file), read_only=False)
+        transaction_open = False
         try:
             conn.execute("begin transaction")
+            transaction_open = True
             _ensure_tables(conn)
+            source_path = Path(source_dir or settings.product_category_source_dir)
+            pairs = discover_source_pairs(source_path)
 
             if not pairs:
-                source_path = Path(source_dir or settings.product_category_source_dir)
                 raise ValueError(
                     f"No product-category source pairs found in {source_path}; "
                     "existing read model was left untouched."
                 )
 
-            conn.execute("delete from product_category_pnl_canonical_fact")
-            conn.execute("delete from product_category_pnl_formal_read_model")
-            conn.execute("delete from product_category_pnl_scenario_read_model")
-
-            facts_by_date = {}
-            source_versions: list[str] = []
-            for pair in pairs:
-                source_versions.append(pair.source_version)
-                adjustments = _load_manual_adjustments(governance_path, pair.report_date)
-                facts = apply_manual_adjustments(build_canonical_facts(pair), adjustments)
-                facts_by_date[pair.report_date] = facts
-                for fact in facts:
+            implementation = implementation_signature()
+            events = repo.read_all(PRODUCT_CATEGORY_ADJUSTMENT_STREAM)
+            adjustments_by_date = {
+                pair.report_date: load_product_category_manual_adjustments(
+                    governance_path, pair.report_date, events=events,
+                )
+                for pair in pairs
+            }
+            configs = {
+                pair.report_date: build_product_category_config_for_report_date(
+                    pair.report_date, settings.ftp_rate_pct,
+                )
+                for pair in pairs
+            }
+            years = sorted({str(pair.report_date.year) for pair in pairs})
+            inputs = {
+                year: input_signature([
+                    {
+                        "date": pair.report_date.isoformat(),
+                        "source": pair.source_version,
+                        "adjustments": [asdict(item) for item in adjustments_by_date[pair.report_date]],
+                        "config": configs[pair.report_date],
+                        "rule": RULE_VERSION,
+                    }
+                    for pair in pairs if str(pair.report_date.year) == year
+                ])
+                for year in years
+            }
+            before = stored_state(conn, years)
+            reused = reusable_years(
+                manifest=previous_manifest, previous_run=previous_run,
+                inputs=inputs, stored=before, implementation=implementation, rule_version=RULE_VERSION,
+            )
+            rebuilt = set(years) - reused
+            removed = set(before["years"]) - set(years)
+            for year in sorted(rebuilt | removed):
+                for table in PRODUCT_CATEGORY_TABLES:
                     conn.execute(
-                        """
-                        insert into product_category_pnl_canonical_fact values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
+                        f"delete from {table} where coalesce(substr(report_date, 1, 4), '<invalid>') = ?",
+                        [year],
+                    )
+
+            # Always parse original inputs for a rebuilt year. Persisted canonical
+            # amounts are rounded to 8 decimal places and already include adjustments.
+            facts_by_date = {}
+            rebuilt_pairs = [pair for pair in pairs if str(pair.report_date.year) in rebuilt]
+            for pair in rebuilt_pairs:
+                facts = apply_manual_adjustments(
+                    build_canonical_facts(pair), adjustments_by_date[pair.report_date],
+                )
+                facts_by_date[pair.report_date] = facts
+                # Bound SQL/parameter size while avoiding one statement per fact.
+                # Keep scalar Decimal bindings and the enclosing refresh transaction.
+                for offset in range(0, len(facts), 500):
+                    batch = facts[offset : offset + 500]
+                    placeholders = ", ".join(["(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"] * len(batch))
+                    conn.execute(
+                        f"insert into product_category_pnl_canonical_fact values {placeholders}",
                         [
-                            fact.report_date.isoformat(),
-                            fact.account_code,
-                            fact.currency,
-                            fact.account_name,
-                            fact.beginning_balance,
-                            fact.ending_balance,
-                            fact.monthly_pnl,
-                            fact.daily_avg_balance,
-                            fact.annual_avg_balance,
-                            fact.days_in_period,
-                            pair.source_version,
-                            RULE_VERSION,
+                            value
+                            for fact in batch
+                            for value in (
+                                fact.report_date.isoformat(),
+                                fact.account_code,
+                                fact.currency,
+                                fact.account_name,
+                                fact.beginning_balance,
+                                fact.ending_balance,
+                                fact.monthly_pnl,
+                                fact.daily_avg_balance,
+                                fact.annual_avg_balance,
+                                fact.days_in_period,
+                                pair.source_version,
+                                RULE_VERSION,
+                            )
                         ],
                     )
 
-            for pair in pairs:
-                config = build_product_category_config_for_report_date(
-                    pair.report_date,
-                    settings.ftp_rate_pct,
-                )
+            for pair in rebuilt_pairs:
+                config = configs[pair.report_date]
                 for view in ("monthly", "qtd", "ytd", "year_to_report_month_end"):
                     payload = calculate_read_model(facts_by_date, pair.report_date, view, config)
                     _insert_rows(
@@ -139,14 +205,61 @@ def _materialize_product_category_pnl(
                         "product_category_pnl_formal_read_model",
                         pair.report_date.isoformat(),
                         view,
-                        payload["rows"],
+                        cast(list[dict[str, object]], payload["rows"]),
                         pair.source_version,
                     )
 
+            # A source or adjustment edited during this run must not certify a
+            # mixture of input versions as a completed materialization.
+            if (
+                [(pair.report_date, pair.source_version) for pair in discover_source_pairs(source_path)]
+                != [(pair.report_date, pair.source_version) for pair in pairs]
+                or repo.read_all(PRODUCT_CATEGORY_ADJUSTMENT_STREAM) != events
+                or implementation_signature() != implementation
+            ):
+                raise ValueError("Product-category inputs changed during materialization; retry the refresh.")
+            after = stored_state(conn, years) if rebuilt or removed else before
+            joined_source_version = "__".join(pair.source_version for pair in pairs)
+            manifest = CacheManifestRecord(
+                cache_key="product_category_pnl.formal",
+                source_version=joined_source_version,
+                vendor_version="vv_none",
+                rule_version=RULE_VERSION,
+                run_id=run_id,
+                created_at=datetime.now(UTC).isoformat(),
+                lineage={
+                    "product_category_refresh": {
+                        "version": REFRESH_STATE_VERSION,
+                        "implementation": implementation,
+                        "inputs": inputs,
+                        "stored": after,
+                        "rebuilt_years": sorted(rebuilt),
+                        "reused_years": sorted(reused),
+                        "removed_years": sorted(removed),
+                    },
+                },
+            )
+            completed = CacheBuildRunRecord(
+                run_id=run_id,
+                job_name=run.job_name,
+                status="completed",
+                cache_key="product_category_pnl.formal",
+                lock=PRODUCT_CATEGORY_PNL_LOCK.key,
+                source_version=joined_source_version,
+                vendor_version="vv_none",
+            )
             conn.execute("commit")
+            transaction_open = False
             _checkpoint_if_possible(conn)
+            # Keep the writer lock until both receipts are durable. A failed
+            # receipt leaves a failed run, so the next attempt will rebuild.
+            repo.append_many_atomic([
+                (CACHE_MANIFEST_STREAM, manifest.model_dump()),
+                (CACHE_BUILD_RUN_STREAM, completed.model_dump()),
+            ])
         except Exception as exc:
-            conn.execute("rollback")
+            if transaction_open:
+                conn.execute("rollback")
             failed_run = CacheBuildRunRecord(
                 run_id=run_id,
                 job_name=run.job_name,
@@ -168,28 +281,6 @@ def _materialize_product_category_pnl(
         finally:
             conn.close()
 
-    joined_source_version = "__".join(source_versions) or "sv_product_category_empty"
-    repo.append(
-        CACHE_MANIFEST_STREAM,
-        CacheManifestRecord(
-            cache_key="product_category_pnl.formal",
-            source_version=joined_source_version,
-            vendor_version="vv_none",
-            rule_version=RULE_VERSION,
-        ).model_dump(),
-    )
-    repo.append(
-        CACHE_BUILD_RUN_STREAM,
-        CacheBuildRunRecord(
-            run_id=run_id,
-            job_name=run.job_name,
-            status="completed",
-            cache_key="product_category_pnl.formal",
-            lock=PRODUCT_CATEGORY_PNL_LOCK.key,
-            source_version=joined_source_version,
-            vendor_version="vv_none",
-        ).model_dump(),
-    )
     return {
         "status": "completed",
         "run_id": run_id,
@@ -219,135 +310,6 @@ def materialize_product_category_pnl_sync(
         source_dir=source_dir,
         governance_dir=governance_dir,
         run_id=run_id,
-    )
-
-
-def product_category_pnl_payload_from_canonical_ytd_anchor(
-    duckdb_path: str,
-    governance_dir: str,
-    report_date: str,
-    ftp_rate_pct: float,
-) -> ProductCategoryPnlPayload | None:
-    """Rebuild YTD rows from canonical facts when persisted YTD rows are missing."""
-    try:
-        anchor = date.fromisoformat(report_date)
-    except ValueError:
-        return None
-
-    gov_path = Path(governance_dir)
-    fallback_rate = Decimal(str(ftp_rate_pct))
-
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-    except (OSError, duckdb.Error):
-        return None
-
-    try:
-        dates_rows = conn.execute(
-            """
-            select distinct report_date
-            from product_category_pnl_canonical_fact
-            where report_date <= ? and substr(report_date, 1, 4) = ?
-            order by report_date
-            """,
-            [report_date, str(anchor.year)],
-        ).fetchall()
-
-        date_strings = [str(row[0]) for row in dates_rows]
-        if report_date not in date_strings:
-            return None
-
-        facts_by: dict[date, list[CanonicalFactRow]] = {}
-        for ds in date_strings:
-            d_obj = date.fromisoformat(ds)
-            rows = conn.execute(
-                """
-                select report_date, account_code, currency, account_name,
-                       beginning_balance, ending_balance, monthly_pnl,
-                       daily_avg_balance, annual_avg_balance, days_in_period
-                from product_category_pnl_canonical_fact
-                where report_date = ?
-                order by account_code, currency
-                """,
-                [ds],
-            ).fetchall()
-            raw: list[CanonicalFactRow] = []
-            for tup in rows:
-                raw.append(
-                    CanonicalFactRow(
-                        report_date=date.fromisoformat(str(tup[0])),
-                        account_code=str(tup[1]),
-                        currency=str(tup[2]),
-                        account_name=str(tup[3]),
-                        beginning_balance=Decimal(str(tup[4])),
-                        ending_balance=Decimal(str(tup[5])),
-                        monthly_pnl=Decimal(str(tup[6])),
-                        daily_avg_balance=Decimal(str(tup[7])),
-                        annual_avg_balance=Decimal(str(tup[8])),
-                        days_in_period=int(tup[9]),
-                    )
-                )
-            facts_by[d_obj] = apply_manual_adjustments(
-                raw,
-                _load_manual_adjustments(gov_path, d_obj),
-            )
-    except duckdb.Error:
-        return None
-    finally:
-        conn.close()
-
-    if anchor not in facts_by:
-        return None
-
-    try:
-        config = build_product_category_config_for_report_date(anchor, fallback_rate)
-        calc_out = calculate_read_model(facts_by, anchor, "ytd", config)
-    except (KeyError, ValueError, TypeError, ArithmeticError):
-        return None
-
-    typed_rows = [ProductCategoryPnlRow.model_validate(row) for row in calc_out["rows"]]
-    interest_earning_assets = next(row for row in typed_rows if row.category_id == "interest_earning_assets")
-    credit_linked_notes = next(
-        (row for row in typed_rows if row.category_id == "credit_linked_notes"),
-        None,
-    )
-    asset_total = ProductCategoryPnlRow.model_validate(calc_out["asset_total"])
-    liability_total = ProductCategoryPnlRow.model_validate(calc_out["liability_total"])
-    grand_total = ProductCategoryPnlRow.model_validate(calc_out["grand_total"])
-    interest_spread = calculate_product_category_interest_spread_metrics(
-        report_date=report_date,
-        view="ytd",
-        asset_row=asset_total.model_dump(mode="python"),
-        liability_row=liability_total.model_dump(mode="python"),
-    )
-    interest_earning_spread = calculate_product_category_interest_spread_metrics(
-        report_date=report_date,
-        view="ytd",
-        asset_row=interest_earning_assets.model_dump(mode="python"),
-        liability_row=liability_total.model_dump(mode="python"),
-    )
-    liability_cost_decomposition = calculate_product_category_liability_cost_decomposition(
-        report_date=report_date,
-        view="ytd",
-        liability_row=liability_total.model_dump(mode="python"),
-        credit_linked_notes_row=(
-            None if credit_linked_notes is None else credit_linked_notes.model_dump(mode="python")
-        ),
-    )
-    return ProductCategoryPnlPayload(
-        report_date=report_date,
-        view="ytd",
-        available_views=list(PRODUCT_CATEGORY_AVAILABLE_VIEWS),
-        scenario_rate_pct=None,
-        rows=typed_rows,
-        asset_total=asset_total,
-        liability_total=liability_total,
-        grand_total=grand_total,
-        interest_spread=ProductCategoryInterestSpreadPayload.model_validate(asdict(interest_spread)),
-        interest_earning_spread=ProductCategoryInterestSpreadPayload.model_validate(asdict(interest_earning_spread)),
-        liability_cost_decomposition=ProductCategoryLiabilityCostDecompositionPayload.model_validate(
-            asdict(liability_cost_decomposition)
-        ),
     )
 
 
@@ -403,44 +365,3 @@ def _insert_rows(
                 RULE_VERSION,
             ],
         )
-
-
-def _load_manual_adjustments(governance_path: Path, report_date: date) -> list[ManualAdjustment]:
-    rows = GovernanceRepository(base_dir=governance_path).read_all(PRODUCT_CATEGORY_ADJUSTMENT_STREAM)
-    latest_by_id: dict[str, dict[str, object]] = {}
-    legacy_rows: list[dict[str, object]] = []
-    for index, row in enumerate(rows):
-        if str(row.get("report_date")) != report_date.isoformat():
-            continue
-        adjustment_id = str(row.get("adjustment_id") or "")
-        if not adjustment_id:
-            legacy_rows.append(row | {"adjustment_id": f"legacy-{index}"})
-            continue
-        existing = latest_by_id.get(adjustment_id)
-        if existing is None or str(row.get("created_at", "")) >= str(existing.get("created_at", "")):
-            latest_by_id[adjustment_id] = row
-
-    adjustments: list[ManualAdjustment] = []
-    for row in [*legacy_rows, *latest_by_id.values()]:
-        adjustments.append(
-            ManualAdjustment(
-                report_date=report_date,
-                operator=str(row.get("operator", "")),
-                approval_status=str(row.get("approval_status", "")),
-                account_code=str(row.get("account_code", "")),
-                currency=str(row.get("currency", "")),
-                account_name=str(row.get("account_name", "")),
-                beginning_balance=_decimal_or_none(row.get("beginning_balance")),
-                ending_balance=_decimal_or_none(row.get("ending_balance")),
-                monthly_pnl=_decimal_or_none(row.get("monthly_pnl")),
-                daily_avg_balance=_decimal_or_none(row.get("daily_avg_balance")),
-                annual_avg_balance=_decimal_or_none(row.get("annual_avg_balance")),
-            )
-        )
-    return adjustments
-
-
-def _decimal_or_none(value: object) -> Decimal | None:
-    if value in (None, ""):
-        return None
-    return Decimal(str(value))

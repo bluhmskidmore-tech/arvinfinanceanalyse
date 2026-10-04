@@ -4,18 +4,24 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from contextvars import copy_context
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, SupportsFloat, TypeVar, cast
 
+from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
 from backend.app.governance.formal_compute_lineage import (
+    resolve_completed_formal_build_lineage,
     resolve_formal_dates_lineage,
     resolve_formal_facts_lineage,
 )
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.system_read_publication_repo import system_read_cache_identity
 from backend.app.schemas.bond_dashboard import (
     BondDashboardAssetStructurePayload,
     BondDashboardBundlePayload,
@@ -30,8 +36,10 @@ from backend.app.schemas.bond_dashboard import (
     BondDashboardSpreadAnalysisPayload,
     BondDashboardYieldDistributionPayload,
 )
-from backend.app.schemas.common_numeric import null_numeric
+from backend.app.schemas.common_numeric import null_numeric, numeric_from_raw
 from backend.app.services.bond_analytics_service import (
+    _bond_analytics_rows_cache_version_token,
+    _completed_build_cache_token,
     get_dv01_risk,
     get_portfolio_headlines,
     get_top_holdings,
@@ -40,6 +48,7 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
     build_result_envelope,
 )
+from backend.app.services.runtime_cache import InMemoryTTLCache
 from backend.app.services.yield_curve_term_structure_service import (
     FACT_TABLE as YIELD_CURVE_FACT_TABLE,
 )
@@ -50,10 +59,11 @@ from backend.app.services.yield_curve_term_structure_service import (
 from pydantic import BaseModel
 
 # Mirrors `FormalComputeModuleDescriptor` for bond_analytics materialize (avoid importing tasks module).
-BOND_ANALYTICS_JOB_NAME = "bond_analytics_materialize"
-BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
-BOND_ANALYTICS_RULE_VERSION = "rv_bond_analytics_formal_materialize_v2"
-BOND_ANALYTICS_CACHE_VERSION = f"cv_bond_analytics_formal__{BOND_ANALYTICS_RULE_VERSION}"
+_BOND_ANALYTICS_VERSION = FIXED_INCOME_VERSION_SET.bond_analytics
+BOND_ANALYTICS_JOB_NAME = _BOND_ANALYTICS_VERSION.job_name
+BOND_ANALYTICS_CACHE_KEY = _BOND_ANALYTICS_VERSION.cache_key
+BOND_ANALYTICS_RULE_VERSION = _BOND_ANALYTICS_VERSION.rule_version
+BOND_ANALYTICS_CACHE_VERSION = _BOND_ANALYTICS_VERSION.cache_version
 EMPTY_SOURCE_VERSION = "sv_bond_analytics_empty"
 BOND_DASHBOARD_BUNDLE_MAX_WORKERS = 6
 
@@ -116,32 +126,18 @@ _ASSET_STRUCTURE_BUNDLE_SECTION_GROUP_BY: dict[str, _GROUP_BY_LITERAL] = {
 }
 
 
-class _TTLCache:
-    def __init__(self, ttl_seconds: int = 300):
-        self._store: dict[tuple, tuple[float, Any]] = {}
-        self._lock = threading.Lock()
-        self._ttl = ttl_seconds
-
-    def get(self, key: tuple) -> tuple[bool, Any]:
-        with self._lock:
-            entry = self._store.get(key)
-            if entry and time.monotonic() - entry[0] < self._ttl:
-                return True, entry[1]
-            return False, None
-
-    def set(self, key: tuple, value: Any) -> None:
-        with self._lock:
-            self._store[key] = (time.monotonic(), value)
-
-    def clear(self) -> None:
-        with self._lock:
-            self._store.clear()
+_CacheValue = TypeVar("_CacheValue")
+_HomeSummaryComponents = tuple[dict[str, object], dict[str, str], int]
 
 
-_report_dates_cache = _TTLCache(ttl_seconds=300)
-_fact_rows_cache = _TTLCache(ttl_seconds=300)
-_home_summary_cache = _TTLCache(ttl_seconds=300)
-_fact_rows_fetch_locks: dict[tuple, threading.Lock] = {}
+class _TTLCache(InMemoryTTLCache[tuple, _CacheValue]):
+    """Dashboard values use the bounded lifecycle of the service read cache."""
+
+
+_report_dates_cache: _TTLCache[list[str]] = _TTLCache(ttl_seconds=300)
+_fact_rows_cache: _TTLCache[list[dict[str, object]]] = _TTLCache(ttl_seconds=300)
+_home_summary_cache: _TTLCache[_HomeSummaryComponents] = _TTLCache(ttl_seconds=300)
+_fact_rows_fetch_locks: dict[tuple, tuple[threading.Lock, int]] = {}
 _fact_rows_fetch_locks_guard = threading.Lock()
 
 
@@ -149,8 +145,7 @@ def clear_bond_dashboard_runtime_cache() -> None:
     _report_dates_cache.clear()
     _fact_rows_cache.clear()
     _home_summary_cache.clear()
-    with _fact_rows_fetch_locks_guard:
-        _fact_rows_fetch_locks.clear()
+    # Active locks stay until their holder and every registered waiter exit.
 
 
 def _duckdb_cache_version_token() -> tuple[str, int | None]:
@@ -163,11 +158,12 @@ def _duckdb_cache_version_token() -> tuple[str, int | None]:
 
 def _report_dates() -> list[str]:
     key = (*_duckdb_cache_version_token(), "report_dates")
+    generation = _report_dates_cache.generation()
     hit, cached = _report_dates_cache.get(key)
     if hit:
-        return cached
+        return cast(list[str], cached)
     report_dates = _repo().list_report_dates()
-    _report_dates_cache.set(key, report_dates)
+    _report_dates_cache.set(key, report_dates, generation=generation)
     return report_dates
 
 
@@ -175,19 +171,33 @@ def _fact_rows(report_date: str) -> list[dict[str, object]]:
     key = (*_duckdb_cache_version_token(), "fact_rows", report_date)
     hit, cached = _fact_rows_cache.get(key)
     if hit:
-        return cached
+        return cast(list[dict[str, object]], cached)
     with _fact_rows_fetch_lock(key):
+        generation = _fact_rows_cache.generation()
         hit, cached = _fact_rows_cache.get(key)
         if hit:
-            return cached
+            return cast(list[dict[str, object]], cached)
         rows = _repo().fetch_bond_analytics_rows(report_date=report_date)
-        _fact_rows_cache.set(key, rows)
+        _fact_rows_cache.set(key, rows, generation=generation)
         return rows
 
 
-def _fact_rows_fetch_lock(key: tuple) -> threading.Lock:
+@contextmanager
+def _fact_rows_fetch_lock(key: tuple) -> Iterator[threading.Lock]:
     with _fact_rows_fetch_locks_guard:
-        return _fact_rows_fetch_locks.setdefault(key, threading.Lock())
+        entry = _fact_rows_fetch_locks.get(key)
+        lock, users = entry if entry is not None else (threading.Lock(), 0)
+        _fact_rows_fetch_locks[key] = (lock, users + 1)
+    try:
+        with lock:
+            yield lock
+    finally:
+        with _fact_rows_fetch_locks_guard:
+            _lock, users = _fact_rows_fetch_locks[key]
+            if users == 1:
+                _fact_rows_fetch_locks.pop(key)
+            else:
+                _fact_rows_fetch_locks[key] = (lock, users - 1)
 
 
 def _with_bond_dashboard_data_source(envelope: dict[str, object]) -> dict[str, object]:
@@ -268,11 +278,12 @@ def _analytical_envelope_from_lineage(
         source_version=str(lineage["source_version"]),
         rule_version=str(lineage["rule_version"]),
         vendor_version=str(lineage.get("vendor_version") or "vv_none"),
-        # quality_flag 反映数据质量而非口径基准（口径由 basis=analytical +
-        # formal_use_allowed=false 表达）。与 home-summary 及 bundle 外层同规则：
-        # 有证据行为 ok、空数据为 warning。此前硬编码 "warning" 使前端首屏
-        # 在数据健康时也常挂降级横幅。
-        quality_flag="ok" if evidence_rows > 0 else "warning",
+        # Partial YTM coverage is not a fully observed portfolio yield.
+        quality_flag=(
+            "warning"
+            if evidence_rows <= 0 or _has_incomplete_ytm_coverage(result_payload)
+            else "ok"
+        ),
         source_surface="bond_analytics",
         requested_report_date=report_date,
         resolved_report_date=report_date,
@@ -283,6 +294,19 @@ def _analytical_envelope_from_lineage(
         evidence_rows=evidence_rows,
         result_payload=result_payload,
     )
+
+
+def _has_incomplete_ytm_coverage(payload: dict[str, Any]) -> bool:
+    """Inspect the current headline, yield, or book rows, including home summary."""
+    headline = payload.get("headline", payload)
+    comparison = payload.get("portfolio_comparison", payload)
+    rows = [payload, headline.get("kpis", {}), *comparison.get("items", [])]
+    for row in rows:
+        coverage = row.get("weighted_ytm_coverage_ratio")
+        if isinstance(coverage, dict) and coverage.get("raw") is not None:
+            if Decimal(str(coverage["raw"])) < 1:
+                return True
+    return False
 
 
 class _BondDashboardBundleSharedReads:
@@ -426,26 +450,53 @@ def _kpi_block_from_row(row: dict[str, Any]) -> dict[str, object]:
     med = row.get("credit_spread_median")
     weighted_ytm = row.get("weighted_ytm")
     weighted_duration = row.get("weighted_duration")
+    total_market_value = row.get("total_market_value")
+    unrealized_pnl = row.get("unrealized_pnl")
+    weighted_coupon = row.get("weighted_coupon")
+    total_dv01 = row.get("total_dv01")
     return {
-        "total_market_value": _amt(row["total_market_value"]),
-        "unrealized_pnl": _amt(row.get("unrealized_pnl", Decimal("0"))),
+        # 无事实行的日子 repo 已把这四项以 None 表达（缺失≠0）；此处保持 null，
+        # 不再回落到 _amt(None) 的 Decimal("0") 字符串。
+        "total_market_value": (
+            _amt(total_market_value)
+            if total_market_value is not None
+            else null_numeric(unit="yuan", sign_aware=False).model_dump(mode="json")
+        ),
+        "unrealized_pnl": (
+            _amt(unrealized_pnl)
+            if unrealized_pnl is not None
+            else null_numeric(unit="yuan", sign_aware=True).model_dump(mode="json")
+        ),
         "weighted_ytm": (
             _rate(weighted_ytm)
             if weighted_ytm is not None
             else null_numeric(unit="pct", sign_aware=True).model_dump(mode="json")
+        ),
+        "weighted_ytm_coverage_ratio": (
+            _rate(row["weighted_ytm_coverage_ratio"])
+            if row.get("weighted_ytm_coverage_ratio") is not None
+            else None
         ),
         "weighted_duration": (
             _rate(weighted_duration)
             if weighted_duration is not None
             else null_numeric(unit="ratio", sign_aware=False).model_dump(mode="json")
         ),
-        "weighted_coupon": _rate(row["weighted_coupon"]),
+        "weighted_coupon": (
+            _rate(weighted_coupon)
+            if weighted_coupon is not None
+            else null_numeric(unit="pct", sign_aware=True).model_dump(mode="json")
+        ),
         "credit_spread_median": (
             _rate(med)
             if med is not None
             else null_numeric(unit="pct", sign_aware=True).model_dump(mode="json")
         ),
-        "total_dv01": _amt(row["total_dv01"]),
+        "total_dv01": (
+            _amt(total_dv01)
+            if total_dv01 is not None
+            else null_numeric(unit="dv01", sign_aware=False).model_dump(mode="json")
+        ),
         "bond_count": int(row["bond_count"]),
     }
 
@@ -542,12 +593,16 @@ def _bond_dashboard_business_type_payload(report_date: str) -> dict[str, object]
     for r in rows:
         w_ytm = r.get("weighted_avg_ytm")
         w_dur = r.get("weighted_avg_duration")
-        # 缺失≠0（repo 聚合以 nullif 输出 NULL 表示零覆盖）：无覆盖的指标输出空串，
+        # 缺失≠0（repo 聚合以 nullif 输出 NULL 表示零覆盖）：无覆盖的指标输出 null Numeric，
         # 前端按缺值渲染 EM_DASH；此前硬编码 "0.00000000" 会被当成真实零展示。
-        ytm_pct_str = (
-            format((_to_dec(w_ytm) * Decimal("100")).quantize(Q8, rounding=ROUND_HALF_UP), "f")
+        # weighted_avg_ytm 与 Headline weighted_ytm 同口径：governed Numeric，
+        # raw 为 0-1 比率（raw_scale="ratio"）；旧字段直接从 repo Decimal 格式化，保留原 Q8 精度。
+        weighted_avg_ytm = (
+            numeric_from_raw(
+                raw=float(cast(SupportsFloat, w_ytm)), unit="pct", sign_aware=True, raw_scale="ratio"
+            ).model_dump(mode="json")
             if w_ytm is not None
-            else ""
+            else null_numeric(unit="pct", sign_aware=True).model_dump(mode="json")
         )
         ytm_cov = r.get("weighted_avg_ytm_coverage_ratio")
         dur_cov = r.get("weighted_avg_duration_coverage_ratio")
@@ -555,7 +610,8 @@ def _bond_dashboard_business_type_payload(report_date: str) -> dict[str, object]
             {
                 "name": str(r.get("name") or ""),
                 "market_value": _amt(r.get("market_value")),
-                "weighted_avg_ytm_pct": ytm_pct_str,
+                "weighted_avg_ytm": weighted_avg_ytm,
+                "weighted_avg_ytm_pct": _amt(_to_dec(w_ytm) * Decimal("100")) if w_ytm is not None else "",
                 "weighted_avg_duration": _rate(w_dur) if w_dur is not None else "",
                 "duration_source": "",
                 # 覆盖率为质量披露：组市值为零时分母不存在（repo nullif 输出 NULL）→ null。
@@ -569,26 +625,23 @@ def _bond_dashboard_business_type_payload(report_date: str) -> dict[str, object]
     )
 
 
-def get_bond_dashboard_home_summary(report_date: date) -> dict[str, object]:
+def get_bond_dashboard_home_summary(
+    report_date: date,
+    *,
+    force_refresh: bool = False,
+) -> dict[str, object]:
     rd = report_date.isoformat()
-    payload, lineage, evidence_rows = _bond_dashboard_home_summary_components(rd)
+    components = (
+        _bond_dashboard_home_summary_components(rd, force_refresh=True)
+        if force_refresh
+        else _bond_dashboard_home_summary_components(rd)
+    )
+    payload, lineage, evidence_rows = components
     return _with_bond_dashboard_data_source(
-        build_result_envelope(
-            basis="analytical",
-            trace_id=_trace_id(),
+        _analytical_envelope_from_lineage(
             result_kind="bond_dashboard.home_summary",
-            cache_version=str(lineage["cache_version"]),
-            source_version=str(lineage["source_version"]),
-            rule_version=str(lineage["rule_version"]),
-            vendor_version=str(lineage.get("vendor_version") or "vv_none"),
-            quality_flag="ok" if evidence_rows > 0 else "warning",
-            source_surface="bond_analytics",
-            requested_report_date=rd,
-            resolved_report_date=rd,
-            as_of_date=rd,
-            date_basis="bond_dashboard_report_date",
-            filters_applied={"report_date": rd},
-            tables_used=["fact_formal_bond_analytics_daily"],
+            report_date=rd,
+            lineage=dict(lineage),
             evidence_rows=evidence_rows,
             result_payload=payload,
         )
@@ -597,12 +650,43 @@ def get_bond_dashboard_home_summary(report_date: date) -> dict[str, object]:
 
 def _bond_dashboard_home_summary_components(
     report_date: str,
+    *,
+    force_refresh: bool = False,
 ) -> tuple[dict[str, object], dict[str, str], int]:
-    key = (*_duckdb_cache_version_token(), "home_summary", report_date)
-    hit, cached = _home_summary_cache.get(key)
-    if hit:
-        return cached
+    database_token = _duckdb_cache_version_token()
+    # Old cached payloads lack the required legacy compatibility field.
+    key = (*database_token, "home_summary", "business_ytm_pct_v1", report_date)
+    if force_refresh:
+        generation = _home_summary_cache.generation()
+        read_identity = system_read_cache_identity(key)
+        physical_token = _bond_analytics_rows_cache_version_token()
 
+        def completed_token() -> tuple[str, ...]:
+            lineage = resolve_completed_formal_build_lineage(
+                governance_dir=str(get_settings().governance_path),
+                cache_key=BOND_ANALYTICS_CACHE_KEY,
+                job_name=BOND_ANALYTICS_JOB_NAME,
+                report_date=report_date,
+            )
+            return _completed_build_cache_token(lineage or {})
+
+        terminal_token = completed_token()
+        components = _build_bond_dashboard_home_summary_components(report_date)
+        if (
+            database_token == _duckdb_cache_version_token()
+            and physical_token == _bond_analytics_rows_cache_version_token()
+            and read_identity == system_read_cache_identity(key)
+            and terminal_token == completed_token()
+        ):
+            _home_summary_cache.set(key, components, generation=generation)
+        return components
+    return _home_summary_cache.get_or_set(
+        key,
+        lambda: _build_bond_dashboard_home_summary_components(report_date),
+    )
+
+
+def _build_bond_dashboard_home_summary_components(report_date: str) -> _HomeSummaryComponents:
     rd = report_date
     prior = _prior_report_date(rd)
     headline_raw = _repo().fetch_dashboard_headline_kpis(rd, prev_report_date=prior)
@@ -612,9 +696,11 @@ def _bond_dashboard_home_summary_components(
     asset_rating = _bond_dashboard_asset_structure_payload(rd, "rating")
     maturity = _bond_dashboard_maturity_payload(rd)
     industry = _bond_dashboard_industry_payload(rd, 10)
+    current_headline = cast(dict[str, object], headline_raw["current"])
     yield_distribution = _bond_dashboard_yield_distribution_payload(
         rd,
-        weighted_ytm=headline_raw["current"]["weighted_ytm"],
+        weighted_ytm=current_headline["weighted_ytm"],
+        weighted_ytm_coverage_ratio=current_headline.get("weighted_ytm_coverage_ratio"),
     )
     portfolio_comparison = _bond_dashboard_portfolio_payload(rd)
     spread = _bond_dashboard_spread_payload(rd)
@@ -638,9 +724,7 @@ def _bond_dashboard_home_summary_components(
             "business_type": business_type,
         },
     )
-    components = (payload, lineage, len(fact_rows))
-    _home_summary_cache.set(key, components)
-    return components
+    return payload, lineage, len(fact_rows)
 
 
 def get_bond_dashboard_asset_structure(
@@ -700,11 +784,14 @@ def _bond_dashboard_yield_distribution_payload(
     report_date: str,
     *,
     weighted_ytm: object | None = None,
+    weighted_ytm_coverage_ratio: object | None = None,
 ) -> dict[str, object]:
     rows = _repo().fetch_dashboard_yield_distribution(report_date)
-    if weighted_ytm is None:
+    if weighted_ytm is None and weighted_ytm_coverage_ratio is None:
         head = _repo().fetch_dashboard_headline_kpis(report_date, prev_report_date=None)
-        weighted_ytm = head["current"]["weighted_ytm"]
+        current_headline = cast(dict[str, object], head["current"])
+        weighted_ytm = current_headline["weighted_ytm"]
+        weighted_ytm_coverage_ratio = current_headline.get("weighted_ytm_coverage_ratio")
     items = [
         {
             "yield_bucket": r["yield_bucket"],
@@ -713,7 +800,20 @@ def _bond_dashboard_yield_distribution_payload(
         }
         for r in rows
     ]
-    payload = {"report_date": report_date, "items": items, "weighted_ytm": _rate(weighted_ytm)}
+    payload: dict[str, object] = {
+        "report_date": report_date,
+        "items": items,
+        "weighted_ytm": (
+            _rate(weighted_ytm)
+            if weighted_ytm is not None
+            else null_numeric(unit="pct", sign_aware=True).model_dump(mode="json")
+        ),
+        "weighted_ytm_coverage_ratio": (
+            _rate(weighted_ytm_coverage_ratio)
+            if weighted_ytm_coverage_ratio is not None
+            else None
+        ),
+    }
     return _typed_payload(BondDashboardYieldDistributionPayload, payload)
 
 
@@ -735,7 +835,16 @@ def _bond_dashboard_portfolio_payload(report_date: str) -> dict[str, object]:
         {
             "portfolio_name": r["portfolio_name"],
             "total_market_value": _amt(r["total_market_value"]),
-            "weighted_ytm": _rate(r["weighted_ytm"]),
+            "weighted_ytm": (
+                _rate(r["weighted_ytm"])
+                if r["weighted_ytm"] is not None
+                else null_numeric(unit="pct", sign_aware=True).model_dump(mode="json")
+            ),
+            "weighted_ytm_coverage_ratio": (
+                _rate(r["weighted_ytm_coverage_ratio"])
+                if r.get("weighted_ytm_coverage_ratio") is not None
+                else None
+            ),
             "weighted_duration": _rate(r["weighted_duration"]),
             "total_dv01": _amt(r["total_dv01"]),
             "bond_count": r["bond_count"],
@@ -839,7 +948,7 @@ def _bond_dashboard_industry_payload(report_date: str, top_n: int) -> dict[str, 
         )
     return _typed_payload(
         BondDashboardIndustryDistributionPayload,
-        {"report_date": report_date, "items": items},
+        {"report_date": report_date, "items": items, "total_market_value": _amt(tot)},
     )
 
 
@@ -949,13 +1058,14 @@ def _bond_dashboard_bundle_section_envelope(
         if shared_reads is not None:
             rd = shared_reads.require_report_date()
             headline = shared_reads.headline_raw()
-            current_headline = headline["current"]
+            current_headline = cast(dict[str, object], headline["current"])
             return _bond_dashboard_bundle_shared_section_envelope(
                 shared_reads=shared_reads,
                 result_kind="bond_dashboard.yield_distribution",
                 result_payload=_bond_dashboard_yield_distribution_payload(
                     rd,
                     weighted_ytm=current_headline["weighted_ytm"],
+                    weighted_ytm_coverage_ratio=current_headline.get("weighted_ytm_coverage_ratio"),
                 ),
             )
         return get_bond_dashboard_yield_distribution(report_date)
@@ -1116,7 +1226,11 @@ def get_bond_dashboard_bundle(
 
     max_workers = min(len(normalized_sections), BOND_DASHBOARD_BUNDLE_MAX_WORKERS)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        loaded_sections = list(executor.map(load_section, normalized_sections))
+        futures = [
+            executor.submit(copy_context().run, load_section, section)
+            for section in normalized_sections
+        ]
+        loaded_sections = [future.result() for future in futures]
 
     for section, envelope, status in loaded_sections:
         section_statuses[section] = status
@@ -1131,7 +1245,15 @@ def get_bond_dashboard_bundle(
             raise ValueError("report_date is required for the requested bundle sections")
         lineage = shared_reads.lineage()
         evidence_rows = shared_reads.evidence_rows()
-        quality_flag = "warning" if failed_sections or evidence_rows <= 0 else "ok"
+        quality_flag = (
+            "warning"
+            if failed_sections or evidence_rows <= 0
+            or any(
+                cast(dict[str, object], envelope["result_meta"]).get("quality_flag") != "ok"
+                for envelope in section_envelopes.values()
+            )
+            else "ok"
+        )
         basis = "analytical"
         filters_applied: dict[str, object] = {
             "report_date": rd,

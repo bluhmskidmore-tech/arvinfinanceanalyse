@@ -6,6 +6,7 @@ import math
 import uuid
 from bisect import bisect_right
 from collections.abc import Callable
+from contextlib import nullcontext
 from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -98,6 +99,7 @@ from backend.app.services.livermore_candidate_history_read_support import (
     _load_execution_window_rows,
     _load_forward_maturity_observations,
     _load_matched_baseline_window_rows,
+    _mask_execution_outcomes_as_of,
     _mask_unverified_forward_outcomes,
     _matched_baseline_select_list,
     _maturity_finite_float,
@@ -153,6 +155,7 @@ from backend.app.services.livermore_candidate_history_window_stats import (
     _normalized_text,
     _percentile_float,
     _present_float_values,
+    _research_adjusted_items,
     _signal_kinds_for_rows,
     _snapshot_row_dates,
     _win_rate_present,
@@ -215,6 +218,7 @@ from backend.app.services.livermore_candidate_history_strategy_support import (
     _strategy_review_gate,
     _strategy_review_thresholds,
     _strategy_score_risk_flags,
+    _with_snapshot_day_disclosure,
     _worst_snapshot_stat,
 )
 from backend.app.services.livermore_candidate_history_envelope_support import (
@@ -318,7 +322,8 @@ _CYCLE_PROXY_RETURN_PREFERENCE_NOTE = (
 )
 _PORTFOLIO_PROXY_BASIS_NOTE = (
     "It uses first-available monthly stock_candidate snapshots, equal-weight top-6 replay rows, "
-    "daily adjusted-close mark-to-market with raw-close fallback, and fixed transaction-cost assumptions."
+    "daily adjusted-close mark-to-market with a per-stock locked raw-close fallback (a stock with any "
+    "missing adjusted close is priced on raw closes for the whole window), and fixed transaction-cost assumptions."
 )
 _SAMPLE_GENERATION_ERA_NOTE = (
     "sample_generation splits replay rows by signal date at the 2026-01-05 Choice-native era boundary "
@@ -334,6 +339,7 @@ def livermore_candidate_history_envelope(
     snapshot_to: str | None,
     limit: int,
     evaluation_as_of_date: str | None = None,
+    _conn: duckdb.DuckDBPyConnection | None = None,
 ) -> dict[str, object]:
     """Read persisted candidate history slice; DuckDB SELECT only (API read-only)."""
     trimmed_code = stock_code.strip().upper() if stock_code else None
@@ -358,6 +364,7 @@ def livermore_candidate_history_envelope(
                 snapshot_from=normalized_snapshot_from,
                 snapshot_to=empty_effective_snapshot_to,
                 evaluation_as_of_date=empty_evaluation_date,
+                _conn=_conn,
             ),
             "stock_code": trimmed_code,
             "snapshot_from": normalized_snapshot_from,
@@ -368,11 +375,12 @@ def livermore_candidate_history_envelope(
         }
 
     path = Path(duckdb_path)
-    if not path.is_file():
+    if _conn is None and not path.is_file():
         return _wrap_empty_envelope(payload=build_empty_payload())
 
     repository = LivermoreCandidateHistoryRepository(str(path))
-    with repository.scoped_connection() as conn:
+    connection_scope = nullcontext(_conn) if _conn is not None else repository.scoped_connection()
+    with connection_scope as conn:
         assert conn is not None
         tables = repository.list_table_names(conn=conn)
         if TABLE_HIST not in tables:
@@ -450,6 +458,7 @@ def livermore_candidate_history_envelope(
         snapshot_from=normalized_snapshot_from,
         snapshot_to=effective_snapshot_to,
         evaluation_as_of_date=resolved_evaluation_date,
+        _conn=_conn,
     )
     backtest_window_summary = dict(backtest_window_summary)
     backtest_window_summary["forward_coverage_row_counts"] = _forward_coverage_counts(items)
@@ -553,6 +562,7 @@ def livermore_candidate_history_envelope_or_none(
     snapshot_to: str | None,
     limit: int,
     query_failures: list[str] | None = None,
+    _conn: duckdb.DuckDBPyConnection | None = None,
 ) -> dict[str, object] | None:
     try:
         return livermore_candidate_history_envelope(
@@ -561,6 +571,7 @@ def livermore_candidate_history_envelope_or_none(
             snapshot_from=snapshot_from,
             snapshot_to=snapshot_to,
             limit=limit,
+            _conn=_conn,
         )
     except duckdb.Error as exc:
         reason = _warn_duckdb_query_failed(
@@ -669,7 +680,8 @@ def livermore_candidate_history_strategy_score_envelope(
     if backtest_window_summary.get("status") in {"valid", "partial"}:
         scoring_items = _horizon_usable_items(items, backtest_window_summary=backtest_window_summary)
     else:
-        scoring_items = items
+        # Degraded window: still keep score stats on the research adjusted basis.
+        scoring_items = _research_adjusted_items(items)
     payload = _build_strategy_score_payload(
         items=scoring_items,
         snapshot_from=resolved_from,
@@ -781,7 +793,8 @@ def livermore_candidate_history_strategy_optimization_envelope(
     if backtest_window_summary.get("status") in {"valid", "partial"}:
         optimizer_items = _horizon_usable_items(items, backtest_window_summary=backtest_window_summary)
     else:
-        optimizer_items = items
+        # Degraded window: still keep optimization stats on the research adjusted basis.
+        optimizer_items = _research_adjusted_items(items)
     payload = _build_strategy_optimization_payload(
         items=optimizer_items,
         snapshot_from=resolved_from,
@@ -990,6 +1003,7 @@ def livermore_candidate_history_backtest_window_summary(
     snapshot_from: str | None,
     snapshot_to: str | None,
     evaluation_as_of_date: str | None = None,
+    _conn: duckdb.DuckDBPyConnection | None = None,
 ) -> dict[str, Any]:
     trimmed_code = stock_code.strip().upper() if stock_code else None
     trimmed_code = trimmed_code if trimmed_code else None
@@ -1005,13 +1019,27 @@ def livermore_candidate_history_backtest_window_summary(
         snapshot_from=normalized_from,
         snapshot_to=effective_snapshot_to,
     )
+    base_summary["outcome_evaluation_as_of_date"] = normalized_evaluation_date
+    base_summary["execution_pit"]["evaluation_as_of_date"] = normalized_evaluation_date
+    execution_rows: list[dict[str, Any]] | None = None
+    execution_pit_disclosure: dict[str, Any] = {
+        "status": "execution_history_missing",
+        "evaluation_as_of_date": normalized_evaluation_date,
+        "missing_date_columns": [],
+        "missing_entry_date_count": 0,
+        "future_entry_date_count": 0,
+        "missing_exit_date_counts": {horizon: 0 for horizon in _FORWARD_MATURITY_HORIZONS},
+        "future_exit_date_counts": {horizon: 0 for horizon in _FORWARD_MATURITY_HORIZONS},
+    }
+    tables: set[str] = set()
 
     path = Path(duckdb_path)
-    if not path.is_file():
+    if _conn is None and not path.is_file():
         return base_summary
 
     repository = LivermoreCandidateHistoryRepository(str(path))
-    with repository.scoped_connection() as conn:
+    connection_scope = nullcontext(_conn) if _conn is not None else repository.scoped_connection()
+    with connection_scope as conn:
         assert conn is not None
         tables = repository.list_table_names(conn=conn)
         if TABLE_HIST not in tables and TABLE_OBS not in tables:
@@ -1040,19 +1068,58 @@ def livermore_candidate_history_backtest_window_summary(
             snapshot_to=effective_snapshot_to,
             row_dates=row_dates,
         )
+        if TABLE_EXECUTION_HIST in tables:
+            execution_columns = _available_execution_columns(conn)
+            execution_rows = _load_execution_window_rows(
+                conn,
+                stock_code=trimmed_code,
+                snapshot_from=normalized_from,
+                snapshot_to=effective_snapshot_to,
+            )
+            if normalized_evaluation_date:
+                execution_rows, execution_pit_disclosure = _mask_execution_outcomes_as_of(
+                    execution_rows,
+                    evaluation_as_of_date=normalized_evaluation_date,
+                    available_columns=execution_columns,
+                )
+            else:
+                execution_pit_disclosure = {
+                    **execution_pit_disclosure,
+                    "status": "not_requested",
+                    "missing_date_columns": sorted(
+                        {
+                            "entry_date",
+                            "exit_date_1d",
+                            "exit_date_5d",
+                            "exit_date_10d",
+                            "exit_date_20d",
+                        }
+                        - execution_columns
+                    ),
+                }
 
-    return _build_backtest_window_summary_from_rows(
+    summary = _build_backtest_window_summary_from_rows(
         duckdb_path=duckdb_path,
+        conn=_conn,
         rows=rows,
         trade_dates=trade_dates,
         history_table_present=history_table_present,
         base_summary=base_summary,
+    )
+    return _enrich_backtest_window_summary_metrics(
+        summary,
+        rows=rows,
+        trade_dates=trade_dates,
+        execution_rows=execution_rows,
+        execution_pit_disclosure=execution_pit_disclosure,
+        tables=tables,
     )
 
 
 def _build_backtest_window_summary_from_rows(
     *,
     duckdb_path: str,
+    conn: duckdb.DuckDBPyConnection | None = None,
     rows: list[dict[str, Any]],
     trade_dates: list[str],
     history_table_present: bool,
@@ -1081,7 +1148,11 @@ def _build_backtest_window_summary_from_rows(
     date_reasons: list[dict[str, Any]] = []
 
     for trade_date in trade_dates:
-        coverage = load_choice_stock_materialization_coverage(duckdb_path=duckdb_path, as_of_date=trade_date)
+        coverage = load_choice_stock_materialization_coverage(
+            duckdb_path=duckdb_path,
+            as_of_date=trade_date,
+            conn=conn,
+        )
         classification = _classify_replay_date(
             trade_date=trade_date,
             coverage=coverage,
@@ -1123,6 +1194,11 @@ def _build_backtest_window_summary_from_rows(
         "status": window_status,
         "snapshot_from": trade_dates[0],
         "snapshot_to": trade_dates[-1],
+        "requested_snapshot_from": base_summary.get("requested_snapshot_from"),
+        "requested_snapshot_to": base_summary.get("requested_snapshot_to"),
+        "observed_snapshot_from": trade_dates[0],
+        "observed_snapshot_to": trade_dates[-1],
+        "outcome_evaluation_as_of_date": base_summary.get("outcome_evaluation_as_of_date"),
         "replay_dates_total": len(trade_dates),
         "replay_dates_completed": completed_dates,
         "replay_dates_pending": pending_dates,
@@ -1137,6 +1213,100 @@ def _build_backtest_window_summary_from_rows(
         "excluded_from_completed_stats_dates": excluded_dates,
         "date_reasons": date_reasons,
     }
+
+
+def _enrich_backtest_window_summary_metrics(
+    summary: dict[str, Any],
+    *,
+    rows: list[dict[str, Any]],
+    trade_dates: list[str],
+    execution_rows: list[dict[str, Any]] | None,
+    execution_pit_disclosure: dict[str, Any],
+    tables: set[str],
+) -> dict[str, Any]:
+    enriched = dict(summary)
+    enriched["decision_metric_basis"] = _EXECUTION_METRIC_BASIS
+    enriched["research_metric_basis"] = "adjusted_close_return"
+    enriched["observed_snapshot_from"] = trade_dates[0] if trade_dates else None
+    enriched["observed_snapshot_to"] = trade_dates[-1] if trade_dates else None
+
+    pending_reasons = [
+        reason
+        for reason in enriched.get("date_reasons", [])
+        if isinstance(reason, dict)
+        and str(reason.get("status") or "").strip() == "pending"
+        and str(reason.get("trade_date") or "").strip()
+    ]
+    evaluation_date = str(enriched.get("outcome_evaluation_as_of_date") or "")[:10]
+    evaluation_bounded_dates = [
+        trade_date for trade_date in trade_dates if not evaluation_date or trade_date <= evaluation_date
+    ]
+    natural_tail_window = set(
+        evaluation_bounded_dates[-_FORWARD_COVERAGE_MATURITY_FORWARD_BARS:]
+    )
+    pending_tail_dates = [
+        str(reason.get("trade_date") or "")[:10]
+        for reason in pending_reasons
+        if str(reason.get("reason_code") or "").strip() == "forward_returns_pending"
+        and str(reason.get("trade_date") or "")[:10] in natural_tail_window
+    ]
+    pending_tail_date_set = set(pending_tail_dates)
+    blocking_pending_dates = [
+        str(reason.get("trade_date") or "")[:10]
+        for reason in pending_reasons
+        if str(reason.get("trade_date") or "")[:10] not in pending_tail_date_set
+    ]
+    enriched["pending_tail_dates"] = pending_tail_dates
+    enriched["blocking_pending_dates"] = blocking_pending_dates
+    enriched["replay_dates_pending_tail"] = len(pending_tail_dates)
+    enriched["replay_dates_pending_blocking"] = len(blocking_pending_dates)
+
+    horizon_usable_items = _horizon_usable_items(rows, backtest_window_summary=enriched)
+    research_stats = _build_decision_usable_stats(
+        rows,
+        backtest_window_summary=enriched,
+    )
+    decision_dates = _decision_usable_dates(enriched)
+    decision_execution_rows = _execution_rows_for_dates(execution_rows or [], decision_dates)
+    execution_stats = _build_execution_usable_stats(decision_execution_rows)
+    enriched["decision_usable_stats"] = research_stats
+    research_horizon_stats = _build_horizon_stats(horizon_usable_items)
+    research_signal_kind_stats = _build_signal_kind_horizon_stats(
+        horizon_usable_items
+    )
+    research_market_state_stats = (
+        _build_market_state_signal_kind_horizon_stats(horizon_usable_items)
+    )
+    # Compatibility aliases remain adjusted-close research fields.  New
+    # consumers must use the explicit research_* names; confluence readiness
+    # consumes execution_usable_stats only.
+    enriched["horizon_usable_stats"] = research_horizon_stats
+    enriched["by_signal_kind_horizon_usable_stats"] = research_signal_kind_stats
+    enriched["by_market_state_signal_kind_horizon_usable_stats"] = research_market_state_stats
+    enriched["research_usable_stats"] = research_stats
+    enriched["research_horizon_usable_stats"] = research_horizon_stats
+    enriched["research_by_signal_kind_horizon_usable_stats"] = research_signal_kind_stats
+    enriched["research_by_market_state_signal_kind_horizon_usable_stats"] = (
+        research_market_state_stats
+    )
+    enriched["research_metric_contract"] = {
+        "metric_basis": "adjusted_close_return",
+        "compatibility_aliases": [
+            "decision_usable_stats",
+            "horizon_usable_stats",
+            "by_signal_kind_horizon_usable_stats",
+            "by_market_state_signal_kind_horizon_usable_stats",
+        ],
+        "decision_authority": False,
+    }
+    enriched["execution_usable_stats"] = execution_stats
+    enriched["execution_pit"] = execution_pit_disclosure
+    enriched["tables_used"] = [
+        table
+        for table in (TABLE_HIST, TABLE_OBS, TABLE_EXECUTION_HIST)
+        if table in tables
+    ]
+    return enriched
 
 
 def _load_backtest_window_rows(
@@ -1240,6 +1410,10 @@ def _build_summary(
     matched_baseline_rows: list[dict[str, Any]] | None = None,
     evaluation_as_of_date: str | None = None,
 ) -> dict[str, Any]:
+    # Row/coverage counters keep the raw materialized rows; the return
+    # statistics below are research-basis (adjusted_close_return) and must
+    # read the adjusted view only.
+    research_items = _research_adjusted_items(items)
     summary: dict[str, Any] = {
         "row_count": len(items),
         "complete_count": _count_status(items, "complete"),
@@ -1249,13 +1423,13 @@ def _build_summary(
         "missing_forward_return_count": sum(
             1 for item in items if any(item.get(horizon) is None for horizon in _COMPLETION_HORIZONS)
         ),
-        "avg_return_1d": _avg_present(items, "return_1d"),
-        "avg_return_5d": _avg_present(items, "return_5d"),
-        "avg_return_10d": _avg_present(items, "return_10d"),
-        "avg_return_20d": _avg_present(items, "return_20d"),
-        "horizon_stats": _build_horizon_stats(items),
+        "avg_return_1d": _avg_present(research_items, "return_1d"),
+        "avg_return_5d": _avg_present(research_items, "return_5d"),
+        "avg_return_10d": _avg_present(research_items, "return_10d"),
+        "avg_return_20d": _avg_present(research_items, "return_20d"),
+        "horizon_stats": _build_horizon_stats(research_items),
         "by_signal_kind": _count_by_signal_kind(items),
-        "by_signal_kind_horizon_stats": _build_signal_kind_horizon_stats(items),
+        "by_signal_kind_horizon_stats": _build_signal_kind_horizon_stats(research_items),
     }
     # 治理披露（纯加法）：execution / matched_baseline 窗口存量按
     # formula_version 的行数分布与非当前版本行计数，让消费端在重物化完成
@@ -2270,7 +2444,7 @@ def _strategy_score_row(
     primary_horizon: str,
     macro_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    stats = _build_horizon_stats(items)
+    stats = _with_snapshot_day_disclosure(_build_horizon_stats(items), items)
     diagnostics = _strategy_score_diagnostics(
         market_state=market_state,
         signal_kind=signal_kind,
@@ -2592,9 +2766,17 @@ def _empty_backtest_window_summary(
         "status": "unsupported",
         "snapshot_from": snapshot_from,
         "snapshot_to": snapshot_to,
+        "requested_snapshot_from": snapshot_from,
+        "requested_snapshot_to": snapshot_to,
+        "observed_snapshot_from": None,
+        "observed_snapshot_to": None,
+        "decision_metric_basis": _EXECUTION_METRIC_BASIS,
+        "research_metric_basis": "adjusted_close_return",
         "replay_dates_total": 0,
         "replay_dates_completed": 0,
         "replay_dates_pending": 0,
+        "replay_dates_pending_tail": 0,
+        "replay_dates_pending_blocking": 0,
         "replay_dates_unsupported": 0,
         "replay_dates_proxy_only": 0,
         "completed_rows": 0,
@@ -2604,5 +2786,42 @@ def _empty_backtest_window_summary(
         "forward_coverage_row_counts": {status: 0 for status in _FORWARD_COVERAGE_STATUSES},
         "included_completed_stats_dates": [],
         "excluded_from_completed_stats_dates": [],
+        "pending_tail_dates": [],
+        "blocking_pending_dates": [],
         "date_reasons": [],
+        "decision_usable_stats": _build_decision_usable_stats(
+            [],
+            backtest_window_summary={"included_completed_stats_dates": []},
+        ),
+        "horizon_usable_stats": _build_horizon_stats([]),
+        "by_signal_kind_horizon_usable_stats": {},
+        "by_market_state_signal_kind_horizon_usable_stats": {},
+        "research_usable_stats": _build_decision_usable_stats(
+            [],
+            backtest_window_summary={"included_completed_stats_dates": []},
+        ),
+        "research_horizon_usable_stats": _build_horizon_stats([]),
+        "research_by_signal_kind_horizon_usable_stats": {},
+        "research_by_market_state_signal_kind_horizon_usable_stats": {},
+        "research_metric_contract": {
+            "metric_basis": "adjusted_close_return",
+            "compatibility_aliases": [
+                "decision_usable_stats",
+                "horizon_usable_stats",
+                "by_signal_kind_horizon_usable_stats",
+                "by_market_state_signal_kind_horizon_usable_stats",
+            ],
+            "decision_authority": False,
+        },
+        "execution_usable_stats": _build_execution_usable_stats([]),
+        "execution_pit": {
+            "status": "execution_history_missing",
+            "evaluation_as_of_date": None,
+            "missing_date_columns": [],
+            "missing_entry_date_count": 0,
+            "future_entry_date_count": 0,
+            "missing_exit_date_counts": {horizon: 0 for horizon in _FORWARD_MATURITY_HORIZONS},
+            "future_exit_date_counts": {horizon: 0 for horizon in _FORWARD_MATURITY_HORIZONS},
+        },
+        "tables_used": [],
     }

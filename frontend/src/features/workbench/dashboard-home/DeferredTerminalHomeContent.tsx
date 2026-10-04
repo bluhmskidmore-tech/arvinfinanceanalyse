@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef } from "react";
 
 import type {
   DashboardHomeFirstScreenHydration,
@@ -23,29 +23,14 @@ type DeferredTerminalHomeContentProps = {
   homeAvailability?: DashboardHomeAvailability;
   homeAvailabilityKind?: "normal" | "serviceUnavailable";
   snapshotRefreshing?: boolean;
+  onViewLatestReport?: () => void;
   onFirstScreenHydrated?: (hydration: DashboardHomeFirstScreenHydration) => void;
 };
 
 function firstScreenHydrationSignature(hydration: DashboardHomeFirstScreenHydration): string {
   return JSON.stringify({
     reportDate: hydration.reportDate,
-    headerStatus: hydration.headerStatus,
-    decisionRail: hydration.decisionRail,
-    terminalKpis: hydration.terminalKpis.map((kpi) => ({
-      id: kpi.id,
-      value: kpi.value,
-      unit: kpi.unit,
-      delta: kpi.delta,
-      deltaTone: kpi.deltaTone,
-      state: kpi.state,
-    })),
-    keyRiskStrip: hydration.keyRiskStrip.map((item) => ({
-      id: item.id,
-      value: item.value,
-      delta: item.delta,
-      deltaTone: item.deltaTone,
-    })),
-    supplementalState: hydration.supplementalState,
+    keyRiskStrip: hydration.keyRiskStrip,
   });
 }
 
@@ -56,18 +41,18 @@ export function DeferredTerminalHomeContent({
   homeAvailability,
   homeAvailabilityKind = "normal",
   snapshotRefreshing = false,
+  onViewLatestReport,
   onFirstScreenHydrated,
 }: DeferredTerminalHomeContentProps) {
-  const [loadFirstScreenHydration, setLoadFirstScreenHydration] = useState(false);
-  const firstScreenHydration = useDashboardHomeSupplementalHydration(snapshotBoundary, {
-    enabled: loadFirstScreenHydration,
-  });
+  const { firstScreenHydration, supplementalState, updatedAt } =
+    useDashboardHomeSupplementalHydration(snapshotBoundary, {
+      enabled: userReachedDeferredContent,
+    });
   const hydrationSignature = useMemo(
     () => firstScreenHydrationSignature(firstScreenHydration),
     [firstScreenHydration],
   );
   const emittedHydrationSignatureRef = useRef<string | null>(null);
-  const [loadBody, setLoadBody] = useState(false);
 
   useEffect(() => {
     if (emittedHydrationSignatureRef.current === hydrationSignature) {
@@ -77,19 +62,7 @@ export function DeferredTerminalHomeContent({
     onFirstScreenHydrated?.(firstScreenHydration);
   }, [firstScreenHydration, hydrationSignature, onFirstScreenHydrated]);
 
-  useEffect(() => {
-    if (userReachedDeferredContent) {
-      setLoadBody(true);
-    }
-  }, [userReachedDeferredContent]);
-
-  useEffect(() => {
-    if (loadBody) {
-      setLoadFirstScreenHydration(true);
-    }
-  }, [loadBody]);
-
-  if (!loadBody) {
+  if (!userReachedDeferredContent) {
     return <DeferredEvidenceIndexPreview />;
   }
 
@@ -101,8 +74,9 @@ export function DeferredTerminalHomeContent({
         homeAvailability={homeAvailability}
         homeAvailabilityKind={homeAvailabilityKind}
         snapshotRefreshing={snapshotRefreshing}
-        supplementalState={firstScreenHydration.supplementalState}
-        updatedAt={firstScreenHydration.headerStatus.dataUpdatedAt}
+        onViewLatestReport={onViewLatestReport}
+        supplementalState={supplementalState}
+        updatedAt={updatedAt}
       />
     </Suspense>
   );

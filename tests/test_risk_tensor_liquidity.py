@@ -306,6 +306,54 @@ def test_liquidity_gap_nets_liability_outflows_within_window():
     assert tensor.liquidity_gap_90d == tensor.asset_cashflow_90d - tensor.liability_cashflow_90d
 
 
+def test_liquidity_discloses_missing_liability_maturity_principal_without_changing_gap():
+    mod = _risk_tensor_module()
+    report_date = date(2026, 3, 31)
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [],
+        report_date=report_date,
+        liability_rows=[
+            {
+                "position_id": "MISSING-PRIMARY",
+                "maturity_date": None,
+                "principal_amount": Decimal("10"),
+                "principal_native": Decimal("99"),
+            },
+            {
+                "position_id": "MISSING-ZERO",
+                "maturity_date": None,
+                "principal_amount": Decimal("0"),
+                "principal_native": Decimal("88"),
+            },
+            {
+                "position_id": "MISSING-FALLBACK",
+                "maturity_date": None,
+                "principal_amount": None,
+                "principal_native": Decimal("7"),
+            },
+            {
+                "position_id": "MISSING-EMPTY",
+                "maturity_date": None,
+                "principal_amount": None,
+                "principal_native": None,
+            },
+        ],
+    )
+
+    assert tensor.missing_liability_maturity_count == 4
+    assert tensor.missing_liability_maturity_principal_amount == Decimal("17")
+    assert tensor.liability_cashflow_30d == Decimal("0")
+    assert tensor.liability_cashflow_90d == Decimal("0")
+    assert tensor.liquidity_gap_30d == Decimal("0")
+    assert tensor.liquidity_gap_90d == Decimal("0")
+    assert any(
+        "Excluded 4 liability rows" in warning
+        and "principal_amount=17 CNY yuan" in warning
+        for warning in tensor.warnings
+    )
+
+
 def test_liquidity_discloses_rate_style_frequency_and_floating_rate_proxies():
     mod = _risk_tensor_module()
     report_date = date(2026, 3, 31)

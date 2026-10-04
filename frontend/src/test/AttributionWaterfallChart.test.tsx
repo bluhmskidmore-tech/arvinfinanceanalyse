@@ -65,11 +65,12 @@ describe("AttributionWaterfallChart", () => {
       "规模效应",
       "利率效应",
       "交叉效应",
+      "未解释差额",
       "当期损益",
     ]);
     expect(
       option.series[0].data.map((point: { value: number | null }) => point.value),
-    ).toEqual([null, null, 0, null, null]);
+    ).toEqual([null, null, 0, null, null, null]);
 
     const chart = screen.getByTestId("waterfall-stub");
     expect(chart).toHaveAttribute("data-tooltip-null", "—");
@@ -117,7 +118,7 @@ describe("AttributionWaterfallChart", () => {
     expect(screen.getByText(/交叉效应\s*\+0\.00 亿/)).toBeInTheDocument();
   });
 
-  it("shows the unexplained residual in the legend when total_recon_error is present", () => {
+  it("shows the unexplained residual as its own bridge column and legend entry", () => {
     const data = {
       current_period: "2026-06",
       previous_period: "2026-05",
@@ -143,9 +144,14 @@ describe("AttributionWaterfallChart", () => {
 
     expect(screen.getByText(/未解释差额\s*\+0\.05 亿/)).toBeInTheDocument();
     expect(screen.getByText(/当期损益\s*\+5\.00 亿/)).toBeInTheDocument();
+    const option = JSON.parse(screen.getByTestId("waterfall-stub").textContent ?? "null");
+    const residualIndex = option.xAxis.data.indexOf("未解释差额");
+    const bridgeBars = option.series.find((series: { id?: string }) => series.id === "bridge-bars");
+    expect(residualIndex).toBe(4);
+    expect(bridgeBars.data[residualIndex].value).toBeCloseTo(0.05, 8);
   });
 
-  it("omits the residual legend entry when total_recon_error is missing", () => {
+  it("leaves a labeled residual gap when total_recon_error is missing", () => {
     const data = {
       current_period: "2026-06",
       previous_period: "2026-05",
@@ -169,7 +175,11 @@ describe("AttributionWaterfallChart", () => {
       />,
     );
 
-    // 说明文案仍会提到「未解释差额」概念，这里只断言图例金额行不存在。
+    expect(screen.getByText("未解释差额 —")).toBeInTheDocument();
     expect(screen.queryByText(/未解释差额\s*[+-]?\d/)).not.toBeInTheDocument();
+    const option = JSON.parse(screen.getByTestId("waterfall-stub").textContent ?? "null");
+    expect(option.xAxis.data).toContain("未解释差额");
+    expect(option.series.some((series: { id?: string }) => series.id === "bridge-bars")).toBe(false);
+    expect(option.series[0].data[option.xAxis.data.indexOf("未解释差额")].value).toBeNull();
   });
 });

@@ -63,6 +63,19 @@ def live_refresh_dependencies(monkeypatch, tmp_path) -> dict[str, object]:
             "run_id": "policy-rate-1",
         }
 
+    def fake_credit_aa_5y(**_kwargs):
+        calls.append("credit_aa_5y")
+        return {
+            "status": "completed",
+            "row_count": 21,
+            "series_id": "EMM00166683",
+            "alias": "S0059760",
+            "latest_valid_date": "2026-07-17",
+            "lag_days": 3,
+            "max_lag_days": 3,
+            "run_id": "credit-aa-5y-1",
+        }
+
     def fake_cffex(**_kwargs):
         calls.append("cffex")
         return {"row_count": 42}
@@ -70,6 +83,7 @@ def live_refresh_dependencies(monkeypatch, tmp_path) -> dict[str, object]:
     monkeypatch.setattr(freshness, "run_commodity_daily_ingest", fake_commodity)
     monkeypatch.setattr(freshness, "refresh_public_cross_asset_headlines", fake_headlines)
     monkeypatch.setattr(freshness, "_refresh_choice_policy_rate_7d", fake_policy_rate)
+    monkeypatch.setattr(freshness, "_refresh_choice_crisis_aa_5y", fake_credit_aa_5y)
     monkeypatch.setattr(freshness, "refresh_tushare_ncd_shibor_proxy", fake_ncd)
     monkeypatch.setattr(freshness, "materialize_cffex_member_rank", fake_cffex)
     monkeypatch.setattr(
@@ -91,6 +105,30 @@ def test_latest_weekday_skips_weekend() -> None:
     assert freshness._latest_weekday_on_or_before(date(2026, 7, 17)) == date(2026, 7, 17)
 
 
+def test_cli_safe_error_masks_sensitive_assignments_and_environment_values(
+    monkeypatch,
+) -> None:
+    from scripts import macro_toolkit_freshness_refresh as cli
+
+    monkeypatch.setenv("TUSHARE_TOKEN", "UNLABELED-VENDOR-CREDENTIAL")
+    rendered = cli._safe_error(
+        RuntimeError(
+            "vendor token=TOP-SECRET api_key: LEAKED-KEY password=OPEN-SESAME "
+            "Bearer BEARER-CREDENTIAL UNLABELED-VENDOR-CREDENTIAL"
+        )
+    )
+
+    for secret in (
+        "TOP-SECRET",
+        "LEAKED-KEY",
+        "OPEN-SESAME",
+        "BEARER-CREDENTIAL",
+        "UNLABELED-VENDOR-CREDENTIAL",
+    ):
+        assert secret not in rendered
+    assert "***" in rendered
+
+
 def test_refresh_macro_toolkit_freshness_dry_run(monkeypatch) -> None:
     calls: list[str] = []
 
@@ -105,6 +143,7 @@ def test_refresh_macro_toolkit_freshness_dry_run(monkeypatch) -> None:
     monkeypatch.setattr(freshness, "run_commodity_daily_ingest", fake_commodity)
     monkeypatch.setattr(freshness, "refresh_public_cross_asset_headlines", boom)
     monkeypatch.setattr(freshness, "_refresh_choice_policy_rate_7d", boom)
+    monkeypatch.setattr(freshness, "_refresh_choice_crisis_aa_5y", boom)
     monkeypatch.setattr(freshness, "refresh_tushare_ncd_shibor_proxy", boom)
     monkeypatch.setattr(freshness, "materialize_cffex_member_rank", boom)
     monkeypatch.setattr(freshness, "get_settings", lambda: type("S", (), {"duckdb_path": "F:/tmp/moss.duckdb"})())
@@ -125,6 +164,7 @@ def test_refresh_macro_toolkit_freshness_dry_run(monkeypatch) -> None:
         "commodity_daily_ingest",
         "public_cross_asset_headlines",
         "choice_policy_rate_7d",
+        "choice_crisis_aa_5y",
         "tushare_ncd_shibor",
         "cffex_member_rank",
     ]
@@ -142,6 +182,7 @@ def test_dry_run_commodity_plan_failure_sets_top_level_failed(monkeypatch) -> No
     monkeypatch.setattr(freshness, "run_commodity_daily_ingest", fail_commodity)
     monkeypatch.setattr(freshness, "refresh_public_cross_asset_headlines", boom)
     monkeypatch.setattr(freshness, "_refresh_choice_policy_rate_7d", boom)
+    monkeypatch.setattr(freshness, "_refresh_choice_crisis_aa_5y", boom)
     monkeypatch.setattr(freshness, "refresh_tushare_ncd_shibor_proxy", boom)
     monkeypatch.setattr(freshness, "materialize_cffex_member_rank", boom)
     monkeypatch.setattr(
@@ -163,6 +204,7 @@ def test_dry_run_commodity_plan_failure_sets_top_level_failed(monkeypatch) -> No
     assert result["status"] == "failed"
     assert [step["status"] for step in result["steps"]] == [
         "failed",
+        "dry_run",
         "dry_run",
         "dry_run",
         "dry_run",
@@ -191,9 +233,17 @@ def test_required_failure_continues_remaining_steps_and_fails_run(
     )
 
     assert result["status"] == "failed"
-    assert calls == ["commodity", "headlines", "policy_rate", "ncd", "cffex"]
+    assert calls == [
+        "commodity",
+        "headlines",
+        "policy_rate",
+        "credit_aa_5y",
+        "ncd",
+        "cffex",
+    ]
     assert [step["status"] for step in result["steps"]] == [
         "failed",
+        "success",
         "success",
         "success",
         "success",
@@ -210,6 +260,7 @@ def test_required_failure_detection_uses_explicit_step_names() -> None:
         {"step": "commodity_daily_ingest", "status": "success"},
         {"step": "tushare_ncd_shibor", "status": "failed"},
         {"step": "choice_policy_rate_7d", "status": "success"},
+        {"step": "choice_crisis_aa_5y", "status": "success"},
         {"step": "public_cross_asset_headlines", "status": "success"},
     ]
 
@@ -237,6 +288,38 @@ def test_policy_rate_no_rows_fails_required_freshness_step(
     assert result["status"] == "failed"
     assert policy_rate["status"] == "failed"
     assert "no_rows" in str(policy_rate["reason"])
+
+
+def test_credit_aa5y_stale_coverage_fails_required_freshness_step(
+    monkeypatch,
+    live_refresh_dependencies,
+) -> None:
+    monkeypatch.setattr(
+        freshness,
+        "_refresh_choice_crisis_aa_5y",
+        lambda **_kwargs: {
+            "status": "stale_coverage",
+            "row_count": 7,
+            "series_id": "EMM00166683",
+            "alias": "S0059760",
+            "latest_valid_date": "2026-07-16",
+            "lag_days": 4,
+            "max_lag_days": 3,
+        },
+    )
+
+    result = freshness.refresh_macro_toolkit_freshness(
+        today=date(2026, 7, 20),
+        duckdb_path=live_refresh_dependencies["duckdb_path"],
+    )
+
+    aa5y_step = next(
+        step for step in result["steps"] if step["step"] == "choice_crisis_aa_5y"
+    )
+    assert result["status"] == "failed"
+    assert aa5y_step["status"] == "failed"
+    assert "stale_coverage" in str(aa5y_step["reason"])
+    assert aa5y_step["result"]["latest_valid_date"] == "2026-07-16"
 
 
 @pytest.mark.parametrize(
@@ -351,6 +434,159 @@ def test_call_with_duckdb_retry_stops_after_six_lock_attempts(monkeypatch) -> No
     assert calls["n"] == freshness.DUCKDB_WRITE_RETRY_ATTEMPTS == 6
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        'IO Error: Cannot open file "moss.duckdb": 另一个程序正在使用此文件',
+        'IO Error: Cannot open file "moss.duckdb": being used by another process',
+    ],
+)
+def test_duckdb_writer_contention_accepts_windows_share_errors(message: str) -> None:
+    assert freshness._is_duckdb_writer_contention(duckdb.IOException(message)) is True
+    assert freshness._is_duckdb_writer_contention(
+        duckdb.IOException("Catalog Error: missing table")
+    ) is False
+
+
+def test_policy_rate_payload_lock_error_retries_until_success(monkeypatch) -> None:
+    from backend.scripts import backfill_crisis_score_inputs as backfill_module
+
+    calls = {"n": 0}
+
+    def fake_backfill(**_kwargs) -> dict[str, object]:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return {
+                "run_id": f"locked-{calls['n']}",
+                "results": {},
+                "errors": {
+                    "M0041653": 'IO Error: Cannot open file "moss.duckdb": 另一个程序正在使用此文件'
+                },
+            }
+        return {
+            "run_id": "success-3",
+            "results": {"M0041653": {"status": "completed", "written_rows": 7}},
+            "errors": {},
+        }
+
+    monkeypatch.setattr(backfill_module, "backfill_crisis_score_inputs", fake_backfill)
+    monkeypatch.setattr(freshness, "DUCKDB_WRITE_RETRY_SLEEP_SECONDS", 0.0)
+
+    receipt = freshness._run_required_step(
+        step="choice_policy_rate_7d",
+        fn=lambda: freshness._refresh_choice_policy_rate_7d(
+            duckdb_path="test.duckdb",
+            report_date="2026-09-02",
+        ),
+        result_fields=("row_count", "series_id", "run_id"),
+    )
+
+    assert calls["n"] == 3
+    assert receipt["status"] == "success"
+    assert receipt["attempt_count"] == 3
+
+
+def test_policy_rate_payload_non_lock_error_is_not_retried(monkeypatch) -> None:
+    from backend.scripts import backfill_crisis_score_inputs as backfill_module
+
+    calls = {"n": 0}
+
+    def fake_backfill(**_kwargs) -> dict[str, object]:
+        calls["n"] += 1
+        return {
+            "run_id": "binder-error",
+            "results": {},
+            "errors": {"M0041653": "Binder Error: missing column"},
+        }
+
+    monkeypatch.setattr(backfill_module, "backfill_crisis_score_inputs", fake_backfill)
+
+    result = freshness._refresh_choice_policy_rate_7d(
+        duckdb_path="test.duckdb",
+        report_date="2026-09-02",
+    )
+
+    assert calls["n"] == 1
+    assert result["status"] == "error"
+    assert result["errors"] == {"M0041653": "Binder Error: missing column"}
+
+
+@pytest.mark.parametrize(
+    ("latest_valid_date", "expected_status", "expected_lag_days"),
+    [
+        pytest.param("2026-09-04", "completed", 3, id="friday-to-monday-allowed"),
+        pytest.param("2026-09-03", "stale_coverage", 4, id="missed-business-day"),
+    ],
+)
+def test_choice_crisis_aa_5y_validates_persisted_latest_date(
+    monkeypatch,
+    latest_valid_date: str,
+    expected_status: str,
+    expected_lag_days: int,
+) -> None:
+    from backend.scripts import backfill_crisis_score_inputs as backfill_module
+
+    monkeypatch.setattr(
+        backfill_module,
+        "backfill_crisis_score_inputs",
+        lambda **_kwargs: {
+            "run_id": "aa5y-refresh-1",
+            "results": {
+                "S0059760": {"status": "completed", "written_rows": 7},
+            },
+            "errors": {},
+            "coverage_after": [
+                {
+                    "alias": "S0059760",
+                    "series_id": "EMM00166683",
+                    "latest": latest_valid_date,
+                }
+            ],
+        },
+    )
+
+    result = freshness._refresh_choice_crisis_aa_5y(
+        duckdb_path="test.duckdb",
+        report_date="2026-09-07",
+    )
+
+    assert result["status"] == expected_status
+    assert result["latest_valid_date"] == latest_valid_date
+    assert result["lag_days"] == expected_lag_days
+    assert result["max_lag_days"] == 3
+
+
+def test_choice_crisis_aa_5y_rejects_wrong_series_coverage(monkeypatch) -> None:
+    from backend.scripts import backfill_crisis_score_inputs as backfill_module
+
+    monkeypatch.setattr(
+        backfill_module,
+        "backfill_crisis_score_inputs",
+        lambda **_kwargs: {
+            "run_id": "aa5y-refresh-wrong-series",
+            "results": {
+                "S0059760": {"status": "completed", "written_rows": 7},
+            },
+            "errors": {},
+            "coverage_after": [
+                {
+                    "alias": "S0059760",
+                    "series_id": "legacy.yield.choice.aa_credit.5Y",
+                    "latest": "2026-09-04",
+                }
+            ],
+        },
+    )
+
+    result = freshness._refresh_choice_crisis_aa_5y(
+        duckdb_path="test.duckdb",
+        report_date="2026-09-04",
+    )
+
+    assert result["status"] == "missing_coverage"
+    assert result["latest_valid_date"] is None
+
+
 def test_latest_observation_dates_includes_all_ncd_shibor_tenors(tmp_path) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(duckdb_path), read_only=False)
@@ -365,7 +601,8 @@ def test_latest_observation_dates_includes_all_ncd_shibor_tenors(tmp_path) -> No
               ('NCD.SHIBOR.6M', '2026-07-15'),
               ('NCD.SHIBOR.9M', '2026-07-14'),
               ('NCD.SHIBOR.1Y', '2026-07-13'),
-              ('EMM00088132', '2026-07-20')
+              ('EMM00088132', '2026-07-20'),
+              ('EMM00166683', '2026-07-17')
             """
         )
     finally:
@@ -380,6 +617,7 @@ def test_latest_observation_dates_includes_all_ncd_shibor_tenors(tmp_path) -> No
         "NCD.SHIBOR.1Y": "2026-07-13",
     }
     assert result[freshness.POLICY_RATE_SERIES_ID] == "2026-07-20"
+    assert result[freshness.CREDIT_AA_5Y_SERIES_ID] == "2026-07-17"
 
 
 def test_refresh_macro_toolkit_freshness_cffex_falls_back_on_zero_rows(
@@ -481,7 +719,13 @@ def test_disabled_cffex_is_recorded_as_skipped(
     )
 
     assert result["status"] == "success"
-    assert live_refresh_dependencies["calls"] == ["commodity", "headlines", "policy_rate", "ncd"]
+    assert live_refresh_dependencies["calls"] == [
+        "commodity",
+        "headlines",
+        "policy_rate",
+        "credit_aa_5y",
+        "ncd",
+    ]
     assert result["steps"][-1]["step"] == "cffex_member_rank"
     assert result["steps"][-1]["status"] == "skipped"
     _assert_receipt_metadata(result["steps"][-1])
@@ -502,6 +746,7 @@ def test_evidence_reader_failure_preserves_completed_steps_and_warns(
 
     assert result["status"] == "success"
     assert [step["status"] for step in result["steps"]] == [
+        "success",
         "success",
         "success",
         "success",
@@ -574,7 +819,7 @@ def test_cli_writes_atomic_structured_scheduled_receipt(monkeypatch, tmp_path) -
     result = {
         "status": "success",
         "run_id": "scheduled-1",
-        "source_version": "macro_toolkit_freshness_refresh_v3",
+        "source_version": "macro_toolkit_freshness_refresh_v4",
         "steps": [],
         "latest_observation_dates": {},
     }
@@ -631,7 +876,7 @@ def test_cli_writes_atomic_structured_scheduled_receipt(monkeypatch, tmp_path) -
         "invocation_mode": "run_once",
         "task_name": "refresh_macro_toolkit_freshness",
         "commit_sha": "0123456789abcdef",
-        "source_version": "macro_toolkit_freshness_refresh_v3",
+        "source_version": "macro_toolkit_freshness_refresh_v4",
         "status": "success",
         "exit_code": 0,
         "result": result,
@@ -697,7 +942,7 @@ def test_cli_receipt_exit_code_matches_main(
         def fn(self, **_kwargs):
             return {
                 "status": status,
-                "source_version": "macro_toolkit_freshness_refresh_v3",
+                "source_version": "macro_toolkit_freshness_refresh_v4",
             }
 
     monkeypatch.setattr(cli, "refresh_macro_toolkit_freshness_actor", _Actor())
@@ -774,7 +1019,7 @@ def test_cli_receipt_write_failure_is_nonzero_and_safe(monkeypatch, tmp_path, ca
         def fn(self, **_kwargs):
             return {
                 "status": "success",
-                "source_version": "macro_toolkit_freshness_refresh_v3",
+                "source_version": "macro_toolkit_freshness_refresh_v4",
             }
 
     def fail_write(_path, _receipt) -> None:
@@ -808,7 +1053,7 @@ def test_skip_cffex_help_names_all_remaining_steps() -> None:
     assert "ncd" in skip_line
 
 
-def test_cli_run_once_scopes_choice_source_proxy_environment(monkeypatch) -> None:
+def test_cli_run_once_scopes_vendor_source_network_for_tushare(monkeypatch) -> None:
     from scripts import macro_toolkit_freshness_refresh as cli
 
     events: list[tuple[str, object]] = []
@@ -851,7 +1096,7 @@ def test_cli_run_once_scopes_choice_source_proxy_environment(monkeypatch) -> Non
         raising=False,
     )
 
-    assert cli.main(["--run-once", "--choice-source-ip", "192.0.2.10"]) == 0
+    assert cli.main(["--run-once", "--vendor-source-ip", "192.0.2.10"]) == 0
     assert events == [
         ("proxy_enter", "192.0.2.10"),
         ("actor", ("127.0.0.1", "18081")),
@@ -867,3 +1112,48 @@ def test_cli_choice_source_ip_requires_run_once(mode) -> None:
 
     with pytest.raises(SystemExit, match="2"):
         cli.main([mode, "--choice-source-ip", "192.0.2.10"])
+
+
+def test_vendor_source_network_binds_tushare_urllib3_and_restores(monkeypatch) -> None:
+    import socket
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import urllib3.util.connection as urllib3_connection
+
+    from scripts import macro_toolkit_freshness_refresh as cli
+
+    socket_calls: list[dict[str, object]] = []
+    urllib3_calls: list[dict[str, object]] = []
+
+    def socket_recorder(address, *args, **kwargs):
+        socket_calls.append({"address": address, "args": args, "kwargs": kwargs})
+        return "socket"
+
+    def urllib3_recorder(address, *args, **kwargs):
+        urllib3_calls.append({"address": address, "args": args, "kwargs": kwargs})
+        return "urllib3"
+
+    monkeypatch.setattr(socket, "create_connection", socket_recorder)
+    monkeypatch.setattr(urllib3_connection, "create_connection", urllib3_recorder)
+
+    @contextmanager
+    def fake_proxy(*, source_ip):
+        assert source_ip == "10.0.0.9"
+        yield SimpleNamespace(host="127.0.0.1", port=1080)
+
+    monkeypatch.setattr(cli, "source_bound_socks_proxy", fake_proxy)
+
+    with cli._choice_source_proxy_environment("10.0.0.9"):
+        assert socket.create_connection(("example.com", 443)) == "socket"
+        assert socket_calls[-1]["kwargs"]["source_address"] == ("10.0.0.9", 0)
+        socket.create_connection(("www.safe.gov.cn", 443), 5.0, None)
+        assert socket_calls[-1]["args"] == (5.0, ("10.0.0.9", 0))
+        assert "source_address" not in socket_calls[-1]["kwargs"]
+        socket.create_connection(("www.safe.gov.cn", 443), 5.0, ("192.0.2.1", 0))
+        assert socket_calls[-1]["args"] == (5.0, ("192.0.2.1", 0))
+        assert urllib3_connection.create_connection(("api.tushare.pro", 443)) == "urllib3"
+        assert urllib3_calls[-1]["kwargs"]["source_address"] == ("10.0.0.9", 0)
+
+    assert socket.create_connection is socket_recorder
+    assert urllib3_connection.create_connection is urllib3_recorder

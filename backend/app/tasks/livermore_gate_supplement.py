@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 import duckdb
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.tasks.broker import register_actor_once
@@ -46,7 +46,10 @@ def materialize_livermore_gate_supplement_daily(
     effective_run = run_id or f"livermore_gate_supplement:{uuid.uuid4().hex[:12]}"
 
     gate_history_result: dict[str, object] | None = None
-    with acquire_lock(LIVERMORE_GATE_SUPPLEMENT_LOCK, base_dir=path.parent):
+    with (
+        acquire_lock(resolve_duckdb_writer_lock(path), base_dir=path.parent),
+        acquire_lock(LIVERMORE_GATE_SUPPLEMENT_LOCK, base_dir=path.parent),
+    ):
         conn = duckdb.connect(str(path), read_only=False)
         try:
             apply_pending_migrations_on_connection(conn)
@@ -147,7 +150,7 @@ def _execute_livermore_gate_supplement_refresh(
 
 
 def _invalidate_livermore_worker_caches() -> None:
-    from backend.app.api.response_cache import market_home_response_cache
+    from backend.app.observability.response_cache import market_home_response_cache
 
     market_home_response_cache.invalidate()
 

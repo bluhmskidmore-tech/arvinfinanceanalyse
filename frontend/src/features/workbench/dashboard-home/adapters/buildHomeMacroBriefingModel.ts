@@ -126,6 +126,7 @@ export type HomeMacroBriefingModel = {
   newsRefreshLabel: string;
   policyFundingSummary: HomePolicyFundingSummary;
   supplyItems: readonly HomeMacroSupplyItem[];
+  supplyMessage?: string | null;
 };
 
 type MacroReleaseCalendarRow = {
@@ -1024,19 +1025,23 @@ export function resolveHomeMacroNewsBriefing(input: {
 }
 
 function buildSupplyItems(calendar: HomeResearchCalendarModel): HomeMacroSupplyItem[] {
-  if (calendar.status === "loading") {
-    return [{ id: "supply-loading", label: "供给/招标：加载中" }];
-  }
-  if (calendar.status === "error") {
-    return [{ id: "supply-error", label: "供给/招标：加载失败" }];
-  }
-  if (calendar.items.length === 0) {
-    return [{ id: "supply-empty", label: "供给/招标：已查询当前窗口，暂无事件" }];
-  }
   return calendar.items.slice(0, 2).map((item) => ({
     id: item.id,
     label: `供给/招标：${dateLabel(item.date)} ${item.title}${item.amountLabel !== EM_DASH ? ` · ${item.amountLabel}` : ""}`,
   }));
+}
+
+function buildSupplyMessage(calendar: HomeResearchCalendarModel): string | null {
+  if (calendar.status === "loading") {
+    return "供给/招标：加载中";
+  }
+  if (calendar.status === "error") {
+    return "供给/招标：加载失败";
+  }
+  if (calendar.items.length === 0) {
+    return "供给/招标：已查询当前窗口，暂无事件";
+  }
+  return null;
 }
 
 function compactStatusLabel(label: string): string {
@@ -1157,5 +1162,6 @@ export function buildHomeMacroBriefingModel(input: {
     ...news,
     policyFundingSummary: buildPolicyFundingSummary(news),
     supplyItems: buildSupplyItems(input.supplyCalendar),
+    supplyMessage: buildSupplyMessage(input.supplyCalendar),
   };
 }

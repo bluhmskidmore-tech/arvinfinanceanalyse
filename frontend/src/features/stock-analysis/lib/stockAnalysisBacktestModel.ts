@@ -158,7 +158,14 @@ export function formatCostBasisLabel(costBasis: LivermoreProxyCostBasis | null |
 
 export function backtestStatsText(stats: LivermoreCandidateHistoryHorizonStats | undefined): string {
   if (!stats || stats.available_count <= 0) return "待补";
-  return `${formatBacktestPercent(stats.win_rate)} / ${formatBacktestSignedPercent(stats.avg_return)} / ${stats.available_count}条`;
+  // 逐行样本数会高估独立信息量（同一快照日多只候选、相邻交易日窗口重叠），
+  // 后端返回独立快照日数时一并披露；老响应无该字段则保持原文案。
+  const snapshotDayCount = stats.snapshot_day_count;
+  const sampleText =
+    typeof snapshotDayCount === "number" && Number.isFinite(snapshotDayCount) && snapshotDayCount > 0
+      ? `${stats.available_count}条(${snapshotDayCount}日)`
+      : `${stats.available_count}条`;
+  return `${formatBacktestPercent(stats.win_rate)} / ${formatBacktestSignedPercent(stats.avg_return)} / ${sampleText}`;
 }
 
 const maturityHorizonByBacktestHorizon = {

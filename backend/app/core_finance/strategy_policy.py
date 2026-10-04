@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -53,6 +53,61 @@ class MonitoringThresholds:
     # v3 流动性治理：候选近 20 日均成交额通过率低于该阈值时，factor_screen
     # 降级为观察名单（服务层 _factor_screen_degradation_reasons 消费）。
     factor_screen_liquidity_pass_threshold: float
+
+
+@dataclass(frozen=True)
+class MeanReversionParams:
+    """超跌反弹（signal_kind=mean_reversion）候选参数，v2 原值收编，行为不变。
+
+    命名澄清：该策略不是统计意义上的均值回归（无均值估计、z-score 或回归半衰期），
+    而是"超跌 → 企稳 → 放量确认"的反弹打分；signal_kind 因历史持久化数据保留原名。
+    评分权重为设计者设定值，尚无实证报告支撑（walk-forward 主切割判定"样本外削弱"，
+    见 docs/strategy-reports/walk-forward-rerun-20260813.md §0.1）。
+    """
+
+    drawdown_20d_trigger: float
+    drawdown_60d_trigger: float
+    vol_ratio_min: float
+    vol_ratio_max: float
+    close_strength_min: float
+    daily_change_max: float
+    score_weight_drawdown: float
+    score_weight_close_strength: float
+    score_weight_vol_ratio: float
+    score_vol_ratio_norm: float
+
+
+@dataclass(frozen=True)
+class FactorScreenParams:
+    """多因子筛选（factor_screen）评分权重与基础过滤。
+
+    九因子权重为设计者设定值，当前无实证报告支撑（walk-forward 判定"不可判"且
+    样本内收益为负）；修改任何权重必须升级 factor_screen 的 formula_version
+    并重跑影响分析。
+
+    v5 行业中性化：估值（pe/pb/ps）、质量（roe/margin）与股息因子改为行业内
+    百分位排名（消除"银行/煤炭永远便宜、永远高股息"的结构性偏差）；动量与
+    波动为跨行业现象，保持全市场排名。行业组成员数低于
+    ``industry_neutral_min_group_size`` 时该组回退全市场排名——单只/两只股票的
+    组内百分位没有区分度（恒为满分档），必须 fail back。
+    """
+
+    top_pct: float
+    max_candidates: int
+    max_candidates_per_industry: int
+    max_abs_roe: float
+    max_dividend_yield: float
+    min_positive_margin: float
+    weight_roe: float
+    weight_margin: float
+    weight_pe: float
+    weight_pb: float
+    weight_ps: float
+    weight_mom_3m: float
+    weight_mom_12m: float
+    weight_vol: float
+    weight_div: float
+    industry_neutral_min_group_size: int
 
 
 @dataclass(frozen=True)
@@ -133,6 +188,8 @@ class StrategyPolicy:
     backtest_variants: BacktestVariantPolicy
     sizing: SizingPolicy
     theme_proxies: tuple[ThemeProxyDefinition, ...]
+    mean_reversion: MeanReversionParams
+    factor_screen: FactorScreenParams
 
 
 _STOCK_CANDIDATE_POLICIES = (
@@ -344,4 +401,34 @@ POLICY = StrategyPolicy(
         primary_basis="equal_weight",
     ),
     theme_proxies=_THEME_PROXY_POOL,
+    mean_reversion=MeanReversionParams(
+        drawdown_20d_trigger=-0.15,
+        drawdown_60d_trigger=-0.25,
+        vol_ratio_min=1.5,
+        vol_ratio_max=5.0,
+        close_strength_min=0.60,
+        daily_change_max=0.095,
+        score_weight_drawdown=0.4,
+        score_weight_close_strength=0.3,
+        score_weight_vol_ratio=0.3,
+        score_vol_ratio_norm=3.0,
+    ),
+    factor_screen=FactorScreenParams(
+        top_pct=0.10,
+        max_candidates=30,
+        max_candidates_per_industry=3,
+        max_abs_roe=0.60,
+        max_dividend_yield=0.12,
+        min_positive_margin=0.03,
+        weight_roe=0.16,
+        weight_margin=0.14,
+        weight_pe=0.12,
+        weight_pb=0.10,
+        weight_ps=0.08,
+        weight_mom_3m=0.14,
+        weight_mom_12m=0.10,
+        weight_vol=0.10,
+        weight_div=0.06,
+        industry_neutral_min_group_size=3,
+    ),
 )

@@ -20,6 +20,7 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
+from typing import TypedDict
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import GovernanceRepository
@@ -30,6 +31,17 @@ from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.ingest import ingest_demo_manifest
 from backend.app.tasks.risk_tensor_materialize import materialize_risk_tensor_facts
 from backend.app.tasks.snapshot_materialize import materialize_standard_snapshots
+
+
+def _normalize_expected_fx_source_version(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("expected_fx_source_version must be a string or None.")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("expected_fx_source_version must be a non-empty string.")
+    return normalized
 
 
 def _emit_json_payload(payload: dict[str, object]) -> None:
@@ -259,7 +271,17 @@ def _run_formal_balance_pipeline(
     governance_dir: str | None = None,
     archive_dir: str | None = None,
     fx_source_path: str | None = None,
+    use_existing_fx_only: bool = False,
+    expected_fx_source_version: str | None = None,
 ) -> dict[str, object]:
+    if type(use_existing_fx_only) is not bool:
+        raise TypeError("use_existing_fx_only must be a bool.")
+    normalized_expected_fx_source_version = _normalize_expected_fx_source_version(
+        expected_fx_source_version
+    )
+    if normalized_expected_fx_source_version is not None and not use_existing_fx_only:
+        raise ValueError("expected_fx_source_version requires use_existing_fx_only=True.")
+
     source_families = ["zqtz", "tyw"]
     analytics_lane_enabled = _resolve_analytics_lane_enabled(
         include_analytics=include_analytics,
@@ -308,6 +330,12 @@ def _run_formal_balance_pipeline(
             ingest_batch_id=materialization_ingest_batch_id,
             data_root=data_root,
             fx_source_path=fx_source_path,
+            use_existing_fx_only=use_existing_fx_only,
+            **(
+                {}
+                if normalized_expected_fx_source_version is None
+                else {"expected_fx_source_version": normalized_expected_fx_source_version}
+            ),
         )
         current_entry: dict[str, object] = {
             "report_date": current_report_date,
@@ -361,6 +389,80 @@ run_formal_balance_pipeline = register_actor_once(
 )
 
 
+class _FormalBalanceSyncKwargs(TypedDict, total=False):
+    report_date: str
+    start_date: str
+    end_date: str
+    backfill: bool
+    include_analytics: bool
+    data_root: str
+    duckdb_path: str
+    governance_dir: str
+    archive_dir: str
+    fx_source_path: str
+    use_existing_fx_only: bool
+    expected_fx_source_version: str
+
+
+def _existing_fx_only_sync_kwargs(
+    value: bool,
+    expected_fx_source_version: str | None,
+) -> _FormalBalanceSyncKwargs:
+    if type(value) is not bool:
+        raise TypeError("use_existing_fx_only must be a bool.")
+    normalized_expected_fx_source_version = _normalize_expected_fx_source_version(
+        expected_fx_source_version
+    )
+    if normalized_expected_fx_source_version is not None and not value:
+        raise ValueError("expected_fx_source_version requires use_existing_fx_only=True.")
+    if not value:
+        return {}
+    kwargs: _FormalBalanceSyncKwargs = {"use_existing_fx_only": True}
+    if normalized_expected_fx_source_version is not None:
+        kwargs["expected_fx_source_version"] = normalized_expected_fx_source_version
+    return kwargs
+
+
+def _formal_balance_sync_kwargs(
+    *,
+    report_date: str | None,
+    start_date: str | None,
+    end_date: str | None,
+    backfill: bool,
+    include_analytics: bool | None,
+    data_root: str | None,
+    duckdb_path: str | None,
+    governance_dir: str | None,
+    archive_dir: str | None,
+    fx_source_path: str | None,
+    use_existing_fx_only: bool,
+    expected_fx_source_version: str | None,
+) -> _FormalBalanceSyncKwargs:
+    kwargs: _FormalBalanceSyncKwargs = {}
+    if report_date is not None:
+        kwargs["report_date"] = report_date
+    if start_date is not None:
+        kwargs["start_date"] = start_date
+    if end_date is not None:
+        kwargs["end_date"] = end_date
+    if backfill:
+        kwargs["backfill"] = backfill
+    if include_analytics is not None:
+        kwargs["include_analytics"] = include_analytics
+    if data_root is not None:
+        kwargs["data_root"] = data_root
+    if duckdb_path is not None:
+        kwargs["duckdb_path"] = duckdb_path
+    if governance_dir is not None:
+        kwargs["governance_dir"] = governance_dir
+    if archive_dir is not None:
+        kwargs["archive_dir"] = archive_dir
+    if fx_source_path is not None:
+        kwargs["fx_source_path"] = fx_source_path
+    kwargs.update(_existing_fx_only_sync_kwargs(use_existing_fx_only, expected_fx_source_version))
+    return kwargs
+
+
 def run_formal_balance_pipeline_sync(
     *,
     report_date: str | None = None,
@@ -373,21 +475,27 @@ def run_formal_balance_pipeline_sync(
     governance_dir: str | None = None,
     archive_dir: str | None = None,
     fx_source_path: str | None = None,
+    use_existing_fx_only: bool = False,
+    expected_fx_source_version: str | None = None,
 ) -> dict[str, object]:
     # Delegation transparency (tests/test_task_sync_wrapper_contracts.py): forward
     # only caller-provided kwargs and never inject defaults on the caller's behalf,
     # so the private implementation stays the single owner of default semantics.
     return _run_formal_balance_pipeline(
-        **({} if report_date is None else {"report_date": report_date}),
-        **({} if start_date is None else {"start_date": start_date}),
-        **({} if end_date is None else {"end_date": end_date}),
-        **({} if not backfill else {"backfill": backfill}),
-        **({} if include_analytics is None else {"include_analytics": include_analytics}),
-        **({} if data_root is None else {"data_root": data_root}),
-        **({} if duckdb_path is None else {"duckdb_path": duckdb_path}),
-        **({} if governance_dir is None else {"governance_dir": governance_dir}),
-        **({} if archive_dir is None else {"archive_dir": archive_dir}),
-        **({} if fx_source_path is None else {"fx_source_path": fx_source_path}),
+        **_formal_balance_sync_kwargs(
+            report_date=report_date,
+            start_date=start_date,
+            end_date=end_date,
+            backfill=backfill,
+            include_analytics=include_analytics,
+            data_root=data_root,
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            archive_dir=archive_dir,
+            fx_source_path=fx_source_path,
+            use_existing_fx_only=use_existing_fx_only,
+            expected_fx_source_version=expected_fx_source_version,
+        ),
     )
 
 

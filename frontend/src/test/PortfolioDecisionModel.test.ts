@@ -13,7 +13,7 @@ import type {
   ModuleHomeViewBody,
 } from "../features/workbench/module-home/moduleHomeModel";
 import type { PortfolioReadinessGate } from "../features/workbench/module-home/portfolioReadinessGate";
-import { formatRawAsNumeric } from "../utils/format";
+import { EM_DASH, formatRawAsNumeric } from "../utils/format";
 
 const FALSE_CLOSURE_TERMS = [
   "closure_approved=true",
@@ -236,6 +236,19 @@ function mockView(): ModuleHomeViewBody {
 }
 
 describe("portfolio decision model", () => {
+  it.each([
+    ["volume", "利息规模"],
+    ["rate", "利息收益率"],
+    ["interaction", "交叉效应"],
+    ["fair_value", "公允价值变动"],
+    ["capital_gain", "投资收益变动"],
+    ["manual_adjustment", "手工调整变动"],
+    ["unexplained", "未解释差额"],
+  ] as const)("preserves the backend %s primary driver in the decision facts", (driver, label) => {
+    const decision = buildDecision({ pnlSummary: { ...pnlSummary(), primary_driver: driver } });
+    expect(decision.facts.find((fact) => fact.label === "归因摘要")?.value).toBe(label);
+  });
+
   it("returns normal drilldown actions only when decision and risk evidence are closed", () => {
     const decision = buildDecision();
 
@@ -296,6 +309,29 @@ describe("portfolio decision model", () => {
     for (const blocker of STRICT_SCORECARD_BLOCKERS) {
       expect(text).not.toContain(blocker);
     }
+  });
+
+  it("does not present a missing source-date ledger as readable", () => {
+    const decision = buildDecision({
+      readiness: readiness({
+        coreRender: false,
+        decisionReady: false,
+        tone: "watch",
+        blockingReasons: ["债券总览未返回", "风险指标未返回", "资产负债未返回", "损益归因未返回"],
+        sourceDates: EM_DASH,
+      }),
+    });
+
+    expect(decision.facts.find((fact) => fact.label === "源日期")).toMatchObject({
+      value: EM_DASH,
+      tone: "muted",
+    });
+  });
+
+  it("keeps the source-date ledger ok when dates are present and consistent", () => {
+    const decision = buildDecision();
+
+    expect(decision.facts.find((fact) => fact.label === "源日期")?.tone).toBe("ok");
   });
 
   it("removes mock sample values and decision actions from mock portfolio views", () => {

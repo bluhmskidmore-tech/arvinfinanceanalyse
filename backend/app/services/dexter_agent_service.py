@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import signal
 import subprocess
+import sys
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, BinaryIO, TextIO, cast
 from uuid import uuid4
 
 from backend.app.agent.runtime.subprocess_env import build_agent_subprocess_env
@@ -21,20 +26,55 @@ from backend.app.agent.schemas.agent_response import (
 )
 from backend.app.core_finance.calibers.enums import Basis
 from backend.app.governance.agent_audit import AgentAuditPayload, append_agent_audit
+from backend.app.governance.agent_prompt import AgentPromptPayload, append_agent_prompt
 from backend.app.repositories.governance_repo import GovernanceRepository
-from backend.app.services.dexter_research_context_builder import build_dexter_research_context
+from backend.app.services.agent_service import ensure_agent_execution_resources_allowed
+from backend.app.services.dexter_research_context_builder import (
+    build_dexter_research_context,
+    resolve_dexter_research_read_resources,
+)
 
 RULE_VERSION = "rv_agent_dexter_v1"
 _DEXTER_FALLBACK_REASON = "dexter_runtime_unavailable"
+_DEXTER_AUDIT_FAILURE_COUNT = 0
 _LOGGER = logging.getLogger(__name__)
+_DEXTER_PROMPT_MAX_CHARS = 24_000
+_DEXTER_REQUEST_CONTEXT_DROP_ORDER = (
+    "page_context",
+    "context",
+    "filters",
+    "currency_basis",
+    "position_scope",
+    "basis",
+)
+_DEXTER_RESEARCH_CONTEXT_DROP_ORDER = (
+    ("stock", "news_events"),
+    ("macro", "tushare_series"),
+    ("macro", "choice_snapshots"),
+    ("macro", "choice_series"),
+    ("macro", "catalog"),
+)
+
+
+class DexterRunCancelled(RuntimeError):
+    """A cancelled provider call must not produce a fallback answer or audit."""
 
 
 def execute_dexter_agent_query(
     request: AgentQueryRequest,
     governance_dir: str,
     settings: Any,
+    *,
+    cancel_event: threading.Event | None = None,
 ) -> AgentEnvelope:
+    # Authorization errors must propagate; they are not provider-runtime fallback.
+    ensure_agent_execution_resources_allowed(
+        request,
+        settings=settings,
+        resources=resolve_dexter_research_read_resources(request),
+    )
     research_context: dict[str, Any] = {}
+    prompt = ""
     try:
         research_context = build_dexter_research_context(
             request=request,
@@ -50,9 +90,17 @@ def execute_dexter_agent_query(
             toolsets=str(getattr(settings, "agent_dexter_toolsets", "") or ""),
             timeout_seconds=float(getattr(settings, "agent_dexter_timeout_seconds", 180.0) or 180.0),
             prompt_override=prompt,
+            cancel_event=cancel_event,
         )
+        dropped_keys = _extract_prompt_context_dropped_keys(prompt)
+        if dropped_keys:
+            result["prompt_context_dropped_keys"] = dropped_keys
         envelope = build_dexter_envelope(request=request, result=result, research_context=research_context)
+    except DexterRunCancelled:
+        raise
     except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        if cancel_event is not None and cancel_event.is_set():
+            raise DexterRunCancelled("Dexter request was cancelled; provider stop remains unconfirmed.") from exc
         # 运行链任何失败（含研究上下文构建、子进程拉起、超时、bridge 响应解析）都收敛到
         # 同一条确定性兜底路径；裸异常穿透到路由层会被误映射成 404/500 且无审计。
         _LOGGER.warning(
@@ -72,12 +120,16 @@ def execute_dexter_agent_query(
             "error": _truncate(str(exc), 2000),
             "error_code": _DEXTER_FALLBACK_REASON,
         }
+        dropped_keys = _extract_prompt_context_dropped_keys(prompt)
+        if dropped_keys:
+            result["prompt_context_dropped_keys"] = dropped_keys
         envelope = build_dexter_fallback_envelope(
             request=request,
             result=result,
             research_context=research_context,
         )
     _append_dexter_audit(request, governance_dir, envelope, result)
+    _append_dexter_prompt(request, governance_dir, envelope, result, prompt)
     return envelope
 
 
@@ -91,18 +143,24 @@ def run_dexter_agent(
     toolsets: str,
     timeout_seconds: float,
     prompt_override: str | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, Any]:
+    if cancel_event is not None and cancel_event.is_set():
+        raise DexterRunCancelled("Dexter request was cancelled before dispatch.")
     prompt = prompt_override or _build_dexter_prompt(request)
     normalized_transport = str(transport or "").strip().lower() or "cli"
     normalized_toolsets = _normalize_toolsets(toolsets)
     if normalized_transport in {"sidecar", "bridge"}:
-        return _post_dexter_bridge_query(
+        result = _post_dexter_bridge_query(
             bridge_url=str(bridge_url or "").strip() or "http://127.0.0.1:7892",
             prompt=prompt,
             model=model,
             toolsets=normalized_toolsets,
             timeout_seconds=timeout_seconds,
         )
+        if cancel_event is not None and cancel_event.is_set():
+            raise DexterRunCancelled("Dexter bridge request was cancelled; remote provider stop remains unconfirmed.")
+        return result
 
     args = _build_dexter_command(
         command=command,
@@ -111,16 +169,21 @@ def run_dexter_agent(
         toolsets=normalized_toolsets,
     )
     try:
-        completed = subprocess.run(
-            args,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=max(timeout_seconds, 1.0),
-            env=build_agent_subprocess_env(),
-        )
+        if cancel_event is None:
+            completed = subprocess.run(
+                args,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=max(timeout_seconds, 1.0),
+                env=build_agent_subprocess_env(),
+            )
+        else:
+            completed = _run_dexter_cli_with_cancel(
+                args=args, timeout_seconds=timeout_seconds, cancel_event=cancel_event,
+            )
     except FileNotFoundError as exc:
         raise RuntimeError(f"Dexter command not found: {command}") from exc
     except subprocess.TimeoutExpired as exc:
@@ -148,6 +211,87 @@ def run_dexter_agent(
         "tables_used": _normalize_tables_used(payload.get("tables_used"), fallback="dexter_cli"),
         **_structured_research_fields(payload),
     }
+
+
+def _run_dexter_cli_with_cancel(
+    *, args: list[str], timeout_seconds: float, cancel_event: threading.Event,
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=sys.platform != "win32",
+        encoding="utf-8" if sys.platform != "win32" else None,
+        errors="replace" if sys.platform != "win32" else None, env=build_agent_subprocess_env(),
+        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        start_new_session=sys.platform != "win32",
+    )
+    try:
+        deadline = time.monotonic() + max(timeout_seconds, 1.0)
+        output = [bytearray(), bytearray()]
+        eof = [False, False]
+        while True:
+            if cancel_event.is_set():
+                try:
+                    _stop_dexter_cli_process_tree(process)
+                except (OSError, subprocess.SubprocessError) as exc:
+                    raise DexterRunCancelled("Dexter CLI cancellation requested; process stop remains unconfirmed.") from exc
+                raise DexterRunCancelled("Dexter CLI was cancelled; local process tree stopped.")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _stop_dexter_cli_process_tree(process)
+                raise subprocess.TimeoutExpired(args, max(timeout_seconds, 1.0))
+            if sys.platform == "win32":
+                for index, pipe in enumerate((process.stdout, process.stderr)):
+                    if not eof[index]:
+                        chunk = _read_dexter_windows_pipe(cast(BinaryIO, pipe))
+                        if chunk is None:
+                            eof[index] = True
+                        else:
+                            output[index].extend(chunk)
+                returncode = process.poll()
+                if all(eof) and returncode is not None:
+                    return subprocess.CompletedProcess(args, returncode, *(bytes(part).decode("utf-8", errors="replace") for part in output))
+                cancel_event.wait(min(0.05, remaining))
+                continue
+            try:
+                stdout, stderr = process.communicate(timeout=min(0.05, remaining))
+            except subprocess.TimeoutExpired:
+                continue
+            return subprocess.CompletedProcess(args, process.wait(), stdout, stderr)
+    finally:
+        # Windows reads synchronously without communicate's reader-thread close lock.
+        cast(TextIO, process.stdout).close()
+        cast(TextIO, process.stderr).close()
+
+
+def _read_dexter_windows_pipe(pipe: BinaryIO) -> bytes | None:
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    peek = kernel32.PeekNamedPipe
+    peek.argtypes = [wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD)]
+    peek.restype = wintypes.BOOL
+    available = wintypes.DWORD()
+    if not peek(msvcrt.get_osfhandle(pipe.fileno()), None, 0, None, ctypes.byref(available), None):
+        error = ctypes.get_last_error()
+        if error == 109:  # ERROR_BROKEN_PIPE: all inherited write handles closed.
+            return None
+        raise ctypes.WinError(error)
+    return os.read(pipe.fileno(), available.value) if available.value else b""
+
+
+def _stop_dexter_cli_process_tree(process: subprocess.Popen[Any]) -> None:
+    # Same bounded tree termination used by yield_curve_fetch, kept in the
+    # provider layer so services do not import materialization tasks.
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=5.0, creationflags=subprocess.CREATE_NO_WINDOW, check=True,
+        )
+    else:
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait(timeout=5.0)
 
 
 def build_dexter_envelope(
@@ -179,6 +323,9 @@ def build_dexter_envelope(
         filters_applied["toolsets"] = _normalize_toolsets(str(result["toolsets"]))
     if result.get("transport"):
         filters_applied["transport"] = result["transport"]
+    dropped_keys = _normalize_string_list(result.get("prompt_context_dropped_keys"))
+    if dropped_keys:
+        filters_applied["prompt_context_dropped_keys"] = dropped_keys
 
     is_bridge_transport = str(result.get("transport") or "").strip().lower() in {"sidecar", "bridge"}
     tables_used = _normalize_tables_used(
@@ -269,6 +416,9 @@ def build_dexter_fallback_envelope(
         filters_applied["toolsets"] = _normalize_toolsets(str(result["toolsets"]))
     if result.get("transport"):
         filters_applied["transport"] = result["transport"]
+    dropped_keys = _normalize_string_list(result.get("prompt_context_dropped_keys"))
+    if dropped_keys:
+        filters_applied["prompt_context_dropped_keys"] = dropped_keys
 
     # 研究上下文在 provider 失败前已真实执行过只读查询：表访问与 SQL 披露必须保留在证据里。
     tables_used = ["dexter_local_fallback"]
@@ -462,23 +612,87 @@ def _build_dexter_prompt(
         "context": request.context,
         "page_context": request.page_context.model_dump(mode="json") if request.page_context else None,
     }
-    prompt = (
-        "You are Dexter connected to the MOSS business analytics system. "
-        "Answer the user's question directly and summarize any evidence or limitations. "
-        "When research context is available, use only the landed MOSS Choice/TuShare data shown there. "
-        "Do not provide trading instructions, buy/sell ratings, target prices, or formal financial metric conclusions. "
-        "Return a concise research response with summary, findings, evidence, risks, limitations, and next_drill.\n\n"
-        f"User question:\n{request.question}\n\n"
-        f"MOSS request context:\n{context}"
+    research_payload = research_context if research_context and research_context.get("domain") else None
+    prompt, dropped_keys = _build_dexter_prompt_with_budget(
+        question=request.question,
+        request_context=context,
+        research_context=research_payload,
     )
-    if research_context and research_context.get("domain"):
-        prompt += "\n\nMOSS research context:\n" + json.dumps(
-            research_context,
-            ensure_ascii=False,
-            default=str,
-            indent=2,
+    if dropped_keys and isinstance(research_context, dict):
+        filters_applied = research_context.setdefault("filters_applied", {})
+        if isinstance(filters_applied, dict):
+            filters_applied["prompt_context_dropped_keys"] = dropped_keys
+        research_context.setdefault("limitations", []).append(
+            "Dexter prompt exceeded the CLI argv budget; dropped context keys: "
+            + ", ".join(dropped_keys)
         )
     return prompt
+
+
+def _build_dexter_prompt_with_budget(
+    *,
+    question: str,
+    request_context: dict[str, Any],
+    research_context: dict[str, Any] | None,
+) -> tuple[str, list[str]]:
+    request_payload = dict(request_context)
+    dropped: list[str] = []
+
+    def render() -> str:
+        prompt = (
+            "You are Dexter connected to the MOSS business analytics system. "
+            "Answer the user's question directly and summarize any evidence or limitations. "
+            "When research context is available, use only the landed MOSS Choice/TuShare data shown there. "
+            "Do not provide trading instructions, buy/sell ratings, target prices, or formal financial metric conclusions. "
+            "Return a concise research response with summary, findings, evidence, risks, limitations, and next_drill.\n\n"
+            f"User question:\n{question}\n\n"
+            "MOSS request context:\n"
+            + json.dumps(request_payload, ensure_ascii=False, default=str, sort_keys=True)
+        )
+        if research_context is not None:
+            prompt += "\n\nMOSS research context:\n" + json.dumps(
+                research_context,
+                ensure_ascii=False,
+                default=str,
+                indent=2,
+            )
+        if dropped:
+            prompt += "\n\n[context truncated: dropped keys " + ", ".join(dropped) + "]"
+        return prompt
+
+    prompt = render()
+    for key in _DEXTER_REQUEST_CONTEXT_DROP_ORDER:
+        if len(prompt) <= _DEXTER_PROMPT_MAX_CHARS:
+            return prompt, dropped
+        if key in request_payload:
+            request_payload.pop(key, None)
+            dropped.append(key)
+            prompt = render()
+    if research_context is not None:
+        for section, key in _DEXTER_RESEARCH_CONTEXT_DROP_ORDER:
+            if len(prompt) <= _DEXTER_PROMPT_MAX_CHARS:
+                return prompt, dropped
+            section_payload = research_context.get(section)
+            if isinstance(section_payload, dict) and key in section_payload:
+                section_payload.pop(key, None)
+                dropped.append(f"{section}.{key}")
+                prompt = render()
+    if len(prompt) > _DEXTER_PROMPT_MAX_CHARS:
+        raise RuntimeError("Dexter prompt remains over the CLI argv budget after context key drops.")
+    return prompt, dropped
+
+
+def _extract_prompt_context_dropped_keys(prompt: str) -> list[str]:
+    marker = "[context truncated: dropped keys "
+    text = str(prompt or "")
+    start = text.rfind(marker)
+    if start < 0:
+        return []
+    start += len(marker)
+    end = text.find("]", start)
+    if end < 0:
+        return []
+    return [part.strip() for part in text[start:end].split(",") if part.strip()]
 
 
 def _append_dexter_audit(
@@ -487,33 +701,87 @@ def _append_dexter_audit(
     envelope: AgentEnvelope,
     result: dict[str, Any],
 ) -> None:
-    repo = GovernanceRepository(base_dir=governance_dir)
-    append_agent_audit(
-        repo,
-        AgentAuditPayload(
-            user_id=str(request.context.get("user_id") or "unknown"),
-            query_text=request.question,
-            tools_used=[str(result.get("tool_name") or "dexter_cli")],
-            tables_used=envelope.evidence.tables_used,
-            filters_applied=envelope.evidence.filters_applied,
-            trace_id=envelope.result_meta.trace_id,
-            run_id=str(request.context.get("run_id") or "").strip() or None,
-            result_meta={
-                **envelope.result_meta.model_dump(mode="json"),
-                "dexter_tool_name": str(result.get("tool_name") or "dexter_cli"),
-                **(
-                    {
-                        "dexter_error": str(result.get("error")),
-                        "dexter_error_code": str(
-                            result.get("error_code") or _DEXTER_FALLBACK_REASON
-                        ),
-                    }
-                    if result.get("error")
-                    else {}
-                ),
-            },
-        ),
-    )
+    global _DEXTER_AUDIT_FAILURE_COUNT
+
+    try:
+        repo = GovernanceRepository(base_dir=governance_dir)
+        append_agent_audit(
+            repo,
+            AgentAuditPayload(
+                user_id=str(request.context.get("user_id") or "unknown"),
+                query_text=request.question,
+                tools_used=[str(result.get("tool_name") or "dexter_cli")],
+                tables_used=envelope.evidence.tables_used,
+                filters_applied=envelope.evidence.filters_applied,
+                trace_id=envelope.result_meta.trace_id,
+                run_id=str(request.context.get("run_id") or "").strip() or None,
+                result_meta={
+                    **envelope.result_meta.model_dump(mode="json"),
+                    "dexter_tool_name": str(result.get("tool_name") or "dexter_cli"),
+                    **(
+                        {
+                            "dexter_error": str(result.get("error")),
+                            "dexter_error_code": str(
+                                result.get("error_code") or _DEXTER_FALLBACK_REASON
+                            ),
+                        }
+                        if result.get("error")
+                        else {}
+                    ),
+                },
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - 审计写失败必须阻断 provider 应答返回
+        _DEXTER_AUDIT_FAILURE_COUNT += 1
+        _LOGGER.error(
+            "Dexter audit append failed error_type=%s error_code=dexter_audit_append_failed "
+            "failure_count=%s run_id=%s trace_id=%s",
+            exc.__class__.__name__,
+            _DEXTER_AUDIT_FAILURE_COUNT,
+            str(request.context.get("run_id") or "").strip() or "-",
+            envelope.result_meta.trace_id,
+        )
+        raise RuntimeError(
+            "Dexter provider audit append failed; refusing to return an unaudited response."
+        ) from exc
+
+
+def _append_dexter_prompt(
+    request: AgentQueryRequest,
+    governance_dir: str,
+    envelope: AgentEnvelope,
+    result: dict[str, Any],
+    prompt: str,
+) -> None:
+    """落盘本轮送模 prompt。
+
+    空 prompt 表示研究上下文构建阶段就失败了，本轮没有任何内容送到模型，
+    此时不写记录：本流的语义是"模型看到过什么"，不是"我们打算发什么"。
+    """
+    if not prompt:
+        return
+    try:
+        repo = GovernanceRepository(base_dir=governance_dir)
+        append_agent_prompt(
+            repo,
+            AgentPromptPayload(
+                provider="dexter",
+                user_id=str(request.context.get("user_id") or "unknown"),
+                trace_id=envelope.result_meta.trace_id,
+                prompt=prompt,
+                prompt_chars=len(prompt),
+                run_id=str(request.context.get("run_id") or "").strip() or None,
+                model=str(result.get("model") or ""),
+                toolsets=str(result.get("toolsets") or ""),
+                transport=str(result.get("transport") or ""),
+                error_code=str(result.get("error_code") or "").strip() or None,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - 留痕写失败不得吞掉已生成的业务应答
+        _LOGGER.warning(
+            "Dexter prompt append failed error_type=%s error_code=dexter_prompt_append_failed",
+            exc.__class__.__name__,
+        )
 
 
 def _parse_dexter_output(stdout: str) -> dict[str, Any]:

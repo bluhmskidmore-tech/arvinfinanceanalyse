@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner
 from backend.app.repositories.kpi_repo import KpiRepository
 from sqlalchemy import false, select
+
+logger = logging.getLogger(__name__)
+
+KPI_STORAGE_UNAVAILABLE_MESSAGE = "KPI storage unavailable"
 
 
 class KpiWorkbenchError(RuntimeError):
@@ -25,6 +30,13 @@ class KpiStorageError(KpiWorkbenchError):
     """Raised when storage access fails."""
 
 
+def _storage_error(operation: str) -> KpiStorageError:
+    # Called inside an except block: the original SQLAlchemy error (SQL text, bind
+    # params, DSN host) goes to the log only and never reaches the API client.
+    logger.exception("KPI storage access failed during %s", operation)
+    return KpiStorageError(KPI_STORAGE_UNAVAILABLE_MESSAGE)
+
+
 def _parse_decimal(value: object | None) -> Decimal | None:
     if value in (None, ""):
         return None
@@ -35,7 +47,7 @@ def _decimal_text(value: object | None, *, default: str | None = None) -> str | 
     dec = _parse_decimal(value)
     if dec is None:
         return default
-    return format(dec.quantize(Decimal("0.000001")), "f")
+    return format(dec.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP), "f")
 
 
 def _parse_as_of_date(as_of_date: str) -> date:
@@ -195,7 +207,7 @@ def list_metrics(
         metrics = [_metric_to_dict(row) for row in rows]
         return {"metrics": metrics, "total": len(metrics)}
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("list_metrics") from exc
 
 
 def get_metric(*, dsn: str, metric_id: int) -> dict[str, object]:
@@ -209,7 +221,7 @@ def get_metric(*, dsn: str, metric_id: int) -> dict[str, object]:
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("get_metric") from exc
 
 
 def create_metric(*, dsn: str, data: dict[str, Any]) -> dict[str, object]:
@@ -241,7 +253,7 @@ def create_metric(*, dsn: str, data: dict[str, Any]) -> dict[str, object]:
             session.refresh(metric)
             return _metric_to_dict(metric)
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("create_metric") from exc
 
 
 def update_metric(*, dsn: str, metric_id: int, data: dict[str, Any]) -> dict[str, object]:
@@ -272,7 +284,7 @@ def update_metric(*, dsn: str, metric_id: int, data: dict[str, Any]) -> dict[str
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("update_metric") from exc
 
 
 def delete_metric(*, dsn: str, metric_id: int) -> None:
@@ -287,7 +299,7 @@ def delete_metric(*, dsn: str, metric_id: int) -> None:
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("delete_metric") from exc
 
 
 def get_values(*, dsn: str, owner_id: int, as_of_date: str, include_trace: bool) -> dict[str, object]:
@@ -350,7 +362,7 @@ def get_values(*, dsn: str, owner_id: int, as_of_date: str, include_trace: bool)
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("get_values") from exc
 
 
 def create_value(*, dsn: str, data: dict[str, Any]) -> dict[str, object]:
@@ -391,7 +403,7 @@ def create_value(*, dsn: str, data: dict[str, Any]) -> dict[str, object]:
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("create_value") from exc
 
 
 def update_value(*, dsn: str, value_id: int, data: dict[str, Any]) -> dict[str, object]:
@@ -420,7 +432,7 @@ def update_value(*, dsn: str, value_id: int, data: dict[str, Any]) -> dict[str, 
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("update_value") from exc
 
 
 def batch_update_values(*, dsn: str, as_of_date: str, items: list[dict[str, Any]]) -> dict[str, object]:
@@ -469,7 +481,7 @@ def batch_update_values(*, dsn: str, as_of_date: str, items: list[dict[str, Any]
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("batch_update_values") from exc
 
 
 def fetch_and_recalc(
@@ -571,7 +583,7 @@ def fetch_and_recalc(
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("fetch_and_recalc") from exc
 
 
 def build_report(
@@ -646,4 +658,4 @@ def build_report(
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("build_report") from exc

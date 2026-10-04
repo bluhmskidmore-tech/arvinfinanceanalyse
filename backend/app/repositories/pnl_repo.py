@@ -8,15 +8,22 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import duckdb
-from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
-from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
-from backend.app.core_finance.pnl_constants import (
-    PNL_514_VAT_EFFECTIVE_END_DATE,
-    PNL_514_VAT_EFFECTIVE_START_DATE,
-    PNL_FORMAL_FACT_RULE_VERSION,
-)
+
+from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate, validate_formal_fx_observation
+from backend.app.core_finance.pnl_constants import PNL_FORMAL_FACT_RULE_VERSION
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.duckdb_repo import read_only_connection
+from backend.app.repositories.pnl_precompute_state import (
+    PnlByBusinessPendingWork,
+    PnlByBusinessPrecomputeStaleWriteError,
+    PnlByBusinessPrecomputeState,
+    ensure_pnl_by_business_precompute_state_schema,
+    fetch_pnl_by_business_precompute_state_on_connection,
+    list_pending_pnl_by_business_precompute_on_connection,
+    mark_pnl_by_business_precompute_ready_on_connection,
+    required_pnl_by_business_revision_on_connection,
+)
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 # Shared by `backend.app.tasks.pnl_by_business_precompute` (writer) and
@@ -24,7 +31,7 @@ from backend.app.repositories.task_write_guard import require_repository_task_wr
 # import the other. Bump this whenever the `/pnl-by-business` read-model
 # calculation rules change, so stale materialized rows are invalidated and
 # callers fall back to a live recompute instead of serving outdated values.
-PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v8"
+PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v18"
 
 
 def _canonical_decimal_text(value: Decimal) -> str:
@@ -45,11 +52,8 @@ def _position_book_key(portfolio_name: object, cost_center: object) -> str:
     return f"{pn}::{cc}"
 
 
-_UNTRACED_COUNT_SQL = """
-                select count(*)
-                from fact_formal_pnl_fi p
-                where p.report_date = ?
-                  and not exists (
+_UNTRACED_MATCH_PREDICATE_SQL = """
+                  not exists (
                     select 1
                     from fact_formal_zqtz_balance_daily z
                     where z.report_date = p.report_date
@@ -78,7 +82,18 @@ _UNTRACED_COUNT_SQL = """
                       and z.position_scope = 'asset'
                       and nullif(trim(coalesce(z.business_type_primary, '')), '') is not null
                   ) <> 1
+"""
+
+_UNTRACED_COUNT_SQL = f"""
+                select count(*)
+                from fact_formal_pnl_fi p
+                where p.report_date = ?
+                  and {_UNTRACED_MATCH_PREDICATE_SQL}
                 """
+
+
+class Pnl517AuthorityError(ValueError):
+    """Published monthly PnL contains a duplicated canonical business key."""
 
 
 @dataclass
@@ -88,7 +103,7 @@ class PnlRepository:
     def list_union_report_dates(self) -> list[str]:
         fact_tables = ("fact_formal_pnl_fi", "fact_nonstd_pnl_bridge")
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             available_tables = [table_name for table_name in fact_tables if self._table_exists(conn, table_name)]
             if not available_tables:
                 raise RuntimeError("Formal pnl storage is unavailable.")
@@ -129,9 +144,10 @@ class PnlRepository:
         effective_ftp_rate_pct: Decimal,
         expected_rule_version: str = PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
         supplemental_source_version: str = "",
+        source_version_cache: dict[tuple[str, int, str, str, str], str] | None = None,
     ) -> dict[str, object] | None:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             if not self._table_exists(conn, "fact_pnl_by_business_precompute"):
                 return None
             row = conn.execute(
@@ -148,6 +164,87 @@ class PnlRepository:
                 """,
                 [year, as_of_date, result_kind, dimension, business_key],
             ).fetchone()
+            if row is None or row[0] in (None, ""):
+                return None
+            if str(row[2] or "") != expected_rule_version:
+                return None
+            source_version_key = (
+                resolve_effective_read_path(self.path),
+                year,
+                as_of_date,
+                _canonical_decimal_text(effective_ftp_rate_pct),
+                supplemental_source_version,
+            )
+            source_version = (
+                source_version_cache.get(source_version_key)
+                if source_version_cache is not None
+                else None
+            )
+            if source_version is None:
+                source_version = self.pnl_by_business_precompute_source_version(
+                    year=year,
+                    as_of_date=as_of_date,
+                    effective_ftp_rate_pct=effective_ftp_rate_pct,
+                    supplemental_source_version=supplemental_source_version,
+                    connection=conn,
+                )
+                if source_version_cache is not None:
+                    source_version_cache[source_version_key] = source_version
+            if str(row[1] or "") != source_version:
+                return None
+            return json.loads(str(row[0]))
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
+                return None
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+
+    def fetch_trusted_pnl_by_business_precompute(
+        self,
+        *,
+        year: int,
+        as_of_date: str,
+        result_kind: str,
+        dimension: str,
+        business_key: str,
+        effective_ftp_rate_pct: Decimal,
+        expected_rule_version: str = PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+        supplemental_source_version: str = "",
+    ) -> dict[str, object] | None:
+        """Read a protocol-ready payload without rescanning source facts.
+
+        The background writer performs the complete source fingerprint check before
+        committing.  This GET-safe path only compares the persisted dependency,
+        rule, FTP and manual-adjustment snapshot metadata.
+        """
+        ftp_rate_text = _canonical_decimal_text(effective_ftp_rate_pct)
+        try:
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
+            state = fetch_pnl_by_business_precompute_state_on_connection(
+                conn,
+                year=year,
+                as_of_date=as_of_date,
+                expected_rule_version=expected_rule_version,
+                effective_ftp_rate_pct=ftp_rate_text,
+                supplemental_source_version=supplemental_source_version,
+            )
+            if state is None or not state["is_ready"]:
+                return None
+            if not self._table_exists(conn, "fact_pnl_by_business_precompute"):
+                return None
+            row = conn.execute(
+                """
+                select payload_json, source_version, rule_version
+                from fact_pnl_by_business_precompute
+                where year = ? and as_of_date = ? and result_kind = ?
+                  and dimension = ? and business_key = ?
+                order by generated_at desc
+                limit 1
+                """,
+                [year, as_of_date, result_kind, dimension, business_key],
+            ).fetchone()
         except duckdb.Error as exc:
             if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
                 return None
@@ -157,17 +254,72 @@ class PnlRepository:
                 conn.close()
         if row is None or row[0] in (None, ""):
             return None
-        if str(row[2] or "") != expected_rule_version:
+        if str(row[1] or "") != state["source_version"]:
             return None
-        source_version = self.pnl_by_business_precompute_source_version(
-            year=year,
-            as_of_date=as_of_date,
-            effective_ftp_rate_pct=effective_ftp_rate_pct,
-            supplemental_source_version=supplemental_source_version,
-        )
-        if str(row[1] or "") != source_version:
+        if str(row[2] or "") != state["rule_version"]:
             return None
         return json.loads(str(row[0]))
+
+    def fetch_pnl_by_business_precompute_state(
+        self,
+        *,
+        year: int,
+        as_of_date: str,
+        effective_ftp_rate_pct: Decimal,
+        expected_rule_version: str = PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+        supplemental_source_version: str = "",
+    ) -> PnlByBusinessPrecomputeState | None:
+        """Return lightweight readiness metadata; never creates schema or writes."""
+        try:
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
+            return fetch_pnl_by_business_precompute_state_on_connection(
+                conn,
+                year=year,
+                as_of_date=as_of_date,
+                expected_rule_version=expected_rule_version,
+                effective_ftp_rate_pct=_canonical_decimal_text(effective_ftp_rate_pct),
+                supplemental_source_version=supplemental_source_version,
+            )
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
+                return None
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+
+    def pnl_by_business_precompute_dependency_revision(
+        self,
+        *,
+        year: int,
+        as_of_date: str,
+    ) -> int:
+        """Capture the cutoff-scoped revision used by a background build."""
+        try:
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
+            return required_pnl_by_business_revision_on_connection(
+                conn,
+                year=year,
+                as_of_date=as_of_date,
+            )
+        except duckdb.Error as exc:
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+
+    def list_pending_pnl_by_business_precompute(self) -> list[PnlByBusinessPendingWork]:
+        """Return durable dirty work for the background coordinator."""
+        try:
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
+            return list_pending_pnl_by_business_precompute_on_connection(conn)
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
+                return []
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
 
     def fetch_pnl_by_business_precompute_metadata(
         self,
@@ -180,7 +332,7 @@ class PnlRepository:
     ) -> dict[str, object] | None:
         """Return page-read-model provenance without deserializing its large payloads."""
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             if not self._table_exists(conn, "fact_pnl_by_business_precompute"):
                 return None
             row = conn.execute(
@@ -235,52 +387,23 @@ class PnlRepository:
         as_of_date: str,
         effective_ftp_rate_pct: Decimal,
         supplemental_source_version: str = "",
+        connection: duckdb.DuckDBPyConnection | None = None,
     ) -> str:
-        y = f"{year:04d}"
+        """Validate complete source facts, optionally reusing the caller's read connection."""
         canonical_ftp_rate_pct = _canonical_decimal_text(effective_ftp_rate_pct)
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            report_dates: list[str] = []
-            for table_name in ("fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"):
-                if not self._table_exists(conn, table_name):
-                    continue
-                rows = conn.execute(
-                    f"""
-                    select distinct cast(report_date as varchar)
-                    from {table_name}
-                    where substr(cast(report_date as varchar), 1, 4) = ?
-                      and cast(report_date as varchar) <= ?
-                    """,
-                    [y, as_of_date],
-                ).fetchall()
-                report_dates.extend(str(row[0]) for row in rows)
-            period_start = f"{min(report_dates)[:7]}-01" if report_dates else f"{y}-01-01"
-            fingerprint = {
-                "version": "v5",
-                "year": year,
-                "as_of_date": as_of_date,
-                "effective_ftp_rate_pct": canonical_ftp_rate_pct,
-                "period_start": period_start,
-                "report_dates": sorted(set(report_dates)),
-                "formal_fi": self._pnl_precompute_fact_stats(
-                    conn,
-                    table_name="fact_formal_pnl_fi",
-                    year=y,
-                    as_of_date=as_of_date,
-                ),
-                "nonstd_bridge": self._pnl_precompute_fact_stats(
-                    conn,
-                    table_name="fact_nonstd_pnl_bridge",
-                    year=y,
-                    as_of_date=as_of_date,
-                ),
-                "zqtz_balance": self._pnl_precompute_balance_stats(
-                    conn,
-                    period_start=period_start,
-                    as_of_date=as_of_date,
-                ),
-                "supplemental_source_version": supplemental_source_version,
-            }
+            conn = (
+                connection
+                if connection is not None
+                else duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
+            )
+            return self.pnl_by_business_precompute_source_version_on_connection(
+                conn,
+                year=year,
+                as_of_date=as_of_date,
+                effective_ftp_rate_pct=effective_ftp_rate_pct,
+                supplemental_source_version=supplemental_source_version,
+            )
         except duckdb.Error as exc:
             if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
                 return (
@@ -289,8 +412,62 @@ class PnlRepository:
                 )
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
-            if "conn" in locals():
+            if connection is None and "conn" in locals():
                 conn.close()
+
+    def pnl_by_business_precompute_source_version_on_connection(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        *,
+        year: int,
+        as_of_date: str,
+        effective_ftp_rate_pct: Decimal,
+        supplemental_source_version: str = "",
+    ) -> str:
+        """Compute the complete source fingerprint on an existing connection."""
+        y = f"{year:04d}"
+        canonical_ftp_rate_pct = _canonical_decimal_text(effective_ftp_rate_pct)
+        report_dates: list[str] = []
+        for table_name in ("fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"):
+            if not self._table_exists(conn, table_name):
+                continue
+            rows = conn.execute(
+                f"""
+                select distinct cast(report_date as varchar)
+                from {table_name}
+                where substr(cast(report_date as varchar), 1, 4) = ?
+                  and cast(report_date as varchar) <= ?
+                """,
+                [y, as_of_date],
+            ).fetchall()
+            report_dates.extend(str(row[0]) for row in rows)
+        period_start = f"{min(report_dates)[:7]}-01" if report_dates else f"{y}-01-01"
+        fingerprint = {
+            "version": "v5",
+            "year": year,
+            "as_of_date": as_of_date,
+            "effective_ftp_rate_pct": canonical_ftp_rate_pct,
+            "period_start": period_start,
+            "report_dates": sorted(set(report_dates)),
+            "formal_fi": self._pnl_precompute_fact_stats(
+                conn,
+                table_name="fact_formal_pnl_fi",
+                year=y,
+                as_of_date=as_of_date,
+            ),
+            "nonstd_bridge": self._pnl_precompute_fact_stats(
+                conn,
+                table_name="fact_nonstd_pnl_bridge",
+                year=y,
+                as_of_date=as_of_date,
+            ),
+            "zqtz_balance": self._pnl_precompute_balance_stats(
+                conn,
+                period_start=period_start,
+                as_of_date=as_of_date,
+            ),
+            "supplemental_source_version": supplemental_source_version,
+        }
         return "sv_pnl_by_business_precompute_v5:" + json.dumps(
             fingerprint,
             ensure_ascii=False,
@@ -508,7 +685,7 @@ class PnlRepository:
     ) -> None:
         stale_versions: list[str] = []
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             for table_name in ("fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"):
                 if not self._table_exists(conn, table_name):
                     continue
@@ -544,13 +721,11 @@ class PnlRepository:
     def require_current_formal_pnl_rule_version(self, *, year: int, as_of_date: str) -> None:
         requested_start = date(year, 1, 1)
         requested_end = date.fromisoformat(as_of_date)
-        effective_start = max(requested_start, PNL_514_VAT_EFFECTIVE_START_DATE)
-        effective_end = min(requested_end, PNL_514_VAT_EFFECTIVE_END_DATE)
-        if effective_start > effective_end:
+        if requested_start > requested_end:
             return
         self.require_formal_pnl_rule_version(
-            start_date=effective_start.isoformat(),
-            end_date=effective_end.isoformat(),
+            start_date=requested_start.isoformat(),
+            end_date=requested_end.isoformat(),
             expected_rule_version=PNL_FORMAL_FACT_RULE_VERSION,
         )
 
@@ -560,6 +735,9 @@ class PnlRepository:
         year: int,
         as_of_date: str,
         records: list[dict[str, object]],
+        expected_dependency_revision: int | None = None,
+        effective_ftp_rate_pct: Decimal | None = None,
+        supplemental_source_version: str = "",
     ) -> None:
         require_repository_task_write_scope("replace_pnl_by_business_precompute")
         in_transaction = False
@@ -568,6 +746,34 @@ class PnlRepository:
             apply_pending_migrations_on_connection(conn)
             conn.execute("begin transaction")
             in_transaction = True
+            if expected_dependency_revision is not None:
+                ensure_pnl_by_business_precompute_state_schema(conn)
+                if effective_ftp_rate_pct is None:
+                    raise ValueError(
+                        "effective_ftp_rate_pct is required for a revision-checked precompute write."
+                    )
+                record_source_versions = {
+                    str(record.get("source_version") or "") for record in records
+                }
+                record_rule_versions = {
+                    str(record.get("rule_version") or "") for record in records
+                }
+                if len(record_source_versions) != 1 or "" in record_source_versions:
+                    raise ValueError("Precompute records must share one non-blank source version.")
+                if len(record_rule_versions) != 1 or "" in record_rule_versions:
+                    raise ValueError("Precompute records must share one non-blank rule version.")
+                expected_source_version = next(iter(record_source_versions))
+                current_source_version = self.pnl_by_business_precompute_source_version_on_connection(
+                    conn,
+                    year=year,
+                    as_of_date=as_of_date,
+                    effective_ftp_rate_pct=effective_ftp_rate_pct,
+                    supplemental_source_version=supplemental_source_version,
+                )
+                if current_source_version != expected_source_version:
+                    raise PnlByBusinessPrecomputeStaleWriteError(
+                        "Pnl-by-business precompute source facts changed during the build."
+                    )
             conn.execute(
                 "delete from fact_pnl_by_business_precompute where year = ? and as_of_date = ?",
                 [year, as_of_date],
@@ -592,12 +798,27 @@ class PnlRepository:
                         for record in records
                     ],
                 )
+            if expected_dependency_revision is not None:
+                assert effective_ftp_rate_pct is not None
+                mark_pnl_by_business_precompute_ready_on_connection(
+                    conn,
+                    year=year,
+                    as_of_date=as_of_date,
+                    expected_dependency_revision=expected_dependency_revision,
+                    source_version=next(iter(record_source_versions)),
+                    rule_version=next(iter(record_rule_versions)),
+                    effective_ftp_rate_pct=_canonical_decimal_text(effective_ftp_rate_pct),
+                    supplemental_source_version=supplemental_source_version,
+                    generated_at=str(records[0].get("generated_at") or ""),
+                )
             conn.execute("commit")
             in_transaction = False
-        except duckdb.Error as exc:
+        except Exception as exc:
             if "conn" in locals() and in_transaction:
                 conn.execute("rollback")
-            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+            if isinstance(exc, duckdb.Error):
+                raise RuntimeError("Formal pnl storage is unavailable.") from exc
+            raise
         finally:
             if "conn" in locals():
                 conn.close()
@@ -608,7 +829,7 @@ class PnlRepository:
             return {}
         placeholders = ",".join(["?" for _ in dates])
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 f"""
                 select cast(report_date as varchar), instrument_code, sub_type
@@ -638,7 +859,7 @@ class PnlRepository:
             return {}
         placeholders = ", ".join(["?"] * len(required))
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 f"""
                 with ranked as (
@@ -676,7 +897,7 @@ class PnlRepository:
             return {}
         placeholders = ", ".join(["?"] * len(required_fx))
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 f"""
                 select
@@ -717,36 +938,14 @@ class PnlRepository:
                     f"Invalid formal fx rate for base_currency={base} report_date={report_date}: "
                     "mid_rate must be finite and greater than zero."
                 )
-            business_day = bool(is_business_day)
-            carry_forward = bool(is_carry_forward)
             observed_trade_date_str = str(observed_trade_date) if observed_trade_date is not None else None
-            if business_day:
-                if carry_forward:
-                    raise ValueError(
-                        f"Invalid formal fx metadata for base_currency={base} report_date={report_date}: "
-                        "business-day row cannot be carry-forward."
-                    )
-                rates[base] = rate
-                continue
-            if not carry_forward or observed_trade_date_str is None:
-                raise ValueError(
-                    f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
-                    "non-business-day row must carry forward an observed prior trade date."
-                )
-            if date.fromisoformat(observed_trade_date_str) >= date.fromisoformat(report_date):
-                raise ValueError(
-                    f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
-                    f"observed_trade_date={observed_trade_date_str} must be before report_date."
-                )
-            if not is_cfets_fx_non_business_day(
-                report_date,
+            validate_formal_fx_observation(
+                target_date=report_date,
+                observed_date=observed_trade_date_str,
                 base_currency=base,
-                quote_currency="CNY",
-            ):
-                raise ValueError(
-                    f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
-                    "carry-forward is only allowed for confirmed non-business-day rows."
-                )
+                is_business_day=is_business_day,
+                is_carry_forward=is_carry_forward,
+            )
             rates[base] = rate
 
         missing = [currency for currency in required_fx if currency not in rates]
@@ -781,7 +980,7 @@ class PnlRepository:
 
     def fetch_tpl_pnl_summary(self, report_date: str) -> dict[str, object]:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             row = conn.execute(
                 """
                 select
@@ -799,8 +998,6 @@ class PnlRepository:
                 [report_date],
             ).fetchone()
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return {"tpl_fair_value_change": 0, "tpl_total_pnl": 0, "row_count": 0}
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -825,7 +1022,7 @@ class PnlRepository:
         }
         placeholders = ", ".join("?" for _ in requested)
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 f"""
                 select
@@ -845,8 +1042,6 @@ class PnlRepository:
                 requested,
             ).fetchall()
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return empty
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -881,6 +1076,29 @@ class PnlRepository:
             ],
         )
 
+    def _require_unique_pnl517_natural_keys(self, conn, table: str, inst_column: str, dates: list[str]) -> None:
+        """Materialization publishes one row per natural key; duplicates need release authority.
+
+        Different accounting/currency legs are legitimate inputs, never DISTINCT amounts.
+        No query-side source_version ordering can identify an authoritative replacement.
+        """
+        columns = {str(r[0]) for r in conn.execute(
+            "select column_name from information_schema.columns where table_name = ?", [table]
+        ).fetchall()}
+        if not columns:
+            return
+        keys = ["report_date", inst_column, "portfolio_name", "cost_center"]
+        if table == "fact_formal_pnl_fi":
+            keys.extend(k for k in ("accounting_basis", "currency_basis") if k in columns)
+        placeholders = ",".join("?" for _ in dates)
+        duplicate = conn.execute(
+            f"select cast(report_date as varchar), count(*) from {table} "
+            f"where cast(report_date as varchar) in ({placeholders}) "
+            f"group by {', '.join(keys)} having count(*) > 1 limit 1", dates
+        ).fetchone()
+        if duplicate:
+            raise Pnl517AuthorityError(f"{table}:{duplicate[0]}:duplicate_natural_key")
+
     def merged_capital_gain_517_by_position_for_dates(self, report_dates: list[str]) -> dict[str, Decimal]:
         """Sum formal FI + nonstd bridge ``capital_gain_517`` by ``instrument::{portfolio}::{cost_center``.
 
@@ -892,7 +1110,7 @@ class PnlRepository:
         placeholders = ",".join(["?" for _ in dates])
         acc: dict[str, Decimal] = defaultdict(Decimal)
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
         except duckdb.Error:
             return {}
         try:
@@ -900,6 +1118,7 @@ class PnlRepository:
                 ("fact_formal_pnl_fi", "instrument_code"),
                 ("fact_nonstd_pnl_bridge", "bond_code"),
             ):
+                self._require_unique_pnl517_natural_keys(conn, table, inst_column, dates)
                 try:
                     rows = conn.execute(
                         f"""
@@ -946,7 +1165,7 @@ class PnlRepository:
         placeholders = ",".join(["?" for _ in dates])
         acc: dict[tuple[str, str, str, str], Decimal] = defaultdict(Decimal)
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
         except duckdb.Error:
             return {}
         try:
@@ -954,6 +1173,7 @@ class PnlRepository:
                 ("fact_formal_pnl_fi", "instrument_code", "coalesce(accounting_basis, '')"),
                 ("fact_nonstd_pnl_bridge", "bond_code", "''"),
             ):
+                self._require_unique_pnl517_natural_keys(conn, table, inst_column, dates)
                 try:
                     rows = conn.execute(
                         f"""
@@ -989,6 +1209,48 @@ class PnlRepository:
         def _sum(rows: list[dict[str, object]], key: str):
             return sum((row[key] for row in rows), 0)
 
+        formal_currency_bases = sorted(
+            {
+                str(row.get("currency_basis")) if row.get("currency_basis") not in (None, "") else "<missing>"
+                for row in formal_rows
+            }
+        )
+        formal_rule_versions = sorted(
+            {
+                str(row.get("rule_version")) if row.get("rule_version") not in (None, "") else "<missing>"
+                for row in formal_rows
+            }
+        )
+        nonstd_rule_versions = sorted(
+            {
+                str(row.get("rule_version")) if row.get("rule_version") not in (None, "") else "<missing>"
+                for row in nonstd_rows
+            }
+        )
+        formal_currency_is_cny = all(row.get("currency_basis") == "CNY" for row in formal_rows)
+        formal_rules_are_current = all(
+            row.get("rule_version") == PNL_FORMAL_FACT_RULE_VERSION for row in formal_rows
+        )
+        nonstd_rules_are_current = all(
+            row.get("rule_version") == PNL_FORMAL_FACT_RULE_VERSION for row in nonstd_rows
+        )
+        has_rows = bool(formal_rows or nonstd_rows)
+        currency_basis_verified = (
+            has_rows
+            and formal_currency_is_cny
+            and formal_rules_are_current
+            and nonstd_rules_are_current
+        )
+        currency_basis_failures: list[str] = []
+        if not has_rows:
+            currency_basis_failures.append("no_overview_rows")
+        if not formal_currency_is_cny:
+            currency_basis_failures.append("formal_fi_currency_basis_not_strict_cny")
+        if not formal_rules_are_current:
+            currency_basis_failures.append("formal_fi_rule_version_not_current")
+        if not nonstd_rules_are_current:
+            currency_basis_failures.append("nonstd_rule_version_not_current")
+
         return {
             "formal_fi_row_count": len(formal_rows),
             "nonstd_bridge_row_count": len(nonstd_rows),
@@ -997,6 +1259,16 @@ class PnlRepository:
             "capital_gain_517": _sum(formal_rows, "capital_gain_517") + _sum(nonstd_rows, "capital_gain_517"),
             "manual_adjustment": _sum(formal_rows, "manual_adjustment") + _sum(nonstd_rows, "manual_adjustment"),
             "total_pnl": _sum(formal_rows, "total_pnl") + _sum(nonstd_rows, "total_pnl"),
+            "_amount_currency_basis_evidence": {
+                "verified_currency_basis": "CNY" if currency_basis_verified else None,
+                "expected_rule_version": PNL_FORMAL_FACT_RULE_VERSION,
+                "formal_fi_currency_bases": formal_currency_bases,
+                "formal_fi_rule_versions": formal_rule_versions,
+                "nonstd_rule_versions": nonstd_rule_versions,
+                "formal_fi_row_count": len(formal_rows),
+                "nonstd_bridge_row_count": len(nonstd_rows),
+                "failure_reasons": currency_basis_failures,
+            },
         }
 
     def fetch_by_business_rows(self, report_date: str) -> list[dict[str, object]]:
@@ -1029,7 +1301,7 @@ class PnlRepository:
 
     def count_untraced_formal_fi_rows(self, report_date: str) -> int:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             row = conn.execute(_UNTRACED_COUNT_SQL, [report_date]).fetchone()
         except duckdb.Error as exc:
             if "cannot open database" in str(exc).lower():
@@ -1041,26 +1313,93 @@ class PnlRepository:
         return int(row[0] if row else 0)
 
     def count_untraced_formal_fi_rows_for_dates(self, report_dates: list[str]) -> dict[str, int]:
-        """近似诊断趋势用批量版本：在同一连接内逐日复用 :data:`_UNTRACED_COUNT_SQL`。
+        """近似诊断趋势用批量版本：单次分组查询复用单日诊断的完整匹配谓词。
 
         与 :meth:`count_untraced_formal_fi_rows` 对每个 ``report_date`` 的结果必须逐一相等
         （见 ``tests/test_pnl_by_business_candidate_insights_contract.py`` 回归测试）；
-        这里只是把逐日 connect/close 合并为一次连接，不改变 SQL 或口径。
+        这里只合并日期扫描，不改变 strict/relaxed 匹配口径。
         """
         dates = [str(d) for d in dict.fromkeys(report_dates) if str(d or "").strip()]
         if not dates:
             return {}
+        placeholders = ", ".join("?" for _ in dates)
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            counts: dict[str, int] = {}
-            for report_date in dates:
-                row = conn.execute(_UNTRACED_COUNT_SQL, [report_date]).fetchone()
-                counts[report_date] = int(row[0] if row else 0)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
+            rows = conn.execute(
+                f"""
+                with requested_pnl as (
+                  select
+                    row_number() over () as pnl_row_id,
+                    cast(p.report_date as varchar) as report_date,
+                    trim(coalesce(p.instrument_code, '')) as instrument_code,
+                    trim(coalesce(p.portfolio_name, '')) as portfolio_name,
+                    trim(coalesce(p.cost_center, '')) as cost_center,
+                    trim(coalesce(p.currency_basis, '')) as currency_basis
+                  from fact_formal_pnl_fi p
+                  where cast(p.report_date as varchar) in ({placeholders})
+                ),
+                pnl_match_codes as (
+                  select distinct
+                    p.pnl_row_id,
+                    p.report_date,
+                    p.portfolio_name,
+                    p.cost_center,
+                    p.currency_basis,
+                    codes.match_code
+                  from requested_pnl p,
+                  unnest([
+                    p.instrument_code,
+                    replace(p.instrument_code, 'BOND-', ''),
+                    case
+                      when starts_with(p.instrument_code, 'BOND-') then substr(p.instrument_code, 6)
+                      else null
+                    end
+                  ]) as codes(match_code)
+                  where codes.match_code is not null
+                ),
+                eligible_balance as (
+                  select
+                    cast(z.report_date as varchar) as report_date,
+                    trim(coalesce(z.instrument_code, '')) as instrument_code,
+                    trim(coalesce(z.portfolio_name, '')) as portfolio_name,
+                    trim(coalesce(z.cost_center, '')) as cost_center,
+                    trim(coalesce(z.currency_basis, '')) as currency_basis,
+                    nullif(trim(coalesce(z.business_type_primary, '')), '') as business_type_primary
+                  from fact_formal_zqtz_balance_daily z
+                  where cast(z.report_date as varchar) in ({placeholders})
+                    and z.position_scope = 'asset'
+                    and nullif(trim(coalesce(z.business_type_primary, '')), '') is not null
+                ),
+                pnl_match_summary as (
+                  select
+                    p.pnl_row_id,
+                    max(case when z.cost_center = p.cost_center then 1 else 0 end) as exact_match,
+                    count(distinct z.business_type_primary) as relaxed_business_type_count
+                  from pnl_match_codes p
+                  left join eligible_balance z
+                    on z.report_date = p.report_date
+                   and z.instrument_code = p.match_code
+                   and z.portfolio_name = p.portfolio_name
+                   and z.currency_basis = p.currency_basis
+                  group by p.pnl_row_id
+                )
+                select p.report_date, count(*) as row_count
+                from requested_pnl p
+                join pnl_match_summary s using (pnl_row_id)
+                where s.exact_match = 0
+                  and s.relaxed_business_type_count <> 1
+                group by p.report_date
+                """,
+                [*dates, *dates],
+            ).fetchall()
         except duckdb.Error as exc:
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
                 conn.close()
+        counts = {report_date: 0 for report_date in dates}
+        for report_date, row_count in rows:
+            counts[str(report_date)] = int(row_count or 0)
         return counts
 
     def count_formal_fi_rows_for_dates(self, report_dates: list[str]) -> dict[str, int]:
@@ -1071,7 +1410,7 @@ class PnlRepository:
         empty = {report_date: 0 for report_date in requested}
         placeholders = ", ".join("?" for _ in requested)
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 f"""
                 select cast(report_date as varchar) as report_date, count(*) as row_count
@@ -1093,7 +1432,7 @@ class PnlRepository:
 
     def fetch_untraced_formal_fi_breakdown(self, report_date: str) -> list[dict[str, object]]:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 """
                 with pnl as (
@@ -1248,7 +1587,7 @@ class PnlRepository:
 
     def sum_formal_total_pnl_for_year(self, year: int) -> Decimal:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             row = conn.execute(
                 """
                 select coalesce(sum(total_pnl), 0)
@@ -1269,7 +1608,7 @@ class PnlRepository:
     def sum_formal_total_pnl_through_report_date(self, report_date: str) -> Decimal:
         year = str(report_date)[:4]
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             row = conn.execute(
                 """
                 select coalesce(sum(total_pnl), 0)
@@ -1291,7 +1630,7 @@ class PnlRepository:
     def sum_nonstd_bridge_total_pnl_through_report_date(self, report_date: str) -> Decimal:
         year = str(report_date)[:4]
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             row = conn.execute(
                 """
                 select coalesce(sum(total_pnl), 0)
@@ -1323,7 +1662,7 @@ class PnlRepository:
             return {}
         values_sql = ", ".join(["(?)"] * len(dates))
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             if not self._table_exists(conn, table_name):
                 return {}
             rows = conn.execute(
@@ -1373,7 +1712,7 @@ class PnlRepository:
         """当年 ``as_of_date``（含）以前是否存在 formal FI 或 nonstd 桥接行。"""
         y = str(year)
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             row = conn.execute(
                 """
                 select (
@@ -1399,7 +1738,7 @@ class PnlRepository:
         """按 (instrument, portfolio, cost_center, currency_basis) 汇总当年至 ``as_of_date`` 的 FI 损益。"""
         y = str(year)
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 """
                 select
@@ -1444,7 +1783,7 @@ class PnlRepository:
         """按 (bond_code, portfolio, cost_center) 汇总当年至 ``as_of_date`` 的 nonstd 桥接损益。"""
         y = str(year)
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 """
                 select
@@ -1522,7 +1861,7 @@ class PnlRepository:
             "total_pnl",
         ]
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             instrument_name_expr = self._optional_column_expr(
                 conn,
                 "fact_formal_pnl_fi",
@@ -1615,7 +1954,7 @@ class PnlRepository:
             "current_amount",
         ]
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             if not self._table_exists(conn, "fact_formal_zqtz_balance_daily"):
                 return []
             table = "fact_formal_zqtz_balance_daily"
@@ -1651,7 +1990,7 @@ class PnlRepository:
                   coalesce(position_scope, '') as position_scope,
                   coalesce(currency_basis, '') as currency_basis,
                   {optional["currency_code"]} as currency_code,
-                  coalesce(market_value_amount, 0) as avg_amount,
+                  {current_amount_expr} as avg_amount,
                   {current_amount_expr} as current_amount
                 from fact_formal_zqtz_balance_daily
                 where cast(report_date as date) between ?::date and ?::date
@@ -1677,7 +2016,7 @@ class PnlRepository:
         require_table: bool = False,
     ) -> list[str]:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             if not self._table_exists(conn, table_name):
                 if require_table:
                     raise RuntimeError("Formal pnl storage is unavailable.")
@@ -1703,7 +2042,7 @@ class PnlRepository:
         columns: list[str],
     ) -> list[dict[str, object]]:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 f"""
                 select {", ".join(columns)}
@@ -1816,7 +2155,7 @@ class PnlRepository:
             "balance_row_count",
         ]
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             rows = conn.execute(
                 f"""
                 with pnl_rows as (

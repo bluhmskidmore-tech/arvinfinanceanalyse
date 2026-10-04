@@ -14,6 +14,12 @@ AgentRunStatus = Literal[
     "cancelled",
 ]
 
+AgentRunStopReason = Literal[
+    "completed",
+    "provider_error",
+    "cancel_requested_provider_stop_unconfirmed",
+]
+
 
 class AgentRunStatusResponse(BaseModel):
     run_id: str
@@ -31,6 +37,7 @@ class AgentRunStatusResponse(BaseModel):
     finished_at: str | None = None
     elapsed_seconds: float | None = None
     error_message: str | None = None
+    stop_reason: AgentRunStopReason | None = None
     result: AgentEnvelope | None = None
 
 
@@ -68,6 +75,7 @@ class AgentRunRecord(BaseModel):
     finished_at: str | None = None
     elapsed_seconds: float | None = None
     error_message: str | None = None
+    stop_reason: AgentRunStopReason | None = None
     result: dict[str, object] | None = None
 
 

@@ -18,10 +18,10 @@
 
 .ledger-account-detail__header span,
 .ledger-account-detail__section-head span {
-  color: var(--dh-api-blue);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 .ledger-account-detail__header h2,
@@ -31,7 +31,7 @@
 }
 
 .ledger-account-detail__header h2 {
-  font-size: 18px;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 
@@ -49,8 +49,8 @@
   border-radius: var(--dh-api-radius);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-700);
-  font-size: 11px;
-  font-weight: 750;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .ledger-account-detail__section {
@@ -80,14 +80,16 @@
   gap: 4px;
   min-width: 0;
   padding: 10px;
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  border-radius: 0;
+  background: transparent;
 }
 
 .ledger-account-detail__metric-grid article > span,
 .ledger-account-detail__metric-grid article > small {
   color: var(--dh-api-muted);
   font-size: 11px;
+  background: transparent;
+  border-radius: 0;
 }
 
 .ledger-account-detail__source-grid {
@@ -95,13 +97,13 @@
   gap: 4px;
   margin-top: 9px;
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .ledger-account-detail__metric-grid strong {
   color: var(--dh-api-ink);
-  font-size: 18px;
+  font-size: 20px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -113,7 +115,7 @@
 .ledger-account-detail__table-wrap table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .ledger-account-detail__table-wrap th,
@@ -144,10 +146,11 @@
 
 .ledger-account-detail__state {
   padding: 28px 16px;
-  border: 1px dashed var(--moss-color-neutral-300);
-  border-radius: var(--dh-api-radius);
+  border-radius: 0;
   color: var(--dh-api-soft);
   text-align: center;
+  border: 0;
+  background: transparent;
 }
 
 .ledger-account-detail__state strong,
@@ -185,9 +188,10 @@
   display: grid;
   gap: 6px;
   padding: 10px 12px;
-  border: 1px solid var(--moss-color-warning-200);
-  border-radius: var(--dh-api-radius);
-  font-size: 11px;
+  border-radius: 0;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
 }
 
 .ledger-account-detail__source-status div {
@@ -201,7 +205,7 @@
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel-2);
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
 }
 

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type {
+  BondDashboardBundlePayload,
   BondDashboardBundleSectionEnvelopeMap,
   BondDashboardBundleSectionId,
   ResultMeta,
@@ -17,7 +18,8 @@ import { IndustryTable } from "../features/bond-dashboard/components/IndustryTab
 import { MaturityStructureChart } from "../features/bond-dashboard/components/MaturityStructureChart";
 import { RiskIndicatorsPanel } from "../features/bond-dashboard/components/RiskIndicatorsPanel";
 import BondDashboardPage from "../features/bond-dashboard/pages/BondDashboardPage";
-import { formatRawAsNumeric } from "../utils/format";
+import { BOND_SECTION_READY } from "../features/bond-dashboard/sectionStatus";
+import { EM_DASH, formatRawAsNumeric } from "../utils/format";
 import {
   PORTFOLIO_CROSS_PAGE_EXPECTED,
   PORTFOLIO_CROSS_PAGE_REPORT_DATE,
@@ -84,7 +86,14 @@ async function fetchMockedBundleSection(
   return [section, await client.getBondBusinessTypeMetrics({ reportDate })];
 }
 
-function mockBondDashboardBundleFromClient(client: ApiClient) {
+/**
+ * `transform` 让单条用例改写 bundle 的 result（去掉某个分区、写 section_statuses
+ * 等），用于覆盖「请求已结束但该分区没回数」这类分区级状态；不传时行为与之前一致。
+ */
+function mockBondDashboardBundleFromClient(
+  client: ApiClient,
+  transform?: (result: BondDashboardBundlePayload) => BondDashboardBundlePayload,
+) {
   return vi.spyOn(client, "fetchBondDashboardBundle").mockImplementation(async (reportDate, sections) => {
     const normalizedReportDate = reportDate?.trim() ?? "";
     const entries = await Promise.all(
@@ -95,16 +104,41 @@ function mockBondDashboardBundleFromClient(client: ApiClient) {
       (sectionEnvelopes as Record<BondDashboardBundleSectionId, BondDashboardBundleSectionEnvelope>)[section] =
         envelope;
     }
+    const result: BondDashboardBundlePayload = {
+      report_date: normalizedReportDate || null,
+      requested_sections: [...sections],
+      sections: sectionEnvelopes,
+    };
     return {
       data_source: "bond_analytics_facts",
       result_meta: resultMeta("bond_dashboard.bundle"),
-      result: {
-        report_date: normalizedReportDate || null,
-        requested_sections: [...sections],
-        sections: sectionEnvelopes,
-      },
+      result: transform ? transform(result) : result,
     };
   });
+}
+
+function withoutSection(
+  sections: Partial<BondDashboardBundleSectionEnvelopeMap>,
+  omitted: BondDashboardBundleSectionId,
+): Partial<BondDashboardBundleSectionEnvelopeMap> {
+  const next = { ...sections };
+  delete next[omitted];
+  return next;
+}
+
+function renderBondDashboard(client: ApiClient) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ApiClientProvider client={client}>
+        <MemoryRouter>
+          <BondDashboardPage />
+        </MemoryRouter>
+      </ApiClientProvider>
+    </QueryClientProvider>,
+  );
 }
 
 describe("BondDashboardPage", () => {
@@ -131,10 +165,133 @@ describe("BondDashboardPage", () => {
       expect(conclusion).toHaveTextContent("当前信用占比");
       expect(conclusion).toHaveTextContent("总市值");
     });
-    expect(await screen.findByText("债券持仓规模")).toBeInTheDocument();
+    // 「债券持仓规模」同时出现在结论 hero 标签与 KPI 格标签（FR-6 双呈现）。
+    expect((await screen.findAllByText("债券持仓规模")).length).toBeGreaterThanOrEqual(1);
     const headline = screen.getByTestId("bond-dashboard-headline-kpis");
     const scaleCard = within(headline).getByTestId("bond-dashboard-kpi-total_market_value");
     expect(scaleCard.textContent?.replace(/,/g, "")).toContain("3287.09");
+  });
+
+  /*
+   * 以下两条锁的是 2026-08-27 组装式重写的成果：首屏 KPI 横带与四张只读表分别
+   * 由 KpiStrip / DataTable 原语渲染，页面不再持有私有横带与 antd 表格覆盖。
+   * 断言的是原语暴露在 DOM 上的契约（列数属性、语义 table 元素），不是内部结构。
+   */
+  it("renders the first-screen KPI band through the KpiStrip primitive", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const band = await screen.findByTestId("bond-dashboard-headline-kpis");
+    expect(within(band).getAllByTestId(/^bond-dashboard-kpi-/)).toHaveLength(8);
+    // 4×2 单框横带、720 以下折 2 列：重构前是页面 CSS 媒体查询，现在是原语入参。
+    const strip = band.firstElementChild;
+    expect(strip).toHaveAttribute("data-cols-xl", "4");
+    expect(strip).toHaveAttribute("data-cols-base", "2");
+  });
+
+  it("renders the read-only dashboard tables through the DataTable primitive instead of antd Table", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    // 行业分布 / 组合表现 / 利差分析 / 业务类型加权指标。
+    await waitFor(() => {
+      expect(screen.getAllByRole("table")).toHaveLength(4);
+    });
+    expect(container.querySelector(".ant-table")).toBeNull();
+    for (const header of screen.getAllByRole("columnheader")) {
+      expect(header).toHaveAttribute("scope", "col");
+    }
+  });
+
+  /*
+   * 分区级五态。重构前（以及 2026-08-27 组装式重写的第一轮）这三种情形都落进
+   * 「rows 未到达 → 骨架」：请求已结束、分区失败，用户看到的却是「还在加载」。
+   * bundle 一直返回 section_statuses / failed_sections（06 区证据披露在用），
+   * 这三条锁的是「这份状态确实接到了数据块上」。
+   */
+  it("surfaces a failed bundle section as an error instead of a ghost skeleton", async () => {
+    const client = createApiClient({ mode: "mock" });
+    mockBondDashboardBundleFromClient(client, (result) => ({
+      ...result,
+      sections: withoutSection(result.sections, "industry-distribution"),
+      section_statuses: {
+        "industry-distribution": { status: "error", message: "行业分布查询超时", duration_ms: 12 },
+      },
+      failed_sections: ["industry-distribution"],
+    }));
+
+    renderBondDashboard(client);
+
+    const table = await screen.findByTestId("bond-dashboard-industry-table");
+    await waitFor(() => {
+      expect(within(table).getByRole("alert")).toHaveTextContent("行业分布查询超时");
+    });
+    // 骨架视图的屏幕阅读器文案；出现即说明又退回了「假装在加载」。
+    expect(within(table).queryByText("数据载入中")).toBeNull();
+  });
+
+  it("treats a silently missing bundle section as an error rather than a pending read", async () => {
+    const client = createApiClient({ mode: "mock" });
+    // 后端既没给 section_statuses 也没给 failed_sections，分区数据就是没回来。
+    mockBondDashboardBundleFromClient(client, (result) => ({
+      ...result,
+      sections: withoutSection(result.sections, "industry-distribution"),
+    }));
+
+    renderBondDashboard(client);
+
+    const table = await screen.findByTestId("bond-dashboard-industry-table");
+    await waitFor(() => {
+      expect(within(table).getByRole("alert")).toHaveTextContent("该分区未返回数据");
+    });
+    expect(within(table).queryByText("数据载入中")).toBeNull();
+  });
+
+  it("collapses an empty-but-successful bundle section to the empty message", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardIndustryDistribution = async () => ({
+      result_meta: resultMeta("bond_dashboard.industry_distribution"),
+      result: { report_date: "2026-04-30", total_market_value: yuan(0), items: [] },
+    });
+    mockBondDashboardBundleFromClient(client, (result) => ({
+      ...result,
+      section_statuses: {
+        "industry-distribution": { status: "ok", message: null, duration_ms: 5 },
+      },
+    }));
+
+    renderBondDashboard(client);
+
+    const table = await screen.findByTestId("bond-dashboard-industry-table");
+    await waitFor(() => {
+      expect(within(table).getByText("暂无数据")).toBeInTheDocument();
+    });
+    expect(within(table).queryByRole("alert")).toBeNull();
+    expect(within(table).queryByText("数据载入中")).toBeNull();
   });
 
   it("refetches blocks when report date changes", async () => {
@@ -210,6 +367,44 @@ describe("BondDashboardPage", () => {
       expect(screen.getByTestId("bond-dashboard-page-state")).toHaveTextContent("暂无可用报告日");
     });
     expect(screen.getByRole("combobox", { name: "bond-dashboard-report-date" })).toBeDisabled();
+  });
+
+  /*
+   * 后端不可达（dates 502）时 bundle 查询 enabled=false：禁用态 query 的 isPending
+   * 永远为真，2026-09 审计发现 02-05 区因此永远停在「读取中 / 正在载入 / 数据载入中」
+   * 骨架。这条锁的是：报告日终态不可用后，各分区露出明确的阻断原因而不是假装在加载。
+   */
+  it("blocks every data section with an explicit reason instead of an endless skeleton when report dates fail", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => {
+      throw new Error("bad gateway");
+    };
+    const bundleSpy = vi.spyOn(client, "fetchBondDashboardBundle");
+
+    renderBondDashboard(client);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("bond-dashboard-page-state")).toHaveTextContent("报告日加载失败");
+    });
+    expect(bundleSpy).not.toHaveBeenCalled();
+
+    for (const sectionId of [
+      "bond-dashboard-section-structure",
+      "bond-dashboard-section-maturity-industry",
+      "bond-dashboard-section-portfolio-risk",
+      "bond-dashboard-section-business-type",
+    ]) {
+      const section = document.getElementById(sectionId);
+      expect(section).not.toBeNull();
+      expect(within(section!).getAllByText("报告日不可用，未发起查询").length).toBeGreaterThan(0);
+      expect(within(section!).queryByText("读取中")).toBeNull();
+      expect(within(section!).queryByText("正在载入")).toBeNull();
+      expect(within(section!).queryByText("数据载入中")).toBeNull();
+    }
+    // 首屏 KPI 横带同步落到终态占位（EM_DASH），不再是骨架。
+    const headline = screen.getByTestId("bond-dashboard-headline-kpis");
+    expect(within(headline).getByTestId("bond-dashboard-kpi-total_market_value")).toHaveTextContent(EM_DASH);
+    expect(screen.queryByText("正在载入")).toBeNull();
   });
 
   it("uses backend headline numerics for weighted yield and duration in the portfolio table footer", async () => {
@@ -343,7 +538,7 @@ describe("BondDashboardPage", () => {
           {
             name: "Core book",
             market_value: "343822795478.69",
-            weighted_avg_ytm_pct: "2.565621",
+            weighted_avg_ytm: pct(0.02565621),
             weighted_avg_duration: "4.13678311",
             duration_source: "position_duration",
           },
@@ -698,7 +893,7 @@ describe("BondDashboardPage", () => {
   it("renders credit-rating percentages from ratio Numeric values", () => {
     render(
       <CreditRatingBlocks
-        loading={false}
+        state={BOND_SECTION_READY}
         data={{
           report_date: "2026-04-30",
           group_by: "rating",
@@ -718,7 +913,7 @@ describe("BondDashboardPage", () => {
   it("keeps the risk panel free of KPI-band duplicates and shows 2dp convexity with a full-precision title", () => {
     render(
       <RiskIndicatorsPanel
-        loading={false}
+        state={BOND_SECTION_READY}
         data={{
           report_date: "2026-04-30",
           total_market_value: yuan(343_822_795_478.69),
@@ -750,9 +945,10 @@ describe("BondDashboardPage", () => {
   it("renders industry percentages from ratio Numeric values", () => {
     render(
       <IndustryTable
-        loading={false}
+        state={BOND_SECTION_READY}
         data={{
           report_date: "2026-04-30",
+          total_market_value: yuan(1),
           items: [
             {
               industry_name: "金融业",
@@ -772,7 +968,7 @@ describe("BondDashboardPage", () => {
     const onGroupByChange = vi.fn();
     const { container } = render(
       <AssetStructurePie
-        loading={false}
+        state={BOND_SECTION_READY}
         groupBy="bond_type"
         onGroupByChange={onGroupByChange}
         data={{
@@ -797,7 +993,7 @@ describe("BondDashboardPage", () => {
   it("passes percent-point data to the maturity structure line chart", () => {
     render(
       <MaturityStructureChart
-        loading={false}
+        state={BOND_SECTION_READY}
         data={{
           report_date: "2026-04-30",
           total_market_value: yuan(200),

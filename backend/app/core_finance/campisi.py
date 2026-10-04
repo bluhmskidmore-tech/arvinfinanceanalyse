@@ -28,10 +28,14 @@ from typing import Any
 
 from .bond_four_effects import (
     CLEAN_PRICE_FALLBACK_DIAGNOSTICS,
+    POSITION_PRINCIPAL_UNAVAILABLE_DIAGNOSTIC,
+    PRINCIPAL_EXCLUSION_DIAGNOSTICS,
+    SINGLE_SIDED_POSITION_DIAGNOSTICS,
     compute_bond_four_effects,
     compute_bond_six_effects,
 )
-from .rate_units import detect_percent_unit_from_curve
+from .interest_mode import classify_interest_payment_frequency, coupon_frequency_per_year
+from .safe_decimal import safe_decimal
 
 _TENORS = [1, 3, 5, 7, 10, 30]
 _TREASURY_KEYS = [
@@ -49,6 +53,9 @@ _MATURITY_BUCKET_LABELS = ("0-1Y", "1-3Y", "3-5Y", "5-7Y", "7-10Y", "10Y+")
 _MATURITY_BUCKET_UNKNOWN = "UNKNOWN"
 _MATURITY_MISSING_FALLBACK_YEARS = 3.0
 MATURITY_DATE_MISSING_DIAGNOSTIC = "maturity_date_missing_fallback_3y"
+# Both kinds of position movement require cashflows before a holding return
+# can be inferred. Their zero placeholders must not enter covered denominators.
+_POSITION_EXCLUSION_DIAGNOSTICS = PRINCIPAL_EXCLUSION_DIAGNOSTICS | SINGLE_SIDED_POSITION_DIAGNOSTICS
 
 # 效应可用性状态。"ok" 表示效应是被观测出来的（哪怕数值恰好是 0）；
 # "unavailable" 表示输入缺失导致的结构性 0，不能当成"市场没动"来读。
@@ -80,10 +87,8 @@ def _coerce_percent_curve(m: dict[str, Any] | None) -> dict[str, float]:
         numeric = float(value)
         if numeric > 0:
             out[k] = numeric
-    # Keep the threshold in rate_units so curve-unit heuristics stay consistent.
-    if out and not detect_percent_unit_from_curve(list(out.values())):
-        for k in out:
-            out[k] = out[k] * 100.0
+    # This entry point declares percentage points, including values below 0.5%.
+    # Magnitude cannot distinguish a low observed percent rate from a decimal.
     return out
 
 
@@ -340,7 +345,10 @@ def infer_credit_rating_from_asset_class(asset_class: str | None) -> str:
     return "AA"
 
 
-def _coupon_freq(asset_class: str | None) -> int:
+def _coupon_freq(asset_class: str | None, interest_mode: object = None) -> int:
+    """明确付息方式使用正式解析；未知输入保留历史券种推断。"""
+    if classify_interest_payment_frequency(interest_mode) != "unknown":
+        return coupon_frequency_per_year(interest_mode)
     s = str(asset_class or "")
     if any(k in s for k in ("超短融", "SCP", "短期融资", "商业票据")):
         return 1
@@ -397,6 +405,10 @@ class _EffectAvailabilityCounters:
     spread_unavailable_mv_start: Decimal = Decimal("0")
     clean_price_fallback_bonds: int = 0
     clean_price_fallback_mv_start: Decimal = Decimal("0")
+    principal_excluded_bonds: int = 0
+    principal_unavailable_bonds: int = 0
+    principal_excluded_mv_start: Decimal = Decimal("0")
+    principal_excluded_mv_end: Decimal = Decimal("0")
 
     def observe(
         self,
@@ -404,8 +416,18 @@ class _EffectAvailabilityCounters:
         market_value_start: Decimal,
         spread_available: bool,
         clean_price_fallback: bool,
+        principal_excluded: bool = False,
+        principal_unavailable: bool = False,
+        market_value_end: Decimal = Decimal("0"),
     ) -> None:
         self.bonds += 1
+        if principal_excluded:
+            self.principal_excluded_bonds += 1
+            self.principal_unavailable_bonds += int(principal_unavailable)
+            self.principal_excluded_mv_start += abs(market_value_start)
+            self.principal_excluded_mv_end += abs(market_value_end)
+            return
+        # Effect availability describes positions retained in by_bond only.
         self.market_value_start += market_value_start
         if not spread_available:
             self.spread_unavailable_bonds += 1
@@ -485,16 +507,27 @@ def _build_effect_availability(
     利差输入缺失（spread_effect）、应计缺失导致整条归因链跑在净价退化分支上
     （accrued_interest）。任何一项非 ok 时，调用方都不得把对应的 0 当作观测值发布。
     """
-    treasury_available = bench_change.available
-    spread_status = coverage_status(counters.spread_unavailable_bonds, counters.bonds)
-    accrued_status = coverage_status(counters.clean_price_fallback_bonds, counters.bonds)
+    retained_bonds = counters.bonds - counters.principal_excluded_bonds
+    treasury_available = bench_change.available or retained_bonds == 0
+    spread_status = coverage_status(counters.spread_unavailable_bonds, retained_bonds)
+    accrued_status = coverage_status(counters.clean_price_fallback_bonds, retained_bonds)
     return {
         "bonds": counters.bonds,
+        "position_change": effect_availability_entry(
+            status=coverage_status(counters.principal_excluded_bonds, counters.bonds),
+            reason=("principal_evidence_unavailable"
+                    if counters.principal_unavailable_bonds == counters.principal_excluded_bonds and counters.principal_excluded_bonds
+                    else "principal_change_without_cashflows" if counters.principal_excluded_bonds else None),
+            principal_unavailable_bonds=counters.principal_unavailable_bonds,
+            unavailable_bonds=counters.principal_excluded_bonds,
+            covered_bonds=retained_bonds,
+            unavailable_market_value_start=counters.principal_excluded_mv_start,
+            unavailable_market_value_end=float(counters.principal_excluded_mv_end),
+        ),
         "treasury_effect": effect_availability_entry(
             status=EFFECT_STATUS_OK if treasury_available else EFFECT_STATUS_UNAVAILABLE,
-            reason=bench_change.reason,
-            # 曲线退化是整期事实，一旦退化就覆盖全部债券。
-            unavailable_bonds=0 if treasury_available else counters.bonds,
+            reason=None if treasury_available else bench_change.reason,
+            unavailable_bonds=0 if treasury_available else retained_bonds,
             unavailable_market_value_start=(
                 Decimal("0") if treasury_available else counters.market_value_start
             ),
@@ -521,6 +554,15 @@ def availability_diagnostics(availability: dict[str, Any]) -> list[str]:
     """把非 ok 状态翻成人读得懂的一行披露（每种退化一条，不逐券刷屏）。"""
     out: list[str] = []
     bonds = availability["bonds"]
+    position = availability.get("position_change")
+    retained_bonds = position.get("covered_bonds", bonds) if position else bonds
+    if position and position["status"] != EFFECT_STATUS_OK:
+        out.append(
+            f"{position.get('reason') or 'principal_change_without_cashflows'}: excluded {position['unavailable_bonds']}/{bonds} positions "
+            f"(starting market value {position['unavailable_market_value_start']:.2f}) because endpoint "
+            "principal changed, is missing, or the holding is one-sided; without trade cashflows no holding return can be inferred. "
+            "Totals cover eligible positions only and are not extrapolated to the whole portfolio."
+        )
     treasury = availability["treasury_effect"]
     if treasury["status"] != EFFECT_STATUS_OK:
         # 期限细节只有 Campisi 直算路径有；formal-bridge 路径的成因已由桥的行级
@@ -534,7 +576,7 @@ def availability_diagnostics(availability: dict[str, Any]) -> list[str]:
         )
         out.append(
             f"{TREASURY_EFFECT_UNAVAILABLE_DIAGNOSTIC}: {detail}; treasury_effect is unavailable "
-            f"on {treasury['unavailable_bonds']}/{bonds} bonds "
+            f"on {treasury['unavailable_bonds']}/{retained_bonds} bonds "
             f"(market_value_start {treasury['unavailable_market_value_start']:.2f}) "
             'and must not be read as "rates did not move".'
         )
@@ -542,19 +584,25 @@ def availability_diagnostics(availability: dict[str, Any]) -> list[str]:
     if spread["status"] != EFFECT_STATUS_OK:
         out.append(
             f"{SPREAD_EFFECT_UNAVAILABLE_DIAGNOSTIC}: credit spread inputs are missing for "
-            f"{spread['unavailable_bonds']}/{bonds} bonds "
+            f"{spread['unavailable_bonds']}/{retained_bonds} bonds "
             f"(market_value_start {spread['unavailable_market_value_start']:.2f}); "
             "spread_effect is unavailable on those rows, not an observed zero."
         )
     accrued = availability["accrued_interest"]
     if accrued["status"] != EFFECT_STATUS_OK:
+        exclusion_note = (
+            " Excluded positions contribute no effects."
+            if position and position["status"] != EFFECT_STATUS_OK
+            else ""
+        )
         out.append(
             f"{ACCRUED_INTEREST_FALLBACK_DIAGNOSTIC}: "
-            f"{accrued['unavailable_bonds']}/{bonds} bonds carry no usable "
+            f"{accrued['unavailable_bonds']}/{retained_bonds} bonds carry no usable "
             f"accrued interest (market_value_start "
-            f"{accrued['unavailable_market_value_start']:.2f}); total_return degrades to "
-            "clean price + modeled coupon on those rows and selection_effect systematically absorbs "
-            "the par/market difference."
+            f"{accrued['unavailable_market_value_start']:.2f}); only retained non-AC positions "
+            "with this gap use clean price + modeled coupon, where selection_effect may absorb "
+            "the par/market difference; retained AC positions with this gap use modeled coupon "
+            f"only and selection_effect remains 0.{exclusion_note}"
         )
     return out
 
@@ -677,23 +725,36 @@ def campisi_attribution(
         spread_dec, spread_available = _resolve_spread_change(
             spread_cache, market_start, market_end, rating
         )
-        cf = _coupon_freq(row.get("asset_class_start"))
+        cf = _coupon_freq(row.get("asset_class_start"), row.get("interest_mode_start"))
         bond = {
             "bond_code": row.get("bond_code") or row.get("instrument_id"),
             "market_value_start": row.get("market_value_start"),
             "market_value_end": row.get("market_value_end"),
             "face_value_start": row.get("face_value_start"),
+            **({"face_value_end": row["face_value_end"]} if "face_value_end" in row else {}),
+            **({"face_value_native_start": row.get("face_value_native_start"),
+                "face_value_native_end": row.get("face_value_native_end")}
+               if "face_value_native_start" in row else {}),
             "coupon_rate_start": row.get("coupon_rate_start"),
+            "interest_mode_start": row.get("interest_mode_start"),
             "yield_to_maturity_start": row.get("yield_to_maturity_start"),
             "asset_class_start": row.get("asset_class_start"),
             "accounting_class": row.get("accounting_class"),
             "maturity_date_start": mat_d,
             "accrued_interest_start": row.get("accrued_interest_start"),
             "accrued_interest_end": row.get("accrued_interest_end"),
+            # 单边持仓标记必须透传：bond 是白名单重建的，漏掉这两个键就等于
+            # 又把「期末没有这只券」折回「期末市值 0」。
+            "start_present": row.get("start_present"),
+            "end_present": row.get("end_present"),
         }
         fx = compute_bond_four_effects(bond, num_days, bench_dec, spread_dec, start_date, coupon_frequency=cf)
         bond_label = str(bond.get("bond_code") or bond.get("instrument_id") or "UNKNOWN")
-        diagnostics = fx.get("diagnostics") or []
+        diagnostics = list(fx.get("diagnostics") or [])
+        if classify_interest_payment_frequency(row.get("interest_mode_start")) == "unknown":
+            diagnostics.append(
+                f"coupon_frequency_asset_class_fallback: unknown interest_mode; legacy asset-class inference uses {cf} payments/year."
+            )
         for d in diagnostics:
             accrued_diagnostics.append(f"{bond_label}: {d}")
         if mat_d is None:
@@ -703,7 +764,12 @@ def campisi_attribution(
             market_value_start=mv_start,
             spread_available=spread_available,
             clean_price_fallback=bool(CLEAN_PRICE_FALLBACK_DIAGNOSTICS.intersection(diagnostics)),
+            principal_excluded=bool(_POSITION_EXCLUSION_DIAGNOSTICS.intersection(diagnostics)),
+            principal_unavailable=("face_value_native_start" in row and POSITION_PRINCIPAL_UNAVAILABLE_DIAGNOSTIC in diagnostics),
+            market_value_end=safe_decimal(row.get("market_value_end")),
         )
+        if _POSITION_EXCLUSION_DIAGNOSTICS.intersection(diagnostics):
+            continue
         # Keep Decimal precision here; by_bond is aggregated into totals below in the
         # Decimal domain to avoid float sum() error accumulation across many bonds.
         # Converted to float only at the CampisiResult output boundary.
@@ -791,23 +857,35 @@ def campisi_enhanced(
         spread_dec, spread_available = _resolve_spread_change(
             spread_cache, market_start, market_end, rating
         )
-        cf = _coupon_freq(row.get("asset_class_start"))
+        cf = _coupon_freq(row.get("asset_class_start"), row.get("interest_mode_start"))
         bond = {
             "bond_code": row.get("bond_code") or row.get("instrument_id"),
             "market_value_start": row.get("market_value_start"),
             "market_value_end": row.get("market_value_end"),
             "face_value_start": row.get("face_value_start"),
+            **({"face_value_end": row["face_value_end"]} if "face_value_end" in row else {}),
+            **({"face_value_native_start": row.get("face_value_native_start"),
+                "face_value_native_end": row.get("face_value_native_end")}
+               if "face_value_native_start" in row else {}),
             "coupon_rate_start": row.get("coupon_rate_start"),
+            "interest_mode_start": row.get("interest_mode_start"),
             "yield_to_maturity_start": row.get("yield_to_maturity_start"),
             "asset_class_start": row.get("asset_class_start"),
             "accounting_class": row.get("accounting_class"),
             "maturity_date_start": mat_d,
             "accrued_interest_start": row.get("accrued_interest_start"),
             "accrued_interest_end": row.get("accrued_interest_end"),
+            # 同 campisi_attribution：单边持仓标记必须随白名单一起透传。
+            "start_present": row.get("start_present"),
+            "end_present": row.get("end_present"),
         }
         sx = compute_bond_six_effects(bond, num_days, bench_dec, spread_dec, start_date, coupon_frequency=cf)
         bond_label = str(bond.get("bond_code") or bond.get("instrument_id") or "UNKNOWN")
-        diagnostics = sx.get("diagnostics") or []
+        diagnostics = list(sx.get("diagnostics") or [])
+        if classify_interest_payment_frequency(row.get("interest_mode_start")) == "unknown":
+            diagnostics.append(
+                f"coupon_frequency_asset_class_fallback: unknown interest_mode; legacy asset-class inference uses {cf} payments/year."
+            )
         for d in diagnostics:
             accrued_diagnostics.append(f"{bond_label}: {d}")
         if mat_d is None:
@@ -817,7 +895,12 @@ def campisi_enhanced(
             market_value_start=mv_start,
             spread_available=spread_available,
             clean_price_fallback=bool(CLEAN_PRICE_FALLBACK_DIAGNOSTICS.intersection(diagnostics)),
+            principal_excluded=bool(_POSITION_EXCLUSION_DIAGNOSTICS.intersection(diagnostics)),
+            principal_unavailable=("face_value_native_start" in row and POSITION_PRINCIPAL_UNAVAILABLE_DIAGNOSTIC in diagnostics),
+            market_value_end=safe_decimal(row.get("market_value_end")),
         )
+        if _POSITION_EXCLUSION_DIAGNOSTICS.intersection(diagnostics):
+            continue
         rec = {
             "bond_code": bond["bond_code"],
             "asset_class": row.get("asset_class_start"),

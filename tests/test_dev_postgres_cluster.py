@@ -119,6 +119,60 @@ def test_dev_postgres_cluster_env_mapping_prefers_repo_when_runtime_also_seeded(
     assert env["MOSS_LOCAL_ARCHIVE_PATH"] == str(repo_root / "data" / "archive")
 
 
+@pytest.mark.parametrize("source", ["process", "env_file"])
+def test_dev_postgres_cluster_preserves_explicit_external_storage_paths(tmp_path, monkeypatch, source):
+    module = load_module("scripts.dev_postgres_cluster", "scripts/dev_postgres_cluster.py")
+    repo_root = tmp_path / "repo"
+    repo_duckdb = repo_root / "data" / "moss.duckdb"
+    repo_duckdb.parent.mkdir(parents=True)
+    repo_duckdb.write_bytes(b"metadata-only repository database sentinel")
+    external = tmp_path / "external storage"
+    configured = {
+        "MOSS_DUCKDB_PATH": str(external / "moss.duckdb"),
+        "MOSS_GOVERNANCE_PATH": str(external / "governance"),
+        "MOSS_DATA_INPUT_ROOT": str(external / "inputs"),
+        "MOSS_LOCAL_ARCHIVE_PATH": str(external / "archive"),
+        "MOSS_FINANCIAL_PUBLICATION_ROOT": str(external / "financial-publications"),
+        "MOSS_BALANCE_ANALYSIS_PUBLICATION_ROOT": str(external / "balance-publications"),
+    }
+    for key in configured:
+        monkeypatch.delenv(key, raising=False)
+    if source == "process":
+        for key, value in configured.items():
+            monkeypatch.setenv(key, value)
+    else:
+        config_dir = repo_root / "config"
+        config_dir.mkdir()
+        (config_dir / ".env").write_text(
+            "".join(f'{key}="{value.replace(chr(92), chr(47))}"\n' for key, value in configured.items()),
+            encoding="utf-8",
+        )
+
+    env = module.build_env_mapping(module.build_cluster_config(repo_root))
+
+    assert {key: env.get(key) for key in configured} == configured
+    assert not external.exists(), "print-env must not create or initialize the selected storage"
+    assert repo_duckdb.read_bytes() == b"metadata-only repository database sentinel"
+
+
+def test_dev_postgres_cluster_explicit_path_precedence_and_repo_relative_resolution(tmp_path, monkeypatch):
+    module = load_module("scripts.dev_postgres_cluster", "scripts/dev_postgres_cluster.py")
+    repo_root = tmp_path / "repo"
+    config_dir = repo_root / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / ".env").write_text("MOSS_DATA_INPUT_ROOT=config-inputs\n", encoding="utf-8")
+    (repo_root / ".env").write_text("MOSS_DATA_INPUT_ROOT=root-inputs\n", encoding="utf-8")
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", "process-inputs")
+    monkeypatch.chdir(tmp_path)
+
+    env = module.build_env_mapping(module.build_cluster_config(repo_root))
+    assert env["MOSS_DATA_INPUT_ROOT"] == str((repo_root / "process-inputs").resolve())
+
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT")
+    env = module.build_env_mapping(module.build_cluster_config(repo_root))
+    assert env["MOSS_DATA_INPUT_ROOT"] == str((repo_root / "root-inputs").resolve())
+
+
 def test_prepare_runtime_clean_paths_does_not_overwrite_existing_smoke_files(tmp_path):
     module = load_module(
         "scripts.dev_postgres_cluster",
@@ -291,9 +345,8 @@ def test_dev_postgres_cluster_env_mapping_falls_back_to_repo_data_root_when_runt
     assert env["MOSS_DATA_INPUT_ROOT"] == str(repo_root / "data_input")
 
 
-def test_command_print_env_falls_back_to_repo_data_root_when_runtime_seed_copy_is_locked(
-    tmp_path,
-    monkeypatch,
+def test_command_print_env_does_not_prepare_or_copy_runtime_state(
+    tmp_path, monkeypatch
 ):
     module = load_module(
         "scripts.dev_postgres_cluster",
@@ -308,8 +361,6 @@ def test_command_print_env_falls_back_to_repo_data_root_when_runtime_seed_copy_i
         conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-02-28')")
 
     runtime_root = repo_root / "tmp-governance" / "runtime-clean"
-    runtime_data_input = runtime_root / "data_input"
-    runtime_data_input.mkdir(parents=True, exist_ok=True)
     runtime_duckdb = runtime_root / "moss.duckdb"
 
     config = module.DevPostgresClusterConfig(
@@ -322,21 +373,28 @@ def test_command_print_env_falls_back_to_repo_data_root_when_runtime_seed_copy_i
         runtime_duckdb_path=runtime_duckdb,
         runtime_governance_path=runtime_root / "governance",
         runtime_archive_path=runtime_root / "archive",
-        runtime_data_input_path=runtime_data_input,
+        runtime_data_input_path=runtime_root / "data_input",
     )
 
-    original_copy2 = module.shutil.copy2
+    forbidden_calls: list[str] = []
 
-    def locked_copy(src, dst, *args, **kwargs):
-        if Path(dst) == runtime_duckdb:
-            raise PermissionError("runtime duckdb locked")
-        return original_copy2(src, dst, *args, **kwargs)
+    def forbid(name):
+        def fail(*_args, **_kwargs):
+            forbidden_calls.append(name)
+            raise AssertionError(f"print-env must not call {name}")
 
-    monkeypatch.setattr(module.shutil, "copy2", locked_copy)
+        return fail
+
+    monkeypatch.setattr(module, "_prepare_runtime_clean_paths", forbid("prepare"))
+    monkeypatch.setattr(module.shutil, "copy2", forbid("copy"))
+    monkeypatch.setattr(module.duckdb, "connect", forbid("duckdb.connect"))
+    monkeypatch.setattr(Path, "mkdir", forbid("mkdir"))
 
     env = module.command_print_env(config)
 
+    assert forbidden_calls == []
     assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
+    assert not runtime_root.exists()
 
 
 def test_reset_schema_refuses_non_dev_endpoint():

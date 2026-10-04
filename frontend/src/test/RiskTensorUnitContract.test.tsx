@@ -5,7 +5,8 @@
  * Gate 语义：
  * - unit_consistency：后端 `/api/risk/tensor` 返回的元（yuan）口径数值，页面按
  *   万元（/1e4，DV01/KRD/CS01 敏感性族）与亿元（/1e8，市值/现金流/流动性缺口族）
- *   缩放展示，单位标签与缩放因子必须配对；数值缺失时单位标签必须一并抑制。
+ *   缩放展示，优先消费 raw_text 并以 raw 兼容旧响应；单位标签与缩放因子必须配对，
+ *   数值缺失时单位标签必须一并抑制。
  * - precision_and_rounding：金额缩放后按 zh-CN 两位小数（千分组）显示，四舍五入
  *   进位边界正确；比率族 ×100 保留 1 位小数带 %；后端已给出的展示字符串
  *   （久期/凸性/Numeric.display）原样透传，不得在前端再次舍入。
@@ -25,7 +26,7 @@
  *   `ratioPercentDisplay`：比率字符串 |raw|<=1 → (raw*100).toFixed(1)+"%"；
  *   `displayStr`（bondNumericDisplay）：字符串/Numeric.display 原样透传，
  *   ""/null → EM_DASH「—」。
- * - 换算必须消费 Numeric.raw（governed 数值真值），不得解析 display 字符串。
+ * - 换算必须优先消费 Numeric.raw_text，旧响应回退 Numeric.raw；不得解析 display 字符串。
  */
 import { type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -65,8 +66,15 @@ function buildMeta(resultKind: string): ResultMeta {
 }
 
 /** governed Numeric（元口径）；display 故意与 raw 的缩放结果不同形，锁定「换算走 raw」。 */
-function yuanNumeric(raw: number, display: string): Numeric {
-  return { raw, unit: "yuan", display, precision: 2, sign_aware: false };
+function yuanNumeric(raw: number, display: string, rawText?: string): Numeric {
+  return {
+    raw,
+    ...(rawText === undefined ? {} : { raw_text: rawText }),
+    unit: "yuan",
+    display,
+    precision: 2,
+    sign_aware: false,
+  };
 }
 
 /** 基准载荷：全部字段可解析，各测试按契约切面覆写。 */
@@ -289,5 +297,33 @@ describe("risk-tensor 精度与舍入：两位小数边界、比率 1 位小数�
     expect(readKpiCard(issuerDetail, "前五大权重")).toEqual({ value: "40.6%", unit: null });
     // MTR-RSK-011 发行人 HHI：Numeric.display "0.1834" 原样透传（不截断为两位）。
     expect(readKpiCard(issuerDetail, "发行人 HHI")).toEqual({ value: "0.1834", unit: null });
+  });
+
+  it("raw 与 raw_text 冲突时，正式金额按 exact 值缩放、舍入、分组和保留符号", async () => {
+    renderRiskTensorPage(
+      buildClient(
+        tensorPayload({
+          portfolio_dv01: yuanNumeric(10_049.9, "raw-display", "10050"),
+          cs01: yuanNumeric(10_049.9, "raw-display", "-10050"),
+          total_market_value: yuanNumeric(100_499_999.9, "raw-display", "100500000.00000000"),
+          rate_risk_dv01: yuanNumeric(
+            9_007_199_254_740_992,
+            "raw-display",
+            "9007199254740993.00",
+          ),
+        }),
+      ),
+    );
+
+    const kpiGrid = await screen.findByTestId("risk-tensor-kpi-grid");
+    expect(readKpiCard(kpiGrid, "面值口径 DV01")).toEqual({ value: "1.01", unit: WAN_YUAN_UNIT });
+    expect(readKpiCard(kpiGrid, "CS01")).toEqual({ value: "-1.01", unit: WAN_YUAN_UNIT });
+    expect(readKpiCard(kpiGrid, "总市值")).toEqual({ value: "1.01", unit: YI_YUAN_UNIT });
+
+    const durationScope = screen.getByTestId("risk-tensor-duration-scope");
+    expect(readKpiCard(durationScope, "利率风险 DV01")).toEqual({
+      value: "900,719,925,474.10",
+      unit: WAN_YUAN_UNIT,
+    });
   });
 });

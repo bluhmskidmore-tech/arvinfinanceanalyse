@@ -114,7 +114,7 @@ export function useCrossAssetViewModel({
     queryKey: ["workbench-shell", "choice-macro-latest", client.mode],
     queryFn: () => client.getChoiceMacroLatest(),
     retry: false,
-    refetchOnMount: "always",
+    staleTime: 60_000,
   });
   const latestSeries = useMemo(() => latestQuery.data?.result.series ?? [], [latestQuery.data?.result.series]);
   const latestMeta = latestQuery.data?.result_meta;

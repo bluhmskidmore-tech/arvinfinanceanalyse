@@ -19,6 +19,7 @@ import type {
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockDetailDrawer } from "../features/stock-analysis/components/StockDetailDrawer";
 import { nocturneTokens } from "../theme/designSystem";
+import { EM_DASH } from "../utils/format";
 
 vi.mock("../components/charts/BaseChart", () => ({
   BaseChart: function MockBaseChart({
@@ -97,6 +98,8 @@ function buildStockDetailEnvelope(
         pb: overrides.factor?.pb ?? 1.2,
         roe: overrides.factor?.roe ?? 0.1,
         dividend_yield: overrides.factor?.dividend_yield ?? 0.015,
+        total_mv: overrides.factor?.total_mv ?? 25_400_000_000,
+        circ_mv: overrides.factor?.circ_mv ?? 19_800_000_000,
       },
     },
     {
@@ -132,7 +135,7 @@ function buildKlineAnalysisEnvelope(
       engine: {
         name: "moss_stock_kline_analysis",
         source: "kline-analysis zip deterministic OHLCV subset",
-        rule_version: "rv_stock_kline_analysis_observation_v1",
+        rule_version: "rv_stock_kline_analysis_observation_v2",
         coverage: ["daily_patterns", "moving_average_trend", "volume_context", "validity_check"],
       },
       latest_candle: {
@@ -186,8 +189,8 @@ function buildKlineAnalysisEnvelope(
       basis: "analytical",
       source_version: "sv_kline_test",
       vendor_version: "vv_kline_test",
-      rule_version: "rv_stock_kline_analysis_observation_v1",
-      cache_version: "cv_stock_kline_analysis_observation_v1",
+      rule_version: "rv_stock_kline_analysis_observation_v2",
+      cache_version: "cv_stock_kline_analysis_observation_v2",
       quality_flag: "ok",
       vendor_status: "ok",
     },
@@ -1124,6 +1127,11 @@ describe("StockDetailDrawer", () => {
         ],
       }),
     );
+    vi.spyOn(client, "getStockKlineAnalysis").mockResolvedValue(
+      buildKlineAnalysisEnvelope({
+        indicators: { volume_ratio_20d: 1.6 },
+      }),
+    );
 
     render(
       <AppProviders client={client}>
@@ -1172,7 +1180,7 @@ describe("StockDetailDrawer", () => {
     expect(confirmation).toHaveTextContent("价格");
     await waitFor(() => expect(confirmation).toHaveTextContent("11.00"));
     expect(confirmation).toHaveTextContent("较前日 +4.76%");
-    expect(confirmation).toHaveTextContent("量能 3.0x");
+    expect(confirmation).toHaveTextContent("量能 1.6x");
     expect(confirmation).toHaveTextContent("观察位");
     expect(confirmation).toHaveTextContent("MA20 0.46%");
     expect(confirmation).toHaveTextContent("失效");
@@ -1182,6 +1190,73 @@ describe("StockDetailDrawer", () => {
       "新闻、公告、财报事件尚未进入候选卡。",
     );
     expect(confirmation).not.toHaveTextContent("source_table");
+  });
+
+  it("shows an em dash instead of recomputing volume ratio when the backend field is missing", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope({
+        candles: [
+          {
+            trade_date: "2026-04-24",
+            open_value: 9.8,
+            high_value: 10.1,
+            low_value: 9.7,
+            close_value: 10,
+            volume: 100,
+            amount: 1_000,
+          },
+          {
+            trade_date: "2026-04-25",
+            open_value: 10,
+            high_value: 10.8,
+            low_value: 9.9,
+            close_value: 10.5,
+            volume: 100,
+            amount: 1_050,
+          },
+          {
+            trade_date: "2026-04-26",
+            open_value: 10.6,
+            high_value: 11.2,
+            low_value: 10.5,
+            close_value: 11,
+            volume: 300,
+            amount: 3_300,
+          },
+        ],
+      }),
+    );
+    vi.spyOn(client, "getStockKlineAnalysis").mockResolvedValue(
+      buildKlineAnalysisEnvelope({
+        indicators: { volume_ratio_20d: null },
+      }),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          reviewContext={{
+            sourceLabel: "复核队列",
+            sectorName: "AI",
+            reviewRank: 1,
+            distanceToBreakoutPct: "0.46%",
+          }}
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    const confirmation = await screen.findByTestId(
+      "stock-detail-review-checklist",
+    );
+    await waitFor(() =>
+      expect(confirmation).toHaveTextContent(`量能 ${EM_DASH}`),
+    );
+    expect(confirmation).not.toHaveTextContent("量能 3.0x");
   });
 
   it("renders event boundary timeline near the candidate decision", async () => {
@@ -1493,6 +1568,8 @@ describe("StockDetailDrawer", () => {
             pb: null,
             roe: null,
             dividend_yield: null,
+            total_mv: null,
+            circ_mv: null,
           },
         },
         { basis: "analytical", quality_flag: "missing" },

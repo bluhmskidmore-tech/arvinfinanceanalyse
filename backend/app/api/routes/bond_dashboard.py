@@ -5,8 +5,8 @@ from datetime import date
 from typing import Annotated, Literal
 
 from backend.app.api.deps import ensure_read_allowed
-from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
+from backend.app.observability.perf_logging import timed_api_call
 from backend.app.schemas.bond_dashboard import (
     BondDashboardAssetStructureEnvelope,
     BondDashboardBundleEnvelope,

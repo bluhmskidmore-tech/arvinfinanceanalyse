@@ -5,12 +5,12 @@ import json
 import logging
 import os
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import (
@@ -19,26 +19,40 @@ from backend.app.governance.settings import (
     resolve_postgres_dsn,
 )
 from backend.app.models.base import Base
-from backend.app.models.governance import CacheBuildRun, CacheManifest
-from sqlalchemy import create_engine, select
+from backend.app.models.governance import AgentAudit, AgentPrompt, CacheBuildRun, CacheManifest
+from backend.app.repositories.system_read_publication_repo import frozen_system_governance_rows
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import Table
 
 logger = logging.getLogger(__name__)
 
-_JSONL_READ_CACHE: dict[tuple[str, int, int], tuple[dict[str, object], ...]] = {}
-_JSONL_CACHE_KEY_INDEX: dict[tuple[str, int, int], dict[str, tuple[int, ...]]] = {}
+if TYPE_CHECKING:
+    from backend.app.agent.schemas.agent_run import AgentRunDeltaRecord
+
+_JSONL_READ_CACHE: dict[tuple[str, int, int, int], tuple[dict[str, object], ...]] = {}
+_JSONL_CACHE_KEY_INDEX: dict[tuple[str, int, int, int], dict[str, tuple[int, ...]]] = {}
+_JSONL_RUN_ID_INDEX: dict[tuple[str, int, int, int], dict[str, tuple[int, ...]]] = {}
 _JSONL_READ_CACHE_LOCK = threading.Lock()
 
 CACHE_BUILD_RUN_STREAM = "cache_build_run"
 CACHE_MANIFEST_STREAM = "cache_manifest"
+AGENT_AUDIT_STREAM = "agent_audit"
+AGENT_PROMPT_STREAM = "agent_prompt"
 SOURCE_MANIFEST_STREAM = "source_manifest"
 SNAPSHOT_BUILD_RUN_STREAM = "snapshot_build_run"
 SNAPSHOT_MANIFEST_STREAM = "snapshot_manifest"
 VENDOR_SNAPSHOT_MANIFEST_STREAM = "vendor_snapshot_manifest"
 VENDOR_VERSION_REGISTRY_STREAM = "vendor_version_registry"
-SUPPORTED_SQL_STREAMS = frozenset({CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM})
+SUPPORTED_SQL_STREAMS = frozenset(
+    {
+        CACHE_BUILD_RUN_STREAM,
+        CACHE_MANIFEST_STREAM,
+        AGENT_AUDIT_STREAM,
+        AGENT_PROMPT_STREAM,
+    }
+)
 SQL_BACKEND_MODES = frozenset({"sql-shadow", "sql-authority"})
 DEFAULT_GOVERNANCE_BACKEND = "jsonl"
 STREAM_CONTRACT_FIELDS: dict[str, tuple[str, ...]] = {
@@ -103,13 +117,15 @@ class GovernanceRepository:
                 poolclass=NullPool,
             )
             self._sql_tables = {
-                CACHE_BUILD_RUN_STREAM: CacheBuildRun.__table__,
-                CACHE_MANIFEST_STREAM: CacheManifest.__table__,
+                CACHE_BUILD_RUN_STREAM: cast(Table, CacheBuildRun.__table__),
+                CACHE_MANIFEST_STREAM: cast(Table, CacheManifest.__table__),
+                AGENT_AUDIT_STREAM: cast(Table, AgentAudit.__table__),
+                AGENT_PROMPT_STREAM: cast(Table, AgentPrompt.__table__),
             }
             if self._sql_engine.dialect.name == "sqlite":
                 Base.metadata.create_all(
                     self._sql_engine,
-                    tables=[CacheBuildRun.__table__, CacheManifest.__table__],
+                    tables=list(self._sql_tables.values()),
                 )
 
     def append(self, stream: str, payload: dict[str, object]) -> Path:
@@ -168,11 +184,144 @@ class GovernanceRepository:
                 raise
 
     def read_all(self, stream: str) -> list[dict[str, object]]:
+        frozen_rows = frozen_system_governance_rows(self.base_dir, stream)
+        if frozen_rows is not None:
+            return frozen_rows
         if self._reads_sql(stream):
             return self._read_all_sql(stream)
         with acquire_lock(self._batch_lock(), base_dir=self.base_dir, timeout_seconds=5.0):
             target = self.base_dir / f"{stream}.jsonl"
-            return _read_jsonl_file_cached(target)
+            rows = _read_jsonl_rows_cached(target)
+        # The cached tuple is a stable snapshot; appends replace cache entries
+        # rather than mutating these rows. Detach it after releasing the file
+        # lock so copying history cannot serialize unrelated readers/writers.
+        return _copy_jsonl_rows(rows)
+
+    def read_by_cache_keys(
+        self,
+        stream: str,
+        cache_keys: Iterable[str],
+    ) -> list[dict[str, object]]:
+        normalized_keys = frozenset(
+            cache_key
+            for value in cache_keys
+            if (cache_key := str(value or "").strip())
+        )
+        if not normalized_keys:
+            return []
+        frozen_rows = frozen_system_governance_rows(self.base_dir, stream)
+        if frozen_rows is not None:
+            return [
+                row
+                for row in frozen_rows
+                if str(row.get("cache_key") or "") in normalized_keys
+            ]
+        if self._reads_sql(stream):
+            return self._read_by_cache_keys_sql(stream, normalized_keys)
+        with acquire_lock(self._batch_lock(), base_dir=self.base_dir, timeout_seconds=5.0):
+            target = Path(self.base_dir) / f"{stream}.jsonl"
+            rows, cache_key_index = _read_jsonl_rows_and_index_cached(target)
+        if cache_key_index is None:
+            return [
+                deepcopy(row)
+                for row in rows
+                if str(row.get("cache_key") or "") in normalized_keys
+            ]
+        candidate_indices = sorted(
+            index
+            for cache_key in normalized_keys
+            for index in cache_key_index.get(cache_key, ())
+        )
+        return [
+            deepcopy(rows[index])
+            for index in candidate_indices
+            if str(rows[index].get("cache_key") or "") in normalized_keys
+        ]
+
+    def _run_rows_snapshot(
+        self, stream: str,
+    ) -> tuple[tuple[dict[str, object], ...], dict[str, tuple[int, ...]]]:
+        with acquire_lock(self._batch_lock(), base_dir=self.base_dir, timeout_seconds=5.0):
+            target = Path(self.base_dir) / f"{stream}.jsonl"
+            rows = _read_jsonl_rows_cached(target)
+            cache_key = _jsonl_file_cache_key(target)
+            if cache_key is None:
+                return (), {}
+            with _JSONL_READ_CACHE_LOCK:
+                run_index = _JSONL_RUN_ID_INDEX.get(cache_key)
+                if run_index is None:
+                    run_index = _build_jsonl_cache_key_index(rows, field_name="run_id")
+                    _JSONL_RUN_ID_INDEX[cache_key] = run_index
+            return rows, run_index
+
+    def read_by_run_id(
+        self, stream: str, run_id: str, *, latest_only: bool = False, strip_run_id: bool = False,
+    ) -> list[dict[str, object]]:
+        rows, run_index = self._run_rows_snapshot(stream)
+        indices = run_index.get(run_id.strip(), ())
+        def matches(row: dict[str, object]) -> bool:
+            value = str(row.get("run_id") or "")
+            return (value.strip() if strip_run_id else value) == run_id
+
+        if latest_only:
+            for index in reversed(indices):
+                if matches(rows[index]):
+                    return [deepcopy(rows[index])]
+            return []
+        return [deepcopy(rows[index]) for index in indices if matches(rows[index])]
+
+    def read_idempotent_agent_run(
+        self,
+        *,
+        matches: Callable[[dict[str, object]], bool],
+        sort_key: Callable[[dict[str, object]], Any],
+    ) -> dict[str, object] | None:
+        rows, run_index = self._run_rows_snapshot("agent_run")
+        selected: dict[str, object] | None = None
+        selected_key: Any = None
+        for indices in run_index.values():
+            for index in reversed(indices):
+                row = rows[index]
+                if matches(row):
+                    key = sort_key(row)
+                    if selected is None or key < selected_key:
+                        selected, selected_key = row, key
+                    break
+        return deepcopy(selected) if selected is not None else None
+
+    def read_run_deltas(
+        self,
+        run_id: str,
+        *,
+        owner_user_id: str,
+        after_seq: int,
+        validate: Callable[[dict[str, object]], AgentRunDeltaRecord],
+    ) -> list[AgentRunDeltaRecord]:
+        rows, run_index = self._run_rows_snapshot("agent_run_delta")
+        selected = []
+        for index in run_index.get(run_id.strip(), ()):
+            if str(rows[index].get("run_id") or "") != run_id:
+                continue
+            # Validate every row of this run before filtering, preserving the
+            # service's rejection of malformed old/foreign-owner delta rows.
+            # Delta fields are scalar; validated models detach from cached rows.
+            delta = validate(rows[index])
+            if delta.owner_user_id == owner_user_id and delta.seq > after_seq:
+                selected.append(delta)
+        return selected
+
+    def read_latest_by_run_id(
+        self,
+        stream: str,
+        *,
+        matches: Callable[[dict[str, object]], bool],
+        sort_key: Callable[[dict[str, object]], Any],
+        limit: int,
+    ) -> list[dict[str, object]]:
+        rows, run_index = self._run_rows_snapshot(stream)
+        selected = [rows[indices[-1]] for indices in run_index.values() if matches(rows[indices[-1]])]
+        selected.sort(key=sort_key, reverse=True)
+        return [deepcopy(row) for row in selected[:limit]]
 
     def _batch_lock(self) -> LockDefinition:
         digest = hashlib.sha256(str(self.base_dir).encode("utf-8")).hexdigest()[:8]
@@ -229,6 +378,26 @@ class GovernanceRepository:
             raise RuntimeError(f"SQL governance read failed for stream={stream}") from exc
         return [json.loads(str(row[0])) for row in rows]
 
+    def _read_by_cache_keys_sql(
+        self,
+        stream: str,
+        cache_keys: frozenset[str],
+    ) -> list[dict[str, Any]]:
+        assert self._sql_engine is not None
+        table = self._sql_tables[stream]
+        if "cache_key" not in table.c:
+            return []
+        try:
+            with self._sql_engine.connect() as connection:
+                rows = connection.execute(
+                    select(table.c.payload_json)
+                    .where(table.c.cache_key.in_(sorted(cache_keys)))
+                    .order_by(table.c.row_id.asc())
+                ).fetchall()
+        except Exception as exc:
+            raise RuntimeError(f"SQL governance read failed for stream={stream}") from exc
+        return [json.loads(str(row[0])) for row in rows]
+
     def _read_latest_row(
         self,
         stream: str,
@@ -236,6 +405,12 @@ class GovernanceRepository:
         *,
         cache_key: str | None = None,
     ) -> dict[str, object] | None:
+        frozen_rows = frozen_system_governance_rows(self.base_dir, stream)
+        if frozen_rows is not None:
+            for row in reversed(frozen_rows):
+                if matches(row):
+                    return row
+            return None
         if self._reads_sql(stream):
             return self._read_latest_sql(stream, matches)
         with acquire_lock(self._batch_lock(), base_dir=self.base_dir, timeout_seconds=5.0):
@@ -293,6 +468,73 @@ class GovernanceRepository:
 
         return self._read_latest_row(
             CACHE_MANIFEST_STREAM,
+            matches,
+            cache_key=cache_key_text,
+        )
+
+    def read_latest_run(
+        self,
+        cache_key: str,
+        *,
+        job_name: str | None = None,
+        report_date: str | None = None,
+    ) -> dict[str, object] | None:
+        """Read the latest matching run, including failed or unfinished runs."""
+        cache_key_text = str(cache_key or "").strip()
+        if not cache_key_text:
+            return None
+        job_name_text = str(job_name or "").strip()
+        report_date_text = str(report_date or "").strip()
+
+        def matches(row: dict[str, object]) -> bool:
+            if str(row.get("cache_key") or "").strip() != cache_key_text:
+                return False
+            if job_name is not None and str(row.get("job_name") or "").strip() != job_name_text:
+                return False
+            if report_date is not None and str(row.get("report_date") or "").strip() != report_date_text:
+                return False
+            return True
+
+        if self._reads_sql(CACHE_BUILD_RUN_STREAM):
+            frozen_rows = frozen_system_governance_rows(self.base_dir, CACHE_BUILD_RUN_STREAM)
+            if frozen_rows is not None:
+                return next((row for row in reversed(frozen_rows) if matches(row)), None)
+            assert self._sql_engine is not None
+            table = self._sql_tables[CACHE_BUILD_RUN_STREAM]
+            # SQL's default trim only removes spaces; preserve Python strip()
+            # for stored keys/jobs, which retain their original whitespace.
+            strip_characters = (
+                " \t\n\r\v\f\x1c\x1d\x1e\x1f\u0085\u00a0\u1680"
+                "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007"
+                "\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+            )
+            trim = func.btrim if self._sql_engine.dialect.name == "postgresql" else func.trim
+            statement = select(table.c.payload_json).where(
+                trim(table.c.cache_key, strip_characters) == cache_key_text,
+            )
+            if job_name is not None:
+                statement = statement.where(trim(table.c.job_name, strip_characters) == job_name_text)
+            if report_date is not None:
+                statement = statement.where(
+                    trim(func.coalesce(table.c.report_date, ""), strip_characters) == report_date_text,
+                )
+            # Select the latest run in any status, so a failed/unfinished run
+            # still blocks callers from using an older completed result.
+            statement = statement.order_by(table.c.row_id.desc()).limit(1)
+            try:
+                with self._sql_engine.connect() as connection:
+                    payload = connection.execute(statement).scalar_one_or_none()
+                    if payload is not None:
+                        row = json.loads(str(payload))
+                        return row if matches(row) else None
+            except Exception as exc:
+                raise RuntimeError(
+                    f"SQL governance read failed for stream={CACHE_BUILD_RUN_STREAM}"
+                ) from exc
+            return None
+
+        return self._read_latest_row(
+            CACHE_BUILD_RUN_STREAM,
             matches,
             cache_key=cache_key_text,
         )
@@ -359,11 +601,13 @@ class GovernanceRepository:
             ) from rollback_errors[0]
 
 
-def _jsonl_file_cache_key(path: Path) -> tuple[str, int, int] | None:
+def _jsonl_file_cache_key(path: Path) -> tuple[str, int, int, int] | None:
     if not path.exists():
         return None
     stat = path.stat()
-    return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    # Atomic compaction/replacement can preserve both size and mtime; the file
+    # identity distinguishes the replacement from the cached snapshot.
+    return (str(path.resolve()), stat.st_mtime_ns, stat.st_size, stat.st_ino)
 
 
 def _copy_jsonl_rows(rows: tuple[dict[str, object], ...]) -> list[dict[str, object]]:
@@ -375,10 +619,11 @@ def _copy_jsonl_rows(rows: tuple[dict[str, object], ...]) -> list[dict[str, obje
 
 def _build_jsonl_cache_key_index(
     rows: tuple[dict[str, object], ...],
+    *, field_name: str = "cache_key",
 ) -> dict[str, tuple[int, ...]]:
     buckets: dict[str, list[int]] = {}
     for index, row in enumerate(rows):
-        cache_key = str(row.get("cache_key") or "").strip()
+        cache_key = str(row.get(field_name) or "").strip()
         if not cache_key:
             continue
         buckets.setdefault(cache_key, []).append(index)
@@ -418,7 +663,7 @@ def _parse_jsonl_rows(path: Path, text: str) -> tuple[dict[str, object], ...]:
 
 
 def _store_jsonl_cache_entry(
-    cache_key: tuple[str, int, int],
+    cache_key: tuple[str, int, int, int],
     parsed_rows: tuple[dict[str, object], ...],
 ) -> tuple[dict[str, object], ...]:
     resolved_path = cache_key[0]
@@ -428,8 +673,10 @@ def _store_jsonl_cache_entry(
     for stale_key in stale_keys:
         del _JSONL_READ_CACHE[stale_key]
         _JSONL_CACHE_KEY_INDEX.pop(stale_key, None)
+        _JSONL_RUN_ID_INDEX.pop(stale_key, None)
     _JSONL_READ_CACHE[cache_key] = parsed_rows
     _JSONL_CACHE_KEY_INDEX[cache_key] = _build_jsonl_cache_key_index(parsed_rows)
+    _JSONL_RUN_ID_INDEX.pop(cache_key, None)
     return parsed_rows
 
 
@@ -504,6 +751,11 @@ def _sql_record_for_stream(stream: str, payload: dict[str, object]) -> dict[str,
             "payload_json": payload_json,
             "created_at": created_at,
         }
+    if stream in {AGENT_AUDIT_STREAM, AGENT_PROMPT_STREAM}:
+        return {
+            "payload_json": payload_json,
+            "created_at": created_at,
+        }
     raise KeyError(f"Unsupported SQL governance stream: {stream}")
 
 
@@ -561,9 +813,7 @@ def _resolve_governance_sql_dsn_for_repo(sql_dsn: str, *, backend_mode: str) -> 
 
 
 def _read_all_sql_statement(stream: str, table: Table):
-    if stream == CACHE_BUILD_RUN_STREAM:
-        return select(table.c.payload_json).order_by(table.c.row_id.asc())
-    if stream == CACHE_MANIFEST_STREAM:
+    if stream in SUPPORTED_SQL_STREAMS:
         return select(table.c.payload_json).order_by(table.c.row_id.asc())
     raise KeyError(f"Unsupported SQL governance stream: {stream}")
 

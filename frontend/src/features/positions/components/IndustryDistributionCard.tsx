@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Spin, Table } from "antd";
+import { Table } from "antd";
 import type { TableColumnsType } from "antd";
 
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import type { IndustryStatItem } from "../../../api/contracts";
 import { type EChartsOption } from "../../../lib/echarts";
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { POSITIONS_QUERY_STALE_TIME_MS } from "../model/positionsPageModel";
@@ -124,22 +124,21 @@ export default function IndustryDistributionCard({ startDate, endDate, subType }
     const values = items.map((it) => parseFloat(it.percentage));
     const colors = items.map((_, idx) => SERIES_PALETTE[industryPaletteIndex(idx)]);
 
+    /* tooltip 底色 / 边框 / 网格底边由 ChartCard 铬件统一。 */
     return {
-      grid: { left: 72, right: 16, top: 16, bottom: 16 },
+      grid: { left: 72, right: 16, top: 8 },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        backgroundColor: nocturneTokens.color.panel2,
-        borderColor: nocturneTokens.color.line,
-        borderWidth: 1,
-        textStyle: { color: nocturneTokens.color.ink, fontSize: 11 },
         formatter: (params: unknown) => {
           const list = Array.isArray(params) ? params : [params];
           const first = list[0] as { dataIndex?: number; value?: number } | undefined;
           const idx = first?.dataIndex ?? 0;
           const name = fullNames[idx] ?? "";
           const v = first?.value;
-          return `${name}<br/>占比：${typeof v === "number" ? v.toFixed(2) : v}%`;
+          const content = document.createElement("div");
+          content.append(name, document.createElement("br"), `占比：${typeof v === "number" ? v.toFixed(2) : v}%`);
+          return content;
         },
       },
       xAxis: {
@@ -178,37 +177,30 @@ export default function IndustryDistributionCard({ startDate, endDate, subType }
     [data?.items],
   );
 
+  /* 2026-09-02 迁入 ChartCard：五态由铬件承担，前五行明细表作为画布下方补充区。 */
+  const hasRange = Boolean(startDate && endDate);
+  const hasData = Boolean(data && data.items.length > 0);
   return (
-    <section className="positions-view__panel">
-      <div className="positions-view__panel-head">
-        <h3 className="positions-view__panel-title">行业分布</h3>
-        <span className="positions-view__panel-hint">
-          {data?.num_days != null ? `${data.num_days} 天` : EM_DASH} / 前十
-        </span>
-      </div>
-      {!startDate || !endDate ? (
-        <p className="positions-view__table-state">请先选择可用报告日</p>
-      ) : query.isLoading ? (
-        <div className="positions-view__table-state positions-view__table-state--loading">
-          <Spin />
-        </div>
-      ) : query.isError ? (
-        <p className="positions-view__table-state">行业分布暂不可用</p>
-      ) : data && data.items.length > 0 ? (
-        <>
-          {chartOption ? <BaseChart option={chartOption} height={220} /> : null}
-          <Table
-            size="small"
-            className="positions-view__table"
-            pagination={false}
-            scroll={{ x: "max-content" }}
-            dataSource={rows}
-            columns={INDUSTRY_COLUMNS}
-          />
-        </>
-      ) : (
-        <p className="positions-view__table-state">暂无数据</p>
-      )}
-    </section>
+    <ChartCard
+      title="行业分布"
+      question="日均前十"
+      unit={data?.num_days != null ? `${data.num_days} 天` : undefined}
+      legend="none"
+      option={hasRange && hasData ? chartOption : null}
+      state={!hasRange ? "empty" : query.isLoading ? "loading" : query.isError ? "error" : undefined}
+      emptyMessage={!hasRange ? "请先选择可用报告日" : "暂无数据"}
+      errorMessage="行业分布暂不可用"
+    >
+      {hasRange && hasData && !query.isLoading && !query.isError ? (
+        <Table
+          size="small"
+          className="positions-view__table"
+          pagination={false}
+          scroll={{ x: "max-content" }}
+          dataSource={rows}
+          columns={INDUSTRY_COLUMNS}
+        />
+      ) : null}
+    </ChartCard>
   );
 }

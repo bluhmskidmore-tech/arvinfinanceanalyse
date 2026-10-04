@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import cast
 
+from backend.app.core_finance.rate_units import NEGATIVE_YIELD_DIRTY_FLOOR
 from backend.app.repositories.duckdb_repo import DuckDBRepository
 
 Q8 = Decimal("0.00000001")
@@ -69,41 +70,64 @@ def _rate_coverage(
     }
 
 
-# zqtz 快照利率（ytm_value / coupon_rate）为百分数口径：无条件 /100；负值与 >20%
-# 视为脏数据置 None。对齐 core_finance.rate_units.normalize_percent_rate_to_decimal
-# 与 bond_analytics/engine.py 的权威口径（旧 `>1 and <=100` 启发式会把 ≤1% 的
-# 低票息券当成小数直通，按几十倍计入加权收益率）。
+# zqtz 快照利率（ytm_value / coupon_rate）为百分数口径：无条件 /100；>20% 视为脏数据
+# 置 None。负值：票息一律脏值；YTM 传入 ``negative_floor_percent``（百分数口径，含端点）
+# 后，[−20, 0) 是合法负收益率、低于 −20 才是脏值。对齐
+# core_finance.rate_units.normalize_percent_rate_to_decimal 与 bond_analytics/engine.py
+# 的权威口径（旧 `>1 and <=100` 启发式会把 ≤1% 的低票息券当成小数直通，按几十倍计入
+# 加权收益率）。同业 funding_cost_rate 不是收益率，不经此判定。
 RATE_DIRTY_MAX_PERCENT = Decimal("20")
+# 单一来源 rate_units.NEGATIVE_YIELD_DIRTY_FLOOR（小数 −0.20 → 百分数 −20），仅 YTM 调用方传入。
+YTM_NEGATIVE_FLOOR_PERCENT = Decimal(str(NEGATIVE_YIELD_DIRTY_FLOOR)) * ONE_HUNDRED
 
 
-def _normalize_rate_decimal(val: object | None, *, is_interbank: bool) -> Decimal | None:
+def _normalize_rate_decimal(
+    val: object | None,
+    *,
+    is_interbank: bool,
+    negative_floor_percent: Decimal | None = None,
+) -> Decimal | None:
     if val is None:
         return None
     rate = Decimal(str(val))
     if is_interbank:
         rate = rate / ONE_HUNDRED
         return rate.quantize(Q8, rounding=ROUND_HALF_UP)
-    if not rate.is_finite() or rate < 0 or rate > RATE_DIRTY_MAX_PERCENT:
+    negative_floor = Decimal(0) if negative_floor_percent is None else negative_floor_percent
+    if not rate.is_finite() or rate < negative_floor or rate > RATE_DIRTY_MAX_PERCENT:
         return None
     return (rate / ONE_HUNDRED).quantize(Q8, rounding=ROUND_HALF_UP)
 
 
-def _fmt_rate(val: object | None, *, is_interbank: bool) -> str | None:
-    normalized = _normalize_rate_decimal(val, is_interbank=is_interbank)
+def _fmt_rate(
+    val: object | None,
+    *,
+    is_interbank: bool,
+    negative_floor_percent: Decimal | None = None,
+) -> str | None:
+    normalized = _normalize_rate_decimal(
+        val, is_interbank=is_interbank, negative_floor_percent=negative_floor_percent
+    )
     if normalized is None:
         return None
     return format(normalized, "f")
 
 
-def _normalized_rate_sql(column: str, *, is_interbank: bool) -> str:
+def _normalized_rate_sql(
+    column: str,
+    *,
+    is_interbank: bool,
+    negative_floor_percent: Decimal | None = None,
+) -> str:
     if is_interbank:
         return (
             f"(case when {column} is null then null "
             f"else {column} / 100 end)"
         )
+    negative_floor = Decimal(0) if negative_floor_percent is None else negative_floor_percent
     return (
         f"(case when {column} is null then null "
-        f"when {column} < 0 or {column} > 20 then null "
+        f"when {column} < {negative_floor} or {column} > 20 then null "
         f"else {column} / 100 end)"
     )
 
@@ -256,7 +280,7 @@ class PositionsRepository(DuckDBRepository):
                     "market_value": _fmt_opt(row[4]),
                     "face_value": _fmt_opt(row[5]),
                     "valuation_net_price": format(net_price, "f") if net_price is not None else None,
-                    "yield_rate": _fmt_rate(row[7], is_interbank=False),
+                    "yield_rate": _fmt_rate(row[7], is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT),
                 }
             )
         return items, total
@@ -398,9 +422,9 @@ class PositionsRepository(DuckDBRepository):
             select issuer_name,
               sum(market_value_native) as total_amount,
               count(*) as transaction_count,
-              sum({_normalized_rate_sql("ytm_value", is_interbank=False)} * coalesce(market_value_native, 0)) as w_ytm_num,
+              sum({_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} * coalesce(market_value_native, 0)) as w_ytm_num,
               sum({_normalized_rate_sql("coupon_rate", is_interbank=False)} * coalesce(market_value_native, 0)) as w_cpn_num,
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end) as ytm_rate_den,
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then 0 else coalesce(market_value_native, 0) end) as ytm_rate_den,
               sum(case when {_normalized_rate_sql("coupon_rate", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end) as coupon_rate_den,
               sum(coalesce(market_value_native, 0)) as mv_sum
             from zqtz_bond_daily_snapshot
@@ -410,18 +434,17 @@ class PositionsRepository(DuckDBRepository):
             """,
             params,
         )
-        items_all = self._rows_to_counterparty_items(agg_rows, num_days)
         tot_mv_rows = self._fetch_rows(
             f"""
             select
               sum(coalesce(market_value_native, 0)),
-              sum({_normalized_rate_sql("ytm_value", is_interbank=False)} * coalesce(market_value_native, 0)),
+              sum({_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} * coalesce(market_value_native, 0)),
               sum({_normalized_rate_sql("coupon_rate", is_interbank=False)} * coalesce(market_value_native, 0)),
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then 0 else coalesce(market_value_native, 0) end),
               sum(case when {_normalized_rate_sql("coupon_rate", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end),
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then coalesce(market_value_native, 0) else 0 end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then coalesce(market_value_native, 0) else 0 end),
               sum(case when {_normalized_rate_sql("coupon_rate", is_interbank=False)} is null then coalesce(market_value_native, 0) else 0 end),
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 1 else 0 end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then 1 else 0 end),
               sum(case when {_normalized_rate_sql("coupon_rate", is_interbank=False)} is null then 1 else 0 end)
             from zqtz_bond_daily_snapshot
             where {where_sql}
@@ -443,12 +466,12 @@ class PositionsRepository(DuckDBRepository):
         tw_r = _weighted_rate_str(g_wytm, g_ytm_den)
         tw_c = _weighted_rate_str(g_wcpn, g_cpn_den)
 
-        capped = items_all
+        capped = agg_rows
         if top_n is not None and top_n > 0:
-            capped = items_all[:top_n]
+            capped = agg_rows[:top_n]
         offset = max(page - 1, 0) * max(page_size, 1)
         limit = max(page_size, 1)
-        page_items = capped[offset : offset + limit]
+        page_items = self._rows_to_counterparty_items(capped[offset : offset + limit], num_days)
 
         mv_by_issuer = [Decimal(str(row[1] or 0)) for row in agg_rows]
         top10_mv = sum(mv_by_issuer[:10], Decimal("0"))
@@ -468,7 +491,7 @@ class PositionsRepository(DuckDBRepository):
             "total_avg_daily": total_avg,
             "total_weighted_rate": tw_r,
             "total_weighted_coupon_rate": tw_c,
-            "total_customers": len(items_all),
+            "total_customers": len(agg_rows),
             "cr10_ratio": cr10_ratio,
             "ytm_rate_coverage": _rate_coverage(
                 g_ytm_den, g_ytm_missing_amount, g_ytm_missing_count, g_mv
@@ -648,8 +671,8 @@ class PositionsRepository(DuckDBRepository):
               end as rating_bucket,
               sum(market_value_native) as total_amount,
               count(*) as bond_count,
-              sum({_normalized_rate_sql("ytm_value", is_interbank=False)} * coalesce(market_value_native, 0)) as w_ytm_num,
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end) as ytm_rate_den
+              sum({_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} * coalesce(market_value_native, 0)) as w_ytm_num,
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then 0 else coalesce(market_value_native, 0) end) as ytm_rate_den
             from zqtz_bond_daily_snapshot
             where {where_sql}
             group by rating_bucket
@@ -661,9 +684,9 @@ class PositionsRepository(DuckDBRepository):
             f"""
             select
               sum(coalesce(market_value_native, 0)),
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end),
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then coalesce(market_value_native, 0) else 0 end),
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 1 else 0 end)
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then 0 else coalesce(market_value_native, 0) end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then coalesce(market_value_native, 0) else 0 end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then 1 else 0 end)
             from zqtz_bond_daily_snapshot
             where {where_sql}
             """,
@@ -728,8 +751,8 @@ class PositionsRepository(DuckDBRepository):
               end as ind_bucket,
               sum(market_value_native) as total_amount,
               count(*) as bond_count,
-              sum({_normalized_rate_sql("ytm_value", is_interbank=False)} * coalesce(market_value_native, 0)) as w_ytm_num,
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end) as ytm_rate_den
+              sum({_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} * coalesce(market_value_native, 0)) as w_ytm_num,
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then 0 else coalesce(market_value_native, 0) end) as ytm_rate_den
             from zqtz_bond_daily_snapshot
             where {where_sql}
             group by ind_bucket
@@ -742,9 +765,9 @@ class PositionsRepository(DuckDBRepository):
             f"""
             select
               sum(coalesce(market_value_native, 0)),
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end),
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then coalesce(market_value_native, 0) else 0 end),
-              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 1 else 0 end)
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then 0 else coalesce(market_value_native, 0) end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then coalesce(market_value_native, 0) else 0 end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT)} is null then 1 else 0 end)
             from zqtz_bond_daily_snapshot
             where {where_sql}
             """,
@@ -835,7 +858,7 @@ class PositionsRepository(DuckDBRepository):
                     "sub_type": str(row[1]) if row[1] is not None else None,
                     "asset_class": str(row[2]) if row[2] is not None else None,
                     "market_value": _fmt_amount(row[3]),
-                    "yield_rate": _fmt_rate(row[4], is_interbank=False),
+                    "yield_rate": _fmt_rate(row[4], is_interbank=False, negative_floor_percent=YTM_NEGATIVE_FLOOR_PERCENT),
                     "maturity_date": str(row[5]) if row[5] is not None else None,
                     "rating": str(rating_v) if rating_v is not None else "",
                     "industry": str(ind_v) if ind_v is not None else "",

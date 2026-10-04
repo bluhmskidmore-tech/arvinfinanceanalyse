@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from calendar import monthrange
 from dataclasses import dataclass
@@ -14,14 +15,27 @@ from backend.app.core_finance.config.product_category_contract import (
 from backend.app.core_finance.product_category_pnl import (
     ZERO,
     CanonicalFactRow,
+    derive_monthly_ledger_from_annual,
     derive_monthly_pnl,
 )
 from backend.app.services.source_file_hash import sha256_file
+
+logger = logging.getLogger(__name__)
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
 RULE_VERSION = PRODUCT_CATEGORY_RULE_VERSION
 SUPPORTED_CURRENCIES = {"CNX", "CNY"}
+# 总账工作簿必须同时含有这两个 sheet；其余 sheet（如「青岛地区综本」）一律排除。
+LEDGER_SHEET_NAMES = ("\u7efc\u672c", "\u4eba\u6c11\u5e01")
+
+
+class LedgerWorkbookSheetError(ValueError):
+    """总账工作簿缺失必需的命名 sheet（综本/人民币）时抛出，fail loud。"""
+
+
+class LedgerWorkbookPeriodError(ValueError):
+    """The ledger period cannot safely produce the requested monthly flow."""
 
 
 @dataclass(slots=True)
@@ -31,6 +45,7 @@ class SourcePair:
     ledger_path: Path
     avg_path: Path
     source_version: str
+    ledger_dependencies: tuple[Path, ...] = ()
 
 
 def discover_source_pairs(source_dir: Path) -> list[SourcePair]:
@@ -53,6 +68,7 @@ def discover_source_pairs(source_dir: Path) -> list[SourcePair]:
     for month_key in sorted(set(ledger_by_month) & set(avg_by_month)):
         year = int(month_key[:4])
         month = int(month_key[4:])
+        ledger_dependencies = _ledger_source_dependencies(ledger_by_month[month_key])
         pairs.append(
             SourcePair(
                 month_key=month_key,
@@ -62,7 +78,9 @@ def discover_source_pairs(source_dir: Path) -> list[SourcePair]:
                 source_version=_build_source_version(
                     ledger_by_month[month_key],
                     avg_by_month[month_key],
+                    ledger_dependencies,
                 ),
+                ledger_dependencies=ledger_dependencies,
             )
         )
     return pairs
@@ -82,6 +100,7 @@ def build_canonical_facts(pair: SourcePair) -> list[CanonicalFactRow]:
 
     facts: list[CanonicalFactRow] = []
     for account_code, currency in sorted(keys):
+        in_ledger = (account_code, currency) in ledger_rows
         ledger_row = ledger_rows.get((account_code, currency), {})
         facts.append(
             CanonicalFactRow(
@@ -95,6 +114,7 @@ def build_canonical_facts(pair: SourcePair) -> list[CanonicalFactRow]:
                 daily_avg_balance=Decimal(str(monthly_rows.get((account_code, currency), ZERO))),
                 annual_avg_balance=Decimal(str(annual_rows.get((account_code, currency), ZERO))),
                 days_in_period=monthrange(pair.report_date.year, pair.report_date.month)[1],
+                source_presence="ledger" if in_ledger else "average_only",
             )
         )
     return facts
@@ -129,13 +149,106 @@ def build_ledger_only_facts(pair: SourcePair) -> list[CanonicalFactRow]:
     return facts
 
 
+def _ledger_sheet_names(workbook, path: Path) -> tuple[str, ...]:
+    sheet_names: tuple[str, ...] = LEDGER_SHEET_NAMES
+    # Preserve the verified 2024 pre-closing source selection. Its actual period
+    # is validated separately before any amount is exposed as monthly PnL.
+    if path.name == f"{LEDGER_PREFIX}202412.xlsx" and not any(
+        name in workbook.sheetnames for name in LEDGER_SHEET_NAMES
+    ):
+        sheet_names = tuple(f"结转前{name}" for name in LEDGER_SHEET_NAMES)
+    missing_sheets = [name for name in sheet_names if name not in workbook.sheetnames]
+    if missing_sheets:
+        raise LedgerWorkbookSheetError(
+            f"Ledger workbook {path.name} is missing required sheet(s) "
+            f"{missing_sheets}; found sheets {list(workbook.sheetnames)}."
+        )
+    return sheet_names
+
+
+def _ledger_source_period(workbook, path: Path, sheet_names: tuple[str, ...]) -> tuple[date, date]:
+    periods: set[tuple[date, date]] = set()
+    for name in sheet_names:
+        sheet_periods: set[tuple[date, date]] = set()
+        for row in workbook[name].iter_rows(min_row=1, max_row=6, max_col=8, values_only=True):
+            for value in row:
+                text = str(value or "")
+                if "会计期间" not in text:
+                    continue
+                dates = re.findall(r"\d{4}-\d{2}-\d{2}", text)
+                try:
+                    if len(dates) != 2:
+                        raise ValueError("two period dates are required")
+                    sheet_periods.add((date.fromisoformat(dates[0]), date.fromisoformat(dates[1])))
+                except ValueError as exc:
+                    raise LedgerWorkbookPeriodError(
+                        f"Invalid ledger source period in {path.name} sheet {name!r}."
+                    ) from exc
+        if len(sheet_periods) != 1:
+            raise LedgerWorkbookPeriodError(
+                f"Missing or conflicting ledger source period in {path.name} sheet {name!r}."
+            )
+        periods.update(sheet_periods)
+    if len(periods) != 1:
+        raise LedgerWorkbookPeriodError(f"Inconsistent ledger source periods in {path.name}.")
+    start, end = next(iter(periods))
+    month_key = _extract_month_key(path.name)
+    if month_key is None:
+        raise LedgerWorkbookPeriodError(f"Missing report month for ledger source period in {path.name}.")
+    year, month = int(month_key[:4]), int(month_key[4:])
+    expected_end = date(year, month, monthrange(year, month)[1])
+    allowed_starts = {date(year, month, 1)}
+    if month == 12:
+        allowed_starts.add(date(year, 1, 1))
+    if end != expected_end or start not in allowed_starts:
+        raise LedgerWorkbookPeriodError(
+            f"Unsupported ledger source period {start}--{end} in {path.name}; "
+            f"expected its calendar month or a complete calendar year ending {expected_end}."
+        )
+    return start, end
+
+
+def _ledger_source_dependencies(
+    path: Path,
+    period: tuple[date, date] | None = None,
+) -> tuple[Path, ...]:
+    from openpyxl import load_workbook
+
+    if period is None:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
+            period = _ledger_source_period(workbook, path, _ledger_sheet_names(workbook, path))
+        finally:
+            workbook.close()
+    start, end = period
+    if start.month == end.month:
+        return ()
+    ledgers = {
+        _extract_month_key(candidate.name): candidate
+        for candidate in sorted(path.parent.glob(f"{LEDGER_PREFIX}*.xlsx"))
+    }
+    month_keys = [f"{end.year}{month:02d}" for month in range(1, 12)]
+    missing = [month_key for month_key in month_keys if month_key not in ledgers]
+    if missing:
+        raise LedgerWorkbookPeriodError(
+            f"Annual ledger source period in {path.name} is missing monthly dependencies: {', '.join(missing)}."
+        )
+    dependencies = tuple(ledgers[month_key] for month_key in month_keys)
+    for dependency in dependencies:
+        # Every preceding source must itself be the exact single calendar month.
+        _ledger_source_dependencies(dependency)
+    return dependencies
+
+
 def _parse_ledger_workbook(path: Path) -> dict[tuple[str, str], dict[str, object]]:
     from openpyxl import load_workbook
 
     workbook = load_workbook(path, read_only=True, data_only=True)
     rows: dict[tuple[str, str], dict[str, object]] = {}
     try:
-        for worksheet in workbook.worksheets[:2]:
+        sheet_names = _ledger_sheet_names(workbook, path)
+        period = _ledger_source_period(workbook, path, sheet_names)
+        for worksheet in (workbook[name] for name in sheet_names):
             for row in worksheet.iter_rows(min_row=7, values_only=True):
                 if not row:
                     continue
@@ -163,6 +276,18 @@ def _parse_ledger_workbook(path: Path) -> dict[tuple[str, str], dict[str, object
                 period_debit = _to_decimal(row[amount_offset + 1])
                 period_credit = _to_decimal(row[amount_offset + 2])
                 ending_balance = _to_decimal(row[amount_offset + 3])
+                if (account_code, currency) in rows:
+                    # 与候选链路 ledger.duplicate_full_code 控制语义对齐：重复键
+                    # 保持既有"后行覆盖前行"行为不变，但必须留下可观测证据。
+                    logger.warning(
+                        "ledger.duplicate_full_code: duplicate ledger key "
+                        "(account_code=%s, currency=%s) in sheet %r of %s; "
+                        "later row overrides the earlier row",
+                        account_code,
+                        currency,
+                        worksheet.title,
+                        path.name,
+                    )
                 rows[(account_code, currency)] = {
                     "account_name": str(row[name_index] or "").strip(),
                     "beginning_balance": beginning_balance,
@@ -171,6 +296,12 @@ def _parse_ledger_workbook(path: Path) -> dict[tuple[str, str], dict[str, object
                 }
     finally:
         workbook.close()
+    dependencies = _ledger_source_dependencies(path, period)
+    if dependencies:
+        rows = derive_monthly_ledger_from_annual(
+            rows,
+            [_parse_ledger_workbook(dependency) for dependency in dependencies],
+        )
     return rows
 
 
@@ -216,9 +347,13 @@ def _extract_month_key(file_name: str) -> str | None:
     return match.group(1)
 
 
-def _build_source_version(ledger_path: Path, avg_path: Path) -> str:
+def _build_source_version(
+    ledger_path: Path,
+    avg_path: Path,
+    ledger_dependencies: tuple[Path, ...] = (),
+) -> str:
     parts = []
-    for path in (ledger_path, avg_path):
+    for path in (ledger_path, avg_path, *ledger_dependencies):
         stat = path.stat()
         content_sha256 = sha256_file(path)[:16]
         parts.append(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}:{content_sha256}")

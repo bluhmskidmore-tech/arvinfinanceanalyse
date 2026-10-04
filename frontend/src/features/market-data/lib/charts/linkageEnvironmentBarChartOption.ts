@@ -19,16 +19,6 @@ export function truncateLinkageCategoryLabel(value: string, maxChars = 10): stri
   return value.length > maxChars ? `${value.slice(0, maxChars)}…` : value;
 }
 
-/** 纵向柱：正值圆角在顶端，负值圆角在底端（零线一侧保持直角）。 */
-function verticalBarBorderRadius(value: number): [number, number, number, number] {
-  return value >= 0 ? [2, 2, 0, 0] : [0, 0, 2, 2];
-}
-
-/** 横向条：正值圆角在右端，负值圆角在左端。 */
-function horizontalBarBorderRadius(value: number): [number, number, number, number] {
-  return value >= 0 ? [0, 2, 2, 0] : [2, 0, 0, 2];
-}
-
 export function buildLinkageEnvironmentBarOption(
   environmentScore: EnvironmentScoreInput | undefined,
 ): EChartsOption | null {
@@ -85,7 +75,6 @@ export function buildLinkageEnvironmentBarOption(
           itemStyle: {
             color: value >= 0 ? marketDataChartTheme.positiveBar : marketDataChartTheme.negativeBar,
             opacity: 0.84,
-            borderRadius: verticalBarBorderRadius(value),
           },
         })),
       },
@@ -112,11 +101,13 @@ export function buildDerivedSpreadsBarOption(
     tooltip: buildMarketDataChartTooltip({
       trigger: "axis",
       axisPointer: marketDataChartTheme.axisPointerShadow,
-      valueFormatter: (value: unknown) => (typeof value === "number" ? value.toFixed(2) : String(value)),
+      valueFormatter: (value: unknown) =>
+        typeof value === "number" ? `${value.toFixed(2)} bp` : String(value),
     }),
-    grid: { left: 120, right: 24, top: 10, bottom: 28, containLabel: true },
+    grid: { left: 120, right: 24, top: 10 },
     xAxis: {
       type: "value",
+      name: "bp",
       splitNumber: 3,
       axisLabel: marketDataChartTheme.axisLabel,
       splitLine: marketDataChartTheme.splitLine,
@@ -141,7 +132,6 @@ export function buildDerivedSpreadsBarOption(
           itemStyle: {
             color: value >= 0 ? marketDataChartTheme.derivedSpreadColor : marketDataChartTheme.negativeBar,
             opacity: 0.84,
-            borderRadius: horizontalBarBorderRadius(value),
           },
         })),
         barMaxWidth: LINKAGE_BAR_MAX_WIDTH,

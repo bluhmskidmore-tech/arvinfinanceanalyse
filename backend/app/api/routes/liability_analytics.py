@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
@@ -9,7 +9,9 @@ from backend.app.security.auth_context import AuthContext, ensure_user_allowed, 
 from backend.app.services.liability_analytics_service import (
     cockpit_warnings_payload,
     contribution_split_payload,
+    liabilities_monthly_detail_payload,
     liabilities_monthly_payload,
+    liabilities_monthly_summary_payload,
     liability_counterparty_payload,
     liability_risk_buckets_payload,
     liability_yield_by_period_payload,
@@ -108,12 +110,30 @@ def liability_counterparty(
 def liabilities_monthly(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int | None = Query(None, ge=2000, le=2100),
+    detail_level: Literal["full", "summary"] = Query("full"),
 ) -> dict[str, object]:
     _ensure_liability_analytics_read_allowed(auth)
     resolved_year = year or date.today().year
+    if detail_level == "summary":
+        return liabilities_monthly_summary_payload(
+            duckdb_path=str(get_settings().duckdb_path),
+            year=resolved_year,
+        )
     return liabilities_monthly_payload(
         duckdb_path=str(get_settings().duckdb_path),
         year=resolved_year,
+    )
+
+
+@router.get("/api/liabilities/monthly/detail")
+def liabilities_monthly_detail(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    month: str = Query(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+) -> dict[str, object]:
+    _ensure_liability_analytics_read_allowed(auth)
+    return liabilities_monthly_detail_payload(
+        duckdb_path=str(get_settings().duckdb_path),
+        month=month,
     )
 
 

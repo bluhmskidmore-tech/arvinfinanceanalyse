@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { LivermoreStrategyPayload } from "../../../api/contracts";
+import type {
+  LivermoreModuleState,
+  LivermoreOutputKey,
+  LivermoreStrategyPayload,
+} from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import { buildStockAnalysisKlineRadar } from "./stockAnalysisKlineRadarModel";
 
 function buildPayload(overrides: Partial<LivermoreStrategyPayload> = {}): LivermoreStrategyPayload {
@@ -41,6 +46,9 @@ function buildPayload(overrides: Partial<LivermoreStrategyPayload> = {}): Liverm
           sector_rank: 1,
           close: 21.9,
           breakout_level: 21.8,
+          distance_to_breakout_pct: 0.4587,
+          pattern: "突破观察（参考）",
+          pattern_code: "breakout",
           ema10: 20.6,
           ma20: 21.05,
           ma60: 19.05,
@@ -144,6 +152,33 @@ function queue(summary: ReturnType<typeof buildStockAnalysisKlineRadar>, key: st
   return found;
 }
 
+const MODULE_STATE_KEYS: LivermoreOutputKey[] = [
+  "market_gate",
+  "sector_rank",
+  "stock_candidates",
+  "uptrend_momentum_candidates",
+  "fresh_trend_watchlist",
+  "mean_reversion_candidates",
+  "factor_screen_candidates",
+  "theme_breakout",
+  "hybrid_fusion",
+  "risk_exit",
+];
+
+function readyModuleStates(): LivermoreModuleState[] {
+  return MODULE_STATE_KEYS.map((key) => ({
+    key,
+    state: "ready",
+    render_mode: "primary",
+    source_date: "2026-04-29",
+    lag_days: 0,
+    threshold_days: null,
+    reasons: [],
+    evidence_scope: "primary",
+    excludes_from_primary: false,
+  }));
+}
+
 describe("buildStockAnalysisKlineRadar", () => {
   it("derives k-line radar queues from the governed strategy snapshot", () => {
     const summary = buildStockAnalysisKlineRadar(buildPayload());
@@ -179,6 +214,7 @@ describe("buildStockAnalysisKlineRadar", () => {
       stockCode: "000001.SZ",
       signalLabel: "平台突破",
       detailSource: "livermore",
+      evidence: expect.arrayContaining(["距突破 +0.5%"]),
     });
     expect(queue(summary, "trend_continuation").items[0]).toMatchObject({
       stockCode: "000002.SZ",
@@ -193,6 +229,40 @@ describe("buildStockAnalysisKlineRadar", () => {
       stockCode: "000004.SZ",
       queueKey: "risk_exit",
     });
+  });
+
+  it("uses backend breakout geometry without recomputing from close and breakout", () => {
+    const payload = buildPayload();
+    payload.stock_candidates!.items[0] = {
+      ...payload.stock_candidates!.items[0],
+      close: 200,
+      breakout_level: 100,
+      distance_to_breakout_pct: -7.25,
+      pattern: "回撤观察（参考）",
+      pattern_code: "pullback",
+    };
+
+    const summary = buildStockAnalysisKlineRadar(payload);
+    const item = queue(summary, "breakout").items[0];
+
+    expect(item.signalLabel).toBe("回踩观察");
+    expect(item.evidence).toContain("距突破 -7.3%");
+  });
+
+  it("hides breakout distance evidence and shows a placeholder when geometry is missing", () => {
+    const payload = buildPayload();
+    payload.stock_candidates!.items[0] = {
+      ...payload.stock_candidates!.items[0],
+      distance_to_breakout_pct: null,
+      pattern: "突破观察（参考）",
+      pattern_code: null,
+    };
+
+    const summary = buildStockAnalysisKlineRadar(payload);
+    const item = queue(summary, "breakout").items[0];
+
+    expect(item.signalLabel).toBe(EM_DASH);
+    expect(item.evidence.some((value) => value.startsWith("距突破"))).toBe(false);
   });
 
   it("pauses mean-reversion radar when market gate is not WARM", () => {
@@ -451,5 +521,108 @@ describe("buildStockAnalysisKlineRadar", () => {
     expect(summary.riskTriggerCount).toBe(0);
     expect(summary.riskWatchCount).toBe(1);
     expect(queue(summary, "risk_exit").count).toBe(1);
+  });
+
+  it("maps all ten governed backend module states one-to-one", () => {
+    const summary = buildStockAnalysisKlineRadar(
+      buildPayload({ module_states: readyModuleStates() }),
+    );
+
+    expect(summary.moduleStates).toHaveLength(10);
+    expect(summary.moduleStates.map((item) => item.key)).toEqual(MODULE_STATE_KEYS);
+    expect(summary.moduleStates.map((item) => item.label)).toEqual([
+      "市场门控",
+      "板块强弱",
+      "趋势候选",
+      "上行动量",
+      "新趋势观察",
+      "超跌反转",
+      "多因子",
+      "题材观察",
+      "融合策略",
+      "风险退出",
+    ]);
+  });
+
+  it("distinguishes zero uptrend hits from evidence-only and unavailable states", () => {
+    const uptrendPayload = {
+      as_of_date: "2026-04-29",
+      formula_version: "rv_uptrend_momentum_candidates_v2",
+      market_state: "WARM" as const,
+      observation_only: true,
+      input_stock_count: 20,
+      candidate_count: 0,
+      excluded_stock_count: 20,
+      insufficient_history_count: 0,
+      items: [],
+    };
+    const readySummary = buildStockAnalysisKlineRadar(
+      buildPayload({
+        uptrend_momentum_candidates: uptrendPayload,
+        module_states: readyModuleStates(),
+      }),
+    );
+    expect(
+      readySummary.moduleStates.find((item) => item.key === "uptrend_momentum_candidates"),
+    ).toMatchObject({
+      stateLabel: "主结果",
+      outputCount: 0,
+      outputLabel: "命中 0",
+      tone: "positive",
+    });
+
+    const evidenceOnlyStates = readyModuleStates().map((state) =>
+      state.key === "uptrend_momentum_candidates"
+        ? {
+            ...state,
+            state: "degraded" as const,
+            render_mode: "evidence_only" as const,
+            excludes_from_primary: true,
+            evidence_scope: "detail" as const,
+            reasons: ["Uptrend momentum is observation only."],
+          }
+        : state,
+    );
+    const evidenceSummary = buildStockAnalysisKlineRadar(
+      buildPayload({
+        uptrend_momentum_candidates: uptrendPayload,
+        module_states: evidenceOnlyStates,
+      }),
+    );
+    expect(
+      evidenceSummary.moduleStates.find((item) => item.key === "uptrend_momentum_candidates"),
+    ).toMatchObject({
+      stateLabel: "证据模式",
+      outputCount: 0,
+      outputLabel: "命中 0",
+      tone: "warning",
+    });
+
+    const unavailableStates = readyModuleStates().map((state) =>
+      state.key === "uptrend_momentum_candidates"
+        ? {
+            ...state,
+            state: "unsupported" as const,
+            render_mode: "evidence_only" as const,
+            excludes_from_primary: true,
+            evidence_scope: "detail" as const,
+            reasons: ["Uptrend momentum inputs are unavailable."],
+          }
+        : state,
+    );
+    const unavailableSummary = buildStockAnalysisKlineRadar(
+      buildPayload({
+        uptrend_momentum_candidates: uptrendPayload,
+        module_states: unavailableStates,
+      }),
+    );
+    expect(
+      unavailableSummary.moduleStates.find((item) => item.key === "uptrend_momentum_candidates"),
+    ).toMatchObject({
+      stateLabel: "模块不可用",
+      outputCount: null,
+      outputLabel: "不可按 0 命中解释",
+      tone: "negative",
+    });
   });
 });

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 from calendar import monthrange
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from backend.app.core_finance.pnl import FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
 from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import SOURCE_MANIFEST_STREAM, GovernanceRepository
+from backend.app.repositories.object_store_repo import read_local_archive_bytes, resolve_local_archive_path
 from backend.app.services.source_file_hash import sha256_file
 
 SUPPORTED_PNL_SOURCE_FAMILIES = ("pnl", "pnl_514", "pnl_516", "pnl_517")
@@ -30,6 +32,7 @@ class PnlSourceSnapshot:
     source_version: str
     ingest_batch_id: str
     created_at: str
+    archive_root: Path | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -52,9 +55,11 @@ def load_latest_pnl_refresh_input(
     governance_dir: str | Path,
     data_root: str | Path | None = None,
     report_date: str | None = None,
+    archive_root: str | Path | None = None,
 ) -> PnlRefreshInput:
+    """Read configured archives; omitted archive_root is an offline compatibility API."""
     resolved_data_root = Path(data_root) if data_root is not None else resolve_pnl_data_input_root()
-    manifest_candidates = _manifest_candidates(governance_dir)
+    manifest_candidates = _manifest_candidates(governance_dir, archive_root=archive_root)
     direct_candidates = _direct_candidates(resolved_data_root)
 
     if report_date is None:
@@ -108,9 +113,10 @@ def list_pnl_refresh_report_dates(
     *,
     governance_dir: str | Path,
     data_root: str | Path | None = None,
+    archive_root: str | Path | None = None,
 ) -> list[str]:
     resolved_data_root = Path(data_root) if data_root is not None else resolve_pnl_data_input_root()
-    candidates = [*_manifest_candidates(governance_dir), *_direct_candidates(resolved_data_root)]
+    candidates = [*_manifest_candidates(governance_dir, archive_root=archive_root), *_direct_candidates(resolved_data_root)]
     return sorted({candidate.report_date for candidate in candidates}, reverse=True)
 
 
@@ -187,13 +193,14 @@ def _covered_range_candidates_for_report_date(
             source_version=candidate.source_version,
             ingest_batch_id=candidate.ingest_batch_id,
             created_at=candidate.created_at,
+            archive_root=candidate.archive_root,
         )
         for end_day, candidate in covered
         if end_day == nearest_end_day
     ]
 
 
-def _manifest_candidates(governance_dir: str | Path) -> list[PnlSourceSnapshot]:
+def _manifest_candidates(governance_dir: str | Path, *, archive_root: str | Path | None = None) -> list[PnlSourceSnapshot]:
     rows = GovernanceRepository(base_dir=governance_dir).read_all(SOURCE_MANIFEST_STREAM)
     snapshots: list[PnlSourceSnapshot] = []
     for row in rows:
@@ -207,7 +214,10 @@ def _manifest_candidates(governance_dir: str | Path) -> list[PnlSourceSnapshot]:
             continue
 
         path = Path(str(archived_path))
-        if not path.exists() or _is_processed_path(path):
+        if _is_processed_path(path):
+            continue
+        physical_path = resolve_local_archive_path(path, archive_root) if archive_root is not None else path
+        if not physical_path.exists():
             continue
 
         report_date = str(row.get("report_date") or "")
@@ -225,6 +235,7 @@ def _manifest_candidates(governance_dir: str | Path) -> list[PnlSourceSnapshot]:
                 source_version=str(row.get("source_version") or "sv_pnl_source_missing"),
                 ingest_batch_id=str(row.get("ingest_batch_id") or "ib_pnl_manifest"),
                 created_at=str(row.get("created_at") or ""),
+                archive_root=Path(archive_root) if archive_root is not None else None,
             )
         )
     return snapshots
@@ -306,7 +317,8 @@ def _latest_candidate_for_family(
 def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
     metadata = describe_source_file(snapshot.path.name)
     report_date = snapshot.report_date or metadata.report_date
-    workbook = xlrd.open_workbook(str(snapshot.path))
+    payload = read_local_archive_bytes(snapshot.path, snapshot.archive_root) if snapshot.archive_root is not None else None
+    workbook = xlrd.open_workbook(file_contents=payload) if payload is not None else xlrd.open_workbook(str(snapshot.path))
     sheet = workbook.sheet_by_index(0)
     headers = [str(sheet.cell_value(0, column)).strip() for column in range(sheet.ncols)]
     rows: list[dict[str, object]] = []
@@ -352,7 +364,8 @@ def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
 def _parse_nonstd_rows(snapshot: PnlSourceSnapshot, *, bucket: str) -> list[dict[str, object]]:
     from openpyxl import load_workbook
 
-    workbook = load_workbook(snapshot.path, read_only=True, data_only=True)
+    payload = read_local_archive_bytes(snapshot.path, snapshot.archive_root) if snapshot.archive_root is not None else None
+    workbook = load_workbook(io.BytesIO(payload) if payload is not None else snapshot.path, read_only=True, data_only=True)
     rows: list[dict[str, object]] = []
 
     try:

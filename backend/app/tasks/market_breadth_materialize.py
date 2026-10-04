@@ -15,10 +15,12 @@ flags come from ``choice_stock_daily_security_status`` when landed; missing
 stock-days fall back to the latest ``choice_stock_universe`` name snapshot at
 or before the trade date.
 
-The Tushare ``stk_limit`` price basis is kept only as an opt-in cross-check:
-pass ``limit_price_loader`` (for example :func:`_load_tushare_limit_prices`) to
-record an independent count alongside the flag basis. It never gates the
-result, so a vendor outage can no longer make ``limit_up_quality_ok`` missing.
+Tushare numeric HIGHLIMIT observations require matching same-day prices from
+the already-landed ``stock_limit_price_daily`` table. Both vendor identities
+and the two prices must agree before the core classifies high/close against
+that price. Missing or conflicting prices remain unclassified. The optional
+``limit_price_loader`` remains an evidence-only cross-check; this task does
+not fetch numeric prices unless that loader is explicitly supplied.
 
 Advance/decline breadth does not depend on the limit-up leg, so a date whose
 limit-up leg is unavailable still lands its breadth counts; only
@@ -32,20 +34,27 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
+import re
 import uuid
+from collections import Counter
 from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
+from typing import SupportsFloat, SupportsIndex, TypedDict, cast
 
 import duckdb
 import requests
 from backend.app.core_finance.market_breadth import (
     BREADTH_WINDOW_DAYS,
     LIMIT_PRICE_TOLERANCE,
+    LIMIT_TOUCH_OUT_OF_BAND,
+    LIMIT_TOUCH_UNCLASSIFIED,
     LimitUpDaySummary,
     LimitUpObservation,
     MarketBreadthDaily,
     build_gate_supplement_values,
+    classify_limit_touch,
     is_st_name,
     summarize_limit_up_day,
 )
@@ -62,12 +71,19 @@ MARKET_BREADTH_LOCK = LockDefinition(
 )
 logger = logging.getLogger(__name__)
 
-RULE_VERSION = "rv_market_breadth_daily_v3"
+RULE_VERSION = "rv_market_breadth_daily_v4"
 SOURCE_TABLE = "choice_stock_daily_observation"
 UNIVERSE_TABLE = "choice_stock_universe"
 DAILY_SECURITY_STATUS_TABLE = "choice_stock_daily_security_status"
 TABLE_NAME = "fact_market_breadth_daily"
 LIMIT_UP_BASIS = "choice_highlimit_flag_and_derived_limit_price"
+NUMERIC_LIMIT_TABLE = "stock_limit_price_daily"
+NUMERIC_LIMIT_SOURCE = "tushare_stk_limit"
+NUMERIC_LIMIT_UP_BASIS = "tushare_stk_limit_price"
+_NUMERIC_OBSERVATION_VENDOR = re.compile(
+    r"^vv_(?:choice_tushare_stock|livermore_supplement_tushare_sina)_(\d{8})_[0-9a-f]{12}$"
+)
+_NUMERIC_LIMIT_VENDOR = re.compile(r"^vv_tushare_stk_limit_(\d{8})_[0-9a-f]{12}$")
 TUSHARE_PRO_API_URL = "https://api.tushare.pro"
 TUSHARE_PRO_TIMEOUT_SECONDS = (10.0, 30.0)
 LimitPriceLoader = Callable[[date], dict[str, float]]
@@ -354,7 +370,7 @@ def _apply_limit_up_legs(
     """Classify sealed/broken boards for the dates being written, in place.
 
     Returns coverage evidence for the latest date plus the set of dates whose
-    limit-up leg stays unavailable (vendor flag absent for the whole day).
+    limit-up leg stays unavailable (no usable classification basis all day).
     """
     latest_trade_date = str(daily_rows[-1]["trade_date"])
     st_names_available = _table_exists(conn, UNIVERSE_TABLE)
@@ -375,7 +391,8 @@ def _apply_limit_up_legs(
         trade_date_text = str(row["trade_date"])
         if trade_date_text not in dates_to_write:
             continue
-        summary = summarize_limit_up_day(observations_by_date.get(trade_date_text, []))
+        observations = observations_by_date.get(trade_date_text, [])
+        summary = summarize_limit_up_day(observations)
         if trade_date_text == latest_trade_date:
             latest_summary = summary
         if not summary.evaluable:
@@ -383,10 +400,19 @@ def _apply_limit_up_legs(
             continue
         row["limit_up_sealed_count"] = summary.sealed_count
         row["limit_up_broken_count"] = summary.broken_count
-        row["vendor_version"] = (
-            f"{_vendor_version(trade_date_text)}+"
-            f"vv_choice_highlimit_flag_{trade_date_text.replace('-', '')}"
-        )
+        compact_date = trade_date_text.replace("-", "")
+        bases = []
+        if any(not observation.requires_numeric_limit for observation in observations):
+            bases.append(f"vv_choice_highlimit_flag_{compact_date}")
+        if any(observation.requires_numeric_limit for observation in observations):
+            numeric_basis = (
+                "price" if any(
+                    observation.numeric_limit_source == NUMERIC_LIMIT_SOURCE
+                    for observation in observations
+                ) else "unavailable"
+            )
+            bases.append(f"vv_tushare_stk_limit_{numeric_basis}_{compact_date}")
+        row["vendor_version"] = "+".join([_vendor_version(trade_date_text), *bases])
     evidence = _limit_up_evidence(
         latest_summary,
         observations=observations_by_date.get(latest_trade_date, []),
@@ -406,10 +432,60 @@ def _limit_up_evidence(
 ) -> dict[str, object]:
     """Coverage evidence for the latest date, including when it stays unavailable."""
     if summary is None:
-        return {"limit_up_basis": LIMIT_UP_BASIS, "limit_up_flag_basis_available": False}
+        return {
+            "limit_up_basis": LIMIT_UP_BASIS,
+            "limit_up_flag_basis_available": False,
+            "limit_up_classification_available": False,
+            "limit_up_price_basis_available": False,
+        }
+    numeric = [observation for observation in observations if observation.requires_numeric_limit]
+    choice = [observation for observation in observations if not observation.requires_numeric_limit]
+    numeric_outcomes = [classify_limit_touch(observation) for observation in numeric]
+    numeric_available = sum(
+        observation.numeric_limit_source == NUMERIC_LIMIT_SOURCE
+        and observation.numeric_up_limit is not None
+        and observation.numeric_limit_unavailable_reason is None
+        for observation in numeric
+    )
+    basis = LIMIT_UP_BASIS
+    coverage_note = _limit_up_coverage_note(
+        st_names_available=st_names_available,
+        daily_st_flags_available=daily_st_flags_available,
+    )
+    if numeric:
+        if choice:
+            basis = (
+                "choice_flags_and_tushare_stk_limit_price"
+                if numeric_available else "choice_flags_with_unavailable_numeric_prices"
+            )
+        else:
+            basis = NUMERIC_LIMIT_UP_BASIS if numeric_available else "numeric_limit_basis_unavailable"
+            coverage_note = ""
+        coverage_note = (
+            coverage_note + " Tushare numeric rows require verified same-day stock_limit_price_daily "
+            "prices agreeing with their numeric HIGHLIMIT. High and close determine seal/break "
+            "with the existing 0.005 yuan tolerance; missing/conflicting sources stay unclassified "
+            "and above-limit observations stay out_of_band."
+        ).strip()
     return {
-        "limit_up_basis": LIMIT_UP_BASIS,
-        "limit_up_flag_basis_available": summary.evaluable,
+        "limit_up_basis": basis,
+        "limit_up_flag_basis_available": bool(choice) and summarize_limit_up_day(choice).evaluable,
+        "limit_up_classification_available": summary.evaluable,
+        "limit_up_price_basis_available": any(
+            outcome not in {LIMIT_TOUCH_UNCLASSIFIED, LIMIT_TOUCH_OUT_OF_BAND}
+            for outcome in numeric_outcomes
+        ),
+        "limit_up_numeric_required_count": len(numeric),
+        "limit_up_numeric_price_available_count": numeric_available,
+        "limit_up_numeric_unclassified_count": numeric_outcomes.count(LIMIT_TOUCH_UNCLASSIFIED),
+        "limit_up_numeric_out_of_band_count": numeric_outcomes.count(LIMIT_TOUCH_OUT_OF_BAND),
+        "limit_up_numeric_unavailable_reason_counts": dict(Counter(
+            observation.numeric_limit_unavailable_reason
+            for observation in numeric if observation.numeric_limit_unavailable_reason is not None
+        )),
+        "limit_up_choice_flag_count": sum(
+            str(observation.limit_flag or "").strip() in {"是", "否"} for observation in choice
+        ),
         "limit_up_sealed_count": summary.sealed_count,
         "limit_up_broken_count": summary.broken_count,
         "limit_up_touched_count": summary.sealed_count + summary.broken_count,
@@ -436,10 +512,7 @@ def _limit_up_evidence(
         "limit_up_st_named_count": sum(
             1 for observation in observations if is_st_name(observation.stock_name)
         ),
-        "limit_up_coverage_note": _limit_up_coverage_note(
-            st_names_available=st_names_available,
-            daily_st_flags_available=daily_st_flags_available,
-        ),
+        "limit_up_coverage_note": coverage_note,
     }
 
 
@@ -518,6 +591,29 @@ def _load_limit_up_observations(
         if daily_st_flags_available
         else "cast(null as varchar)"
     )
+    observation_vendor_expression = (
+        "o.vendor_version"
+        if _table_has_columns(conn, SOURCE_TABLE, frozenset({"vendor_version"}))
+        else "cast(null as varchar)"
+    )
+    numeric_prices_available = _table_has_columns(
+        conn, NUMERIC_LIMIT_TABLE,
+        frozenset({"trade_date", "stock_code", "up_limit", "vendor_version"}),
+    )
+    numeric_price_join = (
+        f"""
+        left join {NUMERIC_LIMIT_TABLE} numeric_limit
+          on cast(numeric_limit.trade_date as varchar) = cast(o.trade_date as varchar)
+         and numeric_limit.stock_code = o.stock_code
+        """
+        if numeric_prices_available else ""
+    )
+    numeric_price_expression = (
+        "numeric_limit.up_limit" if numeric_prices_available else "cast(null as double)"
+    )
+    numeric_vendor_expression = (
+        "numeric_limit.vendor_version" if numeric_prices_available else "cast(null as varchar)"
+    )
     rows = conn.execute(
         f"""
         select
@@ -529,9 +625,13 @@ def _load_limit_up_observations(
           o.high_value,
           {name_expression} as stock_name,
           {st_flag_expression} as is_st,
-          {listing_date_expression} as listing_date
+          {listing_date_expression} as listing_date,
+          {observation_vendor_expression} as observation_vendor,
+          {numeric_price_expression} as numeric_up_limit,
+          {numeric_vendor_expression} as numeric_vendor
         from {SOURCE_TABLE} o
         {status_join}
+        {numeric_price_join}
         where cast(o.trade_date as varchar) in ({placeholders})
         """,
         trade_dates,
@@ -547,7 +647,17 @@ def _load_limit_up_observations(
         stock_name,
         is_st,
         listing_date,
+        observation_vendor,
+        numeric_up_limit,
+        numeric_vendor,
     ) in rows:
+        numeric_basis = _verified_numeric_limit_basis(
+            trade_date=str(trade_date),
+            limit_flag=limit_flag,
+            observation_vendor=observation_vendor,
+            numeric_up_limit=numeric_up_limit,
+            numeric_vendor=numeric_vendor,
+        )
         observations_by_date.setdefault(str(trade_date), []).append(
             LimitUpObservation(
                 stock_code=str(stock_code),
@@ -558,9 +668,63 @@ def _load_limit_up_observations(
                 stock_name=None if stock_name is None else str(stock_name),
                 is_st=None if is_st is None else bool(is_st),
                 listing_date=None if listing_date is None else str(listing_date),
+                **numeric_basis,
             )
         )
     return observations_by_date
+
+
+class _NumericLimitBasis(TypedDict, total=False):
+    requires_numeric_limit: bool
+    numeric_up_limit: float
+    numeric_limit_source: str
+    numeric_limit_unavailable_reason: str
+
+
+def _verified_numeric_limit_basis(
+    *,
+    trade_date: str,
+    limit_flag: object,
+    observation_vendor: object,
+    numeric_up_limit: object,
+    numeric_vendor: object,
+) -> _NumericLimitBasis:
+    """Validate landed provenance only; all high/close classification stays in core."""
+    vendor = str(observation_vendor or "")
+    numeric_family = vendor.startswith((
+        "vv_choice_tushare_stock_", "vv_livermore_supplement_tushare_sina_",
+    ))
+    try:
+        raw_price = float(cast(str | bytes | bytearray | memoryview | SupportsFloat | SupportsIndex, limit_flag))
+        numeric_payload = True
+    except (TypeError, ValueError):
+        raw_price = None
+        numeric_payload = False
+    if not numeric_family and not numeric_payload:
+        return {}
+    result: _NumericLimitBasis = {"requires_numeric_limit": True}
+    compact_date = trade_date.replace("-", "")
+    observation_match = _NUMERIC_OBSERVATION_VENDOR.fullmatch(vendor)
+    price_match = _NUMERIC_LIMIT_VENDOR.fullmatch(str(numeric_vendor or ""))
+    try:
+        price = float(cast(str | bytes | bytearray | memoryview | SupportsFloat | SupportsIndex, numeric_up_limit))
+    except (TypeError, ValueError):
+        price = None
+    if observation_match is None or observation_match.group(1) != compact_date:
+        reason = "unknown_observation_vendor"
+    elif raw_price is None or not math.isfinite(raw_price) or raw_price <= 0:
+        reason = "observation_numeric_limit_missing_or_invalid"
+    elif price is None or not math.isfinite(price) or price <= 0:
+        reason = "numeric_limit_price_missing_or_invalid"
+    elif price_match is None or price_match.group(1) != compact_date:
+        reason = "unknown_numeric_limit_vendor"
+    elif abs(raw_price - price) > LIMIT_PRICE_TOLERANCE:
+        reason = "conflicting_observation_and_numeric_limit"
+    else:
+        result.update({"numeric_up_limit": price, "numeric_limit_source": NUMERIC_LIMIT_SOURCE})
+        return result
+    result["numeric_limit_unavailable_reason"] = reason
+    return result
 
 
 def _cross_check_latest_limit_prices(

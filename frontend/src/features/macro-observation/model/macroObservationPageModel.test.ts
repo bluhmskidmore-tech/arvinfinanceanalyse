@@ -812,8 +812,8 @@ describe("buildCrisisEvidenceView", () => {
       componentMissingCount: 1,
       coverageNote: "组件覆盖按返回数组回退",
       history: [
-        { date: "2026-08-11", value: 1.98 },
-        { date: "2026-08-12", value: 2.54 },
+        { date: "2026-08-11", value: 1.98, availableComponentCount: null, componentCount: null },
+        { date: "2026-08-12", value: 2.54, availableComponentCount: null, componentCount: null },
       ],
     });
   });
@@ -868,7 +868,34 @@ describe("buildCrisisEvidenceView", () => {
     const view = buildCrisisEvidenceView(crisisCapabilityResult());
     const firstPoint = view.state === "ready" ? view.history[0] : undefined;
     expect(view.state === "ready" ? view.history.length : 0).toBe(2);
-    expect(firstPoint && Object.keys(firstPoint)).toEqual(["date", "value"]);
+    expect(firstPoint && Object.keys(firstPoint)).toEqual([
+      "date",
+      "value",
+      "availableComponentCount",
+      "componentCount",
+    ]);
+  });
+
+  it("score_history 逐点透出分项覆盖，缺字段回落 null 不用总数回填", () => {
+    const view = buildCrisisEvidenceView(
+      crisisCapabilityResult({
+        result: {
+          crisis_score: 2.54,
+          score_history: [
+            { date: "2026-08-11", crisis_score: 1.98, available_component_count: 2, component_count: 5 },
+            { date: "2026-08-12", crisis_score: 2.54, available_component_count: 5, component_count: 5 },
+            { date: "2026-08-13", crisis_score: 2.1, component_count: 5 },
+          ],
+        },
+      }),
+    );
+    const history = view.state === "ready" ? view.history : [];
+    expect(history.map((point) => [point.availableComponentCount, point.componentCount])).toEqual([
+      [2, 5],
+      [5, 5],
+      // 只给总数不给可用数：可用数保持 null，不拿 5 回填。
+      [null, 5],
+    ]);
   });
 
   it("result 缺字段时回落 EM_DASH（score 回落能力 score，双缺才 EM_DASH）", () => {

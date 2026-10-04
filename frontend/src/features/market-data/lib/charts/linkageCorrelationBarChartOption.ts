@@ -39,13 +39,7 @@ export function buildLinkageCorrelationBarOption(
       axisPointer: marketDataChartTheme.axisPointerShadow,
       valueFormatter: (value: unknown) => (typeof value === "number" ? value.toFixed(3) : String(value)),
     }),
-    legend: {
-      bottom: 0,
-      itemWidth: 16,
-      itemHeight: 8,
-      textStyle: marketDataChartTheme.axisLabel,
-    },
-    grid: { ...marketDataChartTheme.gridCompact, bottom: correlations.length > 3 ? 72 : 52 },
+    grid: { ...marketDataChartTheme.gridCompact },
     xAxis: {
       type: "category",
       data: categories,
@@ -80,10 +74,6 @@ export function buildLinkageCorrelationBarOption(
           itemStyle: {
             color: corrColor(value),
             opacity: value == null ? 0.35 : 0.82,
-            borderRadius:
-              value != null && value < 0
-                ? ([0, 0, 2, 2] as [number, number, number, number])
-                : ([2, 2, 0, 0] as [number, number, number, number]),
           },
         };
       }),

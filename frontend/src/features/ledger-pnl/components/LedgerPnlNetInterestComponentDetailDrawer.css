@@ -39,7 +39,7 @@
 .ledger-net-interest-detail__header h2 {
   margin: 3px 0;
   color: var(--dh-api-blue);
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .ledger-net-interest-detail__header span,
@@ -92,8 +92,8 @@
   border: 1px solid var(--moss-color-info-200);
   border-radius: var(--dh-api-radius);
   color: var(--dh-api-blue);
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .ledger-net-interest-detail__metric-grid {
@@ -114,7 +114,7 @@
 
 .ledger-net-interest-detail__metric-grid span {
   color: var(--dh-api-soft);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .ledger-net-interest-detail__metric-grid strong,
@@ -162,11 +162,11 @@
 .ledger-net-interest-detail__candidate-warning {
   flex: 0 0 auto;
   padding: 3px 6px;
-  border: 1px solid var(--moss-color-warning-300);
-  border-radius: var(--dh-api-radius);
-  background: var(--moss-color-warning-50);
+  border-radius: 0;
+  background: transparent;
   color: var(--dh-api-amber);
-  font-size: 11px;
+  font-size: 12px;
+  border: 0;
 }
 
 .ledger-net-interest-detail__toolbar {
@@ -180,7 +180,7 @@
   display: grid;
   gap: 3px;
   color: var(--dh-api-soft);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .ledger-net-interest-detail__toolbar input,
@@ -193,7 +193,7 @@
   background: var(--dh-api-panel);
   color: var(--dh-api-ink);
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .ledger-net-interest-detail__toolbar input:focus,
@@ -207,7 +207,7 @@
   align-self: center;
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -263,11 +263,12 @@
 .ledger-net-interest-detail__position {
   width: max-content;
   padding: 1px 4px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
+  border-radius: 0;
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
+  border: 0;
+  background: transparent;
 }
 
 .ledger-net-interest-detail__accounts tbody th small,
@@ -282,7 +283,7 @@
 .ledger-net-interest-detail__accounts details summary {
   cursor: pointer;
   color: var(--dh-api-blue);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .ledger-net-interest-detail__accounts ul {
@@ -317,7 +318,7 @@
   gap: 6px;
   padding: 18px 12px;
   color: var(--dh-api-soft);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .ledger-net-interest-detail__empty strong {
@@ -335,7 +336,7 @@
   padding: 8px 10px;
   color: var(--dh-api-blue);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .ledger-net-interest-detail__manual-copy {

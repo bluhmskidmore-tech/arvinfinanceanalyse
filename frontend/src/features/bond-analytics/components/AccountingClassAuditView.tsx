@@ -12,7 +12,7 @@ import {
   withNumericColumns,
 } from "./BondAnalyticsDetailPrimitives";
 import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
-import { SectionLead } from "./SectionLead";
+import { SectionHead } from "../../../components/layout";
 
 function matchLabel(raw: string | null): string {
   if (raw === null || raw === undefined || raw === "") {
@@ -131,11 +131,12 @@ export function AccountingClassAuditView({ reportDate }: Props) {
 
   return (
     <div className={detailStyles.view}>
-      <SectionLead
-        eyebrow="会计分类"
+      <SectionHead
+        category="会计分类"
         title="会计分类审计概览"
-        description="按报告日读取后端会计分类审计读模型；页面只对比推断路径与映射路径，不在前端重写会计分类。"
+        note="对比推断分类与映射分类，识别分类分歧。"
         testId="accounting-class-audit-shell-lead"
+        numbered={false}
       />
       {data.computed_at ? (
         <div style={{ fontSize: 12, color: "var(--dh-api-muted)" }} data-testid="accounting-class-audit-computed-at">
@@ -222,11 +223,12 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         </Col>
       </Row>
 
-      <SectionLead
-        eyebrow="规则"
+      <SectionHead
+        category="规则"
         title="分类路径说明"
-        description="说明推断会计分类与映射会计分类的来源和分歧含义，保留后端规则版本边界。"
+        note="查看两类分类依据及分歧含义。"
         testId="accounting-class-audit-rules-lead"
+        numbered={false}
       />
       <Card size="small">
         <div style={{ fontSize: 13, color: "var(--dh-api-muted)", marginBottom: 12 }}>
@@ -243,11 +245,12 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         </div>
       </Card>
 
-      <SectionLead
-        eyebrow="明细"
+      <SectionHead
+        category="明细"
         title="会计分类审计明细"
-        description="明细表继续展示后端行数据，保留分歧、未分类和一致状态标记。"
+        note="查看分类一致、存在分歧及尚未分类的资产明细。"
         testId="accounting-class-audit-detail-lead"
+        numbered={false}
       />
       {data.rows.length > 0 ? (
         <Card title="审计明细" size="small">

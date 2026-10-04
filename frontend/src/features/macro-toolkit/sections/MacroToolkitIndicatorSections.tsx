@@ -11,7 +11,7 @@ import type {
   MacroToolkitAnalysisPayload,
   MacroToolkitIndicator,
 } from "../../../api/macroToolkitClient";
-import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { SectionHead } from "../../../components/layout";
 import { EM_DASH } from "../../../utils/format";
 import { formatValue } from "../lib/macroToolkitCrisisSupport";
 import { formatChange, groupLabel, latestIndicatorDate } from "../lib/macroToolkitDisplayFormat";
@@ -176,6 +176,7 @@ const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     dataIndex: "latest_value",
     key: "latest_value",
     width: 118,
+    align: "right",
     render: (_, item) => <IndicatorValueCell item={item} />,
   },
   {
@@ -183,6 +184,7 @@ const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     dataIndex: "change_pct",
     key: "change_pct",
     width: 90,
+    align: "right",
     render: (_, item) => <DeltaCell change={item.change} changePct={item.change_pct} />,
   },
   {
@@ -208,10 +210,14 @@ const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     dataIndex: "source",
     key: "source",
     width: 132,
+    // 供应商名（tushare / choice / fx_daily_mid）是业务信息，留在正文；
+    // 供应商内部序列代码（CA.CSI300、EMM00058124…）是系统标识，收进单元格 title。
     render: (source: string | null, item) => (
-      <div className="macro-toolkit-source-cell">
+      <div
+        className="macro-toolkit-source-cell"
+        title={`${source ?? "未命中"} · ${item.series_id ?? item.alias}`}
+      >
         <span>{source ?? "未命中"}</span>
-        <small>{item.series_id ?? item.alias}</small>
       </div>
     ),
   },
@@ -226,14 +232,16 @@ export function MacroToolkitIndicatorSection({
 }) {
   return (
     <section id="macro-toolkit-indicator-matrix" className="macro-toolkit-section">
-      <PageSectionLead
-        eyebrow="指标"
+      <SectionHead
+        category="指标"
         title="指标矩阵"
-        description={
+        note={
           showOperations
             ? "展示每个宏观指标的最新值、变化、日期和数据来源。"
             : "只展示当前观察需要的指标结论；源表、行数和序列审计留在完整工具页。"
         }
+        numbered={{ counter: "mt-section" }}
+        contentGap="flush"
       />
       {!showOperations ? (
         <IndicatorObservationSummary indicators={analysis.indicators} />

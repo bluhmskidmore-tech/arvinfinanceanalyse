@@ -10,10 +10,6 @@ import { formatPercent } from "./macroToolkitPanelShared";
 
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
 
-export const MACRO_COMMODITY_SHADOW_RULE_VERSION = "shadow_rule_v1";
-export const MACRO_COMMODITY_SHADOW_MIN_SAMPLES = 20;
-export const MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES = 5;
-export const MACRO_COMMODITY_SHADOW_MIN_CORRELATION = 0.2;
 export const MACRO_COMMODITY_SUGGESTED_REFRESH_LOOKBACK_DAYS = 45;
 export const MACRO_COMMODITY_PRODUCT_OPTIONS = [
   { value: "RB", label: "螺纹钢", description: "黑色链条" },
@@ -177,7 +173,8 @@ export type CrisisCommodityAdmissionDecision = "recommend_include" | "watch" | "
 export type CrisisCommodityAdmissionItem = {
   field: string;
   label: string;
-  decision: CrisisCommodityAdmissionDecision;
+  /** `null` = backend omitted/returned an unrecognized decision (stale cache or contract drift); never treat as "do_not_include". */
+  decision: CrisisCommodityAdmissionDecision | null;
   decision_label: string;
   reason: string;
   next_step: string;
@@ -198,6 +195,9 @@ export type CrisisCommodityAdmission = {
   rule_version: string;
   scope: string;
   decision_counts: Record<CrisisCommodityAdmissionDecision, number>;
+  /** Global module-level thresholds from the envelope; not a per-item value (see `commodityAdmissionThresholds`). */
+  minimum_crisis_sample_count: number | null;
+  correlation_threshold: number | null;
   items: CrisisCommodityAdmissionItem[];
   warnings: string[];
   approval_required: boolean;
@@ -243,6 +243,15 @@ export type CrisisScoreHistoryPoint = {
   date: string;
   crisis_score: number;
   percentile: number | null;
+  /**
+   * 该历史点实际可计算的分项数，与权重表分项总数。早期历史可能只有部分分项
+   * 可用（后端记 degraded），此时读数与全分项读数不等价。
+   *
+   * 两者都从载荷原样读取，任一缺失或非有限数即为 null——**不得**用总数回填
+   * 缺失的可用数，否则会把降级历史洗成完整读数。
+   */
+  available_component_count: number | null;
+  component_count: number | null;
 };
 
 /** 从 crisis_score_cn 能力结果里读取后端返回的 score_history（完整分析才携带）。 */
@@ -265,7 +274,22 @@ export function crisisScoreHistoryFromResult(result: unknown): CrisisScoreHistor
     const percentile = typeof entry.percentile === "number" && Number.isFinite(entry.percentile)
       ? entry.percentile
       : null;
-    points.push({ date, crisis_score: score, percentile });
+    const availableComponentCount =
+      typeof entry.available_component_count === "number" &&
+      Number.isFinite(entry.available_component_count)
+        ? entry.available_component_count
+        : null;
+    const componentCount =
+      typeof entry.component_count === "number" && Number.isFinite(entry.component_count)
+        ? entry.component_count
+        : null;
+    points.push({
+      date,
+      crisis_score: score,
+      percentile,
+      available_component_count: availableComponentCount,
+      component_count: componentCount,
+    });
   }
   return points;
 }
@@ -466,6 +490,9 @@ export function normalizeCommodityAdmission(value: unknown): CrisisCommodityAdmi
     rule_version: typeof value.rule_version === "string" ? value.rule_version : "rule missing",
     scope: typeof value.scope === "string" ? value.scope : "scope missing",
     decision_counts: normalizeCommodityAdmissionDecisionCounts(value.decision_counts),
+    minimum_crisis_sample_count:
+      typeof value.minimum_crisis_sample_count === "number" ? value.minimum_crisis_sample_count : null,
+    correlation_threshold: typeof value.correlation_threshold === "number" ? value.correlation_threshold : null,
     items: Array.isArray(value.items)
       ? value.items.map(normalizeCommodityAdmissionItem).filter((item) => item !== null)
       : [],
@@ -511,11 +538,12 @@ export function normalizeCommodityAdmissionItem(value: unknown): CrisisCommodity
   };
 }
 
-export function normalizeCommodityAdmissionDecision(value: unknown): CrisisCommodityAdmissionDecision {
+/** Missing/unrecognized decision must surface as "unknown", never silently as a rejection. */
+export function normalizeCommodityAdmissionDecision(value: unknown): CrisisCommodityAdmissionDecision | null {
   if (value === "recommend_include" || value === "watch" || value === "do_not_include") {
     return value;
   }
-  return "do_not_include";
+  return null;
 }
 
 export function normalizeCommodityApprovalPack(value: unknown): CrisisCommodityApprovalPack | null {
@@ -630,170 +658,51 @@ export function formatCommodityShadowDecisionMetrics(evaluation: CrisisCommodity
   return parts.join(" · ");
 }
 
-export type CommodityPromotionRuleStatus = "ready_for_review" | "manual_review" | "not_recommended";
-export type CommodityPromotionRuleCheck = {
-  name: string;
-  status: CommodityPromotionRuleStatus;
-  value: string;
-};
-export type CommodityPromotionRuleItem = {
-  field: string;
-  label: string;
-  status: CommodityPromotionRuleStatus;
-  reason: string;
-  checks: CommodityPromotionRuleCheck[];
-};
-
-export function commodityPromotionRuleItem(item: CrisisCommodityCoverageItem): CommodityPromotionRuleItem {
-  const evaluation = item.shadow_evaluation;
-  if (!evaluation || evaluation.status !== "review_ready") {
-    return {
-      field: item.field,
-      label: item.label || item.field,
-      status: "not_recommended",
-      reason: "样本不足，先补齐历史数据",
-      checks: commodityPromotionRuleChecks(evaluation),
-    };
-  }
-  const hasEnoughSamples =
-    (evaluation.sample_count ?? 0) >= (evaluation.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES);
-  const hasCrisisSamples = (evaluation.crisis_sample_count ?? 0) >= MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES;
-  const correlation = Math.max(
-    Math.abs(evaluation.same_day_correlation ?? 0),
-    Math.abs(evaluation.lead_1d_correlation ?? 0),
-    Math.abs(evaluation.lag_1d_correlation ?? 0),
-  );
-  const hasReadableMetrics = evaluation.crisis_hit_rate != null && correlation > 0;
-  if (!hasEnoughSamples || !hasCrisisSamples || evaluation.crisis_hit_rate == null) {
-    return {
-      field: item.field,
-      label: item.label || item.field,
-      status: "not_recommended",
-      reason: "准入样本或危机期指标不足",
-      checks: commodityPromotionRuleChecks(evaluation),
-    };
-  }
-  if (!hasReadableMetrics || correlation < MACRO_COMMODITY_SHADOW_MIN_CORRELATION) {
-    return {
-      field: item.field,
-      label: item.label || item.field,
-      status: "manual_review",
-      reason: "相关性偏弱，需人工复核",
-      checks: commodityPromotionRuleChecks(evaluation),
-    };
-  }
-  return {
-    field: item.field,
-    label: item.label || item.field,
-    status: "ready_for_review",
-    reason: "影子指标满足准入检查，仍需审批确认",
-    checks: commodityPromotionRuleChecks(evaluation),
-  };
-}
-
-export function commodityPromotionRuleChecks(
-  evaluation: CrisisCommodityShadowEvaluation | null,
-): CommodityPromotionRuleCheck[] {
-  const isReviewReady = evaluation?.status === "review_ready";
-  const sampleCount = evaluation?.sample_count ?? null;
-  const minimumSampleCount = evaluation?.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES;
-  const crisisSampleCount = isReviewReady ? (evaluation.crisis_sample_count ?? null) : null;
-  const correlation = isReviewReady
-    ? Math.max(
-        Math.abs(evaluation.same_day_correlation ?? 0),
-        Math.abs(evaluation.lead_1d_correlation ?? 0),
-        Math.abs(evaluation.lag_1d_correlation ?? 0),
-      )
-    : null;
-  return [
-    {
-      name: "样本检查",
-      status:
-        typeof sampleCount === "number" && sampleCount >= minimumSampleCount
-          ? "ready_for_review"
-          : "not_recommended",
-      value: `${sampleCount ?? "缺失"}/${minimumSampleCount}`,
-    },
-    {
-      name: "危机样本检查",
-      status:
-        typeof crisisSampleCount === "number" && crisisSampleCount >= MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES
-          ? "ready_for_review"
-          : "not_recommended",
-      value: `${crisisSampleCount ?? "缺失"}/${MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES}`,
-    },
-    {
-      name: "相关性检查",
-      status:
-        correlation == null
-          ? "not_recommended"
-          : correlation >= MACRO_COMMODITY_SHADOW_MIN_CORRELATION
-            ? "ready_for_review"
-            : "manual_review",
-      value: typeof correlation === "number" ? formatSignedDecimal(correlation) : "缺失",
-    },
-    {
-      name: "命中率检查",
-      status: evaluation?.crisis_hit_rate == null ? "not_recommended" : "ready_for_review",
-      value: formatPercent(evaluation?.crisis_hit_rate),
-    },
-  ];
-}
-
-export function commodityPromotionRuleStatusLabel(status: CommodityPromotionRuleStatus) {
-  if (status === "ready_for_review") {
-    return "通过";
-  }
-  if (status === "manual_review") {
-    return "待人工判断";
-  }
-  return "不建议进入公式";
-}
-
-export function commodityPromotionRuleCheckStatusLabel(status: CommodityPromotionRuleStatus) {
-  if (status === "ready_for_review") {
-    return "通过";
-  }
-  if (status === "manual_review") {
-    return "待人工判断";
-  }
-  return "未通过";
-}
-
-export function commodityReviewConclusionLabel(status: CommodityPromotionRuleStatus) {
-  if (status === "ready_for_review") {
-    return "可进入人工复核";
-  }
-  if (status === "manual_review") {
-    return "继续观察";
-  }
-  return "不建议纳入";
-}
-
-export function commodityReviewConclusionColor(status: CommodityPromotionRuleStatus) {
-  if (status === "ready_for_review") {
-    return "green";
-  }
-  if (status === "manual_review") {
-    return "gold";
-  }
-  return "red";
-}
-
-export function commodityAdmissionDecisionColor(decision: CrisisCommodityAdmissionDecision) {
+export function commodityAdmissionDecisionColor(decision: CrisisCommodityAdmissionDecision | null) {
   if (decision === "recommend_include") {
     return "green";
   }
   if (decision === "watch") {
     return "gold";
   }
-  return "red";
+  if (decision === "do_not_include") {
+    return "red";
+  }
+  return "default";
+}
+
+/** Unknown decision must always display as "暂无判定", regardless of what `decision_label` carries. */
+export function commodityAdmissionDecisionDisplayLabel(item: CrisisCommodityAdmissionItem) {
+  return item.decision === null ? "暂无判定" : item.decision_label;
+}
+
+export type CommodityAdmissionThresholds = {
+  minimumCrisisSampleCount: number | null;
+  correlationThreshold: number | null;
+};
+
+/**
+ * 准入阈值直接读取后端 admission envelope 的全局字段（模块级常量透传），不在前端硬编码
+ * 第二份阈值常量，也不从 items[0] 借用逐行值：`minimum_sample_count` 是每个品种自己的
+ * shadow evaluation 样本量，不同品种可以不同，不能当全局阈值展示（见
+ * `formatCommodityAdmissionMetrics` 的逐行样本展示）。
+ */
+export function commodityAdmissionThresholds(
+  admission: CrisisCommodityAdmission | null,
+): CommodityAdmissionThresholds | null {
+  if (!admission) {
+    return null;
+  }
+  return {
+    minimumCrisisSampleCount: admission.minimum_crisis_sample_count,
+    correlationThreshold: admission.correlation_threshold,
+  };
 }
 
 export function formatCommodityAdmissionMetrics(item: CrisisCommodityAdmissionItem) {
   const sampleText =
     item.decision === "do_not_include" || item.sample_count == null
-      ? `样本 ${item.sample_count ?? "缺失"}/${item.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES}`
+      ? `样本 ${item.sample_count ?? "缺失"}/${item.minimum_sample_count ?? "缺失"}`
       : `样本 ${item.sample_count}`;
   return [
     sampleText,
@@ -809,13 +718,8 @@ export function formatCommodityAdmissionMetrics(item: CrisisCommodityAdmissionIt
     .join(" · ");
 }
 
+/** 后端拥有 next_step 文案（normalize 层已补 "下一步待确认" 兜底），前端不再按 decision 覆盖固定文案。 */
 export function formatCommodityAdmissionNextStep(item: CrisisCommodityAdmissionItem) {
-  if (item.decision === "recommend_include") {
-    return "提交人工复核与权重审批";
-  }
-  if (item.decision === "watch") {
-    return "复核相关性与危机期命中率";
-  }
   return item.next_step;
 }
 
@@ -826,43 +730,6 @@ export function formatCommodityApprovalPackFields(fields: string[]) {
 export function formatSignedDeltaFromPack(copyText: string) {
   const match = copyText.match(/shadow delta\s+([+-]?\d+(?:\.\d+)?)/);
   return match?.[1] ?? "缺失";
-}
-
-export function formatCommodityReviewConclusionMetrics(item: CrisisCommodityCoverageItem) {
-  const evaluation = item.shadow_evaluation;
-  if (!evaluation) {
-    return "影子评估缺失";
-  }
-  const minimumSampleCount = evaluation.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES;
-  const sampleText =
-    evaluation.status === "history_short" || evaluation.sample_count == null
-      ? `样本 ${evaluation.sample_count ?? "缺失"}/${minimumSampleCount}`
-      : `样本 ${evaluation.sample_count}`;
-  return [
-    sampleText,
-    `危机样本 ${evaluation.crisis_sample_count ?? "缺失"}`,
-    `命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
-    `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
-    item.latest_date ? `最新值日期 ${item.latest_date}` : null,
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join(" · ");
-}
-
-export function formatCommodityReviewConclusionNextStep(
-  status: CommodityPromotionRuleStatus,
-  item: CrisisCommodityCoverageItem,
-) {
-  if (status === "ready_for_review") {
-    return "下一步：提交人工复核与权重审批";
-  }
-  if (status === "manual_review") {
-    return "下一步：复核相关性与危机期命中率";
-  }
-  const sampleGap = item.shadow_evaluation?.sample_gap;
-  return typeof sampleGap === "number"
-    ? `下一步：先补齐历史数据，还差 ${sampleGap} 个样本`
-    : "下一步：先补齐历史数据";
 }
 
 export function formatCommodityShadowImpactDirectionDetail(items: CrisisCommodityCoverageItem[]) {
@@ -927,11 +794,16 @@ export function formatCommodityShadowContributionDetail(item: CrisisCommoditySha
     .join(" · ");
 }
 
+/**
+ * 审计包全部字段读取后端 admission 结论（decision/decision_label/reason/next_step/
+ * max_abs_correlation/correlation_threshold 等），不重跑准入规则；admission 缺失
+ * 时明确标注"暂无判定"，不回退本地阈值。样本阈值 `minimum_sample_count` 是逐品种取值
+ * （非全局常量），不在此处作为全局阈值陈述，只在逐行明细（`formatCommodityAdmissionMetrics`）
+ * 中展示。
+ */
 export function buildCommodityPromotionAuditPackCopyText(
-  promotionItems: CommodityPromotionRuleItem[],
+  admission: CrisisCommodityAdmission | null,
   counts: {
-    manualCount: number;
-    rejectedCount: number;
     analysisMeta?: ResultMeta | null;
     analysisAsOfDate?: string | null;
     reviewQueueItems: CrisisCommodityCoverageItem[];
@@ -946,6 +818,9 @@ export function buildCommodityPromotionAuditPackCopyText(
   const nextStepText = counts.summary
     ? formatCommodityActionQueueNextStep(counts.reviewQueueItems, counts.shortQueueItems, counts.summary)
     : "下一步待确认";
+  const thresholds = commodityAdmissionThresholds(admission);
+  const manualCount = admission?.decision_counts.watch ?? 0;
+  const rejectedCount = admission?.decision_counts.do_not_include ?? 0;
   return [
     "Crisis Score 商品候选审计包",
     `分析日期 ${counts.analysisMeta?.as_of_date ?? counts.analysisAsOfDate ?? "缺失"}`,
@@ -953,28 +828,28 @@ export function buildCommodityPromotionAuditPackCopyText(
     `vendor_version ${counts.analysisMeta?.vendor_version ?? "缺失"}`,
     `rule_version ${counts.analysisMeta?.rule_version ?? "缺失"}`,
     `cache_version ${counts.analysisMeta?.cache_version ?? "缺失"}`,
-    `规则版本 ${MACRO_COMMODITY_SHADOW_RULE_VERSION}`,
+    `规则版本 ${admission?.rule_version ?? "暂无判定"}`,
     "用途：商品候选进入公式前的影子复核",
     "边界：不写入 Crisis Score，不改变权重",
     "审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交",
-    `准入检查：样本>=${MACRO_COMMODITY_SHADOW_MIN_SAMPLES} / 危机样本>=${MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} / 相关性可读 / 命中率可读`,
-    `样本阈值 >=${MACRO_COMMODITY_SHADOW_MIN_SAMPLES} 个重叠样本`,
-    `危机样本阈值 >=${MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} 个高 Crisis Score 样本`,
-    `相关性阈值 |corr|>=${MACRO_COMMODITY_SHADOW_MIN_CORRELATION.toFixed(2)} 才可直接通过`,
+    admission
+      ? `准入检查：危机样本>=${thresholds?.minimumCrisisSampleCount ?? "缺失"} / 相关性可读 / 命中率可读 / 样本量按品种逐行核对（见下方明细，非全局阈值）`
+      : "准入检查：commodity_candidate_admission 缺失，暂无判定",
+    `危机样本阈值 >=${thresholds?.minimumCrisisSampleCount ?? "缺失"} 个高 Crisis Score 样本`,
+    `相关性阈值 |corr|>=${typeof thresholds?.correlationThreshold === "number" ? thresholds.correlationThreshold.toFixed(2) : "缺失"} 才可直接通过`,
     `人工复核队列 ${reviewQueueText}`,
     `补历史样本队列 ${shortQueueText}`,
     `处理顺序 ${nextStepText}`,
     formatOfficialCommodityInputAuditLine(counts.commodityInput),
-    `待人工判断 ${counts.manualCount}`,
-    `不建议进入公式 ${counts.rejectedCount}`,
+    `待人工判断 ${manualCount}`,
+    `不建议进入公式 ${rejectedCount}`,
     ...counts.coverageItems.map(formatCommodityAuditSourceLine),
-    ...promotionItems.flatMap((item) => [
-      `${item.label} · ${commodityPromotionRuleStatusLabel(item.status)} · ${item.reason}`,
-      ...item.checks.map(
-        (check) =>
-          `${item.label} · ${check.name} ${commodityPromotionRuleCheckStatusLabel(check.status)} ${check.value}`,
-      ),
-    ]),
+    ...(admission
+      ? admission.items.flatMap((item) => [
+          `${item.label} · ${commodityAdmissionDecisionDisplayLabel(item)} · ${item.reason}`,
+          `${item.label} · ${formatCommodityAdmissionMetrics(item)}`,
+        ])
+      : ["暂无判定：commodity_candidate_admission 缺失，请重新运行完整分析"]),
   ].join("\n");
 }
 

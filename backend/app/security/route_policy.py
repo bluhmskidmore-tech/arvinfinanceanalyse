@@ -6,7 +6,35 @@ from typing import Literal
 RoutePolicyClass = Literal["public", "internal", "admin"]
 RoutePolicyState = Literal["active", "reserved"]
 
-ADMIN_SCOPE_ACTIONS = frozenset({"backfill", "delete", "execute", "import", "refresh", "write"})
+ADMIN_SCOPE_ACTIONS = frozenset(
+    {"approve", "backfill", "delete", "execute", "import", "refresh", "write"}
+)
+# Every admin-class action is high risk: allow decisions bypass the scope-decision
+# cache (a revoke takes effect on the next check) and a grant bound to the viewer role
+# is refused. Keeping this equal to ADMIN_SCOPE_ACTIONS means approve/delete/backfill/
+# import cannot silently fall into the cached, viewer-grantable tier; a test pins the
+# set against every admin-class entry of POLICY_SCOPE_SEMANTICS.
+HIGH_RISK_SCOPE_ACTIONS = ADMIN_SCOPE_ACTIONS
+ROLE_POLICY_CLASSES: dict[str, RoutePolicyClass] = {
+    "admin": "admin",
+    "developer": "internal",
+    "ops": "internal",
+    "reader": "internal",
+    "reviewer": "internal",
+    "viewer": "internal",
+}
+_POLICY_CLASS_RANK: dict[RoutePolicyClass, int] = {
+    "public": 0,
+    "internal": 1,
+    "admin": 2,
+}
+
+
+def role_meets_policy_class(role: str | None, required_class: RoutePolicyClass) -> bool:
+    normalized_role = (role or "").strip().casefold()
+    # Unknown roles default to public-only so a future enforcement switch fails closed.
+    role_class = ROLE_POLICY_CLASSES.get(normalized_role, "public")
+    return _POLICY_CLASS_RANK[role_class] >= _POLICY_CLASS_RANK[required_class]
 
 
 @dataclass(frozen=True)

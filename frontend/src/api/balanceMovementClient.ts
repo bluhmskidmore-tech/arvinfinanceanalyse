@@ -10,8 +10,7 @@ import type {
   BalanceMovementPayload,
   BalanceMovementRefreshPayload,
 } from "./contracts";
-
-import { requestJson, type FetchLike } from "./transport";
+import { ActionRequestError, requestActionJson, requestJson, type FetchLike } from "./transport";
 
 const decimalPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
@@ -114,16 +113,21 @@ export function createRealBalanceMovementClient(options: {
       }
       return envelope;
     },
-    refreshBalanceMovementAnalysis: async ({ reportDate, currencyBasis = "CNX" }) => {
+    refreshBalanceMovementAnalysis: ({ reportDate, currencyBasis = "CNX" }) => {
       const path = `/ui/balance-movement-analysis/refresh?report_date=${encodeURIComponent(reportDate)}&currency_basis=${encodeURIComponent(currencyBasis)}`;
-      const response = await fetchImpl(`${baseUrl}${path}`, {
-        method: "POST",
-        headers: { Accept: "application/json" },
+      return requestActionJson<BalanceMovementRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        path,
+        { method: "POST" },
+        { errorDetail: "status-only" },
+      ).catch((error: unknown) => {
+        // Preserve this client's existing status-only refresh error contract.
+        if (error instanceof ActionRequestError) {
+          throw new Error(`Request failed: ${path} (${error.status})`);
+        }
+        throw error;
       });
-      if (!response.ok) {
-        throw new Error(`Request failed: ${path} (${response.status})`);
-      }
-      return (await response.json()) as BalanceMovementRefreshPayload;
     },
   };
 }

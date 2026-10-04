@@ -95,6 +95,16 @@ _DUCKDB_SERIES_SPECS = (
         ),
     ),
     _DuckDBSeriesSpec(
+        name="stock_adjustment_factor",
+        table_name="stock_adjustment_factor",
+        date_column="trade_date",
+        query=(
+            "select max(try_cast(trade_date as date)) "
+            "from stock_adjustment_factor "
+            "where adj_factor is not null and adj_factor > 0 and isfinite(adj_factor)"
+        ),
+    ),
+    _DuckDBSeriesSpec(
         name="livermore_gate_supplement",
         table_name="fact_livermore_gate_supplement_daily",
         date_column="trade_date",
@@ -163,10 +173,12 @@ def build_supply_freshness_report(
         stale_after_trading_days=stale_after_trading_days,
         critical_after_trading_days=critical_after_trading_days,
     )
+    latest_choice_stock_daily = _latest_choice_stock_daily_date(series)
     series.append(
         _read_theme_overlay_series(
             governance_path=governance_path,
             expected_date=expected_date,
+            latest_choice_stock_daily=latest_choice_stock_daily,
             stale_after_trading_days=stale_after_trading_days,
             critical_after_trading_days=critical_after_trading_days,
         )
@@ -309,6 +321,7 @@ def _read_theme_overlay_series(
     *,
     governance_path: Path | str,
     expected_date: date,
+    latest_choice_stock_daily: date | None,
     stale_after_trading_days: int,
     critical_after_trading_days: int,
 ) -> dict[str, object]:
@@ -347,6 +360,14 @@ def _read_theme_overlay_series(
             "status": "unavailable",
             "reason": "governance_report_date_invalid",
             "detail": _error_detail(exc),
+        }
+    if latest_choice_stock_daily == expected_date and latest_date < expected_date:
+        return {
+            **base,
+            "latest_date": latest_date.isoformat(),
+            "lag_trading_days": _trading_day_lag(latest_date, expected_date),
+            "status": "missing",
+            "reason": "exact_date_missing_for_latest_choice_observation",
         }
     return _dated_record(
         name=str(base["name"]),
@@ -478,6 +499,14 @@ def _trading_day_lag(latest_date: date, expected_date: date) -> int:
             lag += 1
         cursor += timedelta(days=1)
     return lag
+
+
+def _latest_choice_stock_daily_date(series: list[dict[str, object]]) -> date | None:
+    for item in series:
+        if item.get("name") != "choice_stock_daily":
+            continue
+        return _coerce_date(item.get("latest_date"))
+    return None
 
 
 def _coerce_date(value: object) -> date | None:

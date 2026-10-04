@@ -119,6 +119,11 @@ export type HomeDistributionSlice = {
   value: string;
   pct: string;
   pctRaw: number;
+  /**
+   * 后端未给 percentage 时，pctRaw 退化成「占最大档的比例」，pct 退化成条目数。
+   * 这两种回退值都不是组合占比，不能求和成百分比，也不能读作「占比」。
+   */
+  pctIsFallback?: boolean;
 };
 
 export type HomeRiskExposureMetric = {
@@ -231,6 +236,11 @@ export type MapToHomeBodyViewInput = {
   creditSpreadMigration: CreditSpreadMigrationPayload | null;
   returnDecomposition: ReturnDecompositionPayload | null;
   campisiFourEffects: CampisiFourEffectsPayload | null;
+  campisiRequested?: boolean;
+  campisiLoading?: boolean;
+  campisiError?: boolean;
+  campisiFormalUseAllowed?: boolean | null;
+  campisiResultMeta?: ResultMeta | null;
   yieldCurveTermStructure: YieldCurveTermStructurePayload | null;
   marketPoints: readonly ChoiceMacroLatestPoint[] | null;
   assetStructure: AssetStructurePayload | null;
@@ -478,8 +488,12 @@ function mapStructureSlices<T extends {
       state: payload?.items?.length ? state : displayState("empty", emptyLabel),
     };
   }
+  const sourceState = stateWithSourceMeta(state, meta, expectedReportDate);
+  if (sourceState.kind === "error" || sourceState.kind === "empty") {
+    return { slices: [], state: sourceState };
+  }
   return {
-    state: stateWithSourceMeta(state, meta),
+    state: sourceState,
     slices: payload.items.slice(0, 8).map((item, index) => ({
       id: `${getLabel(item) || "slice"}-${index}`,
       label: getLabel(item) || GAP,
@@ -490,28 +504,56 @@ function mapStructureSlices<T extends {
   };
 }
 
-function sourceMetaLabel(meta: ResultMeta | null | undefined): string {
+function sourceMetaLabel(meta: ResultMeta): string {
   const parts = [
-    meta?.quality_flag && meta.quality_flag !== "ok" ? `quality ${meta.quality_flag}` : "",
-    meta?.vendor_status && meta.vendor_status !== "ok" ? `vendor ${meta.vendor_status}` : "",
-    meta?.fallback_mode && meta.fallback_mode !== "none" ? `fallback ${meta.fallback_mode}` : "",
+    meta.quality_flag === "warning" ? "数据质量需复核" : "",
+    meta.quality_flag === "stale" || meta.vendor_status === "vendor_stale" ? "数据偏旧" : "",
+    meta.fallback_mode !== "none" ? "使用回退数据" : "",
   ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : "已接入";
+  return parts.length > 0 ? parts.join("，") : "已接入";
 }
 
 function stateWithSourceMeta(
   state: HomeTerminalListState,
   meta: ResultMeta | null | undefined,
+  expectedReportDate: string,
 ): HomeTerminalListState {
-  if (state.kind !== "ready" || !meta) {
+  // An omitted meta field preserves legacy direct adapter inputs. The real
+  // home-summary query explicitly supplies null when its envelope is absent.
+  if (state.kind !== "ready" || meta === undefined) {
     return state;
+  }
+  if (!meta) {
+    return displayState("error", "未返回质量信息，未展示");
+  }
+  if (
+    !["ok", "warning", "error", "stale", "missing"].includes(meta.quality_flag) ||
+    !["ok", "vendor_stale", "vendor_unavailable"].includes(meta.vendor_status) ||
+    !["none", "latest_snapshot"].includes(meta.fallback_mode)
+  ) {
+    return displayState("error", "质量信息不完整，未展示");
+  }
+  if (meta.quality_flag === "error" || meta.quality_flag === "missing" || meta.vendor_status === "vendor_unavailable") {
+    const reason = meta.quality_flag === "error" ? "数据质量错误"
+      : meta.quality_flag === "missing" ? "数据缺失" : "数据来源不可用";
+    return displayState("error", `${reason}，未展示`);
+  }
+  const effectiveDates = Array.from(new Set([
+    meta.resolved_report_date, meta.as_of_date, meta.fallback_date,
+  ].flatMap((date) => cleanDate(date) ? [cleanDate(date)] : [])));
+  if (effectiveDates.some((date) => date !== cleanDate(expectedReportDate))) {
+    return displayState("error", `数据日期 ${effectiveDates.join("、")} 与首页报告日 ${expectedReportDate} 不一致，未展示`);
+  }
+  if (typeof meta.evidence_rows === "number" && meta.evidence_rows <= 0) {
+    return displayState("empty", "暂无持仓证据，未展示");
   }
   if (
     meta.quality_flag !== "ok" ||
     meta.vendor_status === "vendor_stale" ||
     meta.fallback_mode !== "none"
   ) {
-    return displayState("partial", sourceMetaLabel(meta));
+    const stale = meta.quality_flag === "stale" || meta.vendor_status === "vendor_stale";
+    return displayState(stale ? "stale" : "partial", sourceMetaLabel(meta));
   }
   return state;
 }
@@ -555,9 +597,13 @@ function mapDistributionViewToSlices(
       state: distribution?.rows.length ? state : displayState("empty", emptyLabel),
     };
   }
+  const sourceState = stateWithSourceMeta(state, meta, expectedReportDate);
+  if (sourceState.kind === "error" || sourceState.kind === "empty") {
+    return { slices: [], state: sourceState };
+  }
   const maxRaw = Math.max(...distribution.rows.map((row) => row.valueRaw ?? 0), 0);
   return {
-    state: stateWithSourceMeta(state, meta),
+    state: sourceState,
     slices: distribution.rows.slice(0, 8).map((row) => {
       const pctRaw = percentageDisplayRaw(row.percentageRaw);
       return {
@@ -566,6 +612,7 @@ function mapDistributionViewToSlices(
         value: numericDisplay(metricFromDistributionRow(row)),
         pct: row.percentageDisplay ?? (row.count != null ? `${row.count}只` : GAP),
         pctRaw: pctRaw ?? (maxRaw > 0 && row.valueRaw != null ? (row.valueRaw / maxRaw) * 100 : 0),
+        pctIsFallback: pctRaw == null,
       };
     }),
   };
@@ -947,8 +994,12 @@ function buildRiskExposureMetrics(
   if (state.kind !== "ready" || !payload) {
     return { metrics: [], state };
   }
+  const sourceState = stateWithSourceMeta(state, meta, expectedReportDate);
+  if (sourceState.kind === "error" || sourceState.kind === "empty") {
+    return { metrics: [], state: sourceState };
+  }
   return {
-    state: stateWithSourceMeta(state, meta),
+    state: sourceState,
     metrics: [
       { id: "market-value", label: "总市值", value: numericValueOrGap(payload.total_market_value, "yuan") },
       { id: "dv01", label: "利率风险 DV01", value: dv01WanValueOrGap(payload.total_dv01) },
@@ -1156,6 +1207,12 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     macroNewsEvents: input.macroNewsEvents,
     todayIsoDate,
     campisiFourEffects: input.campisiFourEffects,
+    expectedReportDate: reportDate,
+    campisiRequested: input.campisiRequested,
+    campisiLoading: input.campisiLoading,
+    campisiError: input.campisiError,
+    campisiFormalUseAllowed: input.campisiFormalUseAllowed,
+    campisiResultMeta: input.campisiResultMeta,
     returnDecomposition: input.returnDecomposition,
     yieldCurveTermStructure: input.yieldCurveTermStructure,
     creditSpreadMigration: input.creditSpreadMigration,

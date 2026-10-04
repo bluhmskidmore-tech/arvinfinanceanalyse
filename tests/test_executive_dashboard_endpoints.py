@@ -63,6 +63,24 @@ def _ok_payload(result_kind: str) -> dict[str, object]:
     result: dict[str, object] = {}
     if result_kind == "executive.overview":
         result = {"title": "overview", "metrics": []}
+    elif result_kind == "home.snapshot":
+        result = {
+            "report_date": "2025-11-20",
+            "mode": "strict",
+            "source_surface": "executive_analytical",
+            "overview": {"title": "overview", "metrics": []},
+            "attribution": {
+                "title": "attribution",
+                "total": {"raw": None, "unit": "yuan", "display": "—", "precision": 2, "sign_aware": True},
+                "segments": [],
+            },
+            "domains_missing": [],
+            "domains_effective_date": {"balance_sheet": "2025-11-20", "pnl": "2025-11-20"},
+        }
+    elif result_kind == "home.research_reports":
+        result = {"report_date": "2025-11-20", "source_status": "empty", "items": [], "warnings": []}
+    elif result_kind == "home.income_trend":
+        result = {"report_date": "2025-11-20", "window": 7, "source_status": "empty", "points": [], "missing_components": [], "warnings": []}
     return {
         "result_meta": {
             "trace_id": f"tr_{result_kind}",
@@ -277,6 +295,38 @@ def test_home_snapshot_route_rejects_vendor_unavailable_envelope(monkeypatch):
 
     assert exc_info.value.status_code == 503
     assert "governed data" in str(exc_info.value.detail)
+
+
+def test_home_snapshot_http_discloses_unavailable_date_and_recovery(monkeypatch, tmp_path):
+    module, client = _client_with_stubbed_executive_services(monkeypatch, tmp_path)
+    payload = {
+        "result_meta": {
+            "vendor_status": "vendor_unavailable",
+            "filters_applied": {
+                "requested_report_date": "2026-08-28",
+                "latest_available_report_date": "2026-08-31",
+                "domains_missing": ["pnl"],
+            },
+        },
+        "result": {},
+    }
+    monkeypatch.setattr(module, "home_snapshot_envelope", lambda **_kwargs: payload)
+
+    response = client.get("/ui/home/snapshot?report_date=2026-08-28")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == {
+        "code": "home_report_date_unavailable",
+        "message": "报告日 2026-08-28 缺少正式损益数据，暂不能生成完整首页。最新可用报告日为 2026-08-31。",
+        "requested_report_date": "2026-08-28",
+        "latest_available_report_date": "2026-08-31",
+        "domains_missing": ["pnl"],
+    }
+
+    payload["result_meta"]["filters_applied"]["latest_available_report_date"] = None
+    response = client.get("/ui/home/snapshot?report_date=2026-08-28")
+    assert response.status_code == 503
+    assert "governed data" in response.json()["detail"]
 
 
 def test_excluded_executive_routes_stay_503_even_when_service_returns_ok(monkeypatch):

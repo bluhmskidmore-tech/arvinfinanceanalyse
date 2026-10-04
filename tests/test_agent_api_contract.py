@@ -63,12 +63,23 @@ def _seed_agent_scope(
 
 
 def _seed_agent_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    """Seed a user who may use the Agent entry *and* read every resource a local intent binds to.
+
+    ``agent:read`` alone only opens the Agent endpoints; each governed intent additionally
+    requires the read scope of the REST resource it queries (S-H2). Tests that need the
+    narrower "agent:read only" identity call ``_seed_agent_scope(..., action="read")`` directly.
+    """
+    from backend.app.services.agent_service import INTENT_READ_RESOURCES
+
     _seed_agent_scope(
         tmp_path,
         monkeypatch,
         action="read",
         user_id=user_id,
     )
+    store = _configure_agent_scope_store(tmp_path, monkeypatch)
+    for resource in sorted(set(INTENT_READ_RESOURCES.values())):
+        store.grant_scope(user_id=user_id, role=None, resource=resource, action="read")
 
 
 def _sample_agent_envelope():
@@ -293,6 +304,142 @@ def test_agent_enabled_endpoints_require_explicit_read_scope(tmp_path, monkeypat
     assert create_response.status_code == 403
     assert status_response.status_code == 403
     assert calls == []
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
+def test_agent_read_scope_alone_cannot_read_intent_bound_resources(tmp_path, monkeypatch) -> None:
+    """S-H2: agent:read only opens the Agent entry; each intent needs its REST resource's read scope."""
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    # agent:read only -- deliberately NOT the broad _seed_agent_read_scope helper.
+    _seed_agent_scope(tmp_path, monkeypatch, action="read")
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "environment": "production",
+                "agent_enabled": True,
+                "agent_provider": "local",
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
+            },
+        )(),
+    )
+    executed: list[str] = []
+
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        executed.append(request.question)
+        return _sample_agent_envelope()
+
+    def unexpected_run_create(*_args, **_kwargs):
+        raise AssertionError("POST /runs must not create a run without the intent's resource scope.")
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
+    monkeypatch.setattr(route_module, "create_agent_run", unexpected_run_create)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    # portfolio_overview reads BalanceAnalysisRepository -> balance_analysis:read
+    denied_query = client.post(
+        "/api/agent/query",
+        json={"question": "组合概览"},
+        headers=AGENT_READ_HEADERS,
+    )
+    # pnl_summary reads PnlRepository -> pnl:read (run creation is denied before dispatch)
+    denied_run = client.post(
+        "/api/agent/runs",
+        json={"question": "PnL summary"},
+        headers=AGENT_READ_HEADERS,
+    )
+
+    assert denied_query.status_code == 403
+    assert "balance_analysis" in denied_query.json()["detail"]
+    assert denied_run.status_code == 403
+    assert "pnl" in denied_run.json()["detail"]
+    assert executed == []
+
+    _configure_agent_scope_store(tmp_path, monkeypatch).grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
+
+    allowed_query = client.post(
+        "/api/agent/query",
+        json={"question": "组合概览"},
+        headers=AGENT_READ_HEADERS,
+    )
+    still_denied_run = client.post(
+        "/api/agent/runs",
+        json={"question": "PnL summary"},
+        headers=AGENT_READ_HEADERS,
+    )
+
+    assert allowed_query.status_code == 200
+    assert executed == ["组合概览"]
+    assert still_denied_run.status_code == 403
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
+def test_agent_intent_resource_resolution_mirrors_dispatch_rules() -> None:
+    """The pre-dispatch resource check must follow AnalysisViewTool.execute's routing exactly."""
+    from backend.app.agent.schemas.agent_request import AgentQueryRequest
+    from backend.app.security.route_policy import POLICY_SCOPE_SEMANTICS
+    from backend.app.services.agent_service import (
+        INTENT_READ_RESOURCES,
+        _build_intent_handlers,
+        resolve_agent_intent_read_resources,
+    )
+
+    # Every bound resource must be a real internal read scope already used by a REST route.
+    for resource in INTENT_READ_RESOURCES.values():
+        assert POLICY_SCOPE_SEMANTICS[(resource, "read")].policy_class == "internal", resource
+    # Every registered handler must be bound, except the ones that read no governed DuckDB data.
+    # A new intent added without a binding would silently fall back to agent:read only.
+    unbound_handlers = set(_build_intent_handlers("unused.duckdb", "unused-governance")) - set(
+        INTENT_READ_RESOURCES
+    )
+    assert unbound_handlers == {"gitnexus_status"}
+
+    def resources(question: str, **context) -> list[str]:
+        return resolve_agent_intent_read_resources(
+            AgentQueryRequest(question=question, context=context)
+        )
+
+    # Keyword / explicit intents bind to the repository they read.
+    assert resources("组合概览") == ["balance_analysis"]
+    assert resources("PnL summary") == ["pnl"]
+    assert resources("ping", intent="duration_risk") == ["risk_tensor"]
+    assert resources("ping", cube_query={"fact_table": "bond_analytics"}) == ["cube"]
+    # Provider / pure conversation / unknown paths read no governed data.
+    assert resources("ping") == []
+    assert resources("帮我判断今天的主要风险") == []
+    assert resources("ping", workflow_id="does_not_exist") == []
+    # Financial workflows: plan card reads nothing; execute mode runs every mapped intent.
+    assert resources("ping", workflow_id="pnl_review") == []
+    assert resources("ping", workflow_id="pnl_review", workflow_mode="execute") == [
+        "pnl",
+        "product_category_pnl",
+    ]
+    assert resources("ping", workflow_id="portfolio_review", workflow_mode="execute") == [
+        "balance_analysis",
+        "risk_tensor",
+        "bond_analytics",
+    ]
+    # Research workflow: plan card reads nothing; execute mode or explicit intent runs the handler.
+    assert resources("研究速读") == []
+    assert resources("研究速读", workflow_mode="execute") == ["choice_news.data"]
+    assert resources("ping", intent="research_radar_brief") == ["choice_news.data"]
 
 
 @pytest.mark.excluded_surface_regression
@@ -1091,6 +1238,57 @@ def test_financial_workflow_context_forces_local_executor_when_hermes_is_configu
 
 @pytest.mark.excluded_surface_acceptance
 @pytest.mark.surface_agent_mvp
+def test_standalone_workbench_analysis_uses_configured_hermes_executor():
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+    request = request_module.AgentQueryRequest(
+        question="解释当前页面的主要结论和风险点",
+        routing_surface="standalone_workbench",
+    )
+
+    provider, executor = route_module._resolve_agent_executor(
+        request,
+        type("SettingsStub", (), {"agent_provider": "hermes"})(),
+    )
+
+    assert provider == "hermes"
+    assert executor is route_module.execute_hermes_agent_query
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
+def test_standalone_workbench_analysis_rejects_silent_local_provider_fallback():
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+    request = request_module.AgentQueryRequest(
+        question="解释当前页面的主要结论和风险点",
+        routing_surface="standalone_workbench",
+    )
+
+    with pytest.raises(route_module.HTTPException) as exc_info:
+        route_module._resolve_agent_executor(
+            request,
+            type("SettingsStub", (), {"agent_provider": "local"})(),
+        )
+
+    assert exc_info.value.status_code == 503
+    assert "provider" in str(exc_info.value.detail).lower()
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_endpoints_reject_mutating_action_context(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -1155,6 +1353,8 @@ def test_agent_endpoints_reject_mutating_action_context(monkeypatch, tmp_path):
 def test_agent_query_requires_confirmation_token_for_confirmed_suggested_action(monkeypatch, tmp_path):
     from backend.app.agent.runtime.action_token import agent_action_confirmation_token
 
+    # 固定提交者身份为 fallback anonymous，与 token 内的签发 scope 对齐。
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
@@ -1188,7 +1388,10 @@ def test_agent_query_requires_confirmation_token_for_confirmed_suggested_action(
     confirmed_action = {
         "type": "execute_intent",
         "label": "Portfolio overview",
-        "payload": {"intent": "portfolio_overview"},
+        "payload": {
+            "intent": "portfolio_overview",
+            "confirmation_scope": {"user_id": "anonymous"},
+        },
     }
     confirmed_token = agent_action_confirmation_token(
         action_type=confirmed_action["type"],
@@ -1309,7 +1512,10 @@ def test_agent_query_rejects_expired_suggested_action_confirmation_token(monkeyp
     confirmed_action = {
         "type": "execute_intent",
         "label": "Portfolio overview",
-        "payload": {"intent": "portfolio_overview"},
+        "payload": {
+            "intent": "portfolio_overview",
+            "confirmation_scope": {"user_id": "anonymous"},
+        },
     }
     expired_token = agent_action_confirmation_token(
         action_type=confirmed_action["type"],
@@ -1508,8 +1714,10 @@ def test_external_provider_envelopes_sanitize_toolsets_and_mark_provider_runtime
         research_context=None,
     )
 
-    assert hermes.evidence.filters_applied["toolsets"] == "query"
-    assert hermes.result_meta.filters_applied["toolsets"] == "query"
+    assert hermes.evidence.filters_applied["toolsets"] == "web"
+    assert hermes.result_meta.filters_applied["toolsets"] == "web"
+    assert hermes.evidence.filters_applied["capability_scope"] == "evidence,query,research"
+    assert hermes.result_meta.filters_applied["capability_scope"] == "evidence,query,research"
     assert hermes.evidence.evidence_strength == "provider_runtime"
     assert hermes.result_meta.evidence_strength == "provider_runtime"
     assert hermes.result_meta.quality_flag == "warning"

@@ -8,7 +8,7 @@ import type {
   TeamPerformanceAssessmentIndicator,
   TeamPerformanceAssessmentWorkbookPayload,
 } from "../../api/contracts";
-import { buildMockTeamPerformanceAssessmentWorkbookPayload } from "../../api/teamPerformanceMockClient";
+import { buildMockTeamPerformanceAssessmentWorkbookPayload } from "../../mocks/teamPerformanceMockClient";
 import { EM_DASH } from "../../pageModel";
 import {
   type AssessmentIndicator2025,

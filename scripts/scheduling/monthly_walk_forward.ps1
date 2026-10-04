@@ -3,7 +3,7 @@
   Monthly walk-forward validation run with dated report archival.
 
 .DESCRIPTION
-  Runs scripts\run_walk_forward_validation.py against data\moss.duckdb and
+  Runs scripts\run_walk_forward_validation.py against the configured DuckDB and
   archives the Markdown report (plus the machine-readable JSON the script
   writes next to it) as docs\strategy-reports\walk-forward-YYYYMMDD.md/.json.
 
@@ -30,7 +30,8 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 }
 if ([string]::IsNullOrWhiteSpace($PythonExe)) {
-    $PythonExe = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+    . (Join-Path $RepoRoot "scripts\dev-python.ps1")
+    $PythonExe = Resolve-DevPython
 }
 if (-not (Test-Path $PythonExe)) {
     throw "PythonExe not found: $PythonExe"
@@ -56,7 +57,6 @@ function Write-Log {
 $reportPath = "docs\strategy-reports\walk-forward-$ReportDate.md"
 $scriptArgs = @(
     "scripts\run_walk_forward_validation.py",
-    "--db-path", "data\moss.duckdb",
     "--report-path", $reportPath
 )
 

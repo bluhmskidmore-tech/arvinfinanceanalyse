@@ -1,15 +1,17 @@
-import { Table } from "antd";
-import type { ColumnsType } from "antd/es/table";
-
-import type { BondDashboardHeadlinePayload, Numeric, PortfolioComparisonItem, PortfolioComparisonPayload } from "../../../api/contracts";
+import type {
+  BondDashboardHeadlinePayload,
+  Numeric,
+  PortfolioComparisonItem,
+  PortfolioComparisonPayload,
+} from "../../../api/contracts";
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableSummaryRow,
+} from "../../../components/layout";
 import { EM_DASH } from "../../../pageModel";
+import type { BondSectionDataState } from "../sectionStatus";
 import { formatDv01Wan, formatRatePercent, formatYears, formatYi, nativeToNumber } from "../utils/format";
-
-/** 数值列等宽（BondDashboardTableSections.css，section 文件已 import）。 */
-const NUM_CELL = "bond-dashboard-table-num-cell";
-
-/** antd 已废弃 rowKey(record, index) 的 index 参数，行键改为建行时预生成（`key` 为 antd 默认 rowKey）。 */
-type PortfolioRow = PortfolioComparisonItem & { key: string };
 
 function sumComplete(values: (Numeric | null | undefined)[]): number | null {
   let sum = 0;
@@ -21,114 +23,91 @@ function sumComplete(values: (Numeric | null | undefined)[]): number | null {
   return sum;
 }
 
-const COLUMNS: ColumnsType<PortfolioRow> = [
+const COLUMNS: readonly DataTableColumn<PortfolioComparisonItem>[] = [
   {
-    title: "组合名称",
-    dataIndex: "portfolio_name",
     key: "portfolio_name",
+    title: "组合名称",
     // 后端存在空名组合行（真实数据观察），缺名按缺值纪律渲染 EM_DASH。
-    render: (v: string) => (v && v.trim() ? v : EM_DASH),
+    render: (row) => (row.portfolio_name && row.portfolio_name.trim() ? row.portfolio_name : EM_DASH),
   },
   {
-    title: "规模(亿)",
-    dataIndex: "total_market_value",
-    key: "mv",
-    align: "right",
-    className: NUM_CELL,
-    render: (v: Numeric) => formatYi(v),
+    key: "total_market_value",
+    title: "规模",
+    unit: "亿",
+    align: "numeric",
+    render: (row) => formatYi(row.total_market_value),
   },
   {
-    title: "收益率(%)",
-    dataIndex: "weighted_ytm",
-    key: "ytm",
-    align: "right",
-    className: NUM_CELL,
-    render: (v: Numeric) => formatRatePercent(v),
+    key: "weighted_ytm",
+    title: "收益率",
+    unit: "%",
+    align: "numeric",
+    render: (row) => formatRatePercent(row.weighted_ytm),
   },
   {
-    title: "久期(年)",
-    dataIndex: "weighted_duration",
-    key: "dur",
-    align: "right",
-    className: NUM_CELL,
-    render: (v: Numeric) => formatYears(v),
+    key: "weighted_duration",
+    title: "久期",
+    unit: "年",
+    align: "numeric",
+    render: (row) => formatYears(row.weighted_duration),
   },
   {
-    title: "DV01(万元/bp)",
-    dataIndex: "total_dv01",
-    key: "dv01",
-    align: "right",
-    className: NUM_CELL,
-    render: (v: Numeric) => formatDv01Wan(v),
+    key: "total_dv01",
+    title: "DV01",
+    unit: "万元/bp",
+    align: "numeric",
+    render: (row) => formatDv01Wan(row.total_dv01),
   },
-  { title: "数量", dataIndex: "bond_count", key: "n", align: "right", className: NUM_CELL },
+  { key: "bond_count", title: "数量", align: "numeric" },
 ];
 
 export function PortfolioTable({
   data,
   headline,
-  loading,
+  state,
 }: {
   data: PortfolioComparisonPayload | undefined;
   headline: BondDashboardHeadlinePayload | undefined;
-  loading: boolean;
+  state: BondSectionDataState;
 }) {
-  const rows: PortfolioRow[] = (data?.items ?? []).map((item, index) => ({
-    ...item,
-    key: item.portfolio_name && item.portfolio_name.trim() ? item.portfolio_name : `unnamed-${index}`,
-  }));
+  const rows = data?.items ?? [];
   const totalMv = sumComplete(rows.map((r) => r.total_market_value));
   const totalDv01 = sumComplete(rows.map((r) => r.total_dv01));
   const totalBonds = rows.reduce((s, r) => s + r.bond_count, 0);
 
+  /* 收益率/久期合计取后端 headline 加权值，不在前端按行重算加权。 */
+  const summaryRow: DataTableSummaryRow = {
+    portfolio_name: "合计 / 后端加权",
+    total_market_value: formatYi(totalMv),
+    weighted_ytm: (
+      <span data-testid="bond-dashboard-portfolio-summary-ytm">
+        {headline ? formatRatePercent(headline.kpis.weighted_ytm) : EM_DASH}
+      </span>
+    ),
+    weighted_duration: (
+      <span data-testid="bond-dashboard-portfolio-summary-duration">
+        {headline ? formatYears(headline.kpis.weighted_duration) : EM_DASH}
+      </span>
+    ),
+    total_dv01: formatDv01Wan(totalDv01),
+    bond_count: totalBonds,
+  };
+
   return (
-    <div className="bond-dashboard-page__panel bond-dashboard-table-panel">
-      <h3 className="bond-dashboard-table-panel__title">组合表现</h3>
-      {loading ? (
-        <p className="bond-dashboard-page__surface bond-dashboard-page__surface--loading">
-          载入中…
-        </p>
-      ) : rows.length === 0 ? (
-        <p className="bond-dashboard-page__surface bond-dashboard-page__surface--empty">
-          暂无数据
-        </p>
-      ) : (
-        <Table<PortfolioRow>
-          size="small"
-          pagination={false}
-          columns={COLUMNS}
-          dataSource={rows}
-          scroll={{ x: "max-content" }}
-          summary={() => (
-            <Table.Summary fixed>
-              <Table.Summary.Row>
-                <Table.Summary.Cell index={0}>
-                  <strong>合计 / 后端加权</strong>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={1} align="right" className={NUM_CELL}>
-                  <strong>{formatYi(totalMv)}</strong>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={2} align="right" className={NUM_CELL}>
-                  <strong data-testid="bond-dashboard-portfolio-summary-ytm">
-                    {headline ? formatRatePercent(headline.kpis.weighted_ytm) : EM_DASH}
-                  </strong>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={3} align="right" className={NUM_CELL}>
-                  <strong data-testid="bond-dashboard-portfolio-summary-duration">
-                    {headline ? formatYears(headline.kpis.weighted_duration) : EM_DASH}
-                  </strong>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={4} align="right" className={NUM_CELL}>
-                  <strong>{formatDv01Wan(totalDv01)}</strong>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={5} align="right" className={NUM_CELL}>
-                  <strong>{totalBonds}</strong>
-                </Table.Summary.Cell>
-              </Table.Summary.Row>
-            </Table.Summary>
-          )}
-        />
-      )}
+    <div className="bond-dashboard-page__panel">
+      <div className="bond-dashboard-page__panel-head">
+        <h3 className="bond-dashboard-page__panel-head-title">组合表现</h3>
+      </div>
+      {/* 状态推导同行业分布表：骨架只在真的在读时出现，分区失败出错误面。 */}
+      <DataTable<PortfolioComparisonItem>
+        rows={data?.items}
+        rowKey="portfolio_name"
+        columns={COLUMNS}
+        status={state.status}
+        errorMessage={state.message ?? undefined}
+        summaryRow={summaryRow}
+        skeletonRows={6}
+      />
     </div>
   );
 }

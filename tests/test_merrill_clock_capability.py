@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_analysis_service as macro_toolkit_analysis
+from backend.app.services import macro_toolkit_presentation
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
 import importlib.util
 from datetime import date
 
 import pandas as pd
 import pytest
 
-import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.core_finance.macro import compute_merrill_clock_payload
 from backend.app.core_finance.macro.merrill_clock import (
     MERRILL_CLOCK_RULE_VERSION,
@@ -201,9 +204,9 @@ def test_merrill_clock_capability_card_surfaces_regime_and_top_asset() -> None:
     frame = _synthetic_clock_frame()
     raw = compute_merrill_clock_payload(frame, report_date=frame.index[-1].date())
     definition = next(
-        item for item in macro_toolkit_route._CAPABILITY_DEFINITIONS if item["key"] == "merrill_clock_cn"
+        item for item in macro_toolkit_support._CAPABILITY_DEFINITIONS if item["key"] == "merrill_clock_cn"
     )
-    card = macro_toolkit_route._capability_result_card(definition, raw)
+    card = macro_toolkit_analysis._capability_result_card(definition, raw)
 
     assert definition["route_status"] == "wired"
     assert definition["frontend_status"] == "visible"
@@ -232,14 +235,14 @@ def test_macro_capability_results_surfaces_merrill_clock_cn(monkeypatch) -> None
     report_date = frame.index[-1].date()
     expected = compute_merrill_clock_payload(frame, report_date=report_date)
 
-    monkeypatch.setattr(macro_toolkit_route, "_parse_report_date", lambda value: report_date)
+    monkeypatch.setattr(macro_toolkit_presentation, "_parse_report_date", lambda value: report_date)
     monkeypatch.setattr(
-        macro_toolkit_route,
+        macro_toolkit_support,
         "_load_macro_capability_context",
         lambda *_args, **_kwargs: ([], None, []),
     )
     monkeypatch.setattr(
-        macro_toolkit_route,
+        macro_toolkit_support,
         "load_series_by_aliases",
         lambda *_args, **_kwargs: {},
     )
@@ -261,36 +264,36 @@ def test_macro_capability_results_surfaces_merrill_clock_cn(monkeypatch) -> None
             )
         return list(reversed(rows))
 
-    monkeypatch.setattr(macro_toolkit_route, "_load_macro_wide_rows", fake_wide_rows)
+    monkeypatch.setattr(macro_toolkit_support, "_load_macro_wide_rows", fake_wide_rows)
     monkeypatch.setattr(
-        macro_toolkit_route,
+        macro_toolkit_support,
         "_risk_tensor_to_liquidity_inputs",
         lambda *_args, **_kwargs: ([], [], None),
     )
     monkeypatch.setattr(
-        macro_toolkit_route,
+        macro_toolkit_support,
         "build_bond_portfolio_profile",
         lambda *_args, **_kwargs: {"total_mv": 0.0, "weighted_duration": 0.0, "positions": []},
     )
-    monkeypatch.setattr(macro_toolkit_route, "_current_gov_curve", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(macro_toolkit_support, "_current_gov_curve", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(
-        macro_toolkit_route,
+        macro_toolkit_support,
         "_with_capability_input_evidence",
         lambda key, result, **_kwargs: result,
     )
     monkeypatch.setattr(
-        macro_toolkit_route,
+        macro_toolkit_support,
         "_source_checks_for_aliases",
         lambda *_args, **_kwargs: {},
     )
     # 避免无关能力拖垮组装：只验证 merrill 进入结果集
     monkeypatch.setattr(
-        macro_toolkit_route,
+        macro_toolkit_support,
         "_run_capability",
         lambda key, fn: fn() if key == "merrill_clock_cn" else {"data_status": "unavailable", "warnings": ["skipped"]},
     )
 
-    cards = macro_toolkit_route._macro_capability_results("unused.duckdb", report_date=report_date.isoformat())
+    cards = macro_toolkit_support._macro_capability_results("unused.duckdb", report_date=report_date.isoformat())
     by_key = {item["key"]: item for item in cards}
     assert "merrill_clock_cn" in by_key
     card = by_key["merrill_clock_cn"]
@@ -298,12 +301,12 @@ def test_macro_capability_results_surfaces_merrill_clock_cn(monkeypatch) -> None
     assert card["result"]["regime_label"] == expected["regime_label"]
     assert card["result"]["rule_version"] == MERRILL_CLOCK_RULE_VERSION
     assert card["headline"]
-    assert by_key["decision_summary"]["primary_metric"]["unit"] == f"/{len(macro_toolkit_route._CAPABILITY_DEFINITIONS) - 1}"
+    assert by_key["decision_summary"]["primary_metric"]["unit"] == f"/{len(macro_toolkit_support._CAPABILITY_DEFINITIONS) - 1}"
 
 
 def test_decision_summary_denominator_includes_merrill_clock() -> None:
-    non_decision = len(macro_toolkit_route._CAPABILITY_DEFINITIONS) - 1
-    assert any(item["key"] == "merrill_clock_cn" for item in macro_toolkit_route._CAPABILITY_DEFINITIONS)
+    non_decision = len(macro_toolkit_support._CAPABILITY_DEFINITIONS) - 1
+    assert any(item["key"] == "merrill_clock_cn" for item in macro_toolkit_support._CAPABILITY_DEFINITIONS)
     cards = [
         {
             "key": f"m{index}",
@@ -317,9 +320,9 @@ def test_decision_summary_denominator_includes_merrill_clock() -> None:
         for index in range(non_decision)
     ]
     definition = next(
-        item for item in macro_toolkit_route._CAPABILITY_DEFINITIONS if item["key"] == "decision_summary"
+        item for item in macro_toolkit_support._CAPABILITY_DEFINITIONS if item["key"] == "decision_summary"
     )
-    card = macro_toolkit_route._decision_summary_card(definition, cards, date(2026, 7, 10))
+    card = macro_toolkit_support._decision_summary_card(definition, cards, date(2026, 7, 10))
     assert card["primary_metric"]["unit"] == f"/{non_decision}"
     assert non_decision >= 11  # M7-M15 + Crisis + Merrill
 
@@ -371,7 +374,7 @@ def test_wide_ffill_stops_after_monthly_stale_cap() -> None:
     pmi_last = date(2026, 4, 1)  # ~100 天前，超过 monthly 65d 上限
     frames_by_alias = {
         alias: pd.DataFrame(columns=["date", "value", "series_id", "vendor_name"])
-        for _, alias in macro_toolkit_route._WIDE_SERIES_ALIASES
+        for _, alias in macro_toolkit_support._WIDE_SERIES_ALIASES
     }
     frames_by_alias["M0017126"] = pd.DataFrame(
         {
@@ -390,7 +393,7 @@ def test_wide_ffill_stops_after_monthly_stale_cap() -> None:
         }
     )
 
-    wide_rows = macro_toolkit_route._load_macro_wide_rows(
+    wide_rows = macro_toolkit_support._load_macro_wide_rows(
         "unused.duckdb",
         report_date,
         [],
@@ -402,7 +405,7 @@ def test_wide_ffill_stops_after_monthly_stale_cap() -> None:
         for row in wide_rows
         if row.get("trade_date") is not None
         and (row["trade_date"] - pmi_last).days
-        > macro_toolkit_route._WIDE_FFILL_MAX_STALE_DAYS["monthly"]
+        > macro_toolkit_support._WIDE_FFILL_MAX_STALE_DAYS["monthly"]
     ]
     assert late_rows
     assert all("pmi" not in row for row in late_rows)
@@ -411,7 +414,7 @@ def test_wide_ffill_stops_after_monthly_stale_cap() -> None:
         for row in wide_rows
         if row.get("trade_date") is not None
         and 0 < (row["trade_date"] - pmi_last).days
-        <= macro_toolkit_route._WIDE_FFILL_MAX_STALE_DAYS["monthly"]
+        <= macro_toolkit_support._WIDE_FFILL_MAX_STALE_DAYS["monthly"]
     ]
     assert early_rows
     assert any("pmi" in row for row in early_rows)
@@ -421,7 +424,7 @@ def test_capability_input_evidence_marks_stale_required_inputs() -> None:
     # M-4: 两年前一条记录仍 available，但必须标 stale 并降级。
     report_date = date(2026, 7, 10)
     source_check_cache: dict[str, dict[str, object]] = {}
-    for requirement in macro_toolkit_route._CAPABILITY_INPUT_REQUIREMENTS["merrill_clock_cn"]:
+    for requirement in macro_toolkit_support._CAPABILITY_INPUT_REQUIREMENTS["merrill_clock_cn"]:
         for alias in requirement["aliases"]:
             source_check_cache[str(alias)] = {
                 "alias": str(alias),
@@ -439,7 +442,7 @@ def test_capability_input_evidence_marks_stale_required_inputs() -> None:
         },
     }
 
-    item = macro_toolkit_route._capability_input_evidence_item(
+    item = macro_toolkit_support._capability_input_evidence_item(
         {
             "field": "pmi",
             "label": "PMI",
@@ -457,7 +460,7 @@ def test_capability_input_evidence_marks_stale_required_inputs() -> None:
     assert item["stale"] is True
     assert item["stale_days"] is not None and item["stale_days"] > 45
 
-    enriched = macro_toolkit_route._with_capability_input_evidence(
+    enriched = macro_toolkit_support._with_capability_input_evidence(
         "merrill_clock_cn",
         {"data_status": "complete", "warnings": []},
         duckdb_path="unused.duckdb",

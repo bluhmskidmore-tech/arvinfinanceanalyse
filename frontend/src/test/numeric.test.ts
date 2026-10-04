@@ -191,6 +191,31 @@ describe("normalizeNumeric", () => {
     expect(result.raw).toBeNull();
     expect(result.display).toBe(EM_DASH);
   });
+
+  it("rejects partial-numeric tokens instead of truncating them (审计 F02 #2)", () => {
+    // 此前 decimalRaw 用 parseFloat("12abc") → 12（悄然截断非法尾部）。
+    // 严格全串校验后必须视为缺失，不得回落到看似可信的 12。
+    const trailingGarbage = normalizeNumeric("12abc", "ratio", false);
+    expect(trailingGarbage.raw).toBeNull();
+    expect(trailingGarbage.display).toBe(EM_DASH);
+
+    const leadingGarbage = normalizeNumeric("abc12", "ratio", false);
+    expect(leadingGarbage.raw).toBeNull();
+    expect(leadingGarbage.display).toBe(EM_DASH);
+  });
+
+  it("accepts a full-string decimal (optionally negative) after trimming whitespace", () => {
+    const trimmed = normalizeNumeric(" -12.5 ", "bp", true, 2);
+    expect(trimmed.raw).toBeCloseTo(-12.5);
+    expect(trimmed.raw_text).toBe("-12.5");
+    expect(trimmed.display).toBe("-12.50 bp");
+  });
+
+  it("does not accept scientific notation strings (no observed caller emits exponent form)", () => {
+    const result = normalizeNumeric("1e5", "ratio", false);
+    expect(result.raw).toBeNull();
+    expect(result.display).toBe(EM_DASH);
+  });
 });
 
 describe("Numeric unit literal coverage", () => {

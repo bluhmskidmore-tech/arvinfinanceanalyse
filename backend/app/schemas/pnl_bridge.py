@@ -5,8 +5,9 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar, Literal
 
-from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
 
 # 曲线类效应的可用性口径。金额字段（treasury_curve / credit_spread 及其合计）不受
 # 影响：它们仍然是 0，explained_pnl / residual 一分不变。这里新增的只是"那个 0 是
@@ -24,6 +25,7 @@ PnlBridgeEffectAvailabilityReason = Literal[
     "market_value_base_missing",
     "roll_window_missing",
     "tenor_outside_curve_support",
+    "sensitivity_input_unavailable",
     # not_applicable：这一行本来就不会有这个效应，不需要补数据
     "non_fvtpl_basis",
     "not_credit_book",
@@ -40,7 +42,7 @@ def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) ->
     if isinstance(value, dict) and {"raw", "unit", "display", "precision", "sign_aware"} <= set(value.keys()):
         return value
     if isinstance(value, Decimal):
-        return numeric_from_raw(raw=float(value), unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+        return numeric_from_raw(raw=value, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
     if isinstance(value, str):
         normalized = value.strip().replace(",", "")
         if not normalized:
@@ -59,7 +61,7 @@ def _apply_numeric_coercion(
     field_map: dict[str, tuple[NumericUnit, bool]],
     data: Any,
 ) -> Any:
-    if is_dataclass(data):
+    if is_dataclass(data) and not isinstance(data, type):
         out = asdict(data)
     elif isinstance(data, dict):
         out = dict(data)

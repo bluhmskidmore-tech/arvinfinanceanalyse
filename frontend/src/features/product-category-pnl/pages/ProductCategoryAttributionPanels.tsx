@@ -362,7 +362,7 @@ export function ProductCategoryAttributionBridge(props: {
               <div className="product-category-attribution-bridge__driver-readout">
                 <div className="product-category-attribution-bridge__driver-readout-head">
                   <strong>前三驱动</strong>
-                  <small>按影响绝对值排序</small>
+                  <small>按影响绝对值排序 · 标记同向或抵消</small>
                 </div>
                 <div className="product-category-attribution-bridge__root-cause-drivers">
                   {props.rootCause.driverRows.slice(0, 3).map((row) => (
@@ -373,7 +373,7 @@ export function ProductCategoryAttributionBridge(props: {
                     >
                       <span>{row.label}</span>
                       <b className={`is-${row.tone}`}>{row.valueLabel}</b>
-                      <small>{row.shareLabel}</small>
+                      <small>{row.relationLabel}</small>
                     </div>
                   ))}
                 </div>
@@ -685,7 +685,7 @@ export function ProductCategoryLiabilityCurrencyMatrixMobileReadout(props: {
           testId: `product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout-latest-amount`,
         },
         {
-          label: "\u6700\u65b0\u6536\u76ca\u7387",
+          label: "最新综合成本率",
           value: latestCell?.rateLabel ?? EM_DASH,
           testId: `product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout-latest-rate`,
         },
@@ -695,7 +695,7 @@ export function ProductCategoryLiabilityCurrencyMatrixMobileReadout(props: {
           testId: `product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout-amount-movement`,
         },
         {
-          label: "\u6536\u76ca\u7387\u53d8\u52a8",
+          label: "综合成本率变动",
           value: row.movement.rateLabel,
           detail: props.matrix.movementGroupLabel,
           testId: `product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout-rate-movement`,
@@ -1032,11 +1032,11 @@ function ProductCategoryAttributionSelectedDetail(props: {
       ),
     },
     {
-      label: "\u672c\u671f\u5229\u606f\u6536\u652f",
+      label: "本期收入/支出（FTP前）",
       value: formatAttributionPointValue(props.row, props.row.current, "cash"),
     },
     {
-      label: "\u5bf9\u6bd4\u671f\u5229\u606f\u6536\u652f",
+      label: "对比期收入/支出（FTP前）",
       value: formatAttributionPointValue(props.row, props.row.prior, "cash"),
     },
     {

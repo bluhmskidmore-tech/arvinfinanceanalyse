@@ -80,6 +80,27 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     await preloadWorkbenchRouteModules("product-category-pnl-audit");
   }, 60_000);
 
+  it.each(["pending", "empty"] as const)(
+    "keeps audit export disabled when report dates are %s",
+    async (state) => {
+      const baseClient = createApiClient({ mode: "mock" });
+      const dates = await baseClient.getProductCategoryDates();
+      const exportSpy = vi.fn(baseClient.exportProductCategoryManualAdjustmentsCsv);
+      renderAuditPageWithClient({
+        ...baseClient,
+        getProductCategoryDates: () => state === "pending"
+          ? new Promise<Awaited<ReturnType<typeof baseClient.getProductCategoryDates>>>(() => {})
+          : Promise.resolve({ ...dates, result: { ...dates.result, report_dates: [] } }),
+        exportProductCategoryManualAdjustmentsCsv: exportSpy,
+      });
+
+      const button = await screen.findByTestId("audit-export-button");
+      expect(button).toBeDisabled();
+      await userEvent.click(button);
+      expect(exportSpy).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     {
       route: "/product-category-pnl/audit",
@@ -176,6 +197,15 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByTestId("product-category-audit-timeline-lead")).toHaveTextContent(
       "调整审计时间线",
     );
+    for (const testId of [
+      "product-category-audit-filter-lead",
+      "product-category-audit-manual-lead",
+      "product-category-audit-timeline-lead",
+    ]) {
+      expect(screen.getByTestId(testId)).toHaveAttribute("data-numbered", "false");
+      expect(screen.getByTestId(testId)).toHaveAttribute("data-content-gap", "tight");
+    }
+    expect(document.querySelector(".product-category-section-lead")).not.toBeInTheDocument();
     expect(await screen.findByTestId("audit-current-state")).toBeInTheDocument();
     expect(screen.getByTestId("audit-event-list")).toBeInTheDocument();
     expect(screen.getByText("audit-account")).toBeInTheDocument();
@@ -2346,6 +2376,14 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByTestId("monthly-operating-analysis-audit-list-lead")).toHaveTextContent(
       "月度经营调整记录",
     );
+    for (const testId of [
+      "monthly-operating-analysis-audit-form-lead",
+      "monthly-operating-analysis-audit-list-lead",
+    ]) {
+      expect(screen.getByTestId(testId)).toHaveAttribute("data-numbered", "false");
+      expect(screen.getByTestId(testId)).toHaveAttribute("data-content-gap", "tight");
+    }
+    expect(document.querySelector(".product-category-section-lead")).not.toBeInTheDocument();
     await user.selectOptions(screen.getByTestId("monthly-operating-analysis-adjustment-class"), "analysis_adjustment");
     await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-value"), "manual_override");
     await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-submit"));

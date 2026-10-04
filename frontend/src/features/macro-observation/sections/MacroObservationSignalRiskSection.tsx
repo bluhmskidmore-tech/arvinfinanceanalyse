@@ -1,3 +1,4 @@
+import { StateSurface } from "../../../components/layout";
 import type {
   MacroObservationAShareRiskView,
   MacroObservationSignalCardView,
@@ -44,9 +45,7 @@ export default function MacroObservationSignalRiskSection({
           ))}
         </ul>
       ) : (
-        <p className="macro-observation-signalrisk-empty">
-          暂无信号卡证据；宏观分析返回后自动补上。
-        </p>
+        <StateSurface status="empty" message="暂无信号卡证据；宏观分析返回后自动补上。" />
       )}
 
       <div
@@ -56,16 +55,9 @@ export default function MacroObservationSignalRiskSection({
         aria-label="A股风险"
       >
         {risk.state === "deferred" ? (
-          <div className="macro-observation-signalrisk-deferred">
-            <p className="macro-observation-signalrisk-deferred-note">A股风险{risk.note}。</p>
-            <div className="macro-observation-signalrisk-skeleton" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-          </div>
+          <StateSurface status="loading" message={`A股风险${risk.note}。`} />
         ) : risk.state === "empty" ? (
-          <p className="macro-observation-signalrisk-deferred-note">{risk.note}</p>
+          <StateSurface status="empty" message={risk.note} />
         ) : (
           <>
             <div className="macro-observation-signalrisk-risk-head">

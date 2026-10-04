@@ -78,7 +78,7 @@ def _load_choice_news_events(duckdb_path: str, *, limit: int) -> list[dict[str, 
     return MarketReadRepository(str(duckdb_file)).fetch_choice_news_events(limit=limit)
 
 
-def _compare_card_rows(compare: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+def _compare_card_rows(compare: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for compare_type in ("same_direction", "conflicting", "review_needed"):
         for row in compare.get(compare_type, []):

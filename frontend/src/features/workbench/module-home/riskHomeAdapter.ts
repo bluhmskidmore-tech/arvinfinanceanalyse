@@ -1,3 +1,4 @@
+import Decimal from "decimal.js";
 import type {
   ApiEnvelope,
   CashflowProjectionPayload,
@@ -8,6 +9,7 @@ import type {
   RiskTensorScalar,
   YieldCurveTermStructurePayload,
 } from "../../../api/contracts";
+import { numericDecimalOrNull } from "../../../api/numeric";
 import {
   formatYieldCurveDateSummary,
   summarizeYieldCurveDates,
@@ -17,10 +19,70 @@ import { bondNumericDisplay, bondNumericRawOrNull } from "../../bond-analytics/a
 import { EM_DASH } from "../../../utils/format";
 import type {
   ModuleHomeDetailChart,
+  ModuleHomeStatus,
 } from "./moduleHomeModel";
 
 const RISK_YUAN_PER_WAN = 10_000;
 const RISK_YUAN_PER_YI = 100_000_000;
+
+export function riskSourceBasisLabel(meta: ResultMeta | undefined): string {
+  switch (meta?.basis) {
+    case "formal":
+      return "正式来源";
+    case "analytical":
+      return "分析口径";
+    case "scenario":
+      return "情景口径";
+    case "ledger":
+      return "账务口径";
+    case "mock":
+      return "模拟口径";
+    default:
+      return "来源待核验";
+  }
+}
+
+export function riskDecisionGateReasons(meta: ResultMeta | undefined): string[] {
+  if (!meta) {
+    return ["未返回 result_meta"];
+  }
+  const reasons: string[] = [];
+  if (meta.basis !== "formal") reasons.push(`basis=${meta.basis}`);
+  if (!meta.formal_use_allowed) reasons.push("formal_use_allowed=false");
+  if (meta.quality_flag !== "ok") reasons.push(`quality_flag=${meta.quality_flag}`);
+  if (meta.fallback_mode !== "none") reasons.push(`fallback_mode=${meta.fallback_mode}`);
+  if (meta.fallback_date) reasons.push(`fallback_date=${meta.fallback_date}`);
+  return reasons;
+}
+
+export function riskDecisionGateLabel(meta: ResultMeta | undefined): string {
+  const reasons = riskDecisionGateReasons(meta);
+  return reasons.length === 0 ? "正式决策门禁通过" : `正式决策门禁未通过（${reasons.join("、")}）`;
+}
+
+/** 正式来源有 warning 时保持正式来源标签，同时明确其不具正式决策资格。 */
+export function buildRiskSourceUseStatus(
+  status: ModuleHomeStatus,
+  meta: ResultMeta | undefined,
+): ModuleHomeStatus {
+  if (status.tone !== "ok") return status;
+  const source = riskSourceBasisLabel(meta);
+  const gatePassed = riskDecisionGateReasons(meta).length === 0;
+  const quality = meta?.quality_flag ?? "unknown";
+  const value = gatePassed
+    ? "正式来源 · 门禁通过"
+    : meta?.basis === "formal"
+      ? meta.quality_flag === "ok"
+        ? "正式来源 · 仅供复核"
+        : "正式来源 · 质量待复核"
+      : `${source} · 仅供复核`;
+  return {
+    ...status,
+    value,
+    detail: `来源口径：${source}${meta ? `（basis=${meta.basis}）` : ""}；质量：${quality}；${riskDecisionGateLabel(meta)}。`,
+    tone: gatePassed ? status.tone : "watch",
+  };
+}
 
 const RISK_KRD_FIELDS = [
   { key: "krd_1y", label: "KRD 1Y" },
@@ -33,6 +95,45 @@ const RISK_KRD_FIELDS = [
 
 function riskTensorRaw(value: RiskTensorScalar | null | undefined): number | null {
   return bondNumericRawOrNull(value);
+}
+
+function riskTensorExactDecimal(value: RiskTensorScalar | null | undefined): Decimal | null {
+  return numericDecimalOrNull(value);
+}
+
+type FormalComparable = Decimal | number;
+
+function riskTensorFormalDecimal(value: RiskTensorScalar | null | undefined): FormalComparable | null {
+  const exact = riskTensorExactDecimal(value);
+  if (exact !== null) {
+    return exact;
+  }
+  const raw = riskTensorRaw(value);
+  return raw === null ? null : raw;
+}
+
+function formatExactDecimal(value: Decimal, decimals: number): string {
+  const fixed = value.toFixed(decimals, Decimal.ROUND_HALF_UP);
+  const [integerPart, fractionPart] = fixed.split(".");
+  const grouped = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return fractionPart ? `${grouped}.${fractionPart}` : grouped;
+}
+
+function compareFormalMagnitude(left: FormalComparable, right: FormalComparable): number {
+  if (left instanceof Decimal || right instanceof Decimal) {
+    const leftDecimal = left instanceof Decimal ? left : new Decimal(left);
+    const rightDecimal = right instanceof Decimal ? right : new Decimal(right);
+    return leftDecimal.abs().comparedTo(rightDecimal.abs());
+  }
+  return Math.abs(left) - Math.abs(right);
+}
+
+function isFormalNegative(value: FormalComparable): boolean {
+  return value instanceof Decimal ? value.lt(0) : value < 0;
+}
+
+function formatYuanAsExact(raw: Decimal, divisor: number): string {
+  return formatExactDecimal(raw.div(divisor), 2);
 }
 
 export function buildRiskKrdChart(tensor: RiskTensorPayload): ModuleHomeDetailChart | undefined {
@@ -79,17 +180,29 @@ function formatYuanAs(raw: number, divisor: number): string {
 }
 
 function wanText(value: RiskV6Scalar): string | null {
+  const exact = riskTensorExactDecimal(value);
+  if (exact !== null) {
+    return formatYuanAsExact(exact, RISK_YUAN_PER_WAN);
+  }
   const raw = riskTensorRaw(value);
   return raw === null ? null : formatYuanAs(raw, RISK_YUAN_PER_WAN);
 }
 
 function yiText(value: RiskV6Scalar): string | null {
+  const exact = riskTensorExactDecimal(value);
+  if (exact !== null) {
+    return formatYuanAsExact(exact, RISK_YUAN_PER_YI);
+  }
   const raw = riskTensorRaw(value);
   return raw === null ? null : formatYuanAs(raw, RISK_YUAN_PER_YI);
 }
 
 /** 小数 → 百分数文本（×100），decimals 由调用方按字段口径指定。 */
 function percentText(value: RiskV6Scalar, decimals: number): string | null {
+  const exact = riskTensorExactDecimal(value);
+  if (exact !== null) {
+    return formatExactDecimal(exact.mul(100), decimals);
+  }
   const raw = riskTensorRaw(value);
   if (raw === null) {
     return null;
@@ -298,7 +411,7 @@ export function buildRiskV6KpiCards(
   if (!tensor) {
     return [];
   }
-  const gap30Raw = riskTensorRaw(tensor.liquidity_gap_30d);
+  const gap30Formal = riskTensorFormalDecimal(tensor.liquidity_gap_30d);
   const gap90Yi = yiText(tensor.liquidity_gap_90d);
   return [
     buildKpiCard({
@@ -306,23 +419,23 @@ export function buildRiskV6KpiCards(
       label: "监管 DV01",
       amount: wanText(tensor.regulatory_dv01),
       unit: "万元/bp",
-      caption: "范围：全部正式行",
+      caption: "面值基数线性读数",
       series: historySeries(history, "regulatory_dv01"),
       deltaFormat: "percent",
     }),
     buildKpiCard({
       key: "portfolio-dv01",
-      label: "估值 DV01",
+      label: "组合 DV01",
       amount: wanText(tensor.portfolio_dv01),
       unit: "万元/bp",
-      caption: "同值属口径预期",
+      caption: "全量面值基数 · 同值属范围预期",
       series: historySeries(history, "portfolio_dv01"),
       deltaFormat: "percent",
     }),
     buildKpiCard({
       key: "modified-duration",
       label: "修正久期",
-      amount: riskTensorRaw(tensor.portfolio_modified_duration) === null ? null : bondNumericDisplay(tensor.portfolio_modified_duration),
+      amount: riskTensorFormalDecimal(tensor.portfolio_modified_duration) === null ? null : bondNumericDisplay(tensor.portfolio_modified_duration),
       unit: null,
       caption: "市值加权",
       series: historySeries(history, "portfolio_modified_duration"),
@@ -332,7 +445,7 @@ export function buildRiskV6KpiCards(
     buildKpiCard({
       key: "convexity",
       label: "组合凸度",
-      amount: riskTensorRaw(tensor.portfolio_convexity) === null ? null : bondNumericDisplay(tensor.portfolio_convexity),
+      amount: riskTensorFormalDecimal(tensor.portfolio_convexity) === null ? null : bondNumericDisplay(tensor.portfolio_convexity),
       unit: null,
       caption: "张量直读",
       series: historySeries(history, "portfolio_convexity"),
@@ -344,7 +457,7 @@ export function buildRiskV6KpiCards(
       label: "CS01 信用利差",
       amount: wanText(tensor.cs01),
       unit: "万元/bp",
-      caption: "每 bp 利差",
+      caption: "信用债 DV01 代理 · 每 bp",
       series: historySeries(history, "cs01"),
       deltaFormat: "percent",
     }),
@@ -352,7 +465,7 @@ export function buildRiskV6KpiCards(
       key: "issuer-hhi",
       label: "发行人 HHI",
       amount:
-        riskTensorRaw(tensor.issuer_concentration_hhi) === null
+        riskTensorFormalDecimal(tensor.issuer_concentration_hhi) === null
           ? null
           : bondNumericDisplay(tensor.issuer_concentration_hhi),
       unit: null,
@@ -377,7 +490,7 @@ export function buildRiskV6KpiCards(
       amount: yiText(tensor.liquidity_gap_30d),
       unit: "亿元",
       caption: gap90Yi !== null ? `90D 缺口 ${gap90Yi} 亿` : "90D 缺口待接入",
-      alert: gap30Raw !== null && gap30Raw < 0,
+      alert: gap30Formal !== null && isFormalNegative(gap30Formal),
       series: historySeries(history, "liquidity_gap_30d"),
       deltaFormat: "yi",
     }),
@@ -412,28 +525,28 @@ export function buildRiskV6Hero(tensor: RiskTensorPayload | undefined): RiskV6He
       bondCount: null,
     };
   }
-  const regRaw = riskTensorRaw(tensor.regulatory_dv01);
   let peakKrdBucket: string | null = null;
   let peakKrdWan: string | null = null;
-  let peakAbs = -1;
+  let peakAbs: FormalComparable | null = null;
   for (const field of RISK_KRD_FIELDS) {
-    const raw = riskTensorRaw(tensor[field.key] as RiskV6Scalar);
+    const raw = riskTensorFormalDecimal(tensor[field.key] as RiskV6Scalar);
     if (raw === null) {
       continue;
     }
-    if (Math.abs(raw) > peakAbs) {
-      peakAbs = Math.abs(raw);
+    const abs = raw instanceof Decimal ? raw.abs() : Math.abs(raw);
+    if (peakAbs === null || compareFormalMagnitude(abs, peakAbs) > 0) {
+      peakAbs = abs;
       peakKrdBucket = field.label.replace("KRD ", "");
-      peakKrdWan = formatYuanAs(raw, RISK_YUAN_PER_WAN);
+      peakKrdWan = wanText(tensor[field.key] as RiskV6Scalar);
     }
   }
   return {
-    dv01Wan: regRaw === null ? null : formatYuanAs(regRaw, RISK_YUAN_PER_WAN),
-    dv01Yi: regRaw === null ? null : formatYuanAs(regRaw, RISK_YUAN_PER_YI),
+    dv01Wan: wanText(tensor.regulatory_dv01),
+    dv01Yi: yiText(tensor.regulatory_dv01),
     peakKrdBucket,
     peakKrdWan,
-    duration: riskTensorRaw(tensor.portfolio_modified_duration) === null ? null : bondNumericDisplay(tensor.portfolio_modified_duration),
-    convexity: riskTensorRaw(tensor.portfolio_convexity) === null ? null : bondNumericDisplay(tensor.portfolio_convexity),
+    duration: riskTensorFormalDecimal(tensor.portfolio_modified_duration) === null ? null : bondNumericDisplay(tensor.portfolio_modified_duration),
+    convexity: riskTensorFormalDecimal(tensor.portfolio_convexity) === null ? null : bondNumericDisplay(tensor.portfolio_convexity),
     totalMarketValueYi: yiText(tensor.total_market_value),
     bondCount: typeof tensor.bond_count === "number" ? tensor.bond_count : null,
   };
@@ -451,18 +564,18 @@ export type RiskV6Brief = {
 export function buildRiskV6Briefs(tensor: RiskTensorPayload | undefined): RiskV6Brief[] {
   if (!tensor) {
     return [
-      { key: "duration", title: "久期与 DV01", body: "久期与 DV01 待风险张量返回。", note: "直接展示 risk tensor 字段，不以前端计算监管 DV01。" },
-      { key: "credit", title: "信用与集中度", body: "集中度需要进入下钻页核验。", note: "首页只提供摘要状态。" },
-      { key: "cashflow", title: "现金流压力", body: "现金流窗口待风险张量返回。", note: "现金流压力以 /cashflow-projection 正式展示为准。" },
+      { key: "duration", title: "久期与 DV01", body: "久期与 DV01 待风险张量返回。", note: "面值基数线性敏感度读数，直接展示 risk tensor 字段。" },
+      { key: "credit", title: "信用与集中度", body: "集中度需要进入下钻页核验。", note: "CS01 是信用债 DV01 代理；首页只提供字段摘要。" },
+      { key: "cashflow", title: "现金流压力", body: "现金流窗口待风险张量返回。", note: "30D / 90D 缺口直读风险张量；现金流预测字段为分析口径。" },
     ];
   }
   const dv01 = wanText(tensor.portfolio_dv01);
-  const duration = riskTensorRaw(tensor.portfolio_modified_duration) === null ? null : bondNumericDisplay(tensor.portfolio_modified_duration);
-  const convexity = riskTensorRaw(tensor.portfolio_convexity) === null ? null : bondNumericDisplay(tensor.portfolio_convexity);
+  const duration = riskTensorFormalDecimal(tensor.portfolio_modified_duration) === null ? null : bondNumericDisplay(tensor.portfolio_modified_duration);
+  const convexity = riskTensorFormalDecimal(tensor.portfolio_convexity) === null ? null : bondNumericDisplay(tensor.portfolio_convexity);
   const cs01 = wanText(tensor.cs01);
   const top5 = percentText(tensor.issuer_top5_weight, 1);
   const hhi =
-    riskTensorRaw(tensor.issuer_concentration_hhi) === null
+    riskTensorFormalDecimal(tensor.issuer_concentration_hhi) === null
       ? null
       : bondNumericDisplay(tensor.issuer_concentration_hhi);
   const gap30 = yiText(tensor.liquidity_gap_30d);
@@ -475,7 +588,7 @@ export function buildRiskV6Briefs(tensor: RiskTensorPayload | undefined): RiskV6
         dv01 !== null && duration !== null && convexity !== null
           ? `DV01 ${dv01} 万元/bp，修正久期 ${duration}，凸度 ${convexity}。`
           : "张量字段缺失，逐项核对后再引用。",
-      note: "直接展示 risk tensor 字段，不以前端计算监管 DV01。",
+      note: "面值基数线性敏感度读数，直接展示 risk tensor 字段；不表示按市价完整重估的损益。",
     },
     {
       key: "credit",
@@ -484,7 +597,7 @@ export function buildRiskV6Briefs(tensor: RiskTensorPayload | undefined): RiskV6
         cs01 !== null && top5 !== null && hhi !== null
           ? `CS01 ${cs01} 万元/bp，前五大权重 ${top5}%，HHI ${hhi}。`
           : "集中度字段缺失，进入下钻页核验。",
-      note: "首页只提供摘要状态。",
+      note: "CS01 是信用债 DV01 代理；首页只提供字段摘要，不在前端重算。",
     },
     {
       key: "cashflow",
@@ -493,7 +606,7 @@ export function buildRiskV6Briefs(tensor: RiskTensorPayload | undefined): RiskV6
         gap30 !== null && gap90 !== null
           ? `30D 缺口 ${gap30} 亿元，90D 缺口 ${gap90} 亿元。`
           : "现金流窗口字段缺失。",
-      note: "现金流压力以 /cashflow-projection 正式展示为准。",
+      note: "30D / 90D 缺口直读风险张量；久期缺口与 12M 再投资风险由 /cashflow-projection 分析口径另行展示。",
     },
   ];
 }
@@ -752,30 +865,30 @@ export function buildRiskV6CashflowTrack(tensor: RiskTensorPayload | undefined):
   }));
 
   const chips: RiskV6GapChip[] = [];
-  const gap30Raw = riskTensorRaw(tensor.liquidity_gap_30d);
-  const gap90Raw = riskTensorRaw(tensor.liquidity_gap_90d);
-  const gapRatioRaw = riskTensorRaw(tensor.liquidity_gap_30d_ratio);
-  if (gap30Raw !== null) {
+  const gap30Formal = riskTensorFormalDecimal(tensor.liquidity_gap_30d);
+  const gap90Formal = riskTensorFormalDecimal(tensor.liquidity_gap_90d);
+  const gapRatioFormal = riskTensorFormalDecimal(tensor.liquidity_gap_30d_ratio);
+  if (gap30Formal !== null) {
     chips.push({
       key: "gap-30d",
       label: "30D 净缺口",
-      text: `${formatYuanAs(gap30Raw, RISK_YUAN_PER_YI)} 亿`,
-      tone: gap30Raw < 0 ? "alert" : "dim",
+      text: `${yiText(tensor.liquidity_gap_30d)} 亿`,
+      tone: isFormalNegative(gap30Formal) ? "alert" : "dim",
     });
   }
-  if (gap90Raw !== null) {
+  if (gap90Formal !== null) {
     chips.push({
       key: "gap-90d",
       label: "90D 净缺口",
-      text: `${formatYuanAs(gap90Raw, RISK_YUAN_PER_YI)} 亿`,
-      tone: gap90Raw < 0 ? "alert" : "dim",
+      text: `${yiText(tensor.liquidity_gap_90d)} 亿`,
+      tone: isFormalNegative(gap90Formal) ? "alert" : "dim",
     });
   }
-  if (gapRatioRaw !== null) {
+  if (gapRatioFormal !== null) {
     chips.push({
       key: "gap-ratio",
       label: "30D 缺口率",
-      text: `${(gapRatioRaw * 100).toFixed(2)}%`,
+      text: `${percentText(tensor.liquidity_gap_30d_ratio, 2)}%`,
       tone: "dim",
     });
   }
@@ -1722,14 +1835,14 @@ export function buildRiskV6DetailTables(
   const totalMv = yiText(tensor.total_market_value);
   push(portfolioRows, "total-market-value", "组合总市值", totalMv === null ? null : `${totalMv} 亿元`);
   push(portfolioRows, "bond-count", "持仓只数", typeof tensor.bond_count === "number" ? tensor.bond_count.toLocaleString("zh-CN") : null);
-  push(portfolioRows, "modified-duration", "修正久期", riskTensorRaw(tensor.portfolio_modified_duration) === null ? null : bondNumericDisplay(tensor.portfolio_modified_duration));
-  push(portfolioRows, "convexity", "组合凸度", riskTensorRaw(tensor.portfolio_convexity) === null ? null : bondNumericDisplay(tensor.portfolio_convexity));
+  push(portfolioRows, "modified-duration", "修正久期", riskTensorFormalDecimal(tensor.portfolio_modified_duration) === null ? null : bondNumericDisplay(tensor.portfolio_modified_duration));
+  push(portfolioRows, "convexity", "组合凸度", riskTensorFormalDecimal(tensor.portfolio_convexity) === null ? null : bondNumericDisplay(tensor.portfolio_convexity));
   const portfolioDv01 = wanText(tensor.portfolio_dv01);
-  push(portfolioRows, "portfolio-dv01", "组合 DV01", portfolioDv01 === null ? null : `${portfolioDv01} 万元/bp`);
+  push(portfolioRows, "portfolio-dv01", "组合 DV01（面值基数）", portfolioDv01 === null ? null : `${portfolioDv01} 万元/bp`);
   const regulatoryDv01 = wanText(tensor.regulatory_dv01);
-  push(portfolioRows, "regulatory-dv01", "监管口径 DV01", regulatoryDv01 === null ? null : `${regulatoryDv01} 万元/bp`);
+  push(portfolioRows, "regulatory-dv01", "监管口径 DV01（面值基数）", regulatoryDv01 === null ? null : `${regulatoryDv01} 万元/bp`);
   const rateRiskDv01 = wanText(tensor.rate_risk_dv01);
-  push(portfolioRows, "rate-risk-dv01", "利率风险口径 DV01", rateRiskDv01 === null ? null : `${rateRiskDv01} 万元/bp`);
+  push(portfolioRows, "rate-risk-dv01", "利率风险口径 DV01（面值基数）", rateRiskDv01 === null ? null : `${rateRiskDv01} 万元/bp`);
   const rateRiskMv = yiText(tensor.rate_risk_market_value);
   push(portfolioRows, "rate-risk-mv", "利率风险口径市值", rateRiskMv === null ? null : `${rateRiskMv} 亿元`);
   const excludedMv = yiText(tensor.duration_excluded_market_value);
@@ -1737,17 +1850,30 @@ export function buildRiskV6DetailTables(
     portfolioRows.push({
       key: "duration-excluded",
       label: "久期剔除项",
-      value: `${tensor.duration_excluded_count.toLocaleString("zh-CN")} 只 · ${excludedMv} 亿元`,
+      value: `${tensor.duration_excluded_count.toLocaleString("zh-CN")} 条 · ${excludedMv} 亿元`,
       date,
     });
   }
+  if (tensor.maturity_breakdown_status === "available") {
+    for (const [key, label, count, value] of [
+      ["fund-no-maturity", "基金未列固定到期日（底层风险未穿透）", tensor.fund_no_maturity_count, tensor.fund_no_maturity_market_value],
+      ["unknown-maturity", "期限属性待核实", tensor.unknown_maturity_count, tensor.unknown_maturity_market_value],
+      ["matured-outstanding", "已到期仍有余额", tensor.matured_outstanding_count, tensor.matured_outstanding_market_value],
+      ["nonpositive-duration", "未来到期但久期非正", tensor.nonpositive_duration_count, tensor.nonpositive_duration_market_value],
+    ] as const) {
+      const amount = yiText(value);
+      if (typeof count === "number" && amount !== null) {
+        portfolioRows.push({ key, label, value: `${count.toLocaleString("zh-CN")} 条 · ${amount} 亿元`, date });
+      }
+    }
+  }
 
   const cs01 = wanText(tensor.cs01);
-  push(creditRows, "cs01", "CS01", cs01 === null ? null : `${cs01} 万元/bp`);
+  push(creditRows, "cs01", "CS01（信用债 DV01 代理）", cs01 === null ? null : `${cs01} 万元/bp`);
   const top5 = percentText(tensor.issuer_top5_weight, 1);
   push(creditRows, "issuer-top5", "前五大发行人权重", top5 === null ? null : `${top5}%`);
   const hhi =
-    riskTensorRaw(tensor.issuer_concentration_hhi) === null
+    riskTensorFormalDecimal(tensor.issuer_concentration_hhi) === null
       ? null
       : bondNumericDisplay(tensor.issuer_concentration_hhi);
   push(creditRows, "issuer-hhi", "发行人集中度 HHI", hhi);
@@ -1755,14 +1881,14 @@ export function buildRiskV6DetailTables(
   // 久期缺口 / 12M 再投资风险来自现金流服务（独立于张量链路）。
   creditRows.push({
     key: "duration-gap",
-    label: "久期缺口",
+    label: "久期缺口（分析口径）",
     value: cashflow ? bondNumericDisplay(cashflow.duration_gap) : "待接入",
     date: cashflow?.report_date ?? date,
     tone: cashflow ? "ok" : "watch",
   });
   creditRows.push({
     key: "reinvestment-risk-12m",
-    label: "12M 再投资风险",
+    label: "12M 再投资风险（分析口径）",
     value: cashflow ? bondNumericDisplay(cashflow.reinvestment_risk_12m) : "待接入",
     date: cashflow?.report_date ?? date,
     tone: cashflow ? "ok" : "watch",

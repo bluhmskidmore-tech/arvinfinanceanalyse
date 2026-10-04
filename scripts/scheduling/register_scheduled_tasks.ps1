@@ -5,7 +5,7 @@
 .DESCRIPTION
   Registers two Windows scheduled tasks pointing at the scripts in this folder:
 
-    MOSS-DailyDataRefresh    daily at -DailyTime (default 17:30, host clock)
+    MOSS-DailyDataRefresh    daily at -DailyTime (default 18:45, host clock)
                              -> daily_data_refresh.ps1
     MOSS-MonthlyWalkForward  first Saturday of each month at -MonthlyTime
                              (default 09:00) -> monthly_walk_forward.ps1
@@ -38,9 +38,10 @@ param(
     [string]$DailyTaskName = "MOSS-DailyDataRefresh",
     [string]$MonthlyTaskName = "MOSS-MonthlyWalkForward",
     [ValidatePattern('^\d{2}:\d{2}$')]
-    [string]$DailyTime = "17:30",
+    [string]$DailyTime = "18:45",
     [ValidatePattern('^\d{2}:\d{2}$')]
     [string]$MonthlyTime = "09:00",
+    [string]$VendorSourceIp = "",
     [switch]$Unregister,
     [switch]$DisableLegacyTimers
 )
@@ -50,12 +51,18 @@ $ErrorActionPreference = "Stop"
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 }
-$pythonExe = Join-Path $RepoRoot ".venv\Scripts\python.exe"
-$dailyScript = Join-Path $PSScriptRoot "daily_data_refresh.ps1"
+$dailyScript = Join-Path $PSScriptRoot "run_daily_data_refresh_host.ps1"
+$maintenanceHelper = Join-Path $PSScriptRoot "market_refresh_host_common.ps1"
 $monthlyScript = Join-Path $PSScriptRoot "monthly_walk_forward.ps1"
 $powerShellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 
-foreach ($required in @($pythonExe, $dailyScript, $monthlyScript, $powerShellExe)) {
+$requiredPaths = @($dailyScript, $maintenanceHelper, $monthlyScript, $powerShellExe)
+if (-not $Unregister -and -not $WhatIfPreference) {
+    . (Join-Path $RepoRoot "scripts\dev-python.ps1")
+    $pythonExe = Resolve-DevPython -RequiredModules @("duckdb")
+    $requiredPaths = @($pythonExe) + $requiredPaths
+}
+foreach ($required in $requiredPaths) {
     if (-not (Test-Path $required)) {
         throw "Required path not found: $required"
     }
@@ -66,6 +73,39 @@ $legacyTimerNames = @(
     "MOSS-MacroToolkitFreshness",
     "MOSS-MacroToolkitDailyChain"
 )
+
+function ConvertTo-CommandLineString {
+    param([string[]]$Arguments)
+
+    if (-not $Arguments -or $Arguments.Count -eq 0) {
+        return ""
+    }
+    return " " + ($Arguments -join " ")
+}
+
+function Resolve-ValidatedVendorSourceIp {
+    param([string]$Value)
+
+    if ([string]::IsNullOrEmpty($Value)) {
+        return ""
+    }
+    if ($Value -ne $Value.Trim()) {
+        throw "VendorSourceIp must be a plain IPv4 literal with no surrounding whitespace."
+    }
+    if ($Value -notmatch '^(?:\d{1,3}\.){3}\d{1,3}$') {
+        throw "VendorSourceIp must be a plain IPv4 literal like 172.16.115.248."
+    }
+
+    try {
+        $parsed = [System.Net.IPAddress]::Parse($Value)
+    } catch {
+        throw "VendorSourceIp must be a plain IPv4 literal like 172.16.115.248."
+    }
+    if ($parsed.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+        throw "VendorSourceIp must be a plain IPv4 literal like 172.16.115.248."
+    }
+    return $parsed.ToString()
+}
 
 function Test-TaskExists {
     param([string]$TaskName)
@@ -89,10 +129,12 @@ function Register-MossTask {
     param(
         [string]$TaskName,
         [string]$ScriptPath,
+        [string[]]$ScriptArgs,
         [string[]]$ScheduleArgs,
         [string]$Description
     )
-    $actionArgs = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ScriptPath`""
+    $scriptArgString = ConvertTo-CommandLineString -Arguments $ScriptArgs
+    $actionArgs = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ScriptPath`"$scriptArgString"
     $trString = "`"$powerShellExe`" $actionArgs"
     if (-not $PSCmdlet.ShouldProcess($TaskName, "Register scheduled task ($Description)")) {
         return
@@ -114,6 +156,12 @@ function Register-MossTask {
     Write-Host "Registered $TaskName ($Description)."
 }
 
+$normalizedVendorSourceIp = Resolve-ValidatedVendorSourceIp -Value $VendorSourceIp
+$dailyScriptArgs = @()
+if (-not [string]::IsNullOrWhiteSpace($normalizedVendorSourceIp)) {
+    $dailyScriptArgs += @("-VendorSourceIp", $normalizedVendorSourceIp)
+}
+
 if ($Unregister) {
     Remove-TaskIfExists -TaskName $DailyTaskName
     Remove-TaskIfExists -TaskName $MonthlyTaskName
@@ -125,6 +173,7 @@ if ($Unregister) {
 Register-MossTask `
     -TaskName $DailyTaskName `
     -ScriptPath $dailyScript `
+    -ScriptArgs $dailyScriptArgs `
     -ScheduleArgs @("/SC", "DAILY", "/ST", $DailyTime) `
     -Description "daily $DailyTime, full after-close data chain"
 

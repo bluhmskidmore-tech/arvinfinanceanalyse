@@ -12,17 +12,25 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-READ_ONLY_TOOLSETS = frozenset({"evidence", "query", "research"})
+try:
+    from scripts.hermes_model_catalog import provider_for_chat_model
+except ModuleNotFoundError:
+    # Direct execution inside WSL places scripts/, rather than the repo root,
+    # on sys.path. Module imports in the backend and tests use the package path.
+    from hermes_model_catalog import provider_for_chat_model
+
+READ_ONLY_TOOLSETS: tuple[str, ...] = ("web",)
 _RUNTIME_PREPARED = False
 _LOGGER = logging.getLogger(__name__)
 
 
 class PreparedRequestRuntime:
-    def __init__(self, *, cli: Any, finalize_single_query: Any, model: str, max_turns: int):
+    def __init__(self, *, cli: Any, finalize_single_query: Any, model: str, max_turns: int, reasoning_effort: str = "low"):
         self.cli = cli
         self.finalize_single_query = finalize_single_query
         self.model = model
         self.max_turns = max_turns
+        self.reasoning_effort = reasoning_effort
 
 
 def _validate_request_payload(payload: Any) -> dict[str, Any]:
@@ -39,12 +47,15 @@ def _validate_request_payload(payload: Any) -> dict[str, Any]:
     model = str(payload.get("model") or "").strip()
     if len(model) > 256:
         raise ValueError("model is too long")
+    reasoning_effort = payload.get("reasoning_effort") or "low"
+    if reasoning_effort not in {"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}:
+        raise ValueError("invalid reasoning effort")
     toolsets = str(payload.get("toolsets") or "").strip()
     if len(toolsets) > 256:
         raise ValueError("toolsets is too long")
     selected_toolsets = [part.strip().lower() for part in toolsets.split(",") if part.strip()]
     if not selected_toolsets:
-        selected_toolsets = ["evidence", "query", "research"]
+        selected_toolsets = list(READ_ONLY_TOOLSETS)
     if any(toolset not in READ_ONLY_TOOLSETS for toolset in selected_toolsets):
         raise ValueError("toolsets are not allowed")
     max_turns = max(int(payload.get("max_turns") or 1), 1)
@@ -54,6 +65,7 @@ def _validate_request_payload(payload: Any) -> dict[str, Any]:
         "request_id": request_id,
         "prompt": prompt,
         "model": model,
+        "reasoning_effort": reasoning_effort,
         "toolsets": selected_toolsets,
         "max_turns": max_turns,
     }
@@ -71,6 +83,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--daemon", action="store_true")
     parser.add_argument("--instance-id", default="")
     parser.add_argument("--model", default="")
+    parser.add_argument("--catalog", action="store_true")
     parser.add_argument("--max-turns", type=int, default=1)
     return parser.parse_args()
 
@@ -130,6 +143,7 @@ def _prepare_request_runtime(
     max_turns: int,
     prompt: str = "MOSS Agent Lab runtime prewarm",
     persistent: bool = False,
+    reasoning_effort: str = "low",
 ) -> PreparedRequestRuntime:
     _prepare_hermes_runtime(hermes_root)
     with redirect_stdout(sys.stderr):
@@ -140,22 +154,34 @@ def _prepare_request_runtime(
         else:
             from cli import _finalize_single_query as finalize_single_query
 
+        provider = provider_for_chat_model(model)
         cli = HermesCLI(
             model=model or None,
-            # Hermes uses None for its broad default and [] as an explicit empty
-            # allowlist. MOSS toolset labels are governance labels, not Hermes
-            # runtime toolset names, so Lab streaming intentionally exposes no
-            # Hermes tools.
-            toolsets=[],
-            reasoning="low",
+            **({"provider": provider} if provider else {}),
+            # Keep the persistent runtime aligned with the provider-specific
+            # request policy. Never pass None: Hermes treats it as a broad
+            # platform default that includes mutating toolsets.
+            toolsets=list(READ_ONLY_TOOLSETS),
+            reasoning=reasoning_effort,
             max_turns=max_turns,
             compact=True,
         )
         cli._single_query_mode = True
         cli.tool_progress_mode = "off"
+        if provider:
+            # An explicit model choice must not silently fall through to a
+            # different provider while the MOSS result still names this model.
+            cli._fallback_model = []
+        if provider == "minimax":
+            # The current Hermes adapter maps effort to Anthropic-style manual
+            # budgets. MiniMax M3 uses its own adaptive default, so omit that
+            # override instead of advertising effort levels it cannot honor.
+            cli.reasoning_config = None
         if not cli._ensure_runtime_credentials():
             raise RuntimeError("runtime_unavailable")
-        turn_route = cli._resolve_turn_agent_config(prompt)
+        if provider and cli.provider != provider:
+            raise RuntimeError("runtime_provider_mismatch")
+        turn_route = {} if model else cli._resolve_turn_agent_config(prompt)
         if not cli._init_agent(
             model_override=turn_route.get("model"),
             runtime_override=turn_route.get("runtime"),
@@ -174,6 +200,7 @@ def _prepare_request_runtime(
         finalize_single_query=finalize_single_query,
         model=model,
         max_turns=max_turns,
+        reasoning_effort=reasoning_effort,
     )
 
 
@@ -259,12 +286,20 @@ def _run_single_request(
             runtime.finalize_single_query(cli)
 
     try:
+        reasoning_effort = request.get("reasoning_effort") or "low"
+        if runtime is not None and getattr(runtime, "reasoning_effort", "low") != reasoning_effort:
+            # A prewarmed runtime must not carry the previous/default effort into
+            # a differently configured turn. Finalize it before replacement.
+            with redirect_stdout(sys.stderr):
+                runtime.finalize_single_query(runtime.cli)
+            runtime = None
         if runtime is None:
             runtime = _prepare_request_runtime(
                 hermes_root=hermes_root,
                 model=request["model"],
                 max_turns=request["max_turns"],
                 prompt=request["prompt"],
+                reasoning_effort=reasoning_effort,
             )
         if runtime.model != request["model"] or runtime.max_turns != request["max_turns"]:
             raise ValueError("request runtime does not match the prepared runtime")
@@ -312,6 +347,17 @@ def main() -> int:
     hermes_root = Path(args.hermes_root)
     if str(hermes_root) not in sys.path:
         sys.path.insert(0, str(hermes_root))
+
+    if getattr(args, "catalog", False):
+        try:
+            from hermes_model_catalog import load_model_catalog
+            with redirect_stdout(sys.stderr):
+                catalog = load_model_catalog()
+            emit(catalog)
+            return 0
+        except Exception:
+            emit({"error": "model_catalog_unavailable"})
+            return 1
 
     if not getattr(args, "daemon", False):
         try:

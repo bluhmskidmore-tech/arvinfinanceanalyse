@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
@@ -134,7 +135,7 @@ describe("ActionAttributionView", () => {
       "动作归因",
     );
     expect(screen.getByTestId("action-attribution-shell-lead")).toHaveTextContent(
-      "读取治理后的动作归因结果",
+      "查看交易动作对损益、久期和 DV01 的影响",
     );
     expect(screen.getByTestId("action-attribution-shell-lead")).toHaveTextContent(
       "交易动作归因概览",
@@ -142,7 +143,7 @@ describe("ActionAttributionView", () => {
     expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent("汇总");
     expect(screen.getByTestId("action-attribution-detail-lead")).toHaveTextContent("动作明细");
     expect(await screen.findByText("动作数量")).toBeInTheDocument();
-    expect(screen.getByText("动作贡献损益")).toBeInTheDocument();
+    expect(screen.getByText("期间损益（含未分配）")).toBeInTheDocument();
     expect(screen.getByText("久期变化")).toBeInTheDocument();
     expect(screen.getByText("DV01变化（万元/bp）")).toBeInTheDocument();
     expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent("动作汇总");
@@ -153,7 +154,7 @@ describe("ActionAttributionView", () => {
     expect(screen.getAllByText("涉及债券").length).toBeGreaterThan(0);
     expect(screen.getByText("019547")).toBeInTheDocument();
     expect(screen.getAllByText("机会成本口径").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("供应商状态");
+    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("数据来源状态");
     expect(screen.getByText("shadow_bench")).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/[\u9344\u9396\u93C3\u8796\u920B\u951B]/);
     expect(document.body.textContent).not.toContain("\u7487\u8A2A\u6F7C");
@@ -176,11 +177,41 @@ describe("ActionAttributionView", () => {
 
     renderActionAttributionView(client);
 
-    /* 状态 token 中文化（C10）：partial→部分可用；组件技术名收进 title（正文只报数量）。 */
+    /* 部分可用与缺失数据保持可见，原始字段只在展开诊断后显示。 */
     const readiness = await screen.findByTestId("action-attribution-readiness");
     expect(readiness).toHaveTextContent("部分可用");
-    expect(readiness).toHaveTextContent("缺失输入 1 项");
-    expect(readiness.querySelector('[title*="formal_positions"]')).not.toBeNull();
+    expect(readiness).toHaveTextContent("缺少分析所需数据 1 项");
+    expect(readiness.querySelector('[title*="formal_positions"]')).toBeNull();
+    const diagnostics = within(readiness).getByTestId("action-attribution-readiness-diagnostics");
+    const missingInput = within(diagnostics).getByText("missing_inputs：formal_positions");
+    expect(diagnostics).not.toHaveAttribute("open");
+    expect(missingInput).not.toBeVisible();
+    await userEvent.setup().click(within(diagnostics).getByText("技术诊断"));
+    expect(diagnostics).toHaveAttribute("open");
+    expect(missingInput).toBeVisible();
+  });
+
+  it("renders actual start and offsetting unmatched PnL while keeping identified action count zero", async () => {
+    const client = { ...createApiClient({ mode: "mock" }), getBondAnalyticsActionAttribution: vi.fn(async () => ({
+      result_meta: createResultMeta(), result: createActionAttributionResult({
+        total_actions: 0, total_pnl_from_actions: yuan(0), action_details: [], by_action_type: [],
+        period_start_duration: null, period_end_duration: null, duration_change_from_actions: null,
+        snapshot_window: { requested_start: "2026-01-01", resolved_start: null, resolved_end: null, start_gap_days: null, staleness_limit_status: "PENDING" },
+        pnl_coverage: { input_pnl: 0, input_absolute_pnl: 200000, identified_pnl: 0,
+          unallocated_pnl: 0, unallocated_absolute_pnl: 200000, pnl_only_pnl: 0,
+          pnl_only_absolute_pnl: 200000, input_key_count: 2, identified_key_count: 0,
+          unallocated_key_count: 2, pnl_only_key_count: 2, key_coverage_ratio: 0,
+          reconciliation_difference: 0, status: "partial", period_status: "partial", missing_months: ["2026-02"] },
+      }),
+    })) };
+    renderActionAttributionView(client);
+    expect(await screen.findByTestId("action-attribution-snapshot-window")).toHaveTextContent("实际期初 —");
+    expect(screen.getByTestId("action-attribution-snapshot-window")).toHaveTextContent("实际期末 —");
+    const coverage = screen.getByTestId("action-attribution-pnl-coverage");
+    expect(coverage).toHaveTextContent("2 个键");
+    expect(coverage).toHaveTextContent("绝对金额 20 万");
+    expect(coverage).toHaveTextContent("月度输入不完整，缺少 2026-02");
+    expect(coverage).toHaveTextContent("未分配键不计入已识别动作数量");
   });
 
   it("does not present unavailable DV01 as zero and discloses derived accounting PnL", async () => {
@@ -266,6 +297,6 @@ describe("ActionAttributionView", () => {
     expect(screen.getByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
       "降级模式=最新快照降级",
     );
-    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("供应商陈旧");
+    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("数据源更新延迟");
   });
 });

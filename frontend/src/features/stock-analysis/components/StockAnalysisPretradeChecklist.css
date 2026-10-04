@@ -43,7 +43,7 @@
 
 .stock-analysis-pretrade__stale {
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--dh-api-amber-soft);
   color: var(--dh-api-amber);
   font-size: 12px;
@@ -54,7 +54,7 @@
 .stock-analysis-pretrade__gate {
   padding: 1px 8px;
   border: 1px solid var(--dh-api-line);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   color: var(--dh-api-ink);
   font-size: 12px;
   line-height: 1.5;
@@ -97,7 +97,7 @@
 .stock-analysis-pretrade__error-line > button {
   padding: 0 8px;
   border: 1px solid var(--dh-api-line);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: transparent;
   color: var(--dh-api-ink);
   font-size: 12px;
@@ -170,7 +170,7 @@
   justify-self: start;
   padding: 1px 7px;
   border: 1px solid var(--dh-api-line);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   color: var(--dh-api-ink-muted);
   font-size: 12px;
   line-height: 1.5;

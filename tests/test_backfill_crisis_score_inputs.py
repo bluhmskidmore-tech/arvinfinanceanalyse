@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -123,6 +122,54 @@ def test_backfill_choice_edb_writes_rows(tmp_path: Path) -> None:
     finally:
         conn.close()
     assert int(count) == 2
+
+
+def test_backfill_compact_dates_match_iso_choice_range(tmp_path: Path) -> None:
+    db_path = tmp_path / "macro.duckdb"
+    mocked_rows = [
+        BackfillRow(
+            series_id="EMM00166683",
+            series_name="中债企业债到期收益率(AA):5年",
+            trade_date="2026-08-26",
+            value_numeric=1.8609,
+            frequency="daily",
+            unit="%",
+        ),
+        BackfillRow(
+            series_id="EMM00166683",
+            series_name="中债企业债到期收益率(AA):5年",
+            trade_date="2026-09-03",
+            value_numeric=1.845,
+            frequency="daily",
+            unit="%",
+        ),
+    ]
+
+    with patch(
+        "backend.scripts.backfill_crisis_score_inputs._fetch_from_choice_edb",
+        return_value=mocked_rows,
+    ) as fetch_mock:
+        payload = backfill_crisis_score_inputs(
+            duckdb_path=str(db_path),
+            start_date="20260826",
+            end_date="20260903",
+            aliases=["S0059760"],
+        )
+
+    assert payload["start_date"] == "2026-08-26"
+    assert payload["end_date"] == "2026-09-03"
+    assert payload["errors"] == {}
+    assert payload["results"]["S0059760"]["status"] == "completed"
+    assert payload["results"]["S0059760"]["written_rows"] == 2
+    fetch_mock.assert_called_once_with(
+        series_id="EMM00166683",
+        series_name="中债企业债到期收益率(AA):5年",
+        vendor_series_code="EMM00166683",
+        start_date="2026-08-26",
+        end_date="2026-09-03",
+        frequency="daily",
+        unit="%",
+    )
 
 
 def test_backfill_public_dr007_writes_rows(tmp_path: Path) -> None:
@@ -291,6 +338,12 @@ def test_backfill_reverse_repo_persists_real_choice_rows(tmp_path: Path) -> None
     assert payload["results"]["M0041653"]["status"] == "completed"
     assert payload["results"]["M0041653"]["written_rows"] == 1
     assert persist_mock.call_count == 1
+    meta = persist_mock.call_args.kwargs["metas"]["EMM00088132"]
+    assert meta.policy_note == (
+        "公开市场 7 天逆回购中标利率为事件型序列：中标利率仅产生于操作日，无操作区间无观测属正常节奏，"
+        "不得按连续日历判定停更（2026-08-11–08-20 供应商实证无数据）。"
+        "Crisis Score input backfill for alias M0041653."
+    )
 
 
 def test_cli_dry_run_argparse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -315,7 +368,7 @@ def test_cli_dry_run_argparse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
             "--start-date",
             "2024-06-11",
             "--end-date",
-            date.today().isoformat(),
+            "2026-06-30",
             "--dry-run",
             "--aliases",
             "sh000300",

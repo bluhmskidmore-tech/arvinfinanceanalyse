@@ -65,7 +65,7 @@ def test_frontend_playwright_smoke_scaffold_uses_safe_server_probe_and_artifacts
     assert "operations-layout-preview" in spec_text
     assert "liability-analytics-page" in spec_text
     assert "market-data-page" in spec_text
-    assert "macro-toolkit-tailwind-cockpit" in spec_text
+    assert "macro-toolkit-cockpit" in spec_text
     assert "stock-analysis-page" in spec_text
     assert "pnl-attribution-page-title" in spec_text
 

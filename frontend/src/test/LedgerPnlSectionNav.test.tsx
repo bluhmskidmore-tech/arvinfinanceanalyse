@@ -40,11 +40,15 @@ function addTarget(id: string) {
 }
 
 function triggerIntersection(target: Element) {
+  triggerIntersections([target]);
+}
+
+function triggerIntersections(targetsToShow: Element[]) {
   const observer = IntersectionObserverMock.instances.at(-1);
   if (!observer) throw new Error("未创建 IntersectionObserver。");
 
   observer.callback(
-    [{
+    targetsToShow.map((target) => ({
       boundingClientRect: target.getBoundingClientRect(),
       intersectionRatio: 1,
       intersectionRect: target.getBoundingClientRect(),
@@ -52,7 +56,7 @@ function triggerIntersection(target: Element) {
       rootBounds: null,
       target,
       time: 0,
-    }] as IntersectionObserverEntry[],
+    })) as IntersectionObserverEntry[],
     observer as unknown as IntersectionObserver,
   );
 }
@@ -126,5 +130,25 @@ describe("LedgerPnlSectionNav", () => {
     const button = screen.getByTestId("ledger-pnl-section-nav-item-ledger-bridge");
     expect(button).toHaveAttribute("aria-current", "true");
     expect(button).toHaveClass("ledger-pnl-section-nav__item--active");
+  });
+
+  it("多个长章节同时相交时保持导航目标高亮", () => {
+    const previousTarget = addTarget("ledger-summary");
+    const focusedTarget = addTarget("ledger-bridge");
+    focusedTarget.tabIndex = -1;
+    focusedTarget.focus();
+
+    render(<LedgerPnlSectionNav items={ITEMS} />);
+    act(() => {
+      triggerIntersections([previousTarget, focusedTarget]);
+    });
+
+    expect(screen.getByTestId("ledger-pnl-section-nav-item-ledger-bridge")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(screen.getByTestId("ledger-pnl-section-nav-item-ledger-summary")).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 });

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import date
+from typing import SupportsIndex, SupportsInt, cast
 
 import pandas as pd
 from backend.app.core_finance.macro.crisis_commodity_shadow import (
@@ -15,6 +16,9 @@ from backend.app.core_finance.macro.crisis_commodity_shadow import (
 from backend.app.services.macro_toolkit_presentation import (
     _SOURCE_BACKFILL_TARGETS,
     _latest_source_check_date,
+)
+from backend.app.services.macro_toolkit_refresh_receipt_service import (
+    MacroToolkitRefreshReceiptHealth,
 )
 
 _DAILY_SOURCE_CHECK_ALIASES = {
@@ -56,7 +60,7 @@ _CRISIS_COMMODITY_ADMISSION_MIN_CRISIS_SAMPLES = 5
 _CRISIS_COMMODITY_ADMISSION_MIN_CORRELATION = 0.2
 
 
-def _unique_texts(values: list[object]) -> list[str]:
+def _unique_texts(values: Iterable[object]) -> list[str]:
     seen: set[str] = set()
     output: list[str] = []
     for value in values:
@@ -217,6 +221,11 @@ def _crisis_commodity_candidate_admission(*, coverage: dict[str, object]) -> dic
         "rule_version": _CRISIS_COMMODITY_ADMISSION_RULE_VERSION,
         "scope": "commodity_candidate_admission_read_only",
         "decision_counts": decision_counts,
+        # Module-level global thresholds (same for every item); kept alongside the
+        # per-item copies for backward compatibility so consumers stop reading
+        # items[0] as a stand-in for a global value.
+        "minimum_crisis_sample_count": _CRISIS_COMMODITY_ADMISSION_MIN_CRISIS_SAMPLES,
+        "correlation_threshold": _CRISIS_COMMODITY_ADMISSION_MIN_CORRELATION,
         "items": admission_items,
         "warnings": ["CANDIDATE_ADMISSION_READ_ONLY", "APPROVAL_REQUIRED_BEFORE_FORMULA_USE"],
         "approval_required": True,
@@ -490,6 +499,140 @@ def _capability_result_card(
         "warnings": [str(item) for item in raw_result.get("warnings", []) if item],
         "result": raw_result,
     }
+
+
+_CHOICE_POLICY_DEPENDENCY_STEP = "choice_policy_rate_7d"
+_CHOICE_POLICY_LATEST_OBSERVATION_KEY = "EMM00088132"
+_CHOICE_POLICY_DIRECT_CAPABILITY_KEYS = frozenset(
+    {"monetary_policy_stance", "crisis_score_cn"}
+)
+_CHOICE_POLICY_TRANSITIVE_CAPABILITY_KEY = "decision_summary"
+_DEPENDENCY_BLOCKED_HEADLINE = "依赖未通过，原始计算仅作审阅证据"
+_DEPENDENCY_BLOCKED_WARNING = "Choice 政策利率依赖未通过，原始计算仅作审阅证据"
+
+
+def _gate_capability_results_on_refresh_receipt(
+    capability_results: list[dict[str, object]],
+    refresh_receipt_health: MacroToolkitRefreshReceiptHealth | None,
+) -> list[dict[str, object]]:
+    """Fail-close only capabilities that depend on the Choice policy-rate step.
+
+    A blocked page receipt can still contain a valid Choice step when another
+    required refresh failed. In that case the local capability gate is open,
+    while the existing page-level primary/conclusion gate remains closed.
+    """
+    if refresh_receipt_health is None or refresh_receipt_health.ready:
+        return capability_results
+
+    reason_code = _choice_policy_dependency_reason(refresh_receipt_health)
+    if reason_code is None:
+        return capability_results
+    dependency_gate: dict[str, object] = {
+        "status": "blocked",
+        "blocked_by": [_CHOICE_POLICY_DEPENDENCY_STEP],
+        "reason_code": reason_code,
+    }
+    gated_results: list[dict[str, object]] = []
+    for card in capability_results:
+        key = str(card.get("key") or "")
+        if key in _CHOICE_POLICY_DIRECT_CAPABILITY_KEYS:
+            gated_results.append(
+                _with_capability_dependency_gate(
+                    card,
+                    dependency_gate=dependency_gate,
+                    blocked=True,
+                )
+            )
+        elif key == _CHOICE_POLICY_TRANSITIVE_CAPABILITY_KEY:
+            transitive_gate = dict(dependency_gate)
+            transitive_gate["reason_code"] = "transitive_dependency_blocked"
+            gated_results.append(
+                _with_capability_dependency_gate(
+                    card,
+                    dependency_gate=transitive_gate,
+                    blocked=True,
+                )
+            )
+        else:
+            gated_results.append(card)
+    return gated_results
+
+
+def _choice_policy_dependency_reason(
+    refresh_receipt_health: MacroToolkitRefreshReceiptHealth,
+) -> str | None:
+    if refresh_receipt_health.status == "missing":
+        return "refresh_receipt_missing"
+    if refresh_receipt_health.status == "invalid":
+        return "refresh_receipt_invalid"
+    invalid_contract_fields = {
+        "receipt.schema_version",
+        "receipt.generated_at",
+        "receipt.run_kind",
+        "receipt.invocation_mode",
+        "receipt.task_name",
+        "receipt.source_version",
+        "receipt.result",
+        "receipt.result.status",
+        "receipt.result.steps",
+    }
+    if invalid_contract_fields.intersection(refresh_receipt_health.missing_fields):
+        return "refresh_receipt_invalid"
+    step = refresh_receipt_health.step_statuses.get(_CHOICE_POLICY_DEPENDENCY_STEP)
+    if (
+        not isinstance(step, dict)
+        or str(step.get("status") or "").casefold() != "success"
+        or not _positive_dependency_row_count(step.get("row_count"))
+    ):
+        return "required_refresh_step_not_ready"
+    latest_date = refresh_receipt_health.latest_observation_dates.get(
+        _CHOICE_POLICY_LATEST_OBSERVATION_KEY
+    )
+    if latest_date is None or not str(latest_date).strip():
+        return "latest_observation_missing"
+    return None
+
+
+def _positive_dependency_row_count(value: object) -> bool:
+    if isinstance(value, bool):
+        return False
+    try:
+        return int(cast(str | bytes | bytearray | SupportsInt | SupportsIndex, value)) > 0
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _with_capability_dependency_gate(
+    card: dict[str, object],
+    *,
+    dependency_gate: dict[str, object],
+    blocked: bool,
+) -> dict[str, object]:
+    gated = {**card, "dependency_gate": dict(dependency_gate)}
+    if not blocked:
+        return gated
+    # Capability cards are built with a list of warnings; keep the existing iteration semantics.
+    warnings = [str(item) for item in cast(Iterable[object], card.get("warnings", [])) if item]
+    if _DEPENDENCY_BLOCKED_WARNING not in warnings:
+        warnings.append(_DEPENDENCY_BLOCKED_WARNING)
+    gated.update(
+        {
+            "tone": "missing",
+            "score": None,
+            "headline": _DEPENDENCY_BLOCKED_HEADLINE,
+            "primary_metric": None,
+            "warnings": warnings,
+        }
+    )
+    return gated
+
+
+def _capability_dependency_blocked(card: dict[str, object]) -> bool:
+    dependency_gate = card.get("dependency_gate")
+    return (
+        isinstance(dependency_gate, dict)
+        and dependency_gate.get("status") == "blocked"
+    )
 
 
 def _unavailable_capability_result(
@@ -937,19 +1080,20 @@ def _primary_signal(
 
 def _crisis_risk_severity(capability_results: list[dict[str, object]]) -> int:
     crisis = next((item for item in capability_results if item.get("key") == "crisis_score_cn"), None)
-    if crisis is None:
+    if crisis is None or _capability_dependency_blocked(crisis):
         return 0
-    result = crisis.get("result") if isinstance(crisis.get("result"), dict) else {}
+    result_value = crisis.get("result")
+    result = result_value if isinstance(result_value, dict) else {}
+    risk_gate_value = result.get("risk_gate")
+    risk_gate = risk_gate_value if isinstance(risk_gate_value, dict) else {}
+    if risk_gate.get("eligible") is not True or risk_gate.get("triggered") is not True:
+        return 0
     score = _float_or_none(result.get("crisis_score"))
     if score is None:
         score = _float_or_none(crisis.get("score"))
-    if score is None:
-        return 0
-    if score >= 3:
+    if score is not None and score >= 3:
         return _CRISIS_SEVERITY_CRISIS_REGIME
-    if score >= 2:
-        return _CRISIS_SEVERITY_HIGH_RISK
-    return 0
+    return _CRISIS_SEVERITY_HIGH_RISK
 
 
 def _a_share_risk_severity(a_share_risk: dict[str, object] | None) -> int:
@@ -1033,11 +1177,27 @@ def _crisis_score_card(capability_results: list[dict[str, object]], *, deferred:
                 ["首屏未运行完整 Crisis Score，打开完整分析后显示分数"],
             )
         return _signal_card("crisis_score_cn", "Crisis Score", "数据不足", "missing", None, ["Crisis Score 未接入"])
-    result = crisis.get("result") if isinstance(crisis.get("result"), dict) else {}
+    if _capability_dependency_blocked(crisis):
+        evidence_value = crisis.get("evidence")
+        evidence = evidence_value if isinstance(evidence_value, list) else []
+        warnings_value = crisis.get("warnings")
+        warnings = warnings_value if isinstance(warnings_value, list) else []
+        return _signal_card(
+            "crisis_score_cn",
+            "Crisis Score",
+            str(crisis.get("headline") or _DEPENDENCY_BLOCKED_HEADLINE),
+            "missing",
+            None,
+            [str(item) for item in (evidence or warnings)[:3]],
+        )
+    result_value = crisis.get("result")
+    result = result_value if isinstance(result_value, dict) else {}
     score = _float_or_none(crisis.get("score"))
     regime = str(result.get("regime") or crisis.get("headline") or "数据不足")
-    evidence = crisis.get("evidence") if isinstance(crisis.get("evidence"), list) else []
-    warnings = crisis.get("warnings") if isinstance(crisis.get("warnings"), list) else []
+    evidence_value = crisis.get("evidence")
+    evidence = evidence_value if isinstance(evidence_value, list) else []
+    warnings_value = crisis.get("warnings")
+    warnings = warnings_value if isinstance(warnings_value, list) else []
     return _signal_card(
         "crisis_score_cn",
         "Crisis Score",
@@ -1051,6 +1211,11 @@ def _crisis_score_card(capability_results: list[dict[str, object]], *, deferred:
 def _liquidity_card(indicator_by_key: dict[str, dict[str, object]]) -> dict[str, object]:
     dr007 = _number(indicator_by_key.get("dr007"), "latest_value")
     ncd = _number(indicator_by_key.get("ncd_3m"), "latest_value")
+    ncd_label = (
+        "SHIBOR 3M（期限报价参考）"
+        if indicator_by_key.get("ncd_3m", {}).get("series_id") == "NCD.SHIBOR.3M"
+        else "3M NCD"
+    )
     if dr007 is None and ncd is None:
         return _signal_card("liquidity", "流动性", "数据不足", "missing", None, ["DR007 / 3M NCD 未命中"])
     anchor = dr007 if dr007 is not None else ncd
@@ -1065,7 +1230,7 @@ def _liquidity_card(indicator_by_key: dict[str, dict[str, object]]) -> dict[str,
     if dr007 is not None:
         evidence.append(f"DR007 {dr007:.2f}%")
     if ncd is not None:
-        evidence.append(f"3M NCD {ncd:.2f}%")
+        evidence.append(f"{ncd_label} {ncd:.2f}%")
     return _signal_card("liquidity", "流动性", stance, tone, score, evidence)
 
 

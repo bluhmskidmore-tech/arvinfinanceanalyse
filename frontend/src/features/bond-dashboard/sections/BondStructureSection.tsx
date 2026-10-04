@@ -1,46 +1,37 @@
 import type { AssetStructurePayload, YieldDistributionPayload } from "../../../api/contracts";
+import { SectionGrid, SectionHead } from "../../../components/layout";
 import { AssetStructurePie, type AssetGroupBy } from "../components/AssetStructurePie";
-import BondDashboardSectionLead, {
-  type BondDashboardSectionState,
-} from "../components/BondDashboardSectionLead";
 import { CreditRatingBlocks } from "../components/CreditRatingBlocks";
 import { YieldDistributionBar } from "../components/YieldDistributionBar";
+import { bondSectionState, bondSectionStatusFromStates, type BondSectionDataState } from "../sectionStatus";
 import "./BondDashboardChartSections.css";
 
 type BondStructureSectionProps = {
   assetData: AssetStructurePayload | undefined;
-  assetLoading: boolean;
+  assetState: BondSectionDataState;
   groupBy: AssetGroupBy;
   onGroupByChange: (groupBy: AssetGroupBy) => void;
   ratingData: AssetStructurePayload | undefined;
-  ratingLoading: boolean;
+  ratingState: BondSectionDataState;
   yieldData: YieldDistributionPayload | undefined;
   tenorData: AssetStructurePayload | undefined;
-  yieldLoading: boolean;
-  tenorLoading: boolean;
+  yieldState: BondSectionDataState;
+  tenorState: BondSectionDataState;
 };
-
-/** 分区头状态位：loading/empty 露一句话，正常返回 null（错误在 01 区 notice 披露）。 */
-function sectionLeadState(loading: boolean, isEmpty: boolean): BondDashboardSectionState {
-  if (loading) return { label: "读取中", tone: "loading" };
-  if (isEmpty) return { label: "暂无数据", tone: "empty" };
-  return null;
-}
 
 /** 02 资产结构：券种/评级/期限占比 + 收益率分布（lg 三面板等高网格）。 */
 export default function BondStructureSection({
   assetData,
-  assetLoading,
+  assetState,
   groupBy,
   onGroupByChange,
   ratingData,
-  ratingLoading,
+  ratingState,
   yieldData,
   tenorData,
-  yieldLoading,
-  tenorLoading,
+  yieldState,
+  tenorState,
 }: BondStructureSectionProps) {
-  const loading = assetLoading || ratingLoading || yieldLoading || tenorLoading;
   const isEmpty =
     (assetData?.items.length ?? 0) === 0 &&
     (ratingData?.items.length ?? 0) === 0 &&
@@ -49,22 +40,29 @@ export default function BondStructureSection({
 
   return (
     <section className="bond-dashboard-section" id="bond-dashboard-section-structure">
-      <BondDashboardSectionLead title="资产结构" state={sectionLeadState(loading, isEmpty)} />
-      <div className="bond-dashboard-page__grid bond-dashboard-page__grid--3 bond-dashboard-charts__grid-equal">
+      {/* 分区头状态由四个数据块的读取结果推导，块里红了分区头不会还写着暂无数据。 */}
+      <SectionHead
+        title="资产结构"
+        state={bondSectionState(
+          bondSectionStatusFromStates([assetState, ratingState, yieldState, tenorState], isEmpty),
+        )}
+      />
+      {/* 三面板刻意等高：短面板靠卡片背景补齐，不留裸空白断层（DESIGN.md §5）。 */}
+      <SectionGrid cols={{ base: 1, lg: 3 }} gap={12} align="stretch">
         <AssetStructurePie
           data={assetData}
-          loading={assetLoading}
+          state={assetState}
           groupBy={groupBy}
           onGroupByChange={onGroupByChange}
         />
         <YieldDistributionBar
           yieldData={yieldData}
           tenorData={tenorData}
-          loadingYield={yieldLoading}
-          loadingTenor={tenorLoading}
+          yieldState={yieldState}
+          tenorState={tenorState}
         />
-        <CreditRatingBlocks data={ratingData} loading={ratingLoading} />
-      </div>
+        <CreditRatingBlocks data={ratingData} state={ratingState} />
+      </SectionGrid>
     </section>
   );
 }

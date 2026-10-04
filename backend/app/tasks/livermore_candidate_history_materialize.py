@@ -22,13 +22,20 @@ from backend.app.core_finance.portfolio_paths import (
     resolve_limit_prices,
 )
 from backend.app.core_finance.strategy_policy import POLICY
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness, load_choice_stock_readiness
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 from backend.app.services.market_data_livermore_service import (
     EXECUTION_STOCK_CANDIDATE_POLICY,
-    load_livermore_strategy_payload,
+    capture_livermore_external_inputs,
+    livermore_external_input_identities_match,
+    load_livermore_strategy_payload_from_connection,
+)
+from backend.app.services.pretrade_qualification import (
+    canonical_pretrade_output_sha256,
+    capture_pretrade_candidate_identity,
+    capture_pretrade_input_snapshot,
 )
 
 LIVERMORE_CANDIDATE_HISTORY_LOCK = LockDefinition(
@@ -388,253 +395,341 @@ def materialize_livermore_candidate_history(
     duckdb_file = Path(duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
     skipped: list[str] = []
-
-    payload, meta = load_livermore_strategy_payload(
-        duckdb_path=str(duckdb_file),
-        as_of_date=parsed_as_of,
-        stock_readiness=_load_configured_stock_readiness(),
-        backfill_mode=True,
-        stock_candidate_policy=stock_candidate_policy,
+    resolved_candidate_policy = (
+        stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY
     )
-    snapshot_as_of = cast(str | None, payload.get("as_of_date"))
-    if not snapshot_as_of:
-        return {
-            "status": "partial",
-            "row_count": 0,
-            "run_id": f"livermore_candidate_history:none:{uuid.uuid4().hex[:12]}",
-            "source_version": str(meta.get("source_version") or ""),
-            "vendor_version": str(meta.get("vendor_version") or ""),
-            "rule_version": RULE_VERSION,
-            "formula_version": FORMULA_VERSION,
-            "skipped": ["missing_resolved_as_of_date"],
-            "stock_candidate_policy": stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY,
-            "message": "Strategy payload has no resolved as_of_date; nothing written.",
-        }
-
-    items_sorted = _build_signal_rows(payload)
-    universe_items = _build_stock_candidate_universe_rows(payload)
-
-    source_version_meta = cast(str, meta.get("source_version"))
-    lineage_payload = _build_vendor_payload(payload=payload, items=items_sorted, snapshot_as_of=snapshot_as_of)
-    vendor_version = _build_vendor_version(lineage_payload)
-    lineage_hash_source = hashlib.sha256(
-        json.dumps(lineage_payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()[:12]
-    row_source_version = f"sv_livermore_candidate_hist_{lineage_hash_source}"
-    run_id = f"livermore_candidate_history:{snapshot_as_of}:{uuid.uuid4().hex[:12]}"
-
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    try:
-        if not _schema_ready:
-            ensure_livermore_candidate_history_schema(conn)
-        observation_table_ok = TABLE_OBS in {r[0] for r in conn.execute("show tables").fetchall()}
-
-        computed_rows: list[dict[str, object]] = []
-        computed_universe_rows: list[dict[str, object]] = []
-        computed_execution_rows: list[dict[str, object]] = []
-        if not items_sorted:
-            skipped.append("no_strategy_signals")
-        for item in items_sorted:
-            code = _text(item.get("stock_code")).upper()
-            if not code:
-                skipped.append("blank_stock_code")
-                continue
-            name = _text(item.get("stock_name"))
-            sect_c = _text(item.get("sector_code")) or None
-            sect_n = _text(item.get("sector_name")) or None
-            rank = _safe_int(item.get("rank"), default=1)
-            if not observation_table_ok:
-                skipped.append(f"{code}:missing_observation_table")
-                continue
-
-            computed = _forward_returns_for_candidate(
-                conn,
-                stock_code=code,
-                snapshot_as_of_date=snapshot_as_of,
+    with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        transaction_started = False
+        try:
+            if not _schema_ready:
+                ensure_livermore_candidate_history_schema(conn)
+            conn.execute("begin transaction")
+            transaction_started = True
+            captured_external_inputs = _capture_configured_external_inputs()
+            input_snapshot_before = (
+                capture_pretrade_input_snapshot(
+                    conn,
+                    target_date=parsed_as_of.isoformat(),
+                    stock_candidate_policy=resolved_candidate_policy,
+                    external_identity_profiles=captured_external_inputs[
+                        "identity_profiles"
+                    ],
+                )
+                if parsed_as_of is not None
+                else None
             )
-            if computed is None:
-                skipped.append(f"{code}:missing_selection_bar")
-                continue
-
-            computed_rows.append(
-                {
-                    "snapshot_as_of_date": snapshot_as_of,
-                    "stock_code": code,
-                    "stock_name": name if name else None,
-                    "candidate_rank": rank,
-                    "sector_code": sect_c if sect_c else None,
-                    "sector_name": sect_n if sect_n else None,
-                    **computed,
-                    "formula_version": FORMULA_VERSION,
-                    "source_version": row_source_version,
-                    "vendor_version": vendor_version,
+            payload, meta = load_livermore_strategy_payload_from_connection(
+                conn,
+                duckdb_path=str(duckdb_file),
+                as_of_date=parsed_as_of,
+                backfill_mode=True,
+                stock_candidate_policy=resolved_candidate_policy,
+                captured_external_inputs=captured_external_inputs,
+            )
+        except Exception:
+            try:
+                if transaction_started:
+                    conn.execute("rollback")
+            finally:
+                conn.close()
+            raise
+        try:
+            snapshot_as_of = cast(str | None, payload.get("as_of_date"))
+            if not snapshot_as_of:
+                conn.execute("rollback")
+                transaction_started = False
+                conn.close()
+                return {
+                    "status": "partial",
+                    "row_count": 0,
+                    "run_id": f"livermore_candidate_history:none:{uuid.uuid4().hex[:12]}",
+                    "source_version": str(meta.get("source_version") or ""),
+                    "vendor_version": str(meta.get("vendor_version") or ""),
                     "rule_version": RULE_VERSION,
-                    "run_id": run_id,
-                    "signal_kind": _text(item.get("signal_kind")) or "stock_candidate",
-                    "theme_key": _optional_text(item.get("theme_key")),
-                    "theme_name": _optional_text(item.get("theme_name")),
-                    "theme_source_kind": _optional_text(item.get("theme_source_kind")),
-                    "theme_rank": _safe_int_or_none(item.get("theme_rank")),
-                    "stock_rank_in_theme": _safe_int_or_none(item.get("stock_rank_in_theme")),
-                    "sector_rank": _safe_int_or_none(item.get("sector_rank")),
-                    "market_state": _row_market_state(item),
-                    "abnormal_turnover": _safe_float_or_none(item.get("abnormal_turnover")),
-                    "gap_norm": _safe_float_or_none(item.get("gap_norm")),
-                    "breakout_extension_norm": _safe_float_or_none(item.get("breakout_extension_norm")),
-                    "breakout_level": _safe_float_or_none(item.get("breakout_level")),
-                    "ema10": _safe_float_or_none(item.get("ema10")),
-                    "ma20": _safe_float_or_none(item.get("ma20")),
-                    "ma60": _safe_float_or_none(item.get("ma60")),
-                    "ma120": _safe_float_or_none(item.get("ma120")),
-                    "strength_pctchange": _safe_float_or_none(item.get("strength_pctchange")),
-                    "strength_turn": _safe_float_or_none(item.get("strength_turn")),
-                    "strength_amplitude": _safe_float_or_none(item.get("strength_amplitude")),
-                    "close_strength": _safe_float_or_none(item.get("close_strength")),
-                    "closed_up_limit": _safe_bool_or_none(item.get("closed_up_limit")),
-                    "signal_evidence_json": _json_dump(
-                        _evidence_with_adjustment(
-                            item.get("signal_evidence"),
-                            computed.get("adjustment_evidence"),
-                        )
-                    ),
+                    "formula_version": FORMULA_VERSION,
+                    "skipped": ["missing_resolved_as_of_date"],
+                    "stock_candidate_policy": stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY,
+                    "message": "Strategy payload has no resolved as_of_date; nothing written.",
                 }
-            )
-            execution = _execution_returns_for_candidate(
-                conn,
-                stock_code=code,
-                snapshot_as_of_date=snapshot_as_of,
-            )
-            if execution is not None:
-                computed_execution_rows.append(
-                    {
-                        "signal_date": snapshot_as_of,
-                        "stock_code": code,
-                        "stock_name": name if name else None,
-                        "signal_kind": _text(item.get("signal_kind")) or "stock_candidate",
-                        "candidate_rank": rank,
-                        "market_state": _row_market_state(item),
-                        **execution,
-                        "formula_version": EXECUTION_FORMULA_VERSION,
-                        "run_id": run_id,
-                    }
+
+            if input_snapshot_before is None:
+                input_snapshot_before = capture_pretrade_input_snapshot(
+                    conn,
+                    target_date=snapshot_as_of,
+                    stock_candidate_policy=resolved_candidate_policy,
+                    external_identity_profiles=captured_external_inputs[
+                        "identity_profiles"
+                    ],
                 )
 
-        if universe_items and observation_table_ok:
-            for item in universe_items:
+            items_sorted = _build_signal_rows(payload)
+            universe_items = _build_stock_candidate_universe_rows(payload)
+            strategy_payload_sha256 = canonical_pretrade_output_sha256(payload)
+            input_coverage_ready = _choice_stock_inputs_have_full_coverage(
+                duckdb_path=str(duckdb_file),
+                as_of_date=snapshot_as_of,
+                conn=conn,
+            )
+
+            source_version_meta = cast(str, meta.get("source_version"))
+            lineage_payload = _build_vendor_payload(payload=payload, items=items_sorted, snapshot_as_of=snapshot_as_of)
+            vendor_version = _build_vendor_version(lineage_payload)
+            lineage_hash_source = hashlib.sha256(
+                json.dumps(lineage_payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest()[:12]
+            row_source_version = f"sv_livermore_candidate_hist_{lineage_hash_source}"
+            run_id = f"livermore_candidate_history:{snapshot_as_of}:{uuid.uuid4().hex[:12]}"
+        except Exception:
+            if transaction_started:
+                conn.execute("rollback")
+                transaction_started = False
+            conn.close()
+            raise
+
+        try:
+            observation_table_ok = TABLE_OBS in {r[0] for r in conn.execute("show tables").fetchall()}
+
+            computed_rows: list[dict[str, object]] = []
+            computed_universe_rows: list[dict[str, object]] = []
+            computed_execution_rows: list[dict[str, object]] = []
+            if not items_sorted:
+                skipped.append("no_strategy_signals")
+            for item in items_sorted:
                 code = _text(item.get("stock_code")).upper()
                 if not code:
-                    skipped.append("universe:blank_stock_code")
+                    skipped.append("blank_stock_code")
                     continue
+                name = _text(item.get("stock_name"))
+                sect_c = _text(item.get("sector_code")) or None
+                sect_n = _text(item.get("sector_name")) or None
+                rank = _safe_int(item.get("rank"), default=1)
+                if not observation_table_ok:
+                    skipped.append(f"{code}:missing_observation_table")
+                    continue
+
                 computed = _forward_returns_for_candidate(
                     conn,
                     stock_code=code,
                     snapshot_as_of_date=snapshot_as_of,
                 )
                 if computed is None:
-                    skipped.append(f"{code}:universe_missing_selection_bar")
+                    skipped.append(f"{code}:missing_selection_bar")
                     continue
-                computed_universe_rows.append(
+
+                computed_rows.append(
                     {
                         "snapshot_as_of_date": snapshot_as_of,
                         "stock_code": code,
-                        "stock_name": _optional_text(item.get("stock_name")),
-                        "sector_code": _optional_text(item.get("sector_code")),
-                        "sector_name": _optional_text(item.get("sector_name")),
-                        "sector_rank": _safe_int_or_none(item.get("sector_rank")),
+                        "stock_name": name if name else None,
+                        "candidate_rank": rank,
+                        "sector_code": sect_c if sect_c else None,
+                        "sector_name": sect_n if sect_n else None,
                         **computed,
-                        "close_strength": _safe_float_or_none(item.get("close_strength")),
-                        "gap_norm": _safe_float_or_none(item.get("gap_norm")),
-                        "breakout_extension_norm": _safe_float_or_none(item.get("breakout_extension_norm")),
-                        "abnormal_turnover": _safe_float_or_none(item.get("abnormal_turnover")),
-                        "breakout_level": _safe_float_or_none(item.get("breakout_level")),
-                        "ema10": _safe_float_or_none(item.get("ema10")),
-                        "ma20": _safe_float_or_none(item.get("ma20")),
-                        "ma60": _safe_float_or_none(item.get("ma60")),
-                        "ma120": _safe_float_or_none(item.get("ma120")),
-                        "old_rank": _safe_int_or_none(item.get("old_rank")),
-                        "new_rank": _safe_int_or_none(item.get("new_rank")),
-                        "eligible_before_truncation": _safe_bool(item.get("eligible_before_truncation"), default=True),
-                        "selected_old_top6": _safe_bool(item.get("selected_old_top6"), default=False),
-                        "selected_new_top6": _safe_bool(item.get("selected_new_top6"), default=False),
-                        "market_state": _optional_text(item.get("market_state")) or _payload_market_state(payload),
                         "formula_version": FORMULA_VERSION,
                         "source_version": row_source_version,
                         "vendor_version": vendor_version,
                         "rule_version": RULE_VERSION,
                         "run_id": run_id,
-                        "evidence_json": _json_dump(
+                        "signal_kind": _text(item.get("signal_kind")) or "stock_candidate",
+                        "theme_key": _optional_text(item.get("theme_key")),
+                        "theme_name": _optional_text(item.get("theme_name")),
+                        "theme_source_kind": _optional_text(item.get("theme_source_kind")),
+                        "theme_rank": _safe_int_or_none(item.get("theme_rank")),
+                        "stock_rank_in_theme": _safe_int_or_none(item.get("stock_rank_in_theme")),
+                        "sector_rank": _safe_int_or_none(item.get("sector_rank")),
+                        "market_state": _row_market_state(item),
+                        "abnormal_turnover": _safe_float_or_none(item.get("abnormal_turnover")),
+                        "gap_norm": _safe_float_or_none(item.get("gap_norm")),
+                        "breakout_extension_norm": _safe_float_or_none(item.get("breakout_extension_norm")),
+                        "breakout_level": _safe_float_or_none(item.get("breakout_level")),
+                        "ema10": _safe_float_or_none(item.get("ema10")),
+                        "ma20": _safe_float_or_none(item.get("ma20")),
+                        "ma60": _safe_float_or_none(item.get("ma60")),
+                        "ma120": _safe_float_or_none(item.get("ma120")),
+                        "strength_pctchange": _safe_float_or_none(item.get("strength_pctchange")),
+                        "strength_turn": _safe_float_or_none(item.get("strength_turn")),
+                        "strength_amplitude": _safe_float_or_none(item.get("strength_amplitude")),
+                        "close_strength": _safe_float_or_none(item.get("close_strength")),
+                        "closed_up_limit": _safe_bool_or_none(item.get("closed_up_limit")),
+                        "signal_evidence_json": _json_dump(
                             _evidence_with_adjustment(
-                                _stock_candidate_universe_evidence(item, payload=payload),
+                                item.get("signal_evidence"),
                                 computed.get("adjustment_evidence"),
                             )
                         ),
                     }
                 )
-        elif universe_items:
-            skipped.append("universe:missing_observation_table")
-
-        computed_execution_rows = _deduplicate_execution_history_rows(computed_execution_rows)
-        with acquire_lock(LIVERMORE_CANDIDATE_HISTORY_LOCK, base_dir=duckdb_file.parent):
-            transaction_started = False
-            try:
-                conn.execute("begin transaction")
-                transaction_started = True
-                conn.execute(f"delete from {TABLE_HIST} where snapshot_as_of_date = ?", [snapshot_as_of])
-                conn.execute(f"delete from {TABLE_STOCK_UNIVERSE} where snapshot_as_of_date = ?", [snapshot_as_of])
-                conn.execute(f"delete from {TABLE_EXECUTION_HIST} where signal_date = ?", [snapshot_as_of])
-                if computed_rows:
-                    placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
-                    conn.executemany(
-                        f"""
-                        insert into {TABLE_HIST} ({", ".join(_INSERT_COLUMNS)})
-                        values ({placeholders})
-                        """,
-                        [tuple(cast(Any, row[col]) for col in _INSERT_COLUMNS) for row in computed_rows],
+                execution = _execution_returns_for_candidate(
+                    conn,
+                    stock_code=code,
+                    snapshot_as_of_date=snapshot_as_of,
+                )
+                if execution is not None:
+                    computed_execution_rows.append(
+                        {
+                            "signal_date": snapshot_as_of,
+                            "stock_code": code,
+                            "stock_name": name if name else None,
+                            "signal_kind": _text(item.get("signal_kind")) or "stock_candidate",
+                            "candidate_rank": rank,
+                            "market_state": _row_market_state(item),
+                            **execution,
+                            "formula_version": EXECUTION_FORMULA_VERSION,
+                            "run_id": run_id,
+                        }
                     )
-                if computed_universe_rows:
-                    placeholders = ", ".join("?" for _ in _UNIVERSE_INSERT_COLUMNS)
-                    conn.executemany(
-                        f"""
-                        insert into {TABLE_STOCK_UNIVERSE} ({", ".join(_UNIVERSE_INSERT_COLUMNS)})
-                        values ({placeholders})
-                        """,
-                        [
-                            tuple(cast(Any, row[col]) for col in _UNIVERSE_INSERT_COLUMNS)
-                            for row in computed_universe_rows
+
+            if universe_items and observation_table_ok:
+                for item in universe_items:
+                    code = _text(item.get("stock_code")).upper()
+                    if not code:
+                        skipped.append("universe:blank_stock_code")
+                        continue
+                    computed = _forward_returns_for_candidate(
+                        conn,
+                        stock_code=code,
+                        snapshot_as_of_date=snapshot_as_of,
+                    )
+                    if computed is None:
+                        skipped.append(f"{code}:universe_missing_selection_bar")
+                        continue
+                    computed_universe_rows.append(
+                        {
+                            "snapshot_as_of_date": snapshot_as_of,
+                            "stock_code": code,
+                            "stock_name": _optional_text(item.get("stock_name")),
+                            "sector_code": _optional_text(item.get("sector_code")),
+                            "sector_name": _optional_text(item.get("sector_name")),
+                            "sector_rank": _safe_int_or_none(item.get("sector_rank")),
+                            **computed,
+                            "close_strength": _safe_float_or_none(item.get("close_strength")),
+                            "gap_norm": _safe_float_or_none(item.get("gap_norm")),
+                            "breakout_extension_norm": _safe_float_or_none(item.get("breakout_extension_norm")),
+                            "abnormal_turnover": _safe_float_or_none(item.get("abnormal_turnover")),
+                            "breakout_level": _safe_float_or_none(item.get("breakout_level")),
+                            "ema10": _safe_float_or_none(item.get("ema10")),
+                            "ma20": _safe_float_or_none(item.get("ma20")),
+                            "ma60": _safe_float_or_none(item.get("ma60")),
+                            "ma120": _safe_float_or_none(item.get("ma120")),
+                            "old_rank": _safe_int_or_none(item.get("old_rank")),
+                            "new_rank": _safe_int_or_none(item.get("new_rank")),
+                            "eligible_before_truncation": _safe_bool(item.get("eligible_before_truncation"), default=True),
+                            "selected_old_top6": _safe_bool(item.get("selected_old_top6"), default=False),
+                            "selected_new_top6": _safe_bool(item.get("selected_new_top6"), default=False),
+                            "market_state": _optional_text(item.get("market_state")) or _payload_market_state(payload),
+                            "formula_version": FORMULA_VERSION,
+                            "source_version": row_source_version,
+                            "vendor_version": vendor_version,
+                            "rule_version": RULE_VERSION,
+                            "run_id": run_id,
+                            "evidence_json": _json_dump(
+                                _evidence_with_adjustment(
+                                    _stock_candidate_universe_evidence(item, payload=payload),
+                                    computed.get("adjustment_evidence"),
+                                )
+                            ),
+                        }
+                    )
+            elif universe_items:
+                skipped.append("universe:missing_observation_table")
+
+            computed_execution_rows = _deduplicate_execution_history_rows(computed_execution_rows)
+            with acquire_lock(LIVERMORE_CANDIDATE_HISTORY_LOCK, base_dir=duckdb_file.parent):
+                try:
+                    conn.execute(f"delete from {TABLE_HIST} where snapshot_as_of_date = ?", [snapshot_as_of])
+                    conn.execute(f"delete from {TABLE_STOCK_UNIVERSE} where snapshot_as_of_date = ?", [snapshot_as_of])
+                    conn.execute(f"delete from {TABLE_EXECUTION_HIST} where signal_date = ?", [snapshot_as_of])
+                    if computed_rows:
+                        placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
+                        conn.executemany(
+                            f"""
+                            insert into {TABLE_HIST} ({", ".join(_INSERT_COLUMNS)})
+                            values ({placeholders})
+                            """,
+                            [tuple(cast(Any, row[col]) for col in _INSERT_COLUMNS) for row in computed_rows],
+                        )
+                    if computed_universe_rows:
+                        placeholders = ", ".join("?" for _ in _UNIVERSE_INSERT_COLUMNS)
+                        conn.executemany(
+                            f"""
+                            insert into {TABLE_STOCK_UNIVERSE} ({", ".join(_UNIVERSE_INSERT_COLUMNS)})
+                            values ({placeholders})
+                            """,
+                            [
+                                tuple(cast(Any, row[col]) for col in _UNIVERSE_INSERT_COLUMNS)
+                                for row in computed_universe_rows
+                            ],
+                        )
+                    _insert_execution_history_rows(conn, computed_execution_rows)
+                    input_snapshot_after = capture_pretrade_input_snapshot(
+                        conn,
+                        target_date=snapshot_as_of,
+                        stock_candidate_policy=resolved_candidate_policy,
+                        external_identity_profiles=captured_external_inputs[
+                            "identity_profiles"
                         ],
                     )
-                _insert_execution_history_rows(conn, computed_execution_rows)
-                conn.execute("commit")
-                transaction_started = False
-            except Exception:
+                    candidate_history_sha256 = capture_pretrade_candidate_identity(
+                        conn,
+                        target_date=snapshot_as_of,
+                    )
+                    if not _configured_external_input_identities_match(
+                        captured_external_inputs
+                    ):
+                        raise RuntimeError(
+                            "livermore external inputs changed during production"
+                        )
+                    conn.execute("commit")
+                    transaction_started = False
+                except Exception:
+                    if transaction_started:
+                        conn.execute("rollback")
+                        transaction_started = False
+                    raise
+
+            ready_empty = (
+                not computed_rows
+                and skipped == ["no_strategy_signals"]
+                and input_coverage_ready
+            )
+            status = "ok"
+            if skipped and computed_rows:
+                status = "partial"
+            elif not computed_rows and not ready_empty:
+                status = "partial"
+
+            return {
+                "status": status,
+                "row_count": len(computed_rows),
+                "empty_result": ready_empty,
+                "input_coverage_status": "ready" if input_coverage_ready else "incomplete",
+                "run_id": run_id,
+                "snapshot_as_of_date": snapshot_as_of,
+                "source_version": row_source_version,
+                "source_version_meta": source_version_meta,
+                "vendor_version": vendor_version,
+                "rule_version": RULE_VERSION,
+                "formula_version": FORMULA_VERSION,
+                "skipped": skipped,
+                "skipped_count": len(skipped),
+                "universe_row_count": len(computed_universe_rows),
+                "execution_row_count": len(computed_execution_rows),
+                "stock_candidate_policy": resolved_candidate_policy,
+                "strategy_payload_sha256": strategy_payload_sha256,
+                "candidate_history_sha256": candidate_history_sha256,
+                "input_snapshot_before": input_snapshot_before,
+                "input_snapshot_after": input_snapshot_after,
+                "external_input_identity_profiles": captured_external_inputs[
+                    "identity_profiles"
+                ],
+            }
+        finally:
+            try:
                 if transaction_started:
                     conn.execute("rollback")
-                raise
-
-        status = "ok"
-        if skipped and computed_rows:
-            status = "partial"
-        elif not computed_rows:
-            status = "partial"
-
-        return {
-            "status": status,
-            "row_count": len(computed_rows),
-            "run_id": run_id,
-            "snapshot_as_of_date": snapshot_as_of,
-            "source_version": row_source_version,
-            "source_version_meta": source_version_meta,
-            "vendor_version": vendor_version,
-            "rule_version": RULE_VERSION,
-            "formula_version": FORMULA_VERSION,
-            "skipped": skipped,
-            "skipped_count": len(skipped),
-            "universe_row_count": len(computed_universe_rows),
-            "execution_row_count": len(computed_execution_rows),
-            "stock_candidate_policy": stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY,
-        }
-    finally:
-        conn.close()
+            finally:
+                conn.close()
 
 
 def backfill_livermore_candidate_history(
@@ -873,6 +968,7 @@ def backfill_livermore_candidate_execution_history(
                 except Exception:
                     if transaction_started:
                         conn.execute("rollback")
+                        transaction_started = False
                     raise
 
         date_results = sorted(
@@ -1336,6 +1432,39 @@ def _available_observation_trade_dates_sql() -> str:
 def _load_configured_stock_readiness() -> ChoiceStockReadiness:
     settings = get_settings()
     return load_choice_stock_readiness(settings.choice_stock_catalog_file)
+
+
+def _capture_configured_external_inputs() -> dict[str, object]:
+    settings = get_settings()
+    return capture_livermore_external_inputs(settings.choice_stock_catalog_file)
+
+
+def _configured_external_input_identities_match(
+    captured_external_inputs: dict[str, object],
+) -> bool:
+    settings = get_settings()
+    return livermore_external_input_identities_match(
+        captured_external_inputs,
+        choice_stock_catalog_file=settings.choice_stock_catalog_file,
+    )
+
+
+def _choice_stock_inputs_have_full_coverage(
+    *,
+    duckdb_path: str,
+    as_of_date: str,
+    conn: duckdb.DuckDBPyConnection,
+) -> bool:
+    from backend.app.tasks.choice_stock_materialize import (
+        load_choice_stock_materialization_coverage,
+    )
+
+    coverage = load_choice_stock_materialization_coverage(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        conn=conn,
+    )
+    return coverage.full_coverage and coverage.status == "ready"
 
 
 def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:

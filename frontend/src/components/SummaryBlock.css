@@ -2,7 +2,7 @@
   margin-bottom: 8px;
   color: var(--moss-color-neutral-900);
   font-size: 14px;
-  font-weight: bold;
+  font-weight: 600;
 }
 
 .summary-block__content {

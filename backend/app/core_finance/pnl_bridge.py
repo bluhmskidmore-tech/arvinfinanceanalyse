@@ -7,10 +7,11 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from backend.app.core_finance.accounting_basis_constants import ACCOUNTING_BASIS_FVTPL
 from backend.app.core_finance.bond_analytics.common import (
+    DURATION_TERM_MATURITY_UNAVAILABLE,
     build_curve_points,
     build_full_curve,
     classify_asset_class,
-    estimate_duration,
+    compute_macaulay_duration_and_convexity,
     estimate_modified_duration,
     infer_curve_type,
     resolve_ytm_with_par_fallback,
@@ -26,7 +27,11 @@ from backend.app.core_finance.curve_engine.interpolation import (
 from backend.app.core_finance.curve_engine.interpolation import (
     interpolate as _interpolate_fitted_curve,
 )
-from backend.app.core_finance.rate_units import normalize_percent_rate_to_decimal
+from backend.app.core_finance.interest_mode import coupon_frequency_per_year, is_bullet_repayment
+from backend.app.core_finance.rate_units import (
+    NEGATIVE_YIELD_DIRTY_FLOOR,
+    normalize_percent_rate_to_decimal,
+)
 
 ZERO = Decimal("0")
 HUNDRED = Decimal("100")
@@ -44,6 +49,12 @@ CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX = "CREDIT_SPREAD_CURVE_SAME_SOURCE"
 MARKET_VALUE_BASE_MISSING_PREFIX = "MARKET_VALUE_BASE_MISSING"
 ROLL_DOWN_WINDOW_MISSING_PREFIX = "ROLL_DOWN_WINDOW_MISSING"
 ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX = "ROLL_DOWN_TENOR_OUTSIDE_CURVE"
+SENSITIVITY_INPUT_UNAVAILABLE_PREFIX = "SENSITIVITY_INPUT_UNAVAILABLE"
+# 重复自然键：实际经 exact 索引命中多个余额行时拒绝生成正式损益桥。
+DUPLICATE_BALANCE_KEY_PREFIX = "DUPLICATE_BALANCE_KEY"
+# 粗粒度索引可能合法共键；仅在请求实际经由该索引命中多个候选时拒绝。
+AMBIGUOUS_BALANCE_WITHOUT_BASIS_KEY_PREFIX = "AMBIGUOUS_BALANCE_WITHOUT_BASIS_KEY"
+AMBIGUOUS_BALANCE_FALLBACK_KEY_PREFIX = "AMBIGUOUS_BALANCE_FALLBACK_KEY"
 CURVE_EFFECT_DEGRADED_PREFIXES = (
     TREASURY_CURVE_UNAVAILABLE_PREFIX,
     TREASURY_CURVE_SAME_SOURCE_PREFIX,
@@ -66,6 +77,7 @@ CURVE_EFFECT_REASON_SAME_SOURCE_CURVE = "same_source_curve"
 CURVE_EFFECT_REASON_MARKET_VALUE_BASE_MISSING = "market_value_base_missing"
 CURVE_EFFECT_REASON_ROLL_WINDOW_MISSING = "roll_window_missing"
 CURVE_EFFECT_REASON_TENOR_OUTSIDE_CURVE = "tenor_outside_curve_support"
+CURVE_EFFECT_REASON_SENSITIVITY_INPUT_UNAVAILABLE = "sensitivity_input_unavailable"
 CURVE_EFFECT_REASON_NON_FVTPL_BASIS = "non_fvtpl_basis"
 CURVE_EFFECT_REASON_NOT_CREDIT_BOOK = "not_credit_book"
 CURVE_EFFECT_REASON_NO_CURVE_SENSITIVITY = "no_curve_sensitivity"
@@ -79,6 +91,7 @@ _CURVE_EFFECT_REASON_BY_PREFIX: tuple[tuple[str, str], ...] = (
     (MARKET_VALUE_BASE_MISSING_PREFIX, CURVE_EFFECT_REASON_MARKET_VALUE_BASE_MISSING),
     (ROLL_DOWN_WINDOW_MISSING_PREFIX, CURVE_EFFECT_REASON_ROLL_WINDOW_MISSING),
     (ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX, CURVE_EFFECT_REASON_TENOR_OUTSIDE_CURVE),
+    (SENSITIVITY_INPUT_UNAVAILABLE_PREFIX, CURVE_EFFECT_REASON_SENSITIVITY_INPUT_UNAVAILABLE),
 )
 
 
@@ -149,6 +162,10 @@ class _ResolvedBalanceRow:
     row: dict | None
     diagnostic: str | None = None
     match_level: str = "missing"
+    # 粗粒度索引（exact_without_basis / fallback）命中多行共键时的披露，与
+    # diagnostic 分通道：fallback 命中可能同时携带 currency_basis mismatch
+    # （diagnostic）与共键歧义（本字段），两条都要进 balance_diagnostics。
+    ambiguity_diagnostic: str | None = None
 
 
 _CurveCacheKey = tuple[tuple[str, Decimal], ...]
@@ -199,9 +216,8 @@ class _CurveRateLookup:
     def support(self, curve: dict[str, Decimal]) -> tuple[float, float] | None:
         """拟合曲线真正覆盖的期限区间 ``[最短, 最长]``（年）。
 
-        取自实际拟合出来的节点而不是写死的期限表：``build_full_curve`` 目前把任何
-        原始曲线归一到 3M–30Y 网格，但这一点属于它的实现，不该在这里再抄一遍——
-        它哪天补上 1M 节点，这里就应该自动跟着放宽，而不是继续误报。
+        取自实际拟合节点。``build_full_curve`` 保留认可源节点并补齐默认网格，
+        因而 1M 等源节点可以扩展支持范围，不能在这里写死默认期限边界。
         """
         points = self._fitted(curve).points
         if not points:
@@ -223,8 +239,22 @@ def build_pnl_bridge_rows(
     fx_rates_current: dict[str, Decimal] | None = None,
     fx_rates_prior: dict[str, Decimal] | None = None,
 ) -> list[PnlBridgeRow]:
-    current_exact, current_exact_without_basis, current_fallback = _index_balance_rows(balance_rows_current)
-    prior_exact, prior_exact_without_basis, prior_fallback = _index_balance_rows(balance_rows_prior)
+    (
+        current_exact,
+        current_exact_without_basis,
+        current_fallback,
+        current_exact_duplicates,
+        current_without_basis_duplicates,
+        current_fallback_duplicates,
+    ) = _index_balance_rows(balance_rows_current)
+    (
+        prior_exact,
+        prior_exact_without_basis,
+        prior_fallback,
+        prior_exact_duplicates,
+        prior_without_basis_duplicates,
+        prior_fallback_duplicates,
+    ) = _index_balance_rows(balance_rows_prior)
 
     curve_lookup = _CurveRateLookup()
     rows: list[PnlBridgeRow] = []
@@ -244,6 +274,9 @@ def build_pnl_bridge_rows(
             exact=current_exact,
             exact_without_basis=current_exact_without_basis,
             fallback=current_fallback,
+            exact_duplicate_diagnostics=current_exact_duplicates,
+            without_basis_duplicate_diagnostics=current_without_basis_duplicates,
+            fallback_duplicate_diagnostics=current_fallback_duplicates,
         )
         current_balance = current_resolution.row
         prior_resolution = _resolve_balance_row(
@@ -255,6 +288,9 @@ def build_pnl_bridge_rows(
             exact=prior_exact,
             exact_without_basis=prior_exact_without_basis,
             fallback=prior_fallback,
+            exact_duplicate_diagnostics=prior_exact_duplicates,
+            without_basis_duplicate_diagnostics=prior_without_basis_duplicates,
+            fallback_duplicate_diagnostics=prior_fallback_duplicates,
         )
         prior_balance = prior_resolution.row
 
@@ -361,12 +397,15 @@ def build_pnl_bridge_rows(
                 years_to_maturity=years_to_maturity,
                 modified_duration=modified_duration,
             )
-            structural_exemption = _structural_exemption_reason(
+            sensitivity_input_diagnostic = _sensitivity_input_missing_diagnostic(
+                current_balance=current_balance,
+            )
+            structural_exemption = None if sensitivity_input_diagnostic else _structural_exemption_reason(
                 current_balance=current_balance,
                 years_to_maturity=years_to_maturity,
                 modified_duration=modified_duration,
             )
-            curve_effect_eligible = structural_exemption is None
+            curve_effect_eligible = structural_exemption is None and sensitivity_input_diagnostic is None
             treasury_curve_diagnostic = _treasury_curve_diagnostic(
                 curve_type=curve_type,
                 current_curve=current_curve,
@@ -393,6 +432,7 @@ def build_pnl_bridge_rows(
             ) = _curve_effect_availability(
                 not_applicable_reason=structural_exemption,
                 unavailable_reasons=(
+                    _reason_from_diagnostic(sensitivity_input_diagnostic),
                     treasury_curve_diagnostic.roll_down_reason,
                     market_value_base_reason,
                     _reason_from_diagnostic(roll_down_window_missing_diagnostic),
@@ -405,6 +445,7 @@ def build_pnl_bridge_rows(
             ) = _curve_effect_availability(
                 not_applicable_reason=structural_exemption,
                 unavailable_reasons=(
+                    _reason_from_diagnostic(sensitivity_input_diagnostic),
                     treasury_curve_diagnostic.curve_shift_reason,
                     market_value_base_reason,
                 ),
@@ -421,6 +462,7 @@ def build_pnl_bridge_rows(
                     else structural_exemption
                 ),
                 unavailable_reasons=(
+                    _reason_from_diagnostic(sensitivity_input_diagnostic),
                     _reason_from_diagnostic(credit_spread_curve_diagnostic),
                     market_value_base_reason,
                 ),
@@ -438,6 +480,7 @@ def build_pnl_bridge_rows(
             # 与"缺曲线"无关，因此不产生曲线诊断（与 FX 诊断同一门控）。
             treasury_curve_diagnostic = _TreasuryCurveDiagnostic()
             credit_spread_curve_diagnostic = None
+            sensitivity_input_diagnostic = None
             roll_down_availability = CURVE_EFFECT_NOT_APPLICABLE
             roll_down_availability_reason = CURVE_EFFECT_REASON_NON_FVTPL_BASIS
             treasury_curve_availability = CURVE_EFFECT_NOT_APPLICABLE
@@ -474,6 +517,9 @@ def build_pnl_bridge_rows(
 
         curve_effect_degraded = bool(
             treasury_curve_diagnostic.message or credit_spread_curve_diagnostic
+        ) or any(
+            status == CURVE_EFFECT_UNAVAILABLE
+            for status in (roll_down_availability, treasury_curve_availability, credit_spread_availability)
         )
         rows.append(
             PnlBridgeRow(
@@ -506,7 +552,11 @@ def build_pnl_bridge_rows(
                     current_balance=current_balance,
                     prior_balance=prior_balance,
                     current_resolution_diagnostic=current_resolution.diagnostic,
+                    current_resolution_ambiguity_diagnostic=(
+                        current_resolution.ambiguity_diagnostic
+                    ),
                     prior_resolution_diagnostic=prior_resolution.diagnostic,
+                    prior_resolution_ambiguity_diagnostic=prior_resolution.ambiguity_diagnostic,
                     actual_pnl_diagnostic=(
                         "actual_pnl missing; residual_ratio unavailable."
                         if actual_pnl_missing
@@ -522,6 +572,7 @@ def build_pnl_bridge_rows(
                     ),
                     treasury_curve_diagnostic=treasury_curve_diagnostic.message,
                     credit_spread_curve_diagnostic=credit_spread_curve_diagnostic,
+                    sensitivity_input_diagnostic=sensitivity_input_diagnostic,
                 ),
                 roll_down_availability=roll_down_availability,
                 roll_down_availability_reason=roll_down_availability_reason,
@@ -539,8 +590,12 @@ def required_curve_types_for_pnl_bridge(
     balance_rows_current: list[dict],
     balance_rows_prior: list[dict],
 ) -> set[str]:
-    current_exact, current_exact_without_basis, current_fallback = _index_balance_rows(balance_rows_current)
-    prior_exact, prior_exact_without_basis, prior_fallback = _index_balance_rows(balance_rows_prior)
+    (current_exact, current_exact_without_basis, current_fallback,
+     current_exact_duplicates, current_without_basis_duplicates,
+     current_fallback_duplicates) = _index_balance_rows(balance_rows_current)
+    (prior_exact, prior_exact_without_basis, prior_fallback,
+     prior_exact_duplicates, prior_without_basis_duplicates,
+     prior_fallback_duplicates) = _index_balance_rows(balance_rows_prior)
     required: set[str] = set()
     for raw_row in pnl_fi_rows:
         currency_basis = str(raw_row.get("currency_basis") or "")
@@ -557,6 +612,9 @@ def required_curve_types_for_pnl_bridge(
             exact=current_exact,
             exact_without_basis=current_exact_without_basis,
             fallback=current_fallback,
+            exact_duplicate_diagnostics=current_exact_duplicates,
+            without_basis_duplicate_diagnostics=current_without_basis_duplicates,
+            fallback_duplicate_diagnostics=current_fallback_duplicates,
         ).row
         prior_balance = _resolve_balance_row(
             instrument_code=instrument_code,
@@ -567,6 +625,9 @@ def required_curve_types_for_pnl_bridge(
             exact=prior_exact,
             exact_without_basis=prior_exact_without_basis,
             fallback=prior_fallback,
+            exact_duplicate_diagnostics=prior_exact_duplicates,
+            without_basis_duplicate_diagnostics=prior_without_basis_duplicates,
+            fallback_duplicate_diagnostics=prior_fallback_duplicates,
         ).row
         representative = current_balance or prior_balance
         if representative is None:
@@ -827,7 +888,7 @@ def _period_days(
 
 def _modified_duration(*, report_date: date, row: Mapping[str, object]) -> Decimal:
     # Prefer the bond-analytics materialized value when the balance row carries it;
-    # recompute via estimate_duration only as fallback.
+    # otherwise use the same payment-mode and cash-flow helpers as bond analytics.
     materialized = row.get("modified_duration")
     if materialized not in (None, ""):
         return _coerce_decimal(materialized)
@@ -836,33 +897,40 @@ def _modified_duration(*, report_date: date, row: Mapping[str, object]) -> Decim
         return ZERO
     maturity_date = _coerce_date(maturity_date_value)
     coupon_rate = _percent_rate_to_decimal(row.get("coupon_rate"))
-    ytm_value = _percent_rate_to_decimal(row.get("ytm_value"))
-    macaulay_duration = estimate_duration(
-        maturity_date=maturity_date,
-        report_date=report_date,
-        coupon_rate=coupon_rate,
-        ytm=ytm_value,
-        bond_code=str(row.get("instrument_code") or ""),
+    normalized_ytm = normalize_percent_rate_to_decimal(
+        row.get("ytm_value"),
+        negative_floor=NEGATIVE_YIELD_DIRTY_FLOOR,
     )
-    # W-fi-2026-08 P1 残余：ytm 缺失/非正时 estimate_duration 已按 par 假设
-    # （ytm=coupon）计算 Macaulay，修正久期折算必须使用同一生效 ytm，否则
-    # 有票息缺 ytm 行返回未折算的 Macaulay（约 +3% 高估）。
+    ytm_value = Decimal(str(normalized_ytm)) if normalized_ytm is not None else None
+    interest_mode = row.get("interest_mode")
+    coupon_frequency = coupon_frequency_per_year(interest_mode)
+    # A finite source zero is an observed 0% YTM; only missing/dirty rates use par.
+    # The same effective yield and frequency drive cash flows and D/(1+y/f).
     effective_ytm, _ytm_par_fallback_used = resolve_ytm_with_par_fallback(coupon_rate, ytm_value)
-    return estimate_modified_duration(macaulay_duration, effective_ytm)
+    macaulay_duration, _convexity = compute_macaulay_duration_and_convexity(
+        coupon_rate=coupon_rate,
+        ytm=effective_ytm,
+        years_to_maturity=Decimal((maturity_date - report_date).days) / Decimal("365"),
+        coupon_frequency=coupon_frequency,
+        single_cashflow_at_maturity=is_bullet_repayment(interest_mode),
+        report_date=report_date,
+        maturity_date=maturity_date,
+    )
+    return estimate_modified_duration(macaulay_duration, effective_ytm, coupon_frequency=coupon_frequency)
 
 
-def _percent_rate_to_decimal(value: object) -> Decimal:
+def _percent_rate_to_decimal(value: object, *, negative_floor: float | None = None) -> Decimal:
     """Normalize a ``fact_formal_zqtz_balance_daily`` annual rate to decimal form.
 
     ``coupon_rate`` / ``ytm_value`` are stored in percent caliber (2.38 = 2.38%; see
     docs/audits/2026-07-19-system-calculation-audit.md 取证 1) while
-    ``estimate_duration`` / ``estimate_modified_duration`` expect decimal form, so the
-    raw value collapses duration systematically. Dirty inputs (missing, negative,
-    > 20%) normalize to ``0``; ``estimate_duration`` / ``estimate_modified_duration``
-    then apply the par-assumption fallback (ytm=coupon) for coupon-bearing rows and
-    years-to-maturity only for zero-coupon rows.
+    the cash-flow and modified-duration helpers expect decimal form, so the
+    raw value collapses duration systematically. This helper handles coupon
+    rates only: invalid/missing coupons normalize to 0. YTM is normalized in
+    ``_modified_duration`` without losing None; missing/dirty YTM then uses par,
+    while an explicit 0% remains an observed yield.
     """
-    normalized = normalize_percent_rate_to_decimal(value)
+    normalized = normalize_percent_rate_to_decimal(value, negative_floor=negative_floor)
     if normalized is None:
         return ZERO
     return Decimal(str(normalized))
@@ -1010,6 +1078,33 @@ def _roll_down_flat_extrapolation_diagnostic(
         f"{years_to_maturity:.4f}y is {edge} the benchmark curve's {bound:.4f}y "
         "boundary, so both roll points clamp to the same node and roll_down is 0 by "
         "construction; this is missing curve coverage, not an observed absence of roll."
+    )
+
+
+def _sensitivity_input_missing_diagnostic(
+    *, current_balance: Mapping[str, object] | None
+) -> str | None:
+    if current_balance is None:
+        return None
+    market_value = _first_available_value(current_balance, _MARKET_VALUE_KEYS)
+    if market_value is not None and _coerce_decimal(market_value) == ZERO:
+        return None
+    maturity_unavailable = current_balance.get("duration_quality_flag") == DURATION_TERM_MATURITY_UNAVAILABLE
+    if not maturity_unavailable:
+        # Explicit observed zeros are exemptions; zeros produced from missing inputs are not.
+        tenor = current_balance.get("years_to_maturity")
+        duration = current_balance.get("modified_duration")
+        if (tenor not in (None, "") and _coerce_decimal(tenor) <= ZERO) or (
+            duration not in (None, "") and _coerce_decimal(duration) == ZERO
+        ):
+            return None
+        if current_balance.get("maturity_date") not in (None, "") or (
+            tenor not in (None, "") and duration not in (None, "")
+        ):
+            return None
+    return (
+        f"{SENSITIVITY_INPUT_UNAVAILABLE_PREFIX}: remaining tenor or modified duration is "
+        "missing or unconfirmed; curve effects cannot be treated as a complete observed explanation."
     )
 
 
@@ -1260,7 +1355,9 @@ def _build_balance_diagnostics(
     current_balance: Mapping[str, object] | None,
     prior_balance: Mapping[str, object] | None,
     current_resolution_diagnostic: str | None = None,
+    current_resolution_ambiguity_diagnostic: str | None = None,
     prior_resolution_diagnostic: str | None = None,
+    prior_resolution_ambiguity_diagnostic: str | None = None,
     actual_pnl_diagnostic: str | None = None,
     fx_rate_missing_diagnostic: str | None = None,
     market_value_base_missing_diagnostic: str | None = None,
@@ -1268,12 +1365,17 @@ def _build_balance_diagnostics(
     roll_down_flat_extrapolation_diagnostic: str | None = None,
     treasury_curve_diagnostic: str | None = None,
     credit_spread_curve_diagnostic: str | None = None,
+    sensitivity_input_diagnostic: str | None = None,
 ) -> tuple[str, ...]:
     diagnostics: list[str] = []
     if current_resolution_diagnostic:
         diagnostics.append(current_resolution_diagnostic)
+    if current_resolution_ambiguity_diagnostic:
+        diagnostics.append(current_resolution_ambiguity_diagnostic)
     if prior_resolution_diagnostic:
         diagnostics.append(prior_resolution_diagnostic)
+    if prior_resolution_ambiguity_diagnostic:
+        diagnostics.append(prior_resolution_ambiguity_diagnostic)
     if actual_pnl_diagnostic:
         diagnostics.append(actual_pnl_diagnostic)
     if fx_rate_missing_diagnostic:
@@ -1288,6 +1390,8 @@ def _build_balance_diagnostics(
         diagnostics.append(treasury_curve_diagnostic)
     if credit_spread_curve_diagnostic:
         diagnostics.append(credit_spread_curve_diagnostic)
+    if sensitivity_input_diagnostic:
+        diagnostics.append(sensitivity_input_diagnostic)
     if current_balance is None:
         diagnostics.append("Missing current balance row; ending_dirty_mv defaults to 0.")
     if prior_balance is None:
@@ -1301,27 +1405,85 @@ def _index_balance_rows(
     dict[tuple[str, str, str, str, str], dict],
     dict[tuple[str, str, str, str], dict],
     dict[tuple[str, str, str, str], dict],
+    dict[tuple[str, str, str, str, str], str],
+    dict[tuple[str, str, str, str], str],
+    dict[tuple[str, str, str, str], str],
 ]:
     exact: dict[tuple[str, str, str, str, str], dict] = {}
     exact_without_basis: dict[tuple[str, str, str, str], dict] = {}
     fallback: dict[tuple[str, str, str, str], dict] = {}
+    # 保留首行以供唯一命中使用；实际命中的重复键由 resolver 拒绝。
+    exact_duplicate_counts: dict[tuple[str, str, str, str, str], int] = {}
+    # 粗粒度索引的共键可能合法；仅当请求实际经由该索引命中时拒绝。
+    without_basis_duplicate_counts: dict[tuple[str, str, str, str], int] = {}
+    fallback_duplicate_counts: dict[tuple[str, str, str, str], int] = {}
+    fallback_duplicate_currencies: dict[tuple[str, str, str, str], list[str]] = {}
     for row in rows:
         instrument_code = str(row.get("instrument_code") or "")
         portfolio_name = str(row.get("portfolio_name") or "")
         cost_center = str(row.get("cost_center") or "")
         currency_basis = str(row.get("currency_basis") or "")
         accounting_basis = str(row.get("accounting_basis") or "")
-        exact.setdefault(
-            (instrument_code, portfolio_name, cost_center, currency_basis, accounting_basis),
-            row,
-        )
+        exact_key = (instrument_code, portfolio_name, cost_center, currency_basis, accounting_basis)
+        if exact_key in exact:
+            exact_duplicate_counts[exact_key] = exact_duplicate_counts.get(exact_key, 1) + 1
+        exact.setdefault(exact_key, row)
         if not accounting_basis:
-            exact_without_basis.setdefault(
-                (instrument_code, portfolio_name, cost_center, currency_basis),
-                row,
+            without_basis_key = (instrument_code, portfolio_name, cost_center, currency_basis)
+            if without_basis_key in exact_without_basis:
+                without_basis_duplicate_counts[without_basis_key] = (
+                    without_basis_duplicate_counts.get(without_basis_key, 1) + 1
+                )
+            exact_without_basis.setdefault(without_basis_key, row)
+        fallback_key = (instrument_code, portfolio_name, cost_center, accounting_basis)
+        if fallback_key in fallback:
+            fallback_duplicate_counts[fallback_key] = (
+                fallback_duplicate_counts.get(fallback_key, 1) + 1
             )
-        fallback.setdefault((instrument_code, portfolio_name, cost_center, accounting_basis), row)
-    return exact, exact_without_basis, fallback
+            fallback_duplicate_currencies.setdefault(fallback_key, []).append(currency_basis)
+        fallback.setdefault(fallback_key, row)
+    exact_duplicate_diagnostics = {
+        key: (
+            f"{DUPLICATE_BALANCE_KEY_PREFIX}: instrument_code={key[0]!r} portfolio_name={key[1]!r} "
+            f"cost_center={key[2]!r} currency_basis={key[3]!r} accounting_basis={key[4]!r}; "
+            f"{count} balance rows share this key; formal bridge rejected."
+        )
+        for key, count in exact_duplicate_counts.items()
+    }
+    without_basis_duplicate_diagnostics = {
+        key: (
+            f"{AMBIGUOUS_BALANCE_WITHOUT_BASIS_KEY_PREFIX}: instrument_code={key[0]!r} "
+            f"portfolio_name={key[1]!r} cost_center={key[2]!r} currency_basis={key[3]!r}; "
+            f"{count} empty-accounting_basis balance rows share this without_basis key; "
+            f"formal bridge rejected."
+        )
+        for key, count in without_basis_duplicate_counts.items()
+    }
+    fallback_duplicate_diagnostics = {
+        key: (
+            f"{AMBIGUOUS_BALANCE_FALLBACK_KEY_PREFIX}: instrument_code={key[0]!r} "
+            f"portfolio_name={key[1]!r} cost_center={key[2]!r} accounting_basis={key[3]!r}; "
+            f"{count} balance rows share this currency_basis-agnostic fallback key "
+            f"(currency_basis values: "
+            f"{_format_currency_values(fallback[key], fallback_duplicate_currencies[key])}); "
+            f"formal bridge rejected."
+        )
+        for key, count in fallback_duplicate_counts.items()
+    }
+    return (
+        exact,
+        exact_without_basis,
+        fallback,
+        exact_duplicate_diagnostics,
+        without_basis_duplicate_diagnostics,
+        fallback_duplicate_diagnostics,
+    )
+
+
+def _format_currency_values(first_row: Mapping[str, object], other_currencies: list[str]) -> str:
+    """按固定顺序列出 fallback 候选币种。"""
+    distinct = sorted({str(first_row.get("currency_basis") or ""), *other_currencies})
+    return ", ".join(repr(value) for value in distinct)
 
 
 def _resolve_balance_row(
@@ -1334,19 +1496,42 @@ def _resolve_balance_row(
     exact: dict[tuple[str, str, str, str, str], dict],
     exact_without_basis: dict[tuple[str, str, str, str], dict],
     fallback: dict[tuple[str, str, str, str], dict],
+    exact_duplicate_diagnostics: Mapping[tuple[str, str, str, str, str], str] | None = None,
+    without_basis_duplicate_diagnostics: Mapping[tuple[str, str, str, str], str] | None = None,
+    fallback_duplicate_diagnostics: Mapping[tuple[str, str, str, str], str] | None = None,
 ) -> _ResolvedBalanceRow:
     if currency_basis:
-        exact_match = exact.get(
-            (instrument_code, portfolio_name, cost_center, currency_basis, accounting_basis)
-        )
+        exact_key = (instrument_code, portfolio_name, cost_center, currency_basis, accounting_basis)
+        exact_match = exact.get(exact_key)
         if exact_match is not None:
-            return _ResolvedBalanceRow(exact_match, match_level="exact")
-        exact_match_without_basis = exact_without_basis.get(
-            (instrument_code, portfolio_name, cost_center, currency_basis)
-        )
+            duplicate_diagnostic = (
+                exact_duplicate_diagnostics.get(exact_key) if exact_duplicate_diagnostics else None
+            )
+            if duplicate_diagnostic:
+                raise RuntimeError(duplicate_diagnostic)
+            return _ResolvedBalanceRow(exact_match, duplicate_diagnostic, match_level="exact")
+        without_basis_key = (instrument_code, portfolio_name, cost_center, currency_basis)
+        exact_match_without_basis = exact_without_basis.get(without_basis_key)
         if exact_match_without_basis is not None:
-            return _ResolvedBalanceRow(exact_match_without_basis, match_level="exact_without_basis")
-    fallback_match = fallback.get((instrument_code, portfolio_name, cost_center, accounting_basis))
+            ambiguity_diagnostic = (
+                without_basis_duplicate_diagnostics.get(without_basis_key)
+                if without_basis_duplicate_diagnostics else None
+            )
+            if ambiguity_diagnostic:
+                raise RuntimeError(ambiguity_diagnostic)
+            return _ResolvedBalanceRow(
+                exact_match_without_basis,
+                match_level="exact_without_basis",
+            )
+    fallback_key = (instrument_code, portfolio_name, cost_center, accounting_basis)
+    fallback_match = fallback.get(fallback_key)
+    fallback_ambiguity_diagnostic = (
+        fallback_duplicate_diagnostics.get(fallback_key)
+        if fallback_duplicate_diagnostics and fallback_match is not None
+        else None
+    )
+    if fallback_ambiguity_diagnostic:
+        raise RuntimeError(fallback_ambiguity_diagnostic)
     if fallback_match is not None and currency_basis:
         fallback_currency = str(fallback_match.get("currency_basis") or "")
         if fallback_currency and fallback_currency != currency_basis:
@@ -1355,10 +1540,12 @@ def _resolve_balance_row(
                 "Balance row currency_basis mismatch; "
                 f"expected {currency_basis}, found {fallback_currency}; fallback balance row used.",
                 match_level="fallback",
+                ambiguity_diagnostic=fallback_ambiguity_diagnostic,
             )
     return _ResolvedBalanceRow(
         fallback_match,
         match_level="fallback" if fallback_match is not None else "missing",
+        ambiguity_diagnostic=fallback_ambiguity_diagnostic,
     )
 
 
@@ -1407,6 +1594,8 @@ def _coerce_decimal(value: object) -> Decimal:
 
 
 __all__ = [
+    "AMBIGUOUS_BALANCE_FALLBACK_KEY_PREFIX",
+    "AMBIGUOUS_BALANCE_WITHOUT_BASIS_KEY_PREFIX",
     "CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX",
     "CREDIT_SPREAD_CURVE_UNAVAILABLE_PREFIX",
     "CURVE_EFFECT_DEGRADED_PREFIXES",
@@ -1424,6 +1613,7 @@ __all__ = [
     "CURVE_EFFECT_REASON_TENOR_OUTSIDE_CURVE",
     "CURVE_EFFECT_UNAVAILABLE",
     "CurveEffectAvailabilitySummary",
+    "DUPLICATE_BALANCE_KEY_PREFIX",
     "MARKET_VALUE_BASE_MISSING_PREFIX",
     "PnlBridgeRow",
     "ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX",

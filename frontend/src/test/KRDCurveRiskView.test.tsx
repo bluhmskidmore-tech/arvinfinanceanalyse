@@ -138,7 +138,7 @@ describe("KRDCurveRiskView", () => {
       "曲线风险概览",
     );
     expect(screen.getByTestId("krd-curve-risk-shell-lead")).toHaveTextContent(
-      "不在前端补算正式风险指标",
+      "期限桶柱状图展示桶内平均修正久期，不代表 KRD 贡献",
     );
     expect(screen.getByTestId("krd-curve-risk-buckets-lead")).toHaveTextContent(
       "期限桶久期与情景冲击",

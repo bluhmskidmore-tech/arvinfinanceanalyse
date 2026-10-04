@@ -10,124 +10,136 @@ import {
 } from "../app/navigation";
 import { AgentLabRoute } from "./AgentLabRoute";
 import { AgentWorkbenchRoute } from "./AgentWorkbenchRoute";
+import { PublicationShowcaseRoute } from "./PublicationShowcaseRoute";
 import { WorkbenchRouteFallback } from "./WorkbenchRouteFallback";
 import { WorkbenchNotFoundPage, WorkbenchRouteErrorBoundary } from "./WorkbenchRouteStatusPages";
+import { SystemReadGenerationBoundary } from "./SystemReadGenerationBoundary";
+import { lazyWorkbenchPage } from "./workbenchRouteModules";
+import { WorkbenchRouteModulePreload } from "./WorkbenchRouteModulePreload";
 
 const ThemedRouteBoundary = lazy(() => import("../app/ThemedRouteBoundary"));
-const DashboardHomePage = lazy(
+const DashboardHomePage = lazyWorkbenchPage(
   () => import("../features/workbench/dashboard-home/DashboardHomePage"),
 );
-const ModuleWorkbenchHomePage = lazy(
+const ModuleWorkbenchHomePage = lazyWorkbenchPage(
   () => import("../features/workbench/module-home/ModuleWorkbenchHomePage"),
 );
-const RiskOverviewPage = lazy(
+const RiskOverviewPage = lazyWorkbenchPage(
   () => import("../features/workbench/module-home/RiskOverviewPage"),
 );
-const PortfolioHomePage = lazy(
+const PortfolioHomePage = lazyWorkbenchPage(
   () => import("../features/workbench/module-home/PortfolioHomePage"),
 );
-const MarketHomePage = lazy(
+const MarketHomePage = lazyWorkbenchPage(
   () => import("../features/workbench/module-home/MarketHomePage"),
 );
-const OperationsAnalysisPage = lazy(
+const OperationsAnalysisPage = lazyWorkbenchPage(
   () => import("../features/workbench/pages/OperationsAnalysisPage"),
 );
-const MarketFinanceWorkbenchPage = lazy(
+const MarketFinanceWorkbenchPage = lazyWorkbenchPage(
   () => import("../features/market-finance/pages/MarketFinanceWorkbenchPage"),
 );
-const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
-const PnlByBusinessPage = lazy(() => import("../features/pnl/PnlByBusinessPage"));
-const PnlByBusinessInsightsPage = lazy(
+const PnlPage = lazyWorkbenchPage(() => import("../features/pnl/PnlPage"));
+const PnlByBusinessPage = lazyWorkbenchPage(() => import("../features/pnl/PnlByBusinessPage"));
+const PnlByBusinessInsightsPage = lazyWorkbenchPage(
   () => import("../features/pnl-business-insights/PnlByBusinessInsightsPage"),
 );
-const PnlBridgePage = lazy(() => import("../features/pnl/PnlBridgePage"));
-const PnlAttributionPage = lazy(
+const PnlBridgePage = lazyWorkbenchPage(() => import("../features/pnl/PnlBridgePage"));
+const PnlAttributionPage = lazyWorkbenchPage(
   () => import("../features/pnl-attribution/pages/PnlAttributionPage"),
 );
-const BalanceAnalysisPage = lazy(
+const BalanceAnalysisPage = lazyWorkbenchPage(
   () => import("../features/balance-analysis/pages/BalanceAnalysisPage"),
 );
-const BalanceMovementAnalysisPage = lazy(
+const BalanceMovementAnalysisPage = lazyWorkbenchPage(
   () => import("../features/balance-movement-analysis/pages/BalanceMovementAnalysisPage"),
 );
-const LiabilityAnalyticsPage = lazy(
+const LiabilityAnalyticsPage = lazyWorkbenchPage(
   () => import("../features/liability-analytics/pages/LiabilityAnalyticsPage"),
 );
-const ProductCategoryAdjustmentAuditPage = lazy(
+const ProductCategoryAdjustmentAuditPage = lazyWorkbenchPage(
   () => import("../features/product-category-pnl/pages/ProductCategoryAdjustmentAuditPage"),
 );
-const ProductCategoryPnlPage = lazy(
+const ProductCategoryPnlPage = lazyWorkbenchPage(
   () => import("../features/product-category-pnl/pages/ProductCategoryPnlPage"),
 );
 const WorkbenchPlaceholderPage = lazy(
   () => import("../features/workbench/pages/WorkbenchPlaceholderPage"),
 );
-const RiskTensorPage = lazy(
+const RiskTensorPage = lazyWorkbenchPage(
   () => import("../features/risk-tensor/RiskTensorPage"),
 );
-const ConcentrationMonitorPage = lazy(
+const ConcentrationMonitorPage = lazyWorkbenchPage(
   () => import("../features/concentration-monitor/ConcentrationMonitorPage"),
 );
-const CashflowProjectionPage = lazy(
+const CashflowProjectionPage = lazyWorkbenchPage(
   () => import("../features/cashflow-projection/pages/CashflowProjectionPage"),
 );
-const BondAnalyticsView = lazy(
+const BondAnalyticsView = lazyWorkbenchPage(
   () => import("../features/bond-analytics/components/BondAnalyticsView"),
 );
-const BondTradingDeskPage = lazy(
+const BondTradingDeskPage = lazyWorkbenchPage(
   () => import("../features/bond-trading-desk/pages/BondTradingDeskPage"),
 );
-const BondDashboardPage = lazy(
+const BondDashboardPage = lazyWorkbenchPage(
   () => import("../features/bond-dashboard/pages/BondDashboardPage"),
 );
-const PositionsPage = lazy(() => import("../features/positions/pages/PositionsPage"));
-const AverageBalancePage = lazy(
+const PositionsPage = lazyWorkbenchPage(() => import("../features/positions/pages/PositionsPage"));
+const AverageBalancePage = lazyWorkbenchPage(
   () => import("../features/average-balance/pages/AverageBalancePage"),
 );
-const LedgerPnlPage = lazy(
+const LedgerPnlPage = lazyWorkbenchPage(
   () => import("../features/ledger-pnl/pages/LedgerPnlPage"),
 );
-const LedgerDashboardPage = lazy(
+const LedgerDashboardPage = lazyWorkbenchPage(
   () => import("../features/ledger-dashboard/pages/LedgerDashboardPage"),
 );
-const KpiPerformancePage = lazy(
+const KpiPerformancePage = lazyWorkbenchPage(
   () => import("../features/kpi-performance/pages/KpiPerformancePage"),
 );
-const TeamPerformancePage = lazy(
+const TeamPerformancePage = lazyWorkbenchPage(
   () => import("../features/team-performance/TeamPerformancePage"),
 );
-const PlatformConfigPage = lazy(
+const PlatformConfigPage = lazyWorkbenchPage(
   () => import("../features/platform-config/PlatformConfigPage"),
 );
-const CrossAssetPage = lazy(() => import("../features/cross-asset/pages/CrossAssetPage"));
-const MarketDataPage = lazy(
+const CrossAssetPage = lazyWorkbenchPage(() => import("../features/cross-asset/pages/CrossAssetPage"));
+const MarketDataPage = lazyWorkbenchPage(
   () => import("../features/market-data/pages/MarketDataPage"),
 );
-const MacroToolkitPage = lazy(
+const MacroToolkitPage = lazyWorkbenchPage(
   () => import("../features/macro-toolkit/pages/MacroToolkitPage"),
 );
-const MacroObservationPage = lazy(
+const MacroObservationPage = lazyWorkbenchPage(
   () => import("../features/macro-observation/pages/MacroObservationPage"),
 );
-const CubeQueryPage = lazy(() => import("../features/cube-query/pages/CubeQueryPage"));
-const StockAnalysisPage = lazy(
+const CubeQueryPage = lazyWorkbenchPage(() => import("../features/cube-query/pages/CubeQueryPage"));
+const StockAnalysisPage = lazyWorkbenchPage(
   () => import("../features/stock-analysis/pages/StockAnalysisPage"),
 );
-const DecisionItemsPage = lazy(
+const StockPortfolioConstructionPage = lazyWorkbenchPage(
+  () => import("../features/stock-analysis/pages/StockPortfolioConstructionPage"),
+);
+const DecisionItemsPage = lazyWorkbenchPage(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
 );
-const NewsEventsPage = lazy(() => import("../features/news-events/NewsEventsPage"));
+const NewsEventsPage = lazyWorkbenchPage(() => import("../features/news-events/NewsEventsPage"));
 
 function routeElement(element: ReactNode) {
   return (
     <Suspense fallback={<WorkbenchRouteFallback />}>
-      {element}
+      <WorkbenchRouteModulePreload>{element}</WorkbenchRouteModulePreload>
     </Suspense>
   );
 }
 
 function themedRouteElement(element: ReactNode) {
   return routeElement(<ThemedRouteBoundary>{element}</ThemedRouteBoundary>);
+}
+
+function systemReadRouteElement(element: ReactNode, themed = true) {
+  const scoped = <SystemReadGenerationBoundary>{element}</SystemReadGenerationBoundary>;
+  return themed ? themedRouteElement(scoped) : routeElement(scoped);
 }
 
 function placeholderRoute(section: WorkbenchSection): RouteObject {
@@ -142,7 +154,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/") {
       return {
         index: true,
-        element: routeElement(<DashboardHomePage />),
+        element: systemReadRouteElement(<DashboardHomePage />, false),
       };
     }
 
@@ -202,7 +214,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/balance-analysis") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<BalanceAnalysisPage />),
+        element: systemReadRouteElement(<BalanceAnalysisPage />),
       };
     }
 
@@ -244,7 +256,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/pnl-by-business-insights") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<PnlByBusinessInsightsPage />),
+        element: systemReadRouteElement(<PnlByBusinessInsightsPage />),
       };
     }
 
@@ -272,7 +284,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/risk-tensor") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<RiskTensorPage />),
+        element: systemReadRouteElement(<RiskTensorPage />),
       };
     }
 
@@ -300,7 +312,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/bond-analysis") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<BondAnalyticsView />),
+        element: systemReadRouteElement(<BondAnalyticsView />),
       };
     }
 
@@ -342,14 +354,14 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/cube-query") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<CubeQueryPage />),
+        element: systemReadRouteElement(<CubeQueryPage />),
       };
     }
 
     if (section.path === "/stock-analysis") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<StockAnalysisPage />),
+        element: systemReadRouteElement(<StockAnalysisPage />),
       };
     }
 
@@ -427,6 +439,11 @@ export const workbenchSections: WorkbenchSection[] = primaryWorkbenchNavigation;
 
 export const workbenchRoutes: RouteObject[] = [
   {
+    path: "/publication-showcase",
+    element: themedRouteElement(<PublicationShowcaseRoute />),
+    errorElement: routeElement(<WorkbenchRouteErrorBoundary />),
+  },
+  {
     path: "/",
     element: <WorkbenchShell />,
     errorElement: routeElement(<WorkbenchRouteErrorBoundary />),
@@ -436,8 +453,12 @@ export const workbenchRoutes: RouteObject[] = [
          * 子路由级错误边界（pathless layout）：单页渲染崩溃或懒加载 chunk 失败时，
          * 错误页只替换 WorkbenchShell 的 Outlet 内容区，导航壳层保持可用；
          * 根级 errorElement 仅兜底壳层自身故障。
+         *
+         * 错误页必须仍套在 ThemedRouteBoundary 里：壳层的深色是
+         * `.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api)` 驱动的，
+         * 裸渲染会让终端条、错误卡一起翻回 IB 浅色（2026-09-02 走查 /news-events 复现）。
          */
-        errorElement: routeElement(<WorkbenchRouteErrorBoundary />),
+        errorElement: themedRouteElement(<WorkbenchRouteErrorBoundary />),
         children: [
           {
             path: "macro-analysis",
@@ -477,12 +498,20 @@ export const workbenchRoutes: RouteObject[] = [
           },
           ...buildWorkbenchChildRoutes(),
           {
+            path: "stock-analysis/portfolio",
+            element: themedRouteElement(<StockPortfolioConstructionPage />),
+          },
+          {
+            path: "stock-analysis/risk",
+            element: themedRouteElement(<StockPortfolioConstructionPage />),
+          },
+          {
             path: "agent-lab",
             element: themedRouteElement(<AgentLabRoute />),
           },
           {
             path: "dashboard",
-            element: routeElement(<DashboardHomePage />),
+            element: systemReadRouteElement(<DashboardHomePage />, false),
           },
           {
             path: "政策与资金面",

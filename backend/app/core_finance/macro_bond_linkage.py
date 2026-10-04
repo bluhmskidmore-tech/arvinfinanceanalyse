@@ -45,6 +45,7 @@ class MacroBondCorrelation:
     zscore_applied: bool = False
     lead_lag_confidence: float | None = None
     effective_observation_span_days: int | None = None
+    direction_source_window: str | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -170,6 +171,10 @@ _WINDOW_3M_DAYS = 90
 _WINDOW_6M_DAYS = 180
 _WINDOW_1Y_DAYS = 365
 _MAX_LEAD_LAG_DAYS = 30
+_LeadLagAlignmentCache = dict[
+    tuple[tuple[date, ...], tuple[date, ...], str, int],
+    list[tuple[Any, Any]],
+]
 
 EQUITY_BOND_SPREAD_RULES: tuple[EquityBondSpreadRule, ...] = (
     EquityBondSpreadRule(
@@ -269,6 +274,7 @@ def compute_macro_bond_correlations(
     lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
     alignment_mode: str = "conservative",
     winsorize_tail_fraction: float | None = None,
+    include_lead_lag: bool = True,
 ) -> list[MacroBondCorrelation]:
     """
     对每个宏观指标 vs 每条收益率曲线关键期限，计算滚动相关系数与领先滞后关系。
@@ -286,6 +292,7 @@ def compute_macro_bond_correlations(
         target_name: _prepare_series_map(points, lookback_days=lookback_days)
         for target_name, points in yield_series.items()
     }
+    alignment_cache: _LeadLagAlignmentCache | None = {} if include_lead_lag and _np is not None else None
 
     results: list[MacroBondCorrelation] = []
     for series_id in sorted(prepared_macro):
@@ -313,25 +320,35 @@ def compute_macro_bond_correlations(
                 alignment_mode=alignment_mode,
                 winsorize_tail_fraction=validated_tail_fraction,
             )
-            lead_lag_days, best_correlation, sample_size, lead_lag_confidence = _compute_lead_lag(
-                macro_map,
-                target_map,
-                macro_dates=macro_dates,
-                target_dates=target_dates,
-                alignment_mode=alignment_mode,
-                winsorize_tail_fraction=validated_tail_fraction,
+            if include_lead_lag:
+                lead_lag_days, best_correlation, sample_size, lead_lag_confidence = _compute_lead_lag(
+                    macro_map,
+                    target_map,
+                    macro_dates=macro_dates,
+                    target_dates=target_dates,
+                    alignment_mode=alignment_mode,
+                    winsorize_tail_fraction=validated_tail_fraction,
+                    alignment_cache=alignment_cache,
+                )
+                effective_observation_span_days = _alignment_span_days(
+                    macro_map,
+                    target_map,
+                    macro_dates=macro_dates,
+                    target_dates=target_dates,
+                    latest_date=latest_date,
+                    window_days=_WINDOW_1Y_DAYS,
+                    alignment_mode=alignment_mode,
+                    lag_days=lead_lag_days,
+                )
+            else:
+                lead_lag_days = 0
+                best_correlation = None
+                sample_size = None
+                lead_lag_confidence = None
+                effective_observation_span_days = None
+            direction, direction_source_window = _direction_from_correlation(
+                corr_1y, corr_6m, corr_3m, best_correlation
             )
-            effective_observation_span_days = _alignment_span_days(
-                macro_map,
-                target_map,
-                macro_dates=macro_dates,
-                target_dates=target_dates,
-                latest_date=latest_date,
-                window_days=_WINDOW_1Y_DAYS,
-                alignment_mode=alignment_mode,
-                lag_days=lead_lag_days,
-            )
-            direction = _direction_from_correlation(corr_1y, corr_6m, corr_3m, best_correlation)
             results.append(
                 MacroBondCorrelation(
                     series_id=series_id,
@@ -347,6 +364,7 @@ def compute_macro_bond_correlations(
                     zscore_applied=False,
                     lead_lag_confidence=lead_lag_confidence,
                     effective_observation_span_days=effective_observation_span_days,
+                    direction_source_window=direction_source_window,
                 )
             )
     return results
@@ -435,6 +453,7 @@ def _compute_lead_lag(
     target_dates: Sequence[date] | None = None,
     alignment_mode: str,
     winsorize_tail_fraction: float | None,
+    alignment_cache: _LeadLagAlignmentCache | None = None,
 ) -> tuple[int, float | None, int | None, float | None]:
     """Return (lead_lag_days, best_correlation, sample_size, lead_lag_confidence)."""
     lead_details = _best_lead_lag_details(
@@ -444,6 +463,7 @@ def _compute_lead_lag(
         target_dates=target_dates,
         alignment_mode=alignment_mode,
         winsorize_tail_fraction=winsorize_tail_fraction,
+        alignment_cache=alignment_cache,
     )
     lag_value = lead_details["lag_days"]
     lead_lag_days = int(lag_value) if lag_value is not None else 0
@@ -1113,30 +1133,62 @@ def _best_lead_lag_details(
     alignment_mode: str = "conservative",
     winsorize_tail_fraction: float | None = None,
     max_lag_days: int = 30,
+    alignment_cache: _LeadLagAlignmentCache | None = None,
 ) -> dict[str, float | int | None]:
     candidates: list[dict[str, float | int]] = []
     best_candidate: dict[str, float | int] | None = None
     best_abs = -1.0
     use_vectorized = _np is not None and bool(macro_map) and bool(target_map)
+    cached_index_pairs: list[tuple[Any, Any]] | None = None
     if use_vectorized:
+        ordered_macro_dates = tuple(macro_dates) if macro_dates is not None else tuple(sorted(macro_map))
+        ordered_target_dates = tuple(target_dates) if target_dates is not None else tuple(sorted(target_map))
         macro_ordinals, macro_values = _series_arrays(
             macro_map,
-            macro_dates if macro_dates is not None else tuple(sorted(macro_map)),
+            ordered_macro_dates,
         )
         target_ordinals, target_values = _series_arrays(
             target_map,
-            target_dates if target_dates is not None else tuple(sorted(target_map)),
+            ordered_target_dates,
         )
+        if alignment_cache is not None:
+            cache_key = (ordered_macro_dates, ordered_target_dates, alignment_mode, max_lag_days)
+            cached_index_pairs = alignment_cache.get(cache_key)
+            if cached_index_pairs is None:
+                macro_indices = _np.arange(macro_ordinals.size, dtype=_np.intp)
+                target_indices = _np.arange(target_ordinals.size, dtype=_np.intp)
+                cached_index_pairs = []
+                for lag_days in range(-max_lag_days, max_lag_days + 1):
+                    _aligned_ord, aligned_macro_indices, aligned_target_indices = _aligned_arrays(
+                        macro_ordinals,
+                        macro_indices,
+                        target_ordinals,
+                        target_indices,
+                        alignment_mode=alignment_mode,
+                        lag_days=lag_days,
+                    )
+                    cached_index_pairs.append(
+                        (
+                            aligned_macro_indices.astype(_np.intp, copy=False),
+                            aligned_target_indices.astype(_np.intp, copy=False),
+                        )
+                    )
+                alignment_cache[cache_key] = cached_index_pairs
     for lag_days in range(-max_lag_days, max_lag_days + 1):
         if use_vectorized:
-            _aligned_ord, aligned_x, aligned_y = _aligned_arrays(
-                macro_ordinals,
-                macro_values,
-                target_ordinals,
-                target_values,
-                alignment_mode=alignment_mode,
-                lag_days=lag_days,
-            )
+            if cached_index_pairs is None:
+                _aligned_ord, aligned_x, aligned_y = _aligned_arrays(
+                    macro_ordinals,
+                    macro_values,
+                    target_ordinals,
+                    target_values,
+                    alignment_mode=alignment_mode,
+                    lag_days=lag_days,
+                )
+            else:
+                macro_indices, target_indices = cached_index_pairs[lag_days + max_lag_days]
+                aligned_x = macro_values[macro_indices]
+                aligned_y = target_values[target_indices]
             sample_size = int(aligned_x.size)
             if sample_size < 2:
                 continue
@@ -1225,15 +1277,28 @@ def _lead_lag_confidence(
     return round(max(0.0, min(confidence, 1.0)), 6)
 
 
-def _direction_from_correlation(*candidates: float | None) -> str:
-    for candidate in candidates:
+_DIRECTION_SOURCE_WINDOWS = ("1y", "6m", "3m", "best_lag")
+
+
+def _direction_from_correlation(*candidates: float | None) -> tuple[str, str]:
+    """Pick direction from 1y→6m→3m→best-lag; return (direction, source window).
+
+    Thresholds are unchanged. The source window names the first candidate that
+    crosses ±0.2 so mixed-window decisions are disclosed.
+    """
+    for index, candidate in enumerate(candidates):
         if candidate is None:
             continue
+        window = (
+            _DIRECTION_SOURCE_WINDOWS[index]
+            if index < len(_DIRECTION_SOURCE_WINDOWS)
+            else f"candidate_{index}"
+        )
         if candidate >= 0.2:
-            return "positive"
+            return "positive", window
         if candidate <= -0.2:
-            return "negative"
-    return "neutral"
+            return "negative", window
+    return "neutral", "none"
 
 
 def _resolve_report_date(

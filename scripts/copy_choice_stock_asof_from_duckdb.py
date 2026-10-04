@@ -84,6 +84,9 @@ def copy_choice_stock_asof_from_duckdb(
             as_of_date=resolved_date,
             allow_cross_era_backfill=allow_cross_era_backfill,
         )
+        _assert_source_covers_target_daily_keys(
+            target_conn, history_start=history_start, as_of_date=resolved_date,
+        )
         source_counts = {
             spec.table: _count_source_rows(target_conn, spec)
             for spec in specs
@@ -99,6 +102,9 @@ def copy_choice_stock_asof_from_duckdb(
             with acquire_lock(LOCK, base_dir=lock_dir, timeout_seconds=5.0):
                 target_conn.execute("begin transaction")
                 try:
+                    _assert_source_covers_target_daily_keys(
+                        target_conn, history_start=history_start, as_of_date=resolved_date,
+                    )
                     for spec in specs:
                         deleted_counts[spec.table] = _delete_target_rows(target_conn, spec)
                         inserted_counts[spec.table] = _insert_source_rows(target_conn, spec)
@@ -208,6 +214,31 @@ def _validate_source_daily_vendor_slices(
 
 def _count_source_rows(conn: duckdb.DuckDBPyConnection, spec: TableCopySpec) -> int:
     return _count_rows(conn, f"src.{spec.table}", spec)
+
+
+def _assert_source_covers_target_daily_keys(
+    conn: duckdb.DuckDBPyConnection, *, history_start: str, as_of_date: str,
+) -> None:
+    missing = conn.execute(
+        f"""
+        select cast(target.trade_date as date), target.stock_code
+        from {DAILY_TABLE} as target
+        where cast(target.trade_date as date) between cast(? as date) and cast(? as date)
+          and not exists (
+            select 1 from src.{DAILY_TABLE} as source
+            where cast(source.trade_date as date) = cast(target.trade_date as date)
+              and source.stock_code = target.stock_code
+          )
+        order by 1, 2
+        limit 5
+        """,
+        [history_start, as_of_date],
+    ).fetchall()
+    if missing:
+        raise RuntimeError(
+            "source daily window does not cover target keys; "
+            f"copy would delete historical observations absent from source: {missing}"
+        )
 
 
 def _count_target_rows(conn: duckdb.DuckDBPyConnection, spec: TableCopySpec) -> int:

@@ -365,12 +365,16 @@ export function selectProductCategoryInterestEarningSpreadChartImpl(
       snapshot,
       "weighted",
     );
-    if (assetYield === null || liabilityYield === null || spread === null) {
-      return null;
-    }
     return { assetYield, liabilityYield, spread };
   });
-  if (chart.labels.length === 0) {
+  if (
+    !chart.points.some(
+      (point) =>
+        point.assetYield !== null ||
+        point.liabilityYield !== null ||
+        point.spread !== null,
+    )
+  ) {
     return null;
   }
   return {

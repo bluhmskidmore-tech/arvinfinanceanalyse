@@ -1,4 +1,4 @@
-﻿"""position_size_hint 黄金样本：等权主参考 + risk_budget 实验参考。
+"""position_size_hint 黄金样本：等权主参考 + risk_budget 实验参考。
 
 覆盖：等权口径（门控敞口/候选数，含单票/多票/敞口边界）、主次声明字段、
 ema10 stop_ref 正常、cap 截断、stop 缺失/非正 fallback、
@@ -75,6 +75,21 @@ def test_hint_golden_sample_fallback_stop(close: object, ema10: object) -> None:
     assert hint["stop_distance_pct"] == 0.08
     assert hint["stop_basis"] == STOP_BASIS_FALLBACK
     assert hint["capped"] is False
+
+
+def test_hint_accepts_decimal_close_and_ema10_as_observed_inputs() -> None:
+    """Decimal 化的行（decimal 列 / 上游 Decimal 数值）不得被当作缺失落到 fallback。"""
+    from decimal import Decimal
+
+    hint = compute_position_size_hint_item(
+        stock_code="600000.SH",
+        close=Decimal("100.0"),
+        ema10=Decimal("96.0"),
+        policy=POLICY.sizing,
+    )
+    assert hint["stop_basis"] == STOP_BASIS_EMA10
+    assert hint["stop_distance_pct"] == 0.04
+    assert hint["raw_weight"] == 0.125
 
 
 def test_hint_stop_distance_matches_backtest_engine() -> None:

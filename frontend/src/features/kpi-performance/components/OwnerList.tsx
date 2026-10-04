@@ -31,6 +31,36 @@ function describeOwnersLoadError(error: Error): string {
   return message || "未知错误";
 }
 
+/*
+ * 后端权威口径的状态 / 原因是机器码（kpi_service：blocked / ready，no-active-owners /
+ * missing-dsn / repository-error:*）。叙述位用中文业务语言，原码作为证据引用收进 title
+ * （DESIGN §7 反模式 5）；未登记的码原样展示，不猜业务含义。
+ */
+const AUTHORITY_STATUS_LABELS: Record<string, string> = {
+  blocked: "已阻断",
+  ready: "就绪",
+};
+
+const AUTHORITY_REASON_LABELS: Record<string, string> = {
+  "no-active-owners": "本年度没有处于活跃状态的考核负责人",
+  "missing-dsn": "KPI 数据源未配置",
+  "active-owners-present": "已有活跃考核负责人",
+};
+
+function describeAuthorityStatus(status: string): string {
+  return AUTHORITY_STATUS_LABELS[status] ?? status;
+}
+
+function describeAuthorityReason(reason: string): string {
+  if (AUTHORITY_REASON_LABELS[reason]) {
+    return AUTHORITY_REASON_LABELS[reason];
+  }
+  if (reason.startsWith("repository-error:")) {
+    return "KPI 仓储读取异常";
+  }
+  return reason;
+}
+
 export function OwnerList({
   owners,
   selectedOwnerId,
@@ -87,9 +117,14 @@ export function OwnerList({
           testId="kpi-owner-list-empty-state"
           className="kpi-owner-list-card kpi-owner-list-card--empty kpi-owner-list__state"
           title="权威考核对象尚未就绪"
-          description={`治理状态：${meta.authority_status}`}
+          description={`治理状态：${describeAuthorityStatus(meta.authority_status)}`}
         >
-          <p className="kpi-owner-list__empty-detail">原因：{meta.reason}</p>
+          <p
+            className="kpi-owner-list__empty-detail"
+            title={`authority_status=${meta.authority_status} · reason=${meta.reason}`}
+          >
+            原因：{describeAuthorityReason(meta.reason)}
+          </p>
         </PageStateSurface>
       );
     }

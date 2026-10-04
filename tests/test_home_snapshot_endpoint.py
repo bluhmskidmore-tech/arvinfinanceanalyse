@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -10,11 +11,17 @@ EXPECTED_HOME_SNAPSHOT_CALIBERS = ("balance_sheet", "pnl")
 
 
 @pytest.fixture(autouse=True)
-def _isolate_home_snapshot_cache():
+def _isolate_home_snapshot_cache(monkeypatch: pytest.MonkeyPatch):
     """每个用例都从空缓存开始，避免上一条用例的 envelope 污染本条 mock。"""
-    _executive_service().invalidate_home_snapshot_cache()
-    yield
-    _executive_service().invalidate_home_snapshot_cache()
+    es = _executive_service()
+    original_fast_path = es._fetch_product_category_home_headline_values
+    # The production builder probes the product-category fast path before
+    # dispatching to the builders that these tests replace. Keep this module
+    # fully local while allowing each test to control the fallback builders.
+    monkeypatch.setattr(es, "_fetch_product_category_home_headline_values", lambda *_a, **_k: {})
+    es.invalidate_home_snapshot_cache()
+    yield original_fast_path
+    es.invalidate_home_snapshot_cache()
 
 
 def _executive_service():
@@ -80,6 +87,134 @@ def _home_snapshot_with_dates(
     )
     monkeypatch.setattr(es, "_build_product_category_headlines", product_headlines)
     return es.home_snapshot_envelope(report_date=report_date, allow_partial=allow_partial)
+
+
+@pytest.mark.parametrize("view,error_kind", [("ytd", "runtime"), ("monthly", "runtime"), ("monthly", "missing")])
+def test_home_snapshot_api_does_not_expose_headline_failure_payload(monkeypatch, tmp_path, caplog, view, error_kind):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.app.api.routes import executive as route
+    from backend.app.services.product_category_pnl_service import ProductCategoryReadModelNotFoundError
+
+    es = _executive_service()
+    report_date = "2026-04-08"
+    marker = "synthetic-private-headline-source"
+    monkeypatch.setattr(es, "get_settings", lambda: SimpleNamespace(
+        duckdb_path=tmp_path / "unused.duckdb", governance_path=tmp_path / "gov", ftp_rate_pct=1.0,
+    ))
+    monkeypatch.setattr(es, "_list_domain_date_context", lambda: _date_context(
+        balance=[report_date], pnl=[] if error_kind == "missing" else [report_date],
+    ))
+    monkeypatch.setattr(es, "executive_overview", lambda **_kwargs: {
+        "result_meta": {"quality_flag": "ok", "vendor_status": "ok"},
+        "result": {"title": "Overview", "metrics": [{
+            "id": "aum", "label": "Assets", "value": es._fmt_yi_amount(123_000_000).model_dump(mode="json"),
+            "delta": "N/A", "tone": "neutral", "detail": "synthetic same-date asset",
+        }]},
+    })
+    monkeypatch.setattr(es, "executive_pnl_attribution", lambda **_kwargs: {
+        "result_meta": {"quality_flag": "ok", "vendor_status": "ok"},
+        "result": es._pnl_attribution_unavailable_payload().model_dump(mode="json"),
+    })
+
+    def fail(*_args, **_kwargs):
+        raise (ProductCategoryReadModelNotFoundError if error_kind == "missing" else RuntimeError)(marker)
+
+    target = "resolve_product_category_ytd_payload_for_home_snapshot" if view == "ytd" else "product_category_pnl_envelope"
+    monkeypatch.setattr(es, target, fail)
+    other = "monthly" if view == "ytd" else "ytd"
+    monkeypatch.setattr(es, f"_build_product_category_{other}_headline", lambda _date: None)
+    # Authorization is separately covered; this route probe isolates response serialization.
+    monkeypatch.setattr(route, "_ensure_executive_read_allowed", lambda _auth: None)
+    monkeypatch.setattr(route, "home_snapshot_envelope", es.home_snapshot_envelope)
+    app = FastAPI()
+    app.dependency_overrides[route.get_auth_context] = lambda: SimpleNamespace(user_id="synthetic-user")
+    app.include_router(route.router)
+    response = TestClient(app).get("/ui/home/snapshot", params={"report_date": report_date, "allow_partial": error_kind == "missing"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result"][f"product_category_{view}"] is None
+    filters = payload["result_meta"]["filters_applied"]
+    assert f"product_category_{view}" in filters["degraded_components"]
+    assert ("ProductCategoryReadModelNotFoundError" if error_kind == "missing" else "RuntimeError") in filters["degraded_reasons"][f"product_category_{view}"]
+    assert payload["result"]["overview"]["metrics"][0]["value"]["raw"] == 123_000_000
+    if error_kind == "missing":
+        assert payload["result"]["report_date"] == report_date
+        assert payload["result"]["domains_missing"] == ["pnl"]
+        assert payload["result"]["domains_effective_date"] == {"balance_sheet": report_date}
+    assert marker not in response.text
+    assert marker not in caplog.text
+
+
+def test_home_headline_fast_path_does_not_log_private_failure(
+    monkeypatch, caplog, _isolate_home_snapshot_cache,
+):
+    es = _executive_service()
+    marker = "synthetic-private-fast-path-source"
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError(marker)
+
+    monkeypatch.setattr(es.ProductCategoryPnlRepository, "fetch_home_headline_values", fail)
+    values = _isolate_home_snapshot_cache("unused-path", "2026-04-08", ["ytd", "monthly"])
+    assert values.degraded is True
+    assert values == {}
+    assert "RuntimeError" in values.degraded_reason
+    assert marker not in values.degraded_reason
+    assert marker not in caplog.text
+
+
+@pytest.mark.parametrize("allow_partial,effective,missing", [
+    (False, {"balance_sheet": "2026-04-08"}, ["pnl"]),
+    (True, {}, ["balance_sheet", "pnl"]),
+    (True, {"balance_sheet": "2026-04-07"}, ["pnl"]),
+    (True, {"balance_sheet": "2026-04-08"}, ["balance_sheet", "pnl"]),
+])
+def test_home_partial_still_rejects_unavailable_or_wrong_date_domains(allow_partial, effective, missing):
+    from fastapi import HTTPException
+    from backend.app.api.routes.executive import _require_landed_executive_surface
+
+    with pytest.raises(HTTPException) as caught:
+        _require_landed_executive_surface({
+            "result_meta": {"vendor_status": "vendor_unavailable"},
+            "result": {"mode": "partial", "report_date": "2026-04-08",
+                       "domains_effective_date": effective, "domains_missing": missing},
+        }, route_name="home_snapshot", allow_partial=allow_partial)
+    assert caught.value.status_code == 503
+
+
+@pytest.mark.parametrize("stage", ["fast", "ytd", "monthly"])
+@pytest.mark.parametrize("error_kind", ["type", "attribute", "read_selection"])
+def test_home_headline_propagates_programming_and_read_selection_errors(
+    monkeypatch, tmp_path, _isolate_home_snapshot_cache, stage, error_kind,
+):
+    from backend.app.repositories.duckdb_read_context import DuckDBReadSelectionError
+
+    es = _executive_service()
+    error_type = {"type": TypeError, "attribute": AttributeError, "read_selection": DuckDBReadSelectionError}[error_kind]
+    error = error_type("synthetic failure must propagate")
+
+    def fail(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(es, "get_settings", lambda: SimpleNamespace(
+        duckdb_path=tmp_path / "unused.duckdb", governance_path=tmp_path / "gov", ftp_rate_pct=1.0,
+    ))
+    if stage == "fast":
+        monkeypatch.setattr(es.ProductCategoryPnlRepository, "fetch_home_headline_values", fail)
+
+        def invoke():
+            return _isolate_home_snapshot_cache("unused-path", "2026-04-08", ["ytd"])
+    else:
+        target = "resolve_product_category_ytd_payload_for_home_snapshot" if stage == "ytd" else "product_category_pnl_envelope"
+        monkeypatch.setattr(es, target, fail)
+
+        def invoke():
+            return getattr(es, f"_build_product_category_{stage}_headline")("2026-04-08")
+    with pytest.raises(error_type) as caught:
+        invoke()
+    assert caught.value is error
 
 
 class TestHomeSnapshotDateSelection:
@@ -151,8 +286,35 @@ class TestHomeSnapshotDateSelection:
         assert result["report_date"] == "2026-04-08"
         assert "pnl" in result["domains_missing"]
         assert result["domains_effective_date"]["balance_sheet"] == "2026-04-08"
-        assert result["domains_effective_date"]["pnl"] == "2026-04-07"
+        assert "pnl" not in result["domains_effective_date"]
         assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
+
+    def test_missing_requested_pnl_discloses_gap_and_latest_strict_date(self, monkeypatch) -> None:
+        env = _home_snapshot_with_dates(
+            monkeypatch,
+            context=_date_context(
+                balance=["2026-08-31", "2026-08-28"],
+                pnl=["2026-08-31", "2026-07-31"],
+            ),
+            report_date="2026-08-28",
+        )
+
+        assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
+        assert env["result"]["report_date"] == ""
+        filters = env["result_meta"]["filters_applied"]
+        assert filters["domains_missing"] == ["pnl"]
+        assert filters["latest_available_report_date"] == "2026-08-31"
+        assert filters["effective_report_dates"] == {}
+
+    def test_missing_date_does_not_invent_recovery_date_without_intersection(self, monkeypatch) -> None:
+        env = _home_snapshot_with_dates(
+            monkeypatch,
+            context=_date_context(balance=["2026-08-28"], pnl=["2026-08-31"]),
+            report_date="2026-08-28",
+        )
+
+        assert env["result_meta"]["filters_applied"]["latest_available_report_date"] is None
+        assert env["result"]["report_date"] == ""
 
     def test_partial_no_requested_uses_union_max(self, monkeypatch: pytest.MonkeyPatch) -> None:
         env = _home_snapshot_with_dates(
@@ -168,10 +330,13 @@ class TestHomeSnapshotDateSelection:
 
 
 class TestHomeSnapshotEnvelope:
-    def test_returns_envelope_shape(self) -> None:
-        # Run with default env (real duckdb); if repos can't open, it still must
-        # return a valid envelope (possibly with empty payload).
-        env = _executive_service().home_snapshot_envelope(report_date=None, allow_partial=False)
+    def test_returns_envelope_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Shape coverage uses an explicit empty local date context rather than
+        # opening the protected developer database.
+        env = _home_snapshot_with_dates(
+            monkeypatch,
+            context=_date_context(balance=[], pnl=[]),
+        )
         assert "result_meta" in env
         assert "result" in env
         # result payload is HomeSnapshotPayload-compatible dict
@@ -251,7 +416,7 @@ class TestHomeSnapshotEnvelope:
             assert env["result"]["domains_missing"] == []
             assert env["result_meta"]["quality_flag"] == "ok"
 
-    def test_partial_mode_labels_missing(self) -> None:
+    def test_partial_mode_labels_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         es = _executive_service()
         with patch.object(es, "_list_domain_date_context") as mock_dates:
             mock_dates.return_value = {
@@ -262,7 +427,7 @@ class TestHomeSnapshotEnvelope:
             }
             with patch.object(es, "executive_overview") as mock_ov:
                 with patch.object(es, "executive_pnl_attribution") as mock_attr:
-                    with patch.object(es, "_build_product_category_ytd_headline", return_value=None):
+                    with patch.object(es, "_build_product_category_headlines", return_value=(None, None, 0, 0)):
                         mock_ov.return_value = {
                             "result_meta": {},
                             "result": {"title": "经营总览", "metrics": []},

@@ -130,7 +130,12 @@ def test_summary_call_does_not_pollute_cached_full_result(
     )
 
 
-def _install_four_effects_bridge_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+def _install_four_effects_bridge_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    end_accrued_interest: Decimal | None = Decimal("0"),
+    maturity_date: str | None = "2030-12-31",
+) -> None:
     """formal-bridge 路径夹具：bridge 行与 SUMMARY_BOND 仓位重叠，触发提前返回分支。
 
     该分支从台账桥接分解四效应，不读任何曲线，因此 curves 留空、
@@ -149,9 +154,16 @@ def _install_four_effects_bridge_fixture(monkeypatch: pytest.MonkeyPatch) -> Non
             ytm=Decimal("0.0500"),
             rating="AAA",
             asset_class="credit",
+            maturity_date=maturity_date,
         )
     ]
-    end_rows = [{**start_rows[0], "market_value": Decimal("1100")}]
+    end_rows = [
+        {
+            **start_rows[0],
+            "market_value": Decimal("1100"),
+            "accrued_interest": end_accrued_interest,
+        }
+    ]
     _install_full_service_fakes(
         monkeypatch,
         dates=["2026-01-31", "2026-01-01"],
@@ -196,6 +208,21 @@ def _install_four_effects_bridge_fixture(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(campisi_svc, "_fetch_formal_bridge", lambda **_kwargs: bridge, raising=False)
 
 
+def test_four_effects_bridge_unknown_bucket_omits_model_maturity_quality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """台账桥接路径的 UNKNOWN 桶不应被解释成模型久期覆盖缺口。"""
+    _install_four_effects_bridge_fixture(monkeypatch, maturity_date=None)
+
+    result = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01", end_date="2026-01-31"
+    )["result"]
+
+    assert result["basis"] == "formal_report_pnl_bridge"
+    assert result["by_bond"][0]["maturity_bucket"] == "UNKNOWN"
+    assert "included_maturity_unavailable" not in result["input_quality"]
+
+
 def test_four_effects_summary_bridge_path_passes_response_model_without_market_curve_coverage(
     tmp_path, monkeypatch
 ) -> None:
@@ -225,6 +252,33 @@ def test_four_effects_summary_bridge_path_passes_response_model_without_market_c
     get_settings.cache_clear()
 
 
+def test_four_effects_bridge_requires_accrued_interest_at_both_period_endpoints(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """期末应计缺失只降级可用性，不得改写桥金额、残差或正式闭合。"""
+    client, _route_module = _campisi_route_client_with_read_scope(tmp_path, monkeypatch)
+    _install_four_effects_bridge_fixture(monkeypatch, end_accrued_interest=None)
+
+    response = client.get(
+        "/api/pnl-attribution/campisi/four-effects",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31"},
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    accrued = result["effect_availability"]["accrued_interest"]
+    assert accrued["status"] == "unavailable"
+    assert accrued["basis"] == "clean_price_fallback"
+    assert accrued["reason"] == "accrued_interest_missing"
+    assert accrued["unavailable_bonds"] == 1
+    assert result["by_bond"][0]["has_accrued_interest"] is False
+    assert result["totals"]["selection_effect"] == pytest.approx(14.0)
+    assert result["totals"]["total_return"] == pytest.approx(35.0)
+    assert result["formal_closure"]["status"] == "closed"
+    assert result["formal_closure"]["residual_to_formal_pnl"] == pytest.approx(0.0)
+    get_settings.cache_clear()
+
+
 def test_four_effects_summary_model_path_still_emits_market_curve_coverage(
     tmp_path, monkeypatch
 ) -> None:
@@ -238,7 +292,11 @@ def test_four_effects_summary_model_path_still_emits_market_curve_coverage(
     )
 
     assert response.status_code == 200, response.text
-    coverage = response.json()["result"]["input_quality"]["market_curve_coverage"]
+    result = response.json()["result"]
+    assert result["effect_availability"]["position_change"]["principal_unavailable_bonds"] == 0
+    assert result["input_quality"]["position_change"]["principal_unavailable_bonds"] == 0
+    assert "principal_unavailable_bonds" not in result["effect_availability"]["accrued_interest"]
+    coverage = result["input_quality"]["market_curve_coverage"]
     assert coverage["treasury_effect"]["status"] == "ok"
     assert coverage["treasury_tenors"]["shared_positive_tenors"] == 6
     get_settings.cache_clear()

@@ -11,9 +11,9 @@ export function RiskTrendChart() {
     <EvidencePanel
       heading="风险趋势（近12周）"
       style={{
-        border: "1px solid var(--ib-hairline)",
+        border: "1px solid var(--dh-api-line-soft, var(--ib-hairline))",
         borderRadius: "var(--dh-api-radius, 6px)",
-        background: "var(--ib-surface)",
+        background: "var(--dh-api-panel-2, var(--ib-surface))",
         boxShadow: "none",
       }}
     >
@@ -28,7 +28,7 @@ export function RiskTrendChart() {
           justifyContent: "center",
           padding: `${dt.space[3]}px ${dt.space[3]}px`,
           textAlign: "center",
-          color: "var(--ib-ink-muted)",
+          color: "var(--dh-api-muted, var(--ib-ink-muted))",
           fontSize: dt.fontSize[12],
           lineHeight: dt.lineHeight.relaxed,
         }}

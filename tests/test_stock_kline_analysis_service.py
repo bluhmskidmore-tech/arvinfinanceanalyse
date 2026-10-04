@@ -103,6 +103,8 @@ def test_stock_kline_analysis_envelope_scores_ohlcv_observation(tmp_path) -> Non
     assert meta["formal_use_allowed"] is False
     assert meta["source_version"] == "sv_choice_stock_daily_test"
     assert meta["vendor_version"] == "vv_choice_stock_daily_test"
+    assert meta["rule_version"] == "rv_stock_kline_analysis_observation_v2"
+    assert meta["cache_version"] == "cv_stock_kline_analysis_observation_v2"
     assert meta["tables_used"] == ["choice_stock_daily_observation"]
     assert meta["evidence_rows"] == 65
 
@@ -293,6 +295,83 @@ def test_stock_kline_analysis_normalizes_cross_generation_volume_before_ratio(tm
     assert result["validity"]["liquidity"]["average_volume_20d"] == pytest.approx(
         sum(1_000_000 + i * 1_000 for i in range(10, 30)) / 20
     )
+
+
+def test_stock_kline_analysis_volume_metrics_use_fixed_20d_observation_window() -> None:
+    module = load_module(
+        "backend.app.services.stock_kline_analysis_service",
+        "backend/app/services/stock_kline_analysis_service.py",
+    )
+    candles = [
+        {"close_value": 10.0 + index, "volume": float(index)}
+        for index in range(1, 23)
+    ]
+
+    indicators = module._indicators(candles)
+    validity = module._validity(candles)
+
+    assert module.VOLUME_MA_WINDOW == 20
+    assert indicators["volume_ratio_20d"] == pytest.approx(
+        22.0 / (sum(range(2, 22)) / 20)
+    )
+    assert validity["liquidity"]["average_volume_20d"] == pytest.approx(
+        sum(range(3, 23)) / 20
+    )
+
+
+def test_stock_kline_analysis_volume_windows_slice_before_filtering_invalid_values() -> None:
+    module = load_module(
+        "backend.app.services.stock_kline_analysis_service",
+        "backend/app/services/stock_kline_analysis_service.py",
+    )
+    volumes = [1000.0, 2000.0, float("inf"), *([10.0] * 16), 0.0, -5.0, None, 20.0]
+    candles = [
+        {"close_value": 10.0 + index, "volume": volume}
+        for index, volume in enumerate(volumes)
+    ]
+
+    indicators = module._indicators(candles)
+    validity = module._validity(candles)
+
+    # 先切 20 根窗口，再仅以窗口内有限正量求均值；不得过滤后向更早历史补位。
+    assert indicators["volume_ratio_20d"] == pytest.approx(20.0 / 10.0)
+    assert validity["liquidity"]["average_volume_20d"] == pytest.approx(180.0 / 17.0)
+
+
+def test_stock_kline_analysis_volume_ratio_uses_available_positive_prior_bars() -> None:
+    module = load_module(
+        "backend.app.services.stock_kline_analysis_service",
+        "backend/app/services/stock_kline_analysis_service.py",
+    )
+    indicators = module._indicators(
+        [
+            {"close_value": 10.0, "volume": 100.0},
+            {"close_value": 10.1, "volume": 0.0},
+            {"close_value": 10.2, "volume": 102.0},
+            {"close_value": 10.3, "volume": 300.0},
+        ]
+    )
+
+    assert indicators["volume_ratio_20d"] == pytest.approx(300.0 / 101.0)
+
+
+@pytest.mark.parametrize("latest_volume", [0.0, -1.0])
+def test_stock_kline_analysis_volume_ratio_is_none_for_nonpositive_latest_volume(
+    latest_volume: float,
+) -> None:
+    module = load_module(
+        "backend.app.services.stock_kline_analysis_service",
+        "backend/app/services/stock_kline_analysis_service.py",
+    )
+    candles = [
+        {"close_value": 10.0 + index, "volume": 100.0}
+        for index in range(20)
+    ]
+    candles.append({"close_value": 30.0, "volume": latest_volume})
+
+    indicators = module._indicators(candles)
+
+    assert indicators["volume_ratio_20d"] is None
 
 
 def test_stock_kline_analysis_fails_closed_to_null_when_vendor_column_missing(

@@ -42,7 +42,7 @@
 
 .agent-gitnexus__metric-label {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ib-ink-muted);
   text-transform: uppercase;
 }
@@ -159,7 +159,7 @@
 
 .agent-gitnexus__trace-kicker {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ib-ink-muted);
@@ -174,7 +174,7 @@
   display: grid;
   place-items: center;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .agent-gitnexus__trace-symbol {
@@ -190,7 +190,7 @@
   background: color-mix(in srgb, var(--agent-gitnexus-group-color, var(--ib-ink-muted)) 8%, transparent);
   color: var(--agent-gitnexus-group-color, var(--ib-ink-muted));
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -214,7 +214,7 @@
   background: var(--ib-surface);
   border: 1px solid var(--ib-hairline);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .agent-gitnexus__trace-edge-line {

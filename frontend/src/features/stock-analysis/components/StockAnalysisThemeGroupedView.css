@@ -71,7 +71,7 @@
 
 .stock-analysis-theme-grouped__chip-count {
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--dh-api-panel-2);
   color: var(--dh-api-muted);
   font-size: 12px;
@@ -257,7 +257,7 @@
   width: fit-content;
   padding: 1px 8px;
   border: 1px solid var(--dh-api-line-soft);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: var(--dh-api-panel-2);
   color: var(--dh-api-soft);
   font-size: 12px;

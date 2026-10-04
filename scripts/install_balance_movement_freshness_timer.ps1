@@ -2,12 +2,20 @@
 
 param(
     [string]$TaskName = "MOSS-BalanceMovementFreshness",
-    [string]$RepoRoot = "F:\MOSS-V3",
-    [string]$PythonExe = "C:\Users\arvin\AppData\Local\Python\pythoncore-3.14-64\python.exe",
+    [string]$RepoRoot = "",
+    [string]$PythonExe = "",
     [string]$Time = "06:45"
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+    $RepoRoot = Split-Path -Parent $PSScriptRoot
+}
+if ([string]::IsNullOrWhiteSpace($PythonExe)) {
+    . (Join-Path $RepoRoot "scripts\dev-python.ps1")
+    $PythonExe = Resolve-DevPython -RequiredModules @("duckdb")
+}
 $logDir = Join-Path $RepoRoot "data\logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logPath = Join-Path $logDir "balance_movement_freshness.log"

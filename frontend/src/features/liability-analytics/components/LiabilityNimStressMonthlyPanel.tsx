@@ -1,6 +1,6 @@
 import type { AdbMonthlyDataItem } from "../../../api/contracts";
+import { SectionHead } from "../../../components/layout";
 import { EM_DASH } from "../../../utils/format";
-import { LiabilitySectionLead } from "./LiabilitySectionLead";
 
 export function LiabilityNimStressMonthlyPanel({
   adbMonth,
@@ -23,13 +23,16 @@ export function LiabilityNimStressMonthlyPanel({
 
   return (
     <section className="liability-section">
-      <LiabilitySectionLead
+      <SectionHead
         title="压力测试：NIM 敏感性（+50bps）"
         actions={<span className="liability-status-pill">候选情景</span>}
       />
       <p className="liability-caption">口径：月度日均（月度收益率/付息率；若缺失则仅展示结构）。</p>
       <p className="liability-caption" data-testid="liability-nim-monthly-analysis-note">
         压力口径：当前月度 NIM −50bp 平移（后端分析口径，候选指标，与日度面板采用同一冲击幅度）；缺 NIM 的月份不展示压力值。
+      </p>
+      <p className="liability-caption liability-caption--gap">
+        口径提示：月度规模卡优先采用发行负债摊余成本；本区 ADB 对发行负债采用市值口径，两者金额不直接对账。
       </p>
       <div className="liability-kpi-band" data-cols="4">
         <div className="liability-kpi-cell">

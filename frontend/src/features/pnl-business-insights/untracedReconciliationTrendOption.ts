@@ -36,9 +36,6 @@ export function buildUntracedReconciliationTrendOption(
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "line" },
-      backgroundColor: nocturneTokens.color.panel2,
-      borderColor: nocturneTokens.color.lineSoft,
-      textStyle: { color: nocturneTokens.color.ink, fontSize: 12 },
       formatter: (params: unknown) => {
         const items = params as Array<{ dataIndex: number }>;
         if (!items.length) return "";
@@ -54,7 +51,7 @@ export function buildUntracedReconciliationTrendOption(
         ].join("<br/>");
       },
     },
-    grid: { left: 56, right: 24, top: 24, bottom: 36, containLabel: true },
+    grid: { left: 56, right: 24, top: 24 },
     xAxis: {
       type: "category" as const,
       data: dates,

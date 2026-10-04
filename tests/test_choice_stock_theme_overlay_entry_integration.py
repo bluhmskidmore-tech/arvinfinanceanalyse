@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
 import hashlib
 from pathlib import Path
 from types import SimpleNamespace
@@ -58,6 +60,11 @@ def test_choice_stock_refresh_route_allows_overlay_only_and_passes_archive_root(
     monkeypatch.setattr(macro_toolkit_route, "get_settings", lambda: settings)
     monkeypatch.setattr(
         macro_toolkit_route, "_ensure_choice_stock_refresh_allowed", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"status": "queued"},
     )
     monkeypatch.setattr(
         macro_toolkit_route,

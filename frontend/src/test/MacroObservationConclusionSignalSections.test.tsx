@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -309,8 +306,7 @@ function analysisWithRisk(risk: MacroToolkitAShareRiskPayload): MacroToolkitAnal
 }
 
 describe("MacroObservationKpiBand tone wiring", () => {
-  const cellOf = (band: HTMLElement, label: string) =>
-    within(band).getByText(label).closest(".macro-observation-view__kpi-cell");
+  const valueOf = (testId: string) => screen.getByTestId(testId).querySelector("strong");
 
   it("writes item.tone onto the KPI cell as data-tone with the value element inside", () => {
     const items: MacroObservationKpiItem[] = [
@@ -321,16 +317,12 @@ describe("MacroObservationKpiBand tone wiring", () => {
     ];
     render(<MacroObservationKpiBand items={items} testId="kpi-band-tone" />);
 
-    const band = screen.getByTestId("kpi-band-tone");
-    expect(cellOf(band, "投研观点")).toHaveAttribute("data-tone", "negative");
-    expect(cellOf(band, "A股风险")).toHaveAttribute("data-tone", "warning");
-    expect(cellOf(band, "主信号")).toHaveAttribute("data-tone", "positive");
-    // 无 tone 缺省 neutral：CSS 不着色，主值保持 ink。
-    expect(cellOf(band, "决策摘要可用模块")).toHaveAttribute("data-tone", "neutral");
-    // CSS 以 [data-tone] 后代 __kpi-value 消费，锁定主值元素确实在格内。
-    expect(
-      cellOf(band, "A股风险")?.querySelector(".macro-observation-view__kpi-value"),
-    ).toHaveTextContent("35");
+    expect(valueOf("kpi-band-tone-stance")).toHaveAttribute("data-tone", "negative");
+    expect(valueOf("kpi-band-tone-a-share-risk")).toHaveAttribute("data-tone", "warning");
+    expect(valueOf("kpi-band-tone-primary-signal")).toHaveAttribute("data-tone", "positive");
+    // 无 tone 不挂属性，主值保持共享原语的 ink。
+    expect(valueOf("kpi-band-tone-decision-modules")).not.toHaveAttribute("data-tone");
+    expect(valueOf("kpi-band-tone-a-share-risk")).toHaveTextContent("35");
   });
 
   it("carries a yellow a_share_risk payload to a warning KPI cell end to end", () => {
@@ -345,33 +337,8 @@ describe("MacroObservationKpiBand tone wiring", () => {
     expect(riskItem?.status).toBe("ready");
 
     render(<MacroObservationKpiBand items={band} testId="kpi-band-yellow" />);
-    const cell = cellOf(screen.getByTestId("kpi-band-yellow"), "A股风险");
-    expect(cell).toHaveAttribute("data-tone", "warning");
+    const cell = screen.getByTestId("kpi-band-yellow-a-share-risk");
+    expect(cell.querySelector("strong")).toHaveAttribute("data-tone", "warning");
     expect(cell).toHaveAttribute("data-status", "ready");
-  });
-});
-
-describe("MacroObservationPage.css KPI tone rules", () => {
-  it("keeps the ready-scoped tone color rules for the KPI value", () => {
-    const css = readFileSync(
-      resolve(process.cwd(), "src/features/macro-observation/pages/MacroObservationPage.css"),
-      "utf8",
-    );
-    // 锁定三档着色规则存在且限定 data-status="ready"（loading/deferred 的
-    // muted 降权、failed 的红色不被 tone 覆盖）；yellow 档琥珀链路防误删。
-    const toneRules = [
-      ["positive", "--dh-api-green"],
-      ["warning", "--dh-api-amber"],
-      ["negative", "--dh-api-red"],
-    ] as const;
-    for (const [tone, cssVar] of toneRules) {
-      const rule = new RegExp(
-        `\\.macro-observation-view__kpi-cell\\[data-status="ready"\\]\\[data-tone="${tone}"\\]\\s*` +
-          `\\.macro-observation-view__kpi-value\\s*\\{\\s*color:\\s*var\\(${cssVar}\\);`,
-      );
-      expect(css).toMatch(rule);
-    }
-    // neutral 保持缺省 ink，不应出现 neutral 着色规则。
-    expect(css).not.toMatch(/__kpi-cell\[data-status="ready"\]\[data-tone="neutral"\]/);
   });
 });

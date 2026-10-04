@@ -12,7 +12,10 @@ from backend.app.services import executive_service as es
 
 
 @pytest.fixture(autouse=True)
-def _reset_cache():
+def _reset_cache(monkeypatch: pytest.MonkeyPatch):
+    # Keep cache tests independent from the protected developer database. The
+    # tests below exercise fallback builders and cache behavior explicitly.
+    monkeypatch.setattr(es, "_fetch_product_category_home_headline_values", lambda *_a, **_k: {})
     es.invalidate_home_snapshot_cache()
     yield
     es.invalidate_home_snapshot_cache()
@@ -371,17 +374,19 @@ def test_home_income_trend_prewarm_entries_preserve_flag_and_thread_contract(
     enabled = SimpleNamespace(home_income_trend_prewarm_enabled=True)
 
     assert es.warm_home_income_trend_cache_if_configured(enabled) is True
-    assert started == [
-        (
-            es._warm_home_income_trend_cache_quietly,
-            {
-                "kwargs": {"report_date": None, "window": 7},
-                "daemon": True,
-                "name": "moss-home-income-trend-warmup",
-            },
-        ),
-        ("start", {}),
-    ]
+    assert len(started) == 2
+    target, thread_options = started[0]
+    assert callable(target)
+    assert thread_options == {
+        "kwargs": {"report_date": None, "window": 7},
+        "daemon": True,
+        "name": "moss-home-income-trend-warmup",
+    }
+    assert started[1] == ("start", {})
+
+    with patch.object(es, "_warm_home_income_trend_cache_quietly") as mock_warm:
+        target(**thread_options["kwargs"])
+    mock_warm.assert_called_once_with(report_date=None, window=7)
 
     with patch.object(es, "_warm_home_income_trend_cache_quietly") as mock_warm:
         assert es.warm_home_income_trend_cache_in_current_thread_if_configured(enabled) is True

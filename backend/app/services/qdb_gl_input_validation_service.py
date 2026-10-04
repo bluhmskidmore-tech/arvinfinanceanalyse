@@ -289,6 +289,17 @@ def _validate_ledger_rows(
         debit_amount = _to_decimal(debit_value)
         credit_amount = _to_decimal(credit_value)
         ending_amount = _to_decimal(ending_value)
+        for column_letter, amount in zip("DEFG", (beginning_amount, debit_amount, credit_amount, ending_amount)):
+            if amount is None:
+                for check_id in ("row_shape", "required_raw_fields"):
+                    _record_failure(
+                        checks,
+                        check_id,
+                        message="Ledger amount field must be a finite number.",
+                        sheet_name=worksheet.title,
+                        row_locator=row_index,
+                        cell_ref=f"{column_letter}{row_index}",
+                    )
         if None not in {beginning_amount, debit_amount, credit_amount, ending_amount}:
             delta = beginning_amount + debit_amount - credit_amount - ending_amount
             if abs(delta) > RECONCILIATION_TOLERANCE:
@@ -421,14 +432,15 @@ def _validate_average_rows(
                 continue
 
             if _to_decimal(balance_value) is None:
-                _record_failure(
-                    checks,
-                    "row_shape",
-                    message="Average workbook balance field must be numeric.",
-                    sheet_name=worksheet.title,
-                    row_locator=row_index,
-                    cell_ref=f"{get_column_letter(column_index + 3)}{row_index}",
-                )
+                for check_id in ("row_shape", "required_raw_fields"):
+                    _record_failure(
+                        checks,
+                        check_id,
+                        message="Average workbook balance field must be a finite number.",
+                        sheet_name=worksheet.title,
+                        row_locator=row_index,
+                        cell_ref=f"{get_column_letter(column_index + 3)}{row_index}",
+                    )
                 column_index += 3
                 continue
 
@@ -610,7 +622,8 @@ def _to_decimal(value: object) -> Decimal | None:
     if _is_blank(value):
         return None
     try:
-        return Decimal(str(value))
+        result = Decimal(str(value))
+        return result if result.is_finite() else None
     except (InvalidOperation, ValueError):
         return None
 

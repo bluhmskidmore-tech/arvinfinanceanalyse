@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
 
@@ -15,6 +16,76 @@ def _module():
         "backend.app.core_finance.bond_analytics.engine",
         "backend/app/core_finance/bond_analytics/engine.py",
     )
+
+
+@pytest.mark.parametrize(
+    ("field", "label"),
+    [
+        ("bond_type", "中票"),
+        ("bond_type", "中期票据"),
+        ("bond_type", "短期融资券"),
+        ("bond_type", "超短期融资券"),
+        ("bond_type", "同业存单"),
+        ("bond_type", "大额存单"),
+        ("bond_type", "NCD"),
+        ("bond_type", "商业性金融债"),
+        ("bond_type", "非银行金融债"),
+        ("sub_type", "企业债"),
+        ("business_type_primary", "企业债"),
+    ],
+)
+def test_credit_source_labels_preserve_cs01_and_spread_membership(field, label):
+    from backend.app.core_finance.credit_spread_analysis import compute_bond_spreads
+    from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
+
+    report_date = date(2026, 3, 31)
+    snapshot = {
+        "report_date": report_date,
+        "instrument_code": "CREDIT-LABEL-001",
+        "instrument_name": "分类回归合成样本",
+        "asset_class": "债券资产",
+        "bond_type": "债券资产",
+        "currency_code": "CNY",
+        "accounting_basis": "FVOCI",
+        "face_value_native": Decimal("100000000"),
+        "market_value_native": Decimal("100000000"),
+        "coupon_rate": Decimal("3"),
+        "ytm_value": Decimal("3"),
+        "maturity_date": date(2031, 3, 31),
+        "interest_mode": "annual",
+        field: label,
+    }
+    row = _module().compute_bond_analytics_rows([snapshot], report_date)[0]
+    assert row.asset_class_std == "credit"
+    assert row.is_credit is True
+    assert row.spread_dv01 == row.dv01 > 0
+    risk = compute_portfolio_risk_tensor([asdict(row)], report_date)
+    assert risk.cs01 == row.spread_dv01
+    assert len(compute_bond_spreads([asdict(row)], {"5Y": Decimal("2.5")})) == 1
+
+
+@pytest.mark.parametrize("rate_label", ["国债", "政策性金融债"])
+def test_credit_source_fields_keep_rate_precedence_and_issuance_exclusion(rate_label):
+    snapshot = {
+        "instrument_code": "RATE-PROTECTION-001",
+        "asset_class": rate_label,
+        "sub_type": "企业债",
+        "business_type_primary": "商业性金融债",
+        "currency_code": "CNY",
+        "face_value_native": Decimal("100000000"),
+        "market_value_native": Decimal("100000000"),
+        "coupon_rate": Decimal("3"),
+        "ytm_value": Decimal("3"),
+        "maturity_date": date(2031, 3, 31),
+    }
+    module = _module()
+    row = module.compute_bond_analytics_rows([snapshot], date(2026, 3, 31))[0]
+    assert row.asset_class_std == "rate"
+    assert row.is_credit is False
+    assert row.spread_dv01 == 0
+    assert module.compute_bond_analytics_rows(
+        [{**snapshot, "is_issuance_like": True}], date(2026, 3, 31)
+    ) == []
 
 
 def _foreign_bond_snapshot_row() -> dict[str, object]:
@@ -273,8 +344,8 @@ def _par_fallback_snapshot_row(**overrides: object) -> dict[str, object]:
         "accrued_interest_native": Decimal("1"),
         "coupon_rate": Decimal("3.0"),  # percent 口径 → 0.03
         "ytm_value": None,  # ytm 缺失
-        # 2026-01-01 → 2035-12-30 恰 3650 天 → years_to_maturity = 10（整）
-        "maturity_date": date(2035, 12, 30),
+        # True ten-year coupon anniversary; ACT/365 remaining term includes two leap days.
+        "maturity_date": date(2036, 1, 1),
         "interest_mode": "annual",
         "is_issuance_like": False,
     }
@@ -287,7 +358,7 @@ def test_compute_bond_analytics_rows_par_fallback_for_coupon_bond_missing_ytm(
 ) -> None:
     """有票息缺 ytm 的行：三项指标按 par 假设（ytm=coupon）计算，聚合告警可观测。
 
-    黄金手算（10Y=3650 天、年付 3%、par ytm=3%；闭式独立推导，未经被测函数）：
+    黄金手算（10 个周年票息、年付 3%、par ytm=3%；闭式独立推导，未经被测函数）：
       Macaulay  = (1.03/0.03)(1 - 1.03^-10)      = 8.786108921879104...
       修正久期  = Macaulay / 1.03                 = 8.530202836775829...
       凸性      = Σ t(t+1)·CF_t/1.03^t / P / 1.03²= 87.066004719213807...
@@ -310,7 +381,7 @@ def test_compute_bond_analytics_rows_par_fallback_for_coupon_bond_missing_ytm(
     assert len(rows) == 1
     row = rows[0]
     tol = Decimal("0.000001")
-    assert row.years_to_maturity == Decimal("10")
+    assert row.years_to_maturity == Decimal("3652") / Decimal("365")
     assert abs(row.macaulay_duration - Decimal("8.786108921879104")) < tol
     assert abs(row.modified_duration - Decimal("8.530202836775829")) < tol
     assert abs(row.convexity - Decimal("87.066004719213807")) < tol
@@ -330,6 +401,62 @@ def test_compute_bond_analytics_rows_par_fallback_for_coupon_bond_missing_ytm(
     # 日志级行清单：带具体回退债券代码；未超上限不出现“…共 N 只”截断尾。
     assert "instrument_codes=PAR-FB-001" in fallback_warnings[0]
     assert "…共" not in fallback_warnings[0]
+
+
+def test_compute_bond_analytics_rows_discloses_floating_rate_fixed_coupon_proxy(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    module = _module()
+    report_date = date(2026, 1, 1)
+    fixed_row = _par_fallback_snapshot_row(
+        instrument_code="FIXED-001",
+        interest_mode="fixed",
+        ytm_value=Decimal("3.5"),
+    )
+    floating_row = _par_fallback_snapshot_row(
+        instrument_code="FLOAT-001",
+        interest_mode="浮息",
+        ytm_value=Decimal("3.5"),
+    )
+    floating_missing_coupon = _par_fallback_snapshot_row(
+        instrument_code="FLOAT-NO-COUPON",
+        interest_mode="浮息",
+        coupon_rate=None,
+        ytm_value=Decimal("3.5"),
+        market_value_native=Decimal("90"),
+    )
+
+    with caplog.at_level(
+        logging.WARNING, logger="backend.app.core_finance.bond_analytics.engine"
+    ):
+        fixed, floating, missing_coupon = module.compute_bond_analytics_rows(
+            [fixed_row, floating_row, floating_missing_coupon],
+            report_date,
+        )
+
+    assert floating.interest_rate_style == "floating"
+    assert (
+        floating.duration_quality_flag
+        == module.DURATION_QUALITY_FLOATING_RATE_FIXED_COUPON_PROXY
+    )
+    # 同一行改为固息就回到 observed：新取值只来自利率风格，不是别的质量问题。
+    assert fixed.interest_rate_style == "fixed"
+    assert fixed.duration_quality_flag == module.DURATION_QUALITY_OBSERVED
+    # 更严重的既有标记优先：浮息不得把缺票息行的 coupon_unavailable 覆盖掉。
+    assert missing_coupon.interest_rate_style == "floating"
+    assert missing_coupon.duration_quality_flag == module.DURATION_QUALITY_COUPON_UNAVAILABLE
+    assert floating.macaulay_duration == fixed.macaulay_duration
+    assert floating.modified_duration == fixed.modified_duration
+    assert floating.convexity == fixed.convexity
+    assert floating.dv01 == fixed.dv01
+
+    proxy_warnings = [
+        message for message in caplog.messages if "floating-rate fixed-coupon proxy" in message
+    ]
+    assert len(proxy_warnings) == 1
+    assert "2 floating-rate rows" in proxy_warnings[0]
+    assert "market_value_cny=185" in proxy_warnings[0]
+    assert "instrument_codes=FLOAT-001,FLOAT-NO-COUPON" in proxy_warnings[0]
 
 
 def test_compute_bond_analytics_rows_par_fallback_code_list_truncates_beyond_20(
@@ -393,12 +520,13 @@ def test_compute_bond_analytics_rows_zero_coupon_missing_ytm_unchanged(
     assert row.ytm_input_status == module.RATE_INPUT_STATUS_MISSING
     # 零息券的 Macaulay=剩余年限本就正确，但修正久期未按 ytm 折现，标记为近似。
     assert row.duration_quality_flag == module.DURATION_QUALITY_YTM_UNAVAILABLE
-    assert row.macaulay_duration == Decimal("10")
-    assert row.modified_duration == Decimal("10")
-    # W-fi-2026-08 P4：零息单笔现金流的标准凸性 t(t+1/f)/(1+y/f)²，f=1 且 y=0 → 10×11。
+    term = Decimal("3652") / Decimal("365")
+    assert row.macaulay_duration == term
+    assert row.modified_duration == term
+    # 零息单笔现金流仍按实际剩余天数，标准凸性 t(t+1/f)/(1+y/f)²。
     # 旧实现在 ytm<=0 时特判 D²=100，在 y=0 处相对 y→0⁺ 有 D 大小的跳变。
-    assert row.convexity == Decimal("110")
-    assert row.dv01 == Decimal("100") * Decimal("10") / Decimal("10000")
+    assert row.convexity == term * (term + 1)
+    assert row.dv01 == Decimal("100") * term / Decimal("10000")
     assert not [m for m in caplog.messages if "par-assumption duration" in m]
     assert not [m for m in caplog.messages if "remaining-term duration proxy" in m]
 
@@ -418,10 +546,86 @@ def test_classify_rate_input_separates_true_zero_missing_and_dirty() -> None:
     assert module._classify_rate_input(None) == (None, module.RATE_INPUT_STATUS_MISSING)
     assert module._classify_rate_input("") == (None, module.RATE_INPUT_STATUS_MISSING)
     assert module._classify_rate_input("   ") == (None, module.RATE_INPUT_STATUS_MISSING)
-    # > 20%、负数、非数值都是脏值：有值但不可用，与「字段为空」成因不同。
+    # > 20%、非数值是脏值；合法负收益率按百分数口径归一后仍是 observed。
     assert module._classify_rate_input(Decimal("25")) == (None, module.RATE_INPUT_STATUS_DIRTY)
-    assert module._classify_rate_input(Decimal("-0.5")) == (None, module.RATE_INPUT_STATUS_DIRTY)
+    assert module._classify_rate_input(Decimal("-0.5")) == (
+        Decimal("-0.005"),
+        module.RATE_INPUT_STATUS_OBSERVED,
+    )
     assert module._classify_rate_input("abc") == (None, module.RATE_INPUT_STATUS_DIRTY)
+
+
+def test_classify_rate_input_rejects_negative_ytm_below_symmetric_dirty_floor() -> None:
+    """负 YTM 下界与 +20% 上界对称（含端点）：±20 仍是观测值，越过一分即脏值。"""
+    module = _module()
+
+    assert module.NEGATIVE_YTM_DIRTY_FLOOR == Decimal("-0.20")
+    # 下界内侧与端点：observed，且归一为小数。
+    assert module._classify_rate_input(Decimal("-19.99")) == (
+        Decimal("-0.1999"),
+        module.RATE_INPUT_STATUS_OBSERVED,
+    )
+    assert module._classify_rate_input(Decimal("-20")) == (
+        Decimal("-0.2"),
+        module.RATE_INPUT_STATUS_OBSERVED,
+    )
+    assert module._classify_rate_input(Decimal("20")) == (
+        Decimal("0.2"),
+        module.RATE_INPUT_STATUS_OBSERVED,
+    )
+    # 越界：两侧同样一分即脏值。
+    assert module._classify_rate_input(Decimal("-20.01")) == (None, module.RATE_INPUT_STATUS_DIRTY)
+    assert module._classify_rate_input(Decimal("20.01")) == (None, module.RATE_INPUT_STATUS_DIRTY)
+    assert module._classify_rate_input(Decimal("-95")) == (None, module.RATE_INPUT_STATUS_DIRTY)
+    assert module._classify_rate_input("-150") == (None, module.RATE_INPUT_STATUS_DIRTY)
+    # 票息路径不接受任何负值。
+    assert module._classify_rate_input(Decimal("-0.5"), negative_floor=None) == (
+        None,
+        module.RATE_INPUT_STATUS_DIRTY,
+    )
+
+
+def test_compute_bond_analytics_rows_marks_negative_ytm_below_floor_as_dirty() -> None:
+    """-95% 这类负向脏值不得进入折现：行按 ytm 缺失口径走 par 回退并标记 dirty。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    row = module.compute_bond_analytics_rows(
+        [
+            _par_fallback_snapshot_row(
+                instrument_code="NEG-YTM-DIRTY-001",
+                ytm_value=Decimal("-95"),
+            )
+        ],
+        report_date,
+    )[0]
+
+    assert row.ytm is None
+    assert row.ytm_input_status == module.RATE_INPUT_STATUS_DIRTY
+    assert row.duration_quality_flag == module.DURATION_QUALITY_YTM_PAR_FALLBACK
+
+
+def test_compute_bond_analytics_rows_uses_legal_negative_ytm_without_fallback() -> None:
+    """-0.5% YTM 合法：按标准现金流计算，且 Dmod=Dmac/(1+y/f)。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    row = module.compute_bond_analytics_rows(
+        [
+            _par_fallback_snapshot_row(
+                instrument_code="NEG-YTM-001",
+                ytm_value=Decimal("-0.5"),
+            )
+        ],
+        report_date,
+    )[0]
+
+    assert row.ytm == Decimal("-0.005")
+    assert row.ytm_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert row.duration_quality_flag == module.DURATION_QUALITY_OBSERVED
+    assert row.macaulay_duration < row.years_to_maturity
+    assert row.modified_duration == row.macaulay_duration / Decimal("0.995")
+    assert row.modified_duration > row.macaulay_duration
 
 
 def test_compute_bond_analytics_rows_distinguishes_true_zero_missing_and_dirty_coupon(
@@ -464,7 +668,7 @@ def test_compute_bond_analytics_rows_distinguishes_true_zero_missing_and_dirty_c
     assert true_zero.coupon_rate_input_status == module.RATE_INPUT_STATUS_OBSERVED
     assert true_zero.ytm_input_status == module.RATE_INPUT_STATUS_OBSERVED
     assert true_zero.duration_quality_flag == module.DURATION_QUALITY_OBSERVED
-    assert true_zero.macaulay_duration == Decimal("10")
+    assert true_zero.macaulay_duration == Decimal("3652") / Decimal("365")
 
     # 缺失与脏值：数值上无法与零息券区分，故必须由标记区分。
     assert missing.coupon_rate is None
@@ -516,6 +720,61 @@ def test_compute_bond_analytics_rows_flags_par_fallback_for_missing_and_dirty_yt
     assert row.duration_quality_flag == module.DURATION_QUALITY_YTM_PAR_FALLBACK
     # par 假设数值口径不变（10Y/3% 年付黄金手算）。
     assert abs(row.macaulay_duration - Decimal("8.786108921879104")) < Decimal("0.000001")
+
+
+def test_compute_bond_analytics_rows_keeps_observed_zero_ytm_out_of_par_fallback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """真实观测 YTM=0 按零收益率折现；只有缺失/脏值才可用 par 代理。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    with caplog.at_level(
+        logging.WARNING, logger="backend.app.core_finance.bond_analytics.engine"
+    ):
+        row = module.compute_bond_analytics_rows(
+            [
+                _par_fallback_snapshot_row(
+                    instrument_code="ZERO-YTM-OBSERVED-001",
+                    ytm_value=Decimal("0"),
+                )
+            ],
+            report_date,
+        )[0]
+
+    # 10 年、年付 3% 券在 y=0 时：P=1.30，Σ(t·CF)=11.65，D=11.65/1.30=233/26。
+    # 这与缺失 YTM 的 par 代理 8.786108... 必须不同。
+    expected_macaulay = Decimal("233") / Decimal("26")
+    assert abs(row.macaulay_duration - expected_macaulay) < Decimal("0.000001")
+    assert row.modified_duration == row.macaulay_duration
+    assert row.ytm == Decimal("0")
+    assert row.ytm_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert row.duration_quality_flag == module.DURATION_QUALITY_OBSERVED
+    assert not [message for message in caplog.messages if "par-assumption duration" in message]
+
+
+@pytest.mark.parametrize("bond_type", ("PPN", "PpN", "ABS", "aBs"))
+def test_compute_bond_analytics_rows_classifies_mixed_case_english_credit_labels(
+    bond_type: str,
+) -> None:
+    """债券物化链必须把大小写混合的 PPN/ABS 计为信用债，并生成 CS01 所需 spread DV01。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    row = module.compute_bond_analytics_rows(
+        [
+            _par_fallback_snapshot_row(
+                instrument_code=f"CREDIT-{bond_type}",
+                bond_type=bond_type,
+                ytm_value=Decimal("3.5"),
+            )
+        ],
+        report_date,
+    )[0]
+
+    assert row.asset_class_std == "credit"
+    assert row.is_credit is True
+    assert row.spread_dv01 == row.dv01
 
 
 def test_compute_bond_analytics_rows_marks_observed_rates_and_missing_maturity() -> None:
@@ -1234,7 +1493,7 @@ def test_compute_bond_analytics_rows_backfills_missing_lineage_with_deterministi
     assert row.dv01 == Decimal("0")
     assert row.spread_dv01 == Decimal("0")
     assert row.source_version == "sv_bond_analytics_snapshot_missing"
-    assert row.rule_version == "rv_bond_analytics_engine_v1"
+    assert row.rule_version == "rv_bond_analytics_engine_v3"
     assert row.ingest_batch_id == "ib_bond_analytics_missing"
     assert row.trace_id == "trace_bond_analytics_BOND-003_0"
 

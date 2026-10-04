@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar, Literal
 
-from backend.app.schemas.common_numeric import Numeric, NumericRawScale, NumericUnit, numeric_from_raw
+from backend.app.schemas.common_numeric import Numeric, NumericRawScale, NumericUnit, null_numeric, numeric_from_raw
 from backend.app.schemas.result_meta import ResultMeta
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -26,14 +27,14 @@ def _coerce_value_to_numeric(
         return value
     if isinstance(value, Decimal):
         return numeric_from_raw(
-            raw=float(value), unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
+            raw=value, unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
         ).model_dump(mode="json")
     if isinstance(value, str):
         normalized = value.strip().replace(",", "")
         if not normalized:
             return value
         try:
-            raw = float(Decimal(normalized))
+            raw = Decimal(normalized)
         except InvalidOperation:
             return value
         return numeric_from_raw(
@@ -47,7 +48,7 @@ def _coerce_value_to_numeric(
 
 
 def _apply_numeric_coercion(
-    field_map: dict[str, _NumericFieldSpec],
+    field_map: Mapping[str, _NumericFieldSpec],
     data: Any,
 ) -> Any:
     if not isinstance(data, dict):
@@ -65,6 +66,10 @@ class BondDashboardHeadlineKpiBlock(BaseModel):
     total_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
     unrealized_pnl: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=True))
     weighted_ytm: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=True))
+    weighted_ytm_coverage_ratio: Numeric | None = Field(
+        default=None,
+        description="Observed-YTM absolute market value divided by eligible rate/credit absolute market value.",
+    )
     weighted_duration: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
     weighted_coupon: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=True))
     credit_spread_median: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=True))
@@ -77,6 +82,7 @@ class BondDashboardHeadlineKpiBlock(BaseModel):
         "total_market_value": ("yuan", False),
         "unrealized_pnl": ("yuan", True),
         "weighted_ytm": ("pct", True, "ratio"),
+        "weighted_ytm_coverage_ratio": ("ratio", False),
         "weighted_duration": ("ratio", False),
         "weighted_coupon": ("pct", True, "ratio"),
         "credit_spread_median": ("pct", True, "ratio"),
@@ -149,11 +155,16 @@ class BondDashboardYieldDistributionPayload(BaseModel):
     report_date: str
     items: list[BondDashboardYieldDistributionItem] = Field(default_factory=list)
     weighted_ytm: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=True))
+    weighted_ytm_coverage_ratio: Numeric | None = Field(
+        default=None,
+        description="Observed-YTM absolute market value divided by eligible rate/credit absolute market value.",
+    )
 
     # weighted_ytm is the normalized fact value passed through at
     # bond_dashboard_service L700-718.
     _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "weighted_ytm": ("pct", True, "ratio"),
+        "weighted_ytm_coverage_ratio": ("ratio", False),
     }
 
     @model_validator(mode="before")
@@ -166,6 +177,10 @@ class BondDashboardPortfolioComparisonItem(BaseModel):
     portfolio_name: str
     total_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
     weighted_ytm: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=True))
+    weighted_ytm_coverage_ratio: Numeric | None = Field(
+        default=None,
+        description="Observed-YTM absolute market value divided by eligible rate/credit absolute market value.",
+    )
     weighted_duration: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
     total_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     bond_count: int = 0
@@ -174,6 +189,7 @@ class BondDashboardPortfolioComparisonItem(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
         "weighted_ytm": ("pct", True, "ratio"),
+        "weighted_ytm_coverage_ratio": ("ratio", False),
         "weighted_duration": ("ratio", False),
         "total_dv01": ("dv01", False),
     }
@@ -267,6 +283,22 @@ class BondDashboardIndustryDistributionItem(BaseModel):
 class BondDashboardIndustryDistributionPayload(BaseModel):
     report_date: str
     items: list[BondDashboardIndustryDistributionItem] = Field(default_factory=list)
+    total_market_value: Numeric = Field(
+        default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False),
+        description=(
+            "返回的 items（按 top_n 截断、剔除空行业名）市值之和，"
+            "即各项 percentage 的分母；不是组合总市值。"
+        ),
+    )
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "total_market_value": ("yuan", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
 class BondDashboardRiskIndicatorsPayload(BaseModel):
@@ -302,7 +334,16 @@ class BondDashboardRiskIndicatorsPayload(BaseModel):
 class BondDashboardBusinessTypeMetricItem(BaseModel):
     name: str
     market_value: str
-    weighted_avg_ytm_pct: str
+    # governed Numeric，与 Headline weighted_ytm 同口径（unit="pct", raw_scale="ratio"）；
+    # 缺覆盖时 raw=None；旧百分点字符串另由 deprecated 字段兼容输出。
+    weighted_avg_ytm: Numeric = Field(
+        default_factory=lambda: null_numeric(unit="pct", sign_aware=True)
+    )
+    weighted_avg_ytm_pct: str = Field(
+        ...,
+        deprecated=True,
+        description="Legacy percentage-point text with eight decimal places; empty string when YTM is missing. Use weighted_avg_ytm.",
+    )
     weighted_avg_duration: str
     duration_source: str = ""
     # 加权指标覆盖率（承载该字段的市值占比，0-1 比率）：解释「加权值为缺值/低覆盖」
@@ -312,6 +353,7 @@ class BondDashboardBusinessTypeMetricItem(BaseModel):
     weighted_avg_duration_coverage_ratio: Numeric | None = None
 
     _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "weighted_avg_ytm": ("pct", True, "ratio"),
         "weighted_avg_ytm_coverage_ratio": ("ratio", False),
         "weighted_avg_duration_coverage_ratio": ("ratio", False),
     }

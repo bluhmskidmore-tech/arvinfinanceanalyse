@@ -39,8 +39,14 @@ Check the current code against the committed baseline:
 
 ```powershell
 python scripts/api_contract_check.py baseline-check
-python scripts/api_contract_check.py baseline-check --baseline-ref origin/main
+python scripts/api_contract_check.py baseline-check --baseline-ref origin/main --json .codex-tmp/openapi-contract-gate.json
 ```
+
+The first command is a working-tree diagnostic. Only a successful check against
+an explicitly resolved Git ref can emit a release-gate-eligible receipt. If a
+valid base commit predates a baseline file, the check fails by default. Use
+`--allow-bootstrap-baseline` only to inspect that first-snapshot case; the
+resulting receipt has `status: diagnostic` and cannot satisfy release validation.
 
 Refresh the committed baseline snapshots:
 
@@ -86,6 +92,27 @@ snapshot inside the same pull request therefore cannot clear a finding, because
 the comparison never looks at the working-tree snapshot. Clearing one requires
 an acknowledgement entry, which shows up in review.
 
+The ref is resolved to one immutable commit before either surface is read. An
+unknown ref or lower-level Git read failure fails closed without copying Git
+stderr or local paths into the report. A missing baseline on a valid commit also
+fails unless the diagnostic-only bootstrap flag is explicit.
+
+### Machine-readable receipt
+
+`baseline-check --json <path>` writes schema version 2 of the OpenAPI contract
+receipt. It binds the resolved baseline commit, canonical baseline and head
+SHA-256 values for every surface, the acknowledgement-file SHA-256, the gate
+result, and `receipt_sha256`. The receipt digest is calculated over canonical
+JSON after removing `receipt_sha256` itself.
+
+`command_succeeded` records only whether the diagnostic command may exit zero.
+`passed`, `status: passed`, and `outcome: passed` are reserved for receipts where
+`release_gate_eligible` is true. Working-tree checks, explicit bootstrap checks,
+and any run using `--allow-stale-baseline` may retain their diagnostic command
+exit behavior, but their receipt status is `diagnostic`, `passed` is false, and
+the terminal result is `DIAGNOSTIC`, never `PASS`. Release automation must accept
+only `status: passed` together with `release_gate_eligible: true`.
+
 Additive changes never fail the gate: new operations, new optional parameters,
 new response fields, and new success statuses are reported and pass.
 
@@ -111,13 +138,22 @@ signal.
 
 1. Run `baseline-check --baseline-ref origin/main` and copy the printed `id:` of
    each finding.
-2. Add one entry per id to `contracts/openapi/breaking-change-acknowledgements.json`
-   with a real `reason` and `approved_by`. Blank values are rejected. Replace the
-   surface segment with `*` to cover both surfaces in one entry.
+2. Add one entry per id to `contracts/openapi/breaking-change-acknowledgements.json`.
+   An entry that actually matches a breaking finding must contain non-empty
+   `owner`, `reason`, `approved_by`, `migration_plan`, and an
+   `affected_consumers` list with at least one non-empty string. `expires_at`
+   must be a valid `YYYY-MM-DD` date that has not passed. Replace the surface
+   segment with `*` to cover both surfaces in one entry. Duplicate ids are
+   rejected.
 3. Run `baseline-update` and commit the refreshed snapshots in the same pull
    request. Explain the change in the pull request description.
 4. After the merge, delete the entry. The change is now part of the base-branch
    baseline, so `baseline-check` reports leftover entries as unused.
+
+Legacy entries that match no current breaking finding remain visible as unused
+and do not block the gate merely because they predate the stricter fields. They
+cannot authorize a future finding until all fields above are present and the
+expiry is current.
 
 `tests/test_api_contract_baseline_gate.py` mutates the committed baseline to
 prove each of these classes is still detected.

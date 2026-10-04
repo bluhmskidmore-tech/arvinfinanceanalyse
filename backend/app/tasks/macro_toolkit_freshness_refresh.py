@@ -6,8 +6,9 @@ refreshing, in a single-writer sequence:
 1. commodity futures + Nanhua index daily bars
 2. public cross-asset headlines (CSI300/500, copper CA.*, DR007, …)
 3. Choice 7D reverse-repo policy rate
-4. Tushare SHIBOR tenors used by the NCD funding proxy
-5. CFFEX member-rank for the latest weekday (soft-fail on weekends / vendor gaps)
+4. Choice AA 5Y credit yield used by Crisis Score
+5. Tushare SHIBOR tenors used by the NCD funding proxy
+6. CFFEX member-rank for the latest weekday (soft-fail on weekends / vendor gaps)
 
 Does not change formal-use policy; observation cards remain non-formal.
 """
@@ -20,11 +21,10 @@ import uuid
 from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import TypeVar
+from typing import TypedDict, TypeVar, cast
 
 import duckdb
 import requests
-
 from backend.app.governance.settings import get_settings
 from backend.app.services.cffex_member_rank_service import materialize_cffex_member_rank
 from backend.app.tasks.broker import register_actor_once
@@ -43,7 +43,10 @@ DEFAULT_COMMODITY_LOOKBACK_DAYS = 14
 DEFAULT_PUBLIC_HEADLINE_LOOKBACK_DAYS = 120
 DEFAULT_POLICY_RATE_LOOKBACK_DAYS = 45
 POLICY_RATE_SERIES_ID = "EMM00088132"
-SOURCE_VERSION = "macro_toolkit_freshness_refresh_v3"
+CREDIT_AA_5Y_ALIAS = "S0059760"
+CREDIT_AA_5Y_SERIES_ID = "EMM00166683"
+CREDIT_AA_5Y_MAX_LAG_DAYS = 3
+SOURCE_VERSION = "macro_toolkit_freshness_refresh_v4"
 DUCKDB_WRITE_RETRY_ATTEMPTS = 6
 DUCKDB_WRITE_RETRY_SLEEP_SECONDS = 10.0
 CFFEX_FALLBACK_WORKDAYS = 10
@@ -58,6 +61,7 @@ TRACKED_CHOICE_SERIES_IDS: tuple[str, ...] = (
     "CA.COPPER",
     "NHCI.NH",
     POLICY_RATE_SERIES_ID,
+    CREDIT_AA_5Y_SERIES_ID,
     *NCD_SHIBOR_SERIES_IDS,
 )
 REQUIRED_STEP_NAMES = frozenset(
@@ -65,6 +69,7 @@ REQUIRED_STEP_NAMES = frozenset(
         "commodity_daily_ingest",
         "public_cross_asset_headlines",
         "choice_policy_rate_7d",
+        "choice_crisis_aa_5y",
         "tushare_ncd_shibor",
     }
 )
@@ -290,15 +295,22 @@ def _step_receipt(
     return receipt
 
 
-def _is_duckdb_writer_contention(exc: BaseException) -> bool:
-    message = str(exc).lower()
-    return isinstance(exc, duckdb.Error) and (
+def _looks_like_duckdb_writer_contention(text: str) -> bool:
+    message = text.lower()
+    return (
         "already open" in message
         or "database is locked" in message
         or "could not set lock" in message
         or "conflicting lock" in message
         or "lock on file" in message
+        or "cannot open file" in message
+        or "being used by another process" in message
+        or "另一个程序正在使用" in message
     )
+
+
+def _is_duckdb_writer_contention(exc: BaseException) -> bool:
+    return isinstance(exc, duckdb.Error) and _looks_like_duckdb_writer_contention(str(exc))
 
 
 def _call_with_duckdb_retry(label: str, fn: Callable[[], _T]) -> _T:
@@ -707,6 +719,17 @@ def _refresh_choice_policy_rate_7d(
         dry_run=False,
         aliases=["M0041653"],
     )
+    errors = payload.get("errors") or {}
+    error_messages = (
+        [str(value) for value in errors.values()]
+        if isinstance(errors, dict)
+        else [str(errors)]
+    )
+    lock_messages = [
+        message for message in error_messages if _looks_like_duckdb_writer_contention(message)
+    ]
+    if lock_messages:
+        raise duckdb.IOException("; ".join(lock_messages))
     result = (payload.get("results") or {}).get("M0041653") or {}
     return {
         "status": str(result.get("status") or ("error" if payload.get("errors") else "unknown")),
@@ -715,7 +738,89 @@ def _refresh_choice_policy_rate_7d(
         "run_id": payload.get("run_id"),
         "start_date": start_date,
         "end_date": report_date,
-        "errors": payload.get("errors") or {},
+        "errors": errors,
+    }
+
+
+class _CrisisBackfillInputResult(TypedDict, total=False):
+    status: str
+    written_rows: int
+    row_count: int
+
+
+def _refresh_choice_crisis_aa_5y(
+    *,
+    duckdb_path: str,
+    report_date: str,
+    lookback_days: int = DEFAULT_POLICY_RATE_LOOKBACK_DAYS,
+) -> dict[str, object]:
+    """Refresh AA 5Y and fail closed when persisted coverage remains stale."""
+    from backend.scripts.backfill_crisis_score_inputs import backfill_crisis_score_inputs
+
+    end = date.fromisoformat(report_date)
+    start_date = (end - timedelta(days=max(lookback_days - 1, 0))).isoformat()
+    payload = backfill_crisis_score_inputs(
+        duckdb_path=duckdb_path,
+        start_date=start_date,
+        end_date=report_date,
+        dry_run=False,
+        aliases=[CREDIT_AA_5Y_ALIAS],
+    )
+    errors = payload.get("errors") or {}
+    error_messages = (
+        [str(value) for value in errors.values()]
+        if isinstance(errors, dict)
+        else [str(errors)]
+    )
+    lock_messages = [
+        message for message in error_messages if _looks_like_duckdb_writer_contention(message)
+    ]
+    if lock_messages:
+        raise duckdb.IOException("; ".join(lock_messages))
+
+    result = cast(dict[str, _CrisisBackfillInputResult], payload.get("results") or {}).get(CREDIT_AA_5Y_ALIAS) or {}
+    raw_status = str(result.get("status") or ("error" if errors else "unknown"))
+    latest_valid_date: str | None = None
+    coverage_after = payload.get("coverage_after")
+    if isinstance(coverage_after, list):
+        for item in coverage_after:
+            if not isinstance(item, dict):
+                continue
+            if (
+                str(item.get("alias") or "") == CREDIT_AA_5Y_ALIAS
+                and str(item.get("series_id") or "") == CREDIT_AA_5Y_SERIES_ID
+            ):
+                candidate = str(item.get("latest") or "").strip()
+                latest_valid_date = candidate or None
+                break
+
+    lag_days: int | None = None
+    status = raw_status
+    if raw_status in {"completed", "success"}:
+        if latest_valid_date is None:
+            status = "missing_coverage"
+        else:
+            try:
+                latest_day = date.fromisoformat(latest_valid_date)
+            except ValueError:
+                status = "invalid_coverage"
+            else:
+                lag_days = max((end - latest_day).days, 0)
+                if lag_days > CREDIT_AA_5Y_MAX_LAG_DAYS:
+                    status = "stale_coverage"
+
+    return {
+        "status": status,
+        "row_count": int(result.get("written_rows") or result.get("row_count") or 0),
+        "series_id": CREDIT_AA_5Y_SERIES_ID,
+        "alias": CREDIT_AA_5Y_ALIAS,
+        "run_id": payload.get("run_id"),
+        "start_date": start_date,
+        "end_date": report_date,
+        "latest_valid_date": latest_valid_date,
+        "lag_days": lag_days,
+        "max_lag_days": CREDIT_AA_5Y_MAX_LAG_DAYS,
+        "errors": errors,
     }
 
 
@@ -933,6 +1038,24 @@ def refresh_macro_toolkit_freshness(
                 },
             )
         )
+        credit_aa_5y_started_at = datetime.now(UTC)
+        credit_aa_5y_started_clock = time.monotonic()
+        steps.append(
+            _step_receipt(
+                step="choice_crisis_aa_5y",
+                status="dry_run",
+                started_at=credit_aa_5y_started_at,
+                started_clock=credit_aa_5y_started_clock,
+                attempt_count=0,
+                result={
+                    "lookback_days": DEFAULT_POLICY_RATE_LOOKBACK_DAYS,
+                    "report_date": end_date,
+                    "series_id": CREDIT_AA_5Y_SERIES_ID,
+                    "alias": CREDIT_AA_5Y_ALIAS,
+                    "max_lag_days": CREDIT_AA_5Y_MAX_LAG_DAYS,
+                },
+            )
+        )
         ncd_started_at = datetime.now(UTC)
         ncd_started_clock = time.monotonic()
         steps.append(
@@ -1044,6 +1167,29 @@ def refresh_macro_toolkit_freshness(
                 "run_id",
                 "start_date",
                 "end_date",
+                "errors",
+            ),
+        ),
+    )
+
+    steps.append(
+        _run_required_step(
+            step="choice_crisis_aa_5y",
+            fn=lambda: _refresh_choice_crisis_aa_5y(
+                duckdb_path=resolved_duckdb,
+                report_date=end_date,
+            ),
+            result_fields=(
+                "status",
+                "row_count",
+                "series_id",
+                "alias",
+                "run_id",
+                "start_date",
+                "end_date",
+                "latest_valid_date",
+                "lag_days",
+                "max_lag_days",
                 "errors",
             ),
         ),

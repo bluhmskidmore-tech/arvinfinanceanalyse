@@ -8,7 +8,7 @@ import os
 import re
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
@@ -65,8 +65,32 @@ TUSHARE_THS_EXCLUDED_CONCEPT_NAMES = {
 }
 CHOICE_CSD_PERMISSION_DENIED_ERROR_CODE = 10001012
 TUSHARE_FALLBACK_AUDIT_STATUS = "completed_tushare_fallback"
+TUSHARE_GAP_REPAIR_AUDIT_STATUS = "completed_tushare_gap_repair"
 TUSHARE_THS_CONCEPT_FALLBACK_AUDIT_STATUS = "completed_tushare_ths_fallback"
 TUSHARE_THS_CONCEPT_FIELD_KEY = "tushare_ths_concept_membership"
+_TERMINAL_REQUIRED_REQUEST_AUDIT_STATUSES = frozenset(
+    {"completed", TUSHARE_FALLBACK_AUDIT_STATUS, TUSHARE_GAP_REPAIR_AUDIT_STATUS}
+)
+_CHOICE_HISTORICAL_PIT_AUDIT_CONTRACTS: dict[str, tuple[str, str, str, str | None]] = {
+    "stock_universe:a_share_universe_sector_001004": (
+        "sector",
+        "001004",
+        "request_argument",
+        None,
+    ),
+    "sector_membership:sw2021_industry_membership": (
+        "css",
+        "SW2021,SW2021CODE",
+        "request_option",
+        "EndDate",
+    ),
+    "limit_up_quality:point_in_time_limit_streaks": (
+        "css",
+        "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS",
+        "request_option",
+        "TradeDate",
+    ),
+}
 
 OHLCV_FIELD_KEY = "daily_ohlcv_amount"
 # choice_stock_daily_observation 两代 vendor 单位代际边界(权威契约 docs/data_contracts.md §4.10):
@@ -113,6 +137,10 @@ class ChoiceStockRequestError(RuntimeError):
 
 class ChoiceStockVendorEraViolationError(RuntimeError):
     """daily_ohlcv_amount 行的 vendor 代际标签与 trade_date 代际区间冲突(契约 docs/data_contracts.md §4.10)。"""
+
+
+class ChoiceStockGapRepairConflictError(RuntimeError):
+    """受控缺口补录窗口包含非 Tushare 历史行，拒绝覆盖。"""
 
 
 class ChoiceStockOhlcvMixedSourceError(RuntimeError):
@@ -227,6 +255,7 @@ def materialize_choice_stock_inputs(
     tushare_client: object | None = None,
     enable_tushare_concept_fallback: bool = False,
     allow_cross_era_backfill: bool = False,
+    history_start_date: str | date | None = None,
 ) -> dict[str, object]:
     """Materialize the Choice stock front layer (with Tushare fallbacks) for one date.
 
@@ -241,9 +270,28 @@ def materialize_choice_stock_inputs(
     """
     settings = get_settings()
     resolved_date = _normalize_date(as_of_date)
+    explicit_history_start_date = history_start_date is not None
+    resolved_history_start_date = (
+        _normalize_date(history_start_date)
+        if explicit_history_start_date
+        else choice_stock_history_start_date(resolved_date)
+    )
+    if resolved_history_start_date > resolved_date:
+        raise ValueError("history_start_date must be on or before as_of_date.")
+    gap_repair_mode = bool(allow_cross_era_backfill and explicit_history_start_date)
     resolved_duckdb_path = str(duckdb_path or settings.duckdb_path)
     resolved_catalog_path = str(catalog_path or settings.choice_stock_catalog_file)
-    plan = load_choice_stock_request_plan(resolved_catalog_path, as_of_date=resolved_date)
+    gap_repair_preflight = _preflight_choice_stock_gap_repair_window(
+        duckdb_path=resolved_duckdb_path,
+        history_start_date=resolved_history_start_date,
+        as_of_date=resolved_date,
+        enabled=gap_repair_mode,
+    )
+    plan = load_choice_stock_request_plan(
+        resolved_catalog_path,
+        as_of_date=resolved_date,
+        history_start_date=resolved_history_start_date,
+    )
     if not plan.ready:
         raise ValueError(plan.message)
     missing_request_items = _missing_required_request_items(plan.requests)
@@ -269,6 +317,9 @@ def materialize_choice_stock_inputs(
     # daily_ohlcv_amount 数据的实际来源集合("choice" / "tushare");daily observation 的
     # vendor_version 只跟随该集合,不受其他 field_key 请求 fallback 影响。
     ohlcv_source_tags: set[str] = set()
+    tushare_fallback_audit_status = (
+        TUSHARE_GAP_REPAIR_AUDIT_STATUS if gap_repair_mode else TUSHARE_FALLBACK_AUDIT_STATUS
+    )
 
     try:
         current_request = universe_request
@@ -318,6 +369,35 @@ def materialize_choice_stock_inputs(
             audit_status = "completed"
             audit_error_code = 0
             audit_error_msg = ""
+            if gap_repair_mode and request.call == "csd":
+                start_date, end_date = _request_date_range(request, as_of_date=resolved_date)
+                if (
+                    tushare_cache is None
+                    or tushare_cache.start_date != start_date
+                    or tushare_cache.end_date != end_date
+                ):
+                    tushare_cache = _TushareStockFallbackCache(
+                        client=tushare_client or _DefaultTushareStockClient(),
+                        stock_codes=stock_codes,
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
+                csd_rows = tushare_cache.rows_for_request(request)
+                if request.field_key == OHLCV_FIELD_KEY:
+                    ohlcv_source_tags.add("tushare")
+                _merge_daily_rows(daily_by_key, csd_rows, request)
+                request_audits.append(
+                    _build_request_audit(
+                        run_id=run_id,
+                        as_of_date=resolved_date,
+                        request=request,
+                        row_count=len(csd_rows),
+                        stock_codes=stock_codes,
+                        status=TUSHARE_GAP_REPAIR_AUDIT_STATUS,
+                        error_msg="Controlled Tushare gap repair; Choice CSD was not called.",
+                    )
+                )
+                continue
             if choice_front_layer_error is not None:
                 if request.input_family == "sector_membership":
                     sector_rows.extend(
@@ -363,7 +443,7 @@ def materialize_choice_stock_inputs(
                             request=request,
                             row_count=len(csd_rows),
                             stock_codes=stock_codes,
-                            status=TUSHARE_FALLBACK_AUDIT_STATUS,
+                            status=tushare_fallback_audit_status,
                             error_code=_choice_error_details(choice_front_layer_error)[0],
                             error_msg=_choice_stock_unavailable_fallback_message(choice_front_layer_error),
                         )
@@ -374,7 +454,7 @@ def materialize_choice_stock_inputs(
                         tushare_cache = _TushareStockFallbackCache(
                             client=tushare_client or _DefaultTushareStockClient(),
                             stock_codes=stock_codes,
-                            start_date=choice_stock_history_start_date(resolved_date),
+                            start_date=resolved_history_start_date,
                             end_date=resolved_date,
                         )
                     limit_rows_for_request = tushare_cache.rows_for_request(request)
@@ -442,7 +522,7 @@ def materialize_choice_stock_inputs(
                     csd_rows = tushare_cache.rows_for_request(request)
                     if request.field_key == OHLCV_FIELD_KEY:
                         ohlcv_source_tags.add("tushare")
-                    audit_status = TUSHARE_FALLBACK_AUDIT_STATUS
+                    audit_status = tushare_fallback_audit_status
                     audit_error_code = exc.error_code
                     audit_error_msg = f"Choice csd unavailable; filled from Tushare stock fallback: {exc.error_msg}"
                 _merge_daily_rows(daily_by_key, csd_rows, request)
@@ -514,6 +594,12 @@ def materialize_choice_stock_inputs(
         raise
 
     daily_rows = list(daily_by_key.values())
+    # Concept membership is optional and current-state/probe based.  An empty
+    # payload cannot distinguish "authoritatively observed no memberships"
+    # from "not requested / source failed / no usable rows", so only a
+    # successfully normalized non-empty snapshot may replace an existing
+    # snapshot for the same date.
+    replace_concept_membership = bool(concept_rows)
     source_version = _build_source_version(
         {
             "as_of_date": resolved_date,
@@ -538,6 +624,11 @@ def materialize_choice_stock_inputs(
     daily_vendor_version = (
         f"{daily_vendor_prefix}_{resolved_date.replace('-', '')}_{source_version.removeprefix('sv_choice_stock_')}"
     )
+    _assert_daily_rows_within_requested_window(
+        daily_rows,
+        history_start_date=resolved_history_start_date,
+        as_of_date=resolved_date,
+    )
     _assert_daily_rows_within_vendor_era(
         daily_rows,
         vendor_version=daily_vendor_version,
@@ -554,10 +645,23 @@ def materialize_choice_stock_inputs(
         try:
             ensure_choice_stock_schema(conn)
             conn.execute("begin transaction")
+            if gap_repair_mode:
+                _inspect_choice_stock_gap_repair_window(
+                    conn,
+                    history_start_date=resolved_history_start_date,
+                    as_of_date=resolved_date,
+                )
+                _assert_gap_repair_covers_existing_tushare_daily_keys(
+                    conn,
+                    daily_rows=daily_rows,
+                    history_start_date=resolved_history_start_date,
+                    as_of_date=resolved_date,
+                )
             _delete_as_of_rows(
                 conn,
                 resolved_date,
-                history_start_date=choice_stock_history_start_date(resolved_date),
+                history_start_date=resolved_history_start_date,
+                replace_concept_membership=replace_concept_membership,
             )
             _insert_run(
                 conn,
@@ -642,6 +746,14 @@ def materialize_choice_stock_inputs(
         "source_version": source_version,
         "vendor_version": vendor_version,
         "daily_vendor_version": daily_vendor_version,
+        "history_start_date": resolved_history_start_date,
+        "history_end_date": resolved_date,
+        "history_trade_dates": sorted({_normalize_date(row.get("trade_date")) for row in daily_rows}),
+        "allow_cross_era_backfill": allow_cross_era_backfill,
+        "gap_repair_mode": gap_repair_mode,
+        "gap_repair_preflight": gap_repair_preflight,
+        "concept_snapshot_status": "replaced" if replace_concept_membership else "preserved",
+        "concept_snapshot_row_count": len(concept_rows),
         "dq_checks": dq_checks,
     }
 
@@ -764,6 +876,8 @@ def materialize_choice_stock_factor_snapshot(
         "table": "choice_stock_factor_snapshot",
         "row_count": len(rows),
         "stock_code_count": len(stock_codes),
+        "daily_basic_trade_date": resolved_date,
+        "daily_basic_row_count": len(daily_basic),
         "source_version": source_version,
         "vendor_version": vendor_version,
         "started_at": started_at,
@@ -987,17 +1101,25 @@ def _load_tushare_daily_basic_factors(
     client: object,
     as_of_date: str,
     stock_codes: list[str],
-) -> dict[str, dict[str, float]]:
+) -> dict[str, dict[str, float | None]]:
     stock_code_set = set(stock_codes)
+    expected_trade_date = _compact_date(as_of_date)
     frame = cast(Any, client).daily_basic(
-        trade_date=_compact_date(as_of_date),
-        fields="ts_code,trade_date,pe,pb,ps,dv_ratio,dv_ttm",
+        trade_date=expected_trade_date,
+        fields="ts_code,trade_date,pe,pb,ps,dv_ratio,dv_ttm,total_mv,circ_mv",
     )
-    rows: dict[str, dict[str, float]] = {}
+    rows: dict[str, dict[str, float | None]] = {}
     for record in _records_from_tabular_payload(frame):
+        _require_expected_tushare_trade_date(
+            record,
+            expected_trade_date=expected_trade_date,
+            endpoint="daily_basic.factor_snapshot",
+        )
         stock_code = _record_text(record, "ts_code")
         if stock_code not in stock_code_set:
             continue
+        total_mv = _positive_float_or_none(_record_float(record, "total_mv"))
+        circ_mv = _positive_float_or_none(_record_float(record, "circ_mv"))
         rows[stock_code] = {
             "pe": _positive_float_or_none(_record_float(record, "pe")),
             "pb": _positive_float_or_none(_record_float(record, "pb")),
@@ -1005,6 +1127,10 @@ def _load_tushare_daily_basic_factors(
             "dividend_yield": _percent_points_to_ratio(
                 _record_float(record, "dv_ttm") if _record_float(record, "dv_ttm") is not None else _record_float(record, "dv_ratio")
             ),
+            # Tushare daily_basic reports market value in 10,000 CNY;
+            # choice_stock_factor_snapshot stores monetary values in CNY.
+            "total_mv": total_mv * 10_000 if total_mv is not None else None,
+            "circ_mv": circ_mv * 10_000 if circ_mv is not None else None,
         }
     return rows
 
@@ -1317,7 +1443,7 @@ def _build_factor_snapshot_rows(
     *,
     as_of_date: str,
     universe_rows: list[dict[str, object]],
-    daily_basic: dict[str, dict[str, float]],
+    daily_basic: Mapping[str, Mapping[str, float | None]],
     financial: dict[str, dict[str, float]],
     price_metrics: dict[str, dict[str, float]],
 ) -> list[dict[str, object]]:
@@ -1340,6 +1466,8 @@ def _build_factor_snapshot_rows(
             "twelve_month_return": price_values.get("twelve_month_return", 0.0),
             "volatility": price_values.get("volatility", 0.0),
             "dividend_yield": basic_values.get("dividend_yield"),
+            "total_mv": basic_values.get("total_mv"),
+            "circ_mv": basic_values.get("circ_mv"),
             "industry": industry,
         }
         if stock_code:
@@ -1531,11 +1659,22 @@ class _TushareStockFallbackCache:
                 end_date=_compact_date(self.end_date),
                 fields="cal_date,is_open",
             )
-            dates = {
-                _compact_date(record.get("cal_date"))
-                for record in _records_from_tabular_payload(frame)
-                if _text(record.get("cal_date"))
-            }
+            compact_start_date = _compact_date(self.start_date)
+            compact_end_date = _compact_date(self.end_date)
+            dates: set[str] = set()
+            for record in _records_from_tabular_payload(frame):
+                raw_date = _text(record.get("cal_date"))
+                if not raw_date:
+                    continue
+                trade_date = _compact_date(raw_date)
+                if trade_date < compact_start_date or trade_date > compact_end_date:
+                    raise RuntimeError(
+                        "Tushare trade_cal returned a date outside the requested history window: "
+                        f"requested={compact_start_date}..{compact_end_date}, returned={trade_date}."
+                    )
+                if _text(record.get("is_open")).lower() not in {"1", "true"}:
+                    continue
+                dates.add(trade_date)
             self._trade_dates = sorted(dates)
         return self._trade_dates
 
@@ -1550,10 +1689,15 @@ class _TushareStockFallbackCache:
                     fields="ts_code,trade_date,open,high,low,close,pre_close,vol,amount,pct_chg",
                 )
                 for record in _records_from_tabular_payload(frame):
+                    record_trade_date = _require_expected_tushare_trade_date(
+                        record,
+                        expected_trade_date=trade_date,
+                        endpoint="daily",
+                    )
                     stock_code = _record_text(record, "ts_code")
                     if stock_code not in self.stock_codes:
                         continue
-                    key = (_normalize_date(_record_text(record, "trade_date")), stock_code)
+                    key = (_normalize_date(record_trade_date), stock_code)
                     rows[key] = record
             self._daily_rows = dict(sorted(rows.items()))
         return self._daily_rows
@@ -1569,10 +1713,15 @@ class _TushareStockFallbackCache:
                     fields="ts_code,trade_date,turnover_rate,turnover_rate_f",
                 )
                 for record in _records_from_tabular_payload(frame):
+                    record_trade_date = _require_expected_tushare_trade_date(
+                        record,
+                        expected_trade_date=trade_date,
+                        endpoint="daily_basic",
+                    )
                     stock_code = _record_text(record, "ts_code")
                     if stock_code not in self.stock_codes:
                         continue
-                    key = (_normalize_date(_record_text(record, "trade_date")), stock_code)
+                    key = (_normalize_date(record_trade_date), stock_code)
                     rows[key] = record
             self._daily_basic_rows = rows
         return self._daily_basic_rows
@@ -1588,10 +1737,15 @@ class _TushareStockFallbackCache:
                     fields="ts_code,trade_date,up_limit,down_limit",
                 )
                 for record in _records_from_tabular_payload(frame):
+                    record_trade_date = _require_expected_tushare_trade_date(
+                        record,
+                        expected_trade_date=trade_date,
+                        endpoint="stk_limit",
+                    )
                     stock_code = _record_text(record, "ts_code")
                     if stock_code not in self.stock_codes:
                         continue
-                    key = (_normalize_date(_record_text(record, "trade_date")), stock_code)
+                    key = (_normalize_date(record_trade_date), stock_code)
                     rows[key] = record
             self._limit_rows = rows
         return self._limit_rows
@@ -1896,13 +2050,36 @@ def _request_date_range(request: ChoiceStockRequestPlanItem, *, as_of_date: str)
     return choice_stock_history_start_date(as_of_date), as_of_date
 
 
+def _require_expected_tushare_trade_date(
+    record: dict[str, object],
+    *,
+    expected_trade_date: str,
+    endpoint: str,
+) -> str:
+    raw_trade_date = _record_text(record, "trade_date")
+    if not raw_trade_date:
+        raise RuntimeError(f"Tushare {endpoint} response is missing trade_date.")
+    actual_trade_date = _compact_date(raw_trade_date)
+    if actual_trade_date != expected_trade_date:
+        raise RuntimeError(
+            f"Tushare {endpoint} returned trade_date={actual_trade_date} "
+            f"for requested trade_date={expected_trade_date}."
+        )
+    return actual_trade_date
+
+
 def _compact_date(value: object) -> str:
     return _normalize_date(value).replace("-", "")
 
 
 def _used_tushare_fallback(request_audits: list[dict[str, object]]) -> bool:
     return any(
-        audit.get("status") in {TUSHARE_FALLBACK_AUDIT_STATUS, TUSHARE_THS_CONCEPT_FALLBACK_AUDIT_STATUS}
+        audit.get("status")
+        in {
+            TUSHARE_FALLBACK_AUDIT_STATUS,
+            TUSHARE_GAP_REPAIR_AUDIT_STATUS,
+            TUSHARE_THS_CONCEPT_FALLBACK_AUDIT_STATUS,
+        }
         for audit in request_audits
     )
 
@@ -1992,6 +2169,135 @@ def assert_choice_stock_vendor_era(
             "Per docs/data_contracts.md §4.10 the two unit generations must stay zero-overlap on "
             "(stock_code, trade_date). Pass allow_cross_era_backfill=True only for a deliberate, "
             "controlled re-materialization."
+        )
+
+
+def _preflight_choice_stock_gap_repair_window(
+    *,
+    duckdb_path: str,
+    history_start_date: str,
+    as_of_date: str,
+    enabled: bool,
+) -> dict[str, object]:
+    if not enabled:
+        return {"status": "not_requested", "existing_daily_row_count": 0, "existing_vendor_versions": []}
+    path = Path(duckdb_path)
+    if not path.exists():
+        return {"status": "passed", "existing_daily_row_count": 0, "existing_vendor_versions": []}
+    conn = duckdb.connect(str(path), read_only=True)
+    try:
+        return _inspect_choice_stock_gap_repair_window(
+            conn,
+            history_start_date=history_start_date,
+            as_of_date=as_of_date,
+        )
+    finally:
+        conn.close()
+
+
+def _inspect_choice_stock_gap_repair_window(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    history_start_date: str,
+    as_of_date: str,
+) -> dict[str, object]:
+    tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+    if "choice_stock_daily_observation" not in tables:
+        return {"status": "passed", "existing_daily_row_count": 0, "existing_vendor_versions": []}
+    rows = conn.execute(
+        """
+        select coalesce(nullif(trim(vendor_version), ''), '<missing>') as vendor_version,
+               count(*)::bigint
+        from choice_stock_daily_observation
+        where cast(trade_date as date) between cast(? as date) and cast(? as date)
+        group by 1
+        order by 1
+        """,
+        [history_start_date, as_of_date],
+    ).fetchall()
+    existing_vendor_versions = [str(row[0]) for row in rows]
+    conflicting = [(str(vendor), int(count)) for vendor, count in rows if "tushare" not in str(vendor).lower()]
+    if conflicting:
+        preview = ", ".join(f"{vendor}:{count}" for vendor, count in conflicting[:5])
+        raise ChoiceStockGapRepairConflictError(
+            "Controlled Tushare gap repair refused to overwrite existing non-Tushare daily rows in "
+            f"{history_start_date}..{as_of_date}: {preview}."
+        )
+    return {
+        "status": "passed",
+        "existing_daily_row_count": sum(int(row[1]) for row in rows),
+        "existing_vendor_versions": existing_vendor_versions,
+    }
+
+
+def _assert_daily_rows_within_requested_window(
+    daily_rows: list[dict[str, object]],
+    *,
+    history_start_date: str,
+    as_of_date: str,
+) -> None:
+    outside_dates: set[str] = set()
+    for row in daily_rows:
+        raw_trade_date = row.get("trade_date")
+        if raw_trade_date is None or not str(raw_trade_date).strip():
+            raise RuntimeError("Choice stock daily row is missing trade_date.")
+        trade_date = _normalize_date(raw_trade_date)
+        if trade_date < history_start_date or trade_date > as_of_date:
+            outside_dates.add(trade_date)
+    if outside_dates:
+        preview = ", ".join(sorted(outside_dates)[:5])
+        raise RuntimeError(
+            "Choice stock daily rows fall outside the requested history window: "
+            f"requested={history_start_date}..{as_of_date}, returned={preview}."
+        )
+
+
+def _assert_gap_repair_covers_existing_tushare_daily_keys(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    daily_rows: list[dict[str, object]],
+    history_start_date: str,
+    as_of_date: str,
+) -> None:
+    incoming_by_key = {
+        (_normalize_date(row.get("trade_date")), _text(row.get("stock_code"))): row
+        for row in daily_rows
+        if row.get("trade_date") is not None and _text(row.get("stock_code"))
+    }
+    existing_rows = conn.execute(
+        """
+        select trade_date, stock_code, field_keys_json, close_value
+        from choice_stock_daily_observation
+        where cast(trade_date as date) between cast(? as date) and cast(? as date)
+          and lower(coalesce(vendor_version, '')) like '%tushare%'
+        """,
+        [history_start_date, as_of_date],
+    ).fetchall()
+    missing_keys: list[tuple[str, str]] = []
+    for trade_date_raw, stock_code_raw, field_keys_json, existing_close in existing_rows:
+        key = (_normalize_date(trade_date_raw), _text(stock_code_raw))
+        existing_fields = set(_parse_field_keys_json(field_keys_json))
+        incoming_row = incoming_by_key.get(key)
+        incoming_fields = set(_daily_field_keys(incoming_row or {}))
+        existing_has_ohlcv = (
+            OHLCV_FIELD_KEY in existing_fields or _positive_float_or_none(existing_close) is not None
+        )
+        incoming_has_ohlcv = (
+            OHLCV_FIELD_KEY in incoming_fields
+            and _positive_float_or_none((incoming_row or {}).get("close_value")) is not None
+        )
+        if (
+            incoming_row is None
+            or not existing_fields.issubset(incoming_fields)
+            or (existing_has_ohlcv and not incoming_has_ohlcv)
+        ):
+            missing_keys.append(key)
+    missing_keys.sort()
+    if missing_keys:
+        preview = ", ".join(f"{stock_code}@{trade_date}" for trade_date, stock_code in missing_keys[:5])
+        raise ChoiceStockGapRepairConflictError(
+            "Controlled Tushare gap repair returned a partial replacement for existing Tushare daily rows: "
+            f"missing={len(missing_keys)}, preview={preview}."
         )
 
 
@@ -2659,15 +2965,20 @@ def _delete_as_of_rows(
     as_of_date: str,
     *,
     history_start_date: str,
+    replace_concept_membership: bool,
 ) -> None:
     for table, column in (
         ("choice_stock_universe", "as_of_date"),
         ("choice_stock_sector_membership", "as_of_date"),
         ("choice_stock_limit_quality", "as_of_date"),
-        ("choice_stock_concept_membership", "as_of_date"),
         ("choice_stock_intraday_movement_event", "as_of_date"),
     ):
         conn.execute(f"delete from {table} where {column} = ?", [as_of_date])
+    if replace_concept_membership:
+        conn.execute(
+            "delete from choice_stock_concept_membership where as_of_date = ?",
+            [as_of_date],
+        )
     conn.execute(
         """
         delete from choice_stock_daily_observation
@@ -2944,7 +3255,13 @@ def _insert_factor_snapshot(
     vendor_version: str,
 ) -> None:
     conn.executemany(
-        "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        """
+        insert into choice_stock_factor_snapshot (
+          as_of_date, stock_code, pe, pb, ps, roe, gross_margin,
+          three_month_return, twelve_month_return, volatility, dividend_yield,
+          total_mv, circ_mv, industry, source_version, vendor_version, rule_version, run_id
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
         [
             (
                 row["as_of_date"],
@@ -2958,6 +3275,8 @@ def _insert_factor_snapshot(
                 row["twelve_month_return"],
                 row["volatility"],
                 row["dividend_yield"],
+                row.get("total_mv"),
+                row.get("circ_mv"),
                 row["industry"],
                 source_version,
                 vendor_version,
@@ -2977,15 +3296,89 @@ def _count_rows(conn: duckdb.DuckDBPyConnection, table: str, column: str, value:
 def _completed_request_items(conn: duckdb.DuckDBPyConnection, as_of_date: str) -> set[str]:
     rows = conn.execute(
         """
-        select distinct input_family, field_key
+        select distinct input_family, field_key, call, vendor_indicator,
+                        request_arguments_json, request_options_json, status,
+                        source_version, vendor_version
         from choice_stock_request_audit
         where as_of_date = ?
-          and status in ('completed', 'completed_tushare_fallback')
+          and status in ('completed', 'completed_tushare_fallback', 'completed_tushare_gap_repair')
           and coalesce(row_count, 0) > 0
         """,
         [as_of_date],
     ).fetchall()
-    return {f"{row[0]}:{row[1]}" for row in rows}
+    completed: set[str] = set()
+    for row in rows:
+        item = f"{row[0]}:{row[1]}"
+        status = _text(row[6])
+        if status not in _TERMINAL_REQUIRED_REQUEST_AUDIT_STATUSES:
+            continue
+        if item in _CHOICE_HISTORICAL_PIT_AUDIT_CONTRACTS and not _is_choice_historical_pit_audit(
+            item=item,
+            as_of_date=as_of_date,
+            call=row[2],
+            vendor_indicator=row[3],
+            request_arguments_json=row[4],
+            request_options_json=row[5],
+            status=status,
+            source_version=row[7],
+            vendor_version=row[8],
+        ):
+            continue
+        completed.add(item)
+    return completed
+
+
+def _is_choice_historical_pit_audit(
+    *,
+    item: str,
+    as_of_date: str,
+    call: object,
+    vendor_indicator: object,
+    request_arguments_json: object,
+    request_options_json: object,
+    status: str,
+    source_version: object,
+    vendor_version: object,
+) -> bool:
+    contract = _CHOICE_HISTORICAL_PIT_AUDIT_CONTRACTS.get(item)
+    if contract is None:
+        return False
+    expected_call, expected_indicator, date_evidence_kind, date_evidence_key = contract
+    if (
+        status != "completed"
+        or _text(call).lower() != expected_call
+        or _text(vendor_indicator).upper() != expected_indicator
+        or not _text(source_version)
+        or not _text(vendor_version)
+    ):
+        return False
+    try:
+        request_arguments = json.loads(_text(request_arguments_json))
+        request_options = json.loads(_text(request_options_json))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    if not isinstance(request_arguments, list) or not isinstance(request_options, dict):
+        return False
+    if date_evidence_kind == "request_argument":
+        return (
+            len(request_arguments) >= 2
+            and _text(request_arguments[0]).upper() == expected_indicator
+            and _text(request_arguments[1])[:10] == as_of_date
+        )
+    if (
+        len(request_arguments) < 2
+        or not _text(request_arguments[0])
+        or _text(request_arguments[1]).upper() != expected_indicator
+    ):
+        return False
+    normalized_options = {str(key).lower(): value for key, value in request_options.items()}
+    if date_evidence_key is None:
+        return False
+    if _text(normalized_options.get(date_evidence_key.lower()))[:10] != as_of_date:
+        return False
+    if item == "sector_membership:sw2021_industry_membership":
+        return _text(normalized_options.get("classification")) == "1"
+    return True
 
 
 def _landed_request_items(

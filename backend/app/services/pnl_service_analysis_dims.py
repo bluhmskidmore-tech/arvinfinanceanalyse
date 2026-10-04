@@ -140,12 +140,14 @@ def _analysis_ftp_values(
     annualized_yield_pct: Decimal | None,
     calendar_days: int,
     ftp_rate_pct: Decimal,
+    manual_adjustment_only: bool = False,
 ) -> dict[str, Decimal | None]:
     yield_ftp = compute_pnl_by_business_yield_and_ftp(
         total_pnl=total_pnl,
         avg_balance=avg_balance,
         calendar_days=calendar_days,
         ftp_rate_pct=ftp_rate_pct,
+        manual_adjustment_only=manual_adjustment_only,
     )
     return {
         "ftp_rate_pct": yield_ftp.ftp_rate_pct,

@@ -109,7 +109,7 @@
 .bond-dashboard-evidence__status-duration {
   margin-left: auto;
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }

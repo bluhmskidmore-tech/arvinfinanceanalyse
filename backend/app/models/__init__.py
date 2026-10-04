@@ -9,6 +9,7 @@ from backend.app.models.governance import (
 )
 from backend.app.models.job_state import JobRunState
 from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner
+from backend.app.models.release_control import ReleaseAlias, ReleaseEvent, ReleaseManifest
 
 __all__ = [
     "Base",
@@ -20,4 +21,7 @@ __all__ = [
     "KpiOwner",
     "KpiMetric",
     "KpiMetricValue",
+    "ReleaseManifest",
+    "ReleaseEvent",
+    "ReleaseAlias",
 ]

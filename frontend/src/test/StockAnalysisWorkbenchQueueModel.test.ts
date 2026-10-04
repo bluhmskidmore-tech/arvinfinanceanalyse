@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { StockAnalysisWorkbenchPayload } from "../api/contracts";
 import type { StockCandidateReviewQueueItem } from "../features/stock-analysis/lib/stockAnalysisPageModel";
+import { candidateDailyChangeLabel } from "../features/stock-analysis/lib/stockAnalysisResearchDeskModel";
 import {
   buildStockAnalysisWorkbenchReviewQueue,
   enrichStockAnalysisWorkbenchReviewQueue,
@@ -19,6 +20,9 @@ function buildStrategyCandidate(
     sectorCode: "801730",
     sectorName: "机械设备",
     headline: "趋势候选 #1 · 样本股份",
+    sourcePool: "stock_candidates",
+    sourcePoolLabel: "趋势突破",
+    walkForward: null,
     pattern: "突破",
     patternNote: "趋势形态待复核。",
     distanceToBreakoutPct: "+1.20%",
@@ -194,13 +198,14 @@ describe("buildStockAnalysisWorkbenchReviewQueue", () => {
     expect(candidate.boundaryEvidence).toContain("当前覆盖 · 非时点 · 不可历史使用 · 仅观察");
   });
 
-  it("maps backend breakout geometry onto the pattern and distance columns", () => {
+  it("uses backend pattern codes while passing display labels through unchanged", () => {
     const rows = [
       {
         stock_code: "601156.SH",
         stock_name: "东航物流",
         source_module: "factor_screen_candidates",
-        pattern: "突破（参考）",
+        pattern: "突破观察（参考）",
+        pattern_code: "breakout",
         distance_to_breakout_pct: 1.0585,
         close: 18.14,
         breakout_level: 17.95,
@@ -209,7 +214,8 @@ describe("buildStockAnalysisWorkbenchReviewQueue", () => {
         stock_code: "601918.SH",
         stock_name: "新集能源",
         source_module: "factor_screen_candidates",
-        pattern: "回踩（参考）",
+        pattern: "回撤观察（参考）",
+        pattern_code: "pullback",
         distance_to_breakout_pct: -11.4362,
         close: 9.99,
         breakout_level: 11.28,
@@ -218,13 +224,72 @@ describe("buildStockAnalysisWorkbenchReviewQueue", () => {
 
     const [breakout, pullback] = buildStockAnalysisWorkbenchReviewQueue(rows);
 
-    expect(breakout.pattern).toBe("突破（参考）");
+    expect(breakout.pattern).toBe("突破观察（参考）");
     expect(breakout.distanceToBreakoutPct).toBe("1.06%");
     expect(breakout.patternNote).toBe("收盘 18.14 / 突破位 17.95（观察口径）");
-    expect(breakout.rawFields).toContainEqual({ key: "close", label: "收盘价", value: "18.14" });
-    expect(breakout.rawFields).toContainEqual({ key: "breakout_level", label: "突破位", value: "17.95" });
-    expect(pullback.pattern).toBe("回踩（参考）");
+    expect(breakout.rawFields).toContainEqual({ key: "close", label: "收盘价", value: "18.14", numeric: 18.14 });
+    expect(breakout.rawFields).toContainEqual({
+      key: "breakout_level",
+      label: "突破位",
+      value: "17.95",
+      numeric: 17.95,
+    });
+    expect(pullback.pattern).toBe("回撤观察（参考）");
     expect(pullback.distanceToBreakoutPct).toBe("-11.44%");
+  });
+
+  it("preserves supplied daily percentage points without filling missing candidate quotes", () => {
+    const rows = [
+      { stock_code: "000933.SZ", source_module: "factor_screen_candidates", close: 26.87 },
+      { stock_code: "300656.SZ", source_module: "theme_breakout", pctchange: 20.0081 },
+      { stock_code: "301486.SZ", source_module: "theme_breakout", pctchange: 0 },
+      { stock_code: "600690.SH", source_module: "theme_breakout", pctchange: -1.94 },
+      { stock_code: "600000.SH", source_module: "factor_screen_candidates", pctchange: null },
+    ];
+    const candidates = buildStockAnalysisWorkbenchReviewQueue(rows);
+
+    expect(candidates.map(candidateDailyChangeLabel)).toEqual(["—", "+20.01%", "0.00%", "-1.94%", "—"]);
+    expect(candidates[1].rawFields).toContainEqual({
+      key: "pctchange", label: "涨跌幅", value: "20.0081", numeric: 20.0081,
+    });
+    expect(candidates[0].rawFields.some((field) => field.key === "pctchange")).toBe(false);
+  });
+
+  it("keeps backend raw numerics next to formatted percent and unit strings", () => {
+    const [candidate] = buildStockAnalysisWorkbenchReviewQueue([
+      {
+        stock_code: "600000.SH",
+        stock_name: "数值样本",
+        source_module: "factor_screen_candidates",
+        roe: 0.143,
+        gross_margin: 0.32,
+        daily_amount: 80_000_000,
+        abnormal_turnover: 2.314,
+        distance_to_breakout_pct: 1.0585,
+        sector_rank: 3,
+      },
+    ] as StockAnalysisWorkbenchPayload["first_screen"]["review_queue"]);
+
+    const field = (key: string) => candidate.rawFields.find((item) => item.key === key);
+
+    expect(field("roe")).toEqual({ key: "roe", label: "ROE", value: "14.30%", numeric: 0.143 });
+    expect(field("gross_margin")).toEqual({ key: "gross_margin", label: "毛利率", value: "32.00%", numeric: 0.32 });
+    expect(field("daily_amount")).toEqual({
+      key: "daily_amount",
+      label: "成交额(日)",
+      value: "0.80亿",
+      numeric: 80_000_000,
+    });
+    expect(field("abnormal_turnover")).toEqual({
+      key: "abnormal_turnover",
+      label: "异常换手",
+      value: "2.31x",
+      numeric: 2.314,
+    });
+    expect(field("distance_to_breakout_pct")?.numeric).toBe(1.0585);
+    expect(field("sector_rank")).toEqual({ key: "sector_rank", label: "板块内排名", value: "#3", numeric: 3 });
+    // Text-only fields stay without a numeric.
+    expect(field("source_module")).toEqual({ key: "source_module", label: "来源模块", value: "多因子候选" });
   });
 
   it("discloses a stale price anchor date for suspended candidates", () => {
@@ -234,6 +299,7 @@ describe("buildStockAnalysisWorkbenchReviewQueue", () => {
         stock_name: "停牌样本",
         source_module: "factor_screen_candidates",
         pattern: "回踩（参考）",
+        pattern_code: "pullback",
         distance_to_breakout_pct: -2.0,
         close: 98,
         breakout_level: 100,
@@ -247,13 +313,14 @@ describe("buildStockAnalysisWorkbenchReviewQueue", () => {
     expect(candidate.patternNote).toBe("收盘 98 / 突破位 100（价格日 2026-08-08，停牌滞后）");
   });
 
-  it("keeps the placeholder when the backend pattern label is unknown or malformed", () => {
+  it("keeps the placeholder when the backend pattern code is unknown or malformed", () => {
     const rows = [
       {
         stock_code: "000005.SZ",
         stock_name: "异常标签",
         source_module: "factor_screen_candidates",
-        pattern: "unknown_label",
+        pattern: "突破（参考）",
+        pattern_code: "unknown_code",
         distance_to_breakout_pct: "not-a-number",
       },
     ] as StockAnalysisWorkbenchPayload["first_screen"]["review_queue"];

@@ -525,8 +525,15 @@ def test_persist_rejects_future_target() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_supplement_materialize_chain_persists_gate_history(tmp_path: Path) -> None:
-    today = date.today()
+def test_supplement_materialize_chain_persists_gate_history(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class MockDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 6, 8)
+
+    monkeypatch.setattr(gate_history_task, "date", MockDate)
+
+    today = date(2026, 6, 8)
     db = tmp_path / "moss.duckdb"
     _seed_benchmark_into_migrated_db(db, end=today)
 
@@ -611,7 +618,14 @@ def test_supplement_materialize_chain_degrades_on_gate_history_write_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fault injection: an anchor write failure must never sink the supplement."""
-    today = date.today()
+    class MockDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 6, 8)
+
+    monkeypatch.setattr(gate_history_task, "date", MockDate)
+
+    today = date(2026, 6, 8)
     db = tmp_path / "moss.duckdb"
     _seed_benchmark_into_migrated_db(db, end=today)
 

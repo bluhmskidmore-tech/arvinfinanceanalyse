@@ -3,6 +3,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Literal
 
+from backend.app.schemas.advanced_attribution import AdvancedAttributionBundlePayload
+from backend.app.schemas.result_meta import ResultMeta
 from pydantic import BaseModel, ConfigDict
 
 BalanceAnalysisSourceFamily = Literal["zqtz", "tyw", "combined"]
@@ -178,6 +180,9 @@ class BalanceAnalysisWorkbookTable(BaseModel):
     title: str
     section_kind: Literal["table"]
     columns: list[BalanceAnalysisWorkbookColumn]
+    # Workbook sections intentionally have different column sets. Keep row
+    # keys dynamic, while constraining every cell to the values the builder
+    # actually serializes.
     rows: list[dict[str, Decimal | str | int | None]]
 
 
@@ -303,6 +308,131 @@ class BalanceAnalysisWorkbookPayload(BaseModel):
         | BalanceAnalysisEventCalendarSection
         | BalanceAnalysisRiskAlertsSection
     ]
+
+
+class _StrictBalanceAnalysisResponseModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class BalanceAnalysisResultMeta(ResultMeta):
+    """Strict balance-analysis view of the shared governed result metadata."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # `filters_applied` and `next_drill` remain extensible mappings in the
+    # shared ResultMeta contract because their keys vary by endpoint. Business
+    # result fields are modeled strictly in the payload classes below.
+
+
+class BalanceAnalysisCalibration(_StrictBalanceAnalysisResponseModel):
+    position_scope: BalancePositionScope
+    currency_basis: BalanceCurrencyBasis
+    source_families: list[Literal["zqtz", "tyw"]]
+    tyw_amount_semantics: str
+    data_basis: Literal["formal_facts"]
+    calibration_note: str
+
+
+class BalanceAnalysisDatesEnvelope(_StrictBalanceAnalysisResponseModel):
+    result_meta: BalanceAnalysisResultMeta
+    result: BalanceAnalysisDatesPayload
+
+
+class BalanceAnalysisDetailEnvelope(_StrictBalanceAnalysisResponseModel):
+    result_meta: BalanceAnalysisResultMeta
+    result: BalanceAnalysisPayload
+    data_source: Literal["balance_analysis_facts"]
+    calibration: BalanceAnalysisCalibration
+
+
+class BalanceAnalysisOverviewEnvelope(_StrictBalanceAnalysisResponseModel):
+    result_meta: BalanceAnalysisResultMeta
+    result: BalanceAnalysisOverviewPayload
+    data_source: Literal["balance_analysis_facts"]
+    calibration: BalanceAnalysisCalibration
+
+
+class BalanceAnalysisSummaryEnvelope(_StrictBalanceAnalysisResponseModel):
+    result_meta: BalanceAnalysisResultMeta
+    result: BalanceAnalysisSummaryTablePayload
+    data_source: Literal["balance_analysis_facts"]
+    calibration: BalanceAnalysisCalibration
+
+
+class BalanceAnalysisBasisBreakdownEnvelope(_StrictBalanceAnalysisResponseModel):
+    result_meta: BalanceAnalysisResultMeta
+    result: BalanceAnalysisBasisBreakdownPayload
+    data_source: Literal["balance_analysis_facts"]
+    calibration: BalanceAnalysisCalibration
+
+
+class BalanceAnalysisAdvancedAttributionEnvelope(_StrictBalanceAnalysisResponseModel):
+    result_meta: BalanceAnalysisResultMeta
+    # Upstream summary keys depend on which analytical components are
+    # available, so AdvancedAttributionBundlePayload intentionally keeps those
+    # nested maps dynamic while strictly modeling the surrounding contract.
+    result: AdvancedAttributionBundlePayload
+
+
+class BalanceAnalysisWorkbookEnvelope(_StrictBalanceAnalysisResponseModel):
+    result_meta: BalanceAnalysisResultMeta
+    result: BalanceAnalysisWorkbookPayload
+    data_source: Literal["balance_analysis_facts"]
+    calibration: BalanceAnalysisCalibration
+
+
+class BalanceAnalysisDecisionItemsEnvelope(_StrictBalanceAnalysisResponseModel):
+    result_meta: BalanceAnalysisResultMeta
+    result: BalanceAnalysisDecisionItemsPayload
+    data_source: Literal["balance_analysis_facts"]
+    calibration: BalanceAnalysisCalibration
+
+
+class BalanceAnalysisCurrentUserPayload(_StrictBalanceAnalysisResponseModel):
+    user_id: str
+    role: str
+    identity_source: Literal["header", "env", "fallback"]
+    can_write_decision_status: bool | None
+
+
+class BalanceAnalysisPublicationStatusPayload(_StrictBalanceAnalysisResponseModel):
+    enabled: bool
+    available: bool
+    generation: str | None
+    report_dates: list[str]
+    manifest_sha256: str | None
+    quality_flag: Literal["ok", "stale"]
+    reason: str | None
+
+
+class _BalanceAnalysisRefreshRunPayload(_StrictBalanceAnalysisResponseModel):
+    status: str
+    run_id: str
+    job_name: str
+    trigger_mode: Literal["async", "terminal"]
+    cache_key: str
+    report_date: str
+    cache_version: str | None = None
+    lock: str | None = None
+    source_version: str | None = None
+    vendor_version: str | None = None
+    rule_version: str | None = None
+    queued_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    error_message: str | None = None
+    failure_category: str | None = None
+    failure_reason: str | None = None
+    created_at: str | None = None
+    idempotency_key: str | None = None
+
+
+class BalanceAnalysisRefreshPayload(_BalanceAnalysisRefreshRunPayload):
+    idempotency_replay: bool
+
+
+class BalanceAnalysisRefreshStatusPayload(_BalanceAnalysisRefreshRunPayload):
+    pass
 
 
 class BalanceRelatedApiEnvelope(BaseModel):

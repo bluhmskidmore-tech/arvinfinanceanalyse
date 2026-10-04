@@ -17,8 +17,22 @@ type OptionTwoSparklineProps = {
 const VIEW_W = 100;
 const VIEW_H = 20;
 const PAD_Y = 2;
+/**
+ * 用 <circle> 画点会被 preserveAspectRatio="none" 的非等比缩放压成椭圆
+ * （宽扁容器里横向可拉伸 3 倍以上）。改用零长度线段配圆端点 + 非缩放描边，
+ * 点在任意容器宽高比下都渲染成直径等于描边宽度的正圆。
+ */
+const POINT_DOT_PX = 5;
+const END_DOT_PX = 6.4;
 
 type SparkPoint = { x: number; y: number; gapBefore: boolean };
+
+/** 零长度子路径：配 stroke-linecap="round" 渲染为一个直径等于线宽的圆点。 */
+function dotPath(point: SparkPoint): string {
+  const x = point.x.toFixed(2);
+  const y = point.y.toFixed(2);
+  return `M${x} ${y}L${x} ${y}`;
+}
 
 function resolveXPositions(
   count: number,
@@ -101,28 +115,31 @@ export function OptionTwoSparkline({
         strokeLinejoin="round"
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
+        data-spark-line="true"
       />
       {pointDots
         ? points.map((point, index) => (
-            <circle
+            <path
               key={`${point.x}-${index}`}
-              cx={point.x}
-              cy={point.y}
-              r={1.3}
-              fill="currentColor"
-              fillOpacity={0.85}
-              stroke="none"
+              d={dotPath(point)}
+              fill="none"
+              stroke="currentColor"
+              strokeOpacity={0.85}
+              strokeWidth={POINT_DOT_PX}
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
               data-point-dot="true"
             />
           ))
         : null}
       {endDot && lastPoint ? (
-        <circle
-          cx={lastPoint.x}
-          cy={lastPoint.y}
-          r={1.8}
-          fill="currentColor"
-          stroke="none"
+        <path
+          d={dotPath(lastPoint)}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={END_DOT_PX}
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
           data-end-dot="true"
         />
       ) : null}

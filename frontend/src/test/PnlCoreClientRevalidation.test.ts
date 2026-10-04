@@ -4,7 +4,35 @@ import {
   createRealPnlCoreClient,
   type PnlCoreClientFactoryOptions,
 } from "../api/pnlCoreClient";
-import { createDemoPnlCoreClient } from "../api/pnlCoreMockClient";
+import { createDemoPnlCoreClient } from "../mocks/pnlCoreMockClient";
+
+describe("PnL formal dates client", () => {
+  it("adds the published page selector only for the business insights directory", async () => {
+    const requestJson = vi.fn(async () => ({ result_meta: {}, result: {} }));
+    const client = createRealPnlCoreClient({
+      fetchImpl: vi.fn() as unknown as typeof fetch,
+      baseUrl: "http://localhost:8000",
+      requestJson,
+      requestActionJson: vi.fn(),
+    } as unknown as PnlCoreClientFactoryOptions);
+
+    await client.getFormalPnlDates({ page: "by_business_insights" });
+    await client.getFormalPnlDates();
+
+    expect(requestJson).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Function),
+      "http://localhost:8000",
+      "/api/pnl/dates?page=by_business_insights",
+    );
+    expect(requestJson).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      "http://localhost:8000",
+      "/api/pnl/dates",
+    );
+  });
+});
 
 describe("PnL core candidate revalidation client", () => {
   it("fails explicitly instead of inventing a persisted-looking demo receipt", async () => {

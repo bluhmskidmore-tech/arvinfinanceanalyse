@@ -1,13 +1,16 @@
-import { useMemo } from "react";
-import { Button, Select, Spin, Table } from "antd";
+import { useMemo, type ReactNode } from "react";
+import { Button, Select, Table } from "antd";
 import type { TableColumnsType } from "antd";
 import { Link } from "react-router-dom";
 
 import type { BondPositionItem } from "../../../api/contracts";
+import { StateSurface } from "../../../components/layout";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
+import { assetClassLabel } from "../../bond-analytics/components/bondAnalyticsCockpitFormat";
 import type { PositionsPrimaryListTableState } from "../model/positionsPageModel";
 import { EM_DASH } from "../../../utils/format";
 import { formatAmountYiNumber, formatDecimalFixed, formatRatePercent } from "../utils/format";
+import { TABLE_SKELETON_MIN_HEIGHT } from "./positionsTableState";
 
 const ALL_BOND_SUBTYPE = "__all_bond_subtypes__";
 
@@ -18,6 +21,7 @@ type BondListRow = BondPositionItem & { key: string };
  * 五态展示与分页/筛选回第一页的行为由根组件状态驱动，本组件只渲染。
  */
 export default function PositionsBondsWorkspaceSection({
+  tabs,
   reportDate,
   subTypeValue,
   subTypeOptions,
@@ -33,6 +37,7 @@ export default function PositionsBondsWorkspaceSection({
   onPrevPage,
   onNextPage,
 }: {
+  tabs: ReactNode;
   reportDate: string;
   subTypeValue: string;
   subTypeOptions: string[] | undefined;
@@ -68,7 +73,7 @@ export default function PositionsBondsWorkspaceSection({
       { title: "代码", dataIndex: "bond_code", className: "positions-view__num-cell" },
       { title: "授信主体", dataIndex: "credit_name", render: (v: string | null) => v || EM_DASH },
       { title: "业务种类", dataIndex: "sub_type", render: (v: string | null) => v || EM_DASH },
-      { title: "资产分类", dataIndex: "asset_class", render: (v: string | null) => v || EM_DASH },
+      { title: "资产分类", dataIndex: "asset_class", render: assetClassLabel },
       {
         title: "市值(亿元)",
         dataIndex: "market_value",
@@ -121,6 +126,7 @@ export default function PositionsBondsWorkspaceSection({
   return (
     <div className="positions-view__workspace">
       <div className="positions-view__workspace-toolbar">
+        {tabs}
         <label className="positions-view__field">
           <span className="positions-view__field-label">业务种类</span>
           <Select
@@ -143,16 +149,18 @@ export default function PositionsBondsWorkspaceSection({
       </div>
 
       {listState === "loading" ? (
-        <div
-          className="positions-view__table-state positions-view__table-state--loading"
-          data-testid="positions-bonds-list-loading"
-        >
-          <Spin />
-        </div>
+        <StateSurface
+          testId="positions-bonds-list-loading"
+          status="loading"
+          minHeight={TABLE_SKELETON_MIN_HEIGHT}
+        />
       ) : listState === "error" ? (
-        <p className="positions-view__table-state" data-testid="positions-bonds-list-error">
-          债券持仓暂不可用
-        </p>
+        <StateSurface
+          testId="positions-bonds-list-error"
+          status="error"
+          message="债券持仓暂不可用"
+          density="compact"
+        />
       ) : listState === "ready" ? (
         <>
           <Table
@@ -180,17 +188,19 @@ export default function PositionsBondsWorkspaceSection({
           ) : null}
         </>
       ) : listState === "empty" ? (
-        <p className="positions-view__table-state" data-testid="positions-bonds-list-empty">
-          暂无数据
-        </p>
+        <StateSurface testId="positions-bonds-list-empty" status="empty" message="暂无数据" />
       ) : (
-        <p className="positions-view__table-state" data-testid="positions-bonds-list-blocked">
-          {reportDate
-            ? page > 1
-              ? "当前页无明细，正在返回第一页"
-              : "当前范围明细暂不可用"
-            : "请先选择可用报告日"}
-        </p>
+        <StateSurface
+          testId="positions-bonds-list-blocked"
+          status="empty"
+          message={
+            reportDate
+              ? page > 1
+                ? "当前页无明细，正在返回第一页"
+                : "当前范围明细暂不可用"
+              : "请先选择可用报告日"
+          }
+        />
       )}
     </div>
   );

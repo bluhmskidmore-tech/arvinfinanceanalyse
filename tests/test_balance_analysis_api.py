@@ -7,6 +7,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 import pytest
@@ -22,7 +23,7 @@ from backend.app.repositories.governance_repo import (
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.fixtures.balance_analysis import (
-    balance_analysis_shared_materialized_read_seed,  # noqa: F401
+    balance_analysis_shared_materialized_read_seed as balance_analysis_shared_materialized_read_seed,
     balance_analysis_shared_materialized_seed,  # noqa: F401
 )
 from tests.helpers import load_module
@@ -431,7 +432,17 @@ def test_balance_analysis_read_surface_allows_development_fallback_without_expli
     monkeypatch.setattr(
         route_mod,
         "balance_analysis_dates_envelope",
-        lambda **_kwargs: {"result_meta": {"result_kind": "balance-analysis.dates"}, "result": {}},
+        lambda **_kwargs: {
+            "result_meta": {
+                "trace_id": "tr-balance-analysis-dates-test",
+                "result_kind": "balance-analysis.dates",
+                "source_version": "sv-balance-analysis-test",
+                "rule_version": "rv-balance-analysis-test",
+                "cache_version": "cv-balance-analysis-test",
+                "source_surface": "formal_balance",
+            },
+            "result": {"report_dates": []},
+        },
     )
     sqlite_path = tmp_path / "balance-analysis-dev-fallback.db"
     monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
@@ -442,7 +453,9 @@ def test_balance_analysis_read_surface_allows_development_fallback_without_expli
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(route_mod.router)
-    client = TestClient(app)
+    # dev fallback 额外要求 loopback 客户端（P1 安全收紧）；TestClient 默认
+    # client host 是非 IP 的 "testclient"，显式设置为 127.0.0.1 以满足该判定。
+    client = TestClient(app, client=("127.0.0.1", 12345))
 
     response = client.get("/ui/balance-analysis/dates")
 
@@ -1758,7 +1771,15 @@ def test_balance_analysis_refresh_requires_explicit_refresh_grant(tmp_path, monk
 
     def fake_refresh(_settings, *, report_date: str, **_kwargs):
         calls.append(report_date)
-        return {"status": "queued", "run_id": "balance-refresh-test", "report_date": report_date}
+        return {
+            "status": "queued",
+            "run_id": "balance-refresh-test",
+            "job_name": "balance_analysis_materialize",
+            "trigger_mode": "async",
+            "cache_key": "balance_analysis:materialize:formal",
+            "report_date": report_date,
+            "idempotency_replay": False,
+        }
 
     monkeypatch.setattr(route_mod, "refresh_balance_analysis", fake_refresh)
 
@@ -1992,4 +2013,257 @@ def test_balance_analysis_refresh_status_returns_503_when_status_backend_fails(
 
     assert response.status_code == 503
     assert response.json()["detail"] == "status backend unavailable"
+    get_settings.cache_clear()
+
+
+_INVALID_REPORT_DATES = ("2026-8-26", "abc")
+_REPORT_DATE_GET_PATHS = (
+    "/ui/balance-analysis",
+    "/ui/balance-analysis/overview",
+    "/ui/balance-analysis/summary",
+    "/ui/balance-analysis/summary-by-basis",
+    "/ui/balance-analysis/workbook",
+    "/ui/balance-analysis/decision-items",
+    "/ui/balance-analysis/summary/export",
+    "/ui/balance-analysis/workbook/export",
+    "/ui/balance-analysis/advanced-attribution",
+)
+_INVALID_REPORT_DATE_DETAIL = "report_date must be a valid calendar date in YYYY-MM-DD format."
+_VALID_OMITTED_REPORT_DATE_CASES = (
+    ("/ui/balance-analysis", "balance_analysis_detail_envelope"),
+    ("/ui/balance-analysis/overview", "balance_analysis_overview_envelope"),
+    ("/ui/balance-analysis/workbook", "balance_analysis_workbook_envelope"),
+)
+
+
+def _balance_analysis_router_client():
+    import importlib
+
+    route_mod = importlib.import_module("backend.app.api.routes.balance_analysis")
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    return TestClient(app), route_mod
+
+
+def _assert_invalid_report_date_422(response, *, path: str, bad_date: str) -> None:
+    assert response.status_code == 422, f"{path} report_date={bad_date!r}: {response.text}"
+    assert response.json()["detail"] == _INVALID_REPORT_DATE_DETAIL
+
+
+def test_balance_analysis_rejects_invalid_report_date_with_422():
+    client, _route_mod = _balance_analysis_router_client()
+    for path in _REPORT_DATE_GET_PATHS:
+        for bad_date in _INVALID_REPORT_DATES:
+            response = client.get(path, params={"report_date": bad_date})
+            _assert_invalid_report_date_422(response, path=path, bad_date=bad_date)
+
+    for bad_date in _INVALID_REPORT_DATES:
+        refresh = client.post("/ui/balance-analysis/refresh", params={"report_date": bad_date})
+        _assert_invalid_report_date_422(
+            refresh,
+            path="/ui/balance-analysis/refresh",
+            bad_date=bad_date,
+        )
+        decision_status = client.post(
+            "/ui/balance-analysis/decision-items/status",
+            json={
+                "report_date": bad_date,
+                "position_scope": "all",
+                "currency_basis": "CNY",
+                "decision_key": "any-decision-key",
+                "status": "confirmed",
+            },
+        )
+        _assert_invalid_report_date_422(
+            decision_status,
+            path="/ui/balance-analysis/decision-items/status",
+            bad_date=bad_date,
+        )
+
+
+def test_balance_analysis_valid_and_omitted_report_date_keep_existing_semantics(
+    tmp_path,
+    monkeypatch,
+):
+    client, route_mod = _balance_analysis_router_client()
+
+    def _context_envelope(result_kind: str, result: dict[str, object]):
+        return {
+            "result_meta": {
+                "trace_id": f"tr-{result_kind}",
+                "result_kind": result_kind,
+                "source_version": "sv-balance-analysis-test",
+                "rule_version": "rv-balance-analysis-test",
+                "cache_version": "cv-balance-analysis-test",
+                "source_surface": "formal_balance",
+            },
+            "result": result,
+            "data_source": "balance_analysis_facts",
+            "calibration": {
+                "position_scope": result["position_scope"],
+                "currency_basis": result["currency_basis"],
+                "source_families": ["zqtz", "tyw"],
+                "tyw_amount_semantics": "principal_as_market_and_amortized",
+                "data_basis": "formal_facts",
+                "calibration_note": "test calibration",
+            },
+        }
+
+    def detail_stub(**kwargs):
+        return _context_envelope(
+            "balance-analysis.detail",
+            {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "details": [],
+                "summary": [],
+            },
+        )
+
+    def overview_stub(**kwargs):
+        return _context_envelope(
+            "balance-analysis.overview",
+            {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "detail_row_count": 0,
+                "summary_row_count": 0,
+                "total_market_value_amount": "0",
+                "total_amortized_cost_amount": "0",
+                "total_accrued_interest_amount": "0",
+                "asset_total_market_value_amount": "0",
+                "liability_total_market_value_amount": "0",
+                "asset_total_amortized_cost_amount": "0",
+                "liability_total_amortized_cost_amount": "0",
+                "asset_total_accrued_interest_amount": "0",
+                "liability_total_accrued_interest_amount": "0",
+                "metric_definitions": [],
+            },
+        )
+
+    def workbook_stub(**kwargs):
+        return _context_envelope(
+            "balance-analysis.workbook",
+            {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "cards": [],
+                "tables": [],
+                "operational_sections": [],
+            },
+        )
+
+    monkeypatch.setattr(route_mod, "balance_analysis_detail_envelope", detail_stub)
+    monkeypatch.setattr(route_mod, "balance_analysis_overview_envelope", overview_stub)
+    monkeypatch.setattr(route_mod, "balance_analysis_workbook_envelope", workbook_stub)
+    _seed_balance_read_scope(tmp_path, monkeypatch)
+    headers = {"X-User-Id": "balance-date-user", "X-User-Role": "viewer"}
+
+    for path, _envelope_name in _VALID_OMITTED_REPORT_DATE_CASES:
+        valid = client.get(path, params={"report_date": "2025-12-31"}, headers=headers)
+        assert valid.status_code == 200, f"{path}: {valid.text}"
+        assert valid.json()["result"]["report_date"] == "2025-12-31"
+
+        omitted = client.get(path, headers=headers)
+        assert omitted.status_code == 422, f"{path} omitted: {omitted.text}"
+        omitted_detail = omitted.json()["detail"]
+        assert isinstance(omitted_detail, list)
+        assert any(item.get("loc") == ["query", "report_date"] for item in omitted_detail)
+
+
+def test_aug31_overview_requires_pinned_generation_before_cached_read(
+    tmp_path, monkeypatch
+):
+    client, route_mod = _balance_analysis_router_client()
+    _seed_balance_read_scope(tmp_path, monkeypatch)
+    calls: dict[str, list[dict[str, object]]] = {"cached": [], "published": []}
+
+    def envelope(report_date: str) -> dict[str, object]:
+        return {
+            "result_meta": {
+                "trace_id": "tr-overview-route-test",
+                "result_kind": "balance-analysis.overview",
+                "source_version": "sv-overview-route-test",
+                "rule_version": "rv-overview-route-test",
+                "cache_version": "cv-overview-route-test",
+                "source_surface": "formal_balance",
+            },
+            "result": {
+                "report_date": report_date,
+                "position_scope": "all",
+                "currency_basis": "CNY",
+                "detail_row_count": 0,
+                "summary_row_count": 0,
+                "total_market_value_amount": "0",
+                "total_amortized_cost_amount": "0",
+                "total_accrued_interest_amount": "0",
+                "asset_total_market_value_amount": "0",
+                "liability_total_market_value_amount": "0",
+                "asset_total_amortized_cost_amount": "0",
+                "liability_total_amortized_cost_amount": "0",
+                "asset_total_accrued_interest_amount": "0",
+                "liability_total_accrued_interest_amount": "0",
+                "metric_definitions": [],
+            },
+            "data_source": "balance_analysis_facts",
+            "calibration": {
+                "position_scope": "all",
+                "currency_basis": "CNY",
+                "source_families": ["zqtz", "tyw"],
+                "tyw_amount_semantics": "principal_as_market_and_amortized",
+                "data_basis": "formal_facts",
+                "calibration_note": "route test",
+            },
+        }
+
+    def cached_stub(**kwargs):
+        calls["cached"].append(kwargs)
+        return envelope(kwargs["report_date"])
+
+    def published_stub(_settings, **kwargs):
+        calls["published"].append(kwargs)
+        return SimpleNamespace(
+            generation=kwargs["generation"],
+            envelope=envelope(kwargs["report_date"]),
+        )
+
+    monkeypatch.setattr(route_mod, "balance_analysis_overview_envelope", cached_stub)
+    monkeypatch.setattr(
+        route_mod, "read_published_balance_analysis_overview", published_stub
+    )
+    headers = {"X-User-Id": "balance-route-user", "X-User-Role": "viewer"}
+
+    blocked = client.get(
+        "/ui/balance-analysis/overview",
+        params={"report_date": "2026-08-31"},
+        headers=headers,
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"] == (
+        "A pinned balance-analysis publication generation is required for report_date=2026-08-31."
+    )
+    assert calls == {"cached": [], "published": []}
+
+    unsealed_other_date = client.get(
+        "/ui/balance-analysis/overview",
+        params={"report_date": "2025-12-31"},
+        headers=headers,
+    )
+    assert unsealed_other_date.status_code == 200
+    assert unsealed_other_date.json()["result"]["report_date"] == "2025-12-31"
+    assert [call["report_date"] for call in calls["cached"]] == ["2025-12-31"]
+
+    pinned = client.get(
+        "/ui/balance-analysis/overview",
+        params={"report_date": "2026-08-31", "generation": "generation-test"},
+        headers=headers,
+    )
+    assert pinned.status_code == 200
+    assert pinned.headers["X-Balance-Analysis-Generation"] == "generation-test"
+    assert pinned.json()["result"]["report_date"] == "2026-08-31"
+    assert [call["generation"] for call in calls["published"]] == ["generation-test"]
+    assert [call["report_date"] for call in calls["cached"]] == ["2025-12-31"]
     get_settings.cache_clear()

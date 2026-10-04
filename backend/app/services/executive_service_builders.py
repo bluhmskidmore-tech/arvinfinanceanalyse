@@ -409,9 +409,6 @@ def _compute_unified_report_date(
     for domain in _HOME_SNAPSHOT_CALIBERS:
         if target in domain_dates[domain]:
             effective[domain] = target
-        elif domain_dates[domain]:
-            # approximate latest available for that domain
-            effective[domain] = max(domain_dates[domain])
     return (target, missing, effective)
 
 

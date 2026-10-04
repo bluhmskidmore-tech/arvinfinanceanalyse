@@ -1,63 +1,48 @@
-import { Table } from "antd";
-import type { ColumnsType } from "antd/es/table";
-
-import type { Numeric, SpreadAnalysisItem, SpreadAnalysisPayload } from "../../../api/contracts";
+import type { SpreadAnalysisItem, SpreadAnalysisPayload } from "../../../api/contracts";
+import { DataTable, type DataTableColumn } from "../../../components/layout";
+import type { BondSectionDataState } from "../sectionStatus";
 import { formatRatePercent, formatYi } from "../utils/format";
 
-/** 数值列等宽（BondDashboardTableSections.css，section 文件已 import）。 */
-const NUM_CELL = "bond-dashboard-table-num-cell";
-
-const COLUMNS: ColumnsType<SpreadAnalysisItem> = [
-  { title: "券种", dataIndex: "bond_type", key: "bond_type" },
+const COLUMNS: readonly DataTableColumn<SpreadAnalysisItem>[] = [
+  { key: "bond_type", title: "券种" },
   {
-    title: "收益率中位数(%)",
-    dataIndex: "median_yield",
-    key: "my",
-    align: "right",
-    className: NUM_CELL,
-    render: (v: Numeric | null) => formatRatePercent(v),
+    key: "median_yield",
+    title: "收益率中位数",
+    unit: "%",
+    align: "numeric",
+    render: (row) => formatRatePercent(row.median_yield),
   },
-  { title: "数量", dataIndex: "bond_count", key: "n", align: "right", className: NUM_CELL },
+  { key: "bond_count", title: "数量", align: "numeric" },
   {
-    title: "市值(亿)",
-    dataIndex: "total_market_value",
-    key: "mv",
-    align: "right",
-    className: NUM_CELL,
-    render: (v: Numeric) => formatYi(v),
+    key: "total_market_value",
+    title: "市值",
+    unit: "亿",
+    align: "numeric",
+    render: (row) => formatYi(row.total_market_value),
   },
 ];
 
 export function SpreadTable({
   data,
-  loading,
+  state,
 }: {
   data: SpreadAnalysisPayload | undefined;
-  loading: boolean;
+  state: BondSectionDataState;
 }) {
-  const rows = data?.items ?? [];
-
   return (
-    <div className="bond-dashboard-page__panel bond-dashboard-table-panel">
-      <h3 className="bond-dashboard-table-panel__title">利差分析</h3>
-      {loading ? (
-        <p className="bond-dashboard-page__surface bond-dashboard-page__surface--loading">
-          载入中…
-        </p>
-      ) : rows.length === 0 ? (
-        <p className="bond-dashboard-page__surface bond-dashboard-page__surface--empty">
-          暂无数据
-        </p>
-      ) : (
-        <Table<SpreadAnalysisItem>
-          size="small"
-          pagination={false}
-          rowKey={(r) => r.bond_type}
-          columns={COLUMNS}
-          dataSource={rows}
-          scroll={{ x: "max-content" }}
-        />
-      )}
+    <div className="bond-dashboard-page__panel">
+      <div className="bond-dashboard-page__panel-head">
+        <h3 className="bond-dashboard-page__panel-head-title">利差分析</h3>
+      </div>
+      {/* 状态推导同行业分布表：骨架只在真的在读时出现，分区失败出错误面。 */}
+      <DataTable<SpreadAnalysisItem>
+        rows={data?.items}
+        rowKey="bond_type"
+        columns={COLUMNS}
+        status={state.status}
+        errorMessage={state.message ?? undefined}
+        skeletonRows={5}
+      />
     </div>
   );
 }

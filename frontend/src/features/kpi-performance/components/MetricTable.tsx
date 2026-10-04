@@ -12,6 +12,7 @@ import { Button, Card, Input, Spin, Tag } from "antd";
 
 import type { KpiDecimalString, KpiMetricWithValue } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { SectionHead } from "../../../components/layout";
 import { PageStateSurface } from "../../../components/page/PagePrimitives";
 import { EM_DASH } from "../../../utils/format";
 
@@ -234,10 +235,11 @@ export function MetricTable({
   return (
     <section className="kpi-metric-table-card" data-testid="kpi-metric-table-panel">
       <div className="kpi-metric-table-card__header">
-        <div>
-          <h2 className="kpi-metric-table-card__title">指标明细</h2>
-        </div>
-        <span className="kpi-metric-table-card__count">{metrics.length} 项</span>
+        <SectionHead
+          title="指标明细"
+          numbered={false}
+          actions={<span className="kpi-metric-table-card__count">{metrics.length} 项</span>}
+        />
       </div>
       <div className="kpi-metric-table__scroll">
         <table className="kpi-metric-table">

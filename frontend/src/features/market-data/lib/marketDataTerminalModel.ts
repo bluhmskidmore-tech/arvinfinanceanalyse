@@ -10,6 +10,7 @@ import type {
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import { EM_DASH } from "../../../utils/format";
 import type { LabeledValue } from "../../../pageModel";
+import { seriesDisplayName } from "./marketDataFormat";
 
 export type MarketDataTerminalStatus = "ready" | "empty" | "source-pending";
 export type MarketDataConnectedStatus = Exclude<MarketDataTerminalStatus, "source-pending">;
@@ -123,15 +124,24 @@ const TERMINAL_FALLBACK_LABELS: Partial<Record<ResultMeta["fallback_mode"], stri
   latest_snapshot: "最新快照",
 };
 
-/** 页内表格区简短口径行，不展示 source_version 等运维长串。 */
+/**
+ * 页内表格区简短口径行，不展示 source_version 等运维长串。
+ * 正常态（质量正常且无降级）只报口径一段，异常段按需追加——
+ * 「质量 正常 · 降级 无降级」属于默认预期，常驻反而稀释异常披露。
+ */
 export function formatTerminalSourceSummary(source: MarketDataTerminalSource | null | undefined) {
   if (!source) {
     return "来源待确认";
   }
   const basis = TERMINAL_BASIS_LABELS[source.basis] ?? source.basis;
-  const quality = TERMINAL_QUALITY_LABELS[source.qualityFlag] ?? source.qualityFlag;
-  const fallback = TERMINAL_FALLBACK_LABELS[source.fallbackMode] ?? source.fallbackMode;
-  return `口径 ${basis} · 质量 ${quality} · 降级 ${fallback}`;
+  const parts = [`口径 ${basis}`];
+  if (source.qualityFlag !== "ok") {
+    parts.push(`质量 ${TERMINAL_QUALITY_LABELS[source.qualityFlag] ?? source.qualityFlag}`);
+  }
+  if (source.fallbackMode !== "none") {
+    parts.push(`降级 ${TERMINAL_FALLBACK_LABELS[source.fallbackMode] ?? source.fallbackMode}`);
+  }
+  return parts.join(" · ");
 }
 
 /**
@@ -392,8 +402,8 @@ const RATE_QUOTE_SPECS: RateSpec[] = [
 ];
 
 const MONEY_MARKET_SPECS: MoneySpec[] = [
-  { seriesIds: ["M001"], name: "公开市场7天逆回购利率" },
-  { seriesIds: ["CA.DR007", "M002", "EMM00167613"], name: "DR007" },
+  { seriesIds: ["EMM00088132", "M001"], name: "公开市场7天逆回购利率" },
+  { seriesIds: ["CA.DR007", "M002"], name: "DR007" },
 ];
 
 function terminalSource(meta: ResultMeta): MarketDataTerminalSource {
@@ -466,7 +476,7 @@ function rowBase(sourcePoint: SourcePoint): MarketDataTerminalRowBase {
   return {
     key: point.series_id,
     seriesId: point.series_id,
-    seriesName: point.series_name,
+    seriesName: seriesDisplayName(point),
     rateText: formatChoiceMacroValue(point, { spaceBeforeUnit: false }),
     deltaText: formatChoiceMacroDelta(point, { spaceBeforeUnit: false, emptyDisplay: "缺前值" }),
     tradeDate: point.trade_date,

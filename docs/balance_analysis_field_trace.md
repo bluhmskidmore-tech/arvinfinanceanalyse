@@ -141,7 +141,36 @@ API：`GET /ui/balance-analysis/workbook`
 - 前端 workbook cards：`frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx`
 - workbook 金额格式：`frontend/src/utils/format.ts::formatWanAmountAsYiPlain`
 
-## 5. 验收口径
+## 5. 计算源分类与复用边界
+
+同名字段不自动等于同一指标。余额域只有在以下属性全部一致时才允许复用同一
+计算函数：事实来源、报告日、`position_scope`、`currency_basis`、计量基础、单位、
+缺失值语义和 fallback 规则。页面标签、卡片位置或字段名相似不能作为合并依据。
+
+| 计算族 | 权威来源 | 计量/单位 | 允许复用范围 | 不得混用的口径 |
+| --- | --- | --- | --- | --- |
+| 正式事实生成 | `backend/app/core_finance/balance_analysis.py` + materialize task | 元；逐日 formal fact | overview、summary、workbook 的共同输入 | snapshot / preview 不得直接成为页面正式输入 |
+| Overview 市值/摊余/应计 | `balance_analysis_repo.py::fetch_formal_overview` | 市值、摊余成本、应计利息；元；随明细范围过滤 | 余额页与运营入口消费同一 DTO 字段 | `total_*` 全口径毛额不得冒充资产规模、负债规模或净头寸 |
+| Workbook 余额与跨侧分析 | `backend/app/core_finance/balance_analysis_workbook.py` | ZQTZ 面值 + TYW 本金；输出通常为万元；跨侧表固定 `all` | Workbook、治理事项、期限缺口和兼容 import 路径 | 不得直接替代 overview 的市值/摊余成本；不得套用单边明细范围 |
+| 页面展示转换 | 前端统一 formatter / view model | 元或万元转亿元，仅格式化 | 多页面展示可以复用 formatter | 前端不得重新实现正式求和、净额或期限公式 |
+
+Workbook 的唯一公式权威是
+`backend/app/core_finance/balance_analysis_workbook.py`。历史包路径按类别保留，但只
+作为兼容导出，不再保存公式副本：
+
+| 历史兼容路径 | 分类 | 当前行为 |
+| --- | --- | --- |
+| `balance_workbook/_utils.py` | Decimal、单位、分桶与格式助手 | 直接导出权威函数/常量 |
+| `balance_workbook/_bond_tables.py` | 余额卡片、期限缺口、现金流及债券分组 | 直接导出权威表构建器 |
+| `balance_workbook/_ifrs9_tables.py` | IFRS 9、账户类别和规则引用 | 直接导出权威表构建器 |
+| `balance_workbook/_analysis_tables.py` | 币种、评级、利率、Campisi、治理和事件 | 直接导出权威表构建器 |
+| `balance_workbook/_risk_tables.py` | 监管阈值、逾期与风险提醒 | 直接导出权威表构建器 |
+
+兼容模块的 `__all__` 和函数对象同一性由
+`tests/test_balance_workbook_cross_scope.py` 锁定。新增余额 Workbook 公式只允许进入
+权威模块；不得在兼容路径、service、API 或前端再复制一份。
+
+## 6. 验收口径
 
 修这条链路时，最小验证应覆盖：
 

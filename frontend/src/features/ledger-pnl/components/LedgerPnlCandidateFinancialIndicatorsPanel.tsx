@@ -27,6 +27,7 @@ import type {
   LedgerPnlCandidateSourceVersionImpact,
 } from "../../../api/contracts";
 import { LedgerPnlCandidatePeriodComparison } from "./LedgerPnlCandidatePeriodComparison";
+import { fixedDecimal } from "../models/candidatePeriodComparisonModel";
 import "./LedgerPnlCandidateFinancialIndicatorsPanel.css";
 
 type Props = {
@@ -826,12 +827,39 @@ function PromotionReadinessPanel({
           <span>正式化门禁</span>
           <h3 id="candidate-promotion-title">正式化就绪清单</h3>
         </div>
+        <strong className="candidate-indicators__promotion-status">
+          {readiness.status === "blocked"
+            ? `正式化未就绪 · ${readiness.blocking_count} 项阻断`
+            : "技术门禁已通过 · 待业务复核"}
+        </strong>
+      </div>
+      <details
+        className="candidate-indicators__promotion-detail"
+        data-testid="candidate-promotion-readiness-detail"
+      >
+        <summary>查看六项检查详情与阻断证据（{readiness.checks.length}）</summary>
+        <p>{readiness.next_action}</p>
+        <div className="candidate-indicators__promotion-grid">
+          {readiness.checks.map((check) => (
+            <article key={check.check_id} data-status={check.status}>
+              <div>
+                <strong>{check.label}</strong>
+                <em>{PROMOTION_CHECK_STATUS_LABELS[check.status]}</em>
+              </div>
+              <p>{check.summary}</p>
+              <small>{check.action}</small>
+              {check.evidence_refs.length > 0 ? (
+                <details>
+                  <summary>查看证据引用（{check.evidence_refs.length}）</summary>
+                  <ul>
+                    {check.evidence_refs.map((ref) => <li key={ref}><code>{ref}</code></li>)}
+                  </ul>
+                </details>
+              ) : null}
+            </article>
+          ))}
+        </div>
         <div className="candidate-indicators__promotion-actions">
-          <strong>
-            {readiness.status === "blocked"
-              ? `正式化未就绪 · ${readiness.blocking_count} 项阻断`
-              : "技术门禁已通过 · 待业务复核"}
-          </strong>
           <button
             type="button"
             onClick={() => downloadPromotionEvidencePack(readiness.evidence_pack)}
@@ -839,28 +867,7 @@ function PromotionReadinessPanel({
             下载阻断证据 JSON
           </button>
         </div>
-      </div>
-      <p>{readiness.next_action}</p>
-      <div className="candidate-indicators__promotion-grid">
-        {readiness.checks.map((check) => (
-          <article key={check.check_id} data-status={check.status}>
-            <div>
-              <strong>{check.label}</strong>
-              <em>{PROMOTION_CHECK_STATUS_LABELS[check.status]}</em>
-            </div>
-            <p>{check.summary}</p>
-            <small>{check.action}</small>
-            {check.evidence_refs.length > 0 ? (
-              <details>
-                <summary>查看证据引用（{check.evidence_refs.length}）</summary>
-                <ul>
-                  {check.evidence_refs.map((ref) => <li key={ref}><code>{ref}</code></li>)}
-                </ul>
-              </details>
-            ) : null}
-          </article>
-        ))}
-      </div>
+      </details>
       <PromotionEvidenceWorklist
         key={`${readiness.evidence_pack.evidence_pack_key}:${resolution?.resolution_key ?? "base"}`}
         pack={baseEvidencePack ?? readiness.evidence_pack}
@@ -894,10 +901,28 @@ function ValidationEvidenceCard({
   );
 }
 
+const METRIC_VALUE_DECIMAL_PATTERN = /^-?\d+(?:\.\d+)?$/;
+
+/**
+ * R4 指标目录精度双态：默认按 ROUND_HALF_UP 显示 4 位小数（复用 candidatePeriodComparisonModel
+ * 的 fixedDecimal，BigInt 精确实现，禁止 toFixed/Number/parseFloat）；`full` 供 hover/展开态
+ * 呈现完整 Decimal 原始字符串，展示层压缩小数位不属于前端复算。
+ */
+function metricValueDisplay(value: string | null | undefined): { display: string; full: string | null } {
+  if (value === null || value === undefined) {
+    return { display: EM_DASH, full: null };
+  }
+  if (!METRIC_VALUE_DECIMAL_PATTERN.test(value)) {
+    return { display: value, full: value };
+  }
+  return { display: fixedDecimal(value, 4, false), full: value };
+}
+
 function MetricValue({ metric }: { metric: LedgerPnlCandidateFinancialIndicatorMetric | undefined }) {
+  const { display, full } = metricValueDisplay(metric?.value);
   return (
     <>
-      <strong>{metric?.value ?? EM_DASH}</strong>
+      <strong title={full ?? undefined}>{display}</strong>
       <span>{metric?.value === null || metric === undefined ? "" : metric.unit}</span>
     </>
   );
@@ -1059,38 +1084,41 @@ function CandidateRevalidationPanel({
         </div>
         {receipt ? <strong>本次结果 · 未保存</strong> : null}
       </div>
-      <p>只在当前页面内存中重算；刷新页面后丢失。结果禁止正式使用，不是审批，也不会保存证据。</p>
-      <label htmlFor="candidate-revalidation-manual-overrides">手工覆盖 JSON</label>
-      <textarea
-        id="candidate-revalidation-manual-overrides"
-        value={input}
-        onChange={(event) => {
-          setInput(event.target.value);
-          setError(null);
-          onReceipt(null);
-        }}
-        rows={5}
-        spellCheck={false}
-        disabled={pending || !enabled}
-        placeholder={'{"input.adjustment.noninterest.r010":{"value_yi":"0","submitted_evidence_refs":["voucher://..."]}}'}
-      />
-      <small>候选幂等键与证据包键自动取自当前响应，不能在此修改。</small>
-      {!enabled ? (
-        <p className="candidate-indicators__revalidation-error" role="note">
-          演示数据不支持本次核验，请切换真实 API
-        </p>
-      ) : null}
-      <div className="candidate-indicators__revalidation-actions">
-        <button type="button" disabled={pending || !enabled} onClick={() => void run()}>
-          {pending ? "正在核验…" : "运行本次核验（不保存）"}
-        </button>
-        {receipt ? (
-          <button type="button" disabled={pending} onClick={() => onReceipt(null)}>
-            清除本次结果
-          </button>
+      <details className="candidate-indicators__revalidation-detail">
+        <summary>核验工具（不保存，不改变候选结果）</summary>
+        <p>只在当前页面内存中重算；刷新页面后丢失。结果禁止正式使用，不是审批，也不会保存证据。</p>
+        <label htmlFor="candidate-revalidation-manual-overrides">手工覆盖 JSON</label>
+        <textarea
+          id="candidate-revalidation-manual-overrides"
+          value={input}
+          onChange={(event) => {
+            setInput(event.target.value);
+            setError(null);
+            onReceipt(null);
+          }}
+          rows={5}
+          spellCheck={false}
+          disabled={pending || !enabled}
+          placeholder={'{"input.adjustment.noninterest.r010":{"value_yi":"0","submitted_evidence_refs":["voucher://..."]}}'}
+        />
+        <small>候选幂等键与证据包键自动取自当前响应，不能在此修改。</small>
+        {!enabled ? (
+          <p className="candidate-indicators__revalidation-error" role="note">
+            演示数据不支持本次核验，请切换真实 API
+          </p>
         ) : null}
-      </div>
-      {error ? <p className="candidate-indicators__revalidation-error" role="alert">{error}</p> : null}
+        <div className="candidate-indicators__revalidation-actions">
+          <button type="button" disabled={pending || !enabled} onClick={() => void run()}>
+            {pending ? "正在核验…" : "运行本次核验（不保存）"}
+          </button>
+          {receipt ? (
+            <button type="button" disabled={pending} onClick={() => onReceipt(null)}>
+              清除本次结果
+            </button>
+          ) : null}
+        </div>
+        {error ? <p className="candidate-indicators__revalidation-error" role="alert">{error}</p> : null}
+      </details>
     </section>
   );
 }
@@ -1448,13 +1476,15 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
     payload.source_version_impact,
     payload,
   ) ? payload.source_version_impact : null;
-  const displayedView = activeView ?? (
-    sourceVersionImpact?.status === "numerically_unchanged"
-      ? "analysis"
-      : "governance"
-  );
+  /*
+   * 经营观察者优先：默认无条件停在「经营分析」视图。来源未确认/门禁阻断的
+   * 可见性由治理 tab 标签的阻断计数、面板级来源警示条与状态摘要承担（§6），
+   * 不再用「未确认时治理优先」的动态默认把经营读者带进治理视图。
+   */
+  const displayedView = activeView ?? "analysis";
   const mismatchedSources = payload.sources.filter((source) => source.locked_hash_match === false);
   const failedValidations = payload.validations.filter((validation) => !validation.passed);
+  const evidenceTodoCount = failedValidations.length + payload.gaps.length;
   const visibleMetrics = filteredMetrics.slice(0, 50);
   const detailPayload = detailQuery.data?.result;
   const detailMetric = detailPayload?.requested_metric_id === selectedMetricId
@@ -1691,21 +1721,38 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
               {ALIGNMENT_LABELS[payload.source_alignment]} · <code>{payload.source_alignment}</code>
             </small>
           </div>
+          <p
+            className="candidate-indicators__evidence-summary"
+            data-testid="candidate-evidence-summary"
+            data-warning={evidenceTodoCount > 0}
+          >
+            {evidenceTodoCount > 0 ? (
+              <span className="candidate-indicators__evidence-badge" aria-hidden="true" />
+            ) : null}
+            证据 {payload.sources.length} 项 · 待办 {evidenceTodoCount} 项
+          </p>
 
-          <div className="candidate-indicators__source-list">
-            {payload.sources.map((source) => (
-              <SourceEvidenceCard key={source.source_kind} source={source} />
-            ))}
-          </div>
+          <details
+            className="candidate-indicators__evidence-detail"
+            data-testid="candidate-evidence-detail"
+          >
+            <summary>展开来源哈希、缺口与手工输入明细</summary>
 
-          <div className="candidate-indicators__queue">
-            {failedValidations.map((validation) => (
-              <ValidationEvidenceCard key={validation.validation_id} validation={validation} />
-            ))}
-            {payload.gaps.map((gap) => (
-              <GapEvidenceCard key={gap.gap_id} gap={gap} />
-            ))}
-          </div>
+            <div className="candidate-indicators__source-list">
+              {payload.sources.map((source) => (
+                <SourceEvidenceCard key={source.source_kind} source={source} />
+              ))}
+            </div>
+
+            <div className="candidate-indicators__queue">
+              {failedValidations.map((validation) => (
+                <ValidationEvidenceCard key={validation.validation_id} validation={validation} />
+              ))}
+              {payload.gaps.map((gap) => (
+                <GapEvidenceCard key={gap.gap_id} gap={gap} />
+              ))}
+            </div>
+          </details>
         </section>
 
         <section
@@ -1731,23 +1778,26 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
             />
           </label>
           <div className="candidate-indicators__metric-list">
-            {visibleMetrics.map((metric) => (
-              <button
-                key={metric.metric_id}
-                type="button"
-                onClick={(event) => openDetail(metric.metric_id, event)}
-                aria-label={`${metric.name} ${metric.value ?? "无值"} 查看追溯`}
-              >
-                <span>
-                  <strong>{metric.name}</strong>
-                  <code>{metric.metric_id}</code>
-                </span>
-                <span>
-                  <strong>{metric.value ?? EM_DASH}</strong>
-                  <small>{metric.unit} · {STATUS_LABELS[metric.status]}</small>
-                </span>
-              </button>
-            ))}
+            {visibleMetrics.map((metric) => {
+              const { display, full } = metricValueDisplay(metric.value);
+              return (
+                <button
+                  key={metric.metric_id}
+                  type="button"
+                  onClick={(event) => openDetail(metric.metric_id, event)}
+                  aria-label={`${metric.name} ${metric.value ?? "无值"} 查看追溯`}
+                >
+                  <span>
+                    <strong>{metric.name}</strong>
+                    <code>{metric.metric_id}</code>
+                  </span>
+                  <span>
+                    <strong title={full ?? undefined}>{display}</strong>
+                    <small>{metric.unit} · {STATUS_LABELS[metric.status]}</small>
+                  </span>
+                </button>
+              );
+            })}
             {visibleMetrics.length === 0 ? <p>没有匹配的指标。</p> : null}
           </div>
         </section>

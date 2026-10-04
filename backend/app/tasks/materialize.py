@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 from importlib import import_module
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from backend.app.repositories.governance_repo import (
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.materialize import (
     CacheBuildRunRecord,
     CacheManifestRecord,
@@ -78,7 +78,10 @@ def _materialize_cache_view(
     vendor_version = "vv_none"
     materialize_lock = resolve_materialize_lock(duckdb_file)
 
-    with acquire_lock(materialize_lock, base_dir=duckdb_file.parent):
+    with repository_task_write_scope(__name__), acquire_lock(
+        materialize_lock,
+        base_dir=duckdb_file.parent,
+    ):
         repo = GovernanceRepository(base_dir=governance_path)
         conn = duckdb.connect(str(duckdb_file), read_only=False)
         snapshot_ready = False
@@ -143,8 +146,7 @@ def _materialize_cache_view(
                     preview_sources=[str(summary["source_family"]) for summary in preview_summaries],
                     vendor_version=vendor_version,
                 ).model_dump()
-            except Exception:  # noqa: BLE001  # 构建失败顶层兜底：落败迹、恢复快照后原样重抛，无吞错
-                original_error = sys.exc_info()[1]
+            except Exception as original_error:  # noqa: BLE001  # 构建失败顶层兜底：落败迹、恢复快照后原样重抛，无吞错
                 conn.execute(
                     "update phase1_materialize_runs set status = ? where run_id = ?",
                     ["failed", run_id],

@@ -49,6 +49,7 @@ const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
 
 function kpiSourceLabel(kpi: ResolvedCrossAssetKpi | undefined) {
   if (!kpi) return "缺失";
+  if (kpi.missingNote) return kpi.missingNote;
   const vendorName = kpi.vendorName?.trim();
   const normalizedVendorName = vendorName?.toLowerCase();
   if (normalizedVendorName === "choice") return "Choice";
@@ -146,10 +147,10 @@ export function CrossAssetEvidenceGroups({ kpis }: { kpis: ResolvedCrossAssetKpi
     <section className="cross-asset-evidence-groups cross-asset-evidence-ledger" data-testid="cross-asset-evidence-groups">
       <header className="cross-asset-evidence-ledger__head">
         <div>
-          <span>指标矩阵加工台</span>
-          <strong>四列因子、分位、来源一次扫完</strong>
+          <span>指标明细</span>
+          <strong>因子、分位与来源</strong>
         </div>
-        <em>{ledgerRows.length} 项指标 · {groupRows.length} 个因子桶</em>
+        <em>{ledgerRows.length} 项指标 · {groupRows.length} 组因子</em>
       </header>
       <div className="cross-asset-evidence-groups__grid cross-asset-evidence-ledger__layout" data-testid="cross-asset-kpi-band">
         <div className="cross-asset-evidence-ledger__matrix-grid" data-testid="cross-asset-kpi-ledger-table">

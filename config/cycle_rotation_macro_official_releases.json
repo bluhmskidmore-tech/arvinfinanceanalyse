@@ -1,5 +1,5 @@
 {
-  "manifest_version": "2026-07-23.cycle-rotation-official-releases.v3",
+  "manifest_version": "2026-09-16.cycle-rotation-official-releases.v6",
   "policy_note": "Pinned official release artifacts for governed macro backfill previews; update only after source and hash review.",
   "releases": [
     {
@@ -13,6 +13,40 @@
       "latest_period": "2026-06-01",
       "covered_period_start": "2025-06-01",
       "covered_period_end": "2026-06-01",
+      "sheet_name": "制造业",
+      "value_header": "PMI",
+      "source_unit": "%",
+      "target_unit": "index",
+      "value_transform": "identity_percentage_points_to_index_points"
+    },
+    {
+      "source": "nbs_pmi_release",
+      "series_id": "M0017126",
+      "series_name": "制造业PMI",
+      "release_url": "https://www.stats.gov.cn/sj/zxfbhjd/202607/t20260731_1964253.html",
+      "artifact_url": "https://www.stats.gov.cn/sj/zxfbhjd/202607/P020260731315109638783.xls",
+      "published_at": "2026-07-31T09:30:00+08:00",
+      "artifact_sha256": "219d1969446935565682bc795646848f2a5b21215ab0096000fcd2bd2779fe38",
+      "latest_period": "2026-07-01",
+      "covered_period_start": "2025-07-01",
+      "covered_period_end": "2026-07-01",
+      "sheet_name": "制造业",
+      "value_header": "PMI",
+      "source_unit": "%",
+      "target_unit": "index",
+      "value_transform": "identity_percentage_points_to_index_points"
+    },
+    {
+      "source": "nbs_pmi_release",
+      "series_id": "M0017126",
+      "series_name": "制造业PMI",
+      "release_url": "https://www.stats.gov.cn/sj/zxfb/202608/t20260831_1965154.html",
+      "artifact_url": "https://www.stats.gov.cn/sj/zxfb/202608/P020260831316826769515.xls",
+      "published_at": "2026-08-31T09:30:00+08:00",
+      "artifact_sha256": "7ac612fa42b562fa27b4212d6b43b31fa9c0fd14e6a563bd5f385e735b629a2f",
+      "latest_period": "2026-08-01",
+      "covered_period_start": "2025-08-01",
+      "covered_period_end": "2026-08-01",
       "sheet_name": "制造业",
       "value_header": "PMI",
       "source_unit": "%",
@@ -125,6 +159,82 @@
       "artifact_sha256": "9ebce7e21c93d92980814be8f754dcc255ebe29dbbdf2531973e09361832c168",
       "release_title": "2026年上半年金融统计数据报告",
       "report_month": "2026-06",
+      "source_unit": "%",
+      "target_unit": "%",
+      "value_transform": "identity_percentage_points",
+      "field_mappings": {
+        "M5525763": "社会融资规模存量:同比",
+        "M0001385": "广义货币M2:同比"
+      }
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M5525763",
+      "series_name": "社会融资规模存量:同比",
+      "release_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026081416320925645/index.html",
+      "artifact_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026081416320925645/index.html",
+      "published_at": "2026-08-14T16:30:05+08:00",
+      "available_at": "2026-08-14T16:32:18+08:00",
+      "artifact_sha256": "933f3546fc3f8232014dc9e2cab854a331ff5da5a9509d3063ada2d3678dfcef",
+      "release_title": "2026年7月金融统计数据报告",
+      "report_month": "2026-07",
+      "source_unit": "%",
+      "target_unit": "%",
+      "value_transform": "identity_percentage_points",
+      "field_mappings": {
+        "M5525763": "社会融资规模存量:同比",
+        "M0001385": "广义货币M2:同比"
+      }
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M0001385",
+      "series_name": "M2:同比",
+      "release_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026081416320925645/index.html",
+      "artifact_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026081416320925645/index.html",
+      "published_at": "2026-08-14T16:30:05+08:00",
+      "available_at": "2026-08-14T16:32:18+08:00",
+      "artifact_sha256": "933f3546fc3f8232014dc9e2cab854a331ff5da5a9509d3063ada2d3678dfcef",
+      "release_title": "2026年7月金融统计数据报告",
+      "report_month": "2026-07",
+      "source_unit": "%",
+      "target_unit": "%",
+      "value_transform": "identity_percentage_points",
+      "field_mappings": {
+        "M5525763": "社会融资规模存量:同比",
+        "M0001385": "广义货币M2:同比"
+      }
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M5525763",
+      "series_name": "社会融资规模存量:同比",
+      "release_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026091417020862747/index.html",
+      "artifact_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026091417020862747/index.html",
+      "published_at": "2026-09-14T17:00:00+08:00",
+      "available_at": "2026-09-14T17:02:09+08:00",
+      "artifact_sha256": "2be3b50ac4c72068c9b17e28b184cb2186b3f6a6ffe606c2a5b58334bf642998",
+      "release_title": "2026年8月金融统计数据报告",
+      "report_month": "2026-08",
+      "source_unit": "%",
+      "target_unit": "%",
+      "value_transform": "identity_percentage_points",
+      "field_mappings": {
+        "M5525763": "社会融资规模存量:同比",
+        "M0001385": "广义货币M2:同比"
+      }
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M0001385",
+      "series_name": "M2:同比",
+      "release_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026091417020862747/index.html",
+      "artifact_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026091417020862747/index.html",
+      "published_at": "2026-09-14T17:00:00+08:00",
+      "available_at": "2026-09-14T17:02:09+08:00",
+      "artifact_sha256": "2be3b50ac4c72068c9b17e28b184cb2186b3f6a6ffe606c2a5b58334bf642998",
+      "release_title": "2026年8月金融统计数据报告",
+      "report_month": "2026-08",
       "source_unit": "%",
       "target_unit": "%",
       "value_transform": "identity_percentage_points",

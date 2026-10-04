@@ -1,12 +1,19 @@
 import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../../api/contracts";
-import { createLineChartOption } from "../../../../components/charts/chartTheme";
+import { nocturneChartTheme } from "../../../../components/charts/chartTheme";
 import type { EChartsOption } from "../../../../lib/echarts";
-import { nocturneTokens } from "../../../../theme/designSystem";
+import { seriesDisplayName } from "../marketDataFormat";
 import { buildMarketDataChartTooltip, marketDataChartTheme } from "./marketDataChartTheme";
+
+/*
+ * 市场数据页是 Nocturne scope（DESIGN 结论 8/12）：基底改走 nocturneChartTheme，原先用的
+ * 共享别名 createLineChartOption 是 IB 浅色默认，未被 marketDataChartTheme 覆盖的字段
+ * （全局 textStyle、tooltip 底色等）会以浅色 ink 落进深色画布。
+ */
+const { createLineChartOption } = nocturneChartTheme;
 
 export type MarketDataSeriesTimeInput = Pick<
   ChoiceMacroLatestPoint,
-  "series_id" | "series_name" | "unit" | "recent_points" | "quality_flag"
+  "series_id" | "series_name" | "display_name" | "unit" | "recent_points" | "quality_flag"
 >;
 
 /** 多系列时默认点亮的主系列数量；其余进图例（legend.selected=false），可点开关。 */
@@ -67,11 +74,17 @@ function buildDateCategoryAxis(categories: string[], axisLabel: object) {
 
 function buildCompactValueAxis(
   axisLabel: object,
-  options: { unitName?: string; splitNumber?: number } = {},
+  options: {
+    unitName?: string;
+    splitNumber?: number;
+    position?: "left" | "right";
+    showSplitLine?: boolean;
+  } = {},
 ) {
   return {
     type: "value" as const,
     scale: true,
+    ...(options.position ? { position: options.position } : {}),
     ...(options.unitName !== undefined
       ? {
           name: options.unitName,
@@ -84,7 +97,8 @@ function buildCompactValueAxis(
       : {}),
     splitNumber: options.splitNumber ?? 4,
     axisLabel: { ...axisLabel, formatter: formatMarketDataAxisValue },
-    splitLine: marketDataChartTheme.splitLine,
+    // 双轴时次轴不画分割线，避免两套网格线互相干扰。
+    splitLine: options.showSplitLine === false ? { show: false as const } : marketDataChartTheme.splitLine,
   };
 }
 
@@ -118,9 +132,7 @@ export function buildMarketDataSeriesTimeChartOption(
   const isSheetVariant = options.variant === "sheet";
   const categories = timeline.map((point) => point.trade_date);
   const values = timeline.map((point) => point.value_numeric);
-  const unit = series.unit?.trim() || undefined;
-  const qualityNote =
-    series.quality_flag && series.quality_flag !== "ok" ? ` · 质量 ${series.quality_flag}` : "";
+  const unit = displayAxisUnit(series.unit) || undefined;
   const axisLabel = isSheetVariant
     ? { ...marketDataChartTheme.axisLabel, fontSize: 10, fontWeight: 600 }
     : marketDataChartTheme.axisLabel;
@@ -128,22 +140,14 @@ export function buildMarketDataSeriesTimeChartOption(
 
   return createLineChartOption({
     color: [lineColor],
-    title: isSheetVariant
-      ? undefined
-      : {
-          text: `${series.series_name}${qualityNote}`,
-          left: 0,
-          top: 0,
-          textStyle: marketDataChartTheme.titleMuted,
-        },
     tooltip: buildMarketDataChartTooltip({
       trigger: "axis",
       axisPointer: marketDataChartTheme.axisPointerLine,
     }),
     legend: undefined,
     grid: isSheetVariant
-      ? { left: 8, right: 12, top: 10, bottom: 6, containLabel: true }
-      : { left: 8, right: 12, top: 32, bottom: 8, containLabel: true },
+      ? { left: 8, right: 12, top: 10 }
+      : { left: 8, right: 12, top: 32 },
     xAxis: buildDateCategoryAxis(categories, axisLabel),
     yAxis: buildCompactValueAxis(axisLabel, {
       unitName: isSheetVariant ? "" : unit,
@@ -151,7 +155,7 @@ export function buildMarketDataSeriesTimeChartOption(
     }),
     series: [
       {
-        name: series.series_name,
+        name: seriesDisplayName(series),
         type: "line",
         smooth: true,
         symbol: "circle",
@@ -167,6 +171,91 @@ export function buildMarketDataSeriesTimeChartOption(
   });
 }
 
+/** 同 unit 序列共轴时允许的最大数量级跨度：最大/最小代表值超过 100 倍则拆轴。 */
+export const MARKET_DATA_MULTI_SERIES_MAGNITUDE_SPAN = 100;
+/** 多系列图最多保留两根 Y 轴（左/右）；聚类更多时只画序列数最多的前两组。 */
+const MARKET_DATA_MULTI_SERIES_MAX_AXES = 2;
+
+type MultiSeriesAxisMember = {
+  input: MarketDataSeriesTimeInput;
+  index: number;
+  magnitude: number;
+};
+
+type MultiSeriesAxisCluster = {
+  unitLabel: string;
+  firstIndex: number;
+  items: MultiSeriesAxisMember[];
+};
+
+/**
+ * 轴名显示用 unit：后端未定义单位时事实表会下发字面量 "unknown"/"pending"，
+ * 这类占位值不是单位，轴名留空（分簇仍按原始 unit 分组，数量级兜底拆轴）。
+ */
+export function displayAxisUnit(unit: string | null | undefined): string {
+  const trimmed = unit?.trim() ?? "";
+  const lowered = trimmed.toLowerCase();
+  if (lowered === "unknown" || lowered === "pending") {
+    return "";
+  }
+  return trimmed;
+}
+
+/** 序列的数量级代表值：近期点的最大绝对值。 */
+function seriesMagnitude(input: MarketDataSeriesTimeInput): number {
+  let max = 0;
+  for (const point of input.recent_points ?? []) {
+    const abs = Math.abs(point.value_numeric);
+    if (Number.isFinite(abs) && abs > max) {
+      max = abs;
+    }
+  }
+  return max;
+}
+
+/**
+ * Y 轴聚类：不同 unit 一律不共轴；同 unit 内按数量级升序贪心分簇，
+ * 跨度超过 `MARKET_DATA_MULTI_SERIES_MAGNITUDE_SPAN` 时另起一簇。
+ * 返回按「序列数多者优先、并列按出现顺序」排序的簇列表。
+ */
+function clusterSeriesByAxis(usable: MarketDataSeriesTimeInput[]): MultiSeriesAxisCluster[] {
+  const byUnit = new Map<string, MultiSeriesAxisMember[]>();
+  usable.forEach((input, index) => {
+    const unitLabel = input.unit?.trim() ?? "";
+    const members = byUnit.get(unitLabel) ?? [];
+    members.push({ input, index, magnitude: seriesMagnitude(input) });
+    byUnit.set(unitLabel, members);
+  });
+
+  const clusters: MultiSeriesAxisCluster[] = [];
+  for (const [unitLabel, members] of byUnit) {
+    const sorted = [...members].sort((left, right) => left.magnitude - right.magnitude);
+    let current: MultiSeriesAxisCluster | null = null;
+    let currentBase = 0;
+    for (const member of sorted) {
+      const fitsCurrent =
+        current !== null &&
+        (currentBase === 0 ||
+          member.magnitude <= currentBase * MARKET_DATA_MULTI_SERIES_MAGNITUDE_SPAN);
+      if (current && fitsCurrent) {
+        current.items.push(member);
+        current.firstIndex = Math.min(current.firstIndex, member.index);
+        if (currentBase === 0) {
+          currentBase = member.magnitude;
+        }
+      } else {
+        current = { unitLabel, firstIndex: member.index, items: [member] };
+        currentBase = member.magnitude;
+        clusters.push(current);
+      }
+    }
+  }
+
+  return clusters.sort(
+    (left, right) => right.items.length - left.items.length || left.firstIndex - right.firstIndex,
+  );
+}
+
 export function buildMarketDataMultiSeriesTimeChartOption(
   seriesList: MarketDataSeriesTimeInput[],
 ): EChartsOption | null {
@@ -175,30 +264,34 @@ export function buildMarketDataMultiSeriesTimeChartOption(
     return null;
   }
 
+  // 数量级/单位聚类：最多两簇上图（左/右轴），其余序列不入图（仍留在卡内表格），
+  // 避免千亿级投放量把 1.4% 的 SHIBOR 压成贴地直线。
+  const axisClusters = clusterSeriesByAxis(usable).slice(0, MARKET_DATA_MULTI_SERIES_MAX_AXES);
+  const charted = axisClusters
+    .flatMap((cluster, axisIndex) => cluster.items.map((member) => ({ ...member, axisIndex })))
+    .sort((left, right) => left.index - right.index);
+  const isDualAxis = axisClusters.length > 1;
+
   const dateSet = new Set<string>();
-  const timelines = usable.map((item) => {
-    const map = new Map<string, number>();
-    for (const point of sortedRecentPoints(item.recent_points)) {
-      map.set(point.trade_date, point.value_numeric);
+  const timelineByMember = new Map<number, Map<string, number>>();
+  for (const member of charted) {
+    const timeline = new Map<string, number>();
+    for (const point of sortedRecentPoints(member.input.recent_points)) {
+      timeline.set(point.trade_date, point.value_numeric);
       dateSet.add(point.trade_date);
     }
-    return map;
-  });
+    timelineByMember.set(member.index, timeline);
+  }
   const categories = [...dateSet].sort((left, right) => left.localeCompare(right));
   const legendSelected =
-    usable.length > MARKET_DATA_MULTI_SERIES_DEFAULT_VISIBLE
+    charted.length > MARKET_DATA_MULTI_SERIES_DEFAULT_VISIBLE
       ? Object.fromEntries(
-          usable.map((item, index) => [
-            item.series_name,
-            index < MARKET_DATA_MULTI_SERIES_DEFAULT_VISIBLE,
+          charted.map((member, order) => [
+            seriesDisplayName(member.input),
+            order < MARKET_DATA_MULTI_SERIES_DEFAULT_VISIBLE,
           ]),
         )
       : undefined;
-  // plain 图例在窄卡（约 320-360px）实测每行只放得下 2 项，按 2 项/行预留底部，
-  // 行数封顶 4 行防止极端多系列把绘图区吃光（其余交给图例开关与 tooltip）。
-  const legendRows = Math.min(4, Math.max(1, Math.ceil(usable.length / 2)));
-  const legendReservedBottom = 10 + legendRows * 18;
-
   return createLineChartOption({
     color: marketDataChartTheme.multiSeriesPalette,
     tooltip: buildMarketDataChartTooltip({
@@ -207,29 +300,35 @@ export function buildMarketDataMultiSeriesTimeChartOption(
       valueFormatter: (value: unknown) => (typeof value === "number" ? value.toFixed(2) : String(value)),
     }),
     legend: {
-      type: "plain",
-      bottom: 0,
-      itemWidth: 12,
-      itemHeight: 8,
-      itemGap: 12,
-      textStyle: {
-        color: nocturneTokens.color.inkSoft,
-        fontSize: 11,
-        overflow: "truncate",
-        width: 96,
-      },
       ...(legendSelected ? { selected: legendSelected } : {}),
     },
-    grid: { left: 8, right: 12, top: 16, bottom: legendReservedBottom, containLabel: true },
+    // 双轴时顶部留出轴名（unit）的空间。
+    grid: {
+      left: 8,
+      right: 12,
+      top: isDualAxis ? 30 : 16,
+    },
     xAxis: buildDateCategoryAxis(categories, marketDataChartTheme.axisLabel),
-    yAxis: buildCompactValueAxis(marketDataChartTheme.axisLabel, { splitNumber: 4 }),
+    yAxis: isDualAxis
+      ? axisClusters.map((cluster, axisIndex) =>
+          buildCompactValueAxis(marketDataChartTheme.axisLabel, {
+            splitNumber: 4,
+            unitName: displayAxisUnit(cluster.unitLabel),
+            ...(axisIndex > 0 ? { position: "right" as const, showSplitLine: false } : {}),
+          }),
+        )
+      : buildCompactValueAxis(marketDataChartTheme.axisLabel, { splitNumber: 4 }),
     // 系列只用颜色区分（虚线保留给「预测/代理」语义，当前多系列无此语义）。
-    series: usable.map((item, index) => {
-      const color = marketDataChartTheme.multiSeriesPalette[index % marketDataChartTheme.multiSeriesPalette.length]!;
-      const isPrimary = index === 0;
+    // connectNulls=true 是混频序列（月度点落在日度时间轴上）的成图前提；
+    // 序列覆盖窗口不足产生的首尾缺口不会被连接，属于如实展示。
+    series: charted.map((member, order) => {
+      const color =
+        marketDataChartTheme.multiSeriesPalette[order % marketDataChartTheme.multiSeriesPalette.length]!;
+      const isPrimary = order === 0;
       return {
-        name: item.series_name,
+        name: seriesDisplayName(member.input),
         type: "line" as const,
+        yAxisIndex: member.axisIndex,
         smooth: true,
         symbol: "circle",
         symbolSize: 5,
@@ -246,7 +345,7 @@ export function buildMarketDataMultiSeriesTimeChartOption(
         },
         areaStyle: isPrimary ? buildSoftAreaGradient(color) : undefined,
         emphasis: { focus: "series" as const },
-        data: categories.map((date) => timelines[index]?.get(date) ?? null),
+        data: categories.map((date) => timelineByMember.get(member.index)?.get(date) ?? null),
       };
     }),
   });

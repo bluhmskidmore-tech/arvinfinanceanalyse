@@ -20,7 +20,12 @@ type FormalResultMetaPanelProps = {
 };
 
 /* 缺值占位统一 EM_DASH（§6）；「后端未提供」的语义差异收进 title。 */
-const missingAsOfDateTitle = "后端未提供数据截至日";
+const missingAsOfDateTitle = "尚未提供数据截至日";
+
+/* 两个时间戳回答不同问题，标签相近，易被读成同一件事，故各自收 title。 */
+const generatedAtTitle = "本次响应的组装时刻，不代表数据新鲜度";
+const dataBuiltAtTitle = "数据物化完成时刻（治理流 cache_build_run.finished_at）";
+const missingDataBuiltAtTitle = "本结果未解析到已完成的物化构建终态";
 
 function formatValue(value: unknown): string {
   if (value === null || value === undefined || value === "") {
@@ -42,6 +47,39 @@ function isMissingAsOfDate(value: ResultMeta["as_of_date"]): boolean {
   return value === null || value === undefined || value === "";
 }
 
+/*
+ * 版本 / 追踪标识属于证据层（§6）。个别读模型（如 adb.insights）把几百个来源版本用
+ * "__" 拼成一个 source_version，原样铺开会在页面里长出几千像素的哈希墙。超过阈值的
+ * 标识默认只显示首段 + 计数，全文收进可展开区，且展开区自身限高滚动。
+ */
+const LONG_IDENTIFIER_THRESHOLD = 120;
+const COMPOSITE_IDENTIFIER_SEPARATOR = "__";
+
+function summarizeLongIdentifier(text: string): string | null {
+  if (text.length <= LONG_IDENTIFIER_THRESHOLD) {
+    return null;
+  }
+  const parts = text.split(COMPOSITE_IDENTIFIER_SEPARATOR).filter(Boolean);
+  if (parts.length > 1) {
+    return `${parts[0]} 等 ${parts.length} 项`;
+  }
+  return `${text.slice(0, 48)}…（共 ${text.length} 字符）`;
+}
+
+function IdentifierValue({ value }: { value: unknown }) {
+  const text = formatValue(value);
+  const summary = summarizeLongIdentifier(text);
+  if (summary === null) {
+    return <>{text}</>;
+  }
+  return (
+    <details className="formal-result-meta-panel__long-value">
+      <summary className="formal-result-meta-panel__long-value-summary">{summary}</summary>
+      <code className="formal-result-meta-panel__long-value-body">{text}</code>
+    </details>
+  );
+}
+
 function formatMetaField(key: string, value: unknown): string {
   if (key === "basis") {
     if (value === "formal") return "正式口径";
@@ -54,7 +92,7 @@ function formatMetaField(key: string, value: unknown): string {
       ok: "正常",
       warning: "预警",
       error: "错误",
-      stale: "陈旧",
+      stale: "已过期",
       missing: "缺失",
     };
     if (typeof value === "string" && labels[value]) return labels[value];
@@ -62,14 +100,14 @@ function formatMetaField(key: string, value: unknown): string {
   if (key === "vendor_status") {
     const labels: Record<string, string> = {
       ok: "正常",
-      vendor_stale: "供应商陈旧",
-      vendor_unavailable: "供应商不可用",
+      vendor_stale: "数据源更新延迟",
+      vendor_unavailable: "数据源暂不可用",
     };
     if (typeof value === "string" && labels[value]) return labels[value];
   }
   if (key === "fallback_mode") {
-    if (value === "none") return "未降级";
-    if (value === "latest_snapshot") return "最新快照降级";
+    if (value === "none") return "使用所选日期数据";
+    if (value === "latest_snapshot") return "使用最近可用数据";
   }
   return formatValue(value);
 }
@@ -77,13 +115,13 @@ function formatMetaField(key: string, value: unknown): string {
 const metaLabelMap: Record<string, string> = {
   basis: "口径",
   result_kind: "结果类型",
-  formal_use_allowed: "正式可用",
-  scenario_flag: "情景标记",
-  quality_flag: "质量标记",
-  vendor_status: "供应商状态",
-  fallback_mode: "降级模式",
-  requested_report_date: "请求报告日",
-  resolved_report_date: "解析报告日",
+  formal_use_allowed: "使用范围",
+  scenario_flag: "情景测算",
+  quality_flag: "数据质量",
+  vendor_status: "数据来源状态",
+  fallback_mode: "数据日期说明",
+  requested_report_date: "所选报告日",
+  resolved_report_date: "实际报告日",
   trace_id: "追踪编号",
   source_version: "来源版本",
   vendor_version: "供应商版本",
@@ -91,8 +129,9 @@ const metaLabelMap: Record<string, string> = {
   cache_version: "缓存版本",
   as_of_date: "数据截至日",
   date_basis: "日期基准",
-  fallback_date: "降级日期",
-  generated_at: "生成时间",
+  fallback_date: "替代数据日期",
+  generated_at: "响应生成时间",
+  data_built_at: "数据物化时间",
   tables_used: "使用表",
   filters_applied: "应用筛选",
   evidence_rows: "证据行数",
@@ -109,24 +148,27 @@ function hasEvidence(meta: ResultMeta) {
 }
 
 /**
- * 徽章色经 CSS 变量出口（回退值 = 原浅色字面量，浅色页面零变化），
- * 深色页面可在自身 scope 内重定义 --formal-meta-badge-* 完成换肤。
+ * 徽章色三级出口：页面 scope 可重定义 --formal-meta-badge-*；未定义时取 Nocturne 语义链
+ * --dh-api-*；再无深色上下文才落到原浅色字面量。
+ *
+ * ok 态按 DESIGN.md 结论 17「常态收声、异常才亮」走中性 panel-2 / muted，不再是绿徽标：
+ * 「质量正常 / 供应商正常 / 未降级」是常态，只有 warn / danger 才用语义色发声。
  */
 const badgeToneFallbacks = {
   ok: {
-    bg: t.colorBgSuccessSoft,
-    ink: dt.color.success[700],
-    line: dt.color.success[200],
+    bg: `var(--dh-api-panel-2, ${t.colorBgSuccessSoft})`,
+    ink: `var(--dh-api-muted, ${dt.color.success[700]})`,
+    line: `var(--dh-api-line, ${dt.color.success[200]})`,
   },
   warn: {
-    bg: t.colorBgWarningSoft,
-    ink: t.colorTextWarning,
-    line: t.colorBorderWarning,
+    bg: `var(--dh-api-amber-soft, ${t.colorBgWarningSoft})`,
+    ink: `var(--dh-api-amber, ${t.colorTextWarning})`,
+    line: `var(--dh-api-amber-soft, ${t.colorBorderWarning})`,
   },
   danger: {
-    bg: t.colorBgDangerSoft,
-    ink: dt.color.danger[700],
-    line: dt.color.danger[200],
+    bg: `var(--dh-api-red-soft, ${t.colorBgDangerSoft})`,
+    ink: `var(--dh-api-red, ${dt.color.danger[700]})`,
+    line: `var(--dh-api-red-soft, ${dt.color.danger[200]})`,
   },
 } as const;
 
@@ -188,22 +230,22 @@ function buildBadges(section: FormalResultMetaSection) {
       value: vendorStatus,
       tone: vendorStatusToneKey(vendorStatus),
       label: formatMetaField("vendor_status", vendorStatus),
-      title: `供应商状态：${formatMetaField("vendor_status", vendorStatus)}`,
+      title: `数据来源状态：${formatMetaField("vendor_status", vendorStatus)}`,
     },
     {
       key: "fallback_mode",
       value: fallbackMode,
       tone: fallbackModeToneKey(fallbackMode),
       label: formatMetaField("fallback_mode", fallbackMode),
-      title: `降级模式：${formatMetaField("fallback_mode", fallbackMode)}`,
+      title: `数据日期说明：${formatMetaField("fallback_mode", fallbackMode)}`,
     },
-  ].filter((badge) => typeof badge.value === "string");
+  ].filter((badge) => typeof badge.value === "string" && badge.tone !== "ok");
 }
 
 export function FormalResultMetaPanel({
   testId,
-  title = "结果元信息 / 证据",
-  emptyText = "当前还没有可展示的溯源信封。",
+  title = "数据说明",
+  emptyText = "暂无数据说明，请在数据加载后查看。",
   sections,
 }: FormalResultMetaPanelProps) {
   const visibleSections = sections.filter((section) => section.meta);
@@ -212,7 +254,7 @@ export function FormalResultMetaPanel({
     <section data-testid={testId} className="formal-result-meta-panel">
       <div className="formal-result-meta-panel__title">{title}</div>
       <div className="formal-result-meta-panel__subtitle">
-        展示当前读链路返回的口径、版本、质量与可选证据字段；页面不在前端补算正式指标。
+        查看数据日期、使用范围和质量提示。
       </div>
 
       {visibleSections.length === 0 ? (
@@ -231,7 +273,6 @@ export function FormalResultMetaPanel({
                 data-testid={`${testId}-${section.key}`}
                 className="formal-result-meta-panel__card"
               >
-                <div className="formal-result-meta-panel__label">溯源</div>
                 <div className="formal-result-meta-panel__card-header">
                   <div className="formal-result-meta-panel__heading">{section.title}</div>
                   {badges.length > 0 ? (
@@ -252,10 +293,14 @@ export function FormalResultMetaPanel({
                 <dl className="formal-result-meta-panel__list">
                   <dt>{metaLabelMap.basis}</dt>
                   <dd className="formal-result-meta-panel__value">{formatMetaField("basis", meta.basis)}</dd>
-                  <dt>{metaLabelMap.result_kind}</dt>
-                  <dd className="formal-result-meta-panel__value">{formatValue(meta.result_kind)}</dd>
                   <dt>{metaLabelMap.formal_use_allowed}</dt>
-                  <dd className="formal-result-meta-panel__value">{formatValue(meta.formal_use_allowed)}</dd>
+                  <dd className="formal-result-meta-panel__value">
+                    {meta.formal_use_allowed === true
+                      ? "已获准正式使用"
+                      : meta.formal_use_allowed === false
+                        ? "仅供分析，尚未获准正式使用"
+                        : "正式使用状态待确认"}
+                  </dd>
                   <dt>{metaLabelMap.scenario_flag}</dt>
                   <dd className="formal-result-meta-panel__value">{formatValue(meta.scenario_flag)}</dd>
                   <dt>{metaLabelMap.quality_flag}</dt>
@@ -270,16 +315,6 @@ export function FormalResultMetaPanel({
                   <dd className="formal-result-meta-panel__value">
                     {formatMetaField("fallback_mode", fallbackMode)}
                   </dd>
-                  <dt>{metaLabelMap.trace_id}</dt>
-                  <dd className="formal-result-meta-panel__value">{formatValue(meta.trace_id)}</dd>
-                  <dt>{metaLabelMap.source_version}</dt>
-                  <dd className="formal-result-meta-panel__value">{formatValue(meta.source_version)}</dd>
-                  <dt>{metaLabelMap.vendor_version}</dt>
-                  <dd className="formal-result-meta-panel__value">{formatValue(meta.vendor_version)}</dd>
-                  <dt>{metaLabelMap.rule_version}</dt>
-                  <dd className="formal-result-meta-panel__value">{formatValue(meta.rule_version)}</dd>
-                  <dt>{metaLabelMap.cache_version}</dt>
-                  <dd className="formal-result-meta-panel__value">{formatValue(meta.cache_version)}</dd>
                   <dt>{metaLabelMap.requested_report_date}</dt>
                   <dd className="formal-result-meta-panel__value">{formatValue(meta.requested_report_date)}</dd>
                   <dt>{metaLabelMap.resolved_report_date}</dt>
@@ -291,12 +326,49 @@ export function FormalResultMetaPanel({
                   >
                     {formatValue(meta.as_of_date)}
                   </dd>
-                  <dt>{metaLabelMap.date_basis}</dt>
-                  <dd className="formal-result-meta-panel__value">{formatValue(meta.date_basis)}</dd>
                   <dt>{metaLabelMap.fallback_date}</dt>
                   <dd className="formal-result-meta-panel__value">{formatValue(meta.fallback_date)}</dd>
+                </dl>
+                <details className="formal-result-meta-panel__diagnostics">
+                  <summary>技术诊断</summary>
+                  <dl className="formal-result-meta-panel__list">
+                  <dt>{metaLabelMap.result_kind}</dt>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.result_kind)}</dd>
+                  <dt>正式使用标识</dt>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.formal_use_allowed)}</dd>
+                  <dt>{metaLabelMap.trace_id}</dt>
+                  <dd className="formal-result-meta-panel__value">
+                    <IdentifierValue value={meta.trace_id} />
+                  </dd>
+                  <dt>{metaLabelMap.source_version}</dt>
+                  <dd className="formal-result-meta-panel__value">
+                    <IdentifierValue value={meta.source_version} />
+                  </dd>
+                  <dt>{metaLabelMap.vendor_version}</dt>
+                  <dd className="formal-result-meta-panel__value">
+                    <IdentifierValue value={meta.vendor_version} />
+                  </dd>
+                  <dt>{metaLabelMap.rule_version}</dt>
+                  <dd className="formal-result-meta-panel__value">
+                    <IdentifierValue value={meta.rule_version} />
+                  </dd>
+                  <dt>{metaLabelMap.cache_version}</dt>
+                  <dd className="formal-result-meta-panel__value">
+                    <IdentifierValue value={meta.cache_version} />
+                  </dd>
+                  <dt>{metaLabelMap.date_basis}</dt>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.date_basis)}</dd>
+                  <dt>{metaLabelMap.data_built_at}</dt>
+                  <dd
+                    className="formal-result-meta-panel__value"
+                    title={meta.data_built_at ? dataBuiltAtTitle : missingDataBuiltAtTitle}
+                  >
+                    {formatValue(meta.data_built_at)}
+                  </dd>
                   <dt>{metaLabelMap.generated_at}</dt>
-                  <dd className="formal-result-meta-panel__value">{formatValue(meta.generated_at)}</dd>
+                  <dd className="formal-result-meta-panel__value" title={generatedAtTitle}>
+                    {formatValue(meta.generated_at)}
+                  </dd>
                   {hasEvidence(meta) ? (
                     <>
                       <dt>{metaLabelMap.tables_used}</dt>
@@ -309,7 +381,8 @@ export function FormalResultMetaPanel({
                       <dd className="formal-result-meta-panel__value">{formatValue(meta.next_drill)}</dd>
                     </>
                   ) : null}
-                </dl>
+                  </dl>
+                </details>
               </article>
             );
           })}

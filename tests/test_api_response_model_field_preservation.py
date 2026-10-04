@@ -25,6 +25,7 @@ from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -38,6 +39,12 @@ from tests.test_bond_dashboard_api_contract import (
 
 BUNDLE_SECTIONS = "headline-kpis,risk-indicators,yield-distribution,industry-distribution"
 GOLDEN_SAMPLES_DIR = Path(__file__).resolve().parent / "golden_samples"
+_RISK_MATURITY_BREAKDOWN_FIELDS = (
+    "fund_no_maturity_market_value", "fund_no_maturity_count",
+    "unknown_maturity_market_value", "unknown_maturity_count",
+    "matured_outstanding_market_value", "matured_outstanding_count",
+    "nonpositive_duration_market_value", "nonpositive_duration_count",
+)
 
 
 def field_paths(value: Any, prefix: str = "") -> set[str]:
@@ -270,11 +277,9 @@ def test_risk_tensor_response_model_preserves_every_service_field(tmp_path, monk
     get_settings.cache_clear()
 
 
-def _registered_routes() -> dict[tuple[str, str], Any]:
+def _registered_routes() -> dict[tuple[str, str], APIRoute]:
     """`(METHOD, path) -> APIRoute` for the whole registered API surface."""
     import importlib
-
-    from fastapi.routing import APIRoute
 
     api_module = importlib.import_module("backend.app.api")
     app = FastAPI()
@@ -287,10 +292,10 @@ def _registered_routes() -> dict[tuple[str, str], Any]:
     }
 
 
-def _golden_samples_with_response_models() -> list[tuple[str, Any, dict[str, Any]]]:
+def _golden_samples_with_response_models() -> list[tuple[str, APIRoute, dict[str, Any]]]:
     """Captured real responses for endpoints that now declare a `response_model`."""
     routes = _registered_routes()
-    cases: list[tuple[str, Any, dict[str, Any]]] = []
+    cases: list[tuple[str, APIRoute, dict[str, Any]]] = []
     for request_path in sorted(GOLDEN_SAMPLES_DIR.glob("*/request.json")):
         response_path = request_path.with_name("response.json")
         if not response_path.exists():
@@ -306,11 +311,59 @@ def _golden_samples_with_response_models() -> list[tuple[str, Any, dict[str, Any
         cases.append(
             (
                 request_path.parent.name,
-                route.response_model,
+                route,
                 json.loads(response_path.read_text(encoding="utf-8")),
             )
         )
     return cases
+
+
+def _verified_legacy_risk_disclosure_paths(
+    model_name: str, captured: dict[str, Any], served: dict[str, Any],
+) -> set[str]:
+    """Verify the legacy-null disclosure already pinned by risk numeric/service tests."""
+    if model_name != "RiskTensorEnvelope" or "maturity_breakdown_status" in captured["result"]:
+        return set()
+    if any(captured["result"].get(field) is not None for field in _RISK_MATURITY_BREAKDOWN_FIELDS):
+        return set()
+    # This is a disclosure of missing evidence, never an observed business value.
+    # RiskTensorPage uses it to warn that legacy nulls must not be read as zero.
+    assert served["result"]["maturity_breakdown_status"] == "unavailable_legacy"
+    assert all(served["result"][field] is None for field in _RISK_MATURITY_BREAKDOWN_FIELDS)
+    return {"result.maturity_breakdown_status"}
+
+
+@pytest.mark.parametrize("invalid_field,invalid_value", [
+    ("maturity_breakdown_status", "available"),
+    ("fund_no_maturity_market_value", 0),
+    ("fund_no_maturity_count", 0),
+])
+def test_legacy_risk_disclosure_rejects_available_or_fabricated_zero(
+    invalid_field: str, invalid_value: object,
+) -> None:
+    captured: dict[str, Any] = {"result": {}}
+    served: dict[str, Any] = {"result": {
+        **dict.fromkeys(_RISK_MATURITY_BREAKDOWN_FIELDS),
+        "maturity_breakdown_status": "unavailable_legacy",
+        invalid_field: invalid_value,
+    }}
+    with pytest.raises(AssertionError):
+        _verified_legacy_risk_disclosure_paths("RiskTensorEnvelope", captured, served)
+
+
+def test_legacy_risk_disclosure_only_allows_the_missing_evidence_status() -> None:
+    captured: dict[str, Any] = {"result": {}}
+    served: dict[str, Any] = {"result": {
+        **dict.fromkeys(_RISK_MATURITY_BREAKDOWN_FIELDS),
+        "maturity_breakdown_status": "unavailable_legacy",
+        "uncomputed_amount": 0,
+    }}
+    assert _verified_legacy_risk_disclosure_paths("OtherEnvelope", captured, served) == set()
+    verified = _verified_legacy_risk_disclosure_paths("RiskTensorEnvelope", captured, served)
+    assert verified == {"result.maturity_breakdown_status"}
+    assert "result.uncomputed_amount" in field_paths(served) - field_paths(captured) - verified
+    captured["result"]["fund_no_maturity_count"] = 1
+    assert _verified_legacy_risk_disclosure_paths("RiskTensorEnvelope", captured, served) == set()
 
 
 def test_golden_sample_responses_survive_their_response_model() -> None:
@@ -321,20 +374,28 @@ def test_golden_sample_responses_survive_their_response_model() -> None:
     field?" question against real data rather than a fixture.
     """
     cases = _golden_samples_with_response_models()
-    covered = {model.__name__ for _, model, _ in cases}
+    covered = {route.response_model.__name__ for _, route, _ in cases}
     assert {
         "BondDashboardHeadlineEnvelope",
         "CashflowProjectionEnvelope",
         "RiskTensorEnvelope",
     } <= covered, f"this batch lost its captured-response evidence; only covered {sorted(covered)}"
 
-    for sample_id, model, captured in cases:
+    for sample_id, route, captured in cases:
+        model = route.response_model
         app = FastAPI()
         app.add_api_route(
             "/probe",
             lambda captured=captured: captured,
             methods=["GET"],
             response_model=model,
+            # Replay the real endpoint's serialization policy, not FastAPI defaults.
+            response_model_include=route.response_model_include,
+            response_model_exclude=route.response_model_exclude,
+            response_model_by_alias=route.response_model_by_alias,
+            response_model_exclude_unset=route.response_model_exclude_unset,
+            response_model_exclude_defaults=route.response_model_exclude_defaults,
+            response_model_exclude_none=route.response_model_exclude_none,
         )
         response = TestClient(app, raise_server_exceptions=False).get("/probe")
 
@@ -357,10 +418,83 @@ def test_golden_sample_responses_survive_their_response_model() -> None:
         # "may be missing" distinction: tolerable, but it must never introduce a
         # value the endpoint did not compute.
         invented = payload_additions - null_valued_paths(response.json())
+        if "result.maturity_breakdown_status" in invented:
+            invented -= _verified_legacy_risk_disclosure_paths(model.__name__, captured, response.json())
         assert invented == set(), (
             f"{sample_id}: {model.__name__} invented business fields the endpoint never returned: "
             f"{sorted(invented)}"
         )
+
+
+def test_volume_rate_capture_requires_registered_exclude_unset_policy() -> None:
+    """Unset synthetic fields stay absent; a model-only probe invents defaults.
+
+    Current captures explicitly set these fields, so they cannot demonstrate the
+    absent-versus-default distinction. Golden capture preservation is tested above.
+    """
+    route = _registered_routes()[("GET", "/api/pnl-attribution/volume-rate")]
+    assert route.response_model_exclude_unset is True
+    synthetic = {
+        "result_meta": {
+            "trace_id": "tr_unset_serialization_test",
+            "source_version": "sv_synthetic",
+            "rule_version": "rv_synthetic",
+            "cache_version": "cv_synthetic",
+            "result_kind": "pnl_attribution.volume_rate",
+            "source_surface": "formal_attribution",
+        },
+        "result": {
+            "current_period": "2026-04",
+            "previous_period": "2026-03",
+            "compare_type": "mom",
+            "total_current_pnl": {
+                "raw": 0, "unit": "yuan", "display": "0.00",
+                "precision": 2, "sign_aware": False,
+            },
+            "items": [],
+            "has_previous_data": False,
+        },
+    }
+    assert "attribution_basis" not in synthetic["result"]
+    assert "has_complete_inputs" not in synthetic["result"]
+
+    app = FastAPI()
+    app.add_api_route("/without-policy", lambda: synthetic, methods=["GET"], response_model=route.response_model)
+    explicit = {
+        **synthetic,
+        "result": {
+            **synthetic["result"],
+            "attribution_basis": "interest_income_and_direct_pnl",
+            "has_complete_inputs": False,
+        },
+    }
+    for path, payload in (("/registered-policy", synthetic), ("/explicit-fields", explicit)):
+        app.add_api_route(
+            path,
+            lambda payload=payload: payload,
+            methods=["GET"],
+            response_model=route.response_model,
+            response_model_include=route.response_model_include,
+            response_model_exclude=route.response_model_exclude,
+            response_model_by_alias=route.response_model_by_alias,
+            response_model_exclude_unset=route.response_model_exclude_unset,
+            response_model_exclude_defaults=route.response_model_exclude_defaults,
+            response_model_exclude_none=route.response_model_exclude_none,
+        )
+    client = TestClient(app)
+    response = client.get("/without-policy")
+    assert response.status_code == 200
+    assert response.json()["result"]["attribution_basis"] == "total_pnl_scale_proxy"
+    assert response.json()["result"]["has_complete_inputs"] is True
+    response = client.get("/registered-policy")
+    assert response.status_code == 200
+    assert field_paths(response.json()["result"]) == field_paths(synthetic["result"])
+    assert "attribution_basis" not in response.json()["result"]
+    assert "has_complete_inputs" not in response.json()["result"]
+    response = client.get("/explicit-fields")
+    assert response.status_code == 200
+    assert response.json()["result"]["attribution_basis"] == "interest_income_and_direct_pnl"
+    assert response.json()["result"]["has_complete_inputs"] is False
 
 
 def _ledger_pnl_client(monkeypatch) -> TestClient:

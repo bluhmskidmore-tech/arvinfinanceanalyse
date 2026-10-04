@@ -15,9 +15,10 @@ from typing import Any
 
 TOKEN_HEADER = "X-Hermes-Bridge-Token"
 
-# 与 backend/app/agent/runtime/toolset_policy.py 保持一致。此处必须在服务端再判一次：
-# 调用方的 normalize 只约束 MOSS 自己发出的请求，直连本端口的进程不受其约束。
-READ_ONLY_TOOLSETS: tuple[str, ...] = ("evidence", "query", "research")
+# 与 backend/app/agent/runtime/toolset_policy.py 的 Hermes provider 策略保持一致。
+# 此处必须在服务端再判一次：调用方的 normalize 只约束 MOSS 自己发出的
+# 请求，直连本端口的进程不受其约束。
+READ_ONLY_TOOLSETS: tuple[str, ...] = ("web",)
 
 # 该进程持有全部数据源凭据的宿主环境，而 hermes 由用户提问驱动，故凭据一律不下传。
 # 与 backend/app/agent/runtime/subprocess_env.py 保持一致。
@@ -185,6 +186,21 @@ class HermesBridge:
 # （本脚本独立运行无法 import backend；一致性由源码对照测试守护）。
 # 不做 `or stdout.strip()` 兜底：那会把已过滤的 banner 原样返回给用户。
 def _extract_final_answer(stdout: str) -> str:
+    fragmented_banner = "Warning: Unknown toolsets: evidence, query, research"
+    cursor = 0
+    for expected in fragmented_banner:
+        if expected.isspace():
+            continue
+        while cursor < len(stdout) and stdout[cursor].isspace():
+            cursor += 1
+        if cursor >= len(stdout) or stdout[cursor] != expected:
+            break
+        cursor += 1
+    else:
+        banner_suffix = stdout[cursor:].lstrip(" \t")
+        if not banner_suffix or banner_suffix.startswith(("\r", "\n")):
+            stdout = banner_suffix.lstrip()
+
     lines = [line.rstrip() for line in stdout.splitlines()]
     content: list[str] = []
     for line in lines:
@@ -199,7 +215,7 @@ def _extract_final_answer(stdout: str) -> str:
             continue
         if stripped.startswith("session_id:"):
             continue
-        if stripped.startswith("Warning: Unknown toolsets:"):
+        if stripped == fragmented_banner:
             continue
         if stripped.startswith("Resume this session with:"):
             break

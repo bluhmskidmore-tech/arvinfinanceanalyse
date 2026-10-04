@@ -29,14 +29,14 @@
 .tcg__eyebrow {
   color: var(--dh-api-muted, var(--ca-muted));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .tcg__title {
   margin: 2px 0 0;
   color: var(--dh-api-ink, var(--ca-text));
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -112,7 +112,7 @@
 .tcg__layer-title {
   fill: var(--dh-api-muted, var(--ca-muted));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* ---- 边 ---- */
@@ -194,7 +194,7 @@
 .tcg-node__label {
   fill: var(--dh-api-ink, var(--ca-text));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .tcg-node__sub {
@@ -253,20 +253,20 @@
 .tcg__drawer-kicker {
   color: var(--dh-api-muted, var(--ca-muted));
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .tcg__drawer-title {
   margin: 2px 0 0;
   color: var(--dh-api-ink, var(--ca-text));
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .tcg__drawer-stance {
   margin-top: 4px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--dh-api-muted);
 }
 .tcg__drawer-stance--supportive {
@@ -316,7 +316,7 @@
 .tcg__drawer-block-title {
   color: var(--dh-api-muted, var(--ca-muted));
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   margin-bottom: 6px;
 }
 

@@ -5,12 +5,15 @@ param(
   [int]$PostgresProbeFailureThreshold = 3,
   [ValidateRange(1, 20)]
   [int]$PostgresRecoveryMaxAttempts = 3,
+  [ValidateRange(1, 20)]
+  [int]$ServiceRecoveryMaxAttempts = 3,
   [switch]$Once
 )
 
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
+. "$root\scripts\dev-runtime-common.ps1"
 Set-Location $root
 
 $powershellExe = (Get-Command powershell -ErrorAction Stop).Source
@@ -71,10 +74,15 @@ function Test-HttpEndpoint {
 }
 
 function Test-FrontendReady {
-  return (
-    (Test-HttpEndpoint -Url "http://127.0.0.1:5888") -and
-    (Test-HttpEndpoint -Url "http://127.0.0.1:5888/src/api/clientContext.ts")
-  )
+  $runtimePython = Get-DevRuntimePython
+  try {
+    & $runtimePython "$root\scripts\dev_runtime_control.py" --repo-root $root frontend-probe 1>$null 2>$null
+    return ($LASTEXITCODE -eq 0)
+  } catch [System.Management.Automation.RemoteException] {
+    # Windows PowerShell 5.1 promotes native stderr to NativeCommandError under Stop.
+    # An unavailable frontend is an unhealthy probe, so the recovery branch must run.
+    return $false
+  }
 }
 
 function Wait-HttpEndpoint {
@@ -208,25 +216,27 @@ function Stop-KnownServiceProcesses {
     [string]$ServiceName
   )
 
-  switch ($ServiceName) {
-    "api" {
-      Stop-MatchingProcesses -Description "API" -Predicate {
-        ($_.Name -eq "powershell.exe" -and $_.CommandLine -like "*scripts\dev-api.ps1*") -or
-        ($_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.main:app*")
+  Invoke-DevRuntimeAction {
+    switch ($ServiceName) {
+      "api" {
+        Stop-MatchingProcesses -Description "API" -Predicate {
+          ($_.Name -eq "powershell.exe" -and $_.CommandLine -like "*scripts\dev-api.ps1*") -or
+          ($_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.main:app*")
+        }
       }
-    }
-    "worker" {
-      Stop-MatchingProcesses -Description "worker" -Predicate {
-        ($_.Name -eq "powershell.exe" -and $_.CommandLine -like "*scripts\dev-worker.ps1*") -or
-        (Test-NativeWorkerProcess -Process $_)
+      "worker" {
+        Stop-MatchingProcesses -Description "worker" -Predicate {
+          ($_.Name -eq "powershell.exe" -and $_.CommandLine -like "*scripts\dev-worker.ps1*") -or
+          (Test-NativeWorkerProcess -Process $_)
+        }
       }
-    }
-    "frontend" {
-      Stop-MatchingProcesses -Description "frontend" -Predicate {
-        ($_.Name -eq "powershell.exe" -and $_.CommandLine -like "*scripts\dev-frontend.ps1*") -or
-        ($_.Name -eq "node.exe" -and
-          $_.CommandLine -like ("*" + (Join-Path $root "frontend") + "*") -and
-          $_.CommandLine -like "*vite*")
+      "frontend" {
+        Stop-MatchingProcesses -Description "frontend" -Predicate {
+          ($_.Name -eq "powershell.exe" -and $_.CommandLine -like "*scripts\dev-frontend.ps1*") -or
+          ($_.Name -eq "node.exe" -and
+            $_.CommandLine -like ("*" + (Join-Path $root "frontend") + "*") -and
+            $_.CommandLine -like "*vite*")
+        }
       }
     }
   }
@@ -283,15 +293,25 @@ function Start-DevScriptDetached {
     -ClientOnly `
     -Property @{
       ShowWindow = [uint16]0
+      # WMI creates the child under WmiPrvSE. Supply this launcher's current
+      # environment explicitly so recovery preserves its approved paths/flags.
+      # Credentials remain in memory and are never logged.
+      EnvironmentVariables = [string[]]@(
+        [Environment]::GetEnvironmentVariables("Process").GetEnumerator() | ForEach-Object {
+          "{0}={1}" -f $_.Key, $_.Value
+        }
+      )
     }
-  $launchResult = Invoke-CimMethod `
-    -ClassName Win32_Process `
-    -MethodName Create `
-    -Arguments @{
-      CommandLine = $command
-      CurrentDirectory = $root
-      ProcessStartupInformation = $startupInfo
-    }
+  $launchResult = Invoke-DevRuntimeAction {
+    Invoke-CimMethod `
+      -ClassName Win32_Process `
+      -MethodName Create `
+      -Arguments @{
+        CommandLine = $command
+        CurrentDirectory = $root
+        ProcessStartupInformation = $startupInfo
+      }
+  }
   if ([int]$launchResult.ReturnValue -ne 0) {
     throw "$ScriptName launcher failed with WMI return code $($launchResult.ReturnValue)"
   }
@@ -324,11 +344,15 @@ function Start-DevScriptDetached {
 }
 
 $lastRestartAt = @{}
+$serviceRecoveryAttempts = @{}
+$serviceRecoverySuppressionLogged = @{}
+$serviceHealthySince = @{}
 $lastHeartbeatAt = [datetime]::MinValue
 $script:PostgresConsecutiveProbeFailures = 0
 $script:PostgresRecoveryFailureCount = 0
 $script:PostgresRecoverySuppressionLogged = $false
 $script:LastPostgresProbeState = "unknown"
+$script:LastApiReadinessState = "unknown"
 
 function Test-RestartCooldown {
   param(
@@ -351,6 +375,112 @@ function Set-RestartTimestamp {
   )
 
   $lastRestartAt[$Key] = Get-Date
+}
+
+function Get-ServiceRecoveryAttemptCount {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("api", "worker", "frontend")]
+    [string]$ServiceName
+  )
+
+  if (-not $serviceRecoveryAttempts.ContainsKey($ServiceName)) {
+    return 0
+  }
+  return [int]$serviceRecoveryAttempts[$ServiceName]
+}
+
+function Test-ServiceRecoverySuppressed {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("api", "worker", "frontend")]
+    [string]$ServiceName
+  )
+
+  $attempts = Get-ServiceRecoveryAttemptCount -ServiceName $ServiceName
+  if ($attempts -lt $ServiceRecoveryMaxAttempts) {
+    return $false
+  }
+
+  if (-not $serviceRecoverySuppressionLogged.ContainsKey($ServiceName) -or
+      -not [bool]$serviceRecoverySuppressionLogged[$ServiceName]) {
+    Write-KeepaliveLog "$ServiceName recovery suppressed after $ServiceRecoveryMaxAttempts attempts; waiting for stable health or manual intervention"
+    $serviceRecoverySuppressionLogged[$ServiceName] = $true
+  }
+  return $true
+}
+
+function Register-ServiceRecoveryAttempt {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("api", "worker", "frontend")]
+    [string]$ServiceName
+  )
+
+  $attempt = (Get-ServiceRecoveryAttemptCount -ServiceName $ServiceName) + 1
+  $serviceRecoveryAttempts[$ServiceName] = $attempt
+  $serviceRecoverySuppressionLogged[$ServiceName] = $false
+  return $attempt
+}
+
+function Clear-ServiceHealthyObservation {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("api", "worker", "frontend")]
+    [string]$ServiceName
+  )
+
+  if ($serviceHealthySince.ContainsKey($ServiceName)) {
+    $null = $serviceHealthySince.Remove($ServiceName)
+  }
+}
+
+function Confirm-ServiceHealthy {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("api", "worker", "frontend")]
+    [string]$ServiceName
+  )
+
+  $attempts = Get-ServiceRecoveryAttemptCount -ServiceName $ServiceName
+  if ($attempts -le 0) {
+    return
+  }
+
+  $now = Get-Date
+  if (-not $serviceHealthySince.ContainsKey($ServiceName)) {
+    $serviceHealthySince[$ServiceName] = $now
+    return
+  }
+
+  $elapsed = ($now - [datetime]$serviceHealthySince[$ServiceName]).TotalSeconds
+  if ($elapsed -lt $RestartCooldownSeconds) {
+    return
+  }
+
+  $serviceRecoveryAttempts[$ServiceName] = 0
+  $serviceRecoverySuppressionLogged[$ServiceName] = $false
+  $null = $serviceHealthySince.Remove($ServiceName)
+  Write-KeepaliveLog "$ServiceName remained healthy past the recovery cooldown; clearing recovery attempt count"
+}
+
+function Update-ApiDependencyReadiness {
+  param(
+    [Parameter(Mandatory = $true)]
+    [bool]$Ready
+  )
+
+  $state = if ($Ready) { "ready" } else { "degraded" }
+  if ($state -eq $script:LastApiReadinessState) {
+    return
+  }
+
+  if ($state -eq "degraded") {
+    Write-KeepaliveLog "API dependency readiness degraded at http://127.0.0.1:7888/health/ready; API liveness remains the recovery criterion"
+  } elseif ($script:LastApiReadinessState -eq "degraded") {
+    Write-KeepaliveLog "API dependency readiness recovered at http://127.0.0.1:7888/health/ready"
+  }
+  $script:LastApiReadinessState = $state
 }
 
 function Get-DevPostgresProbe {
@@ -412,12 +542,13 @@ function Test-DevPostgresReady {
 
 function Invoke-DevPostgresUp {
   $scriptPath = Join-Path $root "scripts\dev-postgres-up.ps1"
-  $output = @(
+  $output = @(Invoke-DevRuntimeAction {
     & $powershellExe -NoProfile -ExecutionPolicy Bypass -File $scriptPath 2>&1
-  )
+    $script:PostgresUpExitCode = [int]$LASTEXITCODE
+  })
 
   return [pscustomobject]@{
-    ExitCode = [int]$LASTEXITCODE
+    ExitCode = $script:PostgresUpExitCode
     Output = (($output | ForEach-Object { [string]$_ }) -join "`n").Trim()
   }
 }
@@ -505,12 +636,19 @@ function Restart-HttpService {
     [int]$Port
   )
 
+  Clear-ServiceHealthyObservation -ServiceName $ServiceName
+  if (Test-ServiceRecoverySuppressed -ServiceName $ServiceName) {
+    return
+  }
+
   if (Test-RestartCooldown -Key $ServiceName) {
     Write-KeepaliveLog "$ServiceName probe failed, restart skipped by cooldown"
     return
   }
 
-  Write-KeepaliveLog "$ServiceName probe failed at $Url; restarting $ScriptName"
+  $attempt = Register-ServiceRecoveryAttempt -ServiceName $ServiceName
+  if ($ServiceName -eq "frontend") { $null = Get-DevFrontendPlan }
+  Write-KeepaliveLog "$ServiceName probe failed at $Url; recovery attempt $attempt/$ServiceRecoveryMaxAttempts restarting $ScriptName"
   Set-RestartTimestamp -Key $ServiceName
   Stop-KnownServiceProcesses -ServiceName $ServiceName
   Start-Sleep -Milliseconds 500
@@ -533,11 +671,18 @@ function Ensure-WorkerRunning {
     $workerProcess = Get-NativeWorkerProcess
   }
   if (-not $script:ProcessInspectionAvailable) {
+    Clear-ServiceHealthyObservation -ServiceName "worker"
     Write-KeepaliveLog "worker process verification unavailable; skipping worker keepalive"
     return
   }
 
   if ($workerScript -or $workerProcess) {
+    Confirm-ServiceHealthy -ServiceName "worker"
+    return
+  }
+
+  Clear-ServiceHealthyObservation -ServiceName "worker"
+  if (Test-ServiceRecoverySuppressed -ServiceName "worker") {
     return
   }
 
@@ -546,15 +691,20 @@ function Ensure-WorkerRunning {
     return
   }
 
-  Write-KeepaliveLog "worker process missing; restarting dev-worker.ps1"
+  $attempt = Register-ServiceRecoveryAttempt -ServiceName "worker"
+  Write-KeepaliveLog "worker process missing; recovery attempt $attempt/$ServiceRecoveryMaxAttempts restarting dev-worker.ps1"
   Set-RestartTimestamp -Key "worker"
   Stop-KnownServiceProcesses -ServiceName "worker"
   Start-DevScriptDetached -ScriptName "dev-worker.ps1"
 }
 
 function Invoke-KeepaliveCycle {
+  Assert-DevRuntimeAllowed
   $postgresReady = Ensure-DevPostgresRunning
   if (-not $postgresReady) {
+    Clear-ServiceHealthyObservation -ServiceName "api"
+    Clear-ServiceHealthyObservation -ServiceName "worker"
+    Clear-ServiceHealthyObservation -ServiceName "frontend"
     if ($script:LastPostgresProbeState -eq "foreign" -or $script:LastPostgresProbeState -eq "unverifiable") {
       Write-KeepaliveLog "private Postgres ownership gate is closed; stopping API and worker until the owned cluster returns"
       Stop-KnownServiceProcesses -ServiceName "api"
@@ -563,22 +713,28 @@ function Invoke-KeepaliveCycle {
     return
   }
 
-  if (-not (Test-HttpEndpoint -Url "http://127.0.0.1:7888/health")) {
+  $apiLive = Test-HttpEndpoint -Url "http://127.0.0.1:7888/health"
+  if (-not $apiLive) {
     Restart-HttpService `
       -ServiceName "api" `
       -ScriptName $apiScriptName `
       -Url "http://127.0.0.1:7888/health" `
       -Port 7888
+  } else {
+    Confirm-ServiceHealthy -ServiceName "api"
   }
 
   Ensure-WorkerRunning
 
-  if (-not (Test-FrontendReady)) {
+  $frontendReady = Test-FrontendReady
+  if (-not $frontendReady) {
     Restart-HttpService `
       -ServiceName "frontend" `
       -ScriptName "dev-frontend.ps1" `
-      -Url "http://127.0.0.1:5888/src/api/clientContext.ts" `
+      -Url "http://127.0.0.1:5888/" `
       -Port 5888
+  } else {
+    Confirm-ServiceHealthy -ServiceName "frontend"
   }
 }
 
@@ -591,12 +747,14 @@ function Write-HeartbeatIfDue {
   $script:lastHeartbeatAt = $now
   $postgresOk = Test-DevPostgresReady
   $apiOk = Test-HttpEndpoint -Url "http://127.0.0.1:7888/health"
+  $apiReady = Test-HttpEndpoint -Url "http://127.0.0.1:7888/health/ready"
+  Update-ApiDependencyReadiness -Ready $apiReady
   $frontendOk = Test-FrontendReady
-  Write-KeepaliveLog "heartbeat postgres=$postgresOk postgresRecoveryFailures=$script:PostgresRecoveryFailureCount api=$apiOk frontend=$frontendOk processInspection=$script:ProcessInspectionAvailable"
+  Write-KeepaliveLog "heartbeat postgres=$postgresOk postgresRecoveryFailures=$script:PostgresRecoveryFailureCount api=$apiOk apiReady=$apiReady frontend=$frontendOk processInspection=$script:ProcessInspectionAvailable"
 }
 
 try {
-  Write-KeepaliveLog "dev keepalive started (interval=${IntervalSeconds}s, once=$Once, apiScript=$apiScriptName, postgresProbeFailureThreshold=$PostgresProbeFailureThreshold, postgresRecoveryMaxAttempts=$PostgresRecoveryMaxAttempts)"
+  Write-KeepaliveLog "dev keepalive started (interval=${IntervalSeconds}s, once=$Once, apiScript=$apiScriptName, postgresProbeFailureThreshold=$PostgresProbeFailureThreshold, postgresRecoveryMaxAttempts=$PostgresRecoveryMaxAttempts, serviceRecoveryMaxAttempts=$ServiceRecoveryMaxAttempts)"
 
   do {
     try {

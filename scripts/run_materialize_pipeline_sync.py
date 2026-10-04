@@ -74,6 +74,7 @@ def _pnl(settings: Settings, report_date: str | None) -> None:
         governance_dir=settings.governance_path,
         data_root=resolve_pnl_data_input_root(),
         report_date=report_date,
+        archive_root=settings.local_archive_path,
     )
     run_id = f"pnl_materialize:{datetime.now(timezone.utc).isoformat()}"
     run_pnl_materialize_sync(

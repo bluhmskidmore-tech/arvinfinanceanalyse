@@ -55,7 +55,7 @@ function Tile({
         style={{
           fontSize: designTokens.fontSize[11],
           color: designTokens.color.neutral[600],
-          fontWeight: 700,
+          fontWeight: 600,
           letterSpacing: "0.06em",
         }}
       >
@@ -64,7 +64,7 @@ function Tile({
       <div
         style={{
           fontSize: designTokens.fontSize[20],
-          fontWeight: 700,
+          fontWeight: 600,
           marginTop: designTokens.space[2],
           color: valueColor ?? designTokens.color.neutral[900],
           ...tabularNumsStyle,

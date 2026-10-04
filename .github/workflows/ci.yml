@@ -66,17 +66,152 @@ jobs:
           tests/test_agent_sql_disclosure_drift.py
           tests/test_agent_api_contract.py
           tests/test_agent_audit_log_contract.py
+          tests/test_dexter_agent_service.py
+          tests/test_agent_run_service_lifecycle.py
+          tests/test_agent_run_cancellation_hook.py
           tests/test_caliber_gate_mapping.py
           tests/test_ci_workflow_contents.py
           tests/test_mcp_config_consistency.py
 
-      # PR diff 触及 caliber 口径源文件时强制运行对应红线测试；
+      # PR diff 触及已映射的口径与正式计算路径时运行相应检查；
       # 映射表与 fail-closed 语义见 scripts/check_caliber_gate.py
       - name: Caliber path-trigger gate
         if: github.event_name == 'pull_request'
         run: |
           git fetch origin "${{ github.base_ref }}"
           python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"
+
+  release-control-structure:
+    name: Release Control Structure (not approval)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Dedicated disposable database for the WP1 real PostgreSQL CAS race.
+    # This remains structural evidence and does not make an approval decision.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: moss_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: moss_release_control_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U moss_test -d moss_release_control_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      MOSS_TEST_POSTGRES_DSN: postgresql+psycopg://moss_test@127.0.0.1:5432/moss_release_control_test
+      MOSS_REQUIRE_POSTGRES_CONCURRENCY_TEST: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Check backend uv.lock consistency
+        run: uv lock --check --project backend
+
+      - name: Install backend dependencies from backend/uv.lock
+        run: |
+          uv sync --frozen --project backend --extra dev --python 3.11
+          echo "VIRTUAL_ENV=${GITHUB_WORKSPACE}/backend/.venv" >> "$GITHUB_ENV"
+          echo "${GITHUB_WORKSPACE}/backend/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Migrate disposable PostgreSQL release-control authority
+        env:
+          MOSS_POSTGRES_DSN: postgresql+psycopg://moss_test@127.0.0.1:5432/moss_release_control_test
+        run: python -m alembic -c backend/alembic.ini upgrade head
+
+      - name: Run PostgreSQL whole-bundle CAS concurrency proof
+        run: |
+          mkdir -p .codex-tmp/release-control
+          python -m pytest -q \
+            tests/test_release_control_postgres_concurrency.py \
+            --junitxml=.codex-tmp/release-control/postgres-cas-junit.xml
+
+      - name: Require both PostgreSQL race cases and zero skips
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          report = Path(".codex-tmp/release-control/postgres-cas-junit.xml")
+          root = ElementTree.parse(report).getroot()
+          suites = list(root.iter("testsuite"))
+          totals = {
+              key: sum(int(suite.attrib.get(key, "0")) for suite in suites)
+              for key in ("tests", "failures", "errors", "skipped")
+          }
+          assert totals == {
+              "tests": 2,
+              "failures": 0,
+              "errors": 0,
+              "skipped": 0,
+          }, totals
+          names = {case.attrib["name"] for case in root.iter("testcase")}
+          assert names == {
+              "test_postgres_whole_bundle_cas_allows_exactly_one_existing_alias_winner",
+              "test_postgres_whole_bundle_cas_allows_exactly_one_first_insert_winner",
+          }, names
+          PY
+
+      - name: Validate release approval registry structure only
+        run: |
+          mkdir -p .codex-tmp/release-control
+          python scripts/check_release_approval_registry.py > .codex-tmp/release-control/structure-only.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(".codex-tmp/release-control/structure-only.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert payload["status"] == "structure_passed", payload
+          assert payload["structure_only"] is True, payload
+          assert payload["gate_scope"] == "structure_only", payload
+          assert payload["approval_decision"] == "not_evaluated", payload
+          assert payload["fail_closed_for_release_approval"] is True, payload
+          assert payload["release_gate_eligible"] is False, payload
+          PY
+
+      - name: Run release control structure pytest
+        run: >-
+          python -m pytest -q
+          tests/test_release_control_schema.py
+          tests/test_release_control_state_machine.py
+          tests/test_release_control_repo.py
+          tests/test_release_control_cli.py
+          tests/test_release_approval_registry.py
+          tests/test_bond_risk_shadow_candidate.py
+          tests/test_fixed_income_version_set.py
+          tests/test_bond_risk_shadow_batch.py
+
+      - name: Upload release control structure receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-control-structure
+          path: |
+            .codex-tmp/release-control/structure-only.json
+            .codex-tmp/release-control/postgres-cas-junit.xml
+          retention-days: 14
+          if-no-files-found: warn
 
   # 信息性评测：按 diff 与任务 pr_trigger_scope 的交集选任务，跑重放评测并把
   # scorecard 发布为 step summary + PR 评论。评测 fail/void 不阻塞合并；
@@ -306,6 +441,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -319,17 +456,20 @@ jobs:
       - name: Ruff silent-exception gate (S110/S112)
         run: python -m ruff check backend scripts tests --select S110,S112
 
-      # BLE001 棘轮：只报数不拦截；基线 179 处，见 docs/plans/tech-debt-remediation/B5-ble001-inventory.md
-      - name: Ruff BLE001 ratchet report (non-blocking)
-        run: python -m ruff check backend --select BLE001 --statistics || true
+      # 逐条冻结存量；删除一处旧问题不能抵消另一处新增问题。
+      - name: Ruff BLE001 baseline ratchet
+        if: github.event_name != 'pull_request'
+        run: python scripts/check_ruff_ble001_baseline.py
+
+      - name: Ruff BLE001 trusted PR baseline ratchet
+        if: github.event_name == 'pull_request'
+        run: python scripts/check_ruff_ble001_baseline.py --baseline-ref "${{ github.event.pull_request.base.sha }}"
 
   mypy-ratchet:
     name: Backend Mypy Ratchet
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # 观察模式：基线在活跃工作树上采集（2026-08-12），合并树上执行
-    # `python scripts/check_mypy_baseline.py --update-baseline` 重刷并签核后移除 continue-on-error 转阻断
-    continue-on-error: true
+    # 按可信历史诊断身份阻断新增问题；CI 不更新或扩大基线。
 
     steps:
       - uses: actions/checkout@v4
@@ -365,6 +505,13 @@ jobs:
           restore-keys: |
             mypy-ratchet-${{ runner.os }}-py311-mypy1.20.1-
 
+      - name: Test mypy diagnostic identity and update guards
+        run: >-
+          python -m pytest -p _pytest_duckdb_guard -q
+          tests/test_check_mypy_baseline.py
+          tests/test_backend_debt_gate.py
+          tests/test_mypy_import_boundary.py
+
       - name: Run mypy baseline ratchet
         run: python scripts/check_mypy_baseline.py
 
@@ -388,19 +535,107 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
+        id: frontend_dependencies
         run: npm ci
 
       - name: TypeScript type check
+        if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
         run: npm run typecheck
 
       - name: Run Vitest
-        run: npx vitest run
+        if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || { [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; }; then
+            npm test -- --coverage
+          else
+            npm test
+          fi
+
+      - name: Upload full frontend coverage
+        if: always() && (github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Frontend debt audit
+        if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
         run: npm run debt:audit
 
+      - name: Test production mock bundle boundary
+        if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
+        run: node --test scripts/productionMockBoundary.node-test.mjs
+
       - name: Production build
+        if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
         run: VITE_DATA_SOURCE=real npm run build
+
+  source-development-entry:
+    name: Source Development Entry (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install locked dependencies
+        shell: bash
+        run: |
+          uv sync --frozen --project backend --extra dev --python 3.11
+          npm ci --prefix frontend
+
+      - name: Install browser for isolated application acceptance
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify guarded startup and isolated real application
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            MOSS_PYTHON="$GITHUB_WORKSPACE/backend/.venv/Scripts/python.exe"
+          else
+            MOSS_PYTHON="$GITHUB_WORKSPACE/backend/.venv/bin/python"
+          fi
+          export MOSS_PYTHON
+          export MOSS_TEST_FULL_APP=1
+          "$MOSS_PYTHON" -m pytest tests/test_dev_frontend_source_entry.py tests/test_dev_frontend_source_live.py tests/test_dev_frontend_application_live.py tests/test_dev_python_resolution.py tests/test_codex_python_resolution.py -q --basetemp=.codex-tmp/source-entry-ci
+
+      - name: Retain isolated application acceptance evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-application-${{ matrix.os }}
+          include-hidden-files: true
+          path: |
+            .codex-tmp/source-entry-ci/**/real-application/acceptance.json
+            .codex-tmp/source-entry-ci/**/real-application/browser-result.json
+            .codex-tmp/source-entry-ci/**/real-application/positions.png
+            .codex-tmp/source-entry-ci/**/real-application/api.log
+            .codex-tmp/source-entry-ci/**/real-application/frontend.log
+          retention-days: 7
+          if-no-files-found: warn
 
   frontend-a11y-smoke-shard:
     name: Frontend Accessibility Smoke Shard (${{ matrix.shard }})

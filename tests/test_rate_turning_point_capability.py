@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_analysis_service as macro_toolkit_analysis
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
 from datetime import date, timedelta
 
 import pytest
 
-import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.core_finance.macro import compute_rate_turning_point
 
 _REPORT_DATE = date(2026, 7, 10)
@@ -94,7 +96,7 @@ def test_rate_turning_point_unavailable_without_curve_rows() -> None:
 def test_rate_turning_point_capability_definition_is_wired_observation() -> None:
     definition = next(
         item
-        for item in macro_toolkit_route._CAPABILITY_DEFINITIONS
+        for item in macro_toolkit_support._CAPABILITY_DEFINITIONS
         if item["key"] == "rate_turning_point"
     )
 
@@ -110,10 +112,10 @@ def test_rate_turning_point_capability_card_surfaces_direction_and_level() -> No
     raw = compute_rate_turning_point(_curve_rows(300), report_date=_REPORT_DATE)
     definition = next(
         item
-        for item in macro_toolkit_route._CAPABILITY_DEFINITIONS
+        for item in macro_toolkit_support._CAPABILITY_DEFINITIONS
         if item["key"] == "rate_turning_point"
     )
-    card = macro_toolkit_route._capability_result_card(definition, raw)
+    card = macro_toolkit_analysis._capability_result_card(definition, raw)
 
     assert card["key"] == "rate_turning_point"
     assert card["status"] == "complete"
@@ -128,10 +130,10 @@ def test_rate_turning_point_degraded_card_keeps_warning_visible() -> None:
     raw = compute_rate_turning_point(_curve_rows(12), report_date=_REPORT_DATE)
     definition = next(
         item
-        for item in macro_toolkit_route._CAPABILITY_DEFINITIONS
+        for item in macro_toolkit_support._CAPABILITY_DEFINITIONS
         if item["key"] == "rate_turning_point"
     )
-    card = macro_toolkit_route._capability_result_card(definition, raw)
+    card = macro_toolkit_analysis._capability_result_card(definition, raw)
 
     assert card["status"] == "degraded"
     assert "TURNING_POINT_MEDIUM_WINDOW_SHORT" in card["warnings"]

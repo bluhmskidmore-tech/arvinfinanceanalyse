@@ -7,6 +7,11 @@ $taskName = "MOSS-DataUpdateQueue"
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 }
+if (-not $Unregister -and -not $WhatIfPreference) {
+    . (Join-Path $RepoRoot "scripts\dev-python.ps1")
+    $pythonExe = Resolve-DevPython -RequiredModules @("duckdb")
+    if (-not (Test-Path -LiteralPath $pythonExe)) { throw "Repository Python not found." }
+}
 if ($Unregister) {
     if ($PSCmdlet.ShouldProcess($taskName, "Unregister scheduled task")) {
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
@@ -14,11 +19,6 @@ if ($Unregister) {
     return
 }
 
-$pythonExe = Join-Path $RepoRoot ".venv\Scripts\python.exe"
-if (-not [IO.File]::Exists($pythonExe)) {
-    $pythonExe = Join-Path $RepoRoot "backend\.venv\Scripts\python.exe"
-}
-if (-not [IO.File]::Exists($pythonExe)) { throw "Repository Python not found." }
 $wrapper = Join-Path $RepoRoot "scripts\scheduling\drain_data_updates.ps1"
 if (-not [IO.File]::Exists($wrapper)) { throw "Data update queue launcher not found." }
 $powershellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"

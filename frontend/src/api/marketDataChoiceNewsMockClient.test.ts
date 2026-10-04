@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createMockHomeMarketTickerClient } from "./homeMarketTickerMockClient";
-import { createMockMarketDataClient } from "./marketDataMockClient";
+import { createMockHomeMarketTickerClient } from "../mocks/homeMarketTickerMockClient";
+import { createMockMarketDataClient } from "../mocks/marketDataMockClient";
 
 describe("Choice news mock clients", () => {
   it("keeps payload_json by default and reports it on the home market ticker mock", async () => {

@@ -25,6 +25,33 @@
       "source": "nbs_pmi_release",
       "artifact_kind": "official_release_artifact",
       "artifact_manifest_sha256": "204801316c86ecf848ba83fb5d9a2c6f46fd482c7d306caa5369816d1b965d45"
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "artifact_kind": "artifact_set_manifest",
+      "artifact_manifest_sha256": "b40a66d60ef842ea782c1c7d509236f0cb0b27e3342a2f504174cb164162d12f",
+      "component_artifact_sha256s": [
+        "9ebce7e21c93d92980814be8f754dcc255ebe29dbbdf2531973e09361832c168",
+        "933f3546fc3f8232014dc9e2cab854a331ff5da5a9509d3063ada2d3678dfcef"
+      ]
+    },
+    {
+      "source": "nbs_pmi_release",
+      "artifact_kind": "official_release_artifact",
+      "artifact_manifest_sha256": "219d1969446935565682bc795646848f2a5b21215ab0096000fcd2bd2779fe38"
+    },
+    {
+      "source": "nbs_pmi_release",
+      "artifact_kind": "official_release_artifact",
+      "artifact_manifest_sha256": "7ac612fa42b562fa27b4212d6b43b31fa9c0fd14e6a563bd5f385e735b629a2f"
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "artifact_kind": "artifact_set_manifest",
+      "artifact_manifest_sha256": "89c958afba228face1dbd4771cd361b419ee857b9777f1c3a45aa5a8ff7c291e",
+      "component_artifact_sha256s": [
+        "2be3b50ac4c72068c9b17e28b184cb2186b3f6a6ffe606c2a5b58334bf642998"
+      ]
     }
   ],
   "bindings": [
@@ -82,6 +109,72 @@
       "mapping_version": "rv_nbs_pmi_release_v1",
       "rule_version": "rv_backfill_macro_v1",
       "first_usable_trade_date": "2026-07-01"
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M0001385",
+      "vendor_version": "vv_backfill_macro_pbc_financial_statistics_release_20260820_b40a66d60ef842ea_4f52ffa84ae25efd",
+      "covered_period_start": "2026-06-01",
+      "covered_period_end": "2026-07-01",
+      "artifact_manifest_sha256": "b40a66d60ef842ea782c1c7d509236f0cb0b27e3342a2f504174cb164162d12f",
+      "mapping_version": "rv_pbc_financial_statistics_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-08-17"
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M5525763",
+      "vendor_version": "vv_backfill_macro_pbc_financial_statistics_release_20260820_b40a66d60ef842ea_0fb997c2f3a446b9",
+      "covered_period_start": "2026-06-01",
+      "covered_period_end": "2026-07-01",
+      "artifact_manifest_sha256": "b40a66d60ef842ea782c1c7d509236f0cb0b27e3342a2f504174cb164162d12f",
+      "mapping_version": "rv_pbc_financial_statistics_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-08-17"
+    },
+    {
+      "source": "nbs_pmi_release",
+      "series_id": "M0017126",
+      "vendor_version": "vv_backfill_macro_nbs_pmi_release_20260820_219d196944693556_f4b9c8d19417c0ec",
+      "covered_period_start": "2025-07-01",
+      "covered_period_end": "2026-07-01",
+      "artifact_manifest_sha256": "219d1969446935565682bc795646848f2a5b21215ab0096000fcd2bd2779fe38",
+      "mapping_version": "rv_nbs_pmi_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-08-03"
+    },
+    {
+      "source": "nbs_pmi_release",
+      "series_id": "M0017126",
+      "vendor_version": "vv_backfill_macro_nbs_pmi_release_20260905_7ac612fa42b562fa_d6e4f50ae65a62b5",
+      "covered_period_start": "2025-08-01",
+      "covered_period_end": "2026-08-01",
+      "artifact_manifest_sha256": "7ac612fa42b562fa27b4212d6b43b31fa9c0fd14e6a563bd5f385e735b629a2f",
+      "mapping_version": "rv_nbs_pmi_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-09-01"
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M0001385",
+      "vendor_version": "vv_backfill_macro_pbc_financial_statistics_release_20260916_89c958afba228fac_f713a296add6bcde",
+      "covered_period_start": "2026-08-01",
+      "covered_period_end": "2026-08-01",
+      "artifact_manifest_sha256": "89c958afba228face1dbd4771cd361b419ee857b9777f1c3a45aa5a8ff7c291e",
+      "mapping_version": "rv_pbc_financial_statistics_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-09-15"
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M5525763",
+      "vendor_version": "vv_backfill_macro_pbc_financial_statistics_release_20260916_89c958afba228fac_85b74231a83a76be",
+      "covered_period_start": "2026-08-01",
+      "covered_period_end": "2026-08-01",
+      "artifact_manifest_sha256": "89c958afba228face1dbd4771cd361b419ee857b9777f1c3a45aa5a8ff7c291e",
+      "mapping_version": "rv_pbc_financial_statistics_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-09-15"
     }
   ]
 }

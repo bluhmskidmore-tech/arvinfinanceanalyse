@@ -24,6 +24,179 @@
   gap: 16px;
 }
 
+/*
+ * Agent Drawer 由 AntD portal 挂到 body，不能依赖页面根的变量继承。
+ * 在局部根重新桥接 Nocturne 语义，内层 Agent scope 只复用同色组件状态，
+ * 不改变 /agent 路由或其他嵌入页。
+ */
+.pnl-attribution-agent-drawer,
+.pnl-attribution-agent-drawer-body {
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+  --moss-color-link: var(--dh-api-blue);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-surface-base: var(--dh-api-bg);
+  --moss-color-primary-50: var(--dh-api-blue-soft);
+  --moss-color-primary-500: var(--dh-api-blue);
+  --moss-color-primary-600: var(--dh-api-blue);
+  --moss-color-primary-700: var(--dh-api-blue);
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-100: var(--dh-api-panel-2);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-success-500: var(--dh-api-green);
+  --moss-color-info-50: var(--dh-api-blue-soft);
+  --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  --moss-color-info-200: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  --moss-color-info-300: var(--dh-api-blue);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-200: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --moss-color-warning-300: var(--dh-api-amber);
+  --moss-color-warning-700: var(--dh-api-amber);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-200: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+  --moss-radius-sm: var(--dh-api-radius);
+  --moss-shadow-card: none;
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: color-mix(in srgb, var(--dh-api-blue) 82%, var(--dh-api-ink));
+  --ib-radius: var(--dh-api-radius);
+  --agent-dot-ok: var(--dh-api-green);
+  --agent-pulse-ring: color-mix(in srgb, var(--dh-api-green) 12%, transparent);
+  --agent-pulse-ring-wide: color-mix(in srgb, var(--dh-api-green) 4%, transparent);
+}
+
+.pnl-attribution-agent-drawer .ant-drawer-mask {
+  background: color-mix(in srgb, var(--dh-api-bg) 72%, transparent);
+}
+
+.pnl-attribution-agent-drawer .ant-drawer-content-wrapper {
+  width: min(560px, calc(100vw - 16px)) !important;
+  max-width: 100vw;
+  border-right: 1px solid var(--dh-api-line);
+  box-shadow: none;
+}
+
+.pnl-attribution-agent-drawer .ant-drawer-content {
+  color: var(--dh-api-ink);
+  background: var(--dh-api-bg);
+}
+
+.pnl-attribution-agent-drawer .ant-drawer-header {
+  min-height: 52px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel);
+}
+
+.pnl-attribution-agent-drawer .ant-drawer-title {
+  color: var(--dh-api-ink);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.pnl-attribution-agent-drawer__title-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.pnl-attribution-agent-drawer__eyebrow {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pnl-attribution-agent-drawer__title {
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.pnl-attribution-agent-drawer .ant-drawer-close,
+.pnl-attribution-agent-drawer .ant-drawer-extra .ant-btn {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-soft);
+}
+
+.pnl-attribution-agent-drawer .ant-drawer-close:hover,
+.pnl-attribution-agent-drawer .ant-drawer-extra .ant-btn:hover {
+  color: var(--dh-api-ink);
+  background: var(--dh-api-blue-soft);
+}
+
+.pnl-attribution-agent-drawer .ant-drawer-close:focus-visible,
+.pnl-attribution-agent-drawer .ant-drawer-extra .ant-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dh-api-blue) 58%, transparent);
+  outline-offset: 2px;
+}
+
+.pnl-attribution-agent-drawer .ant-drawer-body {
+  padding: 12px;
+  background: var(--dh-api-bg);
+  scrollbar-color: var(--dh-api-line) var(--dh-api-bg);
+}
+
+.pnl-attribution-agent-drawer-body {
+  min-width: 0;
+  min-height: 200px;
+  color: var(--dh-api-ink);
+}
+
+.pnl-attribution-agent-drawer-body .agent-workbench-shell--embedded {
+  margin-top: 0;
+  padding: 12px;
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.pnl-attribution-agent-drawer-body .agent-embedded-header {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.pnl-attribution-agent-drawer-body .agent-embedded-header__eyebrow {
+  color: var(--dh-api-muted);
+}
+
+.pnl-attribution-agent-drawer-body .agent-embedded-header > span {
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-soft);
+  background: var(--dh-api-panel-2);
+}
+
+@media (max-width: 600px) {
+  .pnl-attribution-agent-drawer .ant-drawer-content-wrapper {
+    width: min(100vw, 560px) !important;
+  }
+
+  .pnl-attribution-agent-drawer .ant-drawer-header,
+  .pnl-attribution-agent-drawer .ant-drawer-body {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .pnl-attribution-agent-drawer-body .agent-workbench-shell--embedded {
+    padding: 10px;
+  }
+}
+
 /* 编号分区容器：分区头与区内内容 12px 节奏。 */
 .pnl-attribution-section {
   display: grid;
@@ -64,10 +237,10 @@
   grid-row: 1;
   grid-column: 1;
   color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-attribution-section-head__title {
@@ -77,7 +250,7 @@
   overflow: hidden;
   color: var(--dh-api-ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -101,7 +274,7 @@
 .pnl-attribution-section-lead__eyebrow {
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -110,7 +283,7 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -133,7 +306,7 @@
 .pnl-attribution-compact-table__num,
 .pnl-attribution-product-category-summary-card__value,
 .pnl-attribution-meta-strip__value {
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
@@ -275,13 +448,13 @@
   margin: 6px 0 0;
   color: var(--dh-api-ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-attribution-bridge-panel__value {
   margin-top: 8px;
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -334,7 +507,7 @@
 .pnl-attribution-bridge-panel__details-title {
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-attribution-bridge-panel__unit {
@@ -392,7 +565,7 @@
 .pnl-attribution-bridge-table__label {
   padding: 8px 0;
   color: var(--dh-api-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* 语义圆点：颜色承载归因分项语义，保持圆形（Shape Lock 圆点例外）。 */
@@ -429,7 +602,7 @@
 
 .pnl-attribution-bridge-table__amount {
   padding: 8px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: right;
 }
 
@@ -511,7 +684,7 @@
 .pnl-attribution-product-category-summary-card__value {
   color: var(--dh-api-ink);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -559,11 +732,11 @@
 .pnl-attribution-compact-table__closure-flag {
   color: var(--dh-api-amber);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-attribution-compact-table__cell--strong {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* ---- 结果元信息条（证据层字段；质量/降级已收敛到决策条） ------------ */
@@ -587,7 +760,7 @@
 .pnl-attribution-meta-strip__eyebrow {
   color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
 }
 
@@ -639,7 +812,7 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -667,7 +840,7 @@
   margin-bottom: 6px;
   color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-attribution-findings__list {
@@ -709,7 +882,7 @@
 .pnl-attribution-decision-strip__title {
   color: var(--dh-api-ink);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -796,7 +969,7 @@
 .pnl-attribution-decision-strip__value {
   overflow: hidden;
   color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -853,7 +1026,7 @@
 }
 
 .pnl-attribution-advanced-table__num {
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -879,7 +1052,7 @@
 .pnl-attribution-mobile-table-readout__header {
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .pnl-attribution-mobile-table-readout__grid {
@@ -910,8 +1083,8 @@
   overflow-wrap: anywhere;
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 700;
-  font-family: var(--moss-font-mono);
+  font-weight: 600;
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
   line-height: 1.35;
 }
@@ -925,9 +1098,6 @@
 
 .pnl-attribution-page .formal-result-meta-panel {
   --formal-result-meta-border-soft: var(--dh-api-line-soft);
-  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
-  --formal-meta-badge-ok-ink: var(--dh-api-green);
-  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
   --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
   --formal-meta-badge-warn-ink: var(--dh-api-amber);
   --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);

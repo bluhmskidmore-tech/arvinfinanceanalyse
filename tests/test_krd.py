@@ -57,6 +57,15 @@ def _make_bond(
 
 REPORT_DATE = date(2026, 1, 1)
 
+
+def test_observed_zero_ytm_and_missing_ytm_use_distinct_durations():
+    bond = _make_bond("ZERO-YTM", "1000000", "0.03", "0", date(2036, 1, 1), REPORT_DATE)
+    observed = build_krd_position_metrics([bond], report_date=REPORT_DATE)[0]
+    missing = build_krd_position_metrics([{**bond, "yield_to_maturity": None}], report_date=REPORT_DATE)[0]
+    par = build_krd_position_metrics([{**bond, "yield_to_maturity": Decimal("0.03")}], report_date=REPORT_DATE)[0]
+    assert observed["modified_duration"] > missing["modified_duration"]
+    assert missing["modified_duration"] == par["modified_duration"]
+
 # A 5-year bond — should land in the "5Y" tenor bucket
 BOND_5Y = _make_bond(
     "B5Y", "1000000", "0.0300", "0.0300",

@@ -19,7 +19,9 @@
   非空值占比"观察点；显式停牌词值同样不在白名单内、计入本口径）；
 - ``scheduled_tasks``：``schtasks /query /fo csv /v`` 查询 MOSS-* 计划任务的
   LastRunTime/LastResult（仅 Windows；非 Windows/无权限/超时降级为
-  status=error + 原因，字段缺省）。
+  status=error + 原因，字段缺省）。若任务存在但从未首跑（如 LastResult=267011
+  / LastRunTime 缺失），该项按 ``missing`` 暴露，避免把“已注册未落证据”误判成
+  普通 warn。
 
 状态语义（整体状态取最差项，严重度 ok < warn < stale < missing < error）：
 
@@ -40,6 +42,7 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import subprocess
 import uuid
 from collections.abc import Callable
@@ -56,6 +59,7 @@ from backend.app.core_finance.matched_baseline import (
 )
 from backend.app.core_finance.matched_baseline import MATCHED_BASELINE_TABLE
 from backend.app.governance.settings import get_settings
+from backend.app.observability.response_cache import TTLResponseCache
 from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
@@ -94,6 +98,7 @@ _DB_SECTION_SPECS: tuple[tuple[str, str], ...] = (
     ("market_breadth_freshness", "市场宽度新鲜度"),
     ("gate_supplement_freshness", "门控补充新鲜度"),
     ("adjustment_factor_gap", "复权因子缺口"),
+    ("adjustment_factor_freshness", "复权因子新鲜度"),
     ("stale_formula_rows", "策略公式版本"),
     ("concept_interval_staleness", "概念区间陈旧度"),
     ("limit_price_backfill", "涨跌停数值表"),
@@ -103,7 +108,14 @@ _DB_SECTION_SPECS: tuple[tuple[str, str], ...] = (
 _SCHTASKS_TIMEOUT_SECONDS = 15
 #: LastResult 视为健康的取值：0 成功；267009 任务当前正在运行。
 _SCHTASKS_OK_RESULTS = frozenset({"0", "0x0", "267009"})
+_SCHTASKS_NEVER_RUN_RESULTS = frozenset({"267011", "0x41303"})
 _SCHEDULED_TASK_NAME_PREFIX = "MOSS-"
+_SCHEDULED_TASKS_CACHE_TTL_SECONDS = 120.0
+_SCHEDULED_TASKS_CACHE_TTL_ENV = "MOSS_DATA_HEALTH_SCHTASKS_TTL_SECONDS"
+_SCHEDULED_TASKS_CACHE_KEY = "data-health/scheduled-tasks"
+_SCHEDULED_TASKS_CACHE = TTLResponseCache(
+    default_ttl_seconds=_SCHEDULED_TASKS_CACHE_TTL_SECONDS
+)
 
 
 def data_health_envelope(
@@ -140,7 +152,10 @@ def data_health_envelope(
         rule_version=RULE_VERSION,
         quality_flag="ok" if overall_status == "ok" else "warning",
         as_of_date=today_text,
-        filters_applied={"today": today_text},
+        filters_applied={
+            "today": today_text,
+            "scheduled_tasks_cache_ttl_seconds": _scheduled_tasks_cache_ttl_seconds(),
+        },
         tables_used=[
             TABLE_OBSERVATION,
             TABLE_MARKET_BREADTH,
@@ -184,6 +199,11 @@ def _build_db_sections(conn: duckdb.DuckDBPyConnection, *, today: str) -> list[d
             ),
         ),
         ("adjustment_factor_gap", "复权因子缺口", lambda: _adjustment_gap_section(conn, tables, today=today)),
+        (
+            "adjustment_factor_freshness",
+            "复权因子新鲜度",
+            lambda: _adjustment_factor_freshness_section(conn, tables, today=today),
+        ),
         ("stale_formula_rows", "策略公式版本", lambda: _stale_formula_section(conn, tables)),
         (
             "concept_interval_staleness",
@@ -286,7 +306,15 @@ def _adjustment_gap_section(
     factor_max: str | None = None
     factor_gap: int | None = None
     if TABLE_ADJ_FACTOR in tables:
-        factor_row = conn.execute(f"select max(trade_date) from {TABLE_ADJ_FACTOR}").fetchone()
+        factor_row = conn.execute(
+            f"""
+            select max(trade_date)
+            from {TABLE_ADJ_FACTOR}
+            where adj_factor is not null
+              and adj_factor > 0
+              and isfinite(adj_factor)
+            """
+        ).fetchone()
         factor_max = _date_text(factor_row[0] if factor_row else None) or None
         if factor_max:
             factor_gap = _calendar_gap_days(today, factor_max)
@@ -309,6 +337,59 @@ def _adjustment_gap_section(
     else:
         status = "warn"
     return _section(key, label, status=status, metric=f"{total:,} 行缺复权", as_of=factor_max, detail=detail)
+
+
+def _adjustment_factor_freshness_section(
+    conn: duckdb.DuckDBPyConnection,
+    tables: set[str],
+    *,
+    today: str,
+) -> dict[str, object]:
+    key, label = "adjustment_factor_freshness", "复权因子新鲜度"
+    if TABLE_ADJ_FACTOR not in tables:
+        return _section(key, label, status="missing", detail=f"表 {TABLE_ADJ_FACTOR} 不存在")
+    row = conn.execute(
+        f"""
+        select
+          max(trade_date),
+          count(*)
+        from {TABLE_ADJ_FACTOR}
+        where adj_factor is not null
+          and adj_factor > 0
+          and isfinite(adj_factor)
+        """
+    ).fetchone()
+    max_date = _date_text(row[0] if row else None)
+    row_count = int(row[1] or 0) if row else 0
+    if not max_date:
+        return _section(
+            key,
+            label,
+            status="missing",
+            metric="0 行",
+            detail=f"{TABLE_ADJ_FACTOR} 无有效复权因子行",
+        )
+    gap = _calendar_gap_days(today, max_date)
+    if gap is None:
+        return _section(
+            key,
+            label,
+            status="error",
+            as_of=max_date,
+            detail=f"{TABLE_ADJ_FACTOR} 最新日期无法解析：{max_date}",
+        )
+    detail = (
+        f"{TABLE_ADJ_FACTOR} max(trade_date)={max_date}，距今 {gap} 自然日，"
+        f"有效复权因子 {row_count:,} 行。{_FRESHNESS_NOTE}"
+    )
+    return _section(
+        key,
+        label,
+        status=_freshness_status(gap),
+        metric=f"{max_date} · 落后 {gap} 天",
+        as_of=max_date,
+        detail=detail,
+    )
 
 
 def _stale_formula_section(conn: duckdb.DuckDBPyConnection, tables: set[str]) -> dict[str, object]:
@@ -464,16 +545,23 @@ def _tradestatus_section(conn: duckdb.DuckDBPyConnection, tables: set[str]) -> d
 
 
 def _scheduled_tasks_section() -> dict[str, object]:
-    key, label = "scheduled_tasks", "调度任务"
     try:
-        text = _run_schtasks_query()
-    except Exception as exc:  # noqa: BLE001 - 非 Windows/无权限/超时统一降级，字段缺省
-        return _section(
-            key,
-            label,
-            status="error",
-            detail=f"schtasks 查询失败（非 Windows/无权限/超时时字段缺省）：{exc}",
+        return _SCHEDULED_TASKS_CACHE.get_or_build(
+            _SCHEDULED_TASKS_CACHE_KEY,
+            _build_scheduled_tasks_section,
+            ttl_seconds=_scheduled_tasks_cache_ttl_seconds(),
         )
+    except Exception as exc:  # noqa: BLE001 - 查询失败只降级本次结果，不能写入缓存
+        return _error_section(
+            "scheduled_tasks",
+            "调度任务",
+            f"schtasks 查询失败（非 Windows/无权限/超时时字段缺省）：{exc}",
+        )
+
+
+def _build_scheduled_tasks_section() -> dict[str, object]:
+    key, label = "scheduled_tasks", "调度任务"
+    text = _run_schtasks_query()
     tasks = _parse_schtasks_csv(text)
     if not tasks:
         return _section(
@@ -483,7 +571,12 @@ def _scheduled_tasks_section() -> dict[str, object]:
             metric="0 个任务",
             detail=f"未发现 {_SCHEDULED_TASK_NAME_PREFIX}* 计划任务（未安装或当前账户查询不到）",
         )
-    unhealthy = [task for task in tasks if task["last_result"] not in _SCHTASKS_OK_RESULTS]
+    never_run = [task for task in tasks if _scheduled_task_never_ran(task)]
+    unhealthy = [
+        task
+        for task in tasks
+        if task["last_result"] not in _SCHTASKS_OK_RESULTS and task not in never_run
+    ]
     detail = (
         "；".join(
             f"{task['task_name']}: 上次 {task['last_run_time'] or '—'}，LastResult {task['last_result'] or '—'}"
@@ -491,13 +584,48 @@ def _scheduled_tasks_section() -> dict[str, object]:
         )
         + "。LastResult 0 与 267009（正在运行）视为正常，267011 = 从未运行"
     )
+    if never_run:
+        return _section(
+            key,
+            label,
+            status="missing",
+            metric=f"{len(tasks) - len(never_run)}/{len(tasks)} 已跑",
+            detail=detail + "；首跑证据缺失：至少一个计划任务尚未完成首次成功运行。",
+        )
+    if unhealthy:
+        return _section(
+            key,
+            label,
+            status="warn",
+            metric=f"{len(tasks) - len(unhealthy)}/{len(tasks)} 正常",
+            detail=detail,
+        )
     return _section(
         key,
         label,
-        status="ok" if not unhealthy else "warn",
-        metric=f"{len(tasks) - len(unhealthy)}/{len(tasks)} 正常",
+        status="ok",
+        metric=f"{len(tasks)}/{len(tasks)} 正常",
         detail=detail,
     )
+
+
+def _scheduled_tasks_cache_ttl_seconds() -> float:
+    configured = os.getenv(_SCHEDULED_TASKS_CACHE_TTL_ENV)
+    if configured is None or not configured.strip():
+        return _SCHEDULED_TASKS_CACHE_TTL_SECONDS
+    try:
+        ttl_seconds = float(configured)
+    except ValueError:
+        return _SCHEDULED_TASKS_CACHE_TTL_SECONDS
+    return ttl_seconds if ttl_seconds >= 0 else _SCHEDULED_TASKS_CACHE_TTL_SECONDS
+
+
+def _scheduled_task_never_ran(task: dict[str, str]) -> bool:
+    last_result = str(task.get("last_result") or "").strip().lower()
+    last_run_time = str(task.get("last_run_time") or "").strip().lower()
+    if last_result in _SCHTASKS_NEVER_RUN_RESULTS:
+        return True
+    return last_run_time in {"", "n/a", "never"}
 
 
 def _run_schtasks_query(

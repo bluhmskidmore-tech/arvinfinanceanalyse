@@ -11,6 +11,8 @@ create table if not exists choice_stock_factor_snapshot (
   twelve_month_return double,
   volatility double,
   dividend_yield double,
+  total_mv double,
+  circ_mv double,
   industry varchar,
   source_version varchar,
   vendor_version varchar,

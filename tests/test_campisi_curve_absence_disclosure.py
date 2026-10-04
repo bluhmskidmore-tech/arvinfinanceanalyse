@@ -1,8 +1,7 @@
 """服务层必须把"利率效应为 0"的三种成因分开说（2026-08 金融审计整改）。
 
-`campisi_attribution_service` 用 `curve_repo.fetch_curve(anchor, "treasury")` 取曲线，
-没有 latest 回退；报告日 2026-07-31 一行都没有时它返回 `{}`，下游 Campisi 的基准
-求值器退化为恒 0，页面拿到的只是一个普通的 0。
+`campisi_attribution_service` 用正式曲线快照解析国债曲线；当目标日之前确实
+没有可用快照时，下游 Campisi 的基准求值器退化为恒 0，页面必须披露不可用。
 
 三种成因的处置完全不同 —— 补数 / 修单位 / 放宽期限口径 —— 所以它们必须在
 `input_quality.market_curve_coverage.treasury_effect.reason` 上可分支，而不是塌成
@@ -49,6 +48,10 @@ class _CurveRepoStub:
     def fetch_curve(self, trade_date: str, curve_type: str) -> dict[str, object]:
         return dict(self._curves.get((trade_date, curve_type), {}))
 
+    def resolve_curve_snapshot(self, trade_date: str, curve_type: str):
+        curve = self.fetch_curve(trade_date, curve_type)
+        return ({"trade_date": trade_date, "curve": curve}, None) if curve else (None, None)
+
 
 def _bond_row(code: str = "BOND_AAA") -> dict[str, object]:
     return {
@@ -91,16 +94,20 @@ def test_fetch_treasury_market_dict_reports_absence_separately_from_content():
     repo = _CurveRepoStub(
         {
             ("2026-06-30", "treasury"): {"1Y": Decimal("2.00"), "3Y": Decimal("2.30")},
-            # 2026-07-31 故意缺席，复刻报告日的真实情形。
+            # 2026-07-31 故意缺席，验证无历史快照的隔离情形。
         }
     )
 
-    present_market, present = fetch_treasury_market_dict(repo, "2026-06-30")
-    absent_market, absent = fetch_treasury_market_dict(repo, "2026-07-31")
+    present_market, present, present_resolved, present_used = fetch_treasury_market_dict(repo, "2026-06-30")
+    absent_market, absent, absent_resolved, absent_used = fetch_treasury_market_dict(repo, "2026-07-31")
 
     assert present is True
+    assert present_resolved == "2026-06-30"
+    assert present_used is True
     assert present_market == {"treasury_1y": 2.00, "treasury_3y": 2.30}
     assert absent is False
+    assert absent_resolved is None
+    assert absent_used is False
     assert absent_market == {}
 
 

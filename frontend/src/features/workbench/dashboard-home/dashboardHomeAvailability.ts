@@ -10,10 +10,12 @@ export type DashboardHomeAvailabilityKind =
   | "partial"
   | "fallback"
   | "stale"
+  | "dateUnavailable"
   | "error";
 
 export type DashboardHomeAvailabilityFailureKind =
   | "permission"
+  | "reportDateUnavailable"
   | "requestFailed";
 
 export type DashboardHomeSnapshotFailureCopy = {
@@ -49,6 +51,10 @@ type BuildDashboardHomeAvailabilityInput = {
 
 const SNAPSHOT_PERMISSION_PATTERN =
   /(?:not allowed to read|forbidden|permission|status(?:\s+code)?\s*[:=]?\s*403|\b403\b)/i;
+const REPORT_DATE_UNAVAILABLE_PATTERN =
+  /\[code=home_report_date_unavailable\]/i;
+const SNAPSHOT_ERROR_METADATA_PATTERN =
+  /\s*\[(?:code|run_id|last_status)=[^\]]+\]/gi;
 const ISO_REPORT_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function cleanOptionalText(value: string | null | undefined): string {
@@ -56,10 +62,24 @@ function cleanOptionalText(value: string | null | undefined): string {
   return normalized && normalized !== EM_DASH ? normalized : "";
 }
 
+function cleanSnapshotBusinessReason(value: string): string {
+  return value.replace(SNAPSHOT_ERROR_METADATA_PATTERN, "").trim();
+}
+
 export function dashboardHomeSnapshotFailureCopy(
   detail: string | null | undefined,
 ): DashboardHomeSnapshotFailureCopy {
   const normalizedDetail = cleanOptionalText(detail);
+  if (REPORT_DATE_UNAVAILABLE_PATTERN.test(normalizedDetail)) {
+    return {
+      kind: "reportDateUnavailable",
+      label: "报告日暂不可用",
+      reason:
+        cleanSnapshotBusinessReason(normalizedDetail) ||
+        "所选报告日的核心数据尚未齐全，暂不能生成完整首页。",
+      recovery: "查看最新可用报告",
+    };
+  }
   if (SNAPSHOT_PERMISSION_PATTERN.test(normalizedDetail)) {
     return {
       kind: "permission",
@@ -101,10 +121,6 @@ export function buildDashboardHomeAvailability(
     requestedReportDate.length > 0 &&
     actualReportDate.length > 0 &&
     requestedReportDate !== actualReportDate;
-  const kind = availabilityKind(
-    input.dataStatusKind,
-    input.snapshotRetryingAfterError === true,
-  );
   const generatedAt =
     cleanOptionalText(
       input.reportDateContext.generatedAt || input.snapshotMeta?.generated_at,
@@ -113,6 +129,35 @@ export function buildDashboardHomeAvailability(
     ISO_REPORT_DATE_PATTERN.test(actualReportDate);
   const technicalDetail =
     cleanOptionalText(input.snapshotErrorDetail) || null;
+  const reportDateUnavailable = dashboardHomeSnapshotFailureCopy(technicalDetail);
+  const kind =
+    reportDateUnavailable.kind === "reportDateUnavailable"
+      ? "dateUnavailable"
+      : availabilityKind(
+          input.dataStatusKind,
+          input.snapshotRetryingAfterError === true,
+        );
+
+  if (kind === "dateUnavailable") {
+    const hasRetainedSnapshot = actualReportDate.length > 0;
+    return {
+      kind,
+      failureKind: "reportDateUnavailable",
+      label: reportDateUnavailable.label,
+      title: hasRetainedSnapshot
+        ? "报告日暂不可用，当前保留上一有效快照"
+        : "报告日暂不可用，未生成首页快照",
+      reason: reportDateUnavailable.reason,
+      impact: hasRetainedSnapshot
+        ? "页面暂保留上一有效快照；查看最新可用报告后，才会切换到后端确定的完整报告日。"
+        : "所选报告日的核心数据尚未齐全，首页暂不能生成完整快照。",
+      technicalDetail,
+      requestedReportDate,
+      actualReportDate,
+      generatedAt,
+      hasResolvedReportDate,
+    };
+  }
 
   if (kind === "error") {
     const failure = dashboardHomeSnapshotFailureCopy(technicalDetail);

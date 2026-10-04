@@ -1,7 +1,8 @@
 import type { EChartsOption } from "../../lib/echarts";
 import { designTokens, ibTokens } from "../../theme/designSystem";
 import { EM_DASH } from "../../utils/format";
-import { BaseChart } from "./BaseChart";
+import { ChartCard } from "./ChartCard";
+import type { ChartCardHeight } from "./chartCardScale";
 
 export type AccountingBasisStackedSharePoint = {
   monthLabel: string;
@@ -45,7 +46,7 @@ function labelValue(params: unknown) {
   return Number.isFinite(value) ? value : 0;
 }
 
-function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): EChartsOption {
+function buildOption(rows: AccountingBasisStackedSharePoint[]): EChartsOption {
   const series = basisSeries.map((seriesItem) => ({
     name: seriesItem.name,
     type: "bar" as const,
@@ -67,18 +68,6 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
   }));
 
   return {
-    title: {
-      text: title,
-      left: 0,
-      top: 0,
-      textStyle: { fontSize: 16, fontWeight: 700, color: ibTokens.color.ink },
-    },
-    legend: {
-      bottom: 0,
-      data: basisSeries.map((item) => item.name),
-      itemWidth: 28,
-      itemHeight: 10,
-    },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
@@ -94,7 +83,7 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
         ].join("<br/>");
       },
     },
-    grid: { left: 36, right: 24, top: 54, bottom: 72 },
+    grid: { left: 36, right: 24, top: 54 },
     xAxis: {
       type: "category",
       data: rows.map((row) => row.monthLabel),
@@ -114,15 +103,21 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
 type AccountingBasisStackedShareChartProps = {
   rows: AccountingBasisStackedSharePoint[];
   title: string;
-  height?: number;
+  height?: ChartCardHeight;
 };
 
 export default function AccountingBasisStackedShareChart({
   rows,
   title,
-  height = 390,
+  height = 280,
 }: AccountingBasisStackedShareChartProps) {
-  // 复用 BaseChart 壳层：同一 lib/echarts 包装（notMerge / lazyUpdate / 同主题）
-  // 之上补齐 ResizeObserver 自适应，容器尺寸变化时图表跟随重算。
-  return <BaseChart option={buildOption(rows, title)} height={height} />;
+  return (
+    <ChartCard
+      title={title}
+      unit="%"
+      option={rows.length > 0 ? buildOption(rows) : null}
+      height={height}
+      emptyMessage="暂无会计口径占比数据"
+    />
+  );
 }

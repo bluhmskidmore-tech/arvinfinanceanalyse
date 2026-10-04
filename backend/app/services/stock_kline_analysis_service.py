@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import date
 from pathlib import Path
@@ -14,14 +15,17 @@ from backend.app.services.formal_result_runtime import (
 )
 
 RESULT_KIND = "market_data.stock_analysis.kline"
-RULE_VERSION = "rv_stock_kline_analysis_observation_v1"
-CACHE_VERSION = "cv_stock_kline_analysis_observation_v1"
+RULE_VERSION = "rv_stock_kline_analysis_observation_v2"
+CACHE_VERSION = "cv_stock_kline_analysis_observation_v2"
 EMPTY_SOURCE_VERSION = "sv_stock_kline_analysis_empty"
 EMPTY_VENDOR_VERSION = "vv_none"
 
 TABLE_OBS = "choice_stock_daily_observation"
 MIN_USABLE_BARS = 30
 RECOMMENDED_BARS = 60
+# 观察型 K 线端点的固定展示窗口。当前虽与 RiskExitPolicy.volume_ma_window 同为
+# 20，但所有权独立：策略调参不得无声改变 volume_ratio_20d 的 20 日契约语义。
+VOLUME_MA_WINDOW = 20
 
 
 def stock_kline_analysis_envelope(
@@ -270,10 +274,21 @@ def _indicators(candles: list[dict[str, object]]) -> dict[str, object]:
     latest = candles[-1] if candles else {}
     latest_close = _maybe_float(latest.get("close_value"))
     latest_volume = _maybe_float(latest.get("volume"))
-    average_volume_20d = _mean_tail(volumes[:-1], 20)
+    prior_volumes = [
+        value
+        for value in volumes[:-1][-VOLUME_MA_WINDOW:]
+        if value is not None and math.isfinite(value) and value > 0
+    ]
+    average_volume_20d = (
+        sum(prior_volumes) / len(prior_volumes) if prior_volumes else None
+    )
     volume_ratio_20d = (
         latest_volume / average_volume_20d
-        if latest_volume is not None and average_volume_20d is not None and average_volume_20d > 0
+        if latest_volume is not None
+        and math.isfinite(latest_volume)
+        and latest_volume > 0
+        and average_volume_20d is not None
+        and average_volume_20d > 0
         else None
     )
     return {
@@ -334,7 +349,16 @@ def _validity(candles: list[dict[str, object]]) -> dict[str, object]:
     latest = candles[-1] if candles else {}
     volumes = [_maybe_float(c.get("volume")) for c in candles]
     latest_volume = _maybe_float(latest.get("volume"))
-    average_volume_20d = _mean_tail(volumes, 20)
+    valid_volume_window = [
+        value
+        for value in volumes[-VOLUME_MA_WINDOW:]
+        if value is not None and math.isfinite(value) and value > 0
+    ]
+    average_volume_20d = (
+        sum(valid_volume_window) / len(valid_volume_window)
+        if valid_volume_window
+        else None
+    )
     warnings: list[str] = []
     if len(candles) < MIN_USABLE_BARS:
         warnings.append("insufficient_bar_count")

@@ -70,6 +70,8 @@ class TestRiskTensorNumericMigration:
         assert payload.portfolio_modified_duration.unit == "years"
         assert payload.rate_risk_modified_duration.unit == "years"
         assert payload.total_market_value.sign_aware is False
+        assert payload.maturity_breakdown_status == "unavailable_legacy"
+        assert payload.fund_no_maturity_market_value is None
 
     def test_accepts_native_numeric(self) -> None:
         payload = RiskTensorPayload(
@@ -183,3 +185,4 @@ class TestRiskTensorNumericMigration:
         assert from_tensor.portfolio_dv01.raw == 3.5
         assert from_tensor.regulatory_dv01 is not None
         assert from_tensor.regulatory_dv01.raw == 3.5
+        assert from_tensor.maturity_breakdown_status == "available"

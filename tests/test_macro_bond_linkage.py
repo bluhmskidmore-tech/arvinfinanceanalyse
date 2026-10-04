@@ -374,12 +374,23 @@ def test_lead_lag_detection():
     assert results[0].target_yield == "treasury_10Y"
     assert results[0].lead_lag_days == 5
     assert results[0].direction == "positive"
+    assert results[0].direction_source_window in {"1y", "6m", "3m", "best_lag"}
     assert results[0].correlation_3m is not None
     assert results[0].correlation_3m > 0.8
     assert results[0].sample_size is not None and results[0].sample_size >= 2
     assert results[0].lead_lag_confidence is not None
     assert results[0].winsorized is False
     assert results[0].zscore_applied is False
+
+
+def test_direction_from_correlation_discloses_source_window():
+    mod = _core_module()
+    # 1y is below ±0.2 while 3m is strong: direction still comes from 3m.
+    assert mod._direction_from_correlation(0.1, None, 0.5, 0.4) == ("positive", "3m")
+    assert mod._direction_from_correlation(0.3, 0.5, 0.8, 0.9) == ("positive", "1y")
+    assert mod._direction_from_correlation(-0.1, -0.25, -0.6, None) == ("negative", "6m")
+    assert mod._direction_from_correlation(0.19, 0.15, None, 0.05) == ("neutral", "none")
+    assert mod._direction_from_correlation(None, None, None, 0.21) == ("positive", "best_lag")
 
 
 def test_alignment_modes_differ_for_low_frequency_macro_vs_daily_yield():
@@ -460,6 +471,136 @@ def test_compute_macro_bond_correlations_reuses_sorted_alignment_inputs(monkeypa
 
     assert len(results) == 6
     assert date_map_sort_count <= len(macro_series) + len(yield_series)
+
+
+@pytest.mark.parametrize("alignment_mode", ["conservative", "market_timing"])
+@pytest.mark.parametrize("winsorize_tail_fraction", [None, 0.1])
+def test_repeated_date_grids_reuse_lead_lag_alignment_without_changing_results(
+    monkeypatch,
+    alignment_mode,
+    winsorize_tail_fraction,
+):
+    mod = _core_module()
+    assert mod._np is not None, "NumPy is a required backend dependency for the alignment cache regression."
+
+    start = date(2026, 1, 1)
+    macro_offsets = [offset for offset in range(105) if offset % 3 == 0 and offset not in {18, 51}]
+    yield_offsets = [offset for offset in range(105) if offset % 7 != 0]
+    macro_series = {
+        f"macro_{series_index}": [
+            (
+                start + timedelta(days=offset),
+                math.sin(offset / 8.0 + series_index) + offset / 90.0
+                + (8.0 if offset == 72 and series_index == 1 else 0.0),
+            )
+            for offset in macro_offsets
+        ]
+        for series_index in range(2)
+    }
+    yield_series = {
+        f"yield_{target_index}": [
+            (
+                start + timedelta(days=offset),
+                math.sin((offset - 5) / 8.0 + target_index / 2.0)
+                + offset / 120.0
+                + (10.0 if offset == 73 and target_index == 1 else 0.0),
+            )
+            for offset in yield_offsets
+        ]
+        for target_index in range(2)
+    }
+    original_best_lead_lag = mod._best_lead_lag_details
+
+    def without_alignment_cache(*args, **kwargs):
+        kwargs.pop("alignment_cache", None)
+        return original_best_lead_lag(*args, **kwargs)
+
+    monkeypatch.setattr(mod, "_best_lead_lag_details", without_alignment_cache)
+    expected = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=120,
+        alignment_mode=alignment_mode,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+    monkeypatch.setattr(mod, "_best_lead_lag_details", original_best_lead_lag)
+
+    original_aligned_arrays = mod._aligned_arrays
+    lead_lag_alignment_count = 0
+
+    def count_lead_lag_alignments(*args, **kwargs):
+        nonlocal lead_lag_alignment_count
+        if kwargs.get("start_ordinal") is None and kwargs.get("end_ordinal") is None:
+            lead_lag_alignment_count += 1
+        return original_aligned_arrays(*args, **kwargs)
+
+    monkeypatch.setattr(mod, "_aligned_arrays", count_lead_lag_alignments)
+    actual = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=120,
+        alignment_mode=alignment_mode,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+
+    assert len(actual) == len(expected) == 4
+    assert actual == expected
+    assert lead_lag_alignment_count == 61
+
+
+def test_correlation_screening_skips_lead_lag_but_preserves_window_strengths(monkeypatch):
+    mod = _core_module()
+    start = date(2026, 1, 1)
+    macro_series = {
+        "macro_a": [
+            (start + timedelta(days=offset), math.sin(offset / 6.0))
+            for offset in range(75)
+            if offset % 4 != 0
+        ],
+        "macro_b": [
+            (start + timedelta(days=offset), math.cos(offset / 7.0))
+            for offset in range(75)
+            if offset % 4 != 0
+        ],
+    }
+    yield_series = {
+        "yield_a": [
+            (start + timedelta(days=offset), math.sin((offset - 3) / 6.0))
+            for offset in range(75)
+            if offset % 6 != 0
+        ],
+    }
+    full = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=90,
+        alignment_mode="market_timing",
+    )
+
+    def unexpected_lead_lag(*args, **kwargs):
+        raise AssertionError("screening must not compute lead-lag or observation span")
+
+    monkeypatch.setattr(mod, "_compute_lead_lag", unexpected_lead_lag)
+    monkeypatch.setattr(mod, "_alignment_span_days", unexpected_lead_lag)
+    screening = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=90,
+        alignment_mode="market_timing",
+        include_lead_lag=False,
+    )
+
+    assert len(screening) == len(full) == 2
+    for quick, complete in zip(screening, full, strict=True):
+        assert (quick.series_id, quick.target_yield) == (complete.series_id, complete.target_yield)
+        assert (quick.correlation_3m, quick.correlation_6m, quick.correlation_1y) == (
+            complete.correlation_3m,
+            complete.correlation_6m,
+            complete.correlation_1y,
+        )
+        assert quick.sample_size is None
+        assert quick.lead_lag_confidence is None
+        assert quick.effective_observation_span_days is None
 
 
 def test_compute_macro_bond_correlations_is_scale_invariant_without_zscore_flag():
@@ -1034,6 +1175,7 @@ def test_api_cross_layer_exposes_correlation_statistical_metadata(tmp_path, monk
         "zscore_applied",
         "lead_lag_confidence",
         "effective_observation_span_days",
+        "direction_source_window",
     )
     for track in ("conservative", "market_timing"):
         rows = result["method_variants"][track]["top_correlations"]
@@ -1049,6 +1191,7 @@ def test_api_cross_layer_exposes_correlation_statistical_metadata(tmp_path, monk
     assert top0["lead_lag_confidence"] is not None
     assert top0["zscore_applied"] is False
     assert isinstance(top0["winsorized"], bool)
+    assert top0["direction_source_window"] in {"1y", "6m", "3m", "best_lag", "none"}
 
     get_settings.cache_clear()
 

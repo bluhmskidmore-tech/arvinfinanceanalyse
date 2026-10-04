@@ -11,12 +11,6 @@
   --ib-up: var(--dh-api-green);
   --ib-down: var(--dh-api-red);
   --ib-warn: var(--dh-api-amber);
-  --ib-radius: var(--dh-api-radius);
-  /* PagePrimitives（PageSectionLead）内联墨字浅色兜底在深底不可读，经 --moss-page-* 变量接管 */
-  --moss-page-ink: var(--ib-ink);
-  --moss-page-ink-secondary: var(--ib-ink-secondary);
-  --moss-page-ink-muted: var(--ib-ink-muted);
-
   min-height: 100%;
   background: var(--dh-api-bg);
   color: var(--dh-api-ink);
@@ -111,7 +105,7 @@
   background: var(--ib-surface-muted);
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -154,12 +148,12 @@
 .decision-items-page__detail-label {
   color: var(--ib-ink-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .decision-items-page__summary-value {
   color: var(--ib-ink);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 /* 高等级计数 >0 时红色强调 + 语义圆点（圆点=存在高等级待办）。 */
@@ -168,7 +162,7 @@
   align-items: center;
   gap: 6px;
   color: var(--ib-down);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .decision-items-page__summary-count[data-alert="true"]::before {
@@ -199,7 +193,7 @@
 .decision-items-page__meta-entry-value {
   color: var(--ib-ink);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -220,7 +214,7 @@
   gap: 8px;
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .decision-items-page__filter-control {
@@ -290,7 +284,7 @@
   border-bottom: 1px solid var(--ib-hairline);
   background: var(--ib-surface-muted);
   color: var(--ib-ink-secondary);
-  font-weight: 650;
+  font-weight: 600;
   text-align: left;
 }
 
@@ -333,7 +327,7 @@
   background: var(--ib-surface-muted);
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.5;
   white-space: nowrap;
 }
@@ -364,11 +358,11 @@
   margin: 0 0 12px;
   color: var(--ib-ink);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .decision-items-page__mono {
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
@@ -384,7 +378,7 @@
   background: var(--ib-paper);
   color: var(--ib-ink);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .decision-items-page__update-feedback {
@@ -404,6 +398,6 @@
 .decision-items-page__readonly-inline {
   color: var(--ib-ink-muted);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   white-space: nowrap;
 }

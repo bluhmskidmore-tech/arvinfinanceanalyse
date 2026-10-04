@@ -51,6 +51,7 @@ _DEFAULT_SCANNED_DIR_RELS: tuple[str, ...] = (
 )
 
 _CORE_FINANCE_DIR = "backend/app/core_finance"
+_REPOSITORIES_DIR = "backend/app/repositories"
 
 _SCANNED_DIR_RELS: tuple[str, ...] = _DEFAULT_SCANNED_DIR_RELS
 
@@ -203,6 +204,24 @@ PATTERNS: dict[str, tuple[PatternDef, ...]] = {
             "regex": re.compile(r"['\"]负债['\"]\s+in\b"),
             "confidence": "medium",
         },
+        {
+            # Narrow addition for the backend/app/repositories blind spot
+            # (snapshot_row_parse.py inline issuance shim): the general
+            # issuance_substring_zh pattern only matches a bare "发行"/"发行类"
+            # quoted literal directly touching `in`; it misses the longer
+            # compound literal "发行类债"/"发行类债劵"/"发行类债券" used by that
+            # shim. Scoped to this exact compound token (with trailing
+            # 券/劵/务 optional) so it does not also flag unrelated set-literal
+            # membership checks (e.g. ledger_import_service._normalize_issuance_alias)
+            # or frozenset label declarations elsewhere in the scanned dirs.
+            "pattern_id": "issuance_type_bond_zh_inline",
+            "regex": re.compile(
+                r"['\"]发行类债[券劵务]?['\"]\s+in\b"
+                r"|\bin\s+['\"]发行类债"
+                r"|[=!]=\s*['\"]发行类债[券劵务]?['\"]"
+            ),
+            "confidence": "high",
+        },
     ),
     "hat_mapping": (
         {
@@ -276,6 +295,12 @@ def _scanned_dir_relatives_for_rule(rule_id: str) -> tuple[str, ...]:
         "fx_mid_conversion",
     }:
         return tuple([*base, _CORE_FINANCE_DIR])
+    if rule_id == "issuance_exclusion":
+        # backend/app/repositories was a scanning blind spot: the inline
+        # issuance-marker shim in snapshot_row_parse.py duplicated canonical
+        # is_bond_liability() logic but was never scanned. See
+        # W-caliber-audit-repositories-blindspot-2026-08.
+        return tuple([*base, _REPOSITORIES_DIR])
     return base
 
 

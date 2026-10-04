@@ -83,6 +83,13 @@ def _client(tmp_path, monkeypatch, *, guard=None, service_fn=None) -> TestClient
 def test_official_evidence_route_calls_service_without_cache_and_sets_server_timing(
     tmp_path, monkeypatch
 ) -> None:
+    class MockDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 4, 11)
+
+    monkeypatch.setattr(route_module, "date", MockDate)
+
     calls: list[dict[str, object]] = []
 
     def service_fn(**kwargs):
@@ -132,12 +139,12 @@ def test_official_evidence_route_calls_service_without_cache_and_sets_server_tim
         "/ui/market-data/stock-analysis/official-evidence",
         params={"stock_code": "000001.SZ", "as_of_date": "2026-04-10", "limit_per_type": 7},
     )
-    default_as_of_before = date.today()
+    default_as_of_before = date(2026, 4, 11)
     third = client.get(
         "/ui/market-data/stock-analysis/official-evidence",
         params={"stock_code": "000001.SZ"},
     )
-    default_as_of_after = date.today()
+    default_as_of_after = date(2026, 4, 11)
 
     assert first.status_code == 200
     assert second.status_code == 200

@@ -83,7 +83,11 @@ export function getCampisiAttributionContext(
   reportDate: string,
   options?: { detail?: "full" | "summary" },
 ) {
+  // Monthly PnL flows use the preceding month-end balance, not a rolling 30-day window.
+  const baseline = new Date(`${reportDate.slice(0, 7)}-01T00:00:00Z`);
+  baseline.setUTCDate(0);
   return client.getPnlCampisiFourEffects({
+    startDate: baseline.toISOString().slice(0, 10),
     endDate: reportDate,
     lookbackDays: 30,
     ...(options?.detail ? { detail: options.detail } : {}),

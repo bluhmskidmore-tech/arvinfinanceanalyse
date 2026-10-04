@@ -12,7 +12,6 @@
   --ib-ink: var(--dh-api-ink);
   --ib-ink-secondary: var(--dh-api-soft);
   --ib-ink-muted: var(--dh-api-muted);
-  --ib-radius: var(--dh-api-radius);
   --ib-accent: var(--dh-api-blue);
   --ib-gold: var(--dh-api-amber);
   --ib-up: var(--dh-api-green);
@@ -49,8 +48,9 @@
 /*
  * antd 强调色页内收敛（macro-toolkit 先例，仅取色值声明）：cssinjs 钢蓝
  * colorPrimary 在 scope 内压为 accent 链；:not(disabled) 保留 antd 禁用态
- * 皮肤。Select/Picker/Table 骨架色维持 antd 基础皮肤（2026-08-13 摩擦源
- * 条目既定例外，bond-analysis 同款）。
+ * 皮肤。Select/Picker 骨架色维持 antd 基础皮肤（2026-08-13 摩擦源
+ * 条目既定例外，bond-analysis 同款）。查询结果表已迁至零 antd 依赖的
+ * DataTable 原语，不再需要 .ant-table-* 覆盖。
  */
 .page.page :global(.ant-btn-primary:not(:disabled):not(.ant-btn-disabled)) {
   border-color: var(--dh-api-blue);
@@ -78,14 +78,6 @@
 
 .page.page :global(.ant-pagination-item-active a) {
   color: var(--dh-api-blue);
-}
-
-.page.page :global(.ant-table-thead > tr > th) {
-  background: var(--dh-api-panel-2);
-}
-
-.page.page :global(.ant-table-tbody > tr:hover > td) {
-  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
 }
 
 .stack {

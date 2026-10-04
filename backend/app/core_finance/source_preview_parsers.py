@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 from pathlib import Path
 
 import xlrd
@@ -69,6 +70,7 @@ def parse_source_file(
     ingest_batch_id: str,
     source_version: str,
     source_file_name: str | None = None,
+    file_bytes: bytes | None = None,
 ) -> tuple[str, str | None, list[dict[str, object]], list[dict[str, object]]]:
     metadata = describe_source_file(source_file_name or path.name)
     source_family = metadata.source_family
@@ -78,6 +80,7 @@ def parse_source_file(
             ingest_batch_id=ingest_batch_id,
             source_version=source_version,
             metadata=metadata,
+            file_bytes=file_bytes,
         )
 
     if source_family in {"pnl_514", "pnl_516", "pnl_517"}:
@@ -86,12 +89,13 @@ def parse_source_file(
             ingest_batch_id=ingest_batch_id,
             source_version=source_version,
             metadata=metadata,
+            file_bytes=file_bytes,
         )
 
     if source_family not in {"zqtz", "tyw"}:
         return source_family, metadata.report_date, [], []
 
-    sheet = xlrd.open_workbook(str(path)).sheet_by_index(0)
+    sheet = (xlrd.open_workbook(file_contents=file_bytes) if file_bytes is not None else xlrd.open_workbook(str(path))).sheet_by_index(0)
     headers = [str(sheet.cell_value(1, column)).strip() for column in range(sheet.ncols)]
     rows: list[dict[str, object]] = []
     traces: list[dict[str, object]] = []
@@ -148,10 +152,11 @@ def _parse_pnl_source_file(
     ingest_batch_id: str,
     source_version: str,
     metadata,
+    file_bytes: bytes | None = None,
 ) -> tuple[str, str | None, list[dict[str, object]], list[dict[str, object]]]:
     raw_rows: list[dict[str, object]] = []
     if path.suffix.lower() == ".csv":
-        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        with (io.StringIO(file_bytes.decode("utf-8-sig"), newline="") if file_bytes is not None else path.open("r", encoding="utf-8-sig", newline="")) as handle:
             for record in csv.DictReader(handle):
                 raw_rows.append(
                     {
@@ -161,7 +166,7 @@ def _parse_pnl_source_file(
                     }
                 )
     else:
-        sheet = xlrd.open_workbook(str(path)).sheet_by_index(0)
+        sheet = (xlrd.open_workbook(file_contents=file_bytes) if file_bytes is not None else xlrd.open_workbook(str(path))).sheet_by_index(0)
         headers = [str(sheet.cell_value(0, column)).strip() for column in range(sheet.ncols)]
         for row_index in range(1, sheet.nrows):
             raw_rows.append(
@@ -207,10 +212,11 @@ def _parse_nonstd_pnl_source_file(
     ingest_batch_id: str,
     source_version: str,
     metadata,
+    file_bytes: bytes | None = None,
 ) -> tuple[str, str | None, list[dict[str, object]], list[dict[str, object]]]:
     from openpyxl import load_workbook
 
-    workbook = load_workbook(path, read_only=True, data_only=True)
+    workbook = load_workbook(io.BytesIO(file_bytes) if file_bytes is not None else path, read_only=True, data_only=True)
     try:
         worksheet = workbook.worksheets[0]
         headers = [

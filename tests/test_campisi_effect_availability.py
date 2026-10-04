@@ -330,6 +330,56 @@ def test_partial_accrued_interest_side_also_counts_as_clean_price_fallback():
     assert accrued["unavailable_bonds"] == 1
 
 
+def test_excluded_single_sided_accrued_gap_is_not_described_as_selection_attribution():
+    positions = [
+        _position(
+            bond_code="START-ONLY",
+            start_present=True,
+            end_present=False,
+            market_value_end=None,
+            face_value_end=None,
+            accrued_interest_end=None,
+        ),
+        _position(bond_code="COVERED", face_value_end=10_000_000.0),
+    ]
+
+    result = campisi_attribution(positions, _FULL_CURVE_START, _FULL_CURVE_END, _START, _END)
+
+    assert result.effect_availability["bonds"] == 2
+    assert result.effect_availability["position_change"]["unavailable_bonds"] == 1
+    assert result.effect_availability["accrued_interest"]["status"] == EFFECT_STATUS_OK
+    assert result.effect_availability["accrued_interest"]["unavailable_bonds"] == 0
+    assert [row["bond_code"] for row in result.by_bond] == ["COVERED"]
+    assert not any(
+        message.startswith(ACCRUED_INTEREST_FALLBACK_DIAGNOSTIC)
+        for message in result.diagnostics
+    )
+    assert any("principal_change_without_cashflows" in message for message in result.diagnostics)
+
+
+def test_retained_ac_accrued_gap_summary_discloses_coupon_only_rule():
+    position = _position(
+        accounting_class="AC",
+        face_value_end=10_000_000.0,
+        accrued_interest_end=None,
+    )
+
+    result = campisi_attribution(
+        [position], _FULL_CURVE_START, _FULL_CURVE_END, _START, _END
+    )
+
+    assert result.effect_availability["accrued_interest"]["status"] == EFFECT_STATUS_UNAVAILABLE
+    assert result.effect_availability["accrued_interest"]["unavailable_bonds"] == 1
+    assert result.by_bond[0]["selection_effect"] == 0
+    assert result.by_bond[0]["total_return"] == result.by_bond[0]["income_return"]
+    disclosure = next(
+        message for message in result.diagnostics
+        if message.startswith(ACCRUED_INTEREST_FALLBACK_DIAGNOSTIC)
+    )
+    assert "retained non-AC positions" in disclosure
+    assert "retained AC positions with this gap use modeled coupon only" in disclosure
+
+
 # ---------------------------------------------------------------------------
 # 5. 六效应入口共享同一披露
 # ---------------------------------------------------------------------------
@@ -378,3 +428,139 @@ def test_empty_book_reports_ok_rather_than_a_phantom_degradation():
     assert availability["spread_effect"]["status"] == EFFECT_STATUS_OK
     assert availability["accrued_interest"]["status"] == EFFECT_STATUS_OK
     assert availability["treasury_effect"]["status"] == EFFECT_STATUS_OK
+
+
+@pytest.mark.parametrize("compute", [campisi_attribution, campisi_enhanced])
+@pytest.mark.parametrize(
+    ("excluded_fields", "reason"),
+    [
+        (
+            {"start_present": True, "end_present": False, "market_value_end": None, "face_value_end": None},
+            "position_start_only",
+        ),
+        (
+            {"start_present": False, "end_present": True, "market_value_start": None,
+             "face_value_start": None, "face_value_end": 10_000_000.0},
+            "position_end_only",
+        ),
+        ({"start_present": True, "end_present": True, "face_value_end": 9_000_000.0},
+         "position_principal_changed"),
+        ({"start_present": True, "end_present": True, "face_value_end": None},
+         "position_principal_unavailable"),
+    ],
+)
+def test_position_without_cashflows_is_excluded_from_model_totals_and_disclosed(
+    compute, excluded_fields, reason
+):
+    held = _position(
+        bond_code="HELD", start_present=True, end_present=True,
+        face_value_end=10_000_000.0,
+    )
+    excluded = _position(bond_code="EXCLUDED", **excluded_fields)
+    market_start = {**_FULL_CURVE_START, **_spread()}
+    market_end = {**_FULL_CURVE_END, **_spread(credit_spread_aaa_3y=70.0)}
+
+    baseline = compute([held], market_start, market_end, _START, _END)
+    mixed = compute([held, excluded], market_start, market_end, _START, _END)
+    if isinstance(mixed, dict):
+        assert mixed["by_bond"] == baseline["by_bond"]
+        assert mixed["totals"] == baseline["totals"]
+        availability = mixed["effect_availability"]
+        diagnostics = mixed["diagnostics"]
+    else:
+        assert mixed.by_bond == baseline.by_bond
+        assert mixed.totals == baseline.totals
+        availability = mixed.effect_availability
+        diagnostics = mixed.diagnostics
+
+    position_change = availability["position_change"]
+    assert position_change["status"] == EFFECT_STATUS_PARTIAL
+    assert position_change["unavailable_bonds"] == 1
+    assert position_change["covered_bonds"] == 1
+    assert any(reason in message for message in diagnostics)
+    assert any("principal_change_without_cashflows" in message for message in diagnostics)
+
+
+@pytest.mark.parametrize("compute", [campisi_attribution, campisi_enhanced])
+def test_complete_zero_market_value_is_retained_when_both_sides_exist(compute):
+    position = _position(
+        start_present=True, end_present=True, face_value_end=10_000_000.0,
+        market_value_start=0.0, market_value_end=0.0,
+    )
+    result = compute([position], {}, {}, _START, _END)
+    by_bond = result["by_bond"] if isinstance(result, dict) else result.by_bond
+    assert len(by_bond) == 1
+    assert by_bond[0]["bond_code"] == "AVAIL-01.IB"
+
+
+@pytest.mark.parametrize("compute", [campisi_attribution, campisi_enhanced])
+def test_excluded_position_does_not_degrade_retained_spread_or_accrued_coverage(compute):
+    held = _position(
+        bond_code="AAA-HELD", start_present=True, end_present=True,
+        face_value_end=10_000_000.0,
+    )
+    excluded = _position(
+        bond_code="BBB-EXCLUDED", asset_class_start="BBB企业债",
+        start_present=True, end_present=True, face_value_end=9_000_000.0,
+        accrued_interest_start=None, accrued_interest_end=None,
+    )
+    market_start = {**_FULL_CURVE_START, **_spread()}
+    market_end = {**_FULL_CURVE_END, **_spread(credit_spread_aaa_3y=70.0)}
+
+    result = compute([held, excluded], market_start, market_end, _START, _END)
+    availability = result["effect_availability"] if isinstance(result, dict) else result.effect_availability
+    by_bond = result["by_bond"] if isinstance(result, dict) else result.by_bond
+    assert [row["bond_code"] for row in by_bond] == ["AAA-HELD"]
+    assert availability["bonds"] == 2
+    assert availability["position_change"]["covered_bonds"] == 1
+    for effect in ("spread_effect", "accrued_interest"):
+        assert availability[effect]["status"] == EFFECT_STATUS_OK
+        assert availability[effect]["unavailable_bonds"] == 0
+        assert availability[effect]["unavailable_market_value_start"] == 0.0
+
+
+@pytest.mark.parametrize("compute", [campisi_attribution, campisi_enhanced])
+def test_all_excluded_positions_have_no_retained_effect_population(compute):
+    excluded = _position(
+        bond_code="ONLY-EXCLUDED", asset_class_start="BBB企业债",
+        start_present=True, end_present=False, face_value_end=None,
+        market_value_end=None, accrued_interest_start=None, accrued_interest_end=None,
+    )
+
+    result = compute([excluded], {}, {}, _START, _END)
+    availability = result["effect_availability"] if isinstance(result, dict) else result.effect_availability
+    by_bond = result["by_bond"] if isinstance(result, dict) else result.by_bond
+    assert by_bond == []
+    assert availability["position_change"]["status"] == EFFECT_STATUS_UNAVAILABLE
+    assert availability["position_change"]["covered_bonds"] == 0
+    for effect in ("treasury_effect", "spread_effect", "accrued_interest"):
+        assert availability[effect]["status"] == EFFECT_STATUS_OK
+        assert availability[effect]["reason"] is None
+        assert availability[effect]["unavailable_bonds"] == 0
+
+
+@pytest.mark.parametrize("compute", [campisi_attribution, campisi_enhanced])
+def test_degenerate_curve_only_counts_retained_positions(compute):
+    held = _position(
+        bond_code="HELD", start_present=True, end_present=True,
+        face_value_end=10_000_000.0,
+        accrued_interest_end=None,
+    )
+    excluded = _position(
+        bond_code="EXCLUDED", start_present=True, end_present=False,
+        market_value_end=None, face_value_end=None,
+    )
+
+    result = compute([held, excluded], {}, {}, _START, _END)
+    availability = result["effect_availability"] if isinstance(result, dict) else result.effect_availability
+    diagnostics = result["diagnostics"] if isinstance(result, dict) else result.diagnostics
+    assert availability["treasury_effect"]["status"] == EFFECT_STATUS_UNAVAILABLE
+    assert availability["treasury_effect"]["unavailable_bonds"] == 1
+    assert availability["treasury_effect"]["unavailable_market_value_start"] == 10_000_000.0
+    for effect in ("spread_effect", "accrued_interest"):
+        assert availability[effect]["status"] == EFFECT_STATUS_UNAVAILABLE
+        assert availability[effect]["unavailable_bonds"] == 1
+        assert availability[effect]["unavailable_market_value_start"] == 10_000_000.0
+    assert any("treasury_effect is unavailable on 1/1 bonds" in message for message in diagnostics)
+    assert any("missing for 1/1 bonds" in message for message in diagnostics)
+    assert any("1/1 bonds carry no usable accrued interest" in message for message in diagnostics)

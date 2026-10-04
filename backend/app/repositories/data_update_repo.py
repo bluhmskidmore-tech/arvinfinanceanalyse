@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import duckdb
+from backend.app.repositories.duckdb_read_context import (
+    DuckDBReadSelectionError,
+    resolve_effective_read_path,
+)
 from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.repositories.governance_repo import GovernanceRepository
 
@@ -34,10 +39,11 @@ def save_run(governance_dir: str | Path, run: dict[str, object]) -> dict[str, ob
 
 def financial_dates(duckdb_path: str | Path) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = [{"key": key, "label": label, "as_of_date": None, "status": "missing"} for key, label, _, _ in DATE_TABLES]
-    if not Path(duckdb_path).is_file():
+    effective_path = resolve_effective_read_path(duckdb_path)
+    if not Path(effective_path).is_file():
         return rows
     try:
-        with read_only_connection(str(duckdb_path), retries=1) as conn:
+        with read_only_connection(effective_path, retries=1) as conn:
             tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
             for row, (_, _, table, column) in zip(rows, DATE_TABLES, strict=True):
                 if table in tables:
@@ -50,7 +56,9 @@ def financial_dates(duckdb_path: str | Path) -> list[dict[str, object]]:
                         as_of_date=str(value)[:10] if value is not None else None,
                         status="available" if value is not None else "missing",
                     )
-    except Exception:
+    except DuckDBReadSelectionError:
+        raise
+    except (OSError, RuntimeError, duckdb.Error):
         # A lock/open/schema failure is never presented as an empty table.
         return [{**row, "as_of_date": None, "status": "error"} for row in rows]
     return rows

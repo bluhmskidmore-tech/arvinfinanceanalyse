@@ -11,10 +11,15 @@ import type {
 } from "../dashboardHomeFirstScreenTypes";
 import {
   hasReportDateDivergence,
+  reportDateAgeDays,
+  reportDateAgeTone,
   reportDateContextLabel,
   reportDateModeLabel,
 } from "../homeReportDateLabel";
 import styles from "../dashboardHomeShell.module.css";
+
+/** 常态收声（DESIGN §12 结论 17）：快照与估值都正常时不再各发一颗「已更新 / 已完成」徽标。 */
+const QUIET_STATUS_COPY = "快照与估值正常";
 
 /** 常态零徽标：ok 态降为无边框点+文字；异常态保留描边琥珀胶囊。 */
 function statusPillClass(statusKind: HomeHeaderStatus["dataStatusKind"]) {
@@ -57,6 +62,8 @@ type DashboardHomeToolbarProps = {
   refreshAriaLabel?: string;
   refreshing?: boolean;
   onOpenAgentPanel?: () => void;
+  /** 报告日滞后天数的基准时刻；测试注入，默认取渲染时刻。 */
+  now?: Date;
 };
 
 export function DashboardHomeToolbar({
@@ -78,11 +85,16 @@ export function DashboardHomeToolbar({
   refreshAriaLabel = "刷新首页数据",
   refreshing = false,
   onOpenAgentPanel,
+  now,
 }: DashboardHomeToolbarProps) {
   const showDateDivergence = hasReportDateDivergence(reportDateContext);
   const updateStamp =
     reportDateContext.generatedAt?.replace("T", " ").slice(0, 16) ||
     headerStatus.dataUpdatedAt;
+  const ageDays = reportDateAgeDays(reportDateContext.actualDataDate, now ?? new Date());
+  const ageTone = reportDateAgeTone(ageDays);
+  const statusQuiet =
+    headerStatus.dataStatusKind === "ok" && headerStatus.valuationTone === "ok";
   return (
     <header data-testid={toolbarTestId} className={styles.dhTopbar}>
       <div className={styles.dhTopbarLeft} data-role="dashboard-home-toolbar-left">
@@ -110,6 +122,16 @@ export function DashboardHomeToolbar({
               onChange={(event) => onReportDateChange(event.target.value)}
             />
           </label>
+          {ageTone ? (
+            <span
+              data-role="dashboard-home-report-date-age"
+              data-age-tone={ageTone}
+              className={`${styles.dhDateAge} ${ageTone === "warn" ? styles.dhDateAgeWarn : ""}`}
+              title={`报告日 ${reportDateContext.actualDataDate}，距今 ${ageDays} 天；最近更新 ${updateStamp}`}
+            >
+              {`距今 ${ageDays} 天`}
+            </span>
+          ) : null}
           <span
             data-testid="dashboard-home-report-date-context"
             data-report-date-mode={reportDateContext.mode}
@@ -142,24 +164,39 @@ export function DashboardHomeToolbar({
           data-role="dashboard-home-status-row"
         >
           {/* 更新时间全页去重：时间只保留在左侧“更新 {updateStamp}”，此处仅状态点+文案。 */}
-          <span
-            data-testid="dashboard-home-data-status"
-            data-status-kind={headerStatus.dataStatusKind}
-            className={statusPillClass(headerStatus.dataStatusKind)}
-          >
-            <i className={statusDotClass(headerStatus.dataStatusKind)} aria-hidden="true" />
-            {headerStatus.dataSyncPrefix}
-          </span>
-          {/* 市场/估值两段合为一段短文案，全量语境放 title。 */}
-          <span
-            data-role="dashboard-home-market-status"
-            data-valuation-tone={headerStatus.valuationTone}
-            className={marketPillClass(headerStatus.valuationTone)}
-            title={`${headerStatus.marketStatus} · ${headerStatus.valuationLabel}`}
-          >
-            <i className={marketDotClass(headerStatus.valuationTone)} aria-hidden="true" />
-            <span>{headerStatus.valuationLabel}</span>
-          </span>
+          {statusQuiet ? (
+            <span
+              data-testid="dashboard-home-data-status"
+              data-status-kind={headerStatus.dataStatusKind}
+              data-valuation-tone={headerStatus.valuationTone}
+              className={styles.dhStatusQuietNote}
+              title={`${headerStatus.dataSyncPrefix}；${headerStatus.marketStatus} · ${headerStatus.valuationLabel}`}
+            >
+              <i className={styles.dhStatusQuietDot} aria-hidden="true" />
+              {QUIET_STATUS_COPY}
+            </span>
+          ) : (
+            <>
+              <span
+                data-testid="dashboard-home-data-status"
+                data-status-kind={headerStatus.dataStatusKind}
+                className={statusPillClass(headerStatus.dataStatusKind)}
+              >
+                <i className={statusDotClass(headerStatus.dataStatusKind)} aria-hidden="true" />
+                {headerStatus.dataSyncPrefix}
+              </span>
+              {/* 市场/估值两段合为一段短文案，全量语境放 title。 */}
+              <span
+                data-role="dashboard-home-market-status"
+                data-valuation-tone={headerStatus.valuationTone}
+                className={marketPillClass(headerStatus.valuationTone)}
+                title={`${headerStatus.marketStatus} · ${headerStatus.valuationLabel}`}
+              >
+                <i className={marketDotClass(headerStatus.valuationTone)} aria-hidden="true" />
+                <span>{headerStatus.valuationLabel}</span>
+              </span>
+            </>
+          )}
           {headerStatus.showRiskReview ? (
             <Link
               to="/decision-items"

@@ -80,6 +80,8 @@ function primaryStockCandidatePayload(): LivermoreStrategyPayload {
           sector_rank: 1,
           close: 21.9,
           breakout_level: 21.8,
+          // 观察位几何由后端统一返回，页面不本地重算（见 formatDistanceToBreakoutPct）。
+          distance_to_breakout_pct: 0.4587,
           ema10: 20.6,
           ma20: 21.05,
           ma60: 19.05,
@@ -116,6 +118,9 @@ describe("stock analysis legacy strategy evidence donor contract", () => {
       "sectorCode",
       "sectorName",
       "headline",
+      "sourcePool",
+      "sourcePoolLabel",
+      "walkForward",
       "pattern",
       "patternNote",
       "distanceToBreakoutPct",

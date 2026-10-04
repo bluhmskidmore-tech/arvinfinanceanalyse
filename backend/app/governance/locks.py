@@ -1,10 +1,15 @@
 import errno
-import os
 import hashlib
+import logging
+import os
+import sys
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 if os.name == "nt":
     import msvcrt
@@ -67,8 +72,17 @@ def acquire_lock(
     lock_dir = Path(base_dir) / ".locks"
     lock_dir.mkdir(parents=True, exist_ok=True)
     lock_path = lock_dir / f"{definition.key.replace(':', '_')}.lock"
-    deadline = time.monotonic() + resolved_timeout_seconds
+    started_at = time.monotonic()
+    deadline = started_at + resolved_timeout_seconds
     handle = None
+    diagnose_governance = definition.key.startswith("lock:governance:jsonl:")
+    caller = ""
+    if diagnose_governance:
+        # contextlib.__enter__ resumes this generator; its caller is the
+        # repository operation. Keep only text, never a live frame or payload.
+        frame = sys._getframe(2)
+        caller = f"{frame.f_globals.get('__name__', '')}.{frame.f_code.co_name}:{frame.f_lineno}"
+        del frame
 
     while True:
         # open() failures (permission denied, invalid path, ...) are
@@ -90,11 +104,18 @@ def acquire_lock(
                 # fail fast instead of reporting it as a timeout.
                 raise
             if time.monotonic() >= deadline:
+                if diagnose_governance:
+                    logger.warning(
+                        "governance_lock_timeout key=%s pid=%d thread=%d caller=%s wait_ms=%.0f",
+                        definition.key, os.getpid(), threading.get_native_id(), caller,
+                        (time.monotonic() - started_at) * 1000,
+                    )
                 raise TimeoutError(
                     f"Timed out acquiring lock {definition.key}"
                 ) from exc
             time.sleep(poll_interval_seconds)
 
+    acquired_at = time.monotonic()
     try:
         assert handle is not None
         handle.seek(0)
@@ -112,3 +133,15 @@ def acquire_lock(
                     fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
             finally:
                 handle.close()
+                # Log only after releasing the lock so slow handlers cannot
+                # extend the critical section. Other lock families stay quiet.
+                released_at = time.monotonic()
+                if diagnose_governance and (
+                    acquired_at - started_at >= 0.25 or released_at - acquired_at >= 0.25
+                ):
+                    logger.warning(
+                        "governance_lock_slow key=%s pid=%d thread=%d caller=%s wait_ms=%.0f hold_ms=%.0f",
+                        definition.key, os.getpid(), threading.get_native_id(), caller,
+                        (acquired_at - started_at) * 1000,
+                        (released_at - acquired_at) * 1000,
+                    )

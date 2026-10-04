@@ -23,6 +23,7 @@ export type ChoiceMacroRefreshPayload = {
 export type MacroVendorSeries = {
   series_id: string;
   series_name: string;
+  display_name?: string | null;
   vendor_name: string;
   vendor_version: string;
   frequency: string;
@@ -45,6 +46,7 @@ export type MarketDataCatalogPayload = MacroVendorPayload;
 export type ChoiceMacroLatestPoint = {
   series_id: string;
   series_name: string;
+  display_name?: string | null;
   trade_date: string;
   value_numeric: number;
   frequency?: string;
@@ -73,6 +75,379 @@ export type ChoiceMacroLatestPayload = {
   read_target: "duckdb";
   series: ChoiceMacroLatestPoint[];
   derived_spreads?: Partial<Record<string, number | null>>;
+};
+
+export type MarketOverviewPartitionStatus = "ok" | "degraded" | "unavailable";
+
+export type MarketOverviewDirectionalCoverage = {
+  expected_count: number;
+  valid_count: number;
+  missing_keys: string[];
+  status: "complete" | "insufficient" | string;
+};
+
+export type MarketOverviewConclusion = {
+  stance?: string | null;
+  tone?: string | null;
+  summary?: string | null;
+  recommended_action?: string | null;
+  basis?: {
+    source?: string | null;
+    signal_cards?: Array<Pick<MarketOverviewSignalCard, "key" | "tone">>;
+    directional_coverage?: MarketOverviewDirectionalCoverage;
+  } | null;
+};
+
+export type MarketOverviewGateIssue = {
+  key: string;
+  label: string;
+  reason: string;
+  impact: string;
+  route: string;
+};
+
+export type MarketOverviewComponent = {
+  status: MarketOverviewPartitionStatus;
+  reason: string | null;
+  quality_flag: string | null;
+  vendor_status: string | null;
+  basis: string | null;
+  cache_key: string | null;
+  fallback_mode: "none" | "latest_snapshot" | null;
+  fallback_date: string | null;
+  formal_use_allowed: boolean | null;
+};
+
+export type MarketOverviewGate = {
+  level: "ok" | "review" | "blocked";
+  reason_code: string;
+  human_reason: string;
+  recovery_action: string;
+  conclusion: MarketOverviewConclusion;
+  issues?: MarketOverviewGateIssue[];
+  evidence: {
+    receipt_status?: string | null;
+    receipt_generated_at?: string | null;
+    receipt_age_hours?: number | null;
+    missing_field_count?: number | null;
+  };
+};
+
+export type MarketOverviewDateSurface = {
+  key: "rates_formal" | "choice_latest" | "macro_analysis" | "news" | "strategy" | string;
+  source: string;
+  status: MarketOverviewPartitionStatus;
+  reason: string | null;
+  latest: string | null;
+  age_days: number | null;
+  basis: "trade_date" | "received_at" | string;
+};
+
+export type MarketOverviewDates = {
+  status: MarketOverviewPartitionStatus;
+  surfaces: MarketOverviewDateSurface[];
+  tape_span: { earliest: string | null; latest: string | null };
+  computed_on: string;
+  date_basis: "calendar_day";
+};
+
+export type MarketOverviewTapeSlot = {
+  key: string;
+  label: string;
+  kind: "rate" | "equity" | "commodity" | "fx" | string;
+  status: MarketOverviewPartitionStatus | "unresolved";
+  reason: string | null;
+  value: number | null;
+  unit: string | null;
+  change: number | null;
+  change_unit: string | null;
+  trade_date: string | null;
+  series_id: string | null;
+  series_name: string | null;
+  vendor: string | null;
+  basis: string | null;
+  fallback_mode: "none" | "latest_snapshot" | null;
+  fallback_date: string | null;
+  formal_use_allowed: boolean | null;
+  quality_flag: string;
+  tone_hint: "up" | "down" | "flat" | "unavailable" | string;
+};
+
+export type MarketOverviewTape = {
+  status: MarketOverviewPartitionStatus;
+  reason: string | null;
+  slots: MarketOverviewTapeSlot[];
+};
+
+export type MarketOverviewPulseItem = {
+  key: string;
+  label: string;
+  status: MarketOverviewPartitionStatus;
+  reason: string | null;
+  previous_value: number | null;
+  latest_value: number | null;
+  change: number | null;
+  change_kind: "absolute" | string;
+  unit: string | null;
+  change_unit: string | null;
+  latest_date: string | null;
+  source: string | null;
+};
+
+export type MarketOverviewPulse = {
+  status: MarketOverviewPartitionStatus;
+  reason: string | null;
+  items: MarketOverviewPulseItem[];
+};
+
+export type MarketOverviewCrisisTrend = {
+  requested_window_points: number;
+  window_points: number;
+  start_date: string | null;
+  end_date: string | null;
+  start_score: number | null;
+  end_score: number | null;
+  score_change: number | null;
+  start_percentile: number | null;
+  end_percentile: number | null;
+  percentile_change: number | null;
+  direction: "rising" | "falling" | "flat" | "insufficient";
+};
+
+export type MarketOverviewCrisisHistoryPoint = {
+  date: string;
+  crisis_score: number;
+  percentile: number | null;
+  available_component_count: number | null;
+  component_count: number | null;
+  available_weight: number | null;
+  data_status: string | null;
+};
+
+export type MarketOverviewCrisisInputEvidenceItem = {
+  field: string;
+  label: string;
+  aliases: string[];
+  warning: string | null;
+  required: boolean;
+  available: boolean;
+  row_count: number;
+  latest_date: string | null;
+  series_id: string | null;
+  source: string | null;
+  stale: boolean | null;
+  stale_days: number | null;
+};
+
+export type MarketOverviewCrisisInputEvidence = {
+  inputs: MarketOverviewCrisisInputEvidenceItem[];
+  missing_inputs: string[];
+  stale_inputs: string[];
+  sources: string[];
+  latest_dates: string[];
+};
+
+export type MarketOverviewCrisisDependencyGate = {
+  status: string;
+  blocked_by: string[];
+  reason_code: string;
+};
+
+export type MarketOverviewCrisis = {
+  status: MarketOverviewPartitionStatus;
+  reason: string | null;
+  report_date: string | null;
+  requested_report_date: string | null;
+  rule_version: string | null;
+  score: number | null;
+  current_available: boolean;
+  history_only: boolean;
+  regime: string | null;
+  percentile: number | null;
+  data_status: "complete" | "degraded" | "unavailable";
+  delta: {
+    window_points: number;
+    score_delta: number | null;
+    percentile_delta: number | null;
+  };
+  score_trend: MarketOverviewCrisisTrend;
+  score_trends: MarketOverviewCrisisTrend[];
+  score_history: MarketOverviewCrisisHistoryPoint[];
+  warnings: string[];
+  available_component_count: number | null;
+  component_count: number | null;
+  input_evidence: MarketOverviewCrisisInputEvidence;
+  dependency_gate: MarketOverviewCrisisDependencyGate | null;
+  risk_gate: MarketOverviewCrisisRiskGate;
+};
+
+export type MarketOverviewCrisisRiskGate = {
+  eligible: boolean;
+  triggered: boolean;
+  threshold: number;
+  reason_code: string;
+};
+
+export type MarketOverviewSignalCard = {
+  key: string;
+  title?: string | null;
+  stance?: string | null;
+  tone?: "positive" | "neutral" | "negative" | "missing" | string;
+  score?: number | null;
+  evidence?: string[];
+  kind: "ops_status" | "market_signal";
+};
+
+export type MarketOverviewSignals = {
+  status: MarketOverviewPartitionStatus;
+  reason: string | null;
+  cards: MarketOverviewSignalCard[];
+};
+
+export type MarketOverviewNewsLatestItem = {
+  event_key: string | null;
+  received_at: string;
+  topic_code: string | null;
+  group_id: string | null;
+  summary: string | null;
+};
+
+export type MarketOverviewNews = {
+  status: MarketOverviewPartitionStatus;
+  reason: string | null;
+  sample: {
+    requested: number;
+    returned: number;
+    total_rows: number;
+    excluded_future_rows: number;
+    latest_received_at: string | null;
+    stale_days: number | null;
+  };
+  granularity: { datetime_rows: number; date_only_rows: number };
+  density: {
+    tz: string;
+    bucket_hours: number;
+    topics: Array<{ key: string; label: string; cells: number[] }>;
+    max_count: number;
+  };
+  latest: MarketOverviewNewsLatestItem[];
+  compare: {
+    same_direction: number;
+    conflicting: number;
+    review_needed: number;
+    candidate_scenarios: number;
+    review_items: Array<Record<string, unknown>>;
+  };
+};
+
+export type MarketOverviewAction = {
+  priority: "P0" | "P1" | "P2";
+  key: string;
+  label: string;
+  route: string;
+  basis: "analytical" | string;
+  evidence: Record<string, unknown>;
+};
+
+export type MarketOverviewActions = {
+  status: MarketOverviewPartitionStatus;
+  items: MarketOverviewAction[];
+};
+
+export type MarketOverviewCharts = {
+  status: MarketOverviewPartitionStatus;
+  reason: string | null;
+  choice_latest: ChoiceMacroLatestPayload | null;
+  market_rates: ChoiceMacroLatestPayload | null;
+};
+
+export type MarketOverviewSnapshotPayload = {
+  funding_observation?: MarketFundingObservation;
+  rates_observation?: MarketRatesObservation;
+  components: Partial<
+    Record<
+      | "choice_latest"
+      | "market_rates"
+      | "macro_analysis_core"
+      | "macro_analysis_full"
+      | "macro_pulse"
+      | "macro_strategy_summaries"
+      | "choice_news",
+      MarketOverviewComponent
+    >
+  >;
+  gate?: MarketOverviewGate;
+  dates?: MarketOverviewDates;
+  tape?: MarketOverviewTape;
+  pulse?: MarketOverviewPulse;
+  crisis?: MarketOverviewCrisis;
+  signals?: MarketOverviewSignals;
+  news?: MarketOverviewNews;
+  actions?: MarketOverviewActions;
+  charts?: MarketOverviewCharts;
+};
+
+export type MarketObservationEvidence = {
+  key: string;
+  label: string;
+  series_id: string;
+  value: number | null;
+  unit: string;
+  observation_date: string | null;
+  source: string | null;
+  quality_flag: string;
+  fallback_mode: string;
+  is_proxy: boolean;
+  previous_value: number | null;
+  previous_date: string | null;
+  change_bp: number | null;
+  status: MarketOverviewPartitionStatus;
+  reason: string | null;
+  tenor_years?: number;
+  recent_points: { trade_date: string; value_numeric: number | null }[];
+};
+export type MarketObservationBase = {
+  status: MarketOverviewPartitionStatus;
+  judgment_allowed: boolean;
+  observation_date: string | null;
+  comparison_date: string | null;
+  summary: string;
+  interpretation: string;
+  limitations: string[];
+  reason: string | null;
+  rule_version: string;
+  evidence: MarketObservationEvidence[];
+  rows: MarketObservationEvidence[];
+  verification_route: string;
+  window_label: string;
+};
+export type MarketFundingObservation = MarketObservationBase & {
+  policy_reference: {
+    value: number | null;
+    unit: string;
+    effective_from: string | null;
+    effective_to: string | null;
+    validity_status: "verified" | "unverified";
+    source: string | null;
+    reason: string | null;
+  };
+  policy_deviation_bp: number | null;
+};
+export type MarketRatesObservation = MarketObservationBase & {
+  curve_family: string;
+  full_curve_comparison_allowed: boolean;
+  spreads: {
+    key: string;
+    label: string;
+    value_bp: number | null;
+    previous_value_bp: number | null;
+    change_bp: number | null;
+    observation_date: string | null;
+    comparison_date: string | null;
+    status: MarketOverviewPartitionStatus;
+    reason: string | null;
+    input_keys: string[];
+  }[];
 };
 
 export type MarketDataBondFuturesRankingRow = {
@@ -353,8 +728,9 @@ export type ChoiceNewsCandidateScenario = {
 };
 
 export type ChoiceNewsComparePayload = {
-  basis: "analytical";
-  rule_version: string;
+  /** 后端 `build_choice_news_compare_payload` 目前不下发 basis / rule_version，只有 mock 带；按实际契约标为可选。 */
+  basis?: "analytical";
+  rule_version?: string;
   same_direction: ChoiceNewsCompareRow[];
   conflicting: ChoiceNewsCompareRow[];
   review_needed: ChoiceNewsCompareRow[];
@@ -524,6 +900,9 @@ export type LivermoreMarketGateMacroComponent = {
   input: string;
   cadence: string;
   business_date: string;
+  value_numeric?: number | null;
+  unit?: string | null;
+  value_kind?: "index" | "ppt" | string | null;
   age_days?: number | null;
   tier?: ExternalDataFreshnessTier | string | null;
 };
@@ -689,6 +1068,8 @@ export type LivermoreSectorRankPayload = {
   items: LivermoreSectorRankItem[];
 };
 
+export type LivermoreBreakoutPatternCode = "breakout" | "pullback" | "consolidation";
+
 export type LivermoreStockCandidateItem = {
   rank: number;
   stock_code: string;
@@ -698,6 +1079,12 @@ export type LivermoreStockCandidateItem = {
   sector_rank: number;
   close: number;
   breakout_level: number;
+  /** 后端统一观察位几何距离，单位为百分数；3.0 表示 +3.00%。 */
+  distance_to_breakout_pct?: number | null;
+  /** 后端统一观察位稳定机器分类；前端归类只匹配该字段。 */
+  pattern_code?: LivermoreBreakoutPatternCode | null;
+  /** 后端统一观察位展示文案；前端仅透传，不以文案做分类。 */
+  pattern?: string | null;
   ema10?: number | null;
   ma20: number;
   ma60: number;
@@ -780,7 +1167,23 @@ export type LivermorePositionSizeHint = {
   oos_validation?: LivermorePositionSizeHintOosValidation | null;
 };
 
+/** walk-forward 样本外判定（报告锚定的静态披露）；老响应缺失时前端必须容错不渲染。 */
+export type LivermoreWalkForwardVerdict = {
+  contract_version: string;
+  signal_kind: string;
+  verdict: "supported" | "weakened" | "not_assessable" | string;
+  verdict_label: string;
+  oos_windows: number | null;
+  positive_excess_windows: number | null;
+  chained_excess_return: number | null;
+  reason: string;
+  split: string;
+  report: string;
+  judged_at: string;
+};
+
 export type LivermoreStockCandidatesPayload = {
+  walk_forward?: LivermoreWalkForwardVerdict | null;
   as_of_date: string;
   formula_version: string;
   market_state: LivermoreMarketGateState;
@@ -889,6 +1292,7 @@ export type LivermoreThemeBreakoutReviewItem = Omit<LivermoreThemeBreakoutItem, 
 };
 
 export type LivermoreThemeBreakoutPayload = {
+  walk_forward?: LivermoreWalkForwardVerdict | null;
   as_of_date: string;
   formula_version: string;
   is_proxy: boolean;
@@ -953,6 +1357,7 @@ export type MeanReversionCandidateItem = {
 };
 
 export type MeanReversionCandidatesPayload = {
+  walk_forward?: LivermoreWalkForwardVerdict | null;
   as_of_date: string;
   formula_version: string;
   market_state: LivermoreMarketGateState;
@@ -985,6 +1390,7 @@ export type UptrendMomentumCandidateItem = {
 };
 
 export type UptrendMomentumCandidatesPayload = {
+  walk_forward?: LivermoreWalkForwardVerdict | null;
   as_of_date: string;
   formula_version: string;
   market_state: LivermoreMarketGateState;
@@ -1020,6 +1426,7 @@ export type FreshTrendWatchlistCandidateItem = {
 };
 
 export type FreshTrendWatchlistPayload = {
+  walk_forward?: LivermoreWalkForwardVerdict | null;
   as_of_date: string;
   formula_version: string;
   market_state: LivermoreMarketGateState;
@@ -1049,6 +1456,7 @@ export type FactorScreenCandidateItem = {
 };
 
 export type FactorScreenCandidatesPayload = {
+  walk_forward?: LivermoreWalkForwardVerdict | null;
   as_of_date: string;
   factor_snapshot_as_of_date?: string;
   formula_version: string;
@@ -1092,6 +1500,7 @@ export type HybridFusionCandidateItem = {
 };
 
 export type HybridFusionCandidatesPayload = {
+  walk_forward?: LivermoreWalkForwardVerdict | null;
   as_of_date: string;
   formula_version: string;
   market_state: LivermoreMarketGateState;
@@ -1338,6 +1747,89 @@ export type StockAnalysisWorkbenchEndpointEvidence = {
   warning: string | null;
 };
 
+export type StockAnalysisReplayClosureVersions = {
+  candidate_rule_version: string | null;
+  stock_candidate_selection_formula_version: string | null;
+  candidate_outcome_formula_version: string | null;
+  execution_formula_version: string | null;
+  matched_baseline_formula_version: string | null;
+  market_gate_rule_version: string | null;
+  signal_confluence_rule_version: string | null;
+  macro_formula_version: string | null;
+};
+
+export type StockAnalysisReplayClosureSources = {
+  candidate_source_version: string | null;
+  execution_source_version: string | null;
+  matched_baseline_source_version: string | null;
+  macro_source_version: string | null;
+  calendar_source_id: string | null;
+  calendar_source_version: string | null;
+  theme_overlay_fingerprint: string | null;
+  choice_catalog_fingerprint: string | null;
+};
+
+export type StockAnalysisReplayClosure = {
+  cohort_mode: "current_rule_certified" | string;
+  selection_status:
+    | "schema_unavailable"
+    | "no_active_certified"
+    | "unique_active_certified"
+    | "governance_conflict"
+    | "governance_error"
+    | "as_of_mismatch"
+    | string;
+  data_availability: "fresh" | "stale" | "fallback" | "no_data" | "unsupported" | string;
+  status: "ready" | "insufficient" | "blocked";
+  active_cohort_count: number;
+  cohort_id: string | null;
+  requested_start_date: string | null;
+  requested_end_date: string | null;
+  observed_start_date: string | null;
+  observed_end_date: string | null;
+  certified_start_date: string | null;
+  certified_end_date: string | null;
+  evaluation_as_of_date: string | null;
+  governed_era_start: string | null;
+  governed_era_end: string | null;
+  stock_candidate_selection_policy: string | null;
+  decision_metric_basis: string | null;
+  coverage_authority_mode: string | null;
+  strict_coverage: boolean | null;
+  fallback_covered: boolean | null;
+  versions: StockAnalysisReplayClosureVersions;
+  sources: StockAnalysisReplayClosureSources;
+  counts: {
+    completed_dates: number;
+    completed_with_signals_dates: number;
+    completed_no_signal_dates: number;
+    pending_tail_dates: number;
+    blocking_pending_dates: number;
+    unsupported_dates: number;
+    proxy_only_dates: number;
+    matched_entry_count: number;
+    t5_usable_count: number;
+    t20_usable_count: number;
+    stale_execution_row_count: number;
+    stale_matched_baseline_row_count: number;
+  };
+  thresholds: {
+    completed_dates: number;
+    matched_entry_count: number;
+  };
+  primary_blocker_code: string | null;
+  reason_codes: string[];
+  run_id: string | null;
+  promotion_run_id: string | null;
+  receipt: {
+    path: string | null;
+    sha256: string | null;
+    calendar_path: string | null;
+    calendar_sha256: string | null;
+  };
+  tables_used: string[];
+};
+
 export type StockAnalysisWorkbenchPayload = {
   page_id: "GAP-STOCK-ANALYSIS-PAGE";
   route: "/stock-analysis";
@@ -1348,6 +1840,21 @@ export type StockAnalysisWorkbenchPayload = {
   as_of_date: string | null;
   fallback_date: string | null;
   stale: boolean;
+  /** Unique page authority for current-rule replay closure. Optional only for legacy fixtures/responses. */
+  replay_closure?: StockAnalysisReplayClosure | null;
+  pretrade_qualification: {
+    schema: "pretrade_qualification/v1";
+    status: "ready" | "ready_empty" | "unavailable";
+    reason: string | null;
+    producer_run_id: string | null;
+    target_date: string | null;
+    stock_candidate_policy: string | null;
+    evidence_sha256: string | null;
+    input_snapshot_sha256: string | null;
+    attested_strategy_payload_sha256: string | null;
+    strategy_payload_sha256: string;
+    workbench_projection_sha256: string;
+  };
   page_question: {
     question: string;
     answer_state: StockAnalysisWorkbenchAnswerState;
@@ -1406,6 +1913,159 @@ export type StockAnalysisWorkbenchPayload = {
   };
 };
 
+export type StockPortfolioConstructionSourceGate = {
+  status: "ready" | "blocked" | string;
+  ready: boolean;
+  source: "replay_closure" | string;
+  closure_status: string;
+  selection_status?: string | null;
+  data_availability?: string | null;
+  as_of_date?: string | null;
+  cohort_id?: string | null;
+  primary_blocker_code?: string | null;
+  reason_codes: string[];
+  versions: Record<string, unknown>;
+  sources: Record<string, unknown>;
+};
+
+export type StockPortfolioConstructionTargetItem = {
+  status: "reference_preview" | string;
+  stock_code: string;
+  stock_name?: string | null;
+  sector_name?: string | null;
+  rank?: number | null;
+  signal_kind?: string | null;
+  selection_close?: number | null;
+  score?: number | null;
+  equal_weight?: number | null;
+  reference_weight?: number | null;
+  target_weight?: number | null;
+  target_weight_basis?: string | null;
+  position_hint?: LivermorePositionSizeHintItem | Record<string, unknown> | null;
+  target_block_reason?: string | null;
+};
+
+export type StockPortfolioConstructionTarget = {
+  status:
+    | "reference_preview"
+    | "blocked_source_gate"
+    | "blocked_main_module"
+    | "blocked_no_candidates"
+    | string;
+  blocked: boolean;
+  items: StockPortfolioConstructionTargetItem[];
+  candidate_count: number;
+  weight_basis: string;
+  block_reason?: string | null;
+};
+
+export type StockPortfolioConstructionRebalance = {
+  status: "blocked_missing_scoped_positions" | string;
+  blocked: boolean;
+  current_positions: Array<Record<string, unknown>>;
+  scoped_positions_available: boolean;
+  legacy_position_snapshot_used: boolean;
+  legacy_position_snapshot_status: string;
+  reason: string;
+};
+
+export type StockPortfolioConstructionRiskLimitGate = {
+  status: "blocked_missing_approved_policy" | string;
+  reason_code?: string | null;
+  approved_policy_present: boolean;
+};
+
+export type StockPortfolioConstructionRiskSectorExposure = {
+  sector_name: string;
+  exposure_ratio: number | string | null;
+};
+
+export type StockPortfolioConstructionRiskSnapshot = {
+  data_status?: "complete" | "partial" | "unavailable" | string;
+  status?: "complete" | "partial" | "unavailable" | "error" | string;
+  basis?: string | null;
+  measurement_basis?: "reference_preview" | string | null;
+  portfolio_id?: string | null;
+  as_of_date?: string | null;
+  source_gate_status?: "ready" | "blocked" | string | null;
+  headline?: string | null;
+  input_line_count?: number | null;
+  position_count?: number | null;
+  observation_only?: boolean;
+  formal_use_allowed?: boolean;
+  target_weight_sum_ratio?: number | string | null;
+  gross_exposure_ratio?: number | string | null;
+  net_exposure_ratio?: number | string | null;
+  cash_ratio?: number | string | null;
+  closure_residual_ratio?: number | string | null;
+  top1_weight_ratio?: number | string | null;
+  top5_weight_ratio?: number | string | null;
+  hhi_ratio?: number | string | null;
+  hhi_index?: number | string | null;
+  sector_exposures?: StockPortfolioConstructionRiskSectorExposure[] | null;
+  limit_gate?: StockPortfolioConstructionRiskLimitGate | null;
+  reason_codes?: string[];
+  warnings?: string[];
+};
+
+export type StockPortfolioConstructionIssue = {
+  severity: "info" | "warning" | "blocking" | string;
+  code: string;
+  message: string;
+  source?: string | null;
+  blocker?: string | null;
+};
+
+export type StockPortfolioConstructionPayload = {
+  page_id: "GAP-STOCK-ANALYSIS-PORTFOLIO";
+  route: "/stock-analysis/portfolio";
+  portfolio_id: string;
+  requested_as_of_date: string | null;
+  as_of_date: string | null;
+  resolved_as_of_date: string | null;
+  basis: "analytical";
+  contract_status: "proposal_only";
+  formal_use_allowed: false;
+  trading_instruction_allowed: false;
+  execution_approval_allowed: false;
+  proposal_status:
+    | "reference_preview"
+    | "blocked_source_gate"
+    | "blocked_main_module"
+    | "blocked_no_candidates"
+    | string;
+  context: {
+    requested_as_of_date: string | null;
+    resolved_as_of_date: string | null;
+    portfolio_id: string;
+    source_page_id: "GAP-STOCK-ANALYSIS-PAGE";
+    source_route: "/stock-analysis";
+    source_module: "main" | string;
+    main_module_status: string;
+  };
+  source_gate: StockPortfolioConstructionSourceGate;
+  source_gate_status: "ready" | "blocked" | string;
+  target: StockPortfolioConstructionTarget;
+  rebalance: StockPortfolioConstructionRebalance;
+  risk_snapshot: StockPortfolioConstructionRiskSnapshot;
+  legacy_position_snapshot: {
+    used: boolean;
+    status: string;
+    reason: string;
+  };
+  versions: {
+    source_version?: string | null;
+    workbench_rule_version?: string | null;
+    portfolio_construction_rule_version?: string | null;
+    portfolio_version?: string | null;
+    proposal_version?: string | null;
+    calculation_run_id?: string | null;
+    review_run_id?: string | null;
+  };
+  warnings: string[];
+  issues: StockPortfolioConstructionIssue[];
+};
+
 export type LivermoreStockDetailCandle = {
   trade_date: string;
   open_value: number | null;
@@ -1422,6 +2082,8 @@ export type LivermoreStockDetailFactor = {
   pb: number | null;
   roe: number | null;
   dividend_yield: number | null;
+  total_mv: number | null;
+  circ_mv: number | null;
 };
 
 export type LivermoreStockDetailState = "ok" | "missing";
@@ -1569,7 +2231,11 @@ export type LivermoreSectorRankSeriesPoint = {
 export type LivermoreSectorRankSeriesPayload = {
   basis: "analytical";
   state: "ok" | "missing";
+  requested_as_of_date?: string | null;
   as_of_date: string | null;
+  fallback_date?: string | null;
+  stale?: boolean;
+  lag_days?: number | null;
   window_days: number;
   top_k: number;
   sector_code_filter: string | null;
@@ -1637,6 +2303,7 @@ export type ReplayDateStatus = "completed" | "pending" | "unsupported" | "proxy_
 
 export type ReplayReasonCode =
   | "missing_daily_limit_flags"
+  | "missing_candidate_history_receipt"
   | "missing_required_source_table"
   | "forward_returns_pending"
   | "no_strategy_signals"
@@ -1703,6 +2370,11 @@ export type LivermoreCandidateHistoryHorizonStats = {
   avg_return: number | null;
   median_return?: number | null;
   win_rate: number | null;
+  /** 独立快照日数：available_count 是逐候选行计数，T+5 窗口在相邻交易日高度重叠，
+   * 这里披露这些行实际来自几个 snapshot_as_of_date。仅 strategy-score 行返回。 */
+  snapshot_day_count?: number | null;
+  /** 按快照日聚合的胜率（每日先取当日候选收益均值再判正负）。仅 strategy-score 行返回。 */
+  snapshot_day_win_rate?: number | null;
   n?: number;
   adj_missing_n?: number;
   win?: number | null;
@@ -2057,6 +2729,7 @@ export type ConfluenceReplayBlockedDate = {
   status: "pending" | "unsupported" | "proxy_only";
   reason_code:
     | "missing_daily_limit_flags"
+    | "missing_candidate_history_receipt"
     | "missing_required_source_table"
     | "forward_returns_pending"
     | "real_theme_inputs_unconfirmed"
@@ -2066,10 +2739,22 @@ export type ConfluenceReplayBlockedDate = {
 
 export type ConfluenceReplayStatus = {
   window_status: BacktestWindowSummaryStatus;
+  snapshot_from?: string | null;
+  snapshot_to?: string | null;
+  requested_snapshot_from?: string | null;
+  requested_snapshot_to?: string | null;
+  observed_snapshot_from?: string | null;
+  observed_snapshot_to?: string | null;
+  metric_basis?: string | null;
+  research_metric_basis?: string | null;
   maturity_status?: "ready" | "partial" | "insufficient" | "pending" | "unsupported" | "proxy_only" | "missing" | string;
   has_decision_usable_completed_stats: boolean;
   completed_dates: number;
   pending_dates: number;
+  pending_tail_date_count?: number;
+  pending_tail_dates?: string[];
+  blocking_pending_date_count?: number;
+  blocking_pending_dates?: string[];
   unsupported_dates: number;
   proxy_only_dates: number;
   completed_candidate_rows: number;
@@ -2093,6 +2778,24 @@ export type LivermoreSignalConfluenceMacroContext = {
   status: LivermoreSignalConfluenceMacroStatus;
   composite_score: number | null;
   multiplier: number;
+  source_metric?: string | null;
+  authority_status?: string | null;
+  authority_reasons?: string[] | null;
+  cycle_state?: LivermoreMarketGateCycleState | string | null;
+  gate_as_of_date?: string | null;
+  data_date?: string | null;
+  lag_days?: number | null;
+  max_component_lag_days?: number | null;
+  components?: LivermoreMarketGateMacroComponent[] | null;
+  formula_version?: string | null;
+  evidence?: string | null;
+  required_inputs?: string[] | null;
+  missing_inputs?: string[] | null;
+  legacy_bond_context?: {
+    authority_status?: string | null;
+    status?: LivermoreSignalConfluenceMacroStatus | string | null;
+    composite_score?: number | null;
+  } | null;
   description?: string | null;
 };
 

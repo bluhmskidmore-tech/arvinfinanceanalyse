@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -562,6 +564,97 @@ def test_duration_gap_excludes_asset_without_duration_from_dollar_duration():
     assert any("does not extrapolate" in warning for warning in result.warnings)
 
 
+def test_duration_gap_excludes_maturity_unavailable_zero_without_term_fallback():
+    module = _core_module()
+
+    result = module.compute_duration_gap(
+        zqtz_rows=[
+            {
+                "instrument_code": "BOND-DURATION",
+                "position_scope": "asset",
+                "maturity_date": date(2031, 1, 1),
+                "market_value_amount": Decimal("100"),
+                "macaulay_duration": Decimal("5"),
+            },
+            {
+                # The formal analytics fact encodes missing maturity as the
+                # DURATION_UNAVAILABLE(0) sentinel. A balance-row date must not
+                # turn it into a remaining-term duration proxy.
+                "instrument_code": "FUND-NO-MATURITY",
+                "position_scope": "asset",
+                "maturity_date": date(2031, 1, 1),
+                "market_value_amount": Decimal("100"),
+                "macaulay_duration": Decimal("0"),
+                "duration_quality_flag": "maturity_unavailable",
+            },
+        ],
+        tyw_rows=[],
+        report_date=date(2026, 1, 1),
+    )
+
+    assert result.total_asset_market_value == Decimal("200")
+    assert result.asset_duration_covered_balance == Decimal("100")
+    assert result.asset_excluded_balance == Decimal("100")
+    assert result.asset_duration_coverage_ratio == Decimal("0.5")
+    assert result.asset_weighted_duration == Decimal("5")
+    assert any("FUND-NO-MATURITY missing duration information" in warning for warning in result.warnings)
+
+
+def test_duration_gap_retains_real_matured_zero_duration_in_coverage():
+    module = _core_module()
+
+    result = module.compute_duration_gap(
+        zqtz_rows=[
+            {
+                "instrument_code": "MATURED-OUTSTANDING",
+                "position_scope": "asset",
+                "maturity_date": date(2025, 12, 31),
+                "market_value_amount": Decimal("100"),
+                "macaulay_duration": Decimal("0"),
+                "duration_quality_flag": "no_remaining_term",
+            }
+        ],
+        tyw_rows=[],
+        report_date=date(2026, 1, 1),
+    )
+
+    assert result.asset_duration_covered_balance == Decimal("100")
+    assert result.asset_excluded_balance == Decimal("0")
+    assert result.asset_weighted_duration == Decimal("0")
+    assert result.duration_gap == Decimal("0")
+
+
+def test_duration_gap_keeps_1bp_sensitivity_when_equity_is_zero():
+    module = _core_module()
+
+    result = module.compute_duration_gap(
+        zqtz_rows=[
+            {
+                "instrument_code": "ASSET-DURATION",
+                "position_scope": "asset",
+                "maturity_date": date(2031, 1, 1),
+                "market_value_amount": Decimal("100"),
+                "macaulay_duration": Decimal("2"),
+            },
+            {
+                "instrument_code": "LIABILITY-DURATION",
+                "position_scope": "liability",
+                "maturity_date": date(2027, 1, 1),
+                "market_value_amount": Decimal("100"),
+            },
+        ],
+        tyw_rows=[],
+        report_date=date(2026, 1, 1),
+    )
+
+    liability_duration = Decimal((date(2027, 1, 1) - date(2026, 1, 1)).days) / Decimal("365")
+    expected_dollar_duration = Decimal("2") * Decimal("100") - liability_duration * Decimal("100")
+    assert result.equity_duration is None
+    assert result.rate_sensitivity_1bp == -(expected_dollar_duration * Decimal("0.0001"))
+    assert result.rate_sensitivity_1bp != Decimal("0")
+    assert any("equity duration is unavailable" in warning.lower() for warning in result.warnings)
+
+
 def test_duration_gap_zero_assets_returns_unavailable_metrics():
     module = _core_module()
 
@@ -762,6 +855,8 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
                 "currency_code": "CNY",
                 "source_version": "sv_bond_1",
                 "rule_version": "rv_bond_1",
+                "ingest_batch_id": "ib_zqtz_1",
+                "trace_id": "tr_zqtz_1",
             }
         ]
 
@@ -779,6 +874,26 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
                 "currency_code": "CNY",
                 "source_version": "sv_tyw_1",
                 "rule_version": "rv_tyw_1",
+                "trace_id": "tr_tyw_1",
+            }
+        ]
+
+    def fake_fetch_analytics_rows(self, *, report_date, asset_class="all", accounting_class="all"):
+        assert report_date == "2026-01-01"
+        assert asset_class == "all"
+        assert accounting_class == "all"
+        return [
+            {
+                "instrument_code": "BOND-001",
+                "portfolio_name": "",
+                "cost_center": "",
+                "currency_code": "CNY",
+                "macaulay_duration": Decimal("1.25"),
+                "duration_quality_flag": "observed",
+                "source_version": "sv_bond_analytics_1",
+                "rule_version": "rv_bond_analytics_formal_materialize_v6",
+                "ingest_batch_id": "ib_analytics_1",
+                "trace_id": "tr_analytics_1",
             }
         ]
 
@@ -791,6 +906,11 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
         service_mod.CashflowProjectionRepository,
         "fetch_formal_tyw_liability_rows",
         fake_fetch_tyw_rows,
+    )
+    monkeypatch.setattr(
+        service_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        fake_fetch_analytics_rows,
     )
 
     route_mod = load_module(
@@ -814,6 +934,11 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result_meta"]["scenario_flag"] is False
     assert payload["result_meta"]["result_kind"] == "cashflow_projection.overview"
+    assert payload["result_meta"]["cache_version"] == "cv_cashflow_projection_read_v3"
+    assert payload["result_meta"]["source_version"] == "sv_bond_1__sv_bond_analytics_1__sv_tyw_1"
+    assert payload["result_meta"]["rule_version"] == (
+        "rv_bond_1__rv_bond_analytics_formal_materialize_v6__rv_cashflow_projection_read_v3__rv_tyw_1"
+    )
     assert payload["result_meta"]["source_surface"] == "cashflow"
     assert payload["result_meta"]["requested_report_date"] == "2026-01-01"
     assert payload["result_meta"]["resolved_report_date"] == "2026-01-01"
@@ -827,8 +952,9 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     assert payload["result_meta"]["tables_used"] == [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
+        "fact_formal_bond_analytics_daily",
     ]
-    assert payload["result_meta"]["evidence_rows"] == 2
+    assert payload["result_meta"]["evidence_rows"] == 3
     assert payload["result"]["report_date"] == "2026-01-01"
     assert "duration_gap" in payload["result"]
     assert payload["result"]["duration_gap"]["unit"] == "years"
@@ -845,9 +971,256 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     assert payload["result"]["equity_duration"]["sign_aware"] is True
     assert payload["result"]["rate_sensitivity_1bp"]["unit"] == "yuan"
     assert payload["result"]["reinvestment_risk_12m"]["unit"] == "pct"
+    assert payload["result"]["asset_duration_covered_balance"] == {
+        "raw": 100.0,
+        "raw_text": "100",
+        "unit": "yuan",
+        "display": "100.00",
+        "precision": 2,
+        "sign_aware": False,
+    }
+    assert payload["result"]["asset_excluded_balance"]["raw"] == 0.0
+    assert payload["result"]["asset_duration_coverage_ratio"]["raw"] == 1.0
+    assert payload["result"]["asset_duration_coverage_ratio"]["unit"] == "pct"
+    assert payload["result"]["input_lineage"] == [
+        {
+            "table_name": "fact_formal_zqtz_balance_daily",
+            "row_count": 1,
+            "source_versions": ["sv_bond_1"],
+            "rule_versions": ["rv_bond_1"],
+            "ingest_batch_ids": ["ib_zqtz_1"],
+            "trace_ids": ["tr_zqtz_1"],
+        },
+        {
+            "table_name": "fact_formal_tyw_balance_daily",
+            "row_count": 1,
+            "source_versions": ["sv_tyw_1"],
+            "rule_versions": ["rv_tyw_1"],
+            "ingest_batch_ids": [],
+            "trace_ids": ["tr_tyw_1"],
+        },
+        {
+            "table_name": "fact_formal_bond_analytics_daily",
+            "row_count": 1,
+            "source_versions": ["sv_bond_analytics_1"],
+            "rule_versions": ["rv_bond_analytics_formal_materialize_v6"],
+            "ingest_batch_ids": ["ib_analytics_1"],
+            "trace_ids": ["tr_analytics_1"],
+        },
+    ]
     assert "monthly_buckets" in payload["result"]
     assert "top_maturing_assets_12m" in payload["result"]
     assert "computed_at" in payload["result"]
+
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "stale_rule_version",
+    ["rv_bond_analytics_formal_materialize_v4", "rv_bond_analytics_formal_materialize_v5"],
+)
+def test_service_rejects_explicit_stale_bond_analytics_rule(
+    tmp_path, monkeypatch, stale_rule_version
+):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_zqtz_rows",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_tyw_liability_rows",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        service_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        lambda *_args, **_kwargs: [{"rule_version": stale_rule_version}],
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        service_mod.get_cashflow_projection(date(2026, 1, 1))
+    assert "expected rv_bond_analytics_formal_materialize_v6" in str(exc_info.value)
+    assert f"got {stale_rule_version}" in str(exc_info.value)
+    assert "Rematerialize required." in str(exc_info.value)
+
+    get_settings.cache_clear()
+
+
+def test_service_accepts_v6_bond_analytics_and_records_rule_identity(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    key = {
+        "instrument_code": "SYNTHETIC-V6-ANALYTICS",
+        "portfolio_name": "P1",
+        "cost_center": "C1",
+        "currency_code": "CNY",
+    }
+    zqtz_row = {
+        **key,
+        "instrument_name": "Synthetic V6 bond",
+        "position_scope": "asset",
+        "maturity_date": date(2028, 1, 1),
+        "face_value_amount": Decimal("100"),
+        "market_value_amount": Decimal("100"),
+        "coupon_rate": Decimal("3"),
+        "interest_mode": "annual",
+    }
+    analytics_row = {
+        **key,
+        "macaulay_duration": Decimal("1.25"),
+        "duration_quality_flag": "observed",
+        "rule_version": "rv_bond_analytics_formal_materialize_v6",
+    }
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_zqtz_rows",
+        lambda *_args, **_kwargs: [zqtz_row],
+    )
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_tyw_liability_rows",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        service_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        lambda *_args, **_kwargs: [analytics_row],
+    )
+
+    payload = service_mod.get_cashflow_projection(date(2026, 1, 1))
+
+    assert payload["result"]["asset_duration"]["raw_text"] == "1.25"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["rule_version"] == (
+        "rv_bond_analytics_formal_materialize_v6__rv_cashflow_projection_read_v3"
+    )
+    assert payload["result"]["input_lineage"][2] == {
+        "table_name": "fact_formal_bond_analytics_daily",
+        "row_count": 1,
+        "source_versions": [],
+        "rule_versions": ["rv_bond_analytics_formal_materialize_v6"],
+        "ingest_batch_ids": [],
+        "trace_ids": [],
+    }
+    get_settings.cache_clear()
+
+
+def test_service_response_preserves_lossless_raw_text(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+
+    def fake_fetch_zqtz_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
+        assert report_date == "2026-01-01"
+        assert position_scope == "all"
+        assert currency_basis == "CNY"
+        return [
+            {
+                "instrument_code": "CF-BOND-001",
+                "instrument_name": "Cashflow Bond",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "position_scope": "asset",
+                "maturity_date": date(2026, 6, 1),
+                "face_value_amount": Decimal("100.00000001"),
+                "market_value_amount": Decimal("99.99999999"),
+                "coupon_rate": Decimal("5.0"),
+                "interest_mode": "annual",
+                "currency_code": "CNY",
+                "source_version": "sv_cashflow_asset",
+                "rule_version": "rv_cashflow_asset",
+            }
+        ]
+
+    def fake_fetch_tyw_rows(self, *, report_date, currency_basis="CNY"):
+        assert report_date == "2026-01-01"
+        assert currency_basis == "CNY"
+        return []
+
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_zqtz_rows",
+        fake_fetch_zqtz_rows,
+    )
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_tyw_liability_rows",
+        fake_fetch_tyw_rows,
+    )
+    monkeypatch.setattr(
+        service_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        lambda self, *, report_date, asset_class="all", accounting_class="all": [],
+    )
+    monkeypatch.setattr(
+        service_mod,
+        "compute_duration_gap",
+        lambda **kwargs: SimpleNamespace(
+            duration_gap=Decimal("0.05000001"),
+            asset_weighted_duration=Decimal("3.50000001"),
+            liability_weighted_duration=Decimal("1.50000001"),
+            equity_duration=Decimal("-2.00000001"),
+            rate_sensitivity_1bp=Decimal("-0.01000001"),
+            reinvestment_risk_12m=Decimal("1.25000001"),
+            asset_duration_covered_balance=Decimal("99.99999999"),
+            liability_duration_covered_balance=Decimal("0"),
+            asset_excluded_balance=Decimal("0"),
+            liability_excluded_balance=Decimal("0"),
+            asset_duration_coverage_ratio=Decimal("1"),
+            liability_duration_coverage_ratio=None,
+            monthly_buckets=[
+                service_mod.MonthlyBucket(
+                    year_month="2026-01",
+                    asset_inflow=Decimal("100.00000001"),
+                    liability_outflow=Decimal("100.00000002"),
+                    net_cashflow=Decimal("-0.01000001"),
+                    cumulative_net=Decimal("-0.01000001"),
+                )
+            ],
+            warnings=[],
+        ),
+    )
+
+    payload = service_mod.get_cashflow_projection(date(2026, 1, 1))
+    result = payload["result"]
+
+    assert result["duration_gap"]["raw_text"] == "0.05000001"
+    assert result["asset_duration"]["raw_text"] == "3.50000001"
+    assert result["liability_duration"]["raw_text"] == "1.50000001"
+    assert result["equity_duration"]["raw_text"] == "-2.00000001"
+    assert result["rate_sensitivity_1bp"]["raw_text"] == "-0.01000001"
+    assert result["reinvestment_risk_12m"]["raw"] == 1.25000001
+    assert result["reinvestment_risk_12m"]["raw_text"] == "1.25000001"
+    assert result["reinvestment_risk_12m"]["display"] == "125.00%"
+    assert result["monthly_buckets"][0]["net_cashflow"]["raw_text"] == "-0.01000001"
+    assert result["monthly_buckets"][0]["asset_inflow"]["raw_text"] == "100.00000001"
+    assert result["top_maturing_assets_12m"][0]["face_value"]["raw_text"] == "100.00000001"
+    assert result["top_maturing_assets_12m"][0]["market_value"]["raw_text"] == "99.99999999"
+    for field_name in (
+        "floating_rate_proxy_market_value",
+        "payment_frequency_fallback_market_value",
+        "bullet_value_date_fallback_market_value",
+    ):
+        assert result[field_name]["raw_text"] is not None
 
     get_settings.cache_clear()
 
@@ -971,6 +1344,304 @@ def test_duration_fallback_uses_decimal_rates_and_semiannual_frequency():
     assert service_mod._recompute_macaulay_duration(row) == expected
 
 
+@pytest.mark.parametrize("interest_mode", ["annual", "bullet"])
+@pytest.mark.parametrize(
+    ("yield_fields", "effective_ytm"),
+    [
+        pytest.param({}, Decimal("0.03"), id="absent"),
+        pytest.param({"ytm": None, "ytm_value": None}, Decimal("0.03"), id="null"),
+        pytest.param({"ytm": "", "ytm_value": ""}, Decimal("0.03"), id="empty"),
+        pytest.param({"ytm": " "}, Decimal("0.03"), id="whitespace"),
+        pytest.param({"ytm": "not-a-yield"}, Decimal("0.03"), id="invalid-primary"),
+        pytest.param({"ytm_value": "not-a-yield"}, Decimal("0.03"), id="invalid-alias"),
+        pytest.param({"ytm": Decimal("NaN")}, Decimal("0.03"), id="nan"),
+        pytest.param({"ytm": "Infinity"}, Decimal("0.03"), id="infinity"),
+        pytest.param({"ytm_value": float("-inf")}, Decimal("0.03"), id="negative-infinity"),
+        pytest.param({"ytm": Decimal("0")}, Decimal("0"), id="observed-zero"),
+        pytest.param({"ytm": "0.03500001"}, Decimal("0.03500001"), id="observed-positive"),
+        pytest.param({"ytm": Decimal("-0.01")}, Decimal("-0.01"), id="observed-negative"),
+        pytest.param({"ytm": None, "ytm_value": "0"}, Decimal("0"), id="alias-zero"),
+        pytest.param({"ytm": "", "ytm_value": "0.035"}, Decimal("0.035"), id="alias-positive"),
+        pytest.param({"ytm_value": "-0.01"}, Decimal("-0.01"), id="alias-negative"),
+        pytest.param(
+            {"ytm": Decimal("0"), "ytm_value": Decimal("0.035")},
+            Decimal("0"),
+            id="primary-zero-precedes-alias",
+        ),
+    ],
+)
+def test_duration_fallback_distinguishes_missing_and_observed_yields(
+    yield_fields, effective_ytm, interest_mode
+):
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    row = {
+        "report_date": date(2026, 1, 1),
+        "maturity_date": date(2028, 1, 1),
+        "instrument_code": "SYNTHETIC-YIELD-SEMANTICS",
+        "coupon_rate": Decimal("0.03"),
+        "interest_mode": interest_mode,
+        **yield_fields,
+    }
+
+    if interest_mode == "bullet":
+        expected = Decimal("2")
+    else:
+        # Independent two-cashflow PV weighting, with decimal annual rates.
+        first_pv = Decimal("0.03") / (Decimal("1") + effective_ytm)
+        final_pv = Decimal("1.03") / (Decimal("1") + effective_ytm) ** 2
+        expected = (first_pv + Decimal("2") * final_pv) / (first_pv + final_pv)
+
+    assert service_mod._recompute_macaulay_duration(row) == expected
+
+
+@pytest.mark.parametrize("duration", [Decimal("0"), Decimal("1.25000001")])
+def test_attach_duration_prefers_valid_materialized_value_over_invalid_yield(
+    duration, monkeypatch
+):
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    key_fields = {
+        "instrument_code": "SYNTHETIC-MATERIALIZED-DURATION",
+        "portfolio_name": "P1",
+        "cost_center": "C1",
+        "currency_code": "CNY",
+    }
+
+    def unexpected_recompute(_row):
+        pytest.fail("A valid materialized duration must not be recomputed.")
+
+    monkeypatch.setattr(service_mod, "_recompute_macaulay_duration_with_assumption", unexpected_recompute)
+    enriched = service_mod._attach_macaulay_duration(
+        [{**key_fields, "position_scope": "asset"}],
+        [{**key_fields, "macaulay_duration": duration, "ytm": "not-a-yield"}],
+    )
+
+    assert enriched[0]["macaulay_duration"] == duration
+
+
+def test_attach_duration_preserves_par_fallback_quality_flag_after_recomputation():
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    key_fields = {
+        "instrument_code": "SYNTHETIC-PAR-FALLBACK",
+        "portfolio_name": "P1",
+        "cost_center": "C1",
+        "currency_code": "CNY",
+    }
+    analytics_row = {
+        **key_fields,
+        "report_date": date(2026, 1, 1),
+        "maturity_date": date(2028, 1, 1),
+        "coupon_rate": Decimal("0.03"),
+        "interest_mode": "annual",
+        "ytm": None,
+        "macaulay_duration": None,
+        "duration_quality_flag": "ytm_par_fallback",
+    }
+
+    enriched = service_mod._attach_macaulay_duration(
+        [{**key_fields, "position_scope": "asset"}], [analytics_row]
+    )
+
+    assert enriched[0]["duration_quality_flag"] == "ytm_par_fallback"
+    assert enriched[0]["macaulay_duration"] == Decimal("1.970873786407766990291262136")
+
+
+def test_cashflow_par_recompute_without_source_flag_discloses_assumption(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    key = {
+        "instrument_code": "SYNTHETIC-PAR-NO-FLAG",
+        "portfolio_name": "P1",
+        "cost_center": "C1",
+        "currency_code": "CNY",
+    }
+    zqtz_row = {
+        **key,
+        "position_scope": "asset",
+        "maturity_date": date(2028, 1, 1),
+        "face_value_amount": Decimal("100"),
+        "market_value_amount": Decimal("100"),
+        "coupon_rate": Decimal("3"),
+        "interest_mode": "annual",
+    }
+    analytics_row = {
+        **key,
+        "report_date": date(2026, 1, 1),
+        "maturity_date": date(2028, 1, 1),
+        "coupon_rate": Decimal("0.03"),
+        "interest_mode": "annual",
+        "ytm": None,
+        "macaulay_duration": None,
+    }
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_zqtz_rows",
+        lambda *_args, **_kwargs: [zqtz_row],
+    )
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_tyw_liability_rows",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        service_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        lambda *_args, **_kwargs: [analytics_row],
+    )
+
+    result = service_mod.get_cashflow_projection(date(2026, 1, 1))["result"]
+
+    assert result["asset_duration"]["raw_text"] == "1.970873786407766990291262136"
+    assert any("par assumption" in warning for warning in result["warnings"])
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("ytm", "materialized", "interest_mode", "uses_par"),
+    [
+        pytest.param(None, None, "annual", True, id="missing-annual"),
+        pytest.param("invalid", None, "annual", True, id="dirty-annual"),
+        pytest.param(Decimal("0"), None, "annual", False, id="observed-zero"),
+        pytest.param(Decimal("-0.01"), None, "annual", False, id="observed-negative"),
+        pytest.param(Decimal("0.035"), None, "annual", False, id="observed-positive"),
+        pytest.param(None, Decimal("0"), "annual", False, id="materialized-zero"),
+        pytest.param(None, Decimal("1.25"), "annual", False, id="materialized-positive"),
+        pytest.param(None, Decimal("NaN"), "annual", True, id="invalid-materialized"),
+        pytest.param(None, None, "bullet", True, id="missing-bullet"),
+        pytest.param(Decimal("0"), None, "bullet", False, id="observed-zero-bullet"),
+    ],
+)
+def test_par_duration_warning_tracks_used_yield_and_materialized_duration(
+    ytm, materialized, interest_mode, uses_par
+):
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    key = {
+        "instrument_code": "SYNTHETIC-PAR-CASE",
+        "portfolio_name": "P1",
+        "cost_center": "C1",
+        "currency_code": "CNY",
+    }
+    asset = {**key, "position_scope": "asset", "market_value_amount": Decimal("100")}
+    analytics = {
+        **key,
+        "report_date": date(2026, 1, 1),
+        "maturity_date": date(2028, 1, 1),
+        "coupon_rate": Decimal("0.03"),
+        "interest_mode": interest_mode,
+        "ytm": ytm,
+        "macaulay_duration": materialized,
+    }
+    original_asset, original_analytics = asset.copy(), analytics.copy()
+
+    enriched = service_mod._attach_macaulay_duration([asset], [analytics])
+    par_warnings = [
+        warning
+        for warning in service_mod._cashflow_projection_quality_disclosures(enriched)["warnings"]
+        if "par assumption" in warning
+    ]
+
+    assert asset == original_asset
+    assert analytics == original_analytics
+    if uses_par:
+        assert enriched[0]["_par_duration_assumption_used"] is True
+    else:
+        assert enriched[0]["_par_duration_assumption_used"] is False
+    assert len(par_warnings) == int(uses_par)
+    if uses_par:
+        assert enriched[0]["duration_quality_flag"] == "ytm_par_fallback"
+        assert "market_value=100" in par_warnings[0]
+    elif materialized is not None and materialized.is_finite():
+        assert enriched[0]["macaulay_duration"] == materialized
+
+
+def test_par_duration_warning_respects_scope_coverage_and_existing_quality():
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+
+    def pair(code, *, scope="asset", market_value=Decimal("100"), maturity=True, flag=None):
+        key = {
+            "instrument_code": code,
+            "portfolio_name": "P1",
+            "cost_center": "C1",
+            "currency_code": "CNY",
+        }
+        asset = {
+            **key,
+            "position_scope": scope,
+            "market_value": market_value,
+            "market_value_amount": Decimal("100"),
+        }
+        analytics = {
+            **key,
+            "report_date": date(2026, 1, 1),
+            "maturity_date": date(2028, 1, 1) if maturity else None,
+            "coupon_rate": Decimal("0.03"),
+            "interest_mode": "annual",
+            "ytm": None,
+            "macaulay_duration": None,
+        }
+        if flag is not None:
+            analytics["duration_quality_flag"] = flag
+        return asset, analytics
+
+    cases = [
+        pair("USED-PAR"),
+        pair("ZERO-MARKET", market_value=Decimal("0")),
+        pair("NEGATIVE-MARKET", market_value=Decimal("-5")),
+        pair("LIABILITY", scope="liability"),
+        pair("NO-MATURITY", maturity=False),
+        pair("UNAVAILABLE", flag="maturity_unavailable"),
+        pair("OTHER-QUALITY", flag="floating_rate_fixed_coupon_proxy"),
+    ]
+    matured_asset, matured_analytics = pair("MATURED")
+    matured_analytics["maturity_date"] = date(2025, 12, 31)
+    cases.append((matured_asset, matured_analytics))
+    unmatched_asset, _ = pair("NO-MATCH")
+    reused_asset, _ = pair("REUSED-INPUT")
+    reused_asset["_par_duration_assumption_used"] = True
+    rows = [asset for asset, _ in cases] + [unmatched_asset, reused_asset]
+    analytics_rows = [analytics for _, analytics in cases]
+
+    enriched = service_mod._attach_macaulay_duration(rows, analytics_rows)
+    by_code = {row["instrument_code"]: row for row in enriched}
+    par_warnings = [
+        warning
+        for warning in service_mod._cashflow_projection_quality_disclosures(enriched)["warnings"]
+        if "par assumption" in warning
+    ]
+
+    assert len(par_warnings) == 1
+    assert "2 asset rows with market_value=200" in par_warnings[0]
+    assert by_code["OTHER-QUALITY"]["duration_quality_flag"] == "floating_rate_fixed_coupon_proxy"
+    assert by_code["OTHER-QUALITY"]["_par_duration_assumption_used"] is True
+    assert by_code["UNAVAILABLE"]["duration_quality_flag"] == "maturity_unavailable"
+    assert by_code["UNAVAILABLE"]["_par_duration_assumption_used"] is False
+    assert by_code["MATURED"]["_par_duration_assumption_used"] is False
+    assert "macaulay_duration" not in by_code["NO-MATURITY"]
+    assert "_par_duration_assumption_used" not in by_code["LIABILITY"]
+    assert "_par_duration_assumption_used" not in by_code["NO-MATCH"]
+    assert by_code["REUSED-INPUT"]["_par_duration_assumption_used"] is False
+    assert reused_asset["_par_duration_assumption_used"] is True
+
+
 def test_duration_fallback_uses_single_cashflow_path_for_bullet_bonds():
     """bullet（到期一次还本付息）唯一现金流在到期日：Macaulay 恒等于剩余年限。
 
@@ -1074,3 +1745,56 @@ def test_attach_duration_treats_materialized_zero_as_valid():
     assert service_mod._attach_macaulay_duration([zqtz_row], [analytics_row])[0][
         "macaulay_duration"
     ] == Decimal("0")
+
+
+def test_attach_duration_preserves_maturity_unavailable_quality_flag():
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    key_fields = {
+        "instrument_code": "FUND-NO-MATURITY",
+        "portfolio_name": "P1",
+        "cost_center": "C1",
+        "currency_code": "CNY",
+    }
+
+    enriched = service_mod._attach_macaulay_duration(
+        [{**key_fields, "position_scope": "asset", "maturity_date": date(2031, 1, 1)}],
+        [
+            {
+                **key_fields,
+                "macaulay_duration": Decimal("0"),
+                "duration_quality_flag": "maturity_unavailable",
+            }
+        ],
+    )
+
+    assert enriched[0]["macaulay_duration"] == Decimal("0")
+    assert enriched[0]["duration_quality_flag"] == "maturity_unavailable"
+
+
+def test_coerce_decimal_non_finite_inputs_fall_back_to_zero():
+    """审计发现（Medium）：_coerce_decimal 对金额转换未做 NaN/Inf 防护。
+
+    修复后须与既有 None/"" 失败语义一致（归 0），覆盖 float NaN/Inf 与
+    字符串 "nan"/"inf" 经 Decimal(str(...)) 解析后仍非有限的情形。
+    """
+    module = _core_module()
+
+    assert module._coerce_decimal(float("nan")) == Decimal("0")
+    assert module._coerce_decimal(float("inf")) == Decimal("0")
+    assert module._coerce_decimal(float("-inf")) == Decimal("0")
+    assert module._coerce_decimal("nan") == Decimal("0")
+    assert module._coerce_decimal("inf") == Decimal("0")
+    assert module._coerce_decimal(Decimal("NaN")) == Decimal("0")
+    assert module._coerce_decimal(Decimal("Infinity")) == Decimal("0")
+
+
+def test_coerce_decimal_finite_and_missing_inputs_unaffected():
+    module = _core_module()
+
+    assert module._coerce_decimal(None) == Decimal("0")
+    assert module._coerce_decimal("") == Decimal("0")
+    assert module._coerce_decimal("100.5") == Decimal("100.5")
+    assert module._coerce_decimal(Decimal("42")) == Decimal("42")

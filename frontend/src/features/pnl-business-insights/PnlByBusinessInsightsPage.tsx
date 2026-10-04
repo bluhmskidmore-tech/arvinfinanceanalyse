@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../api/client";
@@ -9,6 +9,7 @@ import type {
   PnlByBusinessInsightsComponentEvidence,
   PnlByBusinessInsightsPayload,
   PnlByBusinessNegativeFtpPersistenceRow,
+  PnlByBusinessPrecomputeStatus,
   PnlByBusinessShareDriftRow,
 } from "../../api/contracts";
 import { FilterBar } from "../../components/FilterBar";
@@ -18,11 +19,15 @@ import {
   DataStatusStrip,
   PageDecisionHero,
   PageFilterTray,
-  PageSectionLead,
   PageStateSurface,
   PageV2Shell,
 } from "../../components/page/PagePrimitives";
-import { tableShellStyle, tableStyle, tdStyle, thStyle } from "../../components/page/pageStyles";
+import {
+  DataTable,
+  SECTION_HEAD_STACK_CLASSNAME,
+  SectionHead,
+  type DataTableColumn,
+} from "../../components/layout";
 import { EM_DASH } from "../../utils/format";
 import { CapitalEfficiencyQuadrantPanel } from "./CapitalEfficiencyQuadrantPanel";
 import { UntracedReconciliationTrendPanel } from "./UntracedReconciliationTrendPanel";
@@ -32,12 +37,44 @@ import "./PnlByBusinessInsightsPage.css";
 const RECONCILIATION_NOTE_TEXT =
   "以下为正式数据链路的对账诊断趋势，反映的是追溯完整性，不是业务贡献或拖累结论，不作为资源配置或业务评价依据。";
 
-/** 后端本页无缓存、单次重算约 1 分钟：超过该时长仍在加载时向用户说明进度。 */
-const SLOW_INSIGHTS_LOADING_DELAY_MS = 10_000;
+const PRECOMPUTE_STATUS_POLL_INTERVAL_MS = 3_000;
 
-/* 金融表数值列右对齐 + 等宽对齐（§3）；共享 pageStyles 无数值列变体，页内派生。 */
-const numericThStyle = { ...thStyle, textAlign: "right" } as const;
-const numericTdStyle = { ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" } as const;
+const PRECOMPUTE_READINESS_LABEL = {
+  ready: "已就绪",
+  pending: "准备中",
+  stale: "结果已过期",
+  failed: "准备失败",
+  source_missing: "源数据缺失",
+} as const;
+
+const PRECOMPUTE_DEPENDENCY_LABEL = {
+  current_ytd: "本期累计",
+  baseline_ytd: "上年同期间累计",
+  monthly: "本期月度",
+  monthly_baseline: "同期月度",
+} as const;
+
+function isAccessDeniedReadError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /\b(?:401|403)\b/.test(message) || /\b(?:unauthorized|forbidden|not authenticated|permission denied)\b/i.test(message);
+}
+
+function usesPrecomputeReadinessProtocol(
+  status: PnlByBusinessPrecomputeStatus | undefined,
+): boolean {
+  return status?.readiness !== undefined;
+}
+
+function describePrecomputeDependencies(status: PnlByBusinessPrecomputeStatus): string | null {
+  if (!status.dependencies?.length) {
+    return null;
+  }
+  return status.dependencies
+    .map((dependency) =>
+      `${PRECOMPUTE_DEPENDENCY_LABEL[dependency.key]} ${dependency.requested_report_date}：${PRECOMPUTE_READINESS_LABEL[dependency.readiness]}`,
+    )
+    .join("；");
+}
 
 function toNumber(value: string | null | undefined): number | null {
   if (value === null || value === undefined || value === "") {
@@ -113,6 +150,8 @@ function ytdRuleVersions(componentEvidence: PnlByBusinessInsightsComponentEviden
 }
 
 function BusinessDecisionBrief({ result }: { result: PnlByBusinessInsightsPayload }) {
+  const pendingIssues = result.negative_ftp_persistence.balance_quality_issues ?? [];
+  const sourcePending = result.negative_ftp_persistence.status === "source_pending" || pendingIssues.length > 0;
   const topRows = topConcentrationRows(result.concentration);
   const driftByRowKey = new Map(result.share_drift.rows.map((row) => [row.row_key, row]));
   const warningRows = result.negative_ftp_persistence.rows
@@ -157,7 +196,9 @@ function BusinessDecisionBrief({ result }: { result: PnlByBusinessInsightsPayloa
 
         <article className="pnl-by-business-insights-decision-brief__focus">
           <span className="pnl-by-business-insights-decision-brief__label">FTP后损益为负月份观察</span>
-          {warningRows.length > 0 ? (
+          {sourcePending ? (
+            <p role="status">{pendingIssues.map((issue) => issue.report_date).join("、")}余额来源待核实，连续负 FTP 暂不形成结论；取得正确源表后重算。</p>
+          ) : warningRows.length > 0 ? (
             <div className="pnl-by-business-insights-decision-brief__signals">
               {warningRows.map((row) => {
                 const drift = result.share_drift.available ? driftByRowKey.get(row.row_key) : undefined;
@@ -215,37 +256,80 @@ function BusinessDecisionBrief({ result }: { result: PnlByBusinessInsightsPayloa
   );
 }
 
+const CONCENTRATION_COLUMNS: readonly DataTableColumn<PnlByBusinessConcentrationRow>[] = [
+  { key: "business_type", title: "业务种类" },
+  {
+    key: "avg_balance",
+    title: "YTD日均（亿元）",
+    align: "numeric",
+    render: (row) => formatYuanAsYi(row.avg_balance),
+  },
+  {
+    key: "share_pct",
+    title: "日均份额",
+    align: "numeric",
+    render: (row) => formatPct(row.share_pct),
+  },
+];
+
 function ConcentrationTable({ rows }: { rows: PnlByBusinessConcentrationRow[] }) {
   const sortedRows = [...rows].sort(
     (left, right) => (toNumber(right.share_pct) ?? -1) - (toNumber(left.share_pct) ?? -1),
   );
   return (
-    <div style={tableShellStyle} data-testid="pnl-by-business-insights-concentration-table">
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>业务种类</th>
-            <th style={numericThStyle}>YTD日均（亿元）</th>
-            <th style={numericThStyle}>日均份额</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedRows.length === 0 ? (
-            <tr><td colSpan={3} style={tdStyle}>暂无集中度明细</td></tr>
-          ) : (
-            sortedRows.map((row) => (
-              <tr key={row.row_key}>
-                <td style={tdStyle}>{row.business_type}</td>
-                <td style={numericTdStyle}>{formatYuanAsYi(row.avg_balance)}</td>
-                <td style={numericTdStyle}>{formatPct(row.share_pct)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+    <DataTable<PnlByBusinessConcentrationRow>
+      testId="pnl-by-business-insights-concentration-table"
+      rows={sortedRows}
+      rowKey="row_key"
+      columns={CONCENTRATION_COLUMNS}
+      emptyMessage="暂无集中度明细"
+    />
   );
 }
+
+function negativeFtpShareCell(row: PnlByBusinessNegativeFtpPersistenceRow) {
+  if (!(row.eligible && row.status === "eligible")) {
+    return EM_DASH;
+  }
+  const value = formatPct(row.negative_ftp_month_share_pct);
+  return row.warning_triggered ? (
+    <span className="pnl-by-business-insights-negative-ftp-warning" data-warning="true">
+      {value}
+    </span>
+  ) : (
+    value
+  );
+}
+
+const NEGATIVE_FTP_COLUMNS: readonly DataTableColumn<PnlByBusinessNegativeFtpPersistenceRow>[] = [
+  { key: "business_type", title: "业务种类" },
+  {
+    key: "negative_ftp_month_share_pct",
+    title: "FTP后损益为负月份占比",
+    align: "numeric",
+    render: negativeFtpShareCell,
+  },
+  {
+    key: "negative_ftp_longest_streak_months",
+    title: "最长连续负值",
+    align: "numeric",
+    render: (row) =>
+      row.eligible && row.status === "eligible" && row.negative_ftp_longest_streak_months !== null
+        ? `${row.negative_ftp_longest_streak_months} 个月`
+        : EM_DASH,
+  },
+  { key: "months_observed", title: "已观测月份", align: "numeric" },
+  {
+    key: "status",
+    title: "状态",
+    render: (row) =>
+      row.status === "source_pending" ? "余额来源待核实" : !row.eligible || row.status === "insufficient_observations"
+        ? "观察不足"
+        : row.warning_triggered
+          ? "达到提示条件"
+          : "观察",
+  },
+];
 
 function NegativeFtpTable({ rows }: { rows: PnlByBusinessNegativeFtpPersistenceRow[] }) {
   const sortedRows = [...rows].sort(
@@ -255,56 +339,49 @@ function NegativeFtpTable({ rows }: { rows: PnlByBusinessNegativeFtpPersistenceR
         (toNumber(left.negative_ftp_month_share_pct) ?? -1),
   );
   return (
-    <div style={tableShellStyle} data-testid="pnl-by-business-insights-negative-ftp-table">
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>业务种类</th>
-            <th style={numericThStyle}>FTP后损益为负月份占比</th>
-            <th style={numericThStyle}>最长连续负值</th>
-            <th style={numericThStyle}>已观测月份</th>
-            <th style={thStyle}>状态</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedRows.length === 0 ? (
-            <tr><td colSpan={5} style={tdStyle}>暂无持续性明细</td></tr>
-          ) : (
-            sortedRows.map((row) => (
-              <tr key={row.row_key}>
-                <td style={tdStyle}>{row.business_type}</td>
-                <td
-                  data-warning={row.warning_triggered ? "true" : undefined}
-                  style={{
-                    ...numericTdStyle,
-                    fontWeight: row.warning_triggered ? 700 : undefined,
-                  }}
-                >
-                  {row.eligible && row.status === "eligible"
-                    ? formatPct(row.negative_ftp_month_share_pct)
-                    : EM_DASH}
-                </td>
-                <td style={numericTdStyle}>
-                  {row.eligible && row.status === "eligible" && row.negative_ftp_longest_streak_months !== null
-                    ? `${row.negative_ftp_longest_streak_months} 个月`
-                    : EM_DASH}
-                </td>
-                <td style={numericTdStyle}>{row.months_observed}</td>
-                <td style={tdStyle}>
-                  {!row.eligible || row.status === "insufficient_observations"
-                    ? "观察不足"
-                    : row.warning_triggered
-                      ? "达到提示条件"
-                      : "观察"}
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+    <DataTable<PnlByBusinessNegativeFtpPersistenceRow>
+      testId="pnl-by-business-insights-negative-ftp-table"
+      rows={sortedRows}
+      rowKey="row_key"
+      columns={NEGATIVE_FTP_COLUMNS}
+      emptyMessage="暂无持续性明细"
+    />
   );
 }
+
+const SHARE_DRIFT_LIFECYCLE_LABEL = {
+  continued: "持续",
+  new: "新进",
+  exited: "退出",
+  unavailable: "不可用",
+} as const;
+
+const SHARE_DRIFT_COLUMNS: readonly DataTableColumn<PnlByBusinessShareDriftRow>[] = [
+  { key: "business_type", title: "业务种类" },
+  {
+    key: "current_share_pct",
+    title: "当前份额",
+    align: "numeric",
+    render: (row) => formatPct(row.current_share_pct),
+  },
+  {
+    key: "baseline_share_pct",
+    title: "上年同期间份额",
+    align: "numeric",
+    render: (row) => formatPct(row.baseline_share_pct),
+  },
+  {
+    key: "drift_pp",
+    title: "漂移",
+    align: "numeric",
+    render: (row) => formatSignedPp(row.drift_pp),
+  },
+  {
+    key: "lifecycle_status",
+    title: "状态",
+    render: (row) => SHARE_DRIFT_LIFECYCLE_LABEL[row.lifecycle_status],
+  },
+];
 
 function ShareDriftTable({
   rows,
@@ -334,37 +411,19 @@ function ShareDriftTable({
   const sortedRows = [...rows].sort(
     (left, right) => Math.abs(toNumber(right.drift_pp) ?? 0) - Math.abs(toNumber(left.drift_pp) ?? 0),
   );
-  const lifecycleLabel = { continued: "持续", new: "新进", exited: "退出", unavailable: "不可用" } as const;
   return (
-    <div style={tableShellStyle} data-testid="pnl-by-business-insights-share-drift-table">
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>业务种类</th>
-            <th style={numericThStyle}>当前份额</th>
-            <th style={numericThStyle}>上年同期间份额</th>
-            <th style={numericThStyle}>漂移</th>
-            <th style={thStyle}>状态</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedRows.map((row) => (
-            <tr key={row.row_key}>
-              <td style={tdStyle}>{row.business_type}</td>
-              <td style={numericTdStyle}>{formatPct(row.current_share_pct)}</td>
-              <td style={numericTdStyle}>{formatPct(row.baseline_share_pct)}</td>
-              <td style={numericTdStyle}>{formatSignedPp(row.drift_pp)}</td>
-              <td style={tdStyle}>{lifecycleLabel[row.lifecycle_status]}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable<PnlByBusinessShareDriftRow>
+      testId="pnl-by-business-insights-share-drift-table"
+      rows={sortedRows}
+      rowKey="row_key"
+      columns={SHARE_DRIFT_COLUMNS}
+    />
   );
 }
 
 export default function PnlByBusinessInsightsPage() {
   const client = useApiClient();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const [initial] = useState(() => initialFilters(searchParams));
   const [year, setYear] = useState(initial?.year ?? 0);
@@ -372,12 +431,12 @@ export default function PnlByBusinessInsightsPage() {
 
   const datesQuery = useQuery({
     queryKey: ["pnl-by-business-insights", "dates", client.mode],
-    queryFn: () => client.getFormalPnlDates(),
+    queryFn: () => client.getFormalPnlDates({ page: "by_business_insights" }),
     retry: false,
   });
   const reportDates = useMemo(
-    () => datesQuery.data?.result.formal_fi_report_dates ?? datesQuery.data?.result.report_dates ?? [],
-    [datesQuery.data?.result.formal_fi_report_dates, datesQuery.data?.result.report_dates],
+    () => datesQuery.data?.result.report_dates ?? [],
+    [datesQuery.data?.result.report_dates],
   );
   const availableYears = useMemo(
     () => Array.from(new Set(reportDates.map((reportDate) => Number(reportDate.slice(0, 4))))),
@@ -405,31 +464,115 @@ export default function PnlByBusinessInsightsPage() {
 
   const selectedDateIsAvailable =
     reportDates.includes(asOfDate) && asOfDate.startsWith(`${year}-`);
+  const hasRetainedDatesData = Boolean(datesQuery.data);
+  const datesAccessDenied = datesQuery.isError && isAccessDeniedReadError(datesQuery.error);
+
+  const precomputeStatusQueryKey = [
+    "pnl-by-business-insights",
+    "precompute-status",
+    client.mode,
+    year,
+    asOfDate,
+  ] as const;
+  const precomputeStatusQuery = useQuery({
+    queryKey: precomputeStatusQueryKey,
+    queryFn: ({ signal }) => client.getPnlByBusinessPrecomputeStatus(year, asOfDate, { signal }),
+    enabled: hasRetainedDatesData && !datesAccessDenied && selectedDateIsAvailable,
+    retry: false,
+    refetchInterval: (query) => {
+      const status = query.state.data;
+      return status?.readiness === "pending" && !status.worker_stalled
+        ? PRECOMPUTE_STATUS_POLL_INTERVAL_MS
+        : false;
+    },
+  });
+  const precomputeStatus = precomputeStatusQuery.data;
+  const usesReadinessProtocol = usesPrecomputeReadinessProtocol(precomputeStatus);
+  const publishedGeneration =
+    usesReadinessProtocol && precomputeStatus?.readiness === "ready" && precomputeStatus.generation
+      ? precomputeStatus.generation
+      : null;
+  const legacyReadAllowed = precomputeStatusQuery.isSuccess && !usesReadinessProtocol;
+  const generationReadAllowed = usesReadinessProtocol && publishedGeneration !== null;
 
   const insightsQuery = useQuery({
-    queryKey: ["pnl-by-business-insights", "formal", client.mode, year, asOfDate],
-    queryFn: () => client.getPnlByBusinessInsights(year, asOfDate),
-    enabled: datesQuery.isSuccess && selectedDateIsAvailable,
+    queryKey: [
+      "pnl-by-business-insights",
+      "formal",
+      client.mode,
+      year,
+      asOfDate,
+      publishedGeneration ?? "legacy",
+    ],
+    queryFn: ({ signal }) =>
+      client.getPnlByBusinessInsights(
+        year,
+        asOfDate,
+        publishedGeneration ? { signal, generation: publishedGeneration } : { signal },
+      ),
+    enabled:
+      hasRetainedDatesData &&
+      !datesAccessDenied &&
+      selectedDateIsAvailable &&
+      (legacyReadAllowed || generationReadAllowed),
     retry: false,
   });
 
-  // 结构分析接口无缓存、单次重算可达 1 分钟：加载超过 10s 时在骨架旁补一行
-  // 进度说明（§6 loading 态可感知），避免超长等待零沟通。
-  const insightsLoading = insightsQuery.isLoading;
-  const [slowLoading, setSlowLoading] = useState(false);
-  useEffect(() => {
-    if (!insightsLoading) {
-      setSlowLoading(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setSlowLoading(true), SLOW_INSIGHTS_LOADING_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [insightsLoading]);
+  const rebuildMutation = useMutation({
+    mutationFn: (selection: { year: number; asOfDate: string }) =>
+      client.rebuildPnlByBusinessPrecompute(selection.year, selection.asOfDate, {
+        includePageDependencies: true,
+        scope: "selected",
+      }),
+    onSuccess: (nextStatus, selection) => {
+      queryClient.setQueryData(
+        [
+          "pnl-by-business-insights",
+          "precompute-status",
+          client.mode,
+          selection.year,
+          selection.asOfDate,
+        ],
+        nextStatus,
+      );
+    },
+  });
 
+  const datesLoading = datesQuery.isLoading && !hasRetainedDatesData;
+  const datesRefreshError =
+    datesQuery.isError && hasRetainedDatesData && !datesQuery.isFetching && !datesAccessDenied;
+  const hasRetainedInsightsData = Boolean(insightsQuery.data);
+  const precomputeStatusAccessDenied =
+    precomputeStatusQuery.isError && isAccessDeniedReadError(precomputeStatusQuery.error);
+  const insightsAccessDenied = insightsQuery.isError && isAccessDeniedReadError(insightsQuery.error);
+  const accessDenied = datesAccessDenied || precomputeStatusAccessDenied || insightsAccessDenied;
+  const accessDeniedIsRetrying = datesAccessDenied
+    ? datesQuery.isFetching
+    : precomputeStatusAccessDenied
+      ? precomputeStatusQuery.isFetching
+      : insightsQuery.isFetching;
+  const precomputeStatusLoading = precomputeStatusQuery.isLoading && !precomputeStatus;
+  const precomputeStatusInitialError =
+    precomputeStatusQuery.isError && !precomputeStatus && !precomputeStatusAccessDenied;
+  const precomputeStatusRefreshError =
+    precomputeStatusQuery.isError && Boolean(precomputeStatus) && !precomputeStatusAccessDenied;
+  const insightsLoading = insightsQuery.isLoading && !hasRetainedInsightsData;
+  const insightsRefreshing = insightsQuery.isFetching && hasRetainedInsightsData;
+  const insightsRefreshError =
+    insightsQuery.isError && hasRetainedInsightsData && !insightsQuery.isFetching && !insightsAccessDenied;
   const meta = insightsQuery.data?.result_meta;
   const result = insightsQuery.data?.result;
+  const generationMatches =
+    !usesReadinessProtocol ||
+    Boolean(publishedGeneration && result?.generation === publishedGeneration);
+  const formalUseAllowedForDisplay = Boolean(
+    meta?.formal_use_allowed &&
+      generationMatches &&
+      (!usesReadinessProtocol || precomputeStatus?.readiness === "ready"),
+  );
   const contractReady = Boolean(
-    meta?.basis === "formal" &&
+    generationMatches &&
+      meta?.basis === "formal" &&
       meta.formal_use_allowed &&
       meta.result_kind === "pnl.by_business_insights" &&
       (meta.quality_flag === "ok" || meta.quality_flag === "warning") &&
@@ -450,6 +593,64 @@ export default function PnlByBusinessInsightsPage() {
       (result?.concentration.rows.length ?? 0) === 0 &&
       (result?.negative_ftp_persistence.rows.length ?? 0) === 0 &&
       (result?.share_drift.rows.length ?? 0) === 0);
+  const dependencyDescription = precomputeStatus
+    ? describePrecomputeDependencies(precomputeStatus)
+    : null;
+  const canRequestPreparation = precomputeStatus?.permissions?.can_rebuild === true;
+  const preparationActionAvailable = Boolean(
+    usesReadinessProtocol &&
+      precomputeStatus &&
+      precomputeStatus.readiness !== "ready" &&
+      (precomputeStatus.readiness !== "pending" || precomputeStatus.worker_stalled) &&
+      canRequestPreparation,
+  );
+  const preparationActions = precomputeStatus && usesReadinessProtocol ? (
+    <>
+      {(precomputeStatus.readiness !== "pending" || precomputeStatus.worker_stalled) ? (
+        <button
+          type="button"
+          className="moss-page-async-section__retry"
+          disabled={precomputeStatusQuery.isFetching}
+          onClick={() => void precomputeStatusQuery.refetch()}
+        >
+          重试读取状态
+        </button>
+      ) : null}
+      {preparationActionAvailable ? (
+        <button
+          type="button"
+          className="moss-page-async-section__retry"
+          disabled={rebuildMutation.isPending}
+          onClick={() => rebuildMutation.mutate({ year, asOfDate })}
+        >
+          {rebuildMutation.isPending ? "正在提交准备请求" : "请求后台准备"}
+        </button>
+      ) : null}
+    </>
+  ) : undefined;
+  const preparationDescription = precomputeStatus && usesReadinessProtocol
+    ? [
+        precomputeStatus.readiness === "pending"
+          ? "整页本期、同期和月度依赖正在后台准备。"
+          : precomputeStatus.readiness === "stale"
+            ? "该截止日的旧结果已失效，页面不会沿用旧响应的正式使用结论。"
+            : precomputeStatus.readiness === "failed"
+              ? precomputeStatus.error_message ?? "后台准备未完成，请先核对失败原因。"
+              : precomputeStatus.readiness === "source_missing"
+                ? "所选截止日的源数据不完整，页面不会补零或换用其他日期。"
+                : publishedGeneration
+                  ? `整页依赖已由版本 ${publishedGeneration} 覆盖。`
+                  : "后台已返回就绪，但尚未提供可固定读取的版本。",
+        dependencyDescription,
+        precomputeStatus.run_id ? `任务 ${precomputeStatus.run_id}` : null,
+        precomputeStatus.worker_stalled
+          ? precomputeStatus.recovery_hint ?? "后台任务长时间没有进展，请联系运维检查 worker 后再重试读取状态。"
+          : null,
+        !canRequestPreparation && precomputeStatus.readiness !== "ready"
+          ? precomputeStatus.permissions?.reason ?? "当前账号只能查看准备状态。"
+          : null,
+      ].filter((item): item is string => Boolean(item)).join(" ")
+    : null;
 
   return (
     <section
@@ -473,7 +674,7 @@ export default function PnlByBusinessInsightsPage() {
                 <select
                   aria-label="pnl-by-business-insights-year"
                   value={year || ""}
-                  disabled={datesQuery.isLoading || availableYears.length === 0}
+                  disabled={datesQuery.isLoading || datesAccessDenied || availableYears.length === 0}
                   onChange={(event) => {
                     const nextYear = Number(event.target.value);
                     const nextDate = reportDates.find((reportDate) => reportDate.startsWith(`${nextYear}-`));
@@ -494,7 +695,7 @@ export default function PnlByBusinessInsightsPage() {
                 <select
                   aria-label="pnl-by-business-insights-as-of-date"
                   value={asOfDate}
-                  disabled={datesQuery.isLoading || yearReportDates.length === 0}
+                  disabled={datesQuery.isLoading || datesAccessDenied || yearReportDates.length === 0}
                   onChange={(event) => {
                     const nextDate = event.target.value;
                     setAsOfDate(nextDate);
@@ -511,20 +712,13 @@ export default function PnlByBusinessInsightsPage() {
           </PageFilterTray>
         </PageDecisionHero>
 
-        {insightsLoading && slowLoading ? (
-          <p
-            className="pnl-by-business-insights-slow-loading-note"
-            data-testid="pnl-by-business-insights-slow-loading-note"
-            role="status"
-          >
-            正在计算年度结构分析，约需 1 分钟，请稍候。
-          </p>
-        ) : null}
-
         <PageAsyncSection
           title="正式结构分析"
-          isLoading={datesQuery.isLoading || insightsQuery.isLoading}
-          isError={datesQuery.isError || insightsQuery.isError}
+          isLoading={datesLoading || precomputeStatusLoading || insightsLoading}
+          isError={
+            (datesQuery.isError && !hasRetainedDatesData) ||
+            (insightsQuery.isError && !hasRetainedInsightsData)
+          }
           isEmpty={isEmpty}
           fillHeight={false}
           onRetry={() => {
@@ -532,16 +726,166 @@ export default function PnlByBusinessInsightsPage() {
               void datesQuery.refetch();
               return;
             }
+            if (precomputeStatusQuery.isError) {
+              void precomputeStatusQuery.refetch();
+              return;
+            }
             void insightsQuery.refetch();
           }}
         >
-          {result && meta ? (
+          {accessDenied ? (
+            <PageStateSurface
+              variant="error"
+              testId="pnl-by-business-insights-access-denied"
+              title="正式结构分析读取权限已变更"
+              description={
+                datesAccessDenied
+                  ? "报告日期目录读取权限已变更，已停止使用缓存目录和已返回的正式结构分析结果。请重新登录或联系管理员恢复权限后重试。"
+                  : precomputeStatusAccessDenied
+                    ? "准备状态读取权限已变更，已停止读取和显示正式结构分析结果。请重新登录或联系管理员恢复权限后重试。"
+                  : "已停止显示此前返回的正式结构分析结果。请重新登录或联系管理员恢复权限后重试。"
+              }
+              actions={
+                <button
+                  type="button"
+                  className="moss-page-async-section__retry"
+                  disabled={accessDeniedIsRetrying}
+                  onClick={() => void (
+                    datesAccessDenied
+                      ? datesQuery.refetch()
+                      : precomputeStatusAccessDenied
+                        ? precomputeStatusQuery.refetch()
+                        : insightsQuery.refetch()
+                  )}
+                >
+                  重新检查权限
+                </button>
+              }
+            />
+          ) : null}
+          {!accessDenied && datesRefreshError ? (
+            <PageStateSurface
+              variant="error"
+              testId="pnl-by-business-insights-dates-refresh-error"
+              title="报告日期目录更新失败"
+              description="当前继续使用已成功加载的报告日期目录和该截止日的结构分析结果，可重试更新。"
+              actions={
+                <button
+                  type="button"
+                  className="moss-page-async-section__retry"
+                  onClick={() => void datesQuery.refetch()}
+                >
+                  重试
+                </button>
+              }
+            />
+          ) : null}
+          {!accessDenied && precomputeStatusInitialError ? (
+            <PageStateSurface
+              variant="error"
+              testId="pnl-by-business-insights-precompute-status-error"
+              title="准备状态读取失败"
+              description="尚未确认整页本期、同期和月度依赖是否就绪，页面暂不读取正式结构分析结果。"
+              actions={
+                <button
+                  type="button"
+                  className="moss-page-async-section__retry"
+                  onClick={() => void precomputeStatusQuery.refetch()}
+                >
+                  重试读取状态
+                </button>
+              }
+            />
+          ) : null}
+          {!accessDenied && precomputeStatusRefreshError ? (
+            <PageStateSurface
+              variant="error"
+              testId="pnl-by-business-insights-precompute-status-refresh-error"
+              title="准备状态更新失败"
+              description="页面保留上次成功取得的准备状态，可单独重试状态读取。"
+              actions={
+                <button
+                  type="button"
+                  className="moss-page-async-section__retry"
+                  onClick={() => void precomputeStatusQuery.refetch()}
+                >
+                  重试读取状态
+                </button>
+              }
+            />
+          ) : null}
+          {!accessDenied && usesReadinessProtocol && precomputeStatus?.readiness !== "ready" ? (
+            <PageStateSurface
+              variant={precomputeStatus?.readiness === "failed" ? "error" : "definition-pending"}
+              testId="pnl-by-business-insights-precompute-state"
+              title={
+                precomputeStatus?.worker_stalled
+                  ? "后台准备长时间没有进展"
+                  : precomputeStatus?.readiness
+                    ? PRECOMPUTE_READINESS_LABEL[precomputeStatus.readiness]
+                    : "准备状态待确认"
+              }
+              description={preparationDescription ?? undefined}
+              actions={preparationActions}
+            />
+          ) : null}
+          {!accessDenied && usesReadinessProtocol && precomputeStatus?.readiness === "ready" && !publishedGeneration ? (
+            <PageStateSurface
+              variant="definition-pending"
+              testId="pnl-by-business-insights-precompute-generation-missing"
+              title="已就绪结果缺少版本"
+              description={preparationDescription ?? undefined}
+              actions={preparationActions}
+            />
+          ) : null}
+          {!accessDenied && publishedGeneration && precomputeStatus?.refresh_status === "failed" ? (
+            <PageStateSurface
+              variant="definition-pending"
+              testId="pnl-by-business-insights-refresh-failed-serving-published"
+              title="最新准备失败，继续显示已发布结果"
+              description={[
+                `当前显示的正式结果日期为 ${precomputeStatus.report_date ?? EM_DASH}，版本 ${publishedGeneration}。`,
+                precomputeStatus.refresh_error_message ?? "后台更新未完成。",
+                "页面未用失败更新尝试的日期替换当前正式结果。",
+              ].join(" ")}
+              actions={preparationActions}
+            />
+          ) : null}
+          {!accessDenied && rebuildMutation.isError ? (
+            <PageStateSurface
+              variant="error"
+              testId="pnl-by-business-insights-precompute-rebuild-error"
+              title="后台准备请求未受理"
+              description="准备请求和状态读取相互独立。请先重试读取状态；若状态仍无变化，再按页面提示处理。"
+            />
+          ) : null}
+          {!accessDenied && result && meta ? (
             <>
+              {insightsRefreshError ? (
+                <PageStateSurface
+                  variant="error"
+                  testId="pnl-by-business-insights-refresh-error"
+                  title="结构分析更新失败"
+                  description="当前仍显示该截止日上次成功返回的结果，可重试更新。"
+                  actions={
+                    <button
+                      type="button"
+                      className="moss-page-async-section__retry"
+                      onClick={() => void insightsQuery.refetch()}
+                    >
+                      重试
+                    </button>
+                  }
+                />
+              ) : null}
               <DataStatusStrip
                 testId="pnl-by-business-insights-contract-status"
                 className="pnl-by-business-insights-data-status-strip"
               >
-                <span><strong>正式口径</strong> {meta.formal_use_allowed ? "已批准" : "待确认"}</span>
+                {insightsRefreshing ? <span data-testid="pnl-by-business-insights-refreshing"><strong>更新</strong> 正在更新当前截止日的结构分析</span> : null}
+                {usesReadinessProtocol ? <span><strong>准备</strong> {precomputeStatus?.readiness ? PRECOMPUTE_READINESS_LABEL[precomputeStatus.readiness] : EM_DASH}</span> : null}
+                {usesReadinessProtocol ? <span><strong>版本</strong> {publishedGeneration ?? EM_DASH}</span> : null}
+                <span><strong>正式口径</strong> {formalUseAllowedForDisplay ? "已批准" : "待确认"}</span>
                 <span><strong>质量</strong> {meta.quality_flag}</span>
                 <span><strong>截止</strong> {meta.resolved_report_date ?? result.as_of_date}</span>
                 <span><strong>降级</strong> {meta.fallback_mode}</span>
@@ -582,45 +926,55 @@ export default function PnlByBusinessInsightsPage() {
                 />
               </div>
 
-              <PageSectionLead
-                eyebrow="结构集中"
-                title="业务集中度"
-                description="按YTD日均余额份额降序展示；HHI以百分比形式返回，不与传统HHI点数混用。"
-              />
-              <ConcentrationTable rows={result.concentration.rows} />
+              <div className={SECTION_HEAD_STACK_CLASSNAME}>
+                <section>
+                  <SectionHead
+                    category="结构集中"
+                    title="业务集中度"
+                    note="按YTD日均余额份额降序展示；HHI以百分比形式返回，不与传统HHI点数混用。"
+                  />
+                  <ConcentrationTable rows={result.concentration.rows} />
+                </section>
 
-              <PageSectionLead
-                eyebrow="持续性观察"
-                title="FTP后损益为负月份频率与最长连续期"
-                description={`滚动 ${result.negative_ftp_persistence.lookback_months} 个自然月；至少 ${result.negative_ftp_persistence.minimum_observed_months} 个已观测月份且负值月份占比达到 ${formatPct(result.negative_ftp_persistence.warning_threshold_pct)} 才提示，缺失月份不进分母并打断连续期。`}
-              />
-              <NegativeFtpTable rows={result.negative_ftp_persistence.rows} />
+                <section>
+                  <SectionHead
+                    category="持续性观察"
+                    title="FTP后损益为负月份频率与最长连续期"
+                    note={`滚动 ${result.negative_ftp_persistence.lookback_months} 个自然月；至少 ${result.negative_ftp_persistence.minimum_observed_months} 个已观测月份且负值月份占比达到 ${formatPct(result.negative_ftp_persistence.warning_threshold_pct)} 才提示，缺失月份不进分母并打断连续期。`}
+                  />
+                  <NegativeFtpTable rows={result.negative_ftp_persistence.rows} />
+                </section>
 
-              <PageSectionLead
-                eyebrow="跨期结构"
-                title="日均份额同比漂移"
-                description={`当前YTD与上年同期间 ${result.share_drift.baseline_as_of_date ?? EM_DASH} 对比；新进及退出业务缺失侧按0处理。`}
-              />
-              <ShareDriftTable
-                rows={result.share_drift.rows}
-                baselineAvailable={result.share_drift.baseline_available}
-                available={result.share_drift.available}
-                availabilityReason={result.share_drift.availability_reason}
-              />
+                <section>
+                  <SectionHead
+                    category="跨期结构"
+                    title="日均份额同比漂移"
+                    note={`当前YTD与上年同期间 ${result.share_drift.baseline_as_of_date ?? EM_DASH} 对比；新进及退出业务缺失侧按0处理。`}
+                  />
+                  <ShareDriftTable
+                    rows={result.share_drift.rows}
+                    baselineAvailable={result.share_drift.baseline_available}
+                    available={result.share_drift.available}
+                    availabilityReason={result.share_drift.availability_reason}
+                  />
+                </section>
 
-              <PageSectionLead
-                eyebrow="相对位置"
-                title="规模与FTP后收益相对象限"
-                description="规模轴使用日均余额份额，收益轴使用FTP后年化收益率；按当期中位数作描述性相对比较，不生成增配或压降建议。"
-              />
-              <CapitalEfficiencyQuadrantPanel summary={result.scale_yield_quadrant} />
+                <section>
+                  <SectionHead
+                    category="相对位置"
+                    title="规模与FTP后收益相对象限"
+                    note="规模轴使用日均余额份额，收益轴使用FTP后年化收益率；按当期中位数作描述性相对比较，不生成增配或压降建议。"
+                  />
+                  <CapitalEfficiencyQuadrantPanel summary={result.scale_yield_quadrant} />
+                </section>
+              </div>
                 </>
               )}
             </>
           ) : null}
         </PageAsyncSection>
 
-        {contractReady && result?.reconciliation_diagnostics ? (
+        {!accessDenied && contractReady && result?.reconciliation_diagnostics ? (
           <>
             <hr
               className="pnl-by-business-insights-reconciliation-divider"

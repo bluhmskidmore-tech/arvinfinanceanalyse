@@ -124,6 +124,7 @@ def load_choice_stock_request_plan(
     catalog_path: str | Path,
     *,
     as_of_date: str,
+    history_start_date: str | None = None,
 ) -> ChoiceStockRequestPlan:
     normalized_path = str(catalog_path or "").strip()
     readiness = load_choice_stock_readiness(normalized_path)
@@ -153,7 +154,11 @@ def load_choice_stock_request_plan(
         )
 
     requests = [
-        _build_request_plan_item(entry=entry, as_of_date=as_of_date)
+        _build_request_plan_item(
+            entry=entry,
+            as_of_date=as_of_date,
+            history_start_date=history_start_date,
+        )
         for entry in catalog.fields
         if _entry_is_confirmed(entry)
     ]
@@ -257,6 +262,7 @@ def _build_request_plan_item(
     *,
     entry: ChoiceStockCatalogEntry,
     as_of_date: str,
+    history_start_date: str | None = None,
 ) -> ChoiceStockRequestPlanItem:
     resolved_options = {
         key: _resolve_request_placeholder(value, as_of_date=as_of_date)
@@ -267,7 +273,11 @@ def _build_request_plan_item(
         field_key=entry.field_key,
         vendor_indicator=entry.vendor_indicator,
         call=entry.call,
-        request_arguments=_request_arguments_for_entry(entry, as_of_date=as_of_date),
+        request_arguments=_request_arguments_for_entry(
+            entry,
+            as_of_date=as_of_date,
+            history_start_date=history_start_date,
+        ),
         request_options=resolved_options,
         request_options_text=_serialize_request_options(resolved_options),
     )
@@ -277,13 +287,19 @@ def _request_arguments_for_entry(
     entry: ChoiceStockCatalogEntry,
     *,
     as_of_date: str,
+    history_start_date: str | None = None,
 ) -> list[str]:
     if entry.call == "sector":
         return [entry.vendor_indicator, as_of_date]
     if entry.call == "css":
         return ["__STOCK_CODES__", entry.vendor_indicator]
     if entry.call == "csd":
-        return ["__STOCK_CODES__", entry.vendor_indicator, choice_stock_history_start_date(as_of_date), as_of_date]
+        return [
+            "__STOCK_CODES__",
+            entry.vendor_indicator,
+            history_start_date or choice_stock_history_start_date(as_of_date),
+            as_of_date,
+        ]
     if entry.call == "ctr":
         return [entry.vendor_indicator, ""]
     return []

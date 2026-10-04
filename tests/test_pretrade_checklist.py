@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from backend.app.core_finance.strategy_policy import POLICY
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.services import pretrade_checklist_service
 from backend.app.services.pretrade_checklist_service import (
     pretrade_checklist_envelope,
 )
@@ -27,6 +28,23 @@ pytestmark = [
     pytest.mark.excluded_surface_acceptance,
     pytest.mark.surface_livermore,
 ]
+
+
+@pytest.fixture(autouse=True)
+def _isolate_existing_checklist_formula_tests_from_qualification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy cases cover row assembly; real qualification is tested separately."""
+    monkeypatch.setattr(
+        pretrade_checklist_service,
+        "qualify_pretrade_read_view",
+        lambda *_args, **_kwargs: {
+            "status": "ready",
+            "producer_run_id": "test:qualified-checklist",
+            "evidence_sha256": "a" * 64,
+            "input_snapshot": {"sha256": "b" * 64},
+        },
+    )
 
 AS_OF = "2026-08-10"
 TODAY_FRESH = "2026-08-12"

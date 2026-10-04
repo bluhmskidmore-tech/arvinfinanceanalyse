@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { useApiClient } from "../../../api/client";
+import { isAgentFrontendEnabled } from "../../../app/navigation";
 import { FilterBar } from "../../../components/FilterBar";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import type {
@@ -23,6 +32,7 @@ import { EM_DASH } from "../../../utils/format";
 import { derivePnlDataSectionState } from "../adapters/pnlAttributionAdapter";
 import { PnLCompositionChart } from "./PnLCompositionChart";
 import { TPLMarketChart, type ProductCategoryTplMonthlyPoint } from "./TPLMarketChart";
+import { CampisiAttributionPanel } from "./CampisiAttributionPanel";
 import { AdvancedAttributionTabPanels } from "./PnlAttributionAdvancedTab";
 import { ProductCategoryTabPanels } from "./PnlAttributionProductCategoryTab";
 import {
@@ -37,15 +47,24 @@ import {
 import "./PnlAttributionView.css";
 import {
   buildVolumeRateBridgeSummary,
+  type AdvancedAttributionQualitySummary,
   type DualReportDateResolution,
   findProductCategoryReportDateForPeriod,
   formatGeneratedAtDisplay,
+  formatGovernanceToken,
   formatMetaDateLabel,
   resolveDualReportDates,
   selectProductCategoryTplRow,
   summarizePnlAttributionError,
+  summarizeAdvancedAttributionQuality,
   type PnlAttributionTab,
 } from "./pnlAttributionViewModel";
+
+const LazyPnlAttributionAgentDrawer = lazy(() =>
+  import("./PnlAttributionAgentDrawer").then((module) => ({
+    default: module.PnlAttributionAgentDrawer,
+  })),
+);
 
 function tabButtonClassName(
   active: boolean,
@@ -210,6 +229,7 @@ function CurrentViewMetaStrip(props: {
   title: string;
   meta: ResultMeta;
   testId: string;
+  isHomeCampisiModel: boolean;
 }) {
   // 生成时间收敛为 YYYY-MM-DD HH:mm，微秒级 ISO 原值只进 title（§6 证据层）。
   const generatedAt = formatGeneratedAtDisplay(props.meta.generated_at);
@@ -217,7 +237,11 @@ function CurrentViewMetaStrip(props: {
     {
       label: "口径",
       text:
-        props.meta.basis === "formal"
+        props.isHomeCampisiModel &&
+        props.meta.basis === "formal" &&
+        props.meta.formal_use_allowed === false
+          ? "正式来源·模型归因"
+          : props.meta.basis === "formal"
           ? "正式口径"
           : compactMetaValue(props.meta.basis),
     },
@@ -292,6 +316,19 @@ function pnlAttributionLensSummary(activeTab: PnlAttributionTab) {
   };
 }
 
+function pnlAttributionLensId(activeTab: PnlAttributionTab) {
+  if (activeTab === "product-category") {
+    return "product_category_operating";
+  }
+  if (activeTab === "tpl-market") {
+    return "tpl_mixed_exception";
+  }
+  if (activeTab === "advanced") {
+    return "formal_fi_campisi";
+  }
+  return "formal_fi";
+}
+
 function formatDateResolutionSummary(
   resolution: DualReportDateResolution | null,
   activeTab: PnlAttributionTab,
@@ -315,30 +352,60 @@ function formatDateResolutionSummary(
 function PnlAttributionDecisionStrip(props: {
   activeTab: PnlAttributionTab;
   compareType: "mom" | "yoy";
+  isHomeCampisiMode: boolean;
+  homeCampisiBasis?: CampisiFourEffectsPayload["basis"];
+  homeCampisiClosure?: CampisiFourEffectsPayload["formal_closure"];
   currentViewDateTitle: string;
   currentViewMeta: ResultMeta | null;
+  qualitySummary?: AdvancedAttributionQualitySummary;
   dateResolution: DualReportDateResolution | null;
   isLoading: boolean;
   hasError: boolean;
 }) {
-  const lens = pnlAttributionLensSummary(props.activeTab);
-  const quality = props.currentViewMeta
-    ? compactMetaStatus(props.currentViewMeta.quality_flag)
+  const lens = props.isHomeCampisiMode
+    ? props.homeCampisiBasis === "formal_report_pnl_bridge" ? {
+        label: "正式桥四效应",
+        detail: "首页指定月度区间的正式损益桥归因；会计记录纳入、市场效应覆盖和来源质量分别核对。",
+        source: "/api/pnl-attribution/campisi/four-effects",
+      } : {
+        label: "持仓模型四效应",
+        detail: "首页指定区间的 Campisi 持仓模型四效应；仅展示该区间的金额与输入覆盖，正式损益核对以本次响应为准。",
+        source: "/api/pnl-attribution/campisi/four-effects",
+      }
+    : pnlAttributionLensSummary(props.activeTab);
+  const qualityFlag = props.qualitySummary
+    ? props.qualitySummary.qualityFlag
+    : props.currentViewMeta?.quality_flag;
+  const quality = qualityFlag
+    ? compactMetaStatus(qualityFlag)
     : null;
-  const qualityState = props.currentViewMeta?.quality_flag ?? "pending";
-  const fallback =
-    props.currentViewMeta?.fallback_mode === "none"
+  const qualityState = qualityFlag ?? "pending";
+  const fallback = props.qualitySummary
+    ? props.qualitySummary.fallbackLabel
+    : props.currentViewMeta?.fallback_mode === "none"
       ? "未降级"
       : compactMetaValue(props.currentViewMeta?.fallback_mode);
   const dateSummary = formatDateResolutionSummary(
     props.dateResolution,
     props.activeTab,
   );
+  const homeClosure = props.homeCampisiClosure;
+  const homeClosureText = homeClosure?.status === "unavailable"
+    ? "正式损益核对不可用"
+    : homeClosure?.status === "warning"
+      ? "正式损益核对有差异"
+      : homeClosure?.status === "closed" &&
+          homeClosure.formal_actual_pnl != null &&
+          homeClosure.residual_to_formal_pnl != null
+        ? "正式损益已核对"
+        : "正式损益待核对";
   const action =
     props.hasError
       ? "先处理加载错误"
-      : props.isLoading
-        ? "等待当前视图加载"
+        : props.isLoading
+          ? "等待当前视图加载"
+        : props.isHomeCampisiMode
+          ? "核对输入覆盖"
         : props.activeTab === "product-category"
           ? "先看经营归因闭合"
           : props.activeTab === "tpl-market"
@@ -346,20 +413,22 @@ function PnlAttributionDecisionStrip(props: {
             : props.activeTab === "advanced"
               ? "复核 Campisi 决策级"
               : "检查正式 FI 归因";
-  // 治理字段标签中文化；value 中的 candidate_or_pending 等为证据引用保留英文。
+  // 治理字段正文中文化；candidate_or_pending 等原 token 为证据引用，只进 title（§6）。
   // 质量状态只在分区头徽标露出一次（§6 去重），不再重复成字段行。
-  const fields = [
-    ["页面状态", "candidate_or_pending"],
-    ["正式使用", "formal_use_allowed=false"],
-    ["业主批准", "owner approval pending"],
-    ["口径闭合", "closure_approved=false"],
-    ["当前口径", lens.label],
-    ["报告日", dateSummary],
-    ["来源", lens.source],
-    ["视图期间", props.currentViewDateTitle],
-    ["降级", fallback],
-    ["比较", props.compareType === "mom" ? "环比" : "同比"],
-    ["下一步", action],
+  const fields: Array<{ label: string; text: string; title?: string }> = [
+    { label: "页面状态", ...formatGovernanceToken("candidate_or_pending") },
+    { label: "正式使用", ...formatGovernanceToken("formal_use_allowed=false") },
+    { label: "业主批准", ...formatGovernanceToken("owner approval pending") },
+    props.isHomeCampisiMode
+      ? { label: "正式损益核对", text: homeClosureText }
+      : { label: "口径闭合", ...formatGovernanceToken("closure_approved=false") },
+    { label: "当前口径", text: lens.label },
+    { label: "报告日", text: dateSummary },
+    { label: "来源", text: lens.source },
+    { label: "视图期间", text: props.currentViewDateTitle },
+    { label: "降级", text: fallback },
+    { label: "比较", text: props.isHomeCampisiMode ? "指定区间" : props.compareType === "mom" ? "环比" : "同比" },
+    { label: "下一步", text: action },
   ];
 
   return (
@@ -386,16 +455,16 @@ function PnlAttributionDecisionStrip(props: {
           </span>
         </div>
         <div className="pnl-attribution-decision-strip__grid">
-          {fields.map(([label, value]) => (
-            <div className="pnl-attribution-decision-strip__field" key={label}>
+          {fields.map((field) => (
+            <div className="pnl-attribution-decision-strip__field" key={field.label}>
               <span className="pnl-attribution-decision-strip__label">
-                {label}
+                {field.label}
               </span>
               <span
                 className="pnl-attribution-decision-strip__value"
-                title={value}
+                title={field.title ?? field.text}
               >
-                {value}
+                {field.text}
               </span>
             </div>
           ))}
@@ -407,12 +476,18 @@ function PnlAttributionDecisionStrip(props: {
 
 type Props = {
   reportDate?: string;
+  homeCampisiWindow?: { startDate: string; endDate: string };
+  homeCampisiError?: string;
 };
 
-export function PnlAttributionView({ reportDate }: Props) {
+export function PnlAttributionView({ reportDate, homeCampisiWindow, homeCampisiError }: Props) {
   const client = useApiClient();
-  const [activeTab, setActiveTab] = useState<PnlAttributionTab>("product-category");
+  const [activeTab, setActiveTab] = useState<PnlAttributionTab>(
+    homeCampisiWindow || homeCampisiError ? "advanced" : "product-category",
+  );
   const [compareType, setCompareType] = useState<"mom" | "yoy">("mom");
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [agentPanelMounted, setAgentPanelMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateLoading, setDateLoading] = useState(false);
@@ -489,6 +564,15 @@ export function PnlAttributionView({ reportDate }: Props) {
   const effectiveReportDate = isProductCategoryTab
     ? (reportDate ?? selectedProductCategoryReportDate ?? undefined)
     : (reportDate ?? selectedFormalReportDate ?? undefined);
+  const activeHomeCampisiWindow = activeTab === "advanced" &&
+    homeCampisiWindow?.endDate === effectiveReportDate
+    ? homeCampisiWindow
+    : undefined;
+
+  const openAgentPanel = useCallback(() => {
+    setAgentPanelMounted(true);
+    setAgentPanelOpen(true);
+  }, []);
 
   const loadDateOptions = useCallback(async () => {
     setDateLoading(true);
@@ -527,6 +611,10 @@ export function PnlAttributionView({ reportDate }: Props) {
   const loadDataRequestSeqRef = useRef(0);
 
   const loadData = useCallback(async () => {
+    if (homeCampisiError) {
+      setError(homeCampisiError);
+      return;
+    }
     if (!effectiveReportDate) {
       return;
     }
@@ -614,7 +702,36 @@ export function PnlAttributionView({ reportDate }: Props) {
         setProductCategoryYtdMeta(ytd.result_meta);
         setProductCategoryAttributionData(attribution.result);
         setProductCategoryAttributionMeta(attribution.result_meta);
+      } else if (activeHomeCampisiWindow) {
+        const campisiFour = await client.getPnlCampisiFourEffects({
+          startDate: activeHomeCampisiWindow.startDate,
+          endDate: activeHomeCampisiWindow.endDate,
+          lookbackDays: 30,
+          detail: "full",
+        });
+        if (isStale()) return;
+        const result = campisiFour.result;
+        const formalCoverage = result.input_quality?.formal_bridge_coverage;
+        const homeSourceVerified = result.basis === "formal_report_pnl_bridge"
+          ? formalCoverage?.source === "pnl.bridge.rows" &&
+            formalCoverage.basis === "formal_report_pnl_bridge"
+          : Boolean(result.effect_availability?.position_change);
+        if (
+          result.period_start !== activeHomeCampisiWindow.startDate ||
+          result.period_end !== activeHomeCampisiWindow.endDate ||
+          result.report_date !== activeHomeCampisiWindow.endDate ||
+          !homeSourceVerified
+        ) {
+          throw new Error("首页 Campisi 区间或归因来源未能核对，当前明细不可用。");
+        }
+        setCampisiFourEffects(result);
+        setCampisiFourMeta(campisiFour.result_meta);
       } else {
+        // The formal FI facts are monthly flows. Use the preceding month-end
+        // snapshot instead of a fixed 30-day window (which misses 31-day months).
+        const campisiBaseline = new Date(`${effectiveReportDate.slice(0, 7)}-01T00:00:00Z`);
+        campisiBaseline.setUTCDate(0);
+        const campisiStartDate = campisiBaseline.toISOString().slice(0, 10);
         const [
           carry,
           spread,
@@ -635,14 +752,17 @@ export function PnlAttributionView({ reportDate }: Props) {
           }),
           client.getPnlAdvancedAttributionSummary(effectiveReportDate),
           client.getPnlCampisiFourEffects({
+            startDate: campisiStartDate,
             endDate: effectiveReportDate,
             lookbackDays: 30,
           }),
           client.getPnlCampisiEnhanced({
+            startDate: campisiStartDate,
             endDate: effectiveReportDate,
             lookbackDays: 30,
           }),
           client.getPnlCampisiMaturityBuckets({
+            startDate: campisiStartDate,
             endDate: effectiveReportDate,
             lookbackDays: 30,
           }),
@@ -694,10 +814,12 @@ export function PnlAttributionView({ reportDate }: Props) {
     }
   }, [
     activeTab,
+    activeHomeCampisiWindow,
     client,
     compareType,
     dateResolution,
     effectiveReportDate,
+    homeCampisiError,
     selectedProductCategoryReportDate,
   ]);
 
@@ -715,7 +837,15 @@ export function PnlAttributionView({ reportDate }: Props) {
       : [];
   // 同一次 loadData 失败会打空整个页签：错误在区级收敛为一条横幅，
   // 不再逐面板重复（§6 去重；§11.3 同一状态文案 3 处以上为一票否决项）。
-  const errorSummary = summarizePnlAttributionError(error);
+  // 报告日来源失败且没有可用报告日时 loadData 不会发起，面板既无 meta 也无 error，
+  // 会停在「加载中」：把上游失败态显式落到当前视图，重试走报告日来源。
+  const dateSourceBlocked = dateError !== null && !effectiveReportDate;
+  const errorSummary = summarizePnlAttributionError(
+    error ?? (dateSourceBlocked ? "报告日来源不可用，当前视图未发起取数；重试将先重新读取报告日。" : null),
+  );
+  const retryCurrentView = () => {
+    void (dateSourceBlocked ? loadDateOptions() : loadData());
+  };
   const volumeRateBridgeSummary = buildVolumeRateBridgeSummary(volumeRateData);
   const currentViewMeta =
     activeTab === "volume-rate"
@@ -728,7 +858,13 @@ export function PnlAttributionView({ reportDate }: Props) {
             ? (productCategoryAttributionMeta ??
               productCategoryMonthlyMeta ??
               productCategoryYtdMeta)
-            : advancedSummaryMeta;
+            : (activeHomeCampisiWindow ? campisiFourMeta : advancedSummaryMeta);
+  const advancedQualitySummary = activeTab === "advanced"
+    ? summarizeAdvancedAttributionQuality(activeHomeCampisiWindow
+      ? [campisiFourMeta]
+      : [advancedSummaryMeta, carryMeta, spreadMeta, krdMeta,
+        campisiFourMeta, campisiEnhancedMeta, campisiMaturityMeta, campisiDecisionGradeMeta])
+    : undefined;
   const currentViewDate = formatMetaDateLabel(activeTab, {
     volumeRateData,
     tplMarketData,
@@ -738,7 +874,38 @@ export function PnlAttributionView({ reportDate }: Props) {
     productCategoryMonthlyData,
     productCategoryYtdData,
   });
-  const currentViewMetaTitle = `${currentViewDate.label}：${currentViewDate.value}`;
+  const currentViewMetaTitle = activeHomeCampisiWindow
+    ? `Campisi 四效应区间：${campisiFourEffects?.period_start ?? activeHomeCampisiWindow.startDate} 至 ${campisiFourEffects?.period_end ?? activeHomeCampisiWindow.endDate}`
+    : `${currentViewDate.label}：${currentViewDate.value}`;
+  const homeCampisiState: DataSectionState = derivePnlDataSectionState({
+    meta: campisiFourMeta,
+    isLoading: loading,
+    isError: error !== null,
+    errorMessage: error,
+    isEmpty: !campisiFourEffects,
+  });
+  const agentPanelFilters = useMemo(
+    () => ({
+      active_tab: activeTab,
+      compare_type: compareType,
+      attribution_lens: pnlAttributionLensId(activeTab),
+      formal_report_date: selectedFormalReportDate,
+      product_category_report_date: selectedProductCategoryReportDate,
+      dates_aligned: dateResolution?.datesAligned ?? null,
+      result_basis: currentViewMeta?.basis ?? null,
+      source_formal_use_allowed: currentViewMeta?.formal_use_allowed ?? null,
+      formal_use_allowed: false,
+    }),
+    [
+      activeTab,
+      compareType,
+      currentViewMeta?.basis,
+      currentViewMeta?.formal_use_allowed,
+      dateResolution?.datesAligned,
+      selectedFormalReportDate,
+      selectedProductCategoryReportDate,
+    ],
+  );
 
   const tplMarketState: DataSectionState = derivePnlDataSectionState({
     meta: tplMarketMeta,
@@ -761,12 +928,12 @@ export function PnlAttributionView({ reportDate }: Props) {
       <div className="pnl-attribution-page-header">
         <div className="pnl-attribution-page-header__inner">
           <div className="pnl-attribution-page-header__copy">
-            <h2
+            <h1
               data-testid="pnl-attribution-page-title"
               className="pnl-attribution-page-header__title"
             >
               损益归因分析
-            </h2>
+            </h1>
             <p className="pnl-attribution-page-header__description">
               本页保留产品分类经营口径与正式 FI / 债券分析口径；两套数据分开取数、
               分开元信息，不再跨口径汇总或闭合。
@@ -779,6 +946,17 @@ export function PnlAttributionView({ reportDate }: Props) {
             >
               {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
             </span>
+            {isAgentFrontendEnabled() ? (
+              <button
+                type="button"
+                data-testid="pnl-attribution-agent-open"
+                onClick={openAgentPanel}
+                aria-label="打开损益复核助手"
+                className="pnl-attribution-tab-button"
+              >
+                损益复核
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => void loadData()}
@@ -810,8 +988,12 @@ export function PnlAttributionView({ reportDate }: Props) {
       <PnlAttributionDecisionStrip
         activeTab={activeTab}
         compareType={compareType}
+        isHomeCampisiMode={activeHomeCampisiWindow !== undefined}
+        homeCampisiBasis={campisiFourEffects?.basis}
+        homeCampisiClosure={campisiFourEffects?.formal_closure}
         currentViewDateTitle={currentViewMetaTitle}
         currentViewMeta={currentViewMeta}
+        qualitySummary={advancedQualitySummary}
         dateResolution={dateResolution}
         isLoading={loading || dateLoading}
         hasError={error !== null || dateError !== null}
@@ -912,6 +1094,7 @@ export function PnlAttributionView({ reportDate }: Props) {
           testId="pnl-attribution-current-view-meta"
           title={currentViewMetaTitle}
           meta={currentViewMeta}
+          isHomeCampisiModel={activeHomeCampisiWindow !== undefined}
         />
       ) : null}
 
@@ -920,12 +1103,27 @@ export function PnlAttributionView({ reportDate }: Props) {
         <PnlAttributionErrorRegion
           activeTab={activeTab}
           summary={errorSummary}
-          onRetry={() => void loadData()}
+          onRetry={retryCurrentView}
         />
       ) : (
         <>
           {activeTab === "advanced" ? (
-            <AdvancedAttributionTabPanels
+            activeHomeCampisiWindow ? (
+              <>
+                <div data-testid="pnl-attribution-home-campisi-window" className="pnl-attribution-section">
+                  首页同区间四效应明细：{campisiFourEffects?.period_start ?? activeHomeCampisiWindow.startDate} 至 {campisiFourEffects?.period_end ?? activeHomeCampisiWindow.endDate}。
+                  {campisiFourEffects ? campisiFourEffects.basis === "formal_report_pnl_bridge"
+                    ? "当前为正式损益桥归因；" : "当前为持仓模型归因；"
+                    : "正在核对归因来源；"}
+                  本入口只展示该区间的 Campisi 四效应；其他高级归因沿用各自月度口径，未在此套用。
+                </div>
+                <CampisiAttributionPanel
+                  data={campisiFourEffects}
+                  state={homeCampisiState}
+                  onRetry={() => void loadData()}
+                />
+              </>
+            ) : <AdvancedAttributionTabPanels
               carryData={carryRollDownData}
               spreadData={spreadData}
               krdData={krdData}
@@ -992,6 +1190,17 @@ export function PnlAttributionView({ reportDate }: Props) {
           ) : null}
         </>
       )}
+
+      {agentPanelMounted ? (
+        <Suspense fallback={null}>
+          <LazyPnlAttributionAgentDrawer
+            open={agentPanelOpen}
+            reportDate={effectiveReportDate ?? null}
+            currentFilters={agentPanelFilters}
+            onClose={() => setAgentPanelOpen(false)}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

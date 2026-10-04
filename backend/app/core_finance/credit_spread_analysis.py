@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from statistics import median
 from typing import Any
 
@@ -13,9 +13,14 @@ from backend.app.core_finance.bond_analytics.common import (
     safe_decimal,
     tenor_to_years,
 )
+from backend.app.core_finance.decimal_utils import to_decimal_strict
 
 ZERO = Decimal("0")
 Q8 = Decimal("0.00000001")
+# 历史分位的最小观测数披露阈值。与 macro/credit_spread_percentile.py 的
+# MARKET_HISTORY_LT_60D 及 crisis_score 的 min_periods=60 同一口径：样本不足
+# 时分位数照常出数，由服务层追加告警，不在计算端压制。
+MIN_HISTORY_OBSERVATIONS = 60
 
 
 @dataclass(slots=True, frozen=True)
@@ -51,7 +56,7 @@ class SpreadTermStructurePoint:
 class SpreadHistoricalContext:
     """当前利差在历史中的分位数。"""
 
-    current_spread_bps: Decimal
+    current_spread_bps: Decimal | None
     percentile_1y: Decimal | None
     percentile_3y: Decimal | None
     median_1y: Decimal | None
@@ -62,7 +67,7 @@ class SpreadHistoricalContext:
 
 def compute_bond_spreads(
     bond_rows: list[dict[str, Any]],
-    treasury_curve: dict[str, Decimal],
+    treasury_curve: dict[str, Any],
 ) -> list[BondSpreadRow]:
     """
     对每只信用债（asset_class_std == "credit"）计算信用利差。
@@ -74,7 +79,7 @@ def compute_bond_spreads(
     if not bond_rows or not treasury_curve:
         return []
 
-    normalized_curve = {str(key): safe_decimal(value) for key, value in treasury_curve.items()}
+    normalized_curve = _finite_curve_rates(treasury_curve)
     full_curve = build_full_curve(normalized_curve)
     if not full_curve:
         return []
@@ -106,9 +111,8 @@ def compute_bond_spreads(
         if benchmark_yield is None:
             benchmark_yield = _resolve_benchmark_yield(full_curve, tenor_bucket)
         market_value = safe_decimal(row.get("market_value"))
-        face_value = safe_decimal(row.get("face_value"))
-        if face_value == ZERO:
-            face_value = market_value
+        # Legacy in-memory inputs may omit face value; an observed zero is valid.
+        face_value = market_value if row.get("face_value") is None else safe_decimal(row["face_value"])
         spread_duration = safe_decimal(row.get("modified_duration"))
         credit_spread = (ytm_pct - benchmark_yield) * Decimal("100")
         spread_rows.append(
@@ -160,14 +164,14 @@ def build_spread_term_structure(
 
 
 def compute_spread_historical_context(
-    current_avg_spread: Decimal,
+    current_avg_spread: Decimal | None,
     historical_spreads: list[tuple[date, Decimal]],
 ) -> SpreadHistoricalContext:
     """给定当前加权平均利差与历史序列，计算近 1 年 / 3 年分位。"""
 
     if not historical_spreads:
         return SpreadHistoricalContext(
-            current_spread_bps=_q8(current_avg_spread),
+            current_spread_bps=_q8(current_avg_spread) if current_avg_spread is not None else None,
             percentile_1y=None,
             percentile_3y=None,
             median_1y=None,
@@ -176,19 +180,88 @@ def compute_spread_historical_context(
             max_1y=None,
         )
 
-    anchor_date = max(point_date for point_date, _value in historical_spreads)
-    values_1y = _window_values(historical_spreads, anchor_date=anchor_date, days=365)
-    values_3y = _window_values(historical_spreads, anchor_date=anchor_date, days=365 * 3)
+    values_1y, values_3y = _history_windows(historical_spreads)
 
     return SpreadHistoricalContext(
-        current_spread_bps=_q8(current_avg_spread),
-        percentile_1y=_percentile(current_avg_spread, values_1y),
-        percentile_3y=_percentile(current_avg_spread, values_3y),
+        current_spread_bps=_q8(current_avg_spread) if current_avg_spread is not None else None,
+        percentile_1y=_percentile(current_avg_spread, values_1y) if current_avg_spread is not None else None,
+        percentile_3y=_percentile(current_avg_spread, values_3y) if current_avg_spread is not None else None,
         median_1y=_median(values_1y),
         median_3y=_median(values_3y),
         min_1y=min(values_1y) if values_1y else None,
         max_1y=max(values_1y) if values_1y else None,
     )
+
+
+def summarize_spread_coverage(
+    bond_rows: list[dict[str, Any]],
+    spread_rows: list[BondSpreadRow],
+) -> dict[str, Any]:
+    """信用持仓规模独立于可计算利差样本；YTM 缺失和无效按同一校验披露。"""
+    credit_rows = [row for row in bond_rows if str(row.get("asset_class_std") or "").strip() == "credit"]
+    missing_ytm_rows = [row for row in credit_rows if _normalize_ytm_to_pct(row.get("ytm")) is None]
+    if not credit_rows:
+        coverage_status = "empty"
+    elif not spread_rows:
+        coverage_status = "unavailable"
+    elif len(spread_rows) < len(credit_rows):
+        coverage_status = "partial"
+    else:
+        coverage_status = "complete"
+    return {
+        "credit_bond_count": len(credit_rows),
+        "total_credit_market_value": _q8(sum((safe_decimal(row.get("market_value")) for row in credit_rows), ZERO)),
+        "spread_bond_count": len(spread_rows),
+        "spread_market_value": _q8(sum((row.market_value for row in spread_rows), ZERO)),
+        "missing_ytm_count": len(missing_ytm_rows),
+        "missing_ytm_market_value": _q8(sum((safe_decimal(row.get("market_value")) for row in missing_ytm_rows), ZERO)),
+        "spread_coverage_status": coverage_status,
+    }
+
+
+def spread_history_observation_counts(
+    historical_spreads: list[tuple[date, Decimal]],
+) -> tuple[int, int]:
+    """近 1 年 / 3 年窗口内的有效观测数（与 compute_spread_historical_context 同一窗口与剔除规则）。"""
+
+    if not historical_spreads:
+        return 0, 0
+    values_1y, values_3y = _history_windows(historical_spreads)
+    return len(values_1y), len(values_3y)
+
+
+def curve_has_usable_tenors(treasury_curve: dict[str, Any]) -> bool:
+    """曲线是否含至少一个收益率有效且可识别期限的节点。
+
+    全部为未知期限标签时 build_full_curve 返回空，compute_bond_spreads 随之 fail-closed
+    返回空列表；服务层用本函数把这种"曲线在但不可用"与"无信用债持仓"区分开。
+    """
+
+    if not treasury_curve:
+        return False
+    normalized = _finite_curve_rates(treasury_curve)
+    return bool(build_curve_points(normalized))
+
+
+def _finite_curve_rates(treasury_curve: dict[str, Any]) -> dict[str, Decimal]:
+    """剔除缺失、非法和非有限收益率，保留真实零值与负利率。"""
+
+    normalized: dict[str, Decimal] = {}
+    for key, value in treasury_curve.items():
+        try:
+            normalized[str(key)] = to_decimal_strict(value)
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+    return normalized
+
+
+def _history_windows(
+    historical_spreads: list[tuple[date, Decimal]],
+) -> tuple[list[Decimal], list[Decimal]]:
+    anchor_date = max(point_date for point_date, _value in historical_spreads)
+    values_1y = _window_values(historical_spreads, anchor_date=anchor_date, days=365)
+    values_3y = _window_values(historical_spreads, anchor_date=anchor_date, days=365 * 3)
+    return values_1y, values_3y
 
 
 def _resolve_benchmark_yield(curve: dict[str, Decimal], tenor_bucket: str) -> Decimal:
@@ -235,7 +308,10 @@ def _normalize_ytm_to_pct(value: Any) -> Decimal | None:
     此前的 `<1 则 ×100` 启发式在百分数误存时会输出千 bp 级错误利差
     （2026-07-19 审计固收 H-1）。
     """
-    ytm = safe_decimal(value)
+    try:
+        ytm = to_decimal_strict(value)
+    except (InvalidOperation, TypeError, ValueError):
+        return None
     if ytm == ZERO:
         return ZERO
     if abs(ytm) > Decimal("0.2"):
@@ -250,7 +326,15 @@ def _window_values(
     days: int,
 ) -> list[Decimal]:
     cutoff = anchor_date - timedelta(days=days)
-    return [safe_decimal(value) for point_date, value in historical_spreads if point_date >= cutoff]
+    values: list[Decimal] = []
+    for point_date, value in historical_spreads:
+        if point_date < cutoff:
+            continue
+        try:
+            values.append(to_decimal_strict(value))
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+    return values
 
 
 def _percentile(current_value: Decimal, values: list[Decimal]) -> Decimal | None:

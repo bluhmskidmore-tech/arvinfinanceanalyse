@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { getReturnDecompositionContext } from "./dashboardApi";
+import { getCampisiAttributionContext, getReturnDecompositionContext } from "./dashboardApi";
 
 describe("dashboardApi return decomposition context", () => {
   it("keeps full detail by default and requests summary only when asked", async () => {
@@ -34,5 +34,29 @@ describe("dashboardApi return decomposition context", () => {
         detail: "summary",
       },
     );
+  });
+});
+
+describe("dashboardApi monthly Campisi context", () => {
+  it.each([
+    ["2026-08-31", "2026-07-31"],
+    ["2026-04-30", "2026-03-31"],
+    ["2026-02-28", "2026-01-31"],
+    ["2024-02-29", "2024-01-31"],
+    ["2026-01-31", "2025-12-31"],
+  ])("uses the preceding month-end for report %s", async (endDate, startDate) => {
+    const getPnlCampisiFourEffects = vi.fn(async () => ({}));
+    const client = {
+      getPnlCampisiFourEffects,
+    } as unknown as Parameters<typeof getCampisiAttributionContext>[0];
+
+    await getCampisiAttributionContext(client, endDate, { detail: "summary" });
+
+    expect(getPnlCampisiFourEffects).toHaveBeenCalledWith({
+      startDate,
+      endDate,
+      lookbackDays: 30,
+      detail: "summary",
+    });
   });
 });

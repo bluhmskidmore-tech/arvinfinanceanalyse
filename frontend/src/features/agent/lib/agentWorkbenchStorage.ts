@@ -30,14 +30,104 @@ export const MAX_RECENT_REPO_PATHS = 5;
 
 export const MAX_PINNED_REPO_PATHS = 5;
 
+export const DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE = "user:web-user";
+
+export const AGENT_WORKBENCH_STORAGE_BYTE_BUDGET = 256 * 1024;
+
+const STORAGE_SCOPE_SEPARATOR = "::";
+
+const textEncoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+
+function getUtf8ByteLength(value: string) {
+  return textEncoder ? textEncoder.encode(value).length : new Blob([value]).size;
+}
+
+function isQuotaExceededError(error: unknown) {
+  return (
+    error instanceof DOMException &&
+    (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED")
+  );
+}
+
+function sanitizeStorageScope(scope: string) {
+  return encodeURIComponent(scope.trim() || DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE);
+}
+
+export function getScopedAgentWorkbenchStorageKey(
+  storageKey: string,
+  storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE,
+) {
+  return `${storageKey}${STORAGE_SCOPE_SEPARATOR}${sanitizeStorageScope(storageScope)}`;
+}
+
+function migrateLegacyStorageItem(storageKey: string, storageScope: string) {
+  const scopedKey = getScopedAgentWorkbenchStorageKey(storageKey, storageScope);
+  if (window.localStorage.getItem(scopedKey) !== null) {
+    return scopedKey;
+  }
+  const legacyValue = window.localStorage.getItem(storageKey);
+  if (legacyValue === null) {
+    return scopedKey;
+  }
+  try {
+    window.localStorage.setItem(scopedKey, legacyValue);
+    window.localStorage.removeItem(storageKey);
+  } catch (storageError) {
+    console.warn(
+      `[agent] localStorage 迁移失败（${storageKey}），继续使用空的命名空间存储。`,
+      storageError,
+    );
+  }
+  return scopedKey;
+}
+
+function resolveStorageKey(storageKey: string, storageScope: string) {
+  return migrateLegacyStorageItem(storageKey, storageScope);
+}
+
+function readLocalStorageItem(storageKey: string, storageScope: string) {
+  try {
+    return window.localStorage.getItem(resolveStorageKey(storageKey, storageScope));
+  } catch (storageError) {
+    console.warn(
+      `[agent] localStorage 读取失败（${storageKey}），继续使用空值。`,
+      storageError,
+    );
+    return null;
+  }
+}
+
+function removeLocalStorageItem(storageKey: string) {
+  try {
+    window.localStorage.removeItem(storageKey);
+  } catch (storageError) {
+    console.warn(
+      `[agent] localStorage 清除失败（${storageKey}），本次清除已跳过。`,
+      storageError,
+    );
+  }
+}
+
 /**
  * localStorage 写入统一降级：配额超限（QuotaExceededError）等异常不能击穿
  * 渲染/提交链路——失败时放弃本次持久化并 console.warn。
  */
-function writeLocalStorageItem(storageKey: string, value: string) {
+function writeLocalStorageItem(storageKey: string, value: string, retryValue?: string) {
   try {
     window.localStorage.setItem(storageKey, value);
   } catch (storageError) {
+    if (retryValue !== undefined && isQuotaExceededError(storageError)) {
+      try {
+        window.localStorage.setItem(storageKey, retryValue);
+        return;
+      } catch (retryError) {
+        console.warn(
+          `[agent] localStorage 写入失败（${storageKey}），收缩后重试仍失败。`,
+          retryError,
+        );
+        return;
+      }
+    }
     console.warn(
       `[agent] localStorage 写入失败（${storageKey}），本次持久化已跳过。`,
       storageError,
@@ -60,13 +150,17 @@ export function normalizeStoredRepoPaths(paths: string[], limit: number) {
   return normalizedPaths;
 }
 
-export function loadStoredRepoPaths(storageKey: string, limit: number) {
+export function loadStoredRepoPaths(
+  storageKey: string,
+  limit: number,
+  storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE,
+) {
   if (typeof window === "undefined") {
     return [] as string[];
   }
 
   try {
-    const raw = window.localStorage.getItem(storageKey);
+    const raw = window.localStorage.getItem(resolveStorageKey(storageKey, storageScope));
     const parsed = raw ? (JSON.parse(raw) as unknown) : [];
     if (!Array.isArray(parsed)) {
       return [];
@@ -80,11 +174,15 @@ export function loadStoredRepoPaths(storageKey: string, limit: number) {
   }
 }
 
-export function persistStoredRepoPaths(storageKey: string, paths: string[]) {
+export function persistStoredRepoPaths(
+  storageKey: string,
+  paths: string[],
+  storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE,
+) {
   if (typeof window === "undefined") {
     return;
   }
-  writeLocalStorageItem(storageKey, JSON.stringify(paths));
+  writeLocalStorageItem(getScopedAgentWorkbenchStorageKey(storageKey, storageScope), JSON.stringify(paths));
 }
 
 export function normalizeStoredConversationTurns(value: unknown): AgentConversationTurn[] {
@@ -129,13 +227,15 @@ export function normalizeStoredConversationTurns(value: unknown): AgentConversat
     .slice(-MAX_AGENT_STORED_TURNS);
 }
 
-export function loadStoredConversationTurns() {
+export function loadStoredConversationTurns(storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
   if (typeof window === "undefined") {
     return [] as AgentConversationTurn[];
   }
 
   try {
-    const raw = window.localStorage.getItem(AGENT_CONVERSATION_TURNS_KEY);
+    const raw = window.localStorage.getItem(
+      resolveStorageKey(AGENT_CONVERSATION_TURNS_KEY, storageScope),
+    );
     return normalizeStoredConversationTurns(raw ? (JSON.parse(raw) as unknown) : []);
   } catch {
     return [];
@@ -163,58 +263,120 @@ export function serializeConversationTurn(turn: AgentConversationTurn) {
   };
 }
 
-export function persistStoredConversationTurns(turns: AgentConversationTurn[]) {
+function stripPersistedTurnSqlExecuted(turn: ReturnType<typeof serializeConversationTurn>) {
+  return {
+    ...turn,
+    result: turn.result
+      ? {
+          ...turn.result,
+          evidence: { ...turn.result.evidence, sql_executed: [] },
+        }
+      : turn.result,
+    agentRun: turn.agentRun?.result
+      ? {
+          ...turn.agentRun,
+          result: {
+            ...turn.agentRun.result,
+            evidence: { ...turn.agentRun.result.evidence, sql_executed: [] },
+          },
+        }
+      : turn.agentRun,
+  };
+}
+
+function shrinkStoredTurnsToBudget(
+  storedTurns: ReturnType<typeof serializeConversationTurn>[],
+  byteBudget: number,
+) {
+  let nextTurns = storedTurns;
+  let serialized = JSON.stringify(nextTurns);
+  if (getUtf8ByteLength(serialized) <= byteBudget) {
+    return serialized;
+  }
+
+  nextTurns = nextTurns.map(stripPersistedTurnSqlExecuted);
+  serialized = JSON.stringify(nextTurns);
+  while (nextTurns.length > 1 && getUtf8ByteLength(serialized) > byteBudget) {
+    nextTurns = nextTurns.slice(1);
+    serialized = JSON.stringify(nextTurns);
+  }
+  return serialized;
+}
+
+function buildQuotaRetryTurnsPayload(storedTurns: ReturnType<typeof serializeConversationTurn>[]) {
+  const strippedTurns = storedTurns.map(stripPersistedTurnSqlExecuted);
+  if (JSON.stringify(strippedTurns) !== JSON.stringify(storedTurns)) {
+    return shrinkStoredTurnsToBudget(strippedTurns, AGENT_WORKBENCH_STORAGE_BYTE_BUDGET);
+  }
+  return storedTurns.length > 1
+    ? shrinkStoredTurnsToBudget(storedTurns.slice(1), AGENT_WORKBENCH_STORAGE_BYTE_BUDGET)
+    : undefined;
+}
+
+export function persistStoredConversationTurns(
+  turns: AgentConversationTurn[],
+  storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE,
+  byteBudget = AGENT_WORKBENCH_STORAGE_BYTE_BUDGET,
+) {
   if (typeof window === "undefined") {
     return;
   }
   const storedTurns = turns.slice(-MAX_AGENT_STORED_TURNS).map(serializeConversationTurn);
-  writeLocalStorageItem(AGENT_CONVERSATION_TURNS_KEY, JSON.stringify(storedTurns));
+  const storageValue = shrinkStoredTurnsToBudget(storedTurns, byteBudget);
+  writeLocalStorageItem(
+    getScopedAgentWorkbenchStorageKey(AGENT_CONVERSATION_TURNS_KEY, storageScope),
+    storageValue,
+    buildQuotaRetryTurnsPayload(storedTurns),
+  );
 }
 
-export function loadLatestAgentRunId() {
+export function loadLatestAgentRunId(storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
   if (typeof window === "undefined") {
     return "";
   }
-  return window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)?.trim() ?? "";
+  return readLocalStorageItem(LATEST_AGENT_RUN_ID_KEY, storageScope)?.trim() ?? "";
 }
 
-export function persistLatestAgentRunId(runId: string) {
+export function persistLatestAgentRunId(
+  runId: string,
+  storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE,
+) {
   if (typeof window === "undefined") {
     return;
   }
-  writeLocalStorageItem(LATEST_AGENT_RUN_ID_KEY, runId);
+  writeLocalStorageItem(getScopedAgentWorkbenchStorageKey(LATEST_AGENT_RUN_ID_KEY, storageScope), runId);
 }
 
-export function clearLatestAgentRunId() {
+export function clearLatestAgentRunId(storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.removeItem(LATEST_AGENT_RUN_ID_KEY);
+  removeLocalStorageItem(getScopedAgentWorkbenchStorageKey(LATEST_AGENT_RUN_ID_KEY, storageScope));
 }
 
-export function loadComposerDraft() {
+export function loadComposerDraft(storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
   if (typeof window === "undefined") {
     return "";
   }
-  return window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY) ?? "";
+  return readLocalStorageItem(AGENT_COMPOSER_DRAFT_KEY, storageScope) ?? "";
 }
 
-export function persistComposerDraft(draft: string) {
+export function persistComposerDraft(draft: string, storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
   if (typeof window === "undefined") {
     return;
   }
   if (!draft.trim()) {
-    window.localStorage.removeItem(AGENT_COMPOSER_DRAFT_KEY);
+    removeLocalStorageItem(getScopedAgentWorkbenchStorageKey(AGENT_COMPOSER_DRAFT_KEY, storageScope));
     return;
   }
-  writeLocalStorageItem(AGENT_COMPOSER_DRAFT_KEY, draft);
+  writeLocalStorageItem(getScopedAgentWorkbenchStorageKey(AGENT_COMPOSER_DRAFT_KEY, storageScope), draft);
 }
 
-export function clearComposerDraft() {
+export function clearComposerDraft(storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.removeItem(AGENT_COMPOSER_DRAFT_KEY);
+  removeLocalStorageItem(getScopedAgentWorkbenchStorageKey(AGENT_COMPOSER_DRAFT_KEY, storageScope));
 }
 
 export function normalizeQueuedQueries(value: unknown) {
@@ -228,52 +390,61 @@ export function normalizeQueuedQueries(value: unknown) {
     .slice(0, MAX_AGENT_QUEUED_QUERIES);
 }
 
-export function loadQueuedQueries() {
+export function loadQueuedQueries(storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
   if (typeof window === "undefined") {
     return [] as string[];
   }
 
   try {
-    const raw = window.localStorage.getItem(AGENT_QUEUED_QUERIES_KEY);
+    const raw = window.localStorage.getItem(resolveStorageKey(AGENT_QUEUED_QUERIES_KEY, storageScope));
     return normalizeQueuedQueries(raw ? (JSON.parse(raw) as unknown) : []);
   } catch {
     return [];
   }
 }
 
-export function persistQueuedQueries(queries: string[]) {
+export function persistQueuedQueries(queries: string[], storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
   if (typeof window === "undefined") {
     return;
   }
   const nextQueries = normalizeQueuedQueries(queries);
   if (nextQueries.length === 0) {
-    window.localStorage.removeItem(AGENT_QUEUED_QUERIES_KEY);
+    removeLocalStorageItem(getScopedAgentWorkbenchStorageKey(AGENT_QUEUED_QUERIES_KEY, storageScope));
     return;
   }
-  writeLocalStorageItem(AGENT_QUEUED_QUERIES_KEY, JSON.stringify(nextQueries));
+  writeLocalStorageItem(
+    getScopedAgentWorkbenchStorageKey(AGENT_QUEUED_QUERIES_KEY, storageScope),
+    JSON.stringify(nextQueries),
+  );
 }
 
-export function clearStoredQueuedQueries() {
+export function clearStoredQueuedQueries(storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.removeItem(AGENT_QUEUED_QUERIES_KEY);
+  removeLocalStorageItem(getScopedAgentWorkbenchStorageKey(AGENT_QUEUED_QUERIES_KEY, storageScope));
 }
 
-export function loadRecentRepoPaths() {
-  return loadStoredRepoPaths(RECENT_REPO_PATHS_KEY, MAX_RECENT_REPO_PATHS);
+export function loadRecentRepoPaths(storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
+  return loadStoredRepoPaths(RECENT_REPO_PATHS_KEY, MAX_RECENT_REPO_PATHS, storageScope);
 }
 
-export function loadPinnedRepoPaths() {
-  return loadStoredRepoPaths(PINNED_REPO_PATHS_KEY, MAX_PINNED_REPO_PATHS);
+export function loadPinnedRepoPaths(storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE) {
+  return loadStoredRepoPaths(PINNED_REPO_PATHS_KEY, MAX_PINNED_REPO_PATHS, storageScope);
 }
 
-export function persistRecentRepoPaths(paths: string[]) {
-  persistStoredRepoPaths(RECENT_REPO_PATHS_KEY, paths);
+export function persistRecentRepoPaths(
+  paths: string[],
+  storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE,
+) {
+  persistStoredRepoPaths(RECENT_REPO_PATHS_KEY, paths, storageScope);
 }
 
-export function persistPinnedRepoPaths(paths: string[]) {
-  persistStoredRepoPaths(PINNED_REPO_PATHS_KEY, paths);
+export function persistPinnedRepoPaths(
+  paths: string[],
+  storageScope = DEFAULT_AGENT_WORKBENCH_STORAGE_SCOPE,
+) {
+  persistStoredRepoPaths(PINNED_REPO_PATHS_KEY, paths, storageScope);
 }
 
 export function rememberRepoPathValue(currentPaths: string[], nextPath: string, limit = MAX_RECENT_REPO_PATHS) {

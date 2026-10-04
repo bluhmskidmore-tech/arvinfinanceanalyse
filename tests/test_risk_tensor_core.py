@@ -207,6 +207,64 @@ def test_nonzero_fallback_rows_still_warn_when_bucket_nets_to_zero():
     )
 
 
+def test_nonzero_missing_tenor_bucket_is_excluded_and_explicitly_warned():
+    mod = _risk_tensor_module()
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(dv01="2.50", tenor_bucket=""),
+            _row(dv01="-2.00", tenor_bucket=None),
+            _row(dv01="0", tenor_bucket=""),
+            _row(dv01="1.00", tenor_bucket="1Y"),
+        ],
+        report_date=date(2026, 3, 31),
+    )
+
+    assert tensor.portfolio_dv01 == Decimal("1.50")
+    assert tensor.krd_1y == Decimal("1.00")
+    assert sum(
+        (
+            tensor.krd_1y,
+            tensor.krd_3y,
+            tensor.krd_5y,
+            tensor.krd_7y,
+            tensor.krd_10y,
+            tensor.krd_30y,
+        ),
+        Decimal("0"),
+    ) == Decimal("1.00")
+    assert tensor.quality_flag == "warning"
+    assert any(
+        "2 rows with missing tenor_bucket and non-zero DV01 excluded" in warning
+        and "net_dv01=0.50" in warning
+        for warning in tensor.warnings
+    )
+
+
+def test_unknown_tenor_nonzero_dv01_warns_while_zero_and_fallback_rows_do_not():
+    mod = _risk_tensor_module()
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(dv01="3.00", tenor_bucket="UNMAPPED"),
+            _row(dv01="0", tenor_bucket="ALSO_UNMAPPED"),
+            _row(dv01="2.00", tenor_bucket="2Y"),
+        ],
+        report_date=date(2026, 3, 31),
+    )
+
+    assert tensor.portfolio_dv01 == Decimal("5.00")
+    assert tensor.krd_3y == Decimal("2.00")
+    assert any(
+        warning == "Unsupported tenor buckets excluded from minimal KRD tensor: UNMAPPED"
+        for warning in tensor.warnings
+    )
+    assert any(
+        warning == "Non-standard tenor buckets remapped to nearest KRD bucket: 2Y"
+        for warning in tensor.warnings
+    )
+
+
 def test_cs01_only_includes_credit_bonds():
     mod = _risk_tensor_module()
 
@@ -303,6 +361,52 @@ def test_empty_rows_returns_zero_tensor():
     assert tensor.bond_count == 0
     assert tensor.quality_flag == "warning"
     assert tensor.warnings
+
+
+def test_input_quality_metadata_counts_assumption_based_rows_without_excluding_them():
+    mod = _risk_tensor_module()
+    report_date = date(2026, 3, 31)
+    maturity_date = report_date + timedelta(days=365)
+    rows = [
+        _row(dv01="1", market_value="100", maturity_date=maturity_date)
+        | {
+            "modified_duration": Decimal("1"),
+            "duration_quality_flag": "observed",
+        },
+        _row(dv01="2", market_value="200", maturity_date=maturity_date)
+        | {
+            "modified_duration": Decimal("1"),
+            "duration_quality_flag": "ytm_par_fallback",
+        },
+        _row(dv01="3", market_value="300", maturity_date=maturity_date)
+        | {
+            "modified_duration": Decimal("1"),
+            "duration_quality_flag": "ytm_unavailable",
+        },
+        _row(dv01="4", market_value="400", maturity_date=maturity_date)
+        | {
+            "modified_duration": Decimal("1"),
+            "duration_quality_flag": "coupon_unavailable",
+        },
+        _row(dv01="5", market_value="500", maturity_date=report_date)
+        | {
+            "modified_duration": Decimal("0"),
+            "duration_quality_flag": "no_remaining_term",
+        },
+    ]
+
+    tensor = mod.compute_portfolio_risk_tensor(rows, report_date=report_date)
+
+    assert tensor.input_quality_metadata == {
+        "assumption_value_row_count": 3,
+        "total_row_count": 5,
+    }
+    assert tensor.portfolio_dv01 == Decimal("15")
+    assert tensor.bond_count == 5
+    assert any(
+        "3 of 5 bond analytics rows use assumption-based duration inputs" in warning
+        for warning in tensor.warnings
+    )
 
 
 def test_warning_paths_flag_degraded_tensor_inputs():
@@ -532,3 +636,68 @@ def test_invalid_nonempty_maturity_date_counts_as_missing_maturity_in_warning_br
     assert tensor.duration_excluded_count == 3
     assert tensor.missing_maturity_market_value == Decimal("300000000")
     assert tensor.missing_maturity_count == 1
+
+
+def test_duration_exclusion_disclosure_separates_funds_unknown_dates_and_matured_balances():
+    mod = _risk_tensor_module()
+    report_date = date(2026, 8, 31)
+    rows = [
+        _row(market_value="100", maturity_date=None)
+        | {"instrument_code": "SA-FUND", "bond_type": "其他", "modified_duration": Decimal("0")},
+        _row(market_value="20", maturity_date=None)
+        | {"instrument_code": "BOND-UNKNOWN", "bond_type": "国债", "modified_duration": Decimal("0")},
+        _row(market_value="30", maturity_date=None)
+        | {"instrument_code": "SA-INVALID", "bond_type": "其他", "maturity_date": "invalid", "modified_duration": Decimal("0")},
+        _row(market_value="40", maturity_date=report_date)
+        | {"instrument_code": "BOND-TODAY", "modified_duration": Decimal("0")},
+        _row(market_value="10", maturity_date=report_date - timedelta(days=1))
+        | {"instrument_code": "BOND-PAST", "modified_duration": Decimal("0")},
+        _row(market_value="0", maturity_date=report_date - timedelta(days=1))
+        | {"instrument_code": "BOND-SETTLED", "modified_duration": Decimal("0")},
+        _row(market_value="5", maturity_date=report_date + timedelta(days=1))
+        | {"instrument_code": "BOND-ZERO-DURATION", "modified_duration": Decimal("0")},
+        _row(dv01="2", market_value="200", maturity_date=report_date + timedelta(days=365))
+        | {"instrument_code": "SA-TERM-FUND", "bond_type": "其他", "modified_duration": Decimal("2")},
+    ]
+
+    tensor = mod.compute_portfolio_risk_tensor(rows, report_date=report_date)
+
+    assert tensor.total_market_value == Decimal("405")
+    assert tensor.rate_risk_market_value == Decimal("200")
+    assert tensor.portfolio_modified_duration == Decimal("2")
+    assert tensor.portfolio_dv01 == Decimal("2")
+    assert tensor.duration_excluded_market_value == Decimal("205")
+    assert tensor.duration_excluded_count == 6
+    assert tensor.missing_maturity_market_value == Decimal("150")
+    assert tensor.missing_maturity_count == 3
+    assert (tensor.fund_no_maturity_market_value, tensor.fund_no_maturity_count) == (Decimal("100"), 1)
+    assert (tensor.unknown_maturity_market_value, tensor.unknown_maturity_count) == (Decimal("50"), 2)
+    assert (tensor.matured_outstanding_market_value, tensor.matured_outstanding_count) == (Decimal("50"), 2)
+    assert (tensor.nonpositive_duration_market_value, tensor.nonpositive_duration_count) == (Decimal("5"), 1)
+    assert sum(
+        (
+            tensor.fund_no_maturity_market_value,
+            tensor.unknown_maturity_market_value,
+            tensor.matured_outstanding_market_value,
+            tensor.nonpositive_duration_market_value,
+        )
+    ) == tensor.duration_excluded_market_value
+    assert any("fund_no_maturity" in warning and "unknown_maturity" in warning for warning in tensor.warnings)
+    assert not any("until inputs are remediated" in warning for warning in tensor.warnings)
+
+
+def test_nonempty_invalid_fund_maturity_values_remain_unknown():
+    mod = _risk_tensor_module()
+    report_date = date(2026, 8, 31)
+    rows = [
+        _row(market_value="10", maturity_date=None)
+        | {"instrument_code": "SA-ZERO", "bond_type": "其他", "maturity_date": 0},
+        _row(market_value="20", maturity_date=None)
+        | {"instrument_code": "SA-FALSE", "bond_type": "其他", "maturity_date": False},
+    ]
+
+    tensor = mod.compute_portfolio_risk_tensor(rows, report_date=report_date)
+
+    assert tensor.fund_no_maturity_count == 0
+    assert tensor.unknown_maturity_count == 2
+    assert tensor.unknown_maturity_market_value == Decimal("30")

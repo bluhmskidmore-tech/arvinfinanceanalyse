@@ -8,14 +8,114 @@
 - 样例数据回归测试
 - 关键 API smoke tests
 
-当前 repo-wide `Phase 2` governed formal-compute release 的 backend canonical gate 为：
+当前 repo-wide `Phase 2` governed formal-compute release 的 backend canonical gate 规范名称为 `python scripts/backend_release_suite.py`。这是 CI 中的写法；CI 已将锁定依赖环境的解释器前置到 `PATH`。
 
-- `python scripts/backend_release_suite.py`
+本机从仓库根目录执行时，必须显式使用仓库解释器，避免误用其他虚拟环境：
 
-说明：
+```powershell
+.\.venv\Scripts\python.exe scripts\backend_release_suite.py
+```
 
-- 该命令是当前 release cutoff 使用的 bounded backend release suite。
-- `python -m pytest -q` 仍可作为 broader diagnostic command 使用，但不作为当前 release cutoff 的 canonical backend gate。
+POSIX 对应 `.venv/bin/python scripts/backend_release_suite.py`。该命令仍是当前 release cutoff 使用的 bounded backend release suite；本机全量诊断命令 `.\.venv\Scripts\python.exe -m pytest -q` 不替代它，也不是每次修改的必跑项。
+
+正式计算边界与测试执行范围分别判断。默认 PR 的 bounded gate、独立 Agent 测试、前端 Vitest，以及定时和 `main` 推送的全量后端任务，按 [测试选择入口](../tests/AGENTS.md#test-selection) 所引用的实际选择器核对。排除面测试被执行不代表正式口径晋升；声明门禁通过仍须有对应执行记录。
+
+### 1.1 完成声明的证据
+
+工作与报告纪律以根目录 [AGENTS.md](../AGENTS.md) 为准。本节提供验收入口，不改变正式计算边界、发布授权或现有 canonical gate。结论只覆盖实际完成的验证层次；文档、文案和样式沿用轻量验收，不要求无关的业务测试。
+
+| 声明 | 最小证据 | 不能替代它的证据 |
+| --- | --- | --- |
+| 代码检查通过 | 当前改动范围及 lint／typecheck 结果 | 历史报告 |
+| 隔离测试通过 | 用例、命令、通过／失败／跳过结果 | 测试文件存在 |
+| 日常入口已生效 | 实际 URL、运行版本及相关行为 | 构建成功或仅 health 200 |
+| 业务对账通过 | 日期、口径、来源与对账结果 | fixture 或纯问候成功 |
+
+缺陷修复应保留修改前失败、修改后通过的最小反例。若无法安全复现旧行为，记录原因和替代证据，不回退共享工作区。对已修复代码补测时，不得补写未实际执行的“修改前失败”。证据应注明测试与实际数据的区别；只有测试通过就只报告测试通过。
+
+接手记录先核对当前源码与运行入口，再引用历史结论。记录当前 HEAD；工作区存在未提交修改时，还须标明涉及的路径及构建标识或修改前副本，不能只凭相同 HEAD 认定源码一致。子任务汇合需要核对受影响的接口连接处，单个模块通过不能代替整条相关路径验证。
+
+验证缺口应留下具体触发条件、现有证据和下一项检查，例如“信用利差真实接口返回 403，保留隔离计算与展示证据，待具有合法读取权限的入口核验”。不要写成含糊的“基本完成”。实际阻断不得通过伪造身份或放宽守卫消除。
+
+### 1.2 已发现缺陷的回归入口
+
+以下是 2026-09-19 接手后保留的回归索引，按本次变更涉及的风险选择，不要求每次全跑。表中是自动化测试入口，不表示所有用例已纳入默认 PR 门禁，也不表示每次改文档都重新执行了这些测试。
+
+| 风险 | 已有回归文件 |
+| --- | --- |
+| 部分持仓外推、缺失与零、净零敞口 | [workbench contract](../tests/test_pnl_attribution_workbench_contract.py) |
+| Numeric 空值、单位与质量传播 | [service explicit numeric](../tests/test_pnl_attribution_service_explicit_numeric.py) |
+| Campisi 期初零及回退来源 | [Campisi service](../tests/test_campisi_attribution_service.py) |
+| 非有限曲线及真实零、负利率 | [credit core](../backend/tests/core_finance/test_credit_spread_analysis.py)、[credit service](../tests/test_credit_spread_analysis.py) |
+| 不可用状态被展示为零 | [CreditSpreadView](../frontend/src/test/CreditSpreadView.test.tsx)、[AdvancedAttributionChart](../frontend/src/test/AdvancedAttributionChart.test.tsx) |
+| 问题日期被 latest 覆盖 | [report date resolution](../tests/test_agent_report_date_resolution.py) |
+| CLI 管道阻塞及取消归属 | [CLI process regression](../tests/test_hermes_cli_process_regression.py)、[Hermes service](../tests/test_hermes_agent_service.py) |
+| 快照切换复用旧缓存 | [cache read selection](../tests/test_performance_cache_read_selection.py) |
+| 行情系列误标 | [market terminal model](../frontend/src/features/market-data/lib/marketDataTerminalModel.test.ts) |
+| 停止后旧回合干扰新回合 | [AgentTurnGate](../frontend/src/test/AgentTurnGate.test.tsx)、[managed run](../frontend/src/test/AgentWorkbenchManagedRun.test.tsx) |
+
+例如，检查归因缺失值时，在仓库根目录使用仓库解释器运行：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_pnl_attribution_workbench_contract.py tests/test_pnl_attribution_service_explicit_numeric.py tests/test_campisi_attribution_service.py -q
+```
+
+检查信用曲线时运行：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest backend/tests/core_finance/test_credit_spread_analysis.py tests/test_credit_spread_analysis.py -q
+```
+
+Agent 日期或 CLI 变更只选择相应文件；这些是已有 excluded surface 的定向回归，不提升其正式计算边界：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_agent_report_date_resolution.py -q
+.\.venv\Scripts\python.exe -m pytest tests/test_hermes_cli_process_regression.py tests/test_hermes_agent_service.py -q
+```
+
+涉及缓存读取源时运行：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_performance_cache_read_selection.py -q
+```
+
+前端在 `frontend/` 下复用 `npm run test -- <文件路径>`，例如信用利差和归因的空值展示：
+
+```powershell
+npm run test -- src/test/CreditSpreadView.test.tsx src/test/AdvancedAttributionChart.test.tsx
+```
+
+这些用例只证明其断言覆盖的场景。WSL 清理模拟不能代替真实 WSL 取消，组件 fixture 不能代替有权限的真实接口，存储 helper 的用户键隔离不能代替实际身份链路。测试迁移或重命名时同步更新此索引，避免后续审查漏选。
+
+### 1.3 运行与交付核验
+
+2026-09-22 计算修复新增或扩充的反例按下表选择。这些用例使用独立现金流、财富守恒、固定本金权重、有效观测日期及缺失值预期，不用当前函数输出生成期望值。具体红绿日志位于 `output/validation/computation-fixes-20260922-24d2/`，不是生产对账结果。
+
+| 风险 | 回归入口 |
+| --- | --- |
+| 本金变化、单边持仓分母、低百分数曲线、KRD 缺失与真实零 | `tests/test_pnl_audit_regressions.py` |
+| Campisi 真实票息日历与旧碎期久期锁值 | `tests/test_decimal_first_batch_lock.py`、`tests/test_bond_coupon_date_boundary.py` |
+| 快照多行利率合并的顺序、缺失覆盖、真实零及零权重 | `tests/test_snapshot_dq_guardrails.py`、`tests/test_snapshot_materialize_flow.py` |
+| 付息频率与 bullet 对正式损益桥的影响 | `tests/test_pnl_bridge_modified_duration.py` |
+| 正式 FX 观测日期、发布日与存储标志 | `tests/test_formal_fx_rate_validity.py`、`tests/test_fx_mid_materialize.py` |
+| 总账有限金额与结构日均缺失 | `tests/test_qdb_gl_input_contract_validation.py`、`tests/test_qdb_gl_monthly_analysis_null_display.py` |
+| 贡献拆分缺失利率、已知部分、真实零及算法版本 | `tests/test_liability_contribution_missing_rate.py` |
+| 复权收益、收益覆盖、漂移成本 | `tests/test_equity_shadow_calculation_integrity.py` |
+| 匹配基准批量及逐券限价、退出日期和中间日证据 | `tests/test_matched_baseline_limit_price_integrity.py` |
+| 宏观非法评分、零风险、缺失宽度和北交所配置 | `tests/test_macro_calculation_input_validity.py` |
+| 缺失评分轨道、真实零与非有限值显示 | `frontend/src/features/macro-toolkit/sections/MacroToolkitPrimitives.test.tsx` |
+
+QDB 现有测试文件含读取本机业务 Excel 的 `test_real_` 用例，合成隔离验收须用 `-k "not test_real_"` 明确排除；不要使用过宽的 `not real`，以免同时排除名称含真实零值的合成反例。分析面测试沿用 `excluded_surface_acceptance` 及相应 surface 标记，不因修复进入默认正式化范围。正式计算新增反例及上轮遗漏的 Campisi、信用利差和余额工作簿回归已纳入 `check_caliber_gate.py` 的路径选择；路径命中不等于 CI 已经执行。
+
+2026-09-23 久期复核用不导入 MOSS 的日期现金流和自然三次样条分别复现旧锁与现行规则，确认三项失败来自旧等间隔碎期预期；据此更新锁值，未改算法或容差。证据位于 `output/validation/computation-followup-20260923-24d2/`。Campisi、四效应、久期、共享贴现和现金流排期文件变更，以及锁表测试自身变更，现在都会选中该锁表文件；`tests/test_caliber_gate_mapping.py` 保留选择器反例。这里的合成复算不替代源数据零 YTM 含义裁定或历史业务对账。
+
+同日继续追源发现 ZQTZ/TYW 合并率可随行顺序变化，部分缺率还会被当作零参加加权。修复的合成反例与独立排列、带符号缩放复核位于 `output/validation/computation-closeout-20260923-24d2/`；快照仓储和物化任务变更现已选中上述质量及物化测试。用户随后明确源表数字零就是实际 0%，相关入口已保留观测零与缺失的区别，变更选择器同时纳入久期、四／六效应、债券引擎与兼容入口的零值反例。真实历史核对另外保留同日旧新计算及来源指纹，只读对账与隔离导入不视作历史写入完成。两天历史 FX／余额修复已有用户授权，实际落地仍须由数据更新请求和业务核对回执证明，进度见该目录 `REVIEW.md`。
+
+只有任务涉及运行交付，或报告要声称日常入口已生效时，才执行相应核验。复用已有 `scripts/dev_runtime_control.py` 的状态与构建探针以及既有启动流程，不为验收另造部署机制，也不自动重启服务。端口、构建和后端规则版本必须与用户实际入口对应；默认配置问题必须以不指定覆盖参数的请求验证。
+
+实际业务查询只通过已有合法权限执行，不以验收为由发送敏感数据到外部模型。纯问候可以证明默认模型应答链路，但不能证明金融查询、建议动作或所有模型可用。静态资源、真实应答与业务对账分别留证；需要性能结论时另测明确的冷暖条件和样本，不能由一次成功响应推导“不卡了”。
+
+保留未通过项的真实状态和来源。原有债务失败不自动变成本次修复范围，也不允许抬基线掩盖；隔离测试失败先排查 fixture，不能关闭生产数据访问守卫。验收结论以本次结果为准，不累计多轮重叠测试数量作为可信度证明。
 
 ## 2. Phase 1：骨架验收
 

@@ -24,16 +24,18 @@ from backend.app.core_finance.bond_analytics.common import (
     resolve_ytm_with_par_fallback,
     safe_decimal,
 )
+from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
 from backend.app.core_finance.interest_mode import (
     classify_interest_rate_style,
     coupon_frequency_per_year,
     resolve_interest_payment_frequency,
 )
+from backend.app.core_finance.rate_units import NEGATIVE_YIELD_DIRTY_FLOOR
 
 logger = logging.getLogger(__name__)
 
 MISSING_SOURCE_VERSION = "sv_bond_analytics_snapshot_missing"
-ENGINE_RULE_VERSION = "rv_bond_analytics_engine_v1"
+ENGINE_RULE_VERSION = FIXED_INCOME_VERSION_SET.engine_rule_version
 MISSING_INGEST_BATCH_ID = "ib_bond_analytics_missing"
 _FORMAL_CNY_AMOUNT_FIELDS = (
     "face_value_cny",
@@ -46,15 +48,16 @@ _DISCLOSURE_LOG_CODE_LIMIT = 20
 
 # 利率输入可得性分级：把「真实 0」「缺失」「脏值」三类彻底分开。
 # 归一后为 0 的零息券是合法观测值（observed），与 None 不同；
-# ``normalize_percent_rate_to_decimal`` 对 >20%、负数、非数值返回 None，
-# 这类脏值同样不是观测值，只是与「字段为空」的成因不同。
+# ``normalize_percent_rate_to_decimal`` 对 >20%、非数值、负票息以及低于 −20% 下界的
+# 负 YTM 返回 None，这类脏值同样不是观测值，只是与「字段为空」的成因不同。
 RATE_INPUT_STATUS_OBSERVED = "observed"
 RATE_INPUT_STATUS_MISSING = "missing"
 RATE_INPUT_STATUS_DIRTY = "dirty"
 
 # 行级久期/DV01/凸性输入质量标记：消费方据此判断该行三项指标是否有观测支撑。
 # observed             —— 票息与 ytm 均为观测值（含真实零息 coupon=0），常规计算。
-# ytm_par_fallback     —— 有票息、ytm 缺失/脏值/非正，按 par 假设（ytm=coupon）计算。
+# ytm_par_fallback     —— 有票息、ytm 缺失/脏值，按 par 假设（ytm=coupon）计算；
+#                         合法负 ytm 是观测值，不落入此分支。
 # ytm_unavailable      —— 零息券缺 ytm：Macaulay=剩余年限本就正确，但修正久期未折现、
 #                         凸性退化为 D²，属近似值。
 # coupon_unavailable   —— 票息缺失/脏值：久期退化为「剩余年限」这一零息代理，
@@ -73,8 +76,10 @@ DURATION_QUALITY_YTM_UNAVAILABLE = "ytm_unavailable"
 DURATION_QUALITY_COUPON_UNAVAILABLE = "coupon_unavailable"
 DURATION_QUALITY_NO_REMAINING_TERM = DURATION_TERM_NO_REMAINING_TERM
 DURATION_QUALITY_MATURITY_UNAVAILABLE = DURATION_TERM_MATURITY_UNAVAILABLE
+DURATION_QUALITY_FLOATING_RATE_FIXED_COUPON_PROXY = "floating_rate_fixed_coupon_proxy"
 
 COUPON_UNAVAILABLE_RULE_ID = "duration_coupon_unavailable_proxy_v1"
+FLOATING_RATE_FIXED_COUPON_PROXY_RULE_ID = "duration_floating_rate_fixed_coupon_proxy_v1"
 
 
 class FormalCNYClosureError(ValueError):
@@ -187,6 +192,7 @@ def compute_bond_analytics_rows(
     ytm_par_fallback = _AssumptionDisclosure()
     coupon_unavailable = _AssumptionDisclosure()
     maturity_unavailable = _AssumptionDisclosure()
+    floating_rate_fixed_coupon_proxy = _AssumptionDisclosure()
     for index, snapshot_row in enumerate(snapshot_rows):
         if _coerce_bool(snapshot_row.get("is_issuance_like")):
             continue
@@ -205,7 +211,13 @@ def compute_bond_analytics_rows(
         )
         asset_class_surface = " ".join(
             part
-            for part in (asset_class_raw, bond_type, instrument_name)
+            for part in (
+                asset_class_raw,
+                bond_type,
+                _as_text(snapshot_row.get("sub_type")),
+                _as_text(snapshot_row.get("business_type_primary")),
+                instrument_name,
+            )
             if part
         )
         asset_class_std = classify_asset_class(asset_class_surface)
@@ -220,7 +232,8 @@ def compute_bond_analytics_rows(
             accounting_rule_id, _ = get_accounting_rule_trace(accounting_source)
 
         coupon_rate, coupon_rate_input_status = _classify_rate_input(
-            snapshot_row.get("coupon_rate")
+            snapshot_row.get("coupon_rate"),
+            negative_floor=None,
         )
         interest_mode = _as_text(snapshot_row.get("interest_mode"))
         interest_payment_frequency, interest_payment_frequency_fallback_used = resolve_interest_payment_frequency(interest_mode)
@@ -277,17 +290,17 @@ def compute_bond_analytics_rows(
             else:
                 duration_quality_flag = DURATION_QUALITY_NO_REMAINING_TERM
         else:
-            # 缺失/脏值的票息与 ytm 在算式入口仍按 0 代入（保持既有数值行为），
+            # 缺失/脏值票息在算式入口仍按 0 代入；ytm 保留 None 以触发 par 代理。
             # 但不再静默：duration_quality_flag 逐行声明该行三项指标究竟由观测值
             # 还是假设值支撑，缺失与脏值再由 *_input_status 进一步区分。
             coupon_rate_for_math = coupon_rate if coupon_rate is not None else Decimal("0")
-            ytm_for_math = ytm if ytm is not None else Decimal("0")
             # W-fi-2026-08 P1：有票息缺 ytm 的行按 par 假设（ytm=coupon）计算
             # 久期/修正久期/凸性，三项指标共用同一生效 ytm 口径；
-            # ytm>0 正常路径 effective_ytm == ytm，行为不变。
+            # 观测 ytm（含 0 与合法负收益率）走观测值路径 effective_ytm == ytm。
+            # 只有缺失/脏值按 par 代理，输入状态与质量标记一致。
             effective_ytm, ytm_par_fallback_used = resolve_ytm_with_par_fallback(
                 coupon_rate_for_math,
-                ytm_for_math,
+                ytm,
             )
             duration_quality_flag = _resolve_duration_quality_flag(
                 coupon_rate_input_status=coupon_rate_input_status,
@@ -304,6 +317,13 @@ def compute_bond_analytics_rows(
                     instrument_code=instrument_code,
                     market_value=market_value,
                 )
+            if interest_rate_style == "floating":
+                floating_rate_fixed_coupon_proxy.record(
+                    instrument_code=instrument_code,
+                    market_value=market_value,
+                )
+                if duration_quality_flag == DURATION_QUALITY_OBSERVED:
+                    duration_quality_flag = DURATION_QUALITY_FLOATING_RATE_FIXED_COUPON_PROXY
             # W-fi-2026-08 P4：久期与标准现金流凸性由同一次现金流遍历产出，
             # 保证两者恒基于同一组 (时点, 金额)。此处不再走 estimate_duration
             # 外壳：缺到期日/已到期已由上面的 years_to_maturity == 0 分支处理，
@@ -317,6 +337,8 @@ def compute_bond_analytics_rows(
                 years_to_maturity=years_to_maturity,
                 coupon_frequency=coupon_frequency,
                 single_cashflow_at_maturity=interest_payment_frequency == "bullet",
+                report_date=row_report_date,
+                maturity_date=maturity_date,
             )
             modified_duration = estimate_modified_duration(
                 macaulay_duration,
@@ -387,10 +409,10 @@ def compute_bond_analytics_rows(
         )
 
     if ytm_par_fallback.row_count:
-        # 聚合级披露（行级标记见 duration_quality_flag，尚未落库）：本批有票息但 ytm
-        # 缺失/非正的行按 par 假设计算久期/DV01；附回退债券代码清单便于排查。
+        # 聚合级披露（行级标记见 duration_quality_flag）：本批有票息但 ytm 缺失/脏值
+        # 的行按 par 假设计算久期/DV01；附回退债券代码清单便于排查。
         logger.warning(
-            "compute_bond_analytics_rows: %d coupon-bond rows with missing/non-positive ytm "
+            "compute_bond_analytics_rows: %d coupon-bond rows with missing/dirty ytm "
             "used par-assumption duration (rule_id=%s, ytm=coupon_rate); "
             "market_value_cny=%s report_date=%s instrument_codes=%s",
             ytm_par_fallback.row_count,
@@ -434,6 +456,22 @@ def compute_bond_analytics_rows(
             coupon_unavailable.market_value,
             report_date.isoformat(),
             _format_disclosure_instrument_codes(coupon_unavailable.instrument_codes),
+        )
+
+    if floating_rate_fixed_coupon_proxy.row_count:
+        logger.warning(
+            "compute_bond_analytics_rows: %d floating-rate rows used a floating-rate fixed-coupon proxy "
+            "for duration/DV01/convexity (rule_id=%s, duration_quality_flag=%s when no more severe "
+            "quality issue applies); values are unchanged and do not model the next repricing date; "
+            "market_value_cny=%s report_date=%s instrument_codes=%s",
+            floating_rate_fixed_coupon_proxy.row_count,
+            FLOATING_RATE_FIXED_COUPON_PROXY_RULE_ID,
+            DURATION_QUALITY_FLOATING_RATE_FIXED_COUPON_PROXY,
+            floating_rate_fixed_coupon_proxy.market_value,
+            report_date.isoformat(),
+            _format_disclosure_instrument_codes(
+                floating_rate_fixed_coupon_proxy.instrument_codes
+            ),
         )
 
     return analytics_rows
@@ -561,7 +599,7 @@ def _optional_decimal(value: Any) -> Decimal | None:
     return safe_decimal(value)
 
 
-def _normalize_rate_decimal(value: Any) -> Decimal | None:
+def _normalize_rate_decimal(value: Any, *, negative_floor: Decimal | None = None) -> Decimal | None:
     """Normalize a snapshot annual rate (percent caliber) to decimal form.
 
     ``zqtz_bond_daily_snapshot.coupon_rate`` / ``ytm_value`` are stored as
@@ -571,28 +609,44 @@ def _normalize_rate_decimal(value: Any) -> Decimal | None:
     ``rate_units.normalize_percent_rate_to_decimal`` (> 20, i.e. rates above
     20%, rejected as dirty data). The previous > 2 heuristic silently treated
     the [0.2, 2) low-coupon gray zone (~550 bonds per day) as decimal-form
-    rates, corrupting duration/DV01 on re-materialization.
+    rates, corrupting duration/DV01 on re-materialization. ``negative_floor``
+    (decimal form, inclusive) admits legal negative yields; ``None`` keeps
+    rejecting every negative value, which is the coupon contract.
     """
     from backend.app.core_finance.rate_units import normalize_percent_rate_to_decimal
 
-    normalized = normalize_percent_rate_to_decimal(value)
+    normalized = normalize_percent_rate_to_decimal(
+        value,
+        negative_floor=float(negative_floor) if negative_floor is not None else None,
+    )
     if normalized is None:
         return None
     return Decimal(str(normalized))
 
 
-def _classify_rate_input(value: Any) -> tuple[Decimal | None, str]:
+# 负 YTM 的脏值下界（归一后的小数年利率，含端点），单一来源是
+# ``rate_units.NEGATIVE_YIELD_DIRTY_FLOOR``：与 +20% 上界对称（+20 / −20 都是观测值，
+# 越过一分即脏值），任意 f>=1 下保证折现基数 ``1 + y/f >= 0.8 > 0``。
+NEGATIVE_YTM_DIRTY_FLOOR = Decimal(str(NEGATIVE_YIELD_DIRTY_FLOOR))
+
+
+def _classify_rate_input(
+    value: Any,
+    *,
+    negative_floor: Decimal | None = NEGATIVE_YTM_DIRTY_FLOOR,
+) -> tuple[Decimal | None, str]:
     """归一利率并区分「真实 0」「缺失」「脏值」三类输入。
 
-    - 归一成功（含零息券的真实 0）→ ``(值, observed)``；
+    - 归一成功（含真实 0，以及不低于 ``negative_floor`` 的负 YTM）→ ``(值, observed)``；
     - 字段为 ``None`` / 空串 → ``(None, missing)``；
-    - 有值但被 ``normalize_percent_rate_to_decimal`` 拒绝（>20%、负数、非数值）
-      → ``(None, dirty)``。
+    - 有值但被拒绝（>20%、非有限值、低于负值下界、负票息）→ ``(None, dirty)``。
 
     缺失与脏值的归一结果同为 ``None``，数值路径一致，但成因不同：缺失指向上游
-    补数，脏值指向源数据清洗，必须分别可见。
+    补数，脏值指向源数据清洗，必须分别可见。``negative_floor`` 是归一后的小数年利率
+    下界（含端点）；YTM 调用方用默认的 ``NEGATIVE_YTM_DIRTY_FLOOR``（−20%），票息
+    调用方传 ``None``，继续拒绝负票息。
     """
-    normalized = _normalize_rate_decimal(value)
+    normalized = _normalize_rate_decimal(value, negative_floor=negative_floor)
     if normalized is not None:
         return normalized, RATE_INPUT_STATUS_OBSERVED
     if value is None or not str(value).strip():
@@ -634,5 +688,6 @@ __all__ = [
     "FormalCNYClosureError",
     "MISSING_INGEST_BATCH_ID",
     "MISSING_SOURCE_VERSION",
+    "NEGATIVE_YTM_DIRTY_FLOOR",
     "compute_bond_analytics_rows",
 ]

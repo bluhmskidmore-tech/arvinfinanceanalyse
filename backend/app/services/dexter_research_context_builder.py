@@ -41,6 +41,14 @@ _CONTEXT_TRIM_ORDER = (
     ("macro", "choice_series"),
     ("macro", "catalog"),
 )
+_CONTEXT_HARD_DROP_ORDER = (
+    ("stock", "sector_membership"),
+    ("stock", "factor_snapshot"),
+    ("stock", "daily_observation"),
+    ("macro", "series_ids"),
+    ("sql_executed",),
+    ("stale_sources",),
+)
 
 # stale 阈值（自然日）：日频给长假/停牌留缓冲；因子/行业快照按季度更新节奏；
 # 新闻按 30 天研究可用窗口。参考日期优先取 as_of_date，缺省用当天（UTC）。
@@ -113,6 +121,17 @@ def build_dexter_research_context(
     duckdb_path: str,
 ) -> dict[str, Any]:
     return ResearchContextBuilder(duckdb_path=duckdb_path).build(request)
+
+
+def resolve_dexter_research_read_resources(request: AgentQueryRequest) -> list[str]:
+    """Read scopes for the context builder's planned sources, before opening DuckDB."""
+    domain = _resolve_research_domain(request)
+    if domain == "stock" and _resolve_stock_code(request):
+        # Stock workbench/detail and Choice News use these same REST scopes.
+        return ["market_data.livermore", "choice_news.data"]
+    if domain == "macro":
+        return ["macro_vendor"]
+    return []
 
 
 def _base_context(*, request: AgentQueryRequest, domain: str | None) -> dict[str, Any]:
@@ -463,15 +482,34 @@ def _enforce_context_budget(context: dict[str, Any]) -> None:
             f"dropped rows: {', '.join(dropped)}."
         )
     if _serialized_context_chars(context) > MAX_CONTEXT_SERIALIZED_CHARS:
-        context["limitations"].append(
-            "Research context remains over budget after row trimming; "
-            "remaining evidence is kept as-is."
-        )
+        hard_dropped: list[str] = []
+        for path in _CONTEXT_HARD_DROP_ORDER:
+            if _serialized_context_chars(context) <= MAX_CONTEXT_SERIALIZED_CHARS:
+                break
+            if _drop_context_path(context, path):
+                hard_dropped.append(".".join(path))
+        if hard_dropped:
+            context["limitations"].append(
+                f"Research context required full-key drops to fit the "
+                f"{MAX_CONTEXT_SERIALIZED_CHARS}-character budget: "
+                f"{', '.join(hard_dropped)}."
+            )
+    if _serialized_context_chars(context) > MAX_CONTEXT_SERIALIZED_CHARS:
+        raise RuntimeError("Research context remains over budget after full-key drops.")
 
 
 def _serialized_context_chars(context: dict[str, Any]) -> int:
     # 与 dexter_agent_service._build_dexter_prompt 注入 prompt 的序列化口径保持一致。
     return len(json.dumps(context, ensure_ascii=False, default=str, indent=2))
+
+
+def _drop_context_path(context: dict[str, Any], path: tuple[str, ...]) -> bool:
+    if len(path) == 1:
+        return context.pop(path[0], None) is not None
+    parent = context.get(path[0])
+    if not isinstance(parent, dict):
+        return False
+    return parent.pop(path[1], None) is not None
 
 
 def _resolve_research_domain(request: AgentQueryRequest) -> str | None:

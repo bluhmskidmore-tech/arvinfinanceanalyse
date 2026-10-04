@@ -28,6 +28,7 @@ from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
 from backend.app.api.routes.macro_vendor import router as macro_vendor_router
 from backend.app.api.routes.market_data_livermore import router as market_data_livermore_router
 from backend.app.api.routes.market_data_ncd_proxy import router as market_data_ncd_proxy_router
+from backend.app.api.routes.market_overview import router as market_overview_router
 from backend.app.api.routes.pnl import router as pnl_router
 from backend.app.api.routes.pnl_attribution import router as pnl_attribution_router
 from backend.app.api.routes.positions import router as positions_router
@@ -38,6 +39,7 @@ from backend.app.api.routes.research_calendar import router as research_calendar
 from backend.app.api.routes.risk_tensor import router as risk_tensor_router
 from backend.app.api.routes.source_preview import router as source_preview_router
 from backend.app.api.routes.strategy_reports import router as strategy_reports_router
+from backend.app.api.routes.system_read_publication import router as system_read_publication_router
 from backend.app.api.routes.team_performance import router as team_performance_router
 from backend.app.governance.settings import get_settings
 from fastapi import APIRouter
@@ -133,6 +135,7 @@ ROUTE_REGISTRY: tuple[RouteRegistryEntry, ...] = (
     RouteRegistryEntry("macro_toolkit", macro_toolkit_router, "macro_market", ("macro-toolkit",), "Macro tooling owner"),
     RouteRegistryEntry("market_data_livermore", market_data_livermore_router, "macro_market", ("market-data",), "Market data owner"),
     RouteRegistryEntry("market_data_ncd_proxy", market_data_ncd_proxy_router, "macro_market", ("market-data",), "Market data owner"),
+    RouteRegistryEntry("market_overview", market_overview_router, "macro_market", ("market-overview",), "Market overview owner"),
     RouteRegistryEntry("executive", executive_router, "support", ("executive",), "Executive cockpit owner"),
     RouteRegistryEntry("external_data", external_data_router, "macro_market", ("external-data",), "Market data owner"),
     RouteRegistryEntry("pnl", pnl_router, "formal_mainline", ("pnl",), "Formal PnL owner"),
@@ -149,6 +152,7 @@ ROUTE_REGISTRY: tuple[RouteRegistryEntry, ...] = (
     RouteRegistryEntry("risk_tensor", risk_tensor_router, "formal_mainline", ("risk",), "Risk tensor owner"),
     RouteRegistryEntry("source_preview", source_preview_router, "preview", ("preview",), "Reports and data owner"),
     RouteRegistryEntry("strategy_reports", strategy_reports_router, "macro_market", ("strategy-reports",), "Market data owner"),
+    RouteRegistryEntry("system_read_publication", system_read_publication_router, "support", ("system-read-publication",), "Platform support owner"),
     RouteRegistryEntry("team_performance", team_performance_router, "analytical_compatibility", ("team-performance",), "Team performance workbook owner"),
 )
 

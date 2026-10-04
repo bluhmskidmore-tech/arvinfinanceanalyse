@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import type { EChartsOption } from "../../../lib/echarts";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import type { Numeric, PnlCompositionPayload } from "../../../api/contracts";
@@ -130,8 +131,6 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
         left: 90,
         right: designTokens.space[6],
         top: 10,
-        bottom: 30,
-        containLabel: true,
       },
       xAxis: {
         type: "value" as const,
@@ -194,18 +193,10 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
     // ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用 Nocturne TS 镜像 token。
     return {
       tooltip: { trigger: "axis" as const },
-      legend: {
-        bottom: 0,
-        textStyle: {
-          fontSize: designTokens.fontSize[12],
-          color: nocturneTokens.color.inkSoft,
-        },
-      },
       grid: {
         left: 48,
         right: designTokens.space[6],
         top: designTokens.space[6],
-        bottom: 48,
       },
       xAxis: {
         type: "category" as const,
@@ -263,12 +254,6 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           }),
           itemStyle: {
             color: pnlCompositionSeriesColors.capital,
-            borderRadius: [
-              designTokens.radius.sm,
-              designTokens.radius.sm,
-              0,
-              0,
-            ],
           },
         },
         {
@@ -281,12 +266,6 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           }),
           itemStyle: {
             color: pnlCompositionSeriesColors.other,
-            borderRadius: [
-              designTokens.radius.sm,
-              designTokens.radius.sm,
-              0,
-              0,
-            ],
           },
         },
       ],
@@ -370,31 +349,25 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
             </div>
 
             {bipolarOption && (
-              <div className="pnl-composition-chart__card">
-                <h3 className="pnl-composition-chart__section-title">
-                  损益构成（带符号 · 亿元）
-                </h3>
-                <ReactECharts
-                  option={bipolarOption}
-                  className="pnl-composition-chart__chart"
-                  notMerge
-                  lazyUpdate
-                />
-              </div>
+              <ChartCard
+                flat
+                ariaLabel="损益构成（带符号）"
+                unit="亿元"
+                height={220}
+                option={bipolarOption}
+                legend="none"
+              />
             )}
 
             {trendOption && (
-              <div className="pnl-composition-chart__card">
-                <h3 className="pnl-composition-chart__section-title">
-                  损益构成趋势
-                </h3>
-                <ReactECharts
-                  option={trendOption}
-                  className="pnl-composition-chart__chart--trend"
-                  notMerge
-                  lazyUpdate
-                />
-              </div>
+              <ChartCard
+                flat
+                ariaLabel="损益构成趋势"
+                unit="亿元"
+                height={280}
+                option={trendOption}
+                legendRows={2}
+              />
             )}
 
             {hasTableRows && (

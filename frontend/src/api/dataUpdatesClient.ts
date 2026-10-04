@@ -17,7 +17,7 @@ export type UpdatePreflight = {
 };
 
 export type DataUpdateRun = {
-  workflow?: UpdateWorkflow;
+  workflow?: UpdateWorkflow | "choice_stock_pit_history";
   run_id: string;
   report_date: string;
   status: "queued" | "waiting_inputs" | "running" | "retrying" | "completed" | "failed" | "cancelled";
@@ -26,9 +26,19 @@ export type DataUpdateRun = {
   message: string;
   attempt: number;
   current_step?: string | null;
+  recovery_mode?: "publication_only" | null;
+  recovery_of_run_id?: string | null;
+  publication_recovery?: { available: boolean; reason: string | null; failed_step: string | null };
   failure_receipt?: { failed_step?: string; business_body_status?: string } | null;
   steps: { key: string; label: string; status: string; error_message?: string | null; elapsed_seconds?: number | null }[];
-  preflight?: UpdatePreflight;
+  preflight?: UpdatePreflight | {
+    workflow: "choice_stock_pit_history";
+    report_date: string;
+    ready: boolean;
+    source_sha256: string;
+    plan_sha256: string;
+    insert_counts: Record<string, number>;
+  };
 };
 
 export type DataUpdateSchedule = {
@@ -131,6 +141,18 @@ export function createDataUpdatesClient(options?: { baseUrl?: string; fetchImpl?
       const run = await requestActionJson<DataUpdateRun>(fetchImpl, baseUrl, url, { method: "POST" });
       assertUpdateRun(run, url);
       if (run.run_id !== runId) throw new Error(`取消回执与所选请求不一致：${url}`);
+      return run;
+    },
+    recoverPublication: async (runId: string, requestKey: string) => {
+      const url = `${path}/runs/${encodeURIComponent(runId)}/recover-publication`;
+      const run = await requestActionJson<DataUpdateRun>(fetchImpl, baseUrl, url, {
+        method: "POST", headers: { "Idempotency-Key": requestKey },
+      });
+      assertUpdateRun(run, url);
+      if (!run.run_id.trim() || run.run_id === runId || run.recovery_mode !== "publication_only"
+        || run.recovery_of_run_id !== runId) {
+        throw new Error(`发布恢复回执与所选请求不一致：${url}`);
+      }
       return run;
     },
     requestMarket: () => requestActionJson<{ status: string; message: string }>(fetchImpl, baseUrl,

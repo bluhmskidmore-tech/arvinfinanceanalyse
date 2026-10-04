@@ -7,11 +7,12 @@
 
 .ledger-pnl-workbook-tables__tabs {
   display: flex;
-  gap: 8px;
+  gap: var(--moss-space-4);
   min-width: 0;
   padding-bottom: 8px;
   overflow-x: auto;
   border-bottom: 1px solid var(--dh-api-line);
+  padding: 0;
 }
 
 .ledger-pnl-workbook-tables__tab {
@@ -19,32 +20,33 @@
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
-  min-height: 32px;
-  padding: 6px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--dh-api-radius);
+  min-height: 36px;
+  padding: var(--moss-space-2) 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--dh-api-soft);
   font: inherit;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.35;
   cursor: pointer;
   transition:
     border-color 150ms ease,
     background-color 150ms ease,
     color 150ms ease;
+  border-bottom: 2px solid transparent;
 }
 
 .ledger-pnl-workbook-tables__tab:hover {
-  border-color: var(--dh-api-line);
-  background: var(--dh-api-panel-2);
+  border-color: transparent;
+  background: transparent;
   color: var(--dh-api-ink);
 }
 
 .ledger-pnl-workbook-tables__tab[aria-selected="true"] {
-  border-color: var(--dh-api-line);
-  background: var(--dh-api-blue-soft);
+  border-color: var(--dh-api-blue);
+  background: transparent;
   color: var(--dh-api-ink);
 }
 
@@ -92,8 +94,41 @@
   border-bottom: 1px solid var(--dh-api-line-soft);
   color: var(--dh-api-ink);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
+}
+
+.ledger-pnl-workbook-tables__truncation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ledger-pnl-workbook-tables__truncation-toggle {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-blue);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.ledger-pnl-workbook-tables__truncation-toggle:hover,
+.ledger-pnl-workbook-tables__truncation-toggle:focus-visible {
+  border-color: var(--dh-api-blue);
+  outline: none;
 }
 
 .ledger-pnl-workbook-tables__table-scroll {
@@ -112,18 +147,19 @@
 
 .ledger-pnl-workbook-tables__table-data th,
 .ledger-pnl-workbook-tables__table-data td {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--dh-api-line-soft);
+  padding: 0 var(--moss-space-3);
+  border-bottom: 1px solid var(--moss-table-border);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
   white-space: nowrap;
+  height: var(--moss-table-row-h-compact);
 }
 
 .ledger-pnl-workbook-tables__table-data th {
   background: var(--dh-api-panel-2);
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 700;
+  color: var(--moss-table-header-color);
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-header-weight);
 }
 
 .ledger-pnl-workbook-tables__table-data tbody tr:last-child td {
@@ -150,4 +186,14 @@
   .ledger-pnl-workbook-tables__grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.ledger-pnl-workbook-tables__table-data td {
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-cell-weight);
+}
+
+.ledger-pnl-workbook-tables__table-data [data-numeric="true"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

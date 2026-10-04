@@ -1,11 +1,20 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import {
+  ChartCard,
+  type ChartCardState,
+} from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
+import { type EChartsOption } from "../../../lib/echarts";
 import { nocturneTokens } from "../../../theme/designSystem";
 import type { MacroObservationCrisisHistoryPoint } from "../model/macroObservationPageModel";
 
 /**
  * 04 区危机分历史折线（crisis_score_cn.result.score_history，最多 430 点）。
+ *
+ * 数据可信度：早期历史可能只有部分分项可用（后端记 degraded），与全分项读数
+ * 不等价。起始处的连续降级段以底色段标出并注明分项数，tooltip 逐点披露覆盖，
+ * 避免降级历史被当作同一口径读取；覆盖字段缺失时不标段、不补数。
  *
  * 取色：ECharts option 是 JS 常量，CSS 变量翻不动；挂载后从图表容器读取
  * `--dh-api-*` 计算值构造调色板（workbench marketChartPalette 的
@@ -32,53 +41,38 @@ const CRISIS_CHART_STATIC_PALETTE: CrisisChartPalette = {
   tooltipInk: nocturneTokens.color.ink,
 };
 
-const CONCRETE_COLOR_PATTERN = /^(#|rgb|hsl)/i;
+/** 该点是否为「部分分项可用」的降级读数；覆盖字段缺失时一律不算降级。 */
+function isDegradedPoint(point: MacroObservationCrisisHistoryPoint): boolean {
+  const available = point.availableComponentCount;
+  const total = point.componentCount;
+  return available !== null && total !== null && available < total;
+}
+
+type CrisisDegradedRun = { startIndex: number; endIndex: number };
 
 /**
- * color-mix() 等函数式取值 zrender 解析不了；借一次性探针让浏览器把它
- * 算成 rgb()（探针挂 body，取值串在自定义属性计算后已不含 var()）。
+ * 全部连续降级段。降级段不一定只在开头——历史中段也可能出现部分分项可用的
+ * 读数，只标起始段会漏掉后面的降级点。逐段返回，段与段之间由完整读数分隔。
  */
-function resolveColorExpression(expression: string): string {
-  if (CONCRETE_COLOR_PATTERN.test(expression)) {
-    return expression;
+function crisisDegradedRuns(history: MacroObservationCrisisHistoryPoint[]): CrisisDegradedRun[] {
+  const runs: CrisisDegradedRun[] = [];
+  let start = -1;
+  for (let index = 0; index < history.length; index += 1) {
+    if (isDegradedPoint(history[index]!)) {
+      if (start === -1) {
+        start = index;
+      }
+      continue;
+    }
+    if (start !== -1) {
+      runs.push({ startIndex: start, endIndex: index - 1 });
+      start = -1;
+    }
   }
-  if (typeof document === "undefined" || !document.body) {
-    return "";
+  if (start !== -1) {
+    runs.push({ startIndex: start, endIndex: history.length - 1 });
   }
-  const probe = document.createElement("span");
-  probe.style.display = "none";
-  probe.style.color = expression;
-  document.body.appendChild(probe);
-  const resolved = getComputedStyle(probe).color.trim();
-  probe.remove();
-  return CONCRETE_COLOR_PATTERN.test(resolved) ? resolved : "";
-}
-
-function readScopeColor(host: Element, name: string): string {
-  const raw = getComputedStyle(host).getPropertyValue(name).trim();
-  return raw ? resolveColorExpression(raw) : "";
-}
-
-function resolveCrisisChartPalette(host: Element | null): CrisisChartPalette {
-  if (!host || typeof getComputedStyle !== "function") {
-    return CRISIS_CHART_STATIC_PALETTE;
-  }
-  const fallback = CRISIS_CHART_STATIC_PALETTE;
-  const read = (name: string, fallbackValue: string) =>
-    readScopeColor(host, name) || fallbackValue;
-  const palette: CrisisChartPalette = {
-    line: read("--dh-api-blue", fallback.line),
-    axisLabel: read("--dh-api-ink-muted", fallback.axisLabel),
-    splitLine: read("--dh-api-line-soft", fallback.splitLine),
-    tooltipBg: read("--dh-api-panel-2", fallback.tooltipBg),
-    tooltipBorder: read("--dh-api-line", fallback.tooltipBorder),
-    tooltipInk: read("--dh-api-ink", fallback.tooltipInk),
-  };
-  const unchanged = (Object.keys(palette) as Array<keyof CrisisChartPalette>).every(
-    (key) => palette[key] === fallback[key],
-  );
-  // 全部回退时返回同一实例，setState 可直接跳过更新。
-  return unchanged ? fallback : palette;
+  return runs;
 }
 
 function buildCrisisHistoryOption(
@@ -87,23 +81,29 @@ function buildCrisisHistoryOption(
 ): EChartsOption {
   const lastIndex = history.length - 1;
   const lastPoint = history[lastIndex];
+  const degradedRuns = crisisDegradedRuns(history);
   return {
     // 右缘留出末点数值标注的空间。
-    grid: { top: 8, right: 52, bottom: 24, left: 44 },
+    grid: { top: 8, right: 52, left: 44 },
     tooltip: {
       trigger: "axis",
-      backgroundColor: palette.tooltipBg,
-      borderColor: palette.tooltipBorder,
-      borderWidth: 1,
-      textStyle: { color: palette.tooltipInk, fontSize: 11 },
       extraCssText: "border-radius: 8px; box-shadow: none;",
       formatter: (params: unknown) => {
         const first = Array.isArray(params)
           ? (params[0] as { dataIndex?: number } | undefined)
           : undefined;
         const point = history[first?.dataIndex ?? -1];
+        if (!point) {
+          return "";
+        }
         // 精度沿用工具页 CrisisScoreEvidencePanel 的 score_history 呈现（4 位）。
-        return point ? `${point.date}<br/>危机分 ${point.value.toFixed(4)}` : "";
+        const coverage =
+          point.availableComponentCount !== null && point.componentCount !== null
+            ? `<br/>分项 ${point.availableComponentCount}/${point.componentCount}${
+                isDegradedPoint(point) ? "（降级）" : ""
+              }`
+            : "";
+        return `${point.date}<br/>危机分 ${point.value.toFixed(4)}${coverage}`;
       },
     },
     xAxis: {
@@ -138,6 +138,21 @@ function buildCrisisHistoryOption(
           lineStyle: { color: palette.axisLabel, type: "dashed", width: 1 },
           data: [{ yAxis: 0 }],
         },
+        // 降级观测段：部分分项可用的历史读数与全分项读数不等价，用底色段标出
+        // （DESIGN §6 数据可信度不得混同）。段可能出现在任意位置，逐段标注；
+        // 段宽随点数变化，窄段放不下图内文字，改由卡头 question 披露总点数。
+        ...(degradedRuns.length
+          ? {
+              markArea: {
+                silent: true,
+                itemStyle: { color: palette.axisLabel, opacity: 0.14 },
+                data: degradedRuns.map((run) => [
+                  { xAxis: history[run.startIndex]!.date },
+                  { xAxis: history[run.endIndex]!.date },
+                ]),
+              },
+            }
+          : {}),
         // 末点标注：终值圆点 + 数值 label（两位小数，全精度在 tooltip）。
         ...(lastPoint
           ? {
@@ -164,26 +179,40 @@ function buildCrisisHistoryOption(
 
 export default function MacroObservationCrisisChart({
   history,
+  state,
+  emptyMessage,
 }: {
   history: MacroObservationCrisisHistoryPoint[];
+  state?: ChartCardState;
+  emptyMessage?: string;
 }) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const [palette, setPalette] = useState(CRISIS_CHART_STATIC_PALETTE);
-
-  useLayoutEffect(() => {
-    setPalette(resolveCrisisChartPalette(hostRef.current));
-  }, []);
-
-  const option = useMemo(() => buildCrisisHistoryOption(history, palette), [history, palette]);
+  const option = useMemo(
+    () => (history.length ? buildCrisisHistoryOption(history, CRISIS_CHART_STATIC_PALETTE) : null),
+    [history],
+  );
+  const lastPoint = history[history.length - 1];
+  // 降级观测段总点数在卡头披露：段宽随点数变化，窄段放不下图内文字。
+  const degradedPointCount = useMemo(
+    () => history.filter(isDegradedPoint).length,
+    [history],
+  );
+  const question = history.length
+    ? degradedPointCount
+      ? `${history.length} 点 · 含 ${degradedPointCount} 点降级观测`
+      : `${history.length} 点`
+    : undefined;
 
   return (
-    <div ref={hostRef} className="macro-observation-crisis-chart-host">
-      <ReactECharts
-        option={option}
-        className="macro-observation-crisis-chart-canvas"
-        notMerge
-        lazyUpdate
-      />
-    </div>
+    <ChartCard
+      testId="macro-observation-crisis-chart"
+      title="危机分历史"
+      question={question}
+      asOf={lastPoint?.date}
+      height={CHART_CARD_HEIGHTS.default}
+      legend="none"
+      option={option}
+      state={state}
+      emptyMessage={emptyMessage}
+    />
   );
 }

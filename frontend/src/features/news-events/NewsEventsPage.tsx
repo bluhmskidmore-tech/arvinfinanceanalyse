@@ -1,3 +1,6 @@
+import { useLocation } from "react-router-dom";
+import MarketSourceContextBanner from "../workbench/module-home/MarketSourceContextBanner";
+import { readMarketSourceContext } from "../workbench/module-home/marketSourceContext";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -7,7 +10,7 @@ import {
   getChoiceNewsTopicPresentation,
   listChoiceNewsTopicFilterOptions,
 } from "../agent/lib/choiceNewsTopicDictionary";
-import { KpiCard } from "../../components/KpiCard";
+import { KpiStrip, SectionHead, type KpiCell } from "../../components/layout";
 import type { ChoiceNewsComparePayload, ResultMeta } from "../../api/contracts";
 import { EM_DASH } from "../../utils/format";
 
@@ -217,7 +220,7 @@ function CompareBucket(props: {
       {props.rows.length > 0 ? (
         <ul className="news-events-page__compare-list">
           {props.rows.map((row, index) => (
-            <li key={`${props.title}-${row.event_family ?? row.conflict_type ?? index}`}>
+            <li key={`${props.title}-${index}-${row.event_family ?? row.conflict_type ?? ""}`}>
               <span>{row.event_family ?? row.conflict_type ?? "待复核"}</span>
               <span> · </span>
               <span>{row.summary ?? row.review_reason ?? `${row.source_event_ids?.length ?? 0} 条事件`}</span>
@@ -237,15 +240,11 @@ function NewsEventsCompare({ compare }: { compare?: ChoiceNewsComparePayload }) 
   }
   return (
     <section data-testid="news-events-compare" className="news-events-page__compare-section">
-      <div className="news-events-page__section-header-row">
-        <span className="news-events-page__section-header-title">跨篇对比</span>
-        <span
-          className="news-events-page__section-header-meta"
-          title={`规则版本 ${compare.rule_version}`}
-        >
-          规则版本 {compare.rule_version}
-        </span>
-      </div>
+      <SectionHead
+        title="跨篇对比"
+        meta={[{ label: "规则版本", value: compare.rule_version ?? EM_DASH }]}
+        numbered={false}
+      />
       <div className="news-events-page__compare-grid">
         <CompareBucket title="同向线索" rows={compare.same_direction} emptyText="暂无同向线索" />
         <CompareBucket title="冲突线索" rows={compare.conflicting} emptyText="暂无冲突线索" />
@@ -255,9 +254,9 @@ function NewsEventsCompare({ compare }: { compare?: ChoiceNewsComparePayload }) 
         <strong className="news-events-page__compare-card-title">候选情景建议</strong>
         {compare.candidate_scenarios.length > 0 ? (
           <ul className="news-events-page__compare-list">
-            {compare.candidate_scenarios.map((item) => (
+            {compare.candidate_scenarios.map((item, index) => (
               <li
-                key={item.mapping_rule_id}
+                key={`${index}-${item.mapping_rule_id}`}
                 title={`情景模板 ${item.scenario_template_id} · 需人工复核：${item.human_review_required ? "是" : "否"}`}
               >
                 <span>
@@ -276,24 +275,15 @@ function NewsEventsCompare({ compare }: { compare?: ChoiceNewsComparePayload }) 
   );
 }
 
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="news-events-page__section-lead">
-      <span className="news-events-page__section-eyebrow">{props.eyebrow}</span>
-      <h2 className="news-events-page__section-title">{props.title}</h2>
-      <p className="news-events-page__section-description">{props.description}</p>
-    </div>
-  );
-}
-
 export default function NewsEventsPage() {
   const client = useApiClient();
+  const location = useLocation();
+  const source = readMarketSourceContext(location.search);
+  const receivedFrom = source?.params.get("received_from") || undefined;
+  const receivedTo = source?.params.get("received_to") || undefined;
+  const invalidWindow = [receivedFrom, receivedTo].some(value => value !== undefined && (!/^\d{4}-\d{2}-\d{2}(?:T|$)/.test(value) || !Number.isFinite(Date.parse(value)))) || Boolean(receivedFrom && receivedTo && Date.parse(receivedFrom) > Date.parse(receivedTo));
   const topicOptions = useMemo(() => listChoiceNewsTopicFilterOptions(), []);
-  const [topicCode, setTopicCode] = useState("");
+  const [topicCode, setTopicCode] = useState(source?.params.get("topic_code") ?? "");
   const [errorOnly, setErrorOnly] = useState(false);
   const [offset, setOffset] = useState(0);
 
@@ -303,6 +293,8 @@ export default function NewsEventsPage() {
       "choice-events",
       client.mode,
       topicCode,
+      receivedFrom,
+      receivedTo,
       errorOnly,
       offset,
     ],
@@ -312,7 +304,10 @@ export default function NewsEventsPage() {
         offset,
         topicCode: topicCode.trim() || undefined,
         errorOnly,
+        receivedFrom,
+        receivedTo,
       }),
+    enabled: !invalidWindow,
     retry: false,
   });
 
@@ -345,8 +340,40 @@ export default function NewsEventsPage() {
   const errorRowsDisplay = kpiReady ? String(errorRowsOnPage) : EM_DASH;
   const metaDegraded = isMetaDegraded(resultMeta) ? resultMeta : null;
 
+  // 单元格 key 与 cellTestIdPrefix="news-events" 拼接后逐字复原既有 testid
+  // （news-events-total-count 等），迁移到 KpiStrip 不改变任何跨页引用的锚点。
+  const kpiCells: KpiCell[] = [
+    {
+      key: "total-count",
+      label: "事件总数",
+      value: totalRowsDisplay,
+      note: kpiStateDetail ?? "当前查询返回的总行数",
+    },
+    {
+      key: "current-page-kpi",
+      label: "当前页",
+      value: pageDisplay,
+      note: kpiStateDetail ?? "按固定分页窗口展示",
+    },
+    {
+      key: "error-count",
+      label: "错误行数",
+      value: errorRowsDisplay,
+      note: kpiStateDetail ?? "当前页含非零错误码的行数",
+    },
+    {
+      key: "active-topic",
+      label: "当前专题",
+      value: activeTopicLabel,
+      note: "切换专题后分页会自动归零",
+    },
+  ];
+
+  if (invalidWindow) return <section className="news-events-page"><MarketSourceContextBanner /><p role="alert">来源接收时间范围无效，未执行新闻查询。请返回市场总览重新选择。</p></section>;
+
   return (
     <section className="news-events-page" data-moss-theme-scope="news-events">
+      <MarketSourceContextBanner />
       <div className="news-events-page__header">
         <div>
           <h1 data-testid="news-events-page-title" className="news-events-page__title">
@@ -374,40 +401,17 @@ export default function NewsEventsPage() {
         </p>
       ) : null}
 
-      <SectionLead
-        eyebrow="总览"
+      <SectionHead
+        category="总览"
         title="事件概览"
-        description="先看事件总数、当前页和错误行，再进入筛选与明细列表，保持新闻事件页的阅读顺序和其他标准壳层一致。"
+        note="先看事件总数、当前页和错误行，再进入筛选与明细列表，保持新闻事件页的阅读顺序和其他标准壳层一致。"
+        numbered={false}
       />
-      <div className="news-events-page__summary-grid">
-        <div data-testid="news-events-total-count">
-          <KpiCard
-            title="事件总数"
-            value={totalRowsDisplay}
-            detail={kpiStateDetail ?? "当前查询返回的总行数"}
-            valueVariant="text"
-          />
-        </div>
-        <div data-testid="news-events-current-page-kpi">
-          <KpiCard
-            title="当前页"
-            value={pageDisplay}
-            detail={kpiStateDetail ?? "按固定分页窗口展示"}
-            valueVariant="text"
-          />
-        </div>
-        <div data-testid="news-events-error-count">
-          <KpiCard
-            title="错误行数"
-            value={errorRowsDisplay}
-            detail={kpiStateDetail ?? "当前页含非零错误码的行数"}
-            valueVariant="text"
-          />
-        </div>
-        <div data-testid="news-events-active-topic">
-          <KpiCard title="当前专题" value={activeTopicLabel} detail="切换专题后分页会自动归零" valueVariant="text" />
-        </div>
-      </div>
+      <KpiStrip
+        cells={kpiCells}
+        cellTestIdPrefix="news-events"
+        cols={{ base: 2, md: 4, lg: 4, xl: 4 }}
+      />
       {resultMeta ? <NewsEventsBoundary meta={resultMeta} /> : null}
       <NewsEventsCompare compare={eventsQuery.data?.result.compare} />
 
@@ -427,6 +431,7 @@ export default function NewsEventsPage() {
                 }}
               >
                 <option value="">全部</option>
+                {topicCode && !topicOptions.some(opt => opt.topicCode === topicCode) ? <option value={topicCode}>{topicCode}（来源专题）</option> : null}
                 {topicOptions.map((opt) => (
                   <option key={opt.topicCode} value={opt.topicCode}>
                     {opt.label} ({opt.topicCode})

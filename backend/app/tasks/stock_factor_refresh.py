@@ -231,6 +231,8 @@ def _ensure_factor_columns(conn: duckdb.DuckDBPyConnection) -> None:
         "roe": "double",
         "gross_margin": "double",
         "dividend_yield": "double",
+        "total_mv": "double",
+        "circ_mv": "double",
         "source_version": "varchar",
         "vendor_version": "varchar",
         "rule_version": "varchar",

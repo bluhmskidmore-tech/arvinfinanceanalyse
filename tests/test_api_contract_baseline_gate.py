@@ -11,6 +11,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import subprocess
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -137,13 +139,12 @@ def test_default_surface_baseline_excludes_feature_gated_agent_routes() -> None:
     assert set(default_spec["paths"]) < set(full_spec["paths"])
 
 
-def test_acknowledgement_file_is_valid_and_entries_are_justified() -> None:
+def test_legacy_unused_acknowledgements_remain_structurally_valid() -> None:
     assert ACKNOWLEDGEMENTS_PATH.exists()
     acknowledgements, problems = contract_module.load_acknowledgements()
     assert problems == []
-    for finding_id, entry in acknowledgements.items():
-        assert entry["reason"].strip(), f"acknowledgement {finding_id} has an empty reason"
-        assert entry["approved_by"].strip(), f"acknowledgement {finding_id} has no approver"
+    assert acknowledgements
+    assert all(finding_id.strip() for finding_id in acknowledgements)
 
 
 # --------------------------------------------------------------------------------------
@@ -410,3 +411,392 @@ def test_acknowledgement_ids_are_stable_and_surface_agnostic_form_is_offered() -
 
     assert exact == "default|operation_removed|GET /api/foo|-"
     assert wildcard == "*|operation_removed|GET /api/foo|-"
+
+
+# --------------------------------------------------------------------------------------
+# Release-control receipt and base-ref hardening
+# --------------------------------------------------------------------------------------
+
+
+def _probe_spec(*, include_operation: bool) -> dict[str, Any]:
+    paths: dict[str, Any] = {}
+    if include_operation:
+        paths["/api/contract-probe"] = {
+            "get": {
+                "operationId": "contract_probe_get",
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"value": {"type": "string"}},
+                                    "required": ["value"],
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    return {
+        "openapi": "3.1.0",
+        "info": {"title": "contract probe", "version": "1"},
+        "paths": paths,
+    }
+
+
+def _valid_acknowledgement(finding_id: str, *, expires_at: str = "2099-12-31") -> dict[str, Any]:
+    return {
+        "id": finding_id,
+        "owner": "api-platform",
+        "reason": "The consumer migration has been reviewed.",
+        "approved_by": "release-authority",
+        "affected_consumers": ["moss-frontend"],
+        "migration_plan": "Deploy the compatible frontend before removing the old field.",
+        "expires_at": expires_at,
+    }
+
+
+def _run_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    base_spec: dict[str, Any] | None,
+    head_spec: dict[str, Any],
+    acknowledgements: dict[str, dict[str, Any]] | None = None,
+    baseline_ref: str | None = "origin/main",
+    resolve_error: str | None = None,
+    allow_bootstrap_baseline: bool = False,
+    allow_stale_baseline: bool = False,
+    output_name: str = "receipt.json",
+) -> tuple[int, dict[str, Any], str]:
+    disk_baseline = tmp_path / "openapi.default.json"
+    disk_baseline.write_text(contract_module._canonical_json(head_spec), encoding="utf-8")
+    output = tmp_path / output_name
+
+    monkeypatch.setattr(contract_module, "_load_openapi", lambda _surface: copy.deepcopy(head_spec))
+    monkeypatch.setattr(contract_module, "baseline_path", lambda _surface: disk_baseline)
+    monkeypatch.setattr(
+        contract_module,
+        "load_acknowledgements",
+        lambda: (copy.deepcopy(acknowledgements or {}), []),
+    )
+    monkeypatch.setattr(contract_module, "_acknowledgements_sha256", lambda: "A" * 64)
+    if resolve_error is None:
+        monkeypatch.setattr(contract_module, "_resolve_baseline_ref", lambda _ref: "b" * 40)
+    else:
+
+        def _raise_resolution_error(_ref: str) -> str:
+            raise contract_module.BaselineGitError(resolve_error)
+
+        monkeypatch.setattr(contract_module, "_resolve_baseline_ref", _raise_resolution_error)
+    monkeypatch.setattr(
+        contract_module,
+        "_read_baseline_from_ref",
+        lambda _commit, _relative_path: copy.deepcopy(base_spec),
+    )
+
+    exit_code = contract_module._baseline_check(
+        ("default",),
+        baseline_ref,
+        allow_stale_baseline,
+        str(output),
+        allow_bootstrap_baseline,
+        today=date(2026, 8, 31),
+    )
+    serialized = output.read_text(encoding="utf-8")
+    return exit_code, json.loads(serialized), serialized
+
+
+def test_invalid_baseline_ref_fails_closed_without_leaking_git_details(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    head = _probe_spec(include_operation=False)
+    exit_code, report, serialized = _run_receipt(
+        monkeypatch,
+        tmp_path,
+        base_spec=None,
+        head_spec=head,
+        resolve_error=r"fatal: unsafe repository at C:\private\checkout",
+    )
+
+    assert exit_code == 1
+    assert report["status"] == "failed"
+    assert report["release_gate_eligible"] is False
+    assert report["resolved_baseline_commit"] is None
+    assert report["baseline_problems"] == [{"code": "baseline_ref_unresolved"}]
+    assert "private" not in serialized
+    assert "fatal:" not in serialized
+
+
+def test_git_ref_resolution_error_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _failed_git(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=["git"],
+            returncode=128,
+            stdout="",
+            stderr=r"fatal: C:\private\repository is unsafe",
+        )
+
+    monkeypatch.setattr(contract_module.subprocess, "run", _failed_git)
+
+    with pytest.raises(contract_module.BaselineGitError) as raised:
+        contract_module._resolve_baseline_ref("origin/main")
+    assert str(raised.value) == "baseline ref could not be resolved"
+    assert "private" not in str(raised.value)
+
+
+def test_git_process_start_error_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise_os_error(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise OSError(r"cannot execute C:\private\git.exe")
+
+    monkeypatch.setattr(contract_module.subprocess, "run", _raise_os_error)
+
+    with pytest.raises(contract_module.BaselineGitError) as raised:
+        contract_module._resolve_baseline_ref("origin/main")
+    assert str(raised.value) == "baseline ref could not be resolved"
+    assert "private" not in str(raised.value)
+
+
+def test_valid_commit_with_no_baseline_path_is_reported_as_missing() -> None:
+    resolved = contract_module._resolve_baseline_ref("HEAD")
+
+    assert (
+        contract_module._read_baseline_from_ref(
+            resolved,
+            "contracts/openapi/__wp3_missing_baseline__.json",
+        )
+        is None
+    )
+
+
+def test_missing_baseline_on_valid_ref_fails_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    exit_code, report, _ = _run_receipt(
+        monkeypatch,
+        tmp_path,
+        base_spec=None,
+        head_spec=_probe_spec(include_operation=False),
+    )
+
+    assert exit_code == 1
+    assert report["status"] == "failed"
+    assert report["release_gate_eligible"] is False
+    assert report["surfaces"][0]["baseline_missing"] is True
+    assert report["surfaces"][0]["baseline_sha256"] is None
+
+
+def test_explicit_bootstrap_is_diagnostic_but_never_release_eligible(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code, report, _ = _run_receipt(
+        monkeypatch,
+        tmp_path,
+        base_spec=None,
+        head_spec=_probe_spec(include_operation=False),
+        allow_bootstrap_baseline=True,
+    )
+    console = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert report["command_succeeded"] is True
+    assert report["passed"] is False
+    assert report["status"] == report["outcome"] == "diagnostic"
+    assert report["release_gate_eligible"] is False
+    assert "RESULT: DIAGNOSTIC" in console
+    assert "RESULT: PASS" not in console
+
+
+def test_same_pr_snapshot_rewrite_cannot_clear_base_ref_breaking_finding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base = _probe_spec(include_operation=True)
+    head = _probe_spec(include_operation=False)
+    exit_code, report, _ = _run_receipt(
+        monkeypatch,
+        tmp_path,
+        base_spec=base,
+        head_spec=head,
+    )
+
+    assert exit_code == 1
+    surface = report["surfaces"][0]
+    assert surface["stale_baseline"] is False
+    assert surface["counts"]["breaking"] == 1
+    assert surface["baseline_sha256"] == contract_module._spec_sha256(base)
+    assert surface["head_sha256"] == contract_module._spec_sha256(head)
+
+
+def test_used_legacy_acknowledgement_does_not_authorize_a_breaking_change(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base = _probe_spec(include_operation=True)
+    head = _probe_spec(include_operation=False)
+    finding = _breaking(contract_module.diff_contracts("default", base, head))[0]
+    legacy = {
+        "id": finding["id"],
+        "reason": "Legacy reason only.",
+        "approved_by": "legacy-approver",
+    }
+
+    exit_code, report, _ = _run_receipt(
+        monkeypatch,
+        tmp_path,
+        base_spec=base,
+        head_spec=head,
+        acknowledgements={finding["id"]: legacy},
+    )
+
+    assert exit_code == 1
+    assert report["surfaces"][0]["counts"] == {
+        "breaking": 1,
+        "acknowledged": 0,
+        "additive": 0,
+        "tightened": 0,
+    }
+    assert any("owner" in problem for problem in report["acknowledgement_problems"])
+    assert any("affected_consumers" in problem for problem in report["acknowledgement_problems"])
+    assert any("migration_plan" in problem for problem in report["acknowledgement_problems"])
+    assert any("expires_at" in problem for problem in report["acknowledgement_problems"])
+
+
+def test_complete_unexpired_used_acknowledgement_can_authorize_the_finding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base = _probe_spec(include_operation=True)
+    head = _probe_spec(include_operation=False)
+    finding = _breaking(contract_module.diff_contracts("default", base, head))[0]
+
+    exit_code, report, _ = _run_receipt(
+        monkeypatch,
+        tmp_path,
+        base_spec=base,
+        head_spec=head,
+        acknowledgements={finding["id"]: _valid_acknowledgement(finding["id"])},
+    )
+
+    assert exit_code == 0
+    assert report["command_succeeded"] is True
+    assert report["passed"] is True
+    assert report["status"] == report["outcome"] == "passed"
+    assert report["release_gate_eligible"] is True
+    assert report["surfaces"][0]["counts"]["acknowledged"] == 1
+    assert report["used_acknowledgements"] == [finding["id"]]
+
+
+def test_expired_used_acknowledgement_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base = _probe_spec(include_operation=True)
+    head = _probe_spec(include_operation=False)
+    finding = _breaking(contract_module.diff_contracts("default", base, head))[0]
+
+    exit_code, report, _ = _run_receipt(
+        monkeypatch,
+        tmp_path,
+        base_spec=base,
+        head_spec=head,
+        acknowledgements={
+            finding["id"]: _valid_acknowledgement(finding["id"], expires_at="2026-08-30")
+        },
+    )
+
+    assert exit_code == 1
+    assert report["surfaces"][0]["counts"]["acknowledged"] == 0
+    assert any("expired" in problem for problem in report["acknowledgement_problems"])
+
+
+def test_duplicate_acknowledgement_ids_are_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    acknowledgement_path = tmp_path / "acknowledgements.json"
+    duplicate_id = "*|operation_removed|GET /api/example|-"
+    acknowledgement_path.write_text(
+        json.dumps(
+            {
+                "acknowledgements": [
+                    _valid_acknowledgement(duplicate_id),
+                    _valid_acknowledgement(duplicate_id),
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(contract_module, "ACKNOWLEDGEMENTS_PATH", acknowledgement_path)
+
+    acknowledgements, problems = contract_module.load_acknowledgements()
+
+    assert duplicate_id not in acknowledgements
+    assert problems == [f"duplicate acknowledgement id {duplicate_id!r}"]
+
+
+def test_receipt_digest_is_canonical_and_stable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    unchanged = _probe_spec(include_operation=True)
+    first_code, first, _ = _run_receipt(
+        monkeypatch,
+        tmp_path,
+        base_spec=unchanged,
+        head_spec=unchanged,
+        output_name="first.json",
+    )
+    second_code, second, _ = _run_receipt(
+        monkeypatch,
+        tmp_path,
+        base_spec=unchanged,
+        head_spec=unchanged,
+        output_name="second.json",
+    )
+
+    assert first_code == second_code == 0
+    assert first["status"] == "passed"
+    assert first["receipt_sha256"] == second["receipt_sha256"]
+    assert first["receipt_sha256"] == contract_module._receipt_sha256(first)
+    assert len(first["receipt_sha256"]) == 64
+    assert first["acknowledgements_sha256"] == "A" * 64
+
+
+@pytest.mark.parametrize(
+    ("baseline_ref", "allow_stale_baseline"),
+    [(None, False), ("origin/main", True)],
+)
+def test_diagnostic_modes_never_emit_a_passed_release_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    baseline_ref: str | None,
+    allow_stale_baseline: bool,
+) -> None:
+    unchanged = _probe_spec(include_operation=True)
+    exit_code, report, _ = _run_receipt(
+        monkeypatch,
+        tmp_path,
+        base_spec=unchanged,
+        head_spec=unchanged,
+        baseline_ref=baseline_ref,
+        allow_stale_baseline=allow_stale_baseline,
+        output_name=f"diagnostic-{baseline_ref is None}.json",
+    )
+    console = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert report["command_succeeded"] is True
+    assert report["passed"] is False
+    assert report["status"] == report["outcome"] == "diagnostic"
+    assert report["release_gate_eligible"] is False
+    assert "RESULT: DIAGNOSTIC" in console
+    assert "RESULT: PASS" not in console

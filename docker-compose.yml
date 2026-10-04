@@ -13,6 +13,8 @@ services:
     volumes:
       - ./:/workspace
     environment:
+      # 生产部署必须显式改为 production（development 关闭 header/env 身份护栏与 dev
+      # fallback 匿名读校验）；既有要求见 docs/AGENT_MVP_RUNBOOK.md 第 26 行。
       MOSS_ENVIRONMENT: development
       MOSS_POSTGRES_DSN: postgresql://${MOSS_POSTGRES_USER:-moss}:${MOSS_POSTGRES_PASSWORD:?Set MOSS_POSTGRES_PASSWORD for docker compose}@postgres:5432/${MOSS_POSTGRES_DB:-moss}
       MOSS_REDIS_DSN: redis://redis:6379/0
@@ -47,6 +49,7 @@ services:
     volumes:
       - ./:/workspace
     environment:
+      # 生产部署必须显式改为 production；既有要求见 docs/AGENT_MVP_RUNBOOK.md 第 26 行。
       MOSS_ENVIRONMENT: development
       MOSS_POSTGRES_DSN: postgresql://${MOSS_POSTGRES_USER:-moss}:${MOSS_POSTGRES_PASSWORD:?Set MOSS_POSTGRES_PASSWORD for docker compose}@postgres:5432/${MOSS_POSTGRES_DB:-moss}
       MOSS_REDIS_DSN: redis://redis:6379/0

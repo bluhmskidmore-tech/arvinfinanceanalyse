@@ -19,3 +19,9 @@
 - This is route-scoped observational evidence, not a page closure approval.
 - It does not approve PAGE-STOCK contracts, MTR-STOCK metrics, trading instructions, execution approvals, allocation advice, position-change commands, formal stock-analysis truth, manual audit closure, or business-owner approval.
 - `formal_use_allowed=false` must remain visible until the direct route contract, golden approval, governance evidence, manual audit, and owner approval are all closed.
+
+## Recapture record — 2026-09-02
+
+- Reason: the previous file predates committed observational features (market-gate macro overlay, `module_states`, cycle-rotation `source_versions` / `vendor_versions`) and the credit-impulse evidence copy change.
+- Key changes: `data_gaps[3].evidence` now reads "Credit-expansion proxy (social-financing-stock YoY delta proxy; M5525763 or M0001385) …"; `market_gate.exposure_raw` / `formula_version` / `macro_context` / `macro_overlay` and `module_states` are new fields; `result_meta` optional fields emitted explicitly. Candidate lists and gate state are unchanged. Observational only; not a trading instruction.
+- Approval boundary: this records the re-capture only; final approver and approval timestamp remain pending.

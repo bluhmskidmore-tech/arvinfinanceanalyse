@@ -25,29 +25,13 @@ function buildDarkChartTooltip(unit: string): EChartsOption["tooltip"] {
   return {
     trigger: "axis",
     formatter: buildAxisTooltipFormatter(unit),
-    backgroundColor: PRODUCT_CATEGORY_DARK_CHART_THEME.panel,
-    borderColor: PRODUCT_CATEGORY_DARK_CHART_THEME.border,
-    borderWidth: 1,
-    textStyle: {
-      color: PRODUCT_CATEGORY_DARK_CHART_THEME.ink,
-      fontFamily: designTokens.fontFamily.tabular,
-      fontSize: 11,
-    },
     confine: true,
   };
 }
 
 function buildDarkChartLegend(seriesNames: string[]): EChartsOption["legend"] {
   return {
-    bottom: 0,
     data: seriesNames,
-    itemWidth: 10,
-    itemHeight: 8,
-    textStyle: {
-      color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-      fontFamily: designTokens.fontFamily.tabular,
-      fontSize: 11,
-    },
   };
 }
 
@@ -104,7 +88,6 @@ export function buildDualAxisChartOption(input: {
       left: 56,
       right: 56,
       top: 20,
-      bottom: input.labels.length > 6 ? 64 : 52,
     },
     xAxis: {
       type: "category",
@@ -186,7 +169,6 @@ export function buildSingleAxisChartOption(input: {
       left: 56,
       right: 24,
       top: 20,
-      bottom: input.labels.length > 6 ? 64 : 52,
     },
     xAxis: {
       type: "category",
@@ -250,24 +232,15 @@ export function buildInterestEarningAssetLiabilityScaleChartOption(input: {
     backgroundColor: PRODUCT_CATEGORY_DARK_CHART_THEME.canvas,
     tooltip: {
       ...buildDarkChartTooltip("亿元"),
-      borderWidth: 1,
       axisPointer: {
         type: "shadow",
         shadowStyle: { color: PRODUCT_CATEGORY_DARK_CHART_THEME.grid },
       },
     },
     legend: {
-      top: 4,
-      right: 8,
       data: input.series.map((series) => series.name),
-      itemWidth: 10,
-      itemHeight: 10,
-      textStyle: {
-        color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-        fontSize: 11,
-      },
     },
-    grid: { left: 18, right: 16, top: 46, bottom: 18, containLabel: true },
+    grid: { left: 18, right: 16, top: 46 },
     xAxis: {
       type: "category",
       data: input.labels,
@@ -286,7 +259,7 @@ export function buildInterestEarningAssetLiabilityScaleChartOption(input: {
     yAxis: {
       type: "value",
       name: "亿元",
-      scale: true,
+      scale: false,
       splitNumber: 4,
       nameTextStyle: {
         color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
@@ -319,7 +292,6 @@ export function buildInterestEarningAssetLiabilityScaleChartOption(input: {
         color: series.color,
         borderColor: series.borderColor,
         borderWidth: 1,
-        borderRadius: [2, 2, 0, 0],
       },
       emphasis: {
         focus: "series",
@@ -368,7 +340,6 @@ export function buildInterestSpreadChartOption(input: {
       left: 56,
       right: 72,
       top: 20,
-      bottom: input.labels.length > 6 ? 64 : 52,
     },
     xAxis: {
       type: "category",
@@ -405,6 +376,7 @@ export function buildInterestSpreadChartOption(input: {
       name: series.name,
       type: "line",
       data: series.data,
+      connectNulls: false,
       smooth: true,
       showSymbol: true,
       symbol: "circle",
@@ -420,7 +392,7 @@ export function buildInterestSpreadChartOption(input: {
         color: series.color,
         formatter: (params: { value?: unknown }) =>
           `${formatProductCategoryChartNumberTwoDecimals(params.value)}%`,
-        fontWeight: 700,
+        fontWeight: 600,
       },
       labelLayout: { moveOverlap: "shiftY" },
       emphasis: { focus: "series" },
@@ -758,7 +730,6 @@ export function buildInterestSpreadYearComparisonChartOption(input: {
                       ? PRODUCT_CATEGORY_DARK_CHART_THEME.amber
                       : PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
                 borderWidth: 1,
-                borderRadius: [2, 2, 2, 2],
                 opacity: 0.92,
               },
             },
@@ -954,7 +925,7 @@ export function buildIncomeYearComparisonChartOption(input: {
     backgroundColor: PRODUCT_CATEGORY_DARK_CHART_THEME.canvas,
     tooltip: buildDarkChartTooltip("亿元"),
     legend: buildDarkChartLegend(input.series.map((series) => series.name)),
-    grid: { left: 56, right: 28, top: 20, bottom: 58 },
+    grid: { left: 56, right: 28, top: 20 },
     xAxis: {
       type: "category",
       data: input.labels,
@@ -1003,7 +974,6 @@ export function buildIncomeYearComparisonChartOption(input: {
           opacity: isPrior ? 0.58 : 0.9,
           borderColor: seriesColor,
           borderWidth: isPrior ? 1 : 0,
-          borderRadius: [2, 2, 0, 0],
         },
         label: {
           show: comparableIndex !== null,
@@ -1109,7 +1079,6 @@ export function buildLiabilitySideTrendChartOption(input: {
       left: 56,
       right: 64,
       top: 20,
-      bottom: input.labels.length > 6 ? 64 : 52,
     },
     xAxis: {
       type: "category",
@@ -1184,4 +1153,3 @@ export function buildLiabilitySideTrendChartOption(input: {
     ],
   };
 }
-

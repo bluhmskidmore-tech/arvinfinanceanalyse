@@ -1,4 +1,8 @@
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import {
+  CHART_CARD_HEIGHTS,
+  type ChartCardHeight,
+} from "../../../components/charts/chartCardScale";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import type { AdbAccountingBasisDailyAvgTrendItem } from "../../../api/contracts";
 import { EM_DASH } from "../../../utils/format";
@@ -7,7 +11,9 @@ const YI = 100_000_000;
 
 export type AdbAccountingBasisTrendChartProps = {
   trend: AdbAccountingBasisDailyAvgTrendItem[];
-  height?: number;
+  title: string;
+  height?: ChartCardHeight;
+  flat?: boolean;
 };
 
 function collectBuckets(trend: AdbAccountingBasisDailyAvgTrendItem[]): string[] {
@@ -61,8 +67,8 @@ function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
         return [header, ...lines].join("<br/>");
       },
     },
-    legend: { data: buckets, top: 0, bottom: "auto", type: "scroll" },
-    grid: { left: 56, right: 24, top: 48, bottom: 36 },
+    legend: { data: buckets },
+    grid: { left: 56, right: 24, top: 48 },
     xAxis: {
       type: "category",
       data: labels,
@@ -80,8 +86,18 @@ function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
 /** 会计分桶日均余额按月的走势；数据来自后端 trend。 */
 export default function AdbAccountingBasisTrendChart({
   trend,
-  height = 300,
+  title,
+  height = CHART_CARD_HEIGHTS.hero,
+  flat = false,
 }: AdbAccountingBasisTrendChartProps) {
-  if (!trend.length) return null;
-  return <BaseChart option={buildOption(trend)} height={height} />;
+  return (
+    <ChartCard
+      flat={flat}
+      title={title}
+      unit="亿元"
+      height={height}
+      legendRows={2}
+      option={trend.length ? buildOption(trend) : null}
+    />
+  );
 }

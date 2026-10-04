@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("market data terminal first screen", () => {
-  test("shows the KPI band, filter controls, and collapsed Livermore shell", async ({ page }) => {
+  test("shows the KPI band, filter controls, and the retired-surface nav cards", async ({ page }) => {
     await page.goto("/market-data", { waitUntil: "domcontentloaded" });
 
     const pageRoot = page.locator('[data-testid="market-data-page"]');
@@ -16,9 +16,19 @@ test.describe("market data terminal first screen", () => {
     await expect(page.getByTestId("market-data-source-filter")).toBeVisible();
     await expect(page.getByTestId("market-data-workbench-shared-meta")).toContainText("口径摘要");
 
-    const livermoreCollapse = page.locator('[data-testid="market-data-livermore-collapse"]');
-    await expect(livermoreCollapse).toBeVisible();
+    // 02 区三 Tab 与 Livermore 折叠区已退役（IA 阶段 2）：主列只留纯导航证据卡。
+    await expect(page.locator('[data-testid="market-data-macro-depth-card"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="market-data-livermore-collapse"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="market-data-livermore-panel"]')).toHaveCount(0);
+    await expect(page.getByTestId("market-data-rate-trend-panel")).toContainText("收益率走势");
+
+    const strategyEvidenceCard = page.getByTestId("market-data-strategy-evidence-card");
+    await strategyEvidenceCard.scrollIntoViewIfNeeded();
+    await expect(strategyEvidenceCard).toBeVisible();
+    await expect(page.getByTestId("market-data-strategy-evidence-link")).toHaveAttribute(
+      "href",
+      "/cross-asset#cross-asset-zone-linkage",
+    );
 
     const fxFormalCollapse = page.locator('[data-testid="market-data-fx-formal-collapse"]');
     await expect(fxFormalCollapse).toBeVisible();

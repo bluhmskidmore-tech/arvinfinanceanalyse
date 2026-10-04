@@ -1,3 +1,5 @@
+import Decimal from "decimal.js";
+
 import type {
   BalanceAnalysisBasisBreakdownRow,
   BalanceAnalysisDecisionItemRow,
@@ -16,6 +18,7 @@ import type {
   BalanceMovementPayload,
   ResultMeta,
 } from "../../../api/contracts";
+import { numericDecimalOrNull } from "../../../api/numeric";
 import { EM_DASH, buildStateSurfaces, type StateSurfaceItem } from "../../../pageModel";
 import { designTokens } from "../../../theme/designSystem";
 
@@ -44,6 +47,50 @@ export type BalanceChartMagnitude =
 
 function stripThousandsSeparators(raw: string): string {
   return raw.replace(/,/g, "").trim();
+}
+
+const BALANCE_YUAN_PER_YI = new Decimal("100000000");
+const BALANCE_WAN_PER_YI = new Decimal("10000");
+
+function exactBalanceDecimalFromDisplayInput(value: unknown): Decimal | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  return numericDecimalOrNull(stripThousandsSeparators(value));
+}
+
+function groupedRoundedBalanceDecimal(
+  value: Decimal,
+  minimumFractionDigits: number,
+  maximumFractionDigits: number,
+): string {
+  const fixed = value.toFixed(maximumFractionDigits, Decimal.ROUND_HALF_UP);
+  const normalized = value.isNegative() && !fixed.startsWith("-") ? `-${fixed}` : fixed;
+  const [rawInteger, rawFraction = ""] = normalized.split(".");
+  const sign = rawInteger.startsWith("-") ? "-" : "";
+  const integer = sign ? rawInteger.slice(1) : rawInteger;
+  const groupedInteger = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  let fraction = rawFraction;
+  while (fraction.length > minimumFractionDigits && fraction.endsWith("0")) {
+    fraction = fraction.slice(0, -1);
+  }
+  return fraction ? `${sign}${groupedInteger}.${fraction}` : `${sign}${groupedInteger}`;
+}
+
+function exactBalanceFixedDisplayOrNull(
+  value: unknown,
+  divisor?: Decimal,
+): string | null {
+  const exact = exactBalanceDecimalFromDisplayInput(value);
+  if (exact === null) {
+    return null;
+  }
+  return groupedRoundedBalanceDecimal(divisor ? exact.div(divisor) : exact, 2, 2);
+}
+
+function exactBalanceGroupedDisplayOrNull(value: unknown): string | null {
+  const exact = exactBalanceDecimalFromDisplayInput(value);
+  return exact === null ? null : groupedRoundedBalanceDecimal(exact, 0, 3);
 }
 
 /** Full-string numeric match so `parseFloat("12abc") === 12` cannot slip through as valid. */
@@ -247,6 +294,10 @@ export function formatBalanceWorkbookMetricTwoDecimals(value: unknown): string {
   if (value === null || value === undefined || value === "") {
     return EM_DASH;
   }
+  const exactDisplay = exactBalanceFixedDisplayOrNull(value);
+  if (exactDisplay !== null) {
+    return exactDisplay;
+  }
   const n = finiteNumberFromUnknown(value);
   if (n === null) {
     return String(value);
@@ -307,6 +358,10 @@ export function formatBalanceOverviewNumber(raw: string | number | null | undefi
   if (raw === null || raw === undefined || raw === "") {
     return EM_DASH;
   }
+  const exactDisplay = exactBalanceGroupedDisplayOrNull(raw);
+  if (exactDisplay !== null) {
+    return exactDisplay;
+  }
   const n = finiteNumberFromOverviewInput(raw);
   if (n === null) {
     return String(raw);
@@ -318,6 +373,10 @@ export function formatBalanceOverviewNumber(raw: string | number | null | undefi
 export function formatBalanceAmountToYiFromYuan(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") {
     return EM_DASH;
+  }
+  const exactDisplay = exactBalanceFixedDisplayOrNull(raw, BALANCE_YUAN_PER_YI);
+  if (exactDisplay !== null) {
+    return exactDisplay;
   }
   const n = finiteNumberFromOverviewInput(raw);
   if (n === null) {
@@ -333,6 +392,10 @@ export function formatBalanceAmountToYiFromYuan(raw: string | number | null | un
 export function formatBalanceAmountToYiFromWan(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") {
     return EM_DASH;
+  }
+  const exactDisplay = exactBalanceFixedDisplayOrNull(raw, BALANCE_WAN_PER_YI);
+  if (exactDisplay !== null) {
+    return exactDisplay;
   }
   const n = finiteNumberFromOverviewInput(raw);
   if (n === null) {
@@ -409,6 +472,10 @@ export function formatBalanceBusinessTextDisplay(value: unknown): string {
     .replace(/\bGap dropped to (.+?)(?:[.。])?$/i, "缺口降至 $1")
     .replace(/\bIssuance book totals (.+?)(?:[.。])?$/i, "发行类余额合计 $1")
     .replace(/\bTop rating bucket share reached\s+(\d+(?:\.\d+)?)(?:[.。])?$/i, (_match, rawShare: string) => {
+      const exactShare = exactBalanceDecimalFromDisplayInput(rawShare);
+      if (exactShare !== null) {
+        return `最高评级桶占比达到 ${groupedRoundedBalanceDecimal(exactShare.mul(100), 2, 2)}%`;
+      }
       const share = Number(rawShare);
       return Number.isFinite(share)
         ? `最高评级桶占比达到 ${(share * 100).toLocaleString("zh-CN", {
@@ -438,6 +505,10 @@ export function formatBalanceGridThousandsValue(value: unknown): string {
   }
   if (typeof value === "number") {
     return Number.isFinite(value) ? value.toLocaleString("zh-CN") : String(value);
+  }
+  const exactDisplay = exactBalanceGroupedDisplayOrNull(value);
+  if (exactDisplay !== null) {
+    return exactDisplay;
   }
   const text = stripThousandsSeparators(String(value));
   const n = strictFiniteNumberFromDisplayText(text);
@@ -706,14 +777,14 @@ function metaQualityLabel(value: ResultMeta["quality_flag"] | undefined): string
   if (value === "ok") return "正常";
   if (value === "warning") return "预警";
   if (value === "error") return "错误";
-  if (value === "stale") return "陈旧";
+  if (value === "stale") return "已过期";
   if (value === "missing") return "缺失";
   return "未提供";
 }
 
 function metaFallbackLabel(value: ResultMeta["fallback_mode"] | undefined): string {
-  if (value === "none") return "未降级";
-  if (value === "latest_snapshot") return "最新快照降级";
+  if (value === "none") return "未使用替代数据";
+  if (value === "latest_snapshot") return "使用最近可用日期的数据";
   return "未提供";
 }
 
@@ -744,15 +815,6 @@ function countDisplay(value: number | null | undefined): string {
   return Number.isFinite(value) ? value.toLocaleString("zh-CN") : String(value);
 }
 
-function buildReadModelAmountKpi(
-  key: string,
-  label: string,
-  raw: unknown,
-  detail: string,
-): BalanceHeadlineCard {
-  return buildBalanceHeadlineAmountCard({ key, label, raw, detail });
-}
-
 function buildReadModelCountKpi(
   key: string,
   label: string,
@@ -772,25 +834,12 @@ function buildReadModelCountKpi(
 
 function buildBalancePageKpis(input: BalanceAnalysisPageReadModelInput): BalanceHeadlineCard[] {
   const overview = input.overview;
+  const amountKpis = buildBalanceHeadlineCards({
+    overview,
+    positionScope: input.selectedPositionScope,
+  }).filter((card) => card.unit === "亿元");
   return [
-    buildReadModelAmountKpi(
-      "total-market-value",
-      "总市值",
-      overview?.total_market_value_amount,
-      "MTR-BAL-001 · 市值规模",
-    ),
-    buildReadModelAmountKpi(
-      "total-amortized-cost",
-      "总摊余成本",
-      overview?.total_amortized_cost_amount,
-      "MTR-BAL-002 · 摊余成本",
-    ),
-    buildReadModelAmountKpi(
-      "total-accrued-interest",
-      "总应计利息",
-      overview?.total_accrued_interest_amount,
-      "MTR-BAL-003 · 应计利息",
-    ),
+    ...amountKpis,
     buildReadModelCountKpi(
       "detail-row-count",
       "明细行数",
@@ -861,9 +910,9 @@ export function buildBalanceAnalysisPageReadModel(
   const hasQualityError = metas.some((meta) => meta.quality_flag === "error" || meta.quality_flag === "missing");
   const sourceBadge: BalanceAnalysisPageStatusBadge =
     requestedReportDate === EM_DASH
-      ? { key: "source-pending", label: "等待业务读面", tone: "neutral" }
+      ? { key: "source-pending", label: "等待业务数据", tone: "neutral" }
       : input.clientMode === "real"
-        ? { key: "source-real", label: "正式业务读面", tone: "success" }
+        ? { key: "source-real", label: "业务数据", tone: "success" }
         : { key: "source-mock", label: "本地演示数据", tone: "mock" };
   // Basis badge reports the basis the read models actually returned (overview first),
   // instead of asserting "formal" regardless of the payload.
@@ -890,10 +939,10 @@ export function buildBalanceAnalysisPageReadModel(
   ];
 
   if (hasFallback) {
-    statusBadges.push({ key: "fallback", label: "降级日期", tone: "warning" });
+    statusBadges.push({ key: "fallback", label: "使用替代日期", tone: "warning" });
   }
   if (hasStale) {
-    statusBadges.push({ key: "stale", label: "陈旧数据", tone: "warning" });
+    statusBadges.push({ key: "stale", label: "数据已过期", tone: "warning" });
   }
   if (hasQualityError) {
     statusBadges.push({ key: "quality-error", label: "质量错误", tone: "danger" });
@@ -913,49 +962,49 @@ export function buildBalanceAnalysisPageReadModel(
       key: "mock",
       variant: "mock",
       title: "当前为演示数据",
-      description: "页面可验证交互与布局，但不得把 mock 数值当成正式口径。",
+      description: "当前数值为演示数据，不可用于正式业务判断。",
     },
     {
       when: dateStatus === "matched",
       key: "date-matched",
       variant: "neutral",
       title: "报告日已匹配",
-      description: `请求报告日与后端返回报告日一致：${resolvedReportDate}。`,
+      description: `所选报告日与实际数据日期一致：${resolvedReportDate}。`,
     },
     {
       when: dateStatus === "mismatch",
       key: "date-mismatch",
       variant: "fallback-date",
       title: "报告日不一致",
-      description: `请求 ${requestedReportDate}，后端返回 ${resolvedReportDate}，不得静默当作同一报告日。`,
+      description: `所选报告日为 ${requestedReportDate}，实际数据日期为 ${resolvedReportDate}，请按实际数据日期使用。`,
     },
     {
       when: dateStatus === "pending" && requestedReportDate !== EM_DASH,
       key: "date-pending",
       variant: "neutral",
       title: "报告日待确认",
-      description: `请求 ${requestedReportDate}，总览读面尚未返回报告日，暂不能视为已核对。`,
+      description: `所选报告日为 ${requestedReportDate}，总览数据日期尚未确认，请核对后使用。`,
     },
     {
       when: hasStale,
       key: "stale",
       variant: "stale",
-      title: "存在陈旧数据标记",
-      description: "至少一个正式读面返回陈旧标记，需要在结论旁显式提醒。",
+      title: "部分数据已过期",
+      description: "部分数据已过期，请核对后使用。",
     },
     {
       when: hasFallback,
       key: "fallback",
       variant: "fallback-date",
-      title: "存在降级日期",
-      description: "至少一个正式读面使用最新快照降级，需查看证据账本确认数据日。",
+      title: "部分结果使用替代日期",
+      description: "部分结果使用最近可用日期的数据，请在数据依据中核对实际数据日期。",
     },
     {
       when: hasQualityError,
       key: "quality-error",
       variant: "error",
-      title: "存在质量错误",
-      description: "至少一个正式读面返回错误或缺失，不应渲染为正常结论。",
+      title: "部分数据错误或缺失",
+      description: "部分数据错误或缺失，相关结论暂不可用，请联系数据负责人核对。",
     },
   ]);
 
@@ -967,9 +1016,9 @@ export function buildBalanceAnalysisPageReadModel(
     sourceBadge,
     statusBadges,
     stateSurfaces,
-    conclusionTitle: "缺口与治理判断",
+    conclusionTitle: "缺口与待处理事项",
     conclusionDetail:
-      "先看正式资产、负债和治理动作；净头寸、期限缺口与解释项进入 governed workbook 与证据账本下钻，不在前端补算正式口径。",
+      "净头寸、期限缺口及相关说明可在工作簿和数据依据中核对，正式判断以已确认口径为准。",
     kpis: buildBalancePageKpis({
       ...input,
       overview: supportedOverview,
@@ -1719,7 +1768,7 @@ function buildWatchItems(rows: readonly StageDecisionRow[]): BalanceStageAlertIt
   });
   return items.length > 0
     ? items
-    : [{ level: "info", title: "当前报告日未返回治理事项", detail: "治理事项为空，未补造静态事项。" }];
+    : [{ level: "info", title: "当前报告日暂无待处理事项", detail: "请按所选报告日核对事项清单。" }];
 }
 
 function buildAlertItems(
@@ -1765,7 +1814,7 @@ function buildStageCalendarItems(
           event: "当前报告日未返回事件日历",
           amount: EM_DASH,
           level: "low",
-          note: "事件日历为空，未使用静态日历。",
+          note: "当前报告日暂无事件可展示。",
         },
       ];
 }
@@ -1788,9 +1837,9 @@ function buildStageRiskRows({
   const largestGapValue = finiteWanValue(largestGap?.full_scope_gap_amount ?? largestGap?.gap_amount);
   const topRisk = riskAlertRows[0];
   const topDecision = decisionRows[0];
-  const reportDate = overview?.report_date ?? workbook?.report_date ?? EM_DASH;
-  const scope = overview?.position_scope ?? workbook?.position_scope ?? EM_DASH;
-  const currency = overview?.currency_basis ?? workbook?.currency_basis ?? EM_DASH;
+  const reportDate = workbook?.report_date ?? overview?.report_date ?? EM_DASH;
+  const scope = workbook?.position_scope ?? overview?.position_scope ?? EM_DASH;
+  const currency = workbook?.currency_basis ?? overview?.currency_basis ?? EM_DASH;
 
   return [
     {
@@ -1830,8 +1879,8 @@ function buildStageRiskRows({
     },
     {
       dim: "数据口径",
-      current: String(scope),
-      stress: String(currency),
+      current: scope === EM_DASH ? EM_DASH : formatStagePositionScope(scope),
+      stress: formatStageCurrencyBasis(currency),
       scenario: reportDate,
       level: "low",
     },
@@ -1943,7 +1992,7 @@ function buildStageSummaryContent({
     !topIssuance &&
     gapValue === null
   ) {
-    return "当前报告日未返回可用于 stage 的真实 workbook 切片；页面不会继续展示静态演示数字。";
+    return "当前报告日暂无可用的工作簿数据，暂不能形成资产负债摘要。";
   }
 
   return [
@@ -1987,7 +2036,7 @@ function buildStageAllocationItems(
     { label: "债券资产", value: workbookCardValue(workbook, "bond_assets_excluding_issue"), color: designTokens.color.info[600], sign: 1 },
     { label: "同业资产", value: workbookCardValue(workbook, "interbank_assets"), color: designTokens.color.info[500], sign: 1 },
     { label: "发行类负债", value: workbookCardValue(workbook, "issuance_liabilities"), color: designTokens.color.danger[600], sign: -1 },
-    /* 同业负债的橙色无同值 token，保留字面量（tailwind orange-500）。 */
+    /* 同业负债的橙色无同值 token，保留字面量（对应色值 orange-500）。 */
     { label: "同业负债", value: workbookCardValue(workbook, "interbank_liabilities"), color: "#f97316", sign: -1 },
   ];
   return sourceRows
@@ -2053,9 +2102,9 @@ export function buildBalanceStageRealDataModel({
         );
   const allocationNet = allocationItemsWithFallback.reduce((total, row) => total + row.value, 0);
   const maturitySeries = buildStageMaturitySeries(workbook);
-  const reportDate = overview?.report_date ?? workbook?.report_date ?? "报告日未定";
-  const positionScope = overview?.position_scope ?? workbook?.position_scope ?? "all";
-  const currencyBasis = overview?.currency_basis ?? workbook?.currency_basis ?? "CNY";
+  const reportDate = workbook?.report_date ?? overview?.report_date ?? "报告日未定";
+  const positionScope = workbook?.position_scope ?? overview?.position_scope ?? "all";
+  const currencyBasis = workbook?.currency_basis ?? overview?.currency_basis ?? "CNY";
   const hasRealData =
     allocationItemsWithFallback.length > 0 ||
     maturitySeries.maturityCategories.length > 0 ||
@@ -2176,31 +2225,6 @@ export type BalanceCockpitViewModel = {
   judgementLine: string;
 };
 
-function buildGapCoveragePercent(
-  workbook: BalanceAnalysisWorkbookPayload | null | undefined,
-): number | null {
-  const rows = tableByKey(workbook, "maturity_gap")?.rows ?? [];
-  if (rows.length === 0) {
-    return null;
-  }
-  let covered = 0;
-  let total = 0;
-  for (const row of rows) {
-    const gap = finiteWanValue(row.full_scope_gap_amount ?? row.gap_amount);
-    if (gap === null) {
-      continue;
-    }
-    total += 1;
-    if (gap >= 0) {
-      covered += 1;
-    }
-  }
-  if (total === 0) {
-    return null;
-  }
-  return (covered / total) * 100;
-}
-
 export const BALANCE_COCKPIT_WORKBOOK_NAV: BalanceCockpitWorkbookNavItem[] = [
   { key: "bond_business_types", label: "债券种类", panelId: "balance-analysis-workbook-panel-bond_business_types" },
   { key: "rating_analysis", label: "评级分析", panelId: "balance-analysis-workbook-panel-rating_analysis" },
@@ -2216,6 +2240,7 @@ export function buildBalanceCockpitViewModel({
   overview,
   workbook,
   stageModel,
+  positionScope,
   decisionCount,
   topRiskTitle,
   topDecisionTitle,
@@ -2223,13 +2248,13 @@ export function buildBalanceCockpitViewModel({
   overview?: BalanceAnalysisOverviewPayload | null;
   workbook?: BalanceAnalysisWorkbookPayload | null;
   stageModel: BalanceStageRealDataModel;
+  positionScope: BalancePositionScope;
   decisionCount: number;
   topRiskTitle?: string | null;
   topDecisionTitle?: string | null;
 }): BalanceCockpitViewModel {
   const netPositionWan = finiteWanValue(workbookCardValue(workbook, "net_position"));
-  const gapCoverage = buildGapCoveragePercent(workbook);
-  const scaleKpis: BalanceCockpitKpiItem[] = [
+  const allScaleKpis: BalanceCockpitKpiItem[] = [
     {
       key: "asset-market",
       label: "资产市值",
@@ -2244,37 +2269,49 @@ export function buildBalanceCockpitViewModel({
     },
     {
       key: "net-position",
-      label: "净头寸",
+      label: "全口径余额净头寸",
       value: netPositionWan === null ? EM_DASH : formatWanAsYiPlain(netPositionWan),
       unit: "亿",
     },
     {
-      key: "total-market",
-      label: "总市值",
-      value: formatBalanceAmountToYiFromYuan(overview?.total_market_value_amount),
+      key: "asset-amortized-cost",
+      label: "资产摊余成本",
+      value: formatBalanceAmountToYiFromYuan(overview?.asset_total_amortized_cost_amount),
       unit: "亿",
     },
     {
-      key: "amortized-cost",
-      label: "摊余成本",
-      value: formatBalanceAmountToYiFromYuan(overview?.total_amortized_cost_amount),
+      key: "liability-amortized-cost",
+      label: "负债摊余成本",
+      value: formatBalanceAmountToYiFromYuan(overview?.liability_total_amortized_cost_amount),
       unit: "亿",
     },
     {
-      key: "accrued-interest",
-      label: "应计利息",
-      value: formatBalanceAmountToYiFromYuan(overview?.total_accrued_interest_amount),
+      key: "asset-accrued-interest",
+      label: "资产应计利息",
+      value: formatBalanceAmountToYiFromYuan(overview?.asset_total_accrued_interest_amount),
       unit: "亿",
     },
     {
-      key: "gap-coverage",
-      label: "缺口覆盖率",
-      value: gapCoverage === null ? EM_DASH : gapCoverage.toFixed(1),
-      unit: gapCoverage === null ? "" : "%",
-      variant: "donut",
-      donutPct: gapCoverage ?? 0,
+      key: "liability-accrued-interest",
+      label: "负债应计利息",
+      value: formatBalanceAmountToYiFromYuan(overview?.liability_total_accrued_interest_amount),
+      unit: "亿",
     },
   ];
+  const scopedScaleKpiKeys =
+    positionScope === "asset"
+      ? new Set(["asset-market", "net-position", "asset-amortized-cost", "asset-accrued-interest"])
+      : positionScope === "liability"
+        ? new Set([
+            "liability-market",
+            "net-position",
+            "liability-amortized-cost",
+            "liability-accrued-interest",
+          ])
+        : null;
+  const scaleKpis = scopedScaleKpiKeys
+    ? allScaleKpis.filter((item) => scopedScaleKpiKeys.has(item.key))
+    : allScaleKpis;
 
   const opsKpis: BalanceCockpitKpiItem[] = [
     {

@@ -25,6 +25,13 @@ EXECUTIVE_RELEASE_SAMPLE_IDS = [
     "GS-EXEC-SUMMARY-A",
 ]
 RELEASE_SUITE_TESTS = [
+    "tests/test_backend_release_suite.py",
+    "tests/test_caliber_gate_mapping.py",
+    "tests/test_system_online_read_boundary.py",
+    "tests/test_system_online_publication_concurrency.py",
+    "tests/test_system_read_publication_process_crash.py",
+    "tests/test_campisi_formal_bridge_coverage.py",
+    "tests/test_product_category_read_boundary.py",
     "tests/test_settings_contract.py",
     "tests/test_health_endpoints.py",
     "tests/test_positions_api_contract.py",
@@ -51,7 +58,19 @@ RELEASE_SUITE_TESTS = [
     "tests/test_ci_skip_registry.py",
     "tests/test_api_contract_baseline_gate.py",
     "tests/test_api_response_model_field_preservation.py",
+    "tests/test_release_approval_registry.py",
+    "tests/test_release_approval_evidence_gate.py",
+    "tests/test_release_control_golden_blocker_review.py",
+    "tests/test_wp7_release_rehearsal.py",
+    "tests/test_wp7_fixed_income_pilot_preflight.py",
     "tests/test_no_finance_logic_in_frontend.py",
+    # 分层边界守卫（api/service 不得含金融公式 token、不得直连 DuckDB 写路径）；
+    # 2026-09-02 系统审计 A1/E1 纳入 PR 门禁。tests/test_duckdb_write_boundary.py 仅是
+    # 从 test_service_storage_boundaries.py 重新导出 4 个同名用例的别名，纳入会在同一次
+    # pytest 调用里重复收集执行，故不列入。
+    "tests/test_no_finance_logic_in_api.py",
+    "tests/test_api_route_boundaries.py",
+    "tests/test_service_storage_boundaries.py",
     # caliber 口径红线（无条件兜底；与 scripts/check_caliber_gate.py 路径触发门禁互为双保险）
     "tests/test_caliber_rule_fx_mid_conversion.py",
     "tests/test_caliber_rule_hat_mapping.py",
@@ -68,6 +87,7 @@ def _release_suite_env() -> dict[str, str]:
     return {
         "MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS": "1",
         "MOSS_SKIP_POSTGRES_MIGRATIONS": "1",
+        "MOSS_SKIP_STORAGE_READINESS_CHECKS": "1",
         "MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST": "1",
     }
 
@@ -187,7 +207,10 @@ def run_release_suite(
         env.update(_release_suite_env())
         env["MOSS_GOVERNANCE_PATH"] = str(isolated_root / "governance")
         env["MOSS_DUCKDB_PATH"] = str(isolated_root / "moss.duckdb")
-        completed = subprocess.run(
+        # 两个阶段都要跑完再汇总：第一阶段失败即返回会让 MCP 契约阶段的结果在同一次
+        # 门禁里不可见，修一处红再跑一遍才能看到另一处。退出码取第一个非零阶段的值，
+        # 与此前"哪个阶段失败就返回它的 returncode"的语义保持一致。
+        bounded_completed = subprocess.run(
             [
                 sys.executable,
                 *_pytest_args(include_excluded_surfaces=include_excluded_surfaces),
@@ -196,9 +219,6 @@ def run_release_suite(
             env=env,
             check=False,
         )
-        if completed.returncode != 0:
-            return int(completed.returncode)
-
         governance_mcp_completed = subprocess.run(
             [
                 sys.executable,
@@ -211,7 +231,18 @@ def run_release_suite(
             env=env,
             check=False,
         )
-        return int(governance_mcp_completed.returncode)
+
+    phase_results = {
+        RELEASE_SUITE_NAME: int(bounded_completed.returncode),
+        GOVERNANCE_MCP_SUITE_NAME: int(governance_mcp_completed.returncode),
+    }
+    exit_code = next((code for code in phase_results.values() if code != 0), 0)
+    print(
+        "release suite phases: "
+        + " ".join(f"{name}={code}" for name, code in phase_results.items())
+        + f" -> exit {exit_code}"
+    )
+    return exit_code
 
 
 def main(argv: list[str] | None = None) -> int:

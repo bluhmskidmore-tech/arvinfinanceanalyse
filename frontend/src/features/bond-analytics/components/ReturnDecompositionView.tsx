@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Collapse } from "antd";
 import { useApiClient } from "../../../api/client";
 import type { ResultMeta } from "../../../api/contracts";
@@ -23,7 +23,7 @@ import {
   withNumericColumns,
 } from "./BondAnalyticsDetailPrimitives";
 import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
-import { SectionLead } from "./SectionLead";
+import { SectionHead } from "../../../components/layout";
 import { ReturnDecompositionWaterfallChart } from "./ReturnDecompositionWaterfallChart";
 
 /* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌。正效应=绿、负效应=红；
@@ -264,11 +264,12 @@ export function ReturnDecompositionView({
 
   return (
     <div className={detailStyles.view}>
-      <SectionLead
-        eyebrow="收益分解"
+      <SectionHead
+        category="收益分解"
         title="收益分解概览"
-        description="读取治理后的收益分解结果，展示经济、会计和 OCI 影响，不在前端重复计算。"
+        note="查看经济收益、会计损益及 OCI 变动。"
         testId="return-decomposition-shell-lead"
+        numbered={false}
       />
       <Card size="small" title="报告期间" data-testid="return-decomposition-period">
         <div style={{ fontSize: designTokens.fontSize[13], color: "var(--dh-api-soft)" }}>{periodLabel}</div>
@@ -289,7 +290,7 @@ export function ReturnDecompositionView({
         <Alert
           type="warning"
           showIcon
-          message="证据链降级"
+          message="数据使用限制"
           description={metaIssues.join(" | ")}
           data-testid="return-decomposition-result-meta-alert"
         />
@@ -324,11 +325,12 @@ export function ReturnDecompositionView({
         </Col>
       </Row>
 
-      <SectionLead
-        eyebrow="效应"
+      <SectionHead
+        category="效应"
         title="收益效应瀑布"
-        description="按后端结果展示票息、骑乘、利率、利差、外汇、凸性和交易效应。"
+        note="查看票息、骑乘、利率、利差、外汇、凸性和交易效应。"
         testId="return-decomposition-effects-lead"
+        numbered={false}
       />
       {missingEffects.length > 0 ? (
         <div
@@ -356,7 +358,7 @@ export function ReturnDecompositionView({
         </div>
         {waterfallOption ? (
           <div className={detailStyles.chartStage}>
-            <ReturnDecompositionWaterfallChart option={waterfallOption} height={380} />
+            <ReturnDecompositionWaterfallChart option={waterfallOption} height={280} />
           </div>
         ) : (
           <DetailEmptyNote testId="return-decomposition-chart-empty">
@@ -412,11 +414,12 @@ export function ReturnDecompositionView({
           ]}
         />
       )}
-      <SectionLead
-        eyebrow="对账"
+      <SectionHead
+        category="对账"
         title="收益分解对账"
-        description="保持对账合计与残差遵循后端语义，不在前端做调整。"
+        note="核对收益分解合计与实际损益，差额列为残差。"
         testId="return-decomposition-recon-lead"
+        numbered={false}
       />
       <Card title="损益对账" size="small">
         <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>

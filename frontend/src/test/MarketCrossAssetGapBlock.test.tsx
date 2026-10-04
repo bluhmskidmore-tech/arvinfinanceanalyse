@@ -26,6 +26,8 @@ const crisisExplain: MarketCrisisExplainView = {
   componentCount: 5,
   scoreDelta: null,
   percentileDelta: null,
+  trend: null,
+  riskGate: null,
   components: [],
   scoreHistory: [
     { date: "2026-04-03", crisisScore: -0.63, percentile: 34.0 },

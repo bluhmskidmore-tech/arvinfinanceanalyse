@@ -453,6 +453,23 @@ def append_choice_stock_refresh_completion(
     return append_manifest
 
 
+def publish_choice_stock_observation_manifest(
+    *,
+    governance_repo: GovernanceRepository,
+    observation_manifest: Mapping[str, object],
+) -> bool:
+    """Publish the committed base observation before dependent Livermore refreshes run."""
+    normalized_manifest = normalize_choice_stock_observation_manifest(
+        observation_manifest
+    )
+    append_manifest, _selected = _append_with_observation_manifest_lock(
+        governance_repo=governance_repo,
+        entries=(),
+        observation_manifest=normalized_manifest,
+    )
+    return append_manifest
+
+
 @contextmanager
 def choice_stock_observation_manifest_guard(
     *,

@@ -9,10 +9,12 @@ where ST names come from ``choice_stock_universe``.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
 import duckdb
+import pytest
 
 from backend.app.core_finance.market_breadth import (
     LIMIT_RATIO_BEIJING,
@@ -257,6 +259,114 @@ def test_legacy_numeric_flag_payload_is_unclassified() -> None:
         )
         == LIMIT_TOUCH_UNCLASSIFIED
     )
+
+
+def _verified_numeric_observation(**changes: object) -> LimitUpObservation:
+    return replace(
+        LimitUpObservation(
+            stock_code="600001.SH",
+            limit_flag="11.00",
+            pctchange=10.0,
+            close_value=11.0,
+            high_value=11.0,
+            numeric_up_limit=11.0,
+            requires_numeric_limit=True,
+            numeric_limit_source="tushare_stk_limit",
+        ),
+        **changes,
+    )
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_livermore
+class TestVerifiedNumericLimitRegression:
+    @pytest.mark.parametrize(
+        ("high", "close", "expected"),
+        [
+            (11.0, 11.0, LIMIT_TOUCH_SEALED),
+            (11.0, 10.6, LIMIT_TOUCH_BROKEN),
+            (10.8, 10.4, LIMIT_TOUCH_NO_TOUCH),
+            (11.0049, 11.0049, LIMIT_TOUCH_SEALED),
+            (10.9951, 10.9951, LIMIT_TOUCH_SEALED),
+            (10.9949, 10.9949, LIMIT_TOUCH_NO_TOUCH),
+            (11.0, 10.9949, LIMIT_TOUCH_BROKEN),
+            (11.0051, 11.0, LIMIT_TOUCH_OUT_OF_BAND),
+            (11.02, 11.01, LIMIT_TOUCH_OUT_OF_BAND),
+        ],
+    )
+    def test_real_price_and_half_tick_tolerance(
+        self, high: float, close: float, expected: str
+    ) -> None:
+        assert classify_limit_touch(
+            _verified_numeric_observation(high_value=high, close_value=close)
+        ) == expected
+
+    @pytest.mark.parametrize("price", [None, 0.0, -11.0, float("nan"), float("inf")])
+    def test_missing_or_invalid_limit_does_not_fall_back_to_flag(self, price: float | None) -> None:
+        assert classify_limit_touch(
+            _verified_numeric_observation(numeric_up_limit=price, limit_flag="是")
+        ) == LIMIT_TOUCH_UNCLASSIFIED
+
+    @pytest.mark.parametrize("source", [None, "unknown_vendor", "choice_highlimit_flag"])
+    def test_numeric_price_needs_verified_source(self, source: str | None) -> None:
+        assert classify_limit_touch(
+            _verified_numeric_observation(numeric_limit_source=source)
+        ) == LIMIT_TOUCH_UNCLASSIFIED
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("high_value", None),
+            ("high_value", 0.0),
+            ("high_value", -1.0),
+            ("high_value", float("nan")),
+            ("high_value", float("inf")),
+            ("close_value", None),
+            ("close_value", 0.0),
+            ("close_value", -1.0),
+            ("close_value", float("nan")),
+            ("close_value", float("inf")),
+        ],
+    )
+    def test_unusable_ohlc_is_unclassified(self, field: str, value: float | None) -> None:
+        assert classify_limit_touch(
+            _verified_numeric_observation(**{field: value})
+        ) == LIMIT_TOUCH_UNCLASSIFIED
+
+    def test_close_above_high_is_unclassified(self) -> None:
+        assert classify_limit_touch(
+            _verified_numeric_observation(high_value=10.8, close_value=11.0)
+        ) == LIMIT_TOUCH_UNCLASSIFIED
+
+    def test_real_limit_does_not_use_st_heuristic_or_require_pctchange(self) -> None:
+        observation = _verified_numeric_observation(
+            stock_name="*ST尔雅", is_st=True, pctchange=None,
+            high_value=11.0, close_value=10.6,
+        )
+        assert classify_limit_touch(observation) == LIMIT_TOUCH_BROKEN
+
+    def test_numeric_price_alone_cannot_activate_the_numeric_path(self) -> None:
+        assert classify_limit_touch(
+            _verified_numeric_observation(requires_numeric_limit=False)
+        ) == LIMIT_TOUCH_UNCLASSIFIED
+
+    def test_numeric_only_summary_is_evaluable_and_preserves_three_state_quality(self) -> None:
+        summary = summarize_limit_up_day([
+            _verified_numeric_observation(),
+            _verified_numeric_observation(close_value=10.6),
+            _verified_numeric_observation(high_value=10.8, close_value=10.4),
+        ])
+        assert summary.evaluable is True
+        assert (summary.sealed_count, summary.broken_count, summary.no_touch_count) == (1, 1, 1)
+        assert summary.unclassified_count == 0
+        assert summary.sealed_without_derived_touch_count == 0
+        assert _quality(summary.sealed_count, summary.broken_count) is False
+
+        quiet = summarize_limit_up_day([
+            _verified_numeric_observation(high_value=10.8, close_value=10.4),
+        ])
+        assert quiet.evaluable is True
+        assert _quality(quiet.sealed_count, quiet.broken_count) is None
 
 
 def test_row_outside_its_board_band_is_reported_not_counted_as_broken() -> None:

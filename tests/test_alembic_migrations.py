@@ -13,6 +13,8 @@ from sqlalchemy import create_engine, inspect
 
 from backend.app.models.base import Base
 from backend.app.models.governance import (  # noqa: F401
+    AgentAudit,
+    AgentPrompt,
     CacheBuildRun,
     CacheManifest,
     RuleVersionRegistry,
@@ -31,6 +33,8 @@ _EXPECTED_TABLES = frozenset(
         "job_run_state",
         "cache_build_run",
         "cache_manifest",
+        "agent_audit",
+        "agent_prompt",
         "source_version_registry",
         "rule_version_registry",
         "user_role_scope",
@@ -112,7 +116,7 @@ def test_upgrade_postgres_schema_head_passes_resolved_dev_cluster_dsn_to_subproc
         captured["dsn"] = env.get("MOSS_POSTGRES_DSN")
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(module, "skip_auto_storage_migrations", lambda: False)
+    monkeypatch.setattr(module, "skip_postgres_migrations", lambda: False)
     monkeypatch.setattr(module.subprocess, "run", _fake_run)
     monkeypatch.setattr(module.Path, "resolve", lambda _self: app_root / "postgres_migrations.py")
     monkeypatch.setenv("MOSS_POSTGRES_DSN", "")
@@ -156,7 +160,7 @@ def test_upgrade_postgres_schema_head_retries_transient_connection_timeout(
     )
     captured_waits: list[tuple[str, Path]] = []
 
-    monkeypatch.setattr(module, "skip_auto_storage_migrations", lambda: False)
+    monkeypatch.setattr(module, "skip_postgres_migrations", lambda: False)
     monkeypatch.setattr(module.Path, "resolve", lambda _self: app_root / "postgres_migrations.py")
     monkeypatch.setattr(
         module.subprocess,

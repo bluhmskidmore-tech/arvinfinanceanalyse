@@ -21,14 +21,21 @@ from backend.app.agent.schemas.agent_workspace import (
     AgentProjectListResponse,
     AgentProjectUpdateRequest,
 )
+from backend.app.governance.agent_audit import AgentAuditPayload, append_agent_audit
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.repositories.agent_workspace_repo import AgentWorkspaceRepository
+from backend.app.repositories.governance_repo import GovernanceRepository
 from pydantic import ValidationError
 
 AGENT_WORKSPACE_LIFECYCLE_LOCK = LockDefinition(
     key="lock:agent-workspace:lifecycle",
     ttl_seconds=30,
 )
+AGENT_WORKSPACE_PROJECT_CREATED_KIND = "agent.workspace.project_created"
+AGENT_WORKSPACE_PROJECT_UPDATED_KIND = "agent.workspace.project_updated"
+AGENT_WORKSPACE_PROJECT_ARCHIVED_KIND = "agent.workspace.project_archived"
+AGENT_WORKSPACE_PROJECT_RESTORED_KIND = "agent.workspace.project_restored"
+AGENT_WORKSPACE_CONVERSATION_CREATED_KIND = "agent.workspace.conversation_created"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -112,6 +119,12 @@ def create_project(
         updated_at=now,
     )
     _repository(settings).append_project(project.model_dump(mode="json"))
+    _append_workspace_audit(
+        settings=settings,
+        owner_user_id=owner,
+        result_kind=AGENT_WORKSPACE_PROJECT_CREATED_KIND,
+        identifiers={"project_id": project.project_id},
+    )
     return project
 
 
@@ -200,6 +213,19 @@ def update_project(
         ):
             return project
         _repository(settings).append_project(updated.model_dump(mode="json"))
+        _append_workspace_audit(
+            settings=settings,
+            owner_user_id=updated.owner_user_id,
+            result_kind=_project_update_result_kind(
+                previous=project,
+                updated=updated,
+            ),
+            identifiers={"project_id": updated.project_id},
+            changed_fields=_project_changed_fields(
+                previous=project,
+                updated=updated,
+            ),
+        )
         return updated
 
 
@@ -231,6 +257,15 @@ def create_conversation(
         )
         _repository(settings).append_conversation(
             conversation.model_dump(mode="json")
+        )
+        _append_workspace_audit(
+            settings=settings,
+            owner_user_id=conversation.owner_user_id,
+            result_kind=AGENT_WORKSPACE_CONVERSATION_CREATED_KIND,
+            identifiers={
+                "project_id": conversation.project_id,
+                "conversation_id": conversation.conversation_id,
+            },
         )
         return conversation
 
@@ -471,6 +506,71 @@ def _repository(settings: Any) -> AgentWorkspaceRepository:
     return AgentWorkspaceRepository(
         governance_dir=getattr(settings, "governance_path", "data/governance")
     )
+
+
+def _append_workspace_audit(
+    *,
+    settings: Any,
+    owner_user_id: str,
+    result_kind: str,
+    identifiers: dict[str, str],
+    changed_fields: list[str] | None = None,
+) -> None:
+    """Record one Workspace lifecycle write through the shared audit entrypoint.
+
+    Only identifiers and changed field names are stored: project titles,
+    conversation titles and message bodies are user content and must not be
+    copied into the audit stream.
+    """
+    trace_id = f"tr_agent_workspace_{uuid4().hex[:12]}"
+    payload = AgentAuditPayload(
+        user_id=owner_user_id,
+        # 稳定动作标识，不含用户文本。
+        query_text=result_kind,
+        tools_used=["agent_workspace", f"result_kind:{result_kind}"],
+        tables_used=[],
+        filters_applied={},
+        trace_id=trace_id,
+        result_meta={
+            "trace_id": trace_id,
+            "result_kind": result_kind,
+            "formal_use_allowed": False,
+            "quality_flag": "ok",
+            "scenario_flag": False,
+            **identifiers,
+            **({"changed_fields": changed_fields} if changed_fields else {}),
+        },
+    )
+    append_agent_audit(
+        GovernanceRepository(
+            base_dir=getattr(settings, "governance_path", "data/governance")
+        ),
+        payload,
+    )
+
+
+def _project_update_result_kind(
+    *,
+    previous: AgentProject,
+    updated: AgentProject,
+) -> str:
+    if previous.archived_at is None and updated.archived_at is not None:
+        return AGENT_WORKSPACE_PROJECT_ARCHIVED_KIND
+    if previous.archived_at is not None and updated.archived_at is None:
+        return AGENT_WORKSPACE_PROJECT_RESTORED_KIND
+    return AGENT_WORKSPACE_PROJECT_UPDATED_KIND
+
+
+def _project_changed_fields(
+    *,
+    previous: AgentProject,
+    updated: AgentProject,
+) -> list[str]:
+    return [
+        field
+        for field in ("name", "archived_at")
+        if getattr(previous, field) != getattr(updated, field)
+    ]
 
 
 def _required_owner(owner_user_id: str) -> str:

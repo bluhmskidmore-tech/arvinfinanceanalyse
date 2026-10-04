@@ -6,6 +6,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -50,8 +51,43 @@ def _materialize_risk_tensor(duckdb_path, governance_dir):
     return task_mod
 
 
+def _ensure_empty_tyw_liability_fact(duckdb_path) -> None:
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists fact_formal_tyw_balance_daily (
+              report_date varchar,
+              position_id varchar,
+              product_type varchar,
+              position_side varchar,
+              counterparty_name varchar,
+              account_type varchar,
+              special_account_type varchar,
+              core_customer_type varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              currency_code varchar,
+              principal_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              funding_cost_rate decimal(18, 8),
+              maturity_date varchar,
+              source_version varchar,
+              rule_version varchar,
+              ingest_batch_id varchar,
+              trace_id varchar
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+
 def _configure_and_materialize_risk_tensor(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _ensure_empty_tyw_liability_fact(duckdb_path)
     risk_task_mod = _materialize_risk_tensor(duckdb_path, governance_dir)
     return duckdb_path, governance_dir, risk_task_mod
 
@@ -62,6 +98,7 @@ def _configure_and_materialize_clean_risk_tensor(tmp_path, monkeypatch):
         monkeypatch,
         interest_mode_override="固定年付息",
     )
+    _ensure_empty_tyw_liability_fact(duckdb_path)
     risk_task_mod = _materialize_risk_tensor(duckdb_path, governance_dir)
     return duckdb_path, governance_dir, risk_task_mod
 
@@ -74,6 +111,7 @@ def _configure_and_materialize_degraded_snapshot(tmp_path, monkeypatch):
     get_settings.cache_clear()
     _seed_bond_snapshot_rows(str(duckdb_path))
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+    _ensure_empty_tyw_liability_fact(duckdb_path)
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -112,7 +150,12 @@ def _configure_and_materialize_degraded_snapshot(tmp_path, monkeypatch):
     return duckdb_path, governance_dir, bond_task_mod
 
 
-def _configure_and_materialize_risk_tensor_with_tyw_liability(tmp_path, monkeypatch):
+def _configure_and_materialize_risk_tensor_with_tyw_liability(
+    tmp_path,
+    monkeypatch,
+    *,
+    liability_maturity_date: str | None = "2026-04-10",
+):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
@@ -173,7 +216,7 @@ def _configure_and_materialize_risk_tensor_with_tyw_liability(tmp_path, monkeypa
                 "4",
                 "0",
                 "0",
-                "2026-04-10",
+                liability_maturity_date,
                 "sv_tyw_liab_1",
                 "rv_balance_analysis_formal_materialize_v1",
                 "ib-liab-1",
@@ -194,6 +237,8 @@ def _replace_test_risk_tensor_row(
     report_date: str,
     source_version: str,
     upstream_source_version: str,
+    upstream_rule_version: str = FIXED_INCOME_VERSION_SET.bond_analytics.rule_version,
+    upstream_cache_version: str = FIXED_INCOME_VERSION_SET.bond_analytics.cache_version,
     regulatory_dv01: str = "0.00000000",
     krd_3y: str = "5.00000000",
     krd_10y: str = "0.30000000",
@@ -240,12 +285,12 @@ def _replace_test_risk_tensor_row(
             tensor=tensor,
             source_version=source_version,
             upstream_source_version=upstream_source_version,
-            upstream_rule_version="rv_bond_snap_test",
-            upstream_cache_version="cv_bond_snap_test",
+            upstream_rule_version=upstream_rule_version,
+            upstream_cache_version=upstream_cache_version,
             liability_source_version="",
             liability_rule_version="",
-            rule_version="rv_risk_tensor_formal_materialize_v6",
-            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6",
+            rule_version=FIXED_INCOME_VERSION_SET.risk_tensor.rule_version,
+            cache_version=FIXED_INCOME_VERSION_SET.risk_tensor.cache_version,
             trace_id=f"trace_risk_tensor_{report_date.replace('-', '')}",
         )
 
@@ -257,8 +302,8 @@ def _append_bond_analytics_terminal(
     status: str,
     run_id: str,
     source_version: str,
-    rule_version: str = "rv_bond_analytics_formal_materialize_v2",
-    cache_version: str = "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
+    rule_version: str = FIXED_INCOME_VERSION_SET.bond_analytics.rule_version,
+    cache_version: str = FIXED_INCOME_VERSION_SET.bond_analytics.cache_version,
 ) -> None:
     GovernanceRepository(base_dir=governance_dir).append(
         CACHE_BUILD_RUN_STREAM,
@@ -294,8 +339,8 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert payload["result_meta"]["scenario_flag"] is False
     assert payload["result_meta"]["result_kind"] == "risk.tensor"
     assert payload["result_meta"]["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
-    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
-    assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
+    assert payload["result_meta"]["rule_version"] == FIXED_INCOME_VERSION_SET.risk_tensor.rule_version
+    assert payload["result_meta"]["cache_version"] == FIXED_INCOME_VERSION_SET.risk_tensor.cache_version
     assert payload["result_meta"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
     assert payload["result_meta"]["evidence_rows"] == 1
     assert payload["result_meta"]["quality_flag"] == "ok"
@@ -318,6 +363,7 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert result["duration_excluded_count"] == materialized_row["duration_excluded_count"]
     for field_name in (
         "missing_maturity_market_value",
+        "missing_liability_maturity_principal_amount",
         "floating_rate_proxy_market_value",
         "payment_frequency_fallback_market_value",
         "bullet_value_date_fallback_market_value",
@@ -327,6 +373,7 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
         assert result[field_name]["unit"] == "yuan"
     for field_name in (
         "missing_maturity_count",
+        "missing_liability_maturity_count",
         "floating_rate_proxy_count",
         "payment_frequency_fallback_count",
         "bullet_value_date_fallback_count",
@@ -335,6 +382,8 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert result["projection_quality_status"] == "available"
     assert result["payment_frequency_fallback_market_value"]["raw"] == 0.0
     assert result["payment_frequency_fallback_count"] == 0
+    assert result["missing_liability_maturity_principal_amount"]["raw"] == 0.0
+    assert result["missing_liability_maturity_count"] == 0
     assert result["report_date"] == REPORT_DATE
     assert result["bond_count"] == 3
     assert result["quality_flag"] == "ok"
@@ -374,6 +423,42 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     get_settings.cache_clear()
 
 
+def test_risk_tensor_service_discloses_missing_liability_maturity_principal(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = (
+        _configure_and_materialize_risk_tensor_with_tyw_liability(
+            tmp_path,
+            monkeypatch,
+            liability_maturity_date=None,
+        )
+    )
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+
+    payload = service_mod.risk_tensor_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date=REPORT_DATE,
+    )
+
+    result = payload["result"]
+    assert result["missing_liability_maturity_principal_amount"]["unit"] == "yuan"
+    assert result["missing_liability_maturity_principal_amount"]["raw"] == 4.0
+    assert result["missing_liability_maturity_count"] == 1
+    assert result["liability_cashflow_30d"]["raw"] == 0.0
+    assert result["liquidity_gap_30d"]["raw"] == result["asset_cashflow_30d"]["raw"]
+    assert any(
+        "Excluded 1 liability rows" in warning
+        and "principal_amount=4.00000000 CNY yuan" in warning
+        for warning in result["warnings"]
+    )
+    get_settings.cache_clear()
+
+
 def test_risk_tensor_service_preserves_null_projection_quality_for_current_v5_row(
     tmp_path,
     monkeypatch,
@@ -385,6 +470,8 @@ def test_risk_tensor_service_preserves_null_projection_quality_for_current_v5_ro
     projection_quality_fields = (
         "missing_maturity_market_value",
         "missing_maturity_count",
+        "missing_liability_maturity_principal_amount",
+        "missing_liability_maturity_count",
         "floating_rate_proxy_market_value",
         "floating_rate_proxy_count",
         "payment_frequency_fallback_market_value",
@@ -419,6 +506,53 @@ def test_risk_tensor_service_preserves_null_projection_quality_for_current_v5_ro
     assert result["projection_quality_status"] == "unavailable_legacy"
     assert all(result[field_name] is None for field_name in projection_quality_fields)
     assert any("zero must not be inferred" in warning for warning in result["warnings"])
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_service_preserves_error_for_legacy_maturity_breakdown(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(
+        tmp_path,
+        monkeypatch,
+    )
+    breakdown_fields = (
+        "fund_no_maturity_market_value",
+        "fund_no_maturity_count",
+        "unknown_maturity_market_value",
+        "unknown_maturity_count",
+        "matured_outstanding_market_value",
+        "matured_outstanding_count",
+        "nonpositive_duration_market_value",
+        "nonpositive_duration_count",
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "update fact_formal_risk_tensor_daily set quality_flag = 'error', "
+            + ", ".join(f"{field_name} = null" for field_name in breakdown_fields)
+            + " where report_date = ?",
+            [REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    payload = service_mod.risk_tensor_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date=REPORT_DATE,
+    )
+
+    result = payload["result"]
+    assert result["maturity_breakdown_status"] == "unavailable_legacy"
+    assert all(result[field_name] is None for field_name in breakdown_fields)
+    assert result["quality_flag"] == "error"
+    assert payload["result_meta"]["quality_flag"] == "error"
     get_settings.cache_clear()
 
 
@@ -480,6 +614,13 @@ def test_risk_tensor_history_envelope_does_not_mix_rule_versions(tmp_path, monke
             source_version=f"sv_{prior_date}",
             upstream_source_version=f"sv_upstream_{prior_date}",
         )
+    _append_bond_analytics_terminal(
+        governance_dir,
+        report_date="2026-01-31",
+        status="completed",
+        run_id="bond-history-20260131",
+        source_version="sv_upstream_2026-01-31",
+    )
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -501,9 +642,85 @@ def test_risk_tensor_history_envelope_does_not_mix_rule_versions(tmp_path, monke
         periods=24,
     )
 
-    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
+    assert payload["result_meta"]["rule_version"] == FIXED_INCOME_VERSION_SET.risk_tensor.rule_version
     assert [point["report_date"] for point in payload["result"]["points"]] == ["2026-01-31", REPORT_DATE]
     assert payload["result_meta"]["evidence_rows"] == 2
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_history_fails_closed_when_a_historical_point_lacks_upstream_lineage(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(
+        tmp_path,
+        monkeypatch,
+    )
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    core_mod = load_module(
+        "backend.app.core_finance.risk_tensor",
+        "backend/app/core_finance/risk_tensor.py",
+    )
+    historical_date = "2026-01-31"
+    _replace_test_risk_tensor_row(
+        repo=service_mod.RiskTensorRepository(str(duckdb_path)),
+        core_mod=core_mod,
+        report_date=historical_date,
+        source_version="sv_risk_tensor__sv_history_bond",
+        upstream_source_version="sv_history_bond",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=f"unverifiable point for report_date={historical_date}",
+    ):
+        service_mod.risk_tensor_history_envelope(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            report_date=REPORT_DATE,
+            periods=24,
+        )
+
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("legacy_version", ["v7", "v8"])
+def test_risk_tensor_v7_dates_are_blocked_while_v8_remains_readable(tmp_path, monkeypatch, legacy_version):
+    """Prior versions stay blocked after the configured-current rule-version upgrade."""
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_clean_risk_tensor(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    legacy_date = "2026-02-28"
+    with duckdb.connect(str(duckdb_path)) as conn:
+        conn.execute(
+            """insert into fact_formal_risk_tensor_daily
+            select * replace (? as report_date, ? as rule_version, ? as cache_version)
+            from fact_formal_risk_tensor_daily where report_date = ?""",
+            [legacy_date, f"rv_risk_tensor_formal_materialize_{legacy_version}",
+             f"cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_{legacy_version}", REPORT_DATE],
+        )
+    current = service_mod.risk_tensor_envelope(
+        duckdb_path=str(duckdb_path), governance_dir=str(governance_dir), report_date=REPORT_DATE,
+    )
+    assert current["result_meta"]["rule_version"] == FIXED_INCOME_VERSION_SET.risk_tensor.rule_version
+    assert current["result_meta"]["formal_use_allowed"] is True
+    with pytest.raises(RuntimeError, match="rule version"):
+        service_mod.risk_tensor_envelope(
+            duckdb_path=str(duckdb_path), governance_dir=str(governance_dir), report_date=legacy_date,
+        )
+    dates = service_mod.risk_tensor_dates_envelope(duckdb_path=str(duckdb_path), governance_dir=str(governance_dir))
+    assert dates["result"]["report_dates"] == [REPORT_DATE]
+    assert dates["result"]["blocked_report_dates"][0]["report_date"] == legacy_date
+    history = service_mod.risk_tensor_history_envelope(
+        duckdb_path=str(duckdb_path), governance_dir=str(governance_dir), report_date=REPORT_DATE, periods=24,
+    )
+    assert [point["report_date"] for point in history["result"]["points"]] == [REPORT_DATE]
+    assert history["result_meta"]["rule_version"] == FIXED_INCOME_VERSION_SET.risk_tensor.rule_version
     get_settings.cache_clear()
 
 
@@ -730,10 +947,11 @@ def test_risk_tensor_freshness_requires_v5_materialized_projection_contract():
         "backend.app.services.risk_tensor_service",
         "backend/app/services/risk_tensor_service.py",
     )
+    configured_bond_analytics = FIXED_INCOME_VERSION_SET.bond_analytics
     base_row = {
         "upstream_source_version": "sv_bond_snap_1",
-        "upstream_rule_version": "rv_bond_snap_1",
-        "upstream_cache_version": "cv_bond_snap_1",
+        "upstream_rule_version": configured_bond_analytics.rule_version,
+        "upstream_cache_version": configured_bond_analytics.cache_version,
         "rule_version": "rv_risk_tensor_formal_materialize_v4",
         "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v4",
     }
@@ -742,8 +960,8 @@ def test_risk_tensor_freshness_requires_v5_materialized_projection_contract():
         report_date_text=REPORT_DATE,
         row=base_row,
         upstream_source_version="sv_bond_snap_1",
-        upstream_rule_version="rv_bond_snap_1",
-        upstream_cache_version="cv_bond_snap_1",
+        upstream_rule_version=configured_bond_analytics.rule_version,
+        upstream_cache_version=configured_bond_analytics.cache_version,
         current_tyw_liability_source_version="",
         current_tyw_liability_rule_version="",
     )
@@ -758,8 +976,8 @@ def test_risk_tensor_freshness_requires_v5_materialized_projection_contract():
             "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3",
         },
         upstream_source_version="sv_bond_snap_1",
-        upstream_rule_version="rv_bond_snap_1",
-        upstream_cache_version="cv_bond_snap_1",
+        upstream_rule_version=configured_bond_analytics.rule_version,
+        upstream_cache_version=configured_bond_analytics.cache_version,
         current_tyw_liability_source_version="",
         current_tyw_liability_rule_version="",
     )
@@ -779,8 +997,8 @@ def test_risk_tensor_freshness_requires_v5_materialized_projection_contract():
         report_date_text=REPORT_DATE,
         row=materialized_row | {"cache_version": "cv_risk_tensor_formal_stale"},
         upstream_source_version="sv_bond_snap_1",
-        upstream_rule_version="rv_bond_snap_1",
-        upstream_cache_version="cv_bond_snap_1",
+        upstream_rule_version=configured_bond_analytics.rule_version,
+        upstream_cache_version=configured_bond_analytics.cache_version,
         current_tyw_liability_source_version="",
         current_tyw_liability_rule_version="",
     )
@@ -795,8 +1013,8 @@ def test_risk_tensor_freshness_requires_v5_materialized_projection_contract():
             "cache_version": service_mod.CACHE_VERSION,
         },
         upstream_source_version="sv_bond_snap_1",
-        upstream_rule_version="rv_bond_snap_1",
-        upstream_cache_version="cv_bond_snap_1",
+        upstream_rule_version=configured_bond_analytics.rule_version,
+        upstream_cache_version=configured_bond_analytics.cache_version,
         current_tyw_liability_source_version="",
         current_tyw_liability_rule_version="",
     )
@@ -808,7 +1026,7 @@ def test_risk_tensor_freshness_requires_v5_materialized_projection_contract():
         row=materialized_row,
         upstream_source_version="sv_bond_snap_1",
         upstream_rule_version="rv_bond_snap_2",
-        upstream_cache_version="cv_bond_snap_1",
+        upstream_cache_version=configured_bond_analytics.cache_version,
         current_tyw_liability_source_version="",
         current_tyw_liability_rule_version="",
     )
@@ -819,7 +1037,7 @@ def test_risk_tensor_freshness_requires_v5_materialized_projection_contract():
         report_date_text=REPORT_DATE,
         row=materialized_row,
         upstream_source_version="sv_bond_snap_1",
-        upstream_rule_version="rv_bond_snap_1",
+        upstream_rule_version=configured_bond_analytics.rule_version,
         upstream_cache_version="cv_bond_snap_2",
         current_tyw_liability_source_version="",
         current_tyw_liability_rule_version="",
@@ -831,8 +1049,8 @@ def test_risk_tensor_freshness_requires_v5_materialized_projection_contract():
         report_date_text=REPORT_DATE,
         row=materialized_row,
         upstream_source_version="sv_bond_snap_1",
-        upstream_rule_version="rv_bond_snap_1",
-        upstream_cache_version="cv_bond_snap_1",
+        upstream_rule_version=configured_bond_analytics.rule_version,
+        upstream_cache_version=configured_bond_analytics.cache_version,
         current_tyw_liability_source_version="",
         current_tyw_liability_rule_version="",
     )
@@ -1251,4 +1469,73 @@ def test_risk_tensor_service_fails_when_downstream_fact_is_stale_against_newer_t
     else:
         raise AssertionError("Expected RuntimeError for stale TYW liability rule_version")
 
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_service_allows_a_verified_empty_tyw_liability_snapshot(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(
+        tmp_path,
+        monkeypatch,
+    )
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+
+    payload = service_mod.risk_tensor_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date=REPORT_DATE,
+    )
+    dates = service_mod.risk_tensor_dates_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["result_meta"]["formal_use_allowed"] is True
+    assert dates["result"]["report_dates"] == [REPORT_DATE]
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_service_blocks_existing_liability_lineage_when_tyw_source_disappears(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor_with_tyw_liability(
+        tmp_path,
+        monkeypatch,
+    )
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("drop table fact_formal_tyw_balance_daily")
+    finally:
+        conn.close()
+    service_mod.invalidate_risk_tensor_read_cache()
+
+    with pytest.raises(RuntimeError, match="TYW liability formal source missing_table"):
+        service_mod.risk_tensor_envelope(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            report_date=REPORT_DATE,
+        )
+
+    dates = service_mod.risk_tensor_dates_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    assert dates["result"]["report_dates"] == []
+    assert dates["result"]["blocked_report_dates"] == [
+        {
+            "report_date": REPORT_DATE,
+            "reason": (
+                "TYW liability formal source missing_table "
+                f"for report_date={REPORT_DATE}; cannot validate risk tensor freshness."
+            ),
+        }
+    ]
     get_settings.cache_clear()

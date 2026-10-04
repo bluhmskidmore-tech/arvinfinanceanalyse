@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-from backend.app.repositories.governance_repo import SOURCE_MANIFEST_STREAM
+import threading
+
+import pytest
+
+from backend.app.governance.locks import acquire_lock
+from backend.app.repositories.governance_repo import GovernanceRepository, SOURCE_MANIFEST_STREAM
 from backend.app.repositories.source_manifest_repo import (
     MANIFEST_ELIGIBLE_STATUSES,
     SOURCE_MANIFEST_SCHEMA_VERSION,
     SourceManifestRepository,
+    aug31_source_manifest_lock,
 )
 
 
@@ -159,6 +165,42 @@ def test_add_many_persists_via_governance_repo_when_configured():
     assert gov.rows == persisted
     assert len(gov.append_calls) == 1
     assert gov.append_calls[0][1]["ingest_batch_id"] == "ib-g"
+
+
+def test_failed_persistent_append_does_not_update_in_memory_rows():
+    class _FailingGovernanceRepo(_FakeGovernanceRepo):
+        def append_many_atomic(self, _items):
+            raise OSError("synthetic append failure")
+
+    repo = SourceManifestRepository(governance_repo=_FailingGovernanceRepo())
+    with pytest.raises(OSError, match="synthetic append failure"):
+        repo.add_many([_base_row()])
+    assert repo.rows == []
+
+
+def test_unrelated_date_manifest_append_does_not_wait_for_august_cohort_lock(tmp_path):
+    governance_dir = tmp_path / "governance"
+    finished = threading.Event()
+    errors: list[Exception] = []
+
+    def append_other_date() -> None:
+        try:
+            SourceManifestRepository(
+                governance_repo=GovernanceRepository(base_dir=governance_dir)
+            ).add_many([_base_row(report_date="2026-07-31")])
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            finished.set()
+
+    with acquire_lock(
+        aug31_source_manifest_lock(governance_dir), base_dir=governance_dir
+    ):
+        thread = threading.Thread(target=append_other_date, daemon=True)
+        thread.start()
+        assert finished.wait(timeout=2)
+    thread.join(timeout=2)
+    assert not errors
 
 
 def test_select_by_ingest_batch_id_matches_select_for_snapshot_materialization():

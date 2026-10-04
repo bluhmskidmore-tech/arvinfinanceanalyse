@@ -45,7 +45,7 @@ export function BalanceContributionRow({
   const isTerminal = variant === "terminal";
 
   const tablePanel = (
-    <div className={rowStyles.contributionTableShell}>
+    <div className={rowStyles.contributionTableShell} role="region" aria-label="资产负债缺口贡献明细" tabIndex={0}>
       <table
         className={`balance-analysis-table ${rowStyles.contributionTable}`}
         data-testid="balance-analysis-contribution-table"

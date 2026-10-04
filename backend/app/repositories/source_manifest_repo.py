@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 
+from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.repositories.governance_repo import (
     SOURCE_MANIFEST_STREAM,
     GovernanceRepository,
@@ -10,6 +15,33 @@ from backend.app.repositories.governance_repo import (
 
 SOURCE_MANIFEST_SCHEMA_VERSION = "phase1.manifest.v1"
 MANIFEST_ELIGIBLE_STATUSES = frozenset({"completed", "rerun"})
+AUG31_SOURCE_MANIFEST_DATE = "2026-08-31"
+AUG31_SOURCE_MANIFEST_DEPENDENCY_KEY = "balance.source_manifest.selected_sha256"
+_AUG31_SOURCE_FAMILIES = frozenset({"zqtz", "tyw"})
+
+
+def aug31_source_manifest_lock(governance_dir: Path | str) -> LockDefinition:
+    canonical_dir = Path(governance_dir).resolve()
+    digest = hashlib.sha256(str(canonical_dir).encode("utf-8")).hexdigest()[:12]
+    return LockDefinition(key=f"lock:balance:aug31:source-manifest:{digest}", ttl_seconds=7200)
+
+
+def selected_aug31_source_manifest_hash(governance_dir: Path | str) -> str:
+    repo = SourceManifestRepository(
+        governance_repo=GovernanceRepository(base_dir=governance_dir)
+    )
+    selected: list[dict[str, object]] = []
+    for family in sorted(_AUG31_SOURCE_FAMILIES):
+        rows = repo.select_for_snapshot_materialization(
+            source_families=[family], report_date=AUG31_SOURCE_MANIFEST_DATE
+        )
+        if not rows:
+            raise ValueError(f"2026-08-31 {family} selected source manifest is missing.")
+        selected.extend(rows)
+    payload = json.dumps(
+        selected, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 @dataclass
@@ -19,36 +51,49 @@ class SourceManifestRepository:
     stream_name: str = SOURCE_MANIFEST_STREAM
 
     def add_many(self, rows: list[dict[str, object]]) -> list[dict[str, object]]:
-        existing = self.load_all()
-        latest_by_identity: dict[str, dict[str, object]] = {}
-        for record in existing:
-            latest_by_identity[self._source_identity(record)] = record
-
-        created_at = datetime.now(UTC).isoformat()
-        persisted_rows: list[dict[str, object]] = []
-        for row in rows:
-            record = {
-                **row,
-                "schema_version": SOURCE_MANIFEST_SCHEMA_VERSION,
-                "created_at": created_at,
-            }
-            previous = latest_by_identity.get(self._source_identity(record))
-            if previous is None:
-                record.setdefault("status", "completed")
-            else:
-                record["status"] = "rerun"
-                record["rerun_of_batch_id"] = previous["ingest_batch_id"]
-
-            self.rows.append(record)
-            latest_by_identity[self._source_identity(record)] = record
-            persisted_rows.append(record)
-
-        if self.governance_repo is not None and persisted_rows:
-            self.governance_repo.append_many_atomic(
-                [(self.stream_name, record) for record in persisted_rows]
+        guarded = self.governance_repo is not None and any(
+            str(row.get("report_date", "")) == AUG31_SOURCE_MANIFEST_DATE
+            and str(row.get("source_family", "")) in _AUG31_SOURCE_FAMILIES
+            for row in rows
+        )
+        cohort_lock = (
+            acquire_lock(
+                aug31_source_manifest_lock(self.governance_repo.base_dir),
+                base_dir=self.governance_repo.base_dir,
             )
+            if guarded and self.governance_repo is not None
+            else nullcontext()
+        )
+        with cohort_lock:
+            existing = self.load_all()
+            latest_by_identity: dict[str, dict[str, object]] = {}
+            for record in existing:
+                latest_by_identity[self._source_identity(record)] = record
 
-        return persisted_rows
+            created_at = datetime.now(UTC).isoformat()
+            persisted_rows: list[dict[str, object]] = []
+            for row in rows:
+                record = {
+                    **row,
+                    "schema_version": SOURCE_MANIFEST_SCHEMA_VERSION,
+                    "created_at": created_at,
+                }
+                previous = latest_by_identity.get(self._source_identity(record))
+                if previous is None:
+                    record.setdefault("status", "completed")
+                else:
+                    record["status"] = "rerun"
+                    record["rerun_of_batch_id"] = previous["ingest_batch_id"]
+
+                latest_by_identity[self._source_identity(record)] = record
+                persisted_rows.append(record)
+
+            if self.governance_repo is not None and persisted_rows:
+                self.governance_repo.append_many_atomic(
+                    [(self.stream_name, record) for record in persisted_rows]
+                )
+            self.rows.extend(persisted_rows)
+            return persisted_rows
 
     def load_all(self) -> list[dict[str, object]]:
         if self.governance_repo is not None:

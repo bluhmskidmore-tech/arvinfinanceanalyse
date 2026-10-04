@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import csv
 import json
@@ -569,19 +569,33 @@ def test_materialize_fx_mid_for_report_date_uses_choice_for_complete_candidate_s
     get_settings.cache_clear()
 
 
-def test_choice_fx_fetch_allows_cfets_currency_holiday_carry_forward(monkeypatch):
+def test_choice_fx_fetch_excludes_pandas_option_with_real_client_and_fake_sdk(monkeypatch):
+    from backend.app.config.choice_runtime import AppSettings
+    from backend.app.repositories import choice_client
+
     fx_mod = _load_fx_task_module()
+    captured_options: list[str] = []
 
-    class _FakeChoiceClient:
-        def edb(self, codes, options="", **_kwargs):
-            assert codes == ["EMM00058124"]
-            assert "StartDate=2026-01-19" in options
-            return _ChoiceUsdHolidayCarryResult()
+    class FakeC:
+        def start(self, _options: str):
+            return type("StartResult", (), {"ErrorCode": 0})()
 
-    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+        def edb(self, _codes, options: str):
+            captured_options.append(options)
+            return _ChoiceMultiResult()
+
+    monkeypatch.setattr(choice_client, "configure_emquant_parent", lambda _path: None)
+    monkeypatch.setattr(choice_client, "_get_em_c", lambda: FakeC())
+    monkeypatch.setattr(
+        fx_mod,
+        "ChoiceClient",
+        lambda: choice_client.ChoiceClient(
+            settings=AppSettings(choice_request_options=" IsPandas=1 ,RECVtimeout=20,other=1")
+        ),
+    )
 
     rows = fx_mod._fetch_choice_fx_mid_rows_for_report_date(
-        "2026-01-19",
+        "2026-02-27",
         candidates=[
             fx_mod.FormalFxCandidate(
                 series_id="EMM00058124",
@@ -594,22 +608,103 @@ def test_choice_fx_fetch_allows_cfets_currency_holiday_carry_forward(monkeypatch
         ],
     )
 
-    assert rows == [
-        (
+    assert len(rows) == 1
+    assert rows[0][3] == Decimal("7.24")
+    assert len(captured_options) == 1
+    assert "ispandas=" not in captured_options[0].lower()
+    assert "RECVtimeout=20" in captured_options[0]
+    assert "RECVtimeout=5" in captured_options[0]
+    assert "IsLatest=0" in captured_options[0]
+
+
+def test_choice_fx_fetch_rejects_usd_settlement_holiday_carry_forward(monkeypatch):
+    fx_mod = _load_fx_task_module()
+
+    class _FakeChoiceClient:
+        def edb(self, codes, options="", **_kwargs):
+            assert codes == ["EMM00058124"]
+            assert "StartDate=2026-01-19" in options
+            return _ChoiceUsdHolidayCarryResult()
+
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+
+    with pytest.raises(ValueError, match="confirmed non-business-day"):
+        fx_mod._fetch_choice_fx_mid_rows_for_report_date(
             "2026-01-19",
-            "USD",
-            "CNY",
-            Decimal("7.21"),
-            fx_mod.CHOICE_SOURCE_NAME,
-            False,
-            True,
-            rows[0][7],
-            "choice",
-            rows[0][9],
-            "EMM00058124",
-            "2026-01-16",
+            candidates=[
+                fx_mod.FormalFxCandidate(
+                    series_id="EMM00058124",
+                    series_name="USD/CNY middle rate",
+                    vendor_series_code="EMM00058124",
+                    base_currency="USD",
+                    quote_currency="CNY",
+                    invert_result=False,
+                )
+            ],
         )
-    ]
+
+
+@pytest.mark.parametrize(
+    "requested,observed",
+    [
+        ("2026-03-08", "2026-03-02"),
+        ("2026-03-08", "2026-03-07"),
+        ("2026-02-18", "2026-02-16"),
+        ("2026-01-19", "2026-01-16"),
+        ("2026-03-08", "2026-03-08"),
+    ],
+)
+def test_normalize_vendor_row_rejects_wrong_publication_date(requested, observed):
+    fx_mod = _load_fx_task_module()
+    candidate = fx_mod.FormalFxCandidate(
+        series_id="EMM00058124", series_name="USD/CNY middle rate",
+        vendor_series_code="EMM00058124", base_currency="USD", quote_currency="CNY",
+        invert_result=False,
+    )
+    with pytest.raises(ValueError):
+        fx_mod._normalize_vendor_row(
+            requested_report_date=requested, candidate=candidate,
+            observed_trade_date=observed, raw_mid_rate=Decimal("7.2"),
+            source_name="CFETS", source_version="sv_test", vendor_name="choice",
+            vendor_version="vv_test",
+        )
+
+
+@pytest.mark.parametrize(
+    "requested,observed",
+    [("2026-03-08", "2026-03-06"), ("2026-02-22", "2026-02-13"), ("2026-01-19", "2026-01-19")],
+)
+def test_normalize_vendor_row_accepts_previous_publication(requested, observed):
+    fx_mod = _load_fx_task_module()
+    candidate = fx_mod.FormalFxCandidate(
+        series_id="EMM00058124", series_name="USD/CNY middle rate",
+        vendor_series_code="EMM00058124", base_currency="USD", quote_currency="CNY",
+        invert_result=False,
+    )
+    row = fx_mod._normalize_vendor_row(
+        requested_report_date=requested, candidate=candidate,
+        observed_trade_date=observed, raw_mid_rate=Decimal("7.0051"),
+        source_name="CFETS", source_version="sv_test", vendor_name="choice",
+        vendor_version="vv_test",
+    )
+    assert row[3] == Decimal("7.0051")
+    assert row[5:7] == (requested == observed, requested != observed)
+    assert row[11] == observed
+
+
+def test_replace_fx_mid_rows_rejects_stale_metadata_before_connecting(tmp_path, monkeypatch):
+    fx_mod = _load_fx_task_module()
+
+    def unexpected_connect(*_args, **_kwargs):
+        raise AssertionError("invalid date metadata must fail before any database mutation")
+
+    monkeypatch.setattr(fx_mod.duckdb, "connect", unexpected_connect)
+    with pytest.raises(ValueError, match="previous publication"):
+        fx_mod._replace_fx_mid_rows(
+            duckdb_path=str(tmp_path / "unused.duckdb"),
+            rows=[("2026-03-08", "USD", "CNY", Decimal("7.2"), "CFETS", False, True,
+                   "sv_test", "csv", "vv_test", "", "2026-03-02")],
+        )
 
 
 def test_materialize_fx_mid_for_report_date_uses_akshare_when_choice_is_incomplete(
@@ -848,3 +943,103 @@ def test_fetch_chinamoney_fx_mid_rows_uses_official_pair_order_without_double_in
     assert {row[7] for row in rows} == {row[7] for row in rerun_rows}
     assert calls[0]["params"]["startDate"] == "2026-07-24"
     assert calls[0]["params"]["endDate"] == "2026-07-31"
+
+
+@pytest.mark.parametrize("vendor", ["choice", "chinamoney"])
+def test_vendor_publication_window_covers_long_holiday(monkeypatch, vendor):
+    fx_mod = _load_fx_task_module()
+    candidate = fx_mod.FormalFxCandidate(
+        series_id="EMM00058124", series_name="USD/CNY middle rate",
+        vendor_series_code="EMM00058124", base_currency="USD", quote_currency="CNY",
+        invert_result=False,
+    )
+    calls = []
+    # 2026-02-22 is in the CNY holiday. The required 02-13 fixing is nine days old.
+    # These vendor doubles only return it when the requested window covers it.
+    class _FakeChoiceClient:
+        def edb(self, codes, options="", **_kwargs):
+            assert codes == ["EMM00058124"]
+            query_date = dict(part.split("=", 1) for part in options.split(","))["StartDate"]
+            calls.append(query_date)
+            present = query_date == "2026-02-13"
+            return type("ChoiceResult", (), {
+                "Codes": ["EMM00058124"] if present else [],
+                "Dates": ["2026-02-13"] if present else [],
+                "Data": {"EMM00058124": [[Decimal("7.12")]]} if present else {},
+            })()
+
+    class _FakeResponse:
+        def __init__(self, params):
+            self.params = params
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            present = self.params["startDate"] <= "2026-02-13" <= self.params["endDate"]
+            return {
+                "data": {"searchlist": ["USD/CNY"]},
+                "records": [{"date": "2026-02-13", "values": ["7.12"]}] if present else [],
+            }
+
+    def fake_post(_url, *, params, **_kwargs):
+        calls.append(params)
+        return _FakeResponse(params)
+
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+    monkeypatch.setattr(fx_mod.requests, "post", fake_post)
+    fetch = (fx_mod._fetch_choice_fx_mid_rows_for_report_date if vendor == "choice"
+             else fx_mod._fetch_chinamoney_fx_mid_rows_for_report_date)
+    rows = fetch("2026-02-22", candidates=[candidate])
+    assert len(rows) == 1
+    assert rows[0][3] == Decimal("7.12")
+    assert rows[0][5:7] == (False, True)
+    assert rows[0][11] == "2026-02-13"
+    if vendor == "choice":
+        assert "2026-02-13" in calls
+    else:
+        assert calls[0]["startDate"] == "2026-02-13"
+        assert calls[0]["endDate"] == "2026-02-22"
+        assert calls[0]["pageSize"] >= 10
+
+
+@pytest.mark.parametrize("vendor", ["choice", "chinamoney"])
+@pytest.mark.parametrize(
+    "requested,observed",
+    [("2026-02-22", "2026-02-12"), ("2026-03-03", "2026-03-02")],
+)
+def test_vendor_publication_window_does_not_admit_older_fixing(monkeypatch, vendor, requested, observed):
+    fx_mod = _load_fx_task_module()
+    candidate = fx_mod.FormalFxCandidate(
+        series_id="EMM00058124", series_name="USD/CNY middle rate",
+        vendor_series_code="EMM00058124", base_currency="USD", quote_currency="CNY",
+        invert_result=False,
+    )
+
+    class _FakeChoiceClient:
+        def edb(self, *_args, **_kwargs):
+            return type("ChoiceResult", (), {
+                "Codes": ["EMM00058124"], "Dates": [observed],
+                "Data": {"EMM00058124": [[Decimal("7.10")]]},
+            })()
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "data": {"searchlist": ["USD/CNY"]},
+                "records": [{"date": observed, "values": ["7.10"]}],
+            }
+
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+    monkeypatch.setattr(fx_mod.requests, "post", lambda *_args, **_kwargs: _FakeResponse())
+    fetch = (fx_mod._fetch_choice_fx_mid_rows_for_report_date if vendor == "choice"
+             else fx_mod._fetch_chinamoney_fx_mid_rows_for_report_date)
+    if vendor == "chinamoney" and requested == "2026-02-22":
+        # Out-of-window history is discarded, never returned as formal input.
+        assert fetch(requested, candidates=[candidate]) == []
+    else:
+        with pytest.raises(ValueError, match="previous publication|confirmed non-business-day"):
+            fetch(requested, candidates=[candidate])

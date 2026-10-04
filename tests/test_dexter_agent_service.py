@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
+import sys
+import threading
+import time
 import urllib.error
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 import pytest
@@ -17,6 +22,182 @@ pytestmark = [
     pytest.mark.excluded_surface_acceptance,
     pytest.mark.surface_agent_mvp,
 ]
+
+
+def test_cancelled_dexter_request_does_not_spawn_cli(monkeypatch):
+    event = threading.Event()
+    event.set()
+    monkeypatch.setattr(service.subprocess, "run", lambda *_args, **_kwargs: pytest.fail("cancelled request must not launch"))
+    monkeypatch.setattr(service.subprocess, "Popen", lambda *_args, **_kwargs: pytest.fail("cancelled request must not launch"))
+    with pytest.raises(RuntimeError, match="cancelled"):
+        service.run_dexter_agent(request=AgentQueryRequest(question="cancel"), command="dexter", transport="cli", bridge_url="", model="", toolsets="", timeout_seconds=5, cancel_event=event)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows inherited pipe ownership")
+@pytest.mark.parametrize("cancel", [False, True])
+def test_exited_launcher_inherited_pipes_remain_bounded(monkeypatch, tmp_path, cancel):
+    pid_file = tmp_path / "launcher-child.pid"
+    child_code = "import time; time.sleep(8)" if cancel else "import os, time; time.sleep(0.3); p = '{\"answer\": \"完整中文\"}'.encode('utf-8'); os.write(1, p[:14]); time.sleep(0.1); os.write(1, p[14:])"
+    launcher = tmp_path / "launcher.py"
+    launcher.write_text("import subprocess, sys\nfrom pathlib import Path\np = subprocess.Popen([sys.executable, '-c', sys.argv[2]])\nPath(sys.argv[1]).write_text(str(p.pid))\n", encoding="utf-8")
+    monkeypatch.setattr(service, "_build_dexter_command", lambda **kwargs: [sys.executable, str(launcher), str(pid_file), child_code])
+    processes = []
+    real_popen = subprocess.Popen
+
+    def spawn(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(service.subprocess, "Popen", spawn)
+    event = threading.Event()
+    outcomes = []
+
+    def run():
+        try:
+            outcomes.append(service.run_dexter_agent(request=AgentQueryRequest(question="synthetic launcher"), command=sys.executable, transport="cli", bridge_url="", model="", toolsets="", timeout_seconds=10, cancel_event=event))
+        except Exception as exc:
+            outcomes.append(exc)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 3
+        while not pid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert pid_file.exists()
+        processes[0].wait(timeout=3)
+        if cancel:
+            event.set()
+        thread.join(timeout=1.5)
+        assert not thread.is_alive(), "inherited child pipe blocked the cancelled launcher"
+        if cancel:
+            assert isinstance(outcomes[0], service.DexterRunCancelled)
+            assert "stop remains unconfirmed" in str(outcomes[0])
+        else:
+            assert outcomes[0]["answer"] == "完整中文"
+        assert processes[0].stdout.closed and processes[0].stderr.closed
+    finally:
+        event.set()
+        if pid_file.exists():
+            subprocess.run(["taskkill", "/PID", pid_file.read_text(), "/T", "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW, check=False)
+        thread.join(timeout=5)
+
+
+def test_dexter_cli_cancel_stops_real_local_process_tree(monkeypatch, tmp_path):
+    pid_file = tmp_path / "child.pid"
+    script = tmp_path / "local_cli.py"
+    script.write_text("import subprocess, sys, time\nfrom pathlib import Path\nchild = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\nPath(sys.argv[1]).write_text(str(child.pid))\ntime.sleep(30)\n", encoding="utf-8")
+    monkeypatch.setattr(service, "_build_dexter_command", lambda **_kwargs: [sys.executable, str(script), str(pid_file)])
+    processes = []
+    real_popen = subprocess.Popen
+    def spawn(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        processes.append(process)
+        return process
+    monkeypatch.setattr(service.subprocess, "Popen", spawn)
+    event = threading.Event()
+    outcomes = []
+
+    def run():
+        try:
+            service.run_dexter_agent(request=AgentQueryRequest(question="local synthetic"), command=sys.executable, transport="cli", bridge_url="", model="", toolsets="", timeout_seconds=10, cancel_event=event)
+        except Exception as exc:
+            outcomes.append(exc)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 5
+        while not pid_file.exists() and thread.is_alive() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert pid_file.exists(), f"local CLI did not start: {outcomes}"
+        child_pid = int(pid_file.read_text())
+        event.set()
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert len(outcomes) == 1 and "cancelled" in str(outcomes[0])
+        assert processes[0].returncode is not None
+        assert processes[0].stdout.closed and processes[0].stderr.closed
+        if sys.platform == "win32":
+            import ctypes
+            from ctypes import wintypes
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            kernel32.OpenProcess.restype = wintypes.HANDLE
+            kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel32.WaitForSingleObject.restype = wintypes.DWORD
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel32.CloseHandle.restype = wintypes.BOOL
+            handle = kernel32.OpenProcess(0x00100000, False, child_pid)
+            if handle:
+                try:
+                    assert kernel32.WaitForSingleObject(handle, 2000) == 0
+                finally:
+                    kernel32.CloseHandle(handle)
+            else:
+                assert ctypes.get_last_error() == 87  # PID no longer exists.
+        else:
+            import os
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    os.kill(child_pid, 0)
+                except ProcessLookupError:
+                    break
+                # A killed Linux grandchild may await init reaping as a zombie;
+                # it has stopped execution even though its PID still exists.
+                stat = Path(f"/proc/{child_pid}/stat")
+                if sys.platform == "linux":
+                    try:
+                        if stat.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+                            break
+                    except FileNotFoundError:
+                        break
+                assert time.monotonic() < deadline, "child process is still running"
+                time.sleep(0.02)
+    finally:
+        event.set()
+        thread.join(timeout=5)
+
+
+@pytest.mark.parametrize("mode", ["normal", "timeout", "eof_timeout"])
+def test_dexter_cancellable_cli_completion_and_timeout_close_pipes(monkeypatch, mode):
+    code = "print('{\"answer\": \"local done\"}')" if mode == "normal" else "import time; time.sleep(30)"
+    if mode == "eof_timeout":
+        code = "import os, time; os.close(1); os.close(2); time.sleep(30)"
+    monkeypatch.setattr(service, "_build_dexter_command", lambda **_kwargs: [sys.executable, "-c", code])
+    processes = []
+    real_popen = subprocess.Popen
+    def spawn(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        processes.append(process)
+        return process
+    monkeypatch.setattr(service.subprocess, "Popen", spawn)
+    options = dict(request=AgentQueryRequest(question="local synthetic"), command=sys.executable, transport="cli", bridge_url="", model="", toolsets="", timeout_seconds=0.1, cancel_event=threading.Event())
+    if mode == "normal":
+        assert service.run_dexter_agent(**options)["answer"] == "local done"
+    else:
+        with pytest.raises(RuntimeError, match="timed out"):
+            service.run_dexter_agent(**options)
+    assert processes[0].returncode is not None
+    assert processes[0].stdout.closed and processes[0].stderr.closed
+
+
+@pytest.mark.parametrize("bridge_fails", [False, True])
+def test_bridge_cancel_never_claims_remote_stop_or_appends_fallback_audit(monkeypatch, tmp_path, bridge_fails):
+    event = threading.Event()
+    monkeypatch.setattr(service, "ensure_agent_execution_resources_allowed", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(service, "build_dexter_research_context", lambda **_kwargs: {})
+    monkeypatch.setattr(service, "_append_dexter_audit", lambda *_args: pytest.fail("cancelled request must not append provider audit"))
+    def bridge(**_kwargs):
+        event.set()
+        if bridge_fails:
+            raise RuntimeError("synthetic bridge failure")
+        return {"answer": "late bridge answer"}
+    monkeypatch.setattr(service, "_post_dexter_bridge_query", bridge)
+    with pytest.raises(service.DexterRunCancelled, match="stop remains unconfirmed"):
+        service.execute_dexter_agent_query(AgentQueryRequest(question="synthetic bridge"), str(tmp_path), SimpleNamespace(agent_dexter_transport="bridge"), cancel_event=event)
 
 
 def test_build_dexter_envelope_exposes_sidecar_runtime_evidence():
@@ -393,6 +574,123 @@ def test_execute_dexter_agent_query_appends_dexter_audit(tmp_path: Path, monkeyp
     assert "dexter_error_code" not in payload["result_meta"]
 
 
+def test_execute_dexter_agent_query_fails_closed_when_audit_write_fails(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+):
+    monkeypatch.setattr(
+        service,
+        "run_dexter_agent",
+        lambda **_kwargs: {
+            "answer": "Dexter answer",
+            "stdout": "",
+            "stderr": "",
+            "command": "dexter",
+            "tool_name": "portfolio.scan",
+            "model": "dexter-test",
+            "toolsets": "evidence,research",
+            "transport": "sidecar",
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "append_agent_audit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError("governance dir is read-only")
+        ),
+    )
+    monkeypatch.setattr(service, "_DEXTER_AUDIT_FAILURE_COUNT", 0, raising=False)
+
+    with caplog.at_level("ERROR"), pytest.raises(RuntimeError, match="unaudited response"):
+        service.execute_dexter_agent_query(
+            request=AgentQueryRequest(
+                question="ping",
+                context={"run_id": "agent_run:dexter-audit-failure"},
+            ),
+            governance_dir=str(tmp_path / "governance"),
+            settings=_dexter_settings_stub(tmp_path),
+        )
+
+    assert service._DEXTER_AUDIT_FAILURE_COUNT == 1
+    assert any(record.levelname == "ERROR" for record in caplog.records)
+    assert "error_code=dexter_audit_append_failed" in caplog.text
+    assert "failure_count=1" in caplog.text
+    assert "run_id=agent_run:dexter-audit-failure" in caplog.text
+    assert "read-only" not in caplog.text
+
+
+def test_execute_dexter_agent_query_appends_sent_prompt(tmp_path: Path, monkeypatch):
+    captured: dict[str, str] = {}
+
+    def fake_run(**kwargs):
+        captured["prompt"] = str(kwargs.get("prompt_override") or "")
+        return {
+            "answer": "Dexter answer",
+            "stdout": "",
+            "stderr": "",
+            "command": "dexter",
+            "tool_name": "portfolio.scan",
+            "model": "dexter-test",
+            "toolsets": "sql,files",
+            "transport": "sidecar",
+        }
+
+    monkeypatch.setattr(service, "run_dexter_agent", fake_run)
+
+    envelope = service.execute_dexter_agent_query(
+        request=AgentQueryRequest(
+            question="研究雷达最新进展",
+            context={"user_id": "u_dexter", "run_id": "agent_run:dexter-prompt"},
+        ),
+        governance_dir=str(tmp_path / "governance"),
+        settings=_dexter_settings_stub(tmp_path),
+    )
+
+    payload = json.loads(
+        (tmp_path / "governance" / "agent_prompt.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[-1]
+    )
+    assert payload["provider"] == "dexter"
+    assert payload["user_id"] == "u_dexter"
+    assert payload["run_id"] == "agent_run:dexter-prompt"
+    # trace_id 是与 agent_audit 对账的唯一键，两条流必须写同一个值。
+    assert payload["trace_id"] == envelope.result_meta.trace_id
+    # 落盘的必须是真正送给 provider 的那一份，不是事后重建的近似值。
+    assert payload["prompt"] == captured["prompt"]
+    assert "研究雷达最新进展" in payload["prompt"]
+    assert payload["prompt_chars"] == len(payload["prompt"])
+    assert "error_code" not in payload
+
+
+def test_execute_dexter_agent_query_appends_prompt_when_runtime_fails(
+    tmp_path: Path, monkeypatch
+):
+    def raise_runtime(**_kwargs):
+        raise RuntimeError("dexter unavailable")
+
+    monkeypatch.setattr(service, "run_dexter_agent", raise_runtime)
+
+    service.execute_dexter_agent_query(
+        request=AgentQueryRequest(
+            question="组合久期",
+            context={"user_id": "u_dexter"},
+        ),
+        governance_dir=str(tmp_path / "governance"),
+        settings=_dexter_settings_stub(tmp_path),
+    )
+
+    payload = json.loads(
+        (tmp_path / "governance" / "agent_prompt.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[-1]
+    )
+    # 通道故障这一轮同样构建并尝试送出了 prompt，留痕不能因为失败而缺席。
+    assert "组合久期" in payload["prompt"]
+    assert payload["error_code"] == "dexter_runtime_unavailable"
+
+
 def _dexter_settings_stub(tmp_path: Path, **overrides):
     attrs = {
         "duckdb_path": str(tmp_path / "missing.duckdb"),
@@ -558,6 +856,11 @@ def test_execute_dexter_agent_query_cli_timeout_reaches_fallback_end_to_end(
 
 
 def test_execute_dexter_agent_query_injects_research_context_into_prompt(tmp_path: Path, monkeypatch):
+    from tests.test_agent_api_contract import _agent_auth_fields, _configure_agent_scope_store
+
+    scope_store = _configure_agent_scope_store(tmp_path, monkeypatch)
+    for resource in ("market_data.livermore", "choice_news.data"):
+        scope_store.grant_scope(user_id="u_dexter", role=None, resource=resource, action="read")
     calls = []
 
     monkeypatch.setattr(
@@ -621,6 +924,7 @@ def test_execute_dexter_agent_query_injects_research_context_into_prompt(tmp_pat
         request=AgentQueryRequest(
             question="分析这只股票",
             filters={"research_domain": "stock"},
+            context={"user_id": "u_dexter", "user_role": "reviewer"},
             page_context={
                 "page_id": "stock-analysis",
                 "current_filters": {"as_of_date": "2026-04-29"},
@@ -639,6 +943,7 @@ def test_execute_dexter_agent_query_injects_research_context_into_prompt(tmp_pat
                 "agent_dexter_model": "dexter-test",
                 "agent_dexter_toolsets": "sql,files",
                 "agent_dexter_timeout_seconds": 9.0,
+                **_agent_auth_fields(tmp_path),
             },
         )(),
     )
@@ -667,6 +972,66 @@ def test_execute_dexter_agent_query_injects_research_context_into_prompt(tmp_pat
     assert "000001.SZ" not in envelope.evidence.sql_executed[0]
     assert any(card.title == "Research Summary" for card in envelope.cards)
     assert any(card.title == "Research Limitations" for card in envelope.cards)
+
+
+def test_dexter_prompt_budget_drops_low_priority_context_keys_and_discloses(
+    tmp_path: Path, monkeypatch
+):
+    calls = []
+    monkeypatch.setattr(service, "_DEXTER_PROMPT_MAX_CHARS", 2500)
+    monkeypatch.setattr(
+        service,
+        "build_dexter_research_context",
+        lambda **_kwargs: {
+            "domain": "stock",
+            "as_of_date": "2026-04-29",
+            "tables_used": ["choice_stock_daily_observation"],
+            "filters_applied": {"research_domain": "stock", "stock_code": "000001.SZ"},
+            "sql_executed": [],
+            "evidence_rows": 1,
+            "quality_flag": "warning",
+            "limitations": [],
+            "stock": {"daily_observation": {"stock_code": "000001.SZ", "close_value": 21.9}},
+            "macro": {},
+        },
+    )
+
+    def fake_run_dexter_agent(**kwargs):
+        calls.append(kwargs)
+        return {
+            "answer": "Stock research answer",
+            "stdout": "ok",
+            "stderr": "",
+            "command": "dexter",
+            "tool_name": "portfolio.scan",
+            "model": "dexter-test",
+            "toolsets": "research",
+            "transport": "cli",
+            "tables_used": ["dexter_cli"],
+        }
+
+    monkeypatch.setattr(service, "run_dexter_agent", fake_run_dexter_agent)
+
+    envelope = service.execute_dexter_agent_query(
+        request=AgentQueryRequest(
+            question="分析这只股票",
+            filters={"research_domain": "stock"},
+            context={"conversation": {"recent_turns": ["x" * 2000]}},
+            page_context={
+                "page_id": "stock-analysis",
+                "current_filters": {"as_of_date": "2026-04-29"},
+                "selected_rows": [{"payload": "y" * 4000}],
+            },
+        ),
+        governance_dir=str(tmp_path / "governance"),
+        settings=_dexter_settings_stub(tmp_path, agent_dexter_transport="cli"),
+    )
+
+    prompt = calls[0]["prompt_override"]
+    assert len(prompt) <= service._DEXTER_PROMPT_MAX_CHARS
+    assert '"page_context"' not in prompt
+    assert "[context truncated: dropped keys page_context" in prompt
+    assert envelope.evidence.filters_applied["prompt_context_dropped_keys"][0] == "page_context"
 
 
 def _create_stock_daily_table(conn, *, trade_date: str) -> None:

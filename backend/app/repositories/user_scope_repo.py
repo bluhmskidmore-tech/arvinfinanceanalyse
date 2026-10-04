@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from backend.app.models.base import Base
 from backend.app.models.governance import UserRoleScope
 from backend.app.schemas.auth_context import UserScopeGrant
+from backend.app.security.route_policy import HIGH_RISK_SCOPE_ACTIONS
 from sqlalchemy import create_engine, or_, select
 from sqlalchemy.orm import sessionmaker
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -34,16 +39,33 @@ class UserScopeRepository:
         scope_key: str | None = None,
         scope_value: str | None = None,
         is_active: bool = True,
+        operator: str | None = None,
+        reason: str | None = None,
     ) -> dict[str, object]:
+        normalized_user_id = user_id.strip()
+        normalized_role = (role or "").strip() or None
+        normalized_resource = resource.strip()
+        normalized_action = action.strip()
+        normalized_scope_key = (scope_key or "").strip() or None
+        normalized_scope_value = (scope_value or "").strip() or None
+        # Only grants bound to the viewer role are refused here. A role-less grant
+        # (role=None) still authorizes any caller role in has_permission, so this is a
+        # guard against an explicit "viewer may write" binding, not an authentication layer.
+        if (
+            (normalized_role or "").casefold() == "viewer"
+            and normalized_action.casefold() in HIGH_RISK_SCOPE_ACTIONS
+        ):
+            raise ValueError(f"viewer role cannot be granted {normalized_action} action")
+
         now = datetime.now(UTC)
         with self._session_factory() as session:
             row = UserRoleScope(
-                user_id=user_id.strip(),
-                role=(role or "").strip() or None,
-                resource=resource.strip(),
-                action=action.strip(),
-                scope_key=(scope_key or "").strip() or None,
-                scope_value=(scope_value or "").strip() or None,
+                user_id=normalized_user_id,
+                role=normalized_role,
+                resource=normalized_resource,
+                action=normalized_action,
+                scope_key=normalized_scope_key,
+                scope_value=normalized_scope_value,
                 is_active=bool(is_active),
                 created_at=now,
                 updated_at=now,
@@ -51,7 +73,31 @@ class UserScopeRepository:
             session.add(row)
             session.commit()
             session.refresh(row)
-            return self._to_dict(row)
+            result = self._to_dict(row)
+
+        # TODO: Route this event to a dedicated SQL-backed governance stream once
+        # that stream has an approved contract; structured logging is the interim audit channel.
+        logger.info(
+            "user_scope_grant_audit=%s",
+            json.dumps(
+                {
+                    "event": "user_scope_grant",
+                    "operator": (operator or "").strip() or "unspecified",
+                    "target_user_id": normalized_user_id,
+                    "role": normalized_role,
+                    "resource": normalized_resource,
+                    "action": normalized_action,
+                    "scope_key": normalized_scope_key,
+                    "scope_value": normalized_scope_value,
+                    "is_active": bool(is_active),
+                    "recorded_at": result["created_at"],
+                    "reason": (reason or "").strip() or "unspecified",
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        )
+        return result
 
     def has_permission(
         self,

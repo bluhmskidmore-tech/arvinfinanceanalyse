@@ -5,10 +5,16 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# 中文 Excel 导出常见的千分位分组，如 "1,234.56" / "-1,234,567.89"。仅严格匹配
+# 三位分组才去逗号解析；"1,2" / "1,23" 这类非三位分组语义存疑，不在此放行，
+# 维持既有 warning + default 降级路径。
+_THOUSANDS_SEPARATOR_RE = re.compile(r"^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$")
 
 
 def safe_decimal(
@@ -30,7 +36,10 @@ def safe_decimal(
             value = value.strip()
             if not value or value.lower() in ("nan", "inf", "-inf", "none", "null", ""):
                 return default
-            result = Decimal(value)
+            if _THOUSANDS_SEPARATOR_RE.match(value):
+                result = Decimal(value.replace(",", ""))
+            else:
+                result = Decimal(value)
         elif hasattr(value, "item"):
             py_value = value.item()
             if isinstance(py_value, float) and (math.isnan(py_value) or math.isinf(py_value)):

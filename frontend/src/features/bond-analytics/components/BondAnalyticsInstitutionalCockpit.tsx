@@ -1,7 +1,8 @@
-﻿import { useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card } from "antd";
+import { Button, Card } from "antd";
 
+import { StateSurface } from "../../../components/layout";
 import { useApiClient } from "../../../api/client";
 import type { CalendarItem } from "../../../components/CalendarList";
 import type {
@@ -49,6 +50,7 @@ import {
 import { DISTRIBUTION_CHART_COLORS, PERIOD_OPTIONS, cardBodyStyle } from "./bondAnalyticsCockpitTokens";
 import { ReferenceYieldCurvePanel } from "./BondAnalyticsCockpitCurveZone";
 import { curveHasReadout } from "./bondAnalyticsCockpitCurveZoneSupport";
+import { normalizeClientError } from "./creditSpreadViewSupport";
 import BondEventCalendar from "./BondEventCalendar";
 import {
   AccountingDv01SummaryPanel,
@@ -60,11 +62,11 @@ import {
 } from "./BondAnalyticsCockpitSupportPanels";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
 
-const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资产结构稍后补齐。";
-const PORTFOLIO_HEADLINES_CREDIT_NOTE = "组合信用摘要暂未返回，债券只数、集中度和 DV01 稍后补齐。";
-const TOP_HOLDINGS_CARD_TITLE = "前十大返回持仓";
-const TOP_HOLDINGS_COUNT_LABEL = "返回持仓";
-const TOP_HOLDINGS_RATING_NOTE = "持仓明细暂未返回，评级分布稍后补齐。";
+const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂缺，无法展示资产结构。";
+const PORTFOLIO_HEADLINES_CREDIT_NOTE = "组合信用摘要暂缺，无法展示债券只数、集中度和 DV01。";
+const TOP_HOLDINGS_CARD_TITLE = "前十大持仓";
+const TOP_HOLDINGS_COUNT_LABEL = "持仓数量";
+const TOP_HOLDINGS_RATING_NOTE = "持仓明细暂缺，无法展示评级分布。";
 const BOND_ANALYTICS_CURRENCY_BASIS_TEXT =
   "金额指标按人民币/CNY口径展示，外币债券市值、摊余成本、应计利息等已折算为人民币。";
 const DV01_ACCOUNTING_CLASSES = [
@@ -75,6 +77,13 @@ const DV01_ACCOUNTING_CLASSES = [
 ] as const;
 
 type Dv01AccountingClassValue = (typeof DV01_ACCOUNTING_CLASSES)[number]["value"];
+
+/* 接口失败摘要（如 HTTP 500）：query isError 时读面必须说「读取失败」，不能继续显示「数据待补/待返回」。 */
+function requestFailureSummary(error: unknown): string {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return message ? normalizeClientError(message) : "请求失败";
+}
 const DV01_BUNDLE_SECTION_BY_ACCOUNTING_CLASS = {
   AC: "dv01-risk-ac",
   OCI: "dv01-risk-oci",
@@ -97,6 +106,8 @@ export interface BondAnalyticsInstitutionalCockpitProps {
   calendarError?: boolean;
   actionAttribution?: ActionAttributionResponse | null;
   actionAttributionPending?: boolean;
+  /** 动作归因接口失败原文（isError 时非空）；驾驶舱按「读取失败」而非「数据待补」呈现。 */
+  actionAttributionError?: string | null;
   decisionRail?: BondAnalyticsInstitutionalCockpitDecisionRailProps;
   onOpenModuleDetail?: (key: BondAnalyticsModuleKey) => void;
 }
@@ -110,6 +121,7 @@ export function BondAnalyticsInstitutionalCockpit({
   calendarError = false,
   actionAttribution = null,
   actionAttributionPending = false,
+  actionAttributionError = null,
   decisionRail,
   onOpenModuleDetail,
 }: BondAnalyticsInstitutionalCockpitProps) {
@@ -196,7 +208,11 @@ export function BondAnalyticsInstitutionalCockpit({
 
   const headline = headlineQ.data?.result;
   const portfolioHl = portfolioHlQ.data?.result;
-  const err = headlineQ.isError ? ((headlineQ.error as Error)?.message ?? "驾驶舱数据加载失败") : null;
+  const err = headlineQ.isError ? ((headlineQ.error as Error)?.message ?? "债券分析数据加载失败") : null;
+  /* headline 读面 isError 时，靠它取值的 KPI 瓦片状态改「读取失败」；未启用/加载中才保留「数据待补」。 */
+  const headlineFailure = headlineQ.isError ? requestFailureSummary(headlineQ.error) : null;
+  const headlineGapStatus = headlineFailure ? "读取失败" : "数据待补";
+  const headlineGapState = headlineFailure ? "gap" : "pending";
   const portfolioHeadlinesUnavailable = portfolioHlQ.isError;
   const topHoldingsUnavailable = holdingsQ.isError;
   const dv01AccountingRows = DV01_ACCOUNTING_CLASSES.map((item, index) => ({
@@ -204,7 +220,15 @@ export function BondAnalyticsInstitutionalCockpit({
     payload: dv01AccountingQueries[index]?.data?.result ?? null,
   }));
   const dv01AccountingLoading = dv01AccountingQueries.some((query) => query.isLoading);
-  const dv01AccountingUnavailable = dv01AccountingQueries.some((query) => query.isError);
+  const dv01AccountingFailedQuery = dv01AccountingQueries.find((query) => query.isError);
+  const dv01AccountingUnavailable = Boolean(dv01AccountingFailedQuery);
+  const dv01AccountingFailure = dv01AccountingFailedQuery
+    ? requestFailureSummary(dv01AccountingFailedQuery.error)
+    : null;
+  const actionAttributionFailure =
+    actionAttribution === null && actionAttributionError
+      ? requestFailureSummary(actionAttributionError)
+      : null;
 
   const dur = headline ? numOrNullAware(headline.kpis.weighted_duration) : Number.NaN;
   const riskCreditRatio = riskQ.data?.result ? numOrNullAware(riskQ.data.result.credit_ratio) : Number.NaN;
@@ -215,8 +239,8 @@ export function BondAnalyticsInstitutionalCockpit({
   const conclusion = isDashboardDateFallback
     ? {
         title: "快照待复核",
-        body: "当前请求报告日暂无债券驾驶舱快照。",
-        detail: `请求 ${reportDate}，当前展示 ${dashboardReportDate} 快照；主结论需等目标报告日读面补齐后再确认。`,
+        body: "所选报告日暂无债券分析数据。",
+        detail: `请求 ${reportDate}，当前展示 ${dashboardReportDate} 快照；所选报告日的数据补齐前，不能据此确认当日结论。`,
       }
     : buildCockpitConclusion({
         duration: dur,
@@ -318,14 +342,14 @@ export function BondAnalyticsInstitutionalCockpit({
   /* KPI 瓦片单行放不下带单位的读数，值只出数字，单位交给 detail；证据位仍用带单位形态。 */
   const dv01Value = hasDv01Readout ? formatDv01Wan(dv01Source) : EM_DASH;
   const dv01Display = hasDv01Readout ? `${dv01Value} 万元/bp` : EM_DASH;
-  /* 三源兜底时如实标注实际命中源，避免回退值仍宣称来自风险指标读面。 */
+  /* 三源兜底时如实标注实际命中源，避免回退值仍宣称来自风险分析。 */
   const dv01SourceLabel = riskQ.data?.result?.total_dv01
-    ? "风险指标读面"
+    ? "风险分析"
     : portfolioHl?.total_dv01
-      ? "风险指标未返回，取组合摘要读数"
+      ? "风险分析数据暂缺，使用组合摘要指标"
       : k?.total_dv01
-        ? "风险指标未返回，取 headline 读数"
-        : "风险指标读面未返回";
+        ? "风险分析数据暂缺，使用债券概览指标"
+        : "风险分析数据暂缺";
   const unrealizedPnlTone =
     k && numOr(k.unrealized_pnl) !== 0 ? (numOr(k.unrealized_pnl) > 0 ? "positive" : "negative") : "default";
   const actionPnlDisplay = actionAttribution ? formatWan(actionAttribution.total_pnl_from_actions) : EM_DASH;
@@ -348,12 +372,18 @@ export function BondAnalyticsInstitutionalCockpit({
         ? "positive"
         : "negative"
       : "default";
+  const returnDecompFailure = returnDecompQ.isError
+    ? requestFailureSummary(returnDecompQ.error)
+    : null;
   const carryRollDetail =
     carryRollRaw !== null
-      ? `${periodLabel} · 票息+骑乘（收益分解读面）`
-      : returnDecompQ.isPending
-        ? "收益分解读面加载中"
-        : "收益分解读面未返回";
+      ? `${periodLabel} · 票息与骑乘收益`
+      : returnDecompFailure
+        ? `收益分解读取失败（${returnDecompFailure}）`
+        : returnDecompQ.isPending
+          ? "正在加载收益分解"
+          : "暂无收益分解数据";
+  const krdFailure = krdQ.isError ? requestFailureSummary(krdQ.error) : null;
   const macroSeries = macroLatestQ.data?.result.series ?? [];
   const macroUnavailable = macroLatestQ.isError || macroSeries.length === 0;
   const yieldCurveCurves = yieldCurveQ.data?.result.curves ?? [];
@@ -374,12 +404,12 @@ export function BondAnalyticsInstitutionalCockpit({
      回退/缺失时该行保留如实的回退标注（dv01 三源兜底语义不丢）。 */
   const riskSourceReady = Boolean(riskQ.data?.result);
   const riskSourceNote = riskSourceReady
-    ? "来源：风险指标读面"
-    : "风险指标读面未返回，以下行按实际命中源标注";
+    ? "来源：风险分析"
+    : "风险分析数据暂缺，以下指标注明替代来源";
   const durationRiskRow = {
     label: "组合久期",
     value: riskQ.data?.result ? formatDurationDisplay(riskQ.data.result.weighted_duration) : durationDisplay,
-    detail: riskSourceReady ? "市值加权" : "风险指标未返回，取 headline 读数",
+    detail: riskSourceReady ? "市值加权" : "风险分析数据暂缺，使用债券概览指标",
   };
   const dv01RiskRow = {
     label: "组合 DV01（万元/bp）",
@@ -403,12 +433,20 @@ export function BondAnalyticsInstitutionalCockpit({
     : dashboardReportDate
       ? "报告日匹配"
       : "报告日待确认";
-  const topbarReadoutStatus = headlineQ.isPending ? "加载中" : headline ? "已返回" : "待返回";
-  const topbarReadoutDetail = headlineQ.isPending
-    ? "等待后端返回"
+  const topbarReadoutStatus = headlineQ.isPending
+    ? "加载中"
     : headline
-      ? "核心读面可用"
-      : "核心读面未返回";
+      ? "已返回"
+      : headlineQ.isError
+        ? "读取失败"
+        : "待返回";
+  const topbarReadoutDetail = headlineQ.isPending
+    ? "正在加载指标"
+    : headline
+      ? "核心指标可用"
+      : headlineQ.isError
+        ? `核心指标加载失败（${requestFailureSummary(headlineQ.error)}）`
+        : "暂无核心指标";
   /* 技术告警码（全 ASCII）不直接示人，但必须计数披露，不能静默丢弃。 */
   const readableAnomalies = topAnomalies.filter((item) => /[\u3400-\u9fff]/u.test(item));
   const shownAnomalies = readableAnomalies.slice(0, 2);
@@ -417,15 +455,24 @@ export function BondAnalyticsInstitutionalCockpit({
     ? ["异常信号读取中，暂不下无异常结论。"]
     : shownAnomalies.length > 0
       ? hiddenAnomalyCount > 0
-        ? [...shownAnomalies, `另有 ${hiddenAnomalyCount} 条信号未在此列示，见证据下钻。`]
+        ? [...shownAnomalies, `另有 ${hiddenAnomalyCount} 条数据提示，详见分析明细。`]
         : shownAnomalies
       : topAnomalies.length > 0
-        ? [`${topAnomalies.length} 条技术告警未在此列示，见证据下钻。`]
+        ? [`另有 ${topAnomalies.length} 条数据提示，详见分析明细。`]
         : ["暂无新增异常"];
 
   return (
     <section data-testid="bond-analysis-phase3-cockpit" className={styles.phaseSection}>
-      {err ? <Alert type="warning" showIcon message="部分驾驶舱指标未就绪" description={err} /> : null}
+      {/* 驾驶舱部分指标缺失：行内状态行不遮罩下方已就绪的读面（§6 不能静默吞态）。 */}
+      {err ? (
+        <StateSurface
+          status="partial"
+          message="部分债券指标暂不可用"
+          reason={err}
+          density="compact"
+          dedupeKey="bond-analysis-cockpit-readout-availability"
+        />
+      ) : null}
 
       <section data-testid="bond-analysis-reference-dashboard" className={styles.referenceDashboard}>
         <ReferenceMarketTicker series={macroSeries} unavailable={macroUnavailable} />
@@ -446,26 +493,101 @@ export function BondAnalyticsInstitutionalCockpit({
               className={styles.heroConclusionMeta}
             >
               <span>
-                报告日 {topbarReportStatus} · {topbarReportDate}
+                {!isDashboardDateFallback && dashboardReportDate
+                  ? topbarReportStatus
+                  : <>报告日 {topbarReportStatus} · {topbarReportDate}</>}
               </span>
               <span>
-                核心读面 {topbarReadoutStatus} · {topbarReadoutDetail}
+                {headline && !headlineQ.isPending && !headlineQ.isError
+                  ? topbarReadoutDetail
+                  : <>核心指标 {topbarReadoutStatus} · {topbarReadoutDetail}</>}
               </span>
             </div>
           </div>
         </section>
 
         <div className={styles.holdingsKpiRail}>
-          {/* 常态零徽标（首页 2026-08-13 降噪制度）：就绪读数不再挂「已读」，仅缺口/待读面发声。 */}
+          {/* 常态零徽标（首页 2026-08-13 降噪制度）：就绪读数不再挂「已读」，仅缺口/数据待补发声。 */}
           <InstitutionalKpiRail testId="bond-analysis-kpi-ribbon" columns={7} flush>
-            <InstitutionalKpiTile label="久期" value={durationDisplay} detail={leadMaturity ? `最重期限桶 ${leadMaturity.label}` : "期限结构待读面"} status={Number.isFinite(dur) ? undefined : "待读面"} priority="primary" />
+            <InstitutionalKpiTile
+              label="久期"
+              value={durationDisplay}
+              detail={
+                leadMaturity
+                  ? `最重期限桶 ${leadMaturity.label}`
+                  : headlineFailure
+                    ? `核心指标读取失败（${headlineFailure}）`
+                    : "期限结构数据待补"
+              }
+              status={Number.isFinite(dur) ? undefined : headlineGapStatus}
+              state={Number.isFinite(dur) ? undefined : headlineGapState}
+              priority="primary"
+            />
             {/* 收益率是水平值非变动量：去前导 +（变动量读数仍走 formatSignedPct 保符号）。 */}
-            <InstitutionalKpiTile label="组合到期收益率" value={k ? stripLeadingPlus(formatPct(k.weighted_ytm)) : EM_DASH} detail={previousK ? `上期 ${stripLeadingPlus(formatPct(previousK.weighted_ytm))}` : "收益率待读面"} status={k ? undefined : "待读面"} priority="primary" />
-            <InstitutionalKpiTile label="信用债收益率中位数" value={formatSpreadYtmPctDisplay(spreadMedian)} detail="信用债 YTM 中位数，非对基准利差" status={Number.isFinite(spreadMedianBp) ? undefined : "待读面"} priority="primary" />
-            <InstitutionalKpiTile label="DV01（万元/bp）" value={dv01Value} detail={dv01SourceLabel} status={hasDv01Readout ? undefined : "待读面"} priority="primary" />
-            <InstitutionalKpiTile label="Carry+Roll" value={carryRollDisplay} detail={carryRollDetail} status={carryRollRaw !== null ? undefined : "待读面"} tone={carryRollTone} />
-            <InstitutionalKpiTile label="动作归因损益" value={actionPnlDisplay} detail={actionAttribution ? `${periodLabel} · ${actionAttribution.total_actions} 笔动作` : "动作归因待读面"} status={actionAttribution ? undefined : "待读面"} tone={actionPnlTone} />
-            <InstitutionalKpiTile label="未实现损益" value={unrealizedPnlDisplay} detail={`存量浮盈（非本期损益）· 较上期 ${formatSignedPct(unrealizedPnlMomPct)}`} status={k ? undefined : "待读面"} tone={unrealizedPnlTone} />
+            <InstitutionalKpiTile
+              label="组合到期收益率"
+              value={k ? stripLeadingPlus(formatPct(k.weighted_ytm)) : EM_DASH}
+              detail={
+                previousK
+                  ? `上期 ${stripLeadingPlus(formatPct(previousK.weighted_ytm))}`
+                  : headlineFailure
+                    ? `核心指标读取失败（${headlineFailure}）`
+                    : "收益率数据待补"
+              }
+              status={k ? undefined : headlineGapStatus}
+              state={k ? undefined : headlineGapState}
+              priority="primary"
+            />
+            <InstitutionalKpiTile
+              label="信用债收益率中位数"
+              value={formatSpreadYtmPctDisplay(spreadMedian)}
+              detail="信用债 YTM 中位数，非对基准利差"
+              detailTestId="bond-analysis-credit-yield-basis"
+              status={Number.isFinite(spreadMedianBp) ? undefined : headlineGapStatus}
+              state={Number.isFinite(spreadMedianBp) ? undefined : headlineGapState}
+              priority="primary"
+            />
+            <InstitutionalKpiTile
+              label="DV01（万元/bp）"
+              value={dv01Value}
+              detail={dv01SourceLabel}
+              status={hasDv01Readout ? undefined : headlineGapStatus}
+              state={hasDv01Readout ? undefined : headlineGapState}
+              priority="primary"
+            />
+            {/* 接口 isError 时状态改「读取失败」（gap 态），只有未启用/加载中才保留「数据待补」。 */}
+            <InstitutionalKpiTile
+              label="Carry+Roll"
+              value={carryRollDisplay}
+              detail={carryRollDetail}
+              detailTestId="bond-analysis-carry-roll-basis"
+              status={carryRollRaw !== null ? undefined : returnDecompFailure ? "读取失败" : "数据待补"}
+              state={carryRollRaw !== null ? undefined : returnDecompFailure ? "gap" : "pending"}
+              tone={carryRollTone}
+            />
+            <InstitutionalKpiTile
+              label="动作归因损益"
+              value={actionPnlDisplay}
+              detail={
+                actionAttribution
+                  ? `${periodLabel} · ${actionAttribution.total_actions} 笔动作`
+                  : actionAttributionFailure
+                    ? `动作归因读取失败（${actionAttributionFailure}）`
+                    : "动作归因数据待补"
+              }
+              status={actionAttribution ? undefined : actionAttributionFailure ? "读取失败" : "数据待补"}
+              state={actionAttribution ? undefined : actionAttributionFailure ? "gap" : "pending"}
+              tone={actionPnlTone}
+            />
+            <InstitutionalKpiTile
+              label="未实现损益"
+              value={unrealizedPnlDisplay}
+              detailTestId="bond-analysis-unrealized-pnl-basis"
+              detail={`存量浮盈（非本期损益）· 较上期 ${formatSignedPct(unrealizedPnlMomPct)}`}
+              status={k ? undefined : headlineGapStatus}
+              state={k ? undefined : headlineGapState}
+              tone={unrealizedPnlTone}
+            />
           </InstitutionalKpiRail>
           <div
             data-testid="bond-analysis-currency-basis-banner"
@@ -484,6 +606,7 @@ export function BondAnalyticsInstitutionalCockpit({
             hasError={yieldCurveQ.isError}
             krdBucketCount={krdQ.data?.result?.krd_buckets?.length ?? null}
             krdPending={krdQ.isPending}
+            krdError={krdFailure}
           />
           <div className={styles.referenceAnalysisSideStack}>
             <Card
@@ -507,6 +630,7 @@ export function BondAnalyticsInstitutionalCockpit({
             actionPnlDisplay={actionPnlDisplay}
             actionPnlTone={actionPnlTone}
             actionCount={actionAttribution?.total_actions ?? null}
+            actionError={actionAttributionFailure}
             marketValueMomPct={marketValueMomPct}
             dv01Mom={dv01Mom}
             unrealizedPnlDisplay={unrealizedPnlDisplay}
@@ -519,6 +643,7 @@ export function BondAnalyticsInstitutionalCockpit({
           rows={dv01AccountingRows}
           isLoading={dv01AccountingLoading}
           hasError={dv01AccountingUnavailable}
+          errorSummary={dv01AccountingFailure}
           onOpenModuleDetail={onOpenModuleDetail}
         />
 
@@ -544,7 +669,7 @@ export function BondAnalyticsInstitutionalCockpit({
             <DistributionDonut items={dashboardAssetItems} center={marketValueDisplay} emptyText="暂无资产结构" />
             <div className={styles.structureConcentration}>
               <span>行业集中度</span>
-              <DistributionRows items={industryItems.slice(0, 4)} emptyText="暂无发行人/行业读面" />
+              <DistributionRows items={industryItems.slice(0, 4)} emptyText="暂无发行人或行业数据" />
             </div>
             {portfolioHeadlinesUnavailable ? <div className={styles.moduleNote}>{PORTFOLIO_HEADLINES_STRUCTURE_NOTE}</div> : null}
             {portfolioHeadlinesUnavailable ? <div className={styles.moduleNote}>{PORTFOLIO_HEADLINES_CREDIT_NOTE}</div> : null}
@@ -571,7 +696,7 @@ export function BondAnalyticsInstitutionalCockpit({
               ))}
               <div data-testid="bond-analysis-risk-guardrails" className={styles.riskEvidenceGuardrail}>
                 <div className={styles.riskEvidenceBoundary}>
-                  只列后端返回风险字段；缺失保持证据缺口，不延伸为审批或阈值结论。
+                  暂缺指标保持为空；本区不作为审批或限额判断依据。
                 </div>
                 <Button size="small" type="text" data-testid="bond-analysis-home-open-credit-spread" onClick={() => onOpenModuleDetail?.("credit-spread")}>
                   打开信用利差
@@ -606,12 +731,18 @@ export function BondAnalyticsInstitutionalCockpit({
               >
                 <span>动作归因</span>
                 <strong>{actionAttribution ? `${actionAttribution.total_actions} 笔动作` : EM_DASH}</strong>
-                <small>{actionAttribution ? "本期动作数" : "动作归因待返回"}</small>
+                <small>
+                  {actionAttribution
+                    ? "本期动作数"
+                    : actionAttributionFailure
+                      ? `动作归因读取失败（${actionAttributionFailure}）`
+                      : "动作归因待返回"}
+                </small>
               </div>
               {decisionRail && onOpenModuleDetail ? (
                 <div data-testid="bond-analysis-decision-rail" className={styles.todayFocusDecision}>
                   <div data-testid="bond-analysis-decision-trust">
-                    <span>当前下钻</span>
+                    <span>查看明细</span>
                     <strong>{decisionRail.activeModuleContext.label}</strong>
                     <small>{decisionRail.activeModuleContext.description}</small>
                   </div>
@@ -631,10 +762,9 @@ export function BondAnalyticsInstitutionalCockpit({
                 ))}
               </div>
               <div data-testid="bond-analysis-return-trend-boundary" className={styles.footerEvidenceNote}>
-                收益时序未返回：不绘制趋势占位。
+                暂无收益趋势数据。
               </div>
               <div className={styles.footerActionBar}>
-                <span>保留返回事实与缺口，不补造趋势。</span>
                 <Button size="small" type="text" data-testid="bond-analysis-home-open-return-decomposition" onClick={() => onOpenModuleDetail?.("return-decomposition")}>
                   打开收益拆解
                 </Button>
@@ -684,7 +814,7 @@ export function BondAnalyticsInstitutionalCockpit({
               <div>
                 <span>评级缺口</span>
                 <strong>{topHoldingsUnavailable ? EM_DASH : `${holdingRatingGapCount} 条`}</strong>
-                <small>缺失评级保持 —，不补造评级。</small>
+                <small>暂无评级的持仓以 — 展示。</small>
               </div>
               <div>
                 <span>数值缺口</span>

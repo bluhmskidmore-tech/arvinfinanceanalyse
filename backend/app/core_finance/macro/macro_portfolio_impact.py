@@ -152,6 +152,8 @@ _OBSERVATION_FLAGS = {
 
 _REQUIRED_SCENARIO_TENORS = ("1Y", "3Y", "5Y", "7Y", "10Y")
 
+_TENOR_YEARS = {"1Y": 1, "3Y": 3, "5Y": 5, "7Y": 7, "10Y": 10}
+
 
 def compute_macro_portfolio_impact(
     portfolio_profile: dict[str, Any],
@@ -233,15 +235,35 @@ def compute_macro_portfolio_impact(
                 "credit_shift_bp": credit_shift_bp,
             }
 
-        remaining_mv = sum(
-            profile_buckets[bl]["market_value"] for bl in profile_buckets if bl not in bucket_impacts
-        )
-        if remaining_mv > 0 and usable_shifts:
+        # 剩余（未被 tenor_to_bucket 覆盖的）桶逐个用自身 avg_duration 处理，
+        # 不再合并为单一 other 条目、不再借用组合加权久期（长端桶久期通常远高于
+        # 组合平均，借用会系统性低估长端情景损失）。
+        if usable_shifts:
             avg_shift = sum(usable_shifts.values()) / len(usable_shifts)
-            remaining_dur = portfolio_profile.get("weighted_duration") or 0.0
-            delta_remaining = -remaining_mv * remaining_dur * (avg_shift + credit_shift_bp) / 10000.0
-            total_delta += delta_remaining
-            bucket_impacts["other"] = {"delta_mv": round(delta_remaining, 2)}
+            longest_tenor = max(usable_shifts, key=lambda t: _TENOR_YEARS.get(t, 0))
+            longest_shift = usable_shifts[longest_tenor]
+            for bucket_label, b in profile_buckets.items():
+                if bucket_label in bucket_impacts:
+                    continue
+                b_mv = b["market_value"]
+                if b_mv <= 0:
+                    continue
+                b_dur = b["avg_duration"]
+                if bucket_label == "10Y+":
+                    shift_bp = longest_shift
+                    shift_source_tenor = longest_tenor
+                else:
+                    shift_bp = avg_shift
+                    shift_source_tenor = "avg_of_available_tenors"
+                combined_shift = shift_bp + credit_shift_bp
+                delta = -b_mv * b_dur * combined_shift / 10000.0
+                total_delta += delta
+                bucket_impacts[bucket_label] = {
+                    "delta_mv": round(delta, 2),
+                    "rate_shift_bp": shift_bp,
+                    "credit_shift_bp": credit_shift_bp,
+                    "shift_source_tenor": shift_source_tenor,
+                }
 
         pnl_pct = round(total_delta / total_mv * 100, 2) if total_mv else 0.0
 

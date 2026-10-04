@@ -389,7 +389,7 @@ describe("PnlPage", () => {
       expect(screen.getByTestId("pnl-data-section")).toHaveAttribute("data-state", "error");
     });
 
-    expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("结果元信息 / 证据");
+    expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("数据说明");
     expect(screen.getByLabelText("pnl-report-date")).toBeDisabled();
   });
 

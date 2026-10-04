@@ -1,4 +1,5 @@
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ReactNode } from "react";
@@ -210,10 +211,14 @@ describe("Portfolio home cross-page consistency", () => {
         currencyBasis: "CNY",
       });
       expect(getBondDashboardHomeSummary).toHaveBeenCalledWith(PORTFOLIO_CROSS_PAGE_REPORT_DATE);
-      expect(getBondDashboardRiskIndicators).toHaveBeenCalledWith(PORTFOLIO_CROSS_PAGE_REPORT_DATE);
+      // Risk now shares the same home-summary response and report date.
+      expect(getBondDashboardRiskIndicators).not.toHaveBeenCalled();
+      expect(within(page).getByTestId("module-home-portfolio-risk")).toHaveTextContent(
+        PORTFOLIO_CROSS_PAGE_EXPECTED.bondDv01Wan,
+      );
       expect(getPnlAttributionAnalysisSummary).toHaveBeenCalledWith(PORTFOLIO_CROSS_PAGE_REPORT_DATE);
       expect(getRiskTensorDates).toHaveBeenCalledTimes(1);
-      expect(decision).toHaveTextContent(`\u540c\u65e5\u95ed\u5408 ${PORTFOLIO_CROSS_PAGE_REPORT_DATE}`);
+      expect(decision).toHaveTextContent(`数据日期一致 ${PORTFOLIO_CROSS_PAGE_REPORT_DATE}`);
     });
     expect(getBalanceAnalysisSummaryByBasis).toHaveBeenCalledWith({
       reportDate: PORTFOLIO_CROSS_PAGE_REPORT_DATE,
@@ -238,14 +243,14 @@ describe("Portfolio home cross-page consistency", () => {
       expect(kpis).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.bondDuration);
       expect(kpis).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.bondDv01Wan);
       expect(kpis).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.bondCount);
-      expect(decision).toHaveTextContent(`\u540c\u65e5\u95ed\u5408 ${PORTFOLIO_CROSS_PAGE_REPORT_DATE}`);
+      expect(decision).toHaveTextContent(`数据日期一致 ${PORTFOLIO_CROSS_PAGE_REPORT_DATE}`);
       expect(decision).toHaveTextContent("\u7ec4\u5408\u590d\u6838");
       expect(decision).toHaveTextContent("\u4e1a\u52a1\u53ef\u7528");
       expect(exposureMatrix).toHaveTextContent("\u98ce\u9669\u66b4\u9732");
       expect(exposureMatrix).toHaveTextContent("\u6838\u5fc3\u8bfb\u6570");
       expect(exposureMatrix).toHaveTextContent(`4 \u4e2a\u6765\u6e90 / ${PORTFOLIO_CROSS_PAGE_REPORT_DATE}`);
       expect(evidenceConsole).toHaveTextContent("\u8bc1\u636e\u53e3\u5f84");
-      expect(evidenceConsole).toHaveTextContent("\u6765\u6e90 / \u65e5\u671f / \u95ed\u5408");
+      expect(evidenceConsole).toHaveTextContent("来源 / 日期 / 可用范围");
       expect(evidenceConsole).toHaveTextContent("\u5f85\u590d\u6838");
     });
     const useLevel = within(decision).getByTestId("module-home-decision-use-level");
@@ -274,7 +279,7 @@ describe("Portfolio home cross-page consistency", () => {
     expect(sourceWorkbench).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.maturityName);
     expect(sourceWorkbench).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.industryName);
     expect(within(sourceWorkbench).getByTestId("module-home-briefing")).toBe(briefing);
-    expect(within(sourceWorkbench).getByTestId("module-home-status-strip")).toBeInTheDocument();
+    expect(within(sourceWorkbench).queryByTestId("module-home-status-strip")).not.toBeInTheDocument();
     expect(within(dataWorkbench).getByTestId("module-home-portfolio-data-nav")).toBeInTheDocument();
 
     const holdingsWorkbench = within(dataWorkbench).getByTestId("module-home-portfolio-holdings-workbench");
@@ -291,6 +296,13 @@ describe("Portfolio home cross-page consistency", () => {
     expect(within(structureTerminal).getByTestId("module-home-analysis-tab-portfolio-comparison")).toHaveTextContent("4");
     expect(within(structureTerminal).getByTestId("module-home-analysis-tab-yield-distribution")).toHaveTextContent("6");
     expect(within(structureTerminal).getByTestId("module-home-analysis-tab-spread-analysis")).toHaveTextContent("4");
+    // spread-analysis 行是券种 median_yield（非对国债利差），页签与面板标题按口径直呼。
+    expect(within(structureTerminal).getByTestId("module-home-analysis-tab-spread-analysis")).toHaveTextContent(
+      "券种收益率",
+    );
+    expect(within(structureTerminal).getByTestId("module-home-analysis-tab-spread-analysis")).not.toHaveTextContent(
+      "利差",
+    );
     expect(within(structureTerminal).getByTestId("module-home-analysis-tab-business-type-metrics")).toHaveTextContent("4");
     expect(within(dataWorkbench).getByTestId("module-home-portfolio-closure-band")).toBeInTheDocument();
     expect(within(dataWorkbench).getByTestId("module-home-portfolio-action-workbench")).toBeInTheDocument();
@@ -299,7 +311,7 @@ describe("Portfolio home cross-page consistency", () => {
     expect(riskPanel).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.bondDv01Wan);
 
     const pnlPanel = within(page).getByTestId("module-home-pnl-summary");
-    expect(pnlPanel).toHaveTextContent("primary_driver");
+    expect(pnlPanel).not.toHaveTextContent("primary_driver");
     expect(pnlPanel).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.pnlFinding);
 
     const basisPanel = within(page).getByTestId("module-home-balance-basis");
@@ -314,6 +326,13 @@ describe("Portfolio home cross-page consistency", () => {
     expect(dataNote).toHaveTextContent("fact_formal_bond_analytics_daily");
     expect(dataNote).toHaveTextContent("fact_formal_zqtz_balance_daily");
     expect(dataNote).toHaveTextContent("fact_formal_pnl_fi");
+    const technicalSummary = within(dataNote).getByText("技术诊断");
+    expect(technicalSummary).not.toBeVisible();
+    await userEvent.click(dataNote.querySelector("summary")!);
+    await userEvent.click(technicalSummary);
+    const technicalDetails = technicalSummary.closest("details")!;
+    expect(technicalDetails).toHaveAttribute("open");
+    expect(technicalDetails).toHaveTextContent("primary_driver");
 
     const firstScreenText = [
       decision.textContent ?? "",

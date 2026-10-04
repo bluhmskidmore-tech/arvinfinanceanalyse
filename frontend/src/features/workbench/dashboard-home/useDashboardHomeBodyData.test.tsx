@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import type {
   ApiEnvelope,
   ChoiceNewsEvent,
@@ -448,8 +449,45 @@ describe("useDashboardHomeBodyData", () => {
         expect.objectContaining({ detail: "summary" }),
       );
       expect(getPnlCampisiFourEffects).toHaveBeenCalledWith(
-        expect.objectContaining({ endDate: "2026-05-31", lookbackDays: 30, detail: "summary" }),
+        expect.objectContaining({ startDate: "2026-04-30", endDate: "2026-05-31", lookbackDays: 30, detail: "summary" }),
       );
+    });
+  });
+
+  it("does not reuse cached rolling-window attribution for the monthly report", async () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(
+      apiQueryKeys.pnlCampisiFourEffects("real", "2026-08-31", 30, "summary"),
+      { result: { period_start: "2026-08-01", period_end: "2026-08-31" } },
+    );
+    const getPnlCampisiFourEffects = vi.fn(async () => ({
+      result: { period_start: "2026-07-31", period_end: "2026-08-31" },
+    }) as never);
+    const dataClient = createHomeBodyClient({
+      getPnlCampisiFourEffects,
+      getBondAnalyticsReturnDecomposition: vi.fn(async () => ({}) as never),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async () => ({}) as never),
+      getBondAnalyticsYieldCurveTermStructure: vi.fn(async () => ({}) as never),
+    });
+
+    const { result } = renderHook(() => useDashboardHomeBodyData({
+      dataClient,
+      supplementalReportDate: "2026-08-31",
+      loadBasicData: false,
+      loadEventFeeds: false,
+      loadSecondaryEventFeeds: false,
+      loadBondNewsFeeds: false,
+      loadFormalData: true,
+    }), { wrapper: createWrapper(queryClient) });
+
+    await waitFor(() => {
+      expect(result.current.campisiFourEffectsQuery.data?.result.period_start).toBe("2026-07-31");
+    });
+    expect(getPnlCampisiFourEffects).toHaveBeenCalledWith({
+      startDate: "2026-07-31",
+      endDate: "2026-08-31",
+      lookbackDays: 30,
+      detail: "summary",
     });
   });
 });

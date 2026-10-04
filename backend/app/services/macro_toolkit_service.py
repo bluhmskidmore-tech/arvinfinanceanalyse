@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -43,6 +44,7 @@ from backend.app.repositories.choice_stock_units import (
     amount_rmb_sql,
     scale_unknown_sql,
 )
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
@@ -174,12 +176,31 @@ def materialize_choice_stock_factor_snapshot(*args: object, **kwargs: object) ->
     return _fn(*args, **kwargs)
 
 
-def materialize_choice_stock_inputs(*args: object, **kwargs: object) -> object:
+def materialize_choice_stock_inputs(
+    *,
+    as_of_date: str | date,
+    duckdb_path: str | None = None,
+    catalog_path: str | None = None,
+    client: object | None = None,
+    tushare_client: object | None = None,
+    enable_tushare_concept_fallback: bool = False,
+    allow_cross_era_backfill: bool = False,
+    history_start_date: str | date | None = None,
+) -> dict[str, object]:
     from backend.app.tasks.choice_stock_materialize import (
         materialize_choice_stock_inputs as _fn,
     )
 
-    return _fn(*args, **kwargs)
+    return _fn(
+        as_of_date=as_of_date,
+        duckdb_path=duckdb_path,
+        catalog_path=catalog_path,
+        client=client,
+        tushare_client=tushare_client,
+        enable_tushare_concept_fallback=enable_tushare_concept_fallback,
+        allow_cross_era_backfill=allow_cross_era_backfill,
+        history_start_date=history_start_date,
+    )
 
 
 def append_choice_stock_refresh_completion(*args: object, **kwargs: object) -> object:
@@ -190,7 +211,20 @@ def append_choice_stock_refresh_completion(*args: object, **kwargs: object) -> o
     return _fn(*args, **kwargs)
 
 
-def build_choice_stock_observation_manifest(*args: object, **kwargs: object) -> object:
+def publish_choice_stock_observation_manifest(
+    *, governance_repo: GovernanceRepository, observation_manifest: Mapping[str, object]
+) -> bool:
+    from backend.app.tasks.choice_stock_observation_manifest import (
+        publish_choice_stock_observation_manifest as _fn,
+    )
+
+    return _fn(
+        governance_repo=governance_repo,
+        observation_manifest=observation_manifest,
+    )
+
+
+def build_choice_stock_observation_manifest(*args: object, **kwargs: object) -> dict[str, object]:
     from backend.app.tasks.choice_stock_observation_manifest import (
         build_choice_stock_observation_manifest as _fn,
     )
@@ -206,7 +240,7 @@ def verify_choice_stock_daily_observation_landing(*args: object, **kwargs: objec
     return _fn(*args, **kwargs)
 
 
-def refresh_choice_stock_theme_overlay(*args: object, **kwargs: object) -> object:
+def refresh_choice_stock_theme_overlay(*args: object, **kwargs: object) -> dict[str, object]:
     from backend.app.tasks.choice_stock_theme_overlay_refresh import (
         refresh_choice_stock_theme_overlay as _fn,
     )
@@ -214,10 +248,56 @@ def refresh_choice_stock_theme_overlay(*args: object, **kwargs: object) -> objec
     return _fn(*args, **kwargs)
 
 
-def run_commodity_daily_ingest(*args: object, **kwargs: object) -> object:
+def run_livermore_daily_pretrade_refresh(
+    *,
+    duckdb_path: str | Path,
+    target_date: str | None = None,
+    output_dir: str | Path = "test_output/livermore_stock_selection",
+    top_n: int = 10,
+    lookback_days: int = 90,
+    stock_candidate_policy: str | None = None,
+    sample_stock_code: str = "600582.SH",
+    dry_run: bool = False,
+    skip_upstream_probe: bool = False,
+    theme_overlay_mode: Literal["off", "dry_run", "archive"] = "off",
+    export_pretrade: bool = True,
+) -> dict[str, object]:
+    from scripts.run_livermore_daily_pretrade_refresh import (
+        run_livermore_daily_pretrade_refresh as _fn,
+    )
+
+    return _fn(
+        duckdb_path=duckdb_path,
+        target_date=target_date,
+        output_dir=output_dir,
+        top_n=top_n,
+        lookback_days=lookback_days,
+        stock_candidate_policy=stock_candidate_policy,
+        sample_stock_code=sample_stock_code,
+        dry_run=dry_run,
+        skip_upstream_probe=skip_upstream_probe,
+        theme_overlay_mode=theme_overlay_mode,
+        export_pretrade=export_pretrade,
+    )
+
+
+def run_commodity_daily_ingest(
+    *,
+    start_date: str,
+    end_date: str | None = None,
+    duckdb_path: str | None = None,
+    products: tuple[str, ...] | None = None,
+    dry_run: bool = False,
+) -> dict[str, object]:
     from backend.app.tasks.commodity_daily_ingest import run_commodity_daily_ingest as _fn
 
-    return _fn(*args, **kwargs)
+    return _fn(
+        start_date=start_date,
+        end_date=end_date,
+        duckdb_path=duckdb_path,
+        products=products,
+        dry_run=dry_run,
+    )
 
 
 class _RunCommodityDailyIngestTaskProxy:
@@ -237,6 +317,26 @@ class _RunCommodityDailyIngestTaskProxy:
 
 
 run_commodity_daily_ingest_task = _RunCommodityDailyIngestTaskProxy()
+
+
+class _RunCommodityFuturesRefreshTaskProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.macro_toolkit_write_refresh import (
+            run_commodity_futures_refresh_task as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.macro_toolkit_write_refresh import (
+            run_commodity_futures_refresh_task as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+run_commodity_futures_refresh_task = _RunCommodityFuturesRefreshTaskProxy()
+
 
 class _RunCffexMemberRankRefreshTaskProxy:
     def send(self, **kwargs: object) -> object:
@@ -302,10 +402,19 @@ CHOICE_STOCK_REFRESH_LOCK = "lock:choice_stock_refresh"
 CHOICE_STOCK_REFRESH_RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
 CHOICE_STOCK_THEME_OVERLAY_VENDOR_VERSION = "vv_tushare_ths_current_overlay_v1"
 _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
+_CHOICE_STOCK_REFRESH_STALLED_AFTER = timedelta(hours=1)
 COMMODITY_FUTURES_REFRESH_JOB_NAME = "commodity_futures_daily_ingest"
 COMMODITY_FUTURES_REFRESH_CACHE_KEY = "commodity_futures.daily"
 COMMODITY_FUTURES_REFRESH_CACHE_VERSION = "commodity_futures_daily_v1"
 COMMODITY_FUTURES_REFRESH_RULE_VERSION = "rv_commodity_daily_v1"
+_COMMODITY_FUTURES_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
+_COMMODITY_FUTURES_REFRESH_TERMINAL_STATUSES = {
+    "completed",
+    "partial",
+    "failed",
+    "no_rows",
+    "blocked",
+}
 CFFEX_MEMBER_RANK_REFRESH_JOB_NAME = "cffex_member_rank_refresh"
 CFFEX_MEMBER_RANK_REFRESH_CACHE_KEY = "macro_toolkit.cffex_member_rank"
 CFFEX_MEMBER_RANK_REFRESH_CACHE_VERSION = "cffex_member_rank_refresh_v1"
@@ -317,11 +426,45 @@ MACRO_SOURCE_BACKFILL_CACHE_VERSION = "macro_source_backfill_v1"
 MACRO_SOURCE_BACKFILL_RULE_VERSION = "rv_macro_source_backfill_async_v1"
 _MACRO_SOURCE_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
 _WRITE_REFRESH_MAX_RETRIES = 3
+_SENSITIVE_ERROR_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|passwd|pwd)\b"
+    r"(\s*[:=]\s*|\s+)([^\s,;]+)"
+)
+_SENSITIVE_ERROR_AUTH_RE = re.compile(r"(?i)\b(bearer|basic)\s+[^\s,;]+")
+_SENSITIVE_ERROR_URL_USERINFO_RE = re.compile(
+    r"(?i)(\b[a-z][a-z0-9+.-]*://[^:/\s]+:)[^@\s]+(@)"
+)
+_SENSITIVE_ERROR_ENV_NAME_RE = re.compile(
+    r"(?i)(?:^|_)(?:token|secret|password|passwd|api_key|apikey|credential)(?:$|_)"
+)
 EQUITY_PRICE_LOOKBACK_DAYS = 260
 EQUITY_PRICE_MIN_OBSERVATIONS = 80
 EQUITY_PRICE_MAX_STOCKS = 500
-A_SHARE_RISK_LOOKBACK_DAYS = 35
+# 日历日窗口。amount_ma20 排除当日后需要 20 个先前交易日：35 日在春节/国庆长假窗口内
+# 只剩约 19 个交易日，放量维度会整档停摆；45 日在长假下仍约 26 个交易日。
+A_SHARE_RISK_LOOKBACK_DAYS = 45
 A_SHARE_RISK_MAX_STOCKS = 8000
+
+
+def _redact_sensitive_error_text(value: object) -> str:
+    text = " ".join(str(value or "").split()) or "no error details"
+    text = _SENSITIVE_ERROR_AUTH_RE.sub(
+        lambda match: f"{match.group(1)} ***",
+        text,
+    )
+    text = _SENSITIVE_ERROR_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}***",
+        text,
+    )
+    text = _SENSITIVE_ERROR_URL_USERINFO_RE.sub(r"\1***\2", text)
+    for name, environment_value in os.environ.items():
+        normalized_value = str(environment_value or "")
+        if (
+            _SENSITIVE_ERROR_ENV_NAME_RE.search(name)
+            and len(normalized_value) >= 6
+        ):
+            text = text.replace(normalized_value, "***")
+    return text[:300]
 _CANONICAL_ISO_DATE_COLUMNS = {
     ("choice_stock_daily_observation", "trade_date"),
     ("fact_formal_risk_tensor_daily", "report_date"),
@@ -384,6 +527,22 @@ class MacroToolkitQueueError(RuntimeError):
 
 
 def run_macro_toolkit_script(
+    *,
+    name: str,
+    argv: list[str],
+    timeout_seconds: int,
+    output_dir: str | Path = OUTPUT_DIR,
+) -> dict[str, object]:
+    try:
+        with acquire_lock(MACRO_TOOLKIT_CHAIN_LOCK, base_dir=Path(output_dir).resolve(), timeout_seconds=0.1):
+            return _run_macro_toolkit_script_unlocked(
+                name=name, argv=argv, timeout_seconds=timeout_seconds, output_dir=output_dir,
+            )
+    except TimeoutError as exc:
+        raise MacroToolkitConflictError("Macro toolkit output is already being written.") from exc
+
+
+def _run_macro_toolkit_script_unlocked(
     *,
     name: str,
     argv: list[str],
@@ -509,7 +668,7 @@ def run_macro_toolkit_chain(
         for step in _macro_run_manifest():
             authorize_script(str(step["script_name"]))
 
-    if dry_run or governance_path is None:
+    if dry_run:
         return _run_macro_toolkit_chain_unlocked(
             dry_run=dry_run,
             timeout_seconds=timeout_seconds,
@@ -518,7 +677,7 @@ def run_macro_toolkit_chain(
         )
 
     try:
-        with acquire_lock(MACRO_TOOLKIT_CHAIN_LOCK, base_dir=governance_path, timeout_seconds=0.1):
+        with acquire_lock(MACRO_TOOLKIT_CHAIN_LOCK, base_dir=Path(output_dir).resolve(), timeout_seconds=0.1):
             return _run_macro_toolkit_chain_unlocked(
                 dry_run=dry_run,
                 timeout_seconds=timeout_seconds,
@@ -546,7 +705,7 @@ def _run_macro_toolkit_chain_unlocked(
     else:
         status = "completed"
         for step in _macro_run_manifest():
-            result = run_macro_toolkit_script(
+            result = _run_macro_toolkit_script_unlocked(
                 name=str(step["script_name"]),
                 argv=[],
                 timeout_seconds=timeout_seconds,
@@ -588,6 +747,7 @@ def queue_macro_source_backfill(
     start_date: str,
     end_date: str,
     sources: tuple[str, ...],
+    requested_by_user_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> MacroToolkitActionResult:
     try:
@@ -604,6 +764,7 @@ def queue_macro_source_backfill(
     normalized_mode = str(backfill_mode or "").strip()
     if normalized_mode not in {"macro_series", "crisis_score_inputs"}:
         raise ValueError(f"Unsupported macro source backfill mode: {backfill_mode}")
+    owner_user_id = _optional_text(requested_by_user_id)
     normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     request_fingerprint = hashlib.sha256(
         repr(
@@ -632,6 +793,9 @@ def queue_macro_source_backfill(
                     if str(record.get("request_fingerprint") or "") != request_fingerprint:
                         continue
                     if str(record.get("idempotency_key") or "").strip() == normalized_idempotency_key:
+                        record_owner = _optional_text(record.get("requested_by_user_id"))
+                        if record_owner != owner_user_id:
+                            continue
                         status = str(record.get("status") or "queued")
                         return MacroToolkitActionResult(
                             payload=_normalize_macro_source_backfill_refresh_record(
@@ -685,6 +849,8 @@ def queue_macro_source_backfill(
                 "request_fingerprint": request_fingerprint,
                 "idempotency_key": normalized_idempotency_key,
             }
+            if owner_user_id is not None:
+                queued_payload["requested_by_user_id"] = owner_user_id
             repo.append(CACHE_BUILD_RUN_STREAM, queued_payload)
             try:
                 run_macro_source_backfill_refresh_task.send(
@@ -699,6 +865,7 @@ def queue_macro_source_backfill(
                     end_date=end_date,
                     sources=normalized_sources,
                     request_fingerprint=request_fingerprint,
+                    requested_by_user_id=owner_user_id,
                     idempotency_key=normalized_idempotency_key,
                 )
             except Exception as exc:
@@ -742,6 +909,7 @@ def macro_source_backfill_refresh_status(
     governance_path: str | Path,
     *,
     run_id: str,
+    expected_user_id: str | None = None,
 ) -> dict[str, object]:
     run_id_text = str(run_id or "").strip()
     if not run_id_text:
@@ -758,9 +926,12 @@ def macro_source_backfill_refresh_status(
         None,
     )
     if latest is None:
-        raise ValueError(
-            f"Macro source backfill refresh run not found: {run_id_text}"
-        )
+        raise ValueError("Macro source backfill refresh run not found.")
+    expected_owner = _optional_text(expected_user_id)
+    if expected_owner is not None:
+        owner_user_id = _optional_text(latest.get("requested_by_user_id"))
+        if owner_user_id is None or owner_user_id != expected_owner:
+            raise PermissionError("Macro source backfill refresh run not found.")
     return _normalize_macro_source_backfill_refresh_record(latest)
 
 
@@ -996,14 +1167,97 @@ def _normalize_macro_source_backfill_refresh_record(
     return normalized
 
 
+def commodity_futures_refresh_summary(
+    *,
+    before_status: dict[str, object],
+    after_status: dict[str, object],
+    dry_run: bool,
+) -> dict[str, object]:
+    before_coverage_value = before_status.get("coverage")
+    before_coverage = before_coverage_value if isinstance(before_coverage_value, dict) else {}
+    after_coverage_value = after_status.get("coverage")
+    after_coverage = after_coverage_value if isinstance(after_coverage_value, dict) else {}
+    before_available = set(_public_text_list(before_coverage.get("available_products")))
+    after_available = set(_public_text_list(after_coverage.get("available_products")))
+    before_nanhua_value = before_status.get("nanhua_input")
+    before_nanhua = before_nanhua_value if isinstance(before_nanhua_value, dict) else {}
+    after_nanhua_value = after_status.get("nanhua_input")
+    after_nanhua = after_nanhua_value if isinstance(after_nanhua_value, dict) else {}
+    before_row_count = _optional_int(before_status.get("row_count"))
+    after_row_count = _optional_int(after_status.get("row_count"))
+    return {
+        "table": str(
+            after_status.get("table")
+            or before_status.get("table")
+            or "fact_commodity_futures_daily"
+        ),
+        "row_count_before": before_row_count,
+        "row_count_after": after_row_count,
+        "row_count_delta": (
+            after_row_count - before_row_count
+            if before_row_count is not None and after_row_count is not None
+            else None
+        ),
+        "latest_trade_date_before": before_status.get("latest_trade_date"),
+        "latest_trade_date_after": after_status.get("latest_trade_date"),
+        "available_product_count_before": _optional_int(
+            before_coverage.get("available_product_count")
+        ),
+        "available_product_count_after": _optional_int(
+            after_coverage.get("available_product_count")
+        ),
+        "target_product_count": (
+            _optional_int(after_coverage.get("target_product_count"))
+            or _optional_int(before_coverage.get("target_product_count"))
+        ),
+        "newly_available_products": _ordered_commodity_refresh_products(
+            after_available - before_available
+        ),
+        "missing_products_after": _ordered_commodity_refresh_products(
+            set(_public_text_list(after_coverage.get("missing_products")))
+        ),
+        "nanhua_status_before": before_nanhua.get("status"),
+        "nanhua_status_after": after_nanhua.get("status"),
+        "nanhua_latest_date_before": before_nanhua.get("latest_trade_date"),
+        "nanhua_latest_date_after": after_nanhua.get("latest_trade_date"),
+        "nanhua_latest_value_after": after_nanhua.get("latest_value"),
+        "source_vendors_after": sorted(
+            set(_public_text_list(after_status.get("source_vendors")))
+        ),
+        "dry_run": dry_run,
+    }
+
+
+def _ordered_commodity_refresh_products(products: set[str]) -> list[str]:
+    ordered = [
+        product
+        for product in DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS
+        if product in products
+    ]
+    ordered.extend(sorted(product for product in products if product not in set(ordered)))
+    return ordered
+
+
+_COMMODITY_FUTURES_PUBLIC_FAILURE_MESSAGES = {
+    "queue_dispatch_failure": "Commodity futures refresh queue dispatch failed.",
+    "vendor_failure": "Commodity futures refresh failed while fetching vendor data.",
+    "cache_invalidation": "Commodity futures refresh completed but cache invalidation failed.",
+    "backfill_failure": "Commodity futures refresh failed while writing refreshed data.",
+    "worker_failure": "Commodity futures refresh failed during worker execution.",
+}
+
+
 def refresh_commodity_futures(
     *,
     start_date: str,
     end_date: str,
     duckdb_path: str,
+    governance_path: str,
     products: tuple[str, ...],
     dry_run: bool,
+    before_status: dict[str, object],
     permission: dict[str, object],
+    requested_by_user_id: str,
 ) -> MacroToolkitActionResult:
     if dry_run:
         payload = run_commodity_daily_ingest(
@@ -1014,47 +1268,230 @@ def refresh_commodity_futures(
             dry_run=True,
         )
         return MacroToolkitActionResult(
-            payload={**payload, "permission": permission},
+            payload={
+                **payload,
+                "permission": _public_commodity_futures_refresh_permission(permission),
+            },
             quality_flag="ok" if str(payload.get("status")) == "dry_run" else "warning",
             fallback_mode="none",
             as_of_date=end_date,
         )
 
-    run_id = f"{COMMODITY_FUTURES_REFRESH_JOB_NAME}:{end_date}:{uuid.uuid4().hex[:12]}"
-    queued_at = datetime.now(UTC).isoformat()
     try:
-        run_commodity_daily_ingest_task.send(
-            start_date=start_date,
-            end_date=end_date,
-            duckdb_path=duckdb_path,
-            products=products,
-            dry_run=False,
-        )
-    except Exception as exc:
-        raise MacroToolkitQueueError(str(exc)) from exc
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+    except ValueError as exc:
+        raise ValueError("start_date and end_date must be ISO dates (YYYY-MM-DD).") from exc
+    if end < start:
+        raise ValueError("end_date must be on or after start_date.")
+    requested_products = {
+        str(product).strip().upper()
+        for product in products
+        if str(product).strip()
+    }
+    if not requested_products:
+        raise ValueError("products must contain at least one value.")
+    normalized_products = tuple(_ordered_commodity_refresh_products(requested_products))
+    owner_user_id = str(requested_by_user_id or "").strip()
+    if not owner_user_id:
+        raise ValueError("Commodity futures refresh owner is required.")
+    fingerprint_products = tuple(sorted(requested_products))
+    request_fingerprint = hashlib.sha256(
+        repr(
+            (
+                str(Path(duckdb_path).resolve()),
+                start_date,
+                end_date,
+                fingerprint_products,
+            )
+        ).encode("utf-8")
+    ).hexdigest()
+    trigger_lock = LockDefinition(
+        key=f"lock:{COMMODITY_FUTURES_REFRESH_JOB_NAME}:trigger:{request_fingerprint[:12]}",
+        ttl_seconds=30,
+    )
+    repo = GovernanceRepository(base_dir=governance_path)
+    try:
+        with acquire_lock(trigger_lock, base_dir=governance_path, timeout_seconds=0.1):
+            records = _commodity_futures_refresh_records(repo)
+            latest_by_run_id: dict[str, dict[str, object]] = {}
+            for record in records:
+                if str(record.get("request_fingerprint") or "") == request_fingerprint:
+                    latest_by_run_id[str(record.get("run_id") or "")] = record
+            if any(
+                _write_refresh_record_blocks_dispatch(
+                    record,
+                    in_flight_statuses=_COMMODITY_FUTURES_REFRESH_IN_FLIGHT_STATUSES,
+                )
+                for record in latest_by_run_id.values()
+            ):
+                raise MacroToolkitConflictError("Commodity futures refresh is already in progress.")
+
+            run_id = f"{COMMODITY_FUTURES_REFRESH_JOB_NAME}:{end_date}:{uuid.uuid4().hex[:12]}"
+            queued_at = datetime.now(UTC).isoformat()
+            queued_payload = {
+                "run_id": run_id,
+                "job_name": COMMODITY_FUTURES_REFRESH_JOB_NAME,
+                "status": "queued",
+                "trigger_mode": "async",
+                "cache_key": COMMODITY_FUTURES_REFRESH_CACHE_KEY,
+                "cache_version": COMMODITY_FUTURES_REFRESH_CACHE_VERSION,
+                "rule_version": COMMODITY_FUTURES_REFRESH_RULE_VERSION,
+                "lock": trigger_lock.key,
+                "report_date": end_date,
+                "start_date": start_date,
+                "end_date": end_date,
+                "products": list(normalized_products),
+                "product_count": len(normalized_products),
+                "row_count": None,
+                "dry_run": False,
+                "duckdb_path": str(duckdb_path),
+                "queued_at": queued_at,
+                "request_fingerprint": request_fingerprint,
+                "requested_by_user_id": owner_user_id,
+                "table": "fact_commodity_futures_daily",
+                "before_status": before_status,
+                "permission": permission,
+            }
+            repo.append(CACHE_BUILD_RUN_STREAM, queued_payload)
+            try:
+                run_commodity_futures_refresh_task.send(
+                    duckdb_path=str(duckdb_path),
+                    governance_dir=str(governance_path),
+                    run_id=run_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    products=normalized_products,
+                    before_status=before_status,
+                    permission=permission,
+                    request_fingerprint=request_fingerprint,
+                    requested_by_user_id=owner_user_id,
+                )
+            except Exception as exc:
+                repo.append(
+                    CACHE_BUILD_RUN_STREAM,
+                    {
+                        **queued_payload,
+                        "status": "failed",
+                        "trigger_mode": "terminal",
+                        "finished_at": datetime.now(UTC).isoformat(),
+                        "error_message": str(exc),
+                        "failure_category": "queue_dispatch_failure",
+                        "failure_reason": "queue_dispatch_failed",
+                        "retryable": False,
+                        "after_status": dict(before_status),
+                        "summary": commodity_futures_refresh_summary(
+                            before_status=before_status,
+                            after_status=before_status,
+                            dry_run=False,
+                        ),
+                        "terminal_snapshot_status": "captured",
+                    },
+                )
+                raise MacroToolkitQueueError("Commodity futures refresh queue dispatch failed.") from exc
+    except TimeoutError as exc:
+        raise MacroToolkitConflictError("Commodity futures refresh is already in progress.") from exc
     return MacroToolkitActionResult(
-        payload={
-            "status": "queued",
-            "run_id": run_id,
-            "job_name": COMMODITY_FUTURES_REFRESH_JOB_NAME,
-            "cache_key": COMMODITY_FUTURES_REFRESH_CACHE_KEY,
-            "cache_version": COMMODITY_FUTURES_REFRESH_CACHE_VERSION,
-            "rule_version": COMMODITY_FUTURES_REFRESH_RULE_VERSION,
-            "start_date": start_date,
-            "end_date": end_date,
-            "duckdb_path": duckdb_path,
-            "products": list(products),
-            "product_count": len(products),
-            "row_count": None,
-            "dry_run": False,
-            "queued_at": queued_at,
-            "table": "fact_commodity_futures_daily",
-            "permission": permission,
-        },
+        payload=_normalize_commodity_futures_refresh_record(queued_payload),
         quality_flag="warning",
         fallback_mode="none",
         as_of_date=end_date,
     )
+
+
+def _commodity_futures_refresh_records(repo: GovernanceRepository) -> list[dict[str, object]]:
+    return [
+        record
+        for record in repo.read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name") or "") == COMMODITY_FUTURES_REFRESH_JOB_NAME
+        and str(record.get("cache_key") or "") == COMMODITY_FUTURES_REFRESH_CACHE_KEY
+    ]
+
+
+def commodity_futures_refresh_status(
+    governance_path: str | Path,
+    *,
+    run_id: str,
+    expected_user_id: str,
+) -> dict[str, object]:
+    run_id_text = str(run_id or "").strip()
+    if not run_id_text:
+        raise ValueError("Commodity futures refresh run_id is required.")
+    records = _commodity_futures_refresh_records(
+        GovernanceRepository(base_dir=governance_path)
+    )
+    latest = next(
+        (
+            record
+            for record in reversed(records)
+            if str(record.get("run_id") or "") == run_id_text
+        ),
+        None,
+    )
+    if latest is None:
+        raise ValueError("Commodity futures refresh run not found.")
+    owner_user_id = _optional_text(latest.get("requested_by_user_id"))
+    if owner_user_id is None or owner_user_id != str(expected_user_id or "").strip():
+        raise PermissionError("Commodity futures refresh run not found.")
+    return _normalize_commodity_futures_refresh_record(latest)
+
+
+def _normalize_commodity_futures_refresh_record(
+    record: dict[str, object],
+    *,
+    idempotency_replay: bool | None = None,
+) -> dict[str, object]:
+    failure_category = _optional_text(record.get("failure_category"))
+    normalized = _normalize_write_refresh_public_record(
+        record,
+        job_name=COMMODITY_FUTURES_REFRESH_JOB_NAME,
+        cache_key=COMMODITY_FUTURES_REFRESH_CACHE_KEY,
+        cache_version=COMMODITY_FUTURES_REFRESH_CACHE_VERSION,
+        rule_version=COMMODITY_FUTURES_REFRESH_RULE_VERSION,
+        idempotency_replay=idempotency_replay,
+    )
+    normalized.update(
+        {
+            "start_date": _optional_text(record.get("start_date")),
+            "end_date": _optional_text(record.get("end_date") or record.get("report_date")),
+            "products": _public_text_list(record.get("products")),
+            "product_count": _optional_int(record.get("product_count")),
+            "row_count": _optional_int(record.get("row_count")),
+            "dry_run": record.get("dry_run") is True,
+            "table": _optional_text(record.get("table")) or "fact_commodity_futures_daily",
+            "write_status": _optional_text(record.get("write_status")),
+            "failure_message": (
+                _COMMODITY_FUTURES_PUBLIC_FAILURE_MESSAGES.get(failure_category)
+                if failure_category is not None
+                else None
+            ),
+            "before_status": (
+                dict(before_status)
+                if isinstance(before_status := record.get("before_status"), dict)
+                else None
+            ),
+            "permission": (
+                _public_commodity_futures_refresh_permission(record.get("permission"))
+            ),
+        }
+    )
+    after_status = record.get("after_status")
+    summary = record.get("summary")
+    if isinstance(after_status, dict):
+        normalized["after_status"] = dict(after_status)
+    if isinstance(summary, dict):
+        normalized["summary"] = dict(summary)
+    status = str(record.get("status") or "")
+    if status in _COMMODITY_FUTURES_REFRESH_TERMINAL_STATUSES:
+        snapshot_status = _optional_text(record.get("terminal_snapshot_status"))
+        normalized["terminal_snapshot_status"] = (
+            snapshot_status
+            if snapshot_status in {"captured", "unavailable"}
+            and isinstance(after_status, dict)
+            and isinstance(summary, dict)
+            else "missing"
+        )
+    return normalized
 
 
 def queue_choice_stock_refresh(
@@ -1080,6 +1517,9 @@ def queue_choice_stock_refresh(
             timeout_seconds=0.1,
         ):
             if normalized_idempotency_key is not None:
+                owner_user_id = _optional_text(
+                    permission.get("user_id") if isinstance(permission, dict) else None
+                )
                 existing_idempotent_run = latest_choice_stock_refresh_for_idempotency_key(
                     governance_path,
                     as_of_date=as_of_date,
@@ -1088,6 +1528,7 @@ def queue_choice_stock_refresh(
                     factor_max_stock_count=factor_max_stock_count,
                     theme_overlay_mode=normalized_theme_overlay_mode,
                     idempotency_key=normalized_idempotency_key,
+                    expected_user_id=owner_user_id,
                 )
                 if existing_idempotent_run is not None:
                     normalized_existing = _normalize_choice_stock_refresh_record(
@@ -1202,6 +1643,8 @@ def build_choice_stock_refresh_run_payload(
     theme_overlay_message: str | None = None,
     theme_overlay_member_count: int | None = None,
     theme_overlay_run_id: str | None = None,
+    livermore_closure_status: str | None = None,
+    livermore_closure_reason: str | None = None,
     history_row_count: int | None = None,
     factor_row_count: int | None = None,
     source_version: object | None = None,
@@ -1213,12 +1656,14 @@ def build_choice_stock_refresh_run_payload(
     idempotency_key: str | None = None,
     attempt_count: int | None = None,
     retryable: bool = False,
+    history_start_date: str | None = None,
+    allow_cross_era_backfill: bool = False,
 ) -> dict[str, object]:
     normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
     normalized_theme_overlay_status = _optional_text(theme_overlay_status) or (
         "off" if normalized_theme_overlay_mode == "off" else "pending"
     )
-    return {
+    payload: dict[str, object] = {
         "run_id": run_id,
         "job_name": CHOICE_STOCK_REFRESH_JOB_NAME,
         "status": status,
@@ -1250,26 +1695,60 @@ def build_choice_stock_refresh_run_payload(
             else _optional_int(theme_overlay_member_count)
         ),
         "theme_overlay_run_id": _optional_text(theme_overlay_run_id),
+        "livermore_closure_status": _optional_text(livermore_closure_status),
+        "livermore_closure_reason": _optional_text(livermore_closure_reason),
         "history_row_count": history_row_count,
         "factor_row_count": factor_row_count,
         "permission": permission or build_choice_stock_refresh_permission_payload(),
         "trigger_mode": _choice_stock_refresh_trigger_mode(status),
         "idempotency_key": _normalize_idempotency_key(idempotency_key),
     }
+    if history_start_date is not None or allow_cross_era_backfill:
+        payload["history_start_date"] = _optional_text(history_start_date)
+        payload["allow_cross_era_backfill"] = bool(allow_cross_era_backfill)
+    return payload
 
 
 def choice_stock_refresh_status(
     governance_path: str | Path,
     *,
     run_id: str = "",
+    expected_user_id: str | None = None,
 ) -> dict[str, object]:
     run_id_text = str(run_id or "").strip()
     records = _choice_stock_refresh_records(governance_path)
+    expected_owner = _optional_text(expected_user_id)
     if run_id_text:
         matching = [record for record in records if str(record.get("run_id") or "") == run_id_text]
         if not matching:
-            raise ValueError(f"Choice stock refresh run not found: {run_id_text}")
+            raise ValueError("Choice stock refresh run not found.")
+        if expected_owner is not None:
+            permission = matching[-1].get("permission")
+            owner_user_id = _optional_text(
+                permission.get("user_id") if isinstance(permission, dict) else None
+            )
+            if owner_user_id is None or owner_user_id != expected_owner:
+                raise PermissionError("Choice stock refresh run not found.")
         return _normalize_choice_stock_refresh_record(matching[-1])
+    if expected_owner is not None:
+        owned_records = []
+        for record in records:
+            permission = record.get("permission")
+            owner_user_id = _optional_text(
+                permission.get("user_id") if isinstance(permission, dict) else None
+            )
+            if owner_user_id == expected_owner:
+                owned_records.append(record)
+        if not owned_records:
+            return {
+                "status": "idle",
+                "run_id": None,
+                "job_name": CHOICE_STOCK_REFRESH_JOB_NAME,
+                "cache_key": CHOICE_STOCK_REFRESH_CACHE_KEY,
+                "trigger_mode": "idle",
+                "permission": _public_choice_stock_refresh_permission(None),
+            }
+        return _normalize_choice_stock_refresh_record(owned_records[-1])
     if not records:
         return {
             "status": "idle",
@@ -1277,7 +1756,7 @@ def choice_stock_refresh_status(
             "job_name": CHOICE_STOCK_REFRESH_JOB_NAME,
             "cache_key": CHOICE_STOCK_REFRESH_CACHE_KEY,
             "trigger_mode": "idle",
-            "permission": build_choice_stock_refresh_permission_payload(),
+            "permission": _public_choice_stock_refresh_permission(None),
         }
     return _normalize_choice_stock_refresh_record(records[-1])
 
@@ -1288,6 +1767,7 @@ def choice_stock_refresh_overview(
     *,
     permission: dict[str, object] | None = None,
     reference_date: str | None = None,
+    expected_user_id: str | None = None,
 ) -> dict[str, object]:
     daily_observation, factor_snapshot = _choice_stock_materialization_statuses(
         duckdb_path,
@@ -1295,7 +1775,10 @@ def choice_stock_refresh_overview(
     )
     return {
         "permission": permission or build_choice_stock_refresh_permission_payload(),
-        "refresh": choice_stock_refresh_status(governance_path),
+        "refresh": choice_stock_refresh_status(
+            governance_path,
+            expected_user_id=expected_user_id,
+        ),
         "daily_observation": daily_observation,
         "factor_snapshot": factor_snapshot,
         "default_factor_max_stock_count": None,
@@ -1313,6 +1796,8 @@ def latest_choice_stock_inflight_refresh(
             continue
         by_run_id[str(record.get("run_id") or "")] = record
     for record in reversed(list(by_run_id.values())):
+        if _choice_stock_refresh_running_record_is_stalled(record):
+            continue
         if (
             _write_refresh_record_blocks_dispatch(
                 record,
@@ -1333,12 +1818,20 @@ def latest_choice_stock_refresh_for_idempotency_key(
     factor_max_stock_count: int | None,
     theme_overlay_mode: ThemeOverlayRefreshMode = "off",
     idempotency_key: str,
+    expected_user_id: str | None = None,
 ) -> dict[str, object] | None:
     normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
+    expected_owner = _optional_text(expected_user_id)
     for record in reversed(_choice_stock_refresh_records(governance_path)):
         if str(record.get("report_date") or "") != as_of_date:
             continue
         if str(record.get("idempotency_key") or "").strip() != idempotency_key:
+            continue
+        permission = record.get("permission")
+        owner_user_id = _optional_text(
+            permission.get("user_id") if isinstance(permission, dict) else None
+        )
+        if owner_user_id != expected_owner:
             continue
         if bool(record.get("refresh_history")) != refresh_history:
             continue
@@ -1364,6 +1857,17 @@ def build_choice_stock_refresh_permission_payload(auth: AuthContext | None = Non
     }
 
 
+def _public_choice_stock_refresh_permission(permission: object) -> dict[str, object]:
+    if not isinstance(permission, dict):
+        permission = build_choice_stock_refresh_permission_payload()
+    return {
+        "mode": _optional_text(permission.get("mode")) or "scoped_refresh",
+        "allowed": permission.get("allowed"),
+        "resource": _optional_text(permission.get("resource")) or "macro_toolkit.choice_stock",
+        "actions": _public_text_list(permission.get("actions")),
+    }
+
+
 def build_commodity_futures_refresh_permission_payload(
     auth: AuthContext | None = None,
     *,
@@ -1377,6 +1881,17 @@ def build_commodity_futures_refresh_permission_payload(
         "identity_source": auth.identity_source if auth else None,
         "resource": "macro_toolkit.commodity_futures",
         "actions": ["dry_run", "refresh"],
+    }
+
+
+def _public_commodity_futures_refresh_permission(permission: object) -> dict[str, object]:
+    if not isinstance(permission, dict):
+        permission = build_commodity_futures_refresh_permission_payload()
+    return {
+        "mode": _optional_text(permission.get("mode")) or "scoped_refresh",
+        "allowed": permission.get("allowed"),
+        "resource": _optional_text(permission.get("resource")) or "macro_toolkit.commodity_futures",
+        "actions": _public_text_list(permission.get("actions")),
     }
 
 
@@ -1398,7 +1913,7 @@ def commodity_futures_status(duckdb_path: str | Path) -> dict[str, object]:
             "nanhua_input": _commodity_futures_missing_nanhua("missing_table"),
         }
     try:
-        conn = duckdb.connect(str(path), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(path)), read_only=True)
         try:
             if not _duckdb_table_exists(conn, "fact_commodity_futures_daily"):
                 return {
@@ -1508,7 +2023,7 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
     if not path.exists():
         return None
     try:
-        conn = duckdb.connect(str(path), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(path)), read_only=True)
     except duckdb.Error as exc:
         warning = (
             f"DUCKDB_QUERY_FAILED: table=choice_stock_daily_observation "
@@ -1757,7 +2272,7 @@ def load_equity_strategy_factor_snapshot(
     stock_codes: list[str] | None = None,
 ) -> pd.DataFrame | None:
     try:
-        conn = duckdb.connect(str(duckdb_path), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_path)), read_only=True)
     except duckdb.Error as exc:
         logger.warning(
             "DuckDB query failed surface=equity_factor_snapshot table=choice_stock_factor_snapshot date=%s error=%s: %s",
@@ -1883,7 +2398,7 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
     if not path.exists():
         return None
     try:
-        conn = duckdb.connect(str(path), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(path)), read_only=True)
     except duckdb.Error as exc:
         warning = (
             f"DUCKDB_QUERY_FAILED: table=choice_stock_daily_observation "
@@ -2066,7 +2581,7 @@ def load_macro_curve_rows(duckdb_path: str | Path, report_date: date) -> list[di
     conn: duckdb.DuckDBPyConnection | None = None
     if path.exists():
         try:
-            conn = duckdb.connect(str(path), read_only=True)
+            conn = duckdb.connect(str(resolve_effective_read_path(path)), read_only=True)
         except duckdb.Error as exc:
             logger.warning(
                 "DuckDB query failed surface=macro_curve_rows table=fact_formal_yield_curve_daily date=%s error=%s: %s",
@@ -2157,7 +2672,7 @@ def load_latest_risk_tensor_row(
     if not path.exists():
         return None
     try:
-        conn = duckdb.connect(str(path), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(path)), read_only=True)
     except duckdb.Error as exc:
         logger.warning(
             "DuckDB query failed surface=risk_tensor table=fact_formal_risk_tensor_daily date=%s error=%s: %s",
@@ -2224,7 +2739,7 @@ def load_latest_bond_positions(
     if not path.exists():
         return []
     try:
-        conn = duckdb.connect(str(path), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(path)), read_only=True)
     except duckdb.Error as exc:
         logger.warning(
             "DuckDB query failed surface=bond_positions table=fact_formal_bond_positions_daily date=%s error=%s: %s",
@@ -2307,7 +2822,7 @@ def load_macro_capability_context(
     conn: duckdb.DuckDBPyConnection | None = None
     if path.exists():
         try:
-            conn = duckdb.connect(str(path), read_only=True)
+            conn = duckdb.connect(str(resolve_effective_read_path(path)), read_only=True)
         except duckdb.Error as exc:
             logger.warning(
                 "DuckDB query failed surface=macro_capability_context table=fact_formal_yield_curve_daily date=%s error=%s: %s",
@@ -2424,7 +2939,7 @@ def default_choice_stock_refresh_as_of_date(duckdb_path: str | Path) -> str:
     path = Path(duckdb_path)
     if path.exists():
         try:
-            conn = duckdb.connect(str(path), read_only=True)
+            conn = duckdb.connect(str(resolve_effective_read_path(path)), read_only=True)
             try:
                 if _duckdb_table_exists(conn, "choice_stock_daily_observation"):
                     row = conn.execute("select max(trade_date) from choice_stock_daily_observation").fetchone()
@@ -2456,7 +2971,13 @@ def _run_choice_stock_refresh_job(
     theme_overlay_mode: ThemeOverlayRefreshMode = "off",
     permission: dict[str, object],
     idempotency_key: str | None = None,
+    complete_livermore_chain: bool = False,
+    retry_managed_by_broker: bool = True,
+    history_start_date: str | None = None,
+    allow_cross_era_backfill: bool = False,
 ) -> None:
+    if allow_cross_era_backfill and history_start_date is None:
+        history_start_date = date.fromisoformat(as_of_date).isoformat()
     normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
     normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     attempt_count = (
@@ -2486,16 +3007,22 @@ def _run_choice_stock_refresh_job(
             permission=permission,
             idempotency_key=normalized_idempotency_key,
             attempt_count=attempt_count,
+            history_start_date=history_start_date,
+            allow_cross_era_backfill=allow_cross_era_backfill,
         ),
     )
     history_result: dict[str, object] | None = None
     factor_result: dict[str, object] | None = None
+    livermore_closure_result: dict[str, object] | None = None
+    terminal_status = "completed"
     try:
         if refresh_history:
             history_result = materialize_choice_stock_inputs(
                 as_of_date=as_of_date,
                 duckdb_path=duckdb_path,
                 catalog_path=catalog_path,
+                history_start_date=history_start_date,
+                allow_cross_era_backfill=allow_cross_era_backfill,
             )
         if refresh_factors:
             factor_result = materialize_choice_stock_factor_snapshot(
@@ -2503,27 +3030,6 @@ def _run_choice_stock_refresh_job(
                 duckdb_path=duckdb_path,
                 max_stock_count=factor_max_stock_count,
             )
-        finished_at = datetime.now(UTC).isoformat()
-        completed_payload = build_choice_stock_refresh_run_payload(
-            run_id=run_id,
-            status="completed",
-            as_of_date=as_of_date,
-            queued_at=queued_at,
-            started_at=started_at,
-            finished_at=finished_at,
-            refresh_history=refresh_history,
-            refresh_factors=refresh_factors,
-            factor_max_stock_count=factor_max_stock_count,
-            theme_overlay_mode=normalized_theme_overlay_mode,
-            theme_overlay_run_id=theme_overlay_run_id,
-            history_row_count=_result_row_count(history_result),
-            factor_row_count=_result_row_count(factor_result),
-            source_version=_latest_result_field("source_version", factor_result, history_result),
-            vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
-            permission=permission,
-            idempotency_key=normalized_idempotency_key,
-            attempt_count=attempt_count,
-        )
         observation_manifest = None
         if refresh_history:
             if history_result is None:
@@ -2538,15 +3044,106 @@ def _run_choice_stock_refresh_job(
                 refresh_run_id=run_id,
                 report_date=as_of_date,
                 daily_observation_row_count=daily_observation_row_count,
-                created_at=finished_at,
+                created_at=datetime.now(UTC).isoformat(),
             )
-        append_choice_stock_refresh_completion(
-            governance_repo=GovernanceRepository(base_dir=governance_path),
-            completed_run_payload=completed_payload,
-            observation_manifest=observation_manifest,
+            if complete_livermore_chain:
+                publish_choice_stock_observation_manifest(
+                    governance_repo=GovernanceRepository(base_dir=governance_path),
+                    observation_manifest=observation_manifest,
+                )
+        if complete_livermore_chain:
+            closure_raw = run_livermore_daily_pretrade_refresh(
+                duckdb_path=duckdb_path,
+                target_date=as_of_date,
+                skip_upstream_probe=True,
+                theme_overlay_mode=normalized_theme_overlay_mode,
+                export_pretrade=False,
+            )
+            if not isinstance(closure_raw, dict):
+                raise RuntimeError("Livermore closure returned a non-object payload")
+            livermore_closure_result = cast(dict[str, object], closure_raw)
+            closure_status = str(livermore_closure_result.get("status") or "")
+            if closure_status == "partial":
+                terminal_status = "partial"
+            elif closure_status != "completed":
+                closure_reason = str(
+                    livermore_closure_result.get("reason")
+                    or "livermore_daily_refresh_incomplete"
+                )
+                raise RuntimeError(
+                    f"Livermore closure status={closure_status or 'unknown'} reason={closure_reason}"
+                )
+        finished_at = datetime.now(UTC).isoformat()
+        closure_theme_overlay = (
+            livermore_closure_result.get("theme_overlay")
+            if isinstance(livermore_closure_result, dict)
+            else None
         )
+        closure_theme_overlay = (
+            closure_theme_overlay if isinstance(closure_theme_overlay, dict) else {}
+        )
+        terminal_payload = build_choice_stock_refresh_run_payload(
+            run_id=run_id,
+            status=terminal_status,
+            as_of_date=as_of_date,
+            queued_at=queued_at,
+            started_at=started_at,
+            finished_at=finished_at,
+            refresh_history=refresh_history,
+            refresh_factors=refresh_factors,
+            factor_max_stock_count=factor_max_stock_count,
+            theme_overlay_mode=normalized_theme_overlay_mode,
+            theme_overlay_status=(
+                str(
+                    closure_theme_overlay.get("overlay_status")
+                    or closure_theme_overlay.get("status")
+                    or ""
+                )
+                or None
+            ),
+            theme_overlay_message=_optional_text(closure_theme_overlay.get("message")),
+            theme_overlay_member_count=_optional_int(closure_theme_overlay.get("member_count")),
+            theme_overlay_run_id=theme_overlay_run_id,
+            livermore_closure_status=(
+                str(livermore_closure_result.get("status") or "")
+                if livermore_closure_result is not None
+                else None
+            ),
+            livermore_closure_reason=(
+                str(livermore_closure_result.get("reason") or "") or None
+                if livermore_closure_result is not None
+                else None
+            ),
+            history_row_count=_result_row_count(history_result),
+            factor_row_count=_result_row_count(factor_result),
+            source_version=_latest_result_field("source_version", factor_result, history_result),
+            vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
+            permission=permission,
+            idempotency_key=normalized_idempotency_key,
+            attempt_count=attempt_count,
+            history_start_date=history_start_date,
+            allow_cross_era_backfill=allow_cross_era_backfill,
+        )
+        if terminal_status == "completed":
+            append_choice_stock_refresh_completion(
+                governance_repo=GovernanceRepository(base_dir=governance_path),
+                completed_run_payload=terminal_payload,
+                observation_manifest=observation_manifest,
+            )
+        else:
+            append_choice_stock_refresh_run(governance_path, terminal_payload)
     except Exception as exc:
-        retry_pending = attempt_count <= _WRITE_REFRESH_MAX_RETRIES
+        retry_pending = bool(
+            retry_managed_by_broker and attempt_count <= _WRITE_REFRESH_MAX_RETRIES
+        )
+        failed_closure_reason = (
+            _optional_text(livermore_closure_result.get("reason"))
+            if isinstance(livermore_closure_result, dict)
+            else None
+        )
+        if failed_closure_reason is not None:
+            failed_closure_reason = _redact_sensitive_error_text(failed_closure_reason)
+        safe_failure_reason = _redact_sensitive_error_text(exc)
         append_choice_stock_refresh_run(
             governance_path,
             build_choice_stock_refresh_run_payload(
@@ -2562,20 +3159,35 @@ def _run_choice_stock_refresh_job(
                 theme_overlay_mode=normalized_theme_overlay_mode,
                 theme_overlay_status=("not_run" if normalized_theme_overlay_mode != "off" else None),
                 theme_overlay_run_id=theme_overlay_run_id,
+                livermore_closure_status=(
+                    str(livermore_closure_result.get("status") or "")
+                    if livermore_closure_result is not None
+                    else "failed" if complete_livermore_chain else None
+                ),
+                livermore_closure_reason=(
+                    failed_closure_reason or safe_failure_reason
+                    if complete_livermore_chain
+                    else None
+                ),
                 history_row_count=_result_row_count(history_result),
                 factor_row_count=_result_row_count(factor_result),
                 source_version=_latest_result_field("source_version", factor_result, history_result),
                 vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
-                error_message=f"{type(exc).__name__}: {exc}",
+                error_message=f"{type(exc).__name__}: {safe_failure_reason}",
                 failure_category=type(exc).__name__,
-                failure_reason=str(exc),
+                failure_reason=safe_failure_reason,
                 permission=permission,
                 idempotency_key=normalized_idempotency_key,
                 attempt_count=attempt_count,
                 retryable=retry_pending,
+                history_start_date=history_start_date,
+                allow_cross_era_backfill=allow_cross_era_backfill,
             ),
         )
         raise
+
+    if complete_livermore_chain:
+        return
 
     if normalized_theme_overlay_mode == "off":
         return
@@ -2642,6 +3254,8 @@ def _run_choice_stock_refresh_job(
             permission=permission,
             idempotency_key=normalized_idempotency_key,
             attempt_count=attempt_count,
+            history_start_date=history_start_date,
+            allow_cross_era_backfill=allow_cross_era_backfill,
         ),
     )
 
@@ -2914,6 +3528,21 @@ def _normalize_choice_stock_refresh_record(
     idempotency_replay: bool | None = None,
 ) -> dict[str, object]:
     public_record = dict(record)
+    if _choice_stock_refresh_running_record_is_stalled(public_record):
+        public_record.update(
+            {
+                "status": "failed",
+                "retryable": False,
+                "failure_category": "worker_failure",
+                "failure_reason": "choice_stock_refresh_stalled",
+                "error_message": "Choice stock refresh exceeded the one-hour worker limit.",
+                "theme_overlay_status": (
+                    "failed"
+                    if _normalize_theme_overlay_mode(public_record.get("theme_overlay_mode")) != "off"
+                    else "off"
+                ),
+            }
+        )
     overlay_pending = _choice_stock_refresh_overlay_pending(public_record)
     if overlay_pending:
         public_record["status"] = "running"
@@ -2953,16 +3582,37 @@ def _normalize_choice_stock_refresh_record(
             "theme_overlay_run_id": _optional_text(
                 public_record.get("theme_overlay_run_id")
             ),
-            "permission": (
+            "livermore_closure_status": _optional_text(
+                public_record.get("livermore_closure_status")
+            ),
+            "stalled": _choice_stock_refresh_running_record_is_stalled(record),
+            "permission": _public_choice_stock_refresh_permission(
                 public_record.get("permission")
-                if isinstance(public_record.get("permission"), dict)
-                else build_choice_stock_refresh_permission_payload()
             ),
         }
     )
     if overlay_pending:
         normalized["choice_completion_status"] = "completed"
     return normalized
+
+
+def _choice_stock_refresh_running_record_is_stalled(
+    record: dict[str, object],
+) -> bool:
+    if str(record.get("status") or "") != "running":
+        return False
+    raw_started_at = str(record.get("started_at") or "").strip()
+    if not raw_started_at:
+        return False
+    try:
+        started_at = datetime.fromisoformat(raw_started_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=UTC)
+    else:
+        started_at = started_at.astimezone(UTC)
+    return datetime.now(UTC) - started_at > _CHOICE_STOCK_REFRESH_STALLED_AFTER
 
 
 def _choice_stock_refresh_overlay_pending(record: dict[str, object]) -> bool:
@@ -3042,7 +3692,7 @@ def _choice_stock_materialization_base_statuses_cache(
     _size: int,
 ) -> tuple[dict[str, object], dict[str, object]]:
     try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_path)), read_only=True)
     except duckdb.Error as exc:
         logger.warning(
             "DuckDB query failed surface=choice_stock_materialization table=choice_stock_daily_observation error=%s: %s",

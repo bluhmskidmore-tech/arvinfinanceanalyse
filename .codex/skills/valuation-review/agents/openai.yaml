@@ -1,0 +1,7 @@
+interface:
+  display_name: "估值复核"
+  short_description: "Audit valuation models and marks with traceable review findings"
+  default_prompt: "Use $valuation-review to review this valuation package and produce traceable findings, a valuation bridge, and unresolved risks."
+
+policy:
+  allow_implicit_invocation: true

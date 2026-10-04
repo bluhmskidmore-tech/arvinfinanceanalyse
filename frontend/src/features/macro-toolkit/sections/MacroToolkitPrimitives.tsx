@@ -11,15 +11,15 @@ import type { MacroToolkitSignalCard } from "../../../api/macroToolkitClient";
 import { MacroStatusIcon } from "../lib/MacroToolkitStatusPrimitives";
 import { compactText } from "../lib/macroToolkitPanelShared";
 
-function clampScore(score: number | null | undefined) {
-  if (score == null) {
-    return 0;
-  }
+function clampScore(score: number) {
   return Math.min(100, Math.max(0, score));
 }
 
 export function ScoreTrack({ score }: { score: number | null | undefined }) {
-  return <progress className="macro-toolkit-score-track" value={clampScore(score)} max={100} aria-hidden="true" />;
+  if (score == null || !Number.isFinite(score)) {
+    return null;
+  }
+  return <progress className="macro-toolkit-score-track" value={clampScore(score)} max={100} aria-label="评分" />;
 }
 
 export function ReadinessTile({
@@ -55,17 +55,19 @@ export function MacroToolkitContractBoundary({
   formalUseAllowed,
   resultKind,
   ruleVersion,
+  testId = "macro-toolkit-contract-boundary",
 }: {
   formalUseAllowed?: boolean;
   resultKind?: string;
   ruleVersion?: string;
+  testId?: string;
 }) {
   const resultKindText = resultKind ?? MACRO_TOOLKIT_ANALYSIS_KIND;
   const versionText = ruleVersion ?? MACRO_TOOLKIT_UI_RULE_VERSION;
   return (
     <div
       className="macro-toolkit-contract-boundary"
-      data-testid="macro-toolkit-contract-boundary"
+      data-testid={testId}
       aria-label="宏观工具口径边界"
     >
       <span>

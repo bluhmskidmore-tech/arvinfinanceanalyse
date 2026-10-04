@@ -20,6 +20,131 @@ const DESKTOP_VIEWPORTS = [
 
 const HEALTH_STATES = ["degraded", "empty", "error"];
 
+test("refresh synchronizes an alternate liability view and preserves closed-panel loading", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.addInitScript(() => {
+    window.localStorage.setItem("moss.product-category-pnl.trend-workspace-open", "0");
+  });
+  // This browser check uses synthetic read and task receipts; no refresh reaches
+  // the local backend or writes financial data.
+  await page.route("**/ui/**", async (route) => {
+    if (!["GET", "HEAD"].includes(route.request().method())) {
+      await route.abort("blockedbyclient");
+      return;
+    }
+    await route.fallback();
+  });
+  await installProductCategoryStateRoutes(page, "ready", {
+    reportDates: [FIXED_REPORT_DATE, PRIOR_REPORT_DATE],
+  });
+  const historyReads = [];
+  let sourceVersion = 1;
+  let refreshCount = 0;
+  let releaseTask;
+  let taskRequested = false;
+  await page.route("**/ui/pnl/product-category/history?*", async (route) => {
+    const url = new URL(route.request().url());
+    historyReads.push({ view: url.searchParams.get("view"), sourceVersion });
+    await route.fallback();
+  });
+  await page.route("**/ui/pnl/product-category/refresh", async (route) => {
+    refreshCount += 1;
+    await route.fulfill({ json: {
+      status: "queued", run_id: `refresh-browser-${refreshCount}`,
+      job_name: "product_category_pnl", trigger_mode: "async",
+    } });
+  });
+  await page.route("**/ui/pnl/product-category/refresh-status?*", async (route) => {
+    taskRequested = true;
+    await new Promise((resolve) => { releaseTask = resolve; });
+    sourceVersion += 1;
+    await route.fulfill({ json: {
+      status: "completed", run_id: `refresh-browser-${refreshCount}`,
+      job_name: "product_category_pnl", trigger_mode: "async",
+    } });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${FORMAL_STATE_BASE_URL}/product-category-pnl`, { waitUntil: "networkidle" });
+  await expect(page.getByTestId("product-category-table")).toBeVisible();
+  const refreshButton = page.getByTestId("product-category-refresh-button");
+  await refreshButton.click();
+  await expect.poll(() => taskRequested).toBe(true);
+  await expect(refreshButton).toBeDisabled();
+  await expect(page.getByTestId("product-category-refresh-status")).toContainText("queued");
+  releaseTask();
+  await expect(refreshButton).toBeEnabled();
+  // The visible management monitor already consumes monthly history. Its data
+  // must refresh even while the optional diagnostics and trend panels are shut.
+  expect(historyReads).toEqual([
+    { view: "monthly", sourceVersion: 1 },
+    { view: "monthly", sourceVersion: 2 },
+  ]);
+
+  await page.getByTestId("product-category-diagnostics-workspace").locator("summary").first().click();
+  const liabilityView = page.getByTestId("product-category-liability-matrix-display-mode");
+  await expect(liabilityView).toBeVisible();
+  await liabilityView.getByRole("button", { name: "累进值" }).click();
+  await expect.poll(() => historyReads.filter((read) => read.view === "ytd").length).toBe(1);
+  await expect(page.getByTestId("product-category-liability-matrix-caliber-note")).not.toContainText("加载中");
+  const backtest = page.getByTestId("product-category-backtest-workspace");
+  await backtest.locator("summary").first().click();
+  await expect(backtest).toHaveAttribute("open", "");
+
+  taskRequested = false;
+  await refreshButton.click();
+  await expect.poll(() => taskRequested).toBe(true);
+  releaseTask();
+  await expect(refreshButton).toBeEnabled();
+  const ytdReads = historyReads.filter((read) => read.view === "ytd");
+  expect(ytdReads).toEqual([
+    { view: "ytd", sourceVersion: 2 },
+    { view: "ytd", sourceVersion: 3 },
+  ]);
+  await expect(liabilityView.getByRole("button", { name: "累进值" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("product-category-diagnostics-workspace")).toHaveAttribute("open", "");
+  await expect(backtest).toHaveAttribute("open", "");
+  await expect(page.getByTestId("product-category-data-health")).toHaveAttribute("data-health-state", "ready");
+  expect(refreshCount).toBe(2);
+  expect(pageErrors).toEqual([]);
+});
+
+for (const field of [
+  "all_currency_spread_pct",
+  "all_currency_asset_yield_pct",
+  "all_currency_liability_yield_pct",
+]) {
+  test(`spread attribution discloses a missing prior ${field}`, async ({ page }, testInfo) => {
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.addInitScript(() => {
+      window.localStorage.setItem("moss.product-category-pnl.trend-workspace-open", "1");
+    });
+    // All business reads below are synthetic, and no request may reach the backend.
+    await page.route((url) => url.pathname.startsWith("/api/"), (route) => route.abort("blockedbyclient"));
+    await page.route((url) => url.pathname.startsWith("/ui/"), (route) => route.abort("blockedbyclient"));
+    await installProductCategoryStateRoutes(page, "ready", {
+      reportDates: [FIXED_REPORT_DATE, PRIOR_REPORT_DATE],
+      missingPriorSpreadField: field,
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${FORMAL_STATE_BASE_URL}/product-category-pnl`, {
+      waitUntil: "networkidle",
+    });
+    const attribution = page.getByTestId("product-category-trend-spread-attribution");
+    await expect(attribution).toContainText("2026年01月");
+    await expect(attribution).toContainText("缺少可比上期趋势快照，无法完成利差变动归因。");
+    await attribution.scrollIntoViewIfNeeded();
+    await expect(attribution).toBeVisible();
+    expect(pageErrors).toEqual([]);
+    await attribution.screenshot({
+      path: testInfo.outputPath(`missing-prior-${field}.png`),
+      animations: "disabled",
+    });
+  });
+}
+
 async function installProductCategoryStateRoutes(page, state, options = {}) {
   let baselineFailuresRemaining = state === "error" ? 1 : 0;
   const reportDates = options.reportDates ?? [FIXED_REPORT_DATE];
@@ -133,6 +258,9 @@ async function installProductCategoryStateRoutes(page, state, options = {}) {
           view,
           scenarioRatePct,
         });
+        if (reportDate === PRIOR_REPORT_DATE && options.missingPriorSpreadField) {
+          envelope.result.interest_spread[options.missingPriorSpreadField] = null;
+        }
         return {
           report_date: reportDate,
           status: "ok",

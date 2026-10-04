@@ -29,8 +29,15 @@ export function ProductCategoryFormalReadinessBand(
       ? props.attribution.totals?.grand_total
       : undefined;
   const attributionEffects = attributionHeadline?.effects;
-  const attributionCompareLabel =
-    props.attribution?.compare === "yoy" ? "同比变动" : "环比变动";
+  const scenarioPrefix = props.scenarioApplied ? "情景" : "";
+  const attributionPrefix = props.scenarioApplied ? "正式" : "";
+  const headlineIncomeLabel = props.scenarioApplied
+    ? "本期情景经营净收入"
+    : "本期合计经营净收入";
+  const closureLabel = props.scenarioApplied ? "正式归因闭合误差" : "闭合误差";
+  const attributionCompareLabel = `${attributionPrefix}${
+    props.attribution?.compare === "yoy" ? "同比变动" : "环比变动"
+  }`;
   const deltaValue = attributionEffects?.delta_business_net_income;
   const closureValue = attributionEffects?.closure_error;
   const parsedDelta = Number(deltaValue);
@@ -47,18 +54,18 @@ export function ProductCategoryFormalReadinessBand(
     : "is-neutral";
   const closureSignal = selectProductCategoryClosureErrorSignal(closureValue);
   const headlineCopy = attributionHeadline
-    ? `本期合计经营净收入 ${formatProductCategoryValue(
+    ? `${headlineIncomeLabel} ${formatProductCategoryValue(
         props.grandTotal?.business_net_income,
       )} 亿元；${attributionCompareLabel} ${formatProductCategoryValue(
         deltaValue,
-      )} 亿元；闭合误差 ${formatProductCategoryValue(closureValue)} 亿元${
+      )} 亿元；${closureLabel} ${formatProductCategoryValue(closureValue)} 亿元${
         !closureAvailable
           ? "，状态待返回。"
           : closureSignal.hasMaterialGap
             ? "，需复核。"
             : "，已闭合。"
       }`
-    : `本期合计经营净收入 ${formatProductCategoryValue(
+    : `${headlineIncomeLabel} ${formatProductCategoryValue(
         props.grandTotal?.business_net_income,
       )} 亿元，当前展示${scenarioStateLabel}。`;
   const attributionDrivers = attributionEffects
@@ -124,7 +131,7 @@ export function ProductCategoryFormalReadinessBand(
             data-testid="product-category-core-metric"
             className="product-category-formal-readiness__metric product-category-formal-readiness__metric--primary"
           >
-            <span>FTP后经营净收入（亿元）</span>
+            <span>{scenarioPrefix}FTP后经营净收入（亿元）</span>
             <strong>
               {formatProductCategoryValue(
                 props.grandTotal?.business_net_income,
@@ -141,7 +148,7 @@ export function ProductCategoryFormalReadinessBand(
               {formatProductCategoryValue(deltaValue)}
             </strong>
             <small>
-              对比期{" "}
+              {attributionPrefix}对比期{" "}
               {formatProductCategoryValue(
                 attributionHeadline?.prior?.business_net_income,
               )}
@@ -151,7 +158,7 @@ export function ProductCategoryFormalReadinessBand(
             data-testid="product-category-core-metric"
             className="product-category-formal-readiness__metric"
           >
-            <span>资产端（亿元）</span>
+            <span>{scenarioPrefix}资产端（亿元）</span>
             <strong>
               {formatProductCategoryValue(
                 props.assetTotal?.business_net_income,
@@ -163,7 +170,7 @@ export function ProductCategoryFormalReadinessBand(
             data-testid="product-category-core-metric"
             className="product-category-formal-readiness__metric"
           >
-            <span>负债端（亿元）</span>
+            <span>{scenarioPrefix}负债端（亿元）</span>
             <strong>
               {formatProductCategoryValue(
                 props.liabilityTotal?.business_net_income,
@@ -175,7 +182,7 @@ export function ProductCategoryFormalReadinessBand(
             data-testid="product-category-core-metric"
             className="product-category-formal-readiness__metric product-category-formal-readiness__metric--closure"
           >
-            <span>闭合误差（亿元）</span>
+            <span>{closureLabel}（亿元）</span>
             <strong
               className={
                 !closureAvailable
@@ -188,7 +195,7 @@ export function ProductCategoryFormalReadinessBand(
               {formatProductCategoryValue(closureValue)}
             </strong>
             <small>
-              已解释{" "}
+              {attributionPrefix}已解释{" "}
               {formatProductCategoryValue(attributionEffects?.explained_effect)}
             </small>
           </div>
@@ -201,7 +208,7 @@ export function ProductCategoryFormalReadinessBand(
         >
           <div className="product-category-formal-readiness__driver-header">
             <div>
-              <strong>关键驱动与风险</strong>
+              <strong>{attributionPrefix}关键驱动与风险</strong>
               <span>仅展示绝对影响最大的 3 项</span>
             </div>
             <small>单位：亿元</small>
@@ -237,8 +244,8 @@ export function ProductCategoryFormalReadinessBand(
           ) : (
             <p className="product-category-formal-readiness__driver-empty">
               {props.selectedView === "monthly"
-                ? "归因数据加载中，正式FTP后经营净收入仍按当前口径展示。"
-                : "关键驱动仅支持月度视图，汇总视图继续展示正式FTP后经营净收入。"}
+                ? `归因数据加载中，${props.scenarioApplied ? "情景" : "正式"}FTP后经营净收入仍按当前口径展示。`
+                : `关键驱动仅支持月度视图，汇总视图继续展示${props.scenarioApplied ? "情景" : "正式"}FTP后经营净收入。`}
             </p>
           )}
         </section>

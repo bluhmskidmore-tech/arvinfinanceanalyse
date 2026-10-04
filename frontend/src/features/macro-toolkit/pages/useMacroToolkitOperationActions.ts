@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useApiClient } from "../../../api/clientContext";
 import type { ApiEnvelope } from "../../../api/contracts";
@@ -71,6 +71,26 @@ type RefetchableQuery = {
   refetch: () => Promise<unknown>;
 };
 
+function nextIdempotencyKey(scope: string): string {
+  const suffix =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `macro-toolkit-${scope}-${suffix}`;
+}
+
+function publicCommodityRefreshFailureMessage(refresh: MacroToolkitCommodityFuturesRefreshRun) {
+  return refresh.failure_message ?? refreshFailureMessage("商品期货刷新", refresh.failure_category);
+}
+
+function hasCapturedCommodityRefreshTerminalSnapshot(refresh: MacroToolkitCommodityFuturesRefreshRun) {
+  return (
+    refresh.terminal_snapshot_status === "captured" &&
+    refresh.after_status?.status !== "snapshot_unavailable" &&
+    refresh.after_status?.status !== "unreadable_database"
+  );
+}
+
 export function useMacroToolkitOperationActions({
   analysis,
   analysisQuery,
@@ -79,6 +99,7 @@ export function useMacroToolkitOperationActions({
   fullAnalysisError,
   isCoreAnalysis,
   loadFullAnalysis,
+  modelChainQuery,
   payload,
   scriptsQuery,
   selectedScript,
@@ -99,6 +120,7 @@ export function useMacroToolkitOperationActions({
   loadFullAnalysis: (options?: {
     force?: boolean;
   }) => Promise<ApiEnvelope<MacroToolkitAnalysisPayload> | null>;
+  modelChainQuery: RefetchableQuery;
   payload: MacroToolkitPayload | undefined;
   scriptsQuery: RefetchableQuery;
   selectedScript: MacroToolkitScriptRecord | null;
@@ -150,7 +172,7 @@ export function useMacroToolkitOperationActions({
   ]);
   const [isRunning, setIsRunning] = useState(false);
 
-  // 卸载时取消来源补齐 / CFFEX / 选股刷新的长任务轮询（最长 240×5s），
+  // 卸载时取消来源补齐 / CFFEX / 选股 / 商品期货刷新的长任务轮询（最长 240×5s），
   // 避免离开页面后继续请求并对已卸载组件 setState、批量 refetch。
   const unmountAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -193,7 +215,20 @@ export function useMacroToolkitOperationActions({
     });
   }, []);
 
-  const commodityPermission = commodityRefreshRun?.permission ?? commodityFuturesRefresh?.permission ?? null;
+  const commodityPermissionSource = commodityRefreshRun?.permission ?? commodityFuturesRefresh?.permission ?? null;
+  const commodityPermission = useMemo(() => {
+    if (!commodityPermissionSource) {
+      return null;
+    }
+    if (commodityPermissionSource.user_id && commodityPermissionSource.role) {
+      return commodityPermissionSource;
+    }
+    return {
+      ...commodityPermissionSource,
+      user_id: commodityPermissionSource.user_id || "身份已脱敏",
+      role: commodityPermissionSource.role || "身份已脱敏",
+    };
+  }, [commodityPermissionSource]);
 
   const isCommodityRefreshAllowed = commodityPermission?.allowed === true;
 
@@ -284,12 +319,14 @@ export function useMacroToolkitOperationActions({
         });
       }
       try {
+        const idempotencyKey = nextIdempotencyKey("source-backfill");
         const refresh = await runPollingTask({
           start: async () => {
             const response = await client.refreshMacroSourceBackfill({
               alias,
               endDate: item.reference_date ?? analysis?.as_of_date ?? undefined,
               sources: undefined,
+              idempotencyKey,
             });
             return {
               ...response.result.refresh,
@@ -334,11 +371,17 @@ export function useMacroToolkitOperationActions({
           artifact: resultMessage,
           nextStep: isCompleted ? "重读完整分析并复核数据健康" : "复核未完成来源，数据健康保持阻断",
         });
-        if (isCompleted || isPartial) {
-          await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: Boolean(gapGroup) });
-          const reloaded = await loadFullAnalysis();
-          if (gapGroup) {
-            const reloadedFeedback = buildCrisisGapRepairFeedback(gapGroup, reloaded, resultMessage);
+      if (isCompleted || isPartial) {
+        await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: Boolean(gapGroup) });
+        await Promise.all([
+          scriptsQuery.refetch(),
+          analysisQuery.refetch(),
+          strategyQuery.refetch(),
+          modelChainQuery.refetch(),
+        ]);
+        const reloaded = await loadFullAnalysis();
+        if (gapGroup) {
+          const reloadedFeedback = buildCrisisGapRepairFeedback(gapGroup, reloaded, resultMessage);
             setCrisisGapRepairFeedback(
               isPartial
                 ? {
@@ -388,7 +431,17 @@ export function useMacroToolkitOperationActions({
         }
       }
     },
-    [analysis?.as_of_date, clearFullAnalysisCache, client, loadFullAnalysis, recordActionReceipt],
+    [
+      analysis?.as_of_date,
+      analysisQuery,
+      clearFullAnalysisCache,
+      client,
+      loadFullAnalysis,
+      modelChainQuery,
+      recordActionReceipt,
+      scriptsQuery,
+      strategyQuery,
+    ],
   );
 
   const runSelectedScript = useCallback(async () => {
@@ -424,7 +477,12 @@ export function useMacroToolkitOperationActions({
         nextStep: "核对脚本产物与注册表状态",
       });
       await clearFullAnalysisCache();
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
+      await Promise.all([
+        scriptsQuery.refetch(),
+        analysisQuery.refetch(),
+        strategyQuery.refetch(),
+        modelChainQuery.refetch(),
+      ]);
       await loadFullAnalysis();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "运行失败";
@@ -447,6 +505,7 @@ export function useMacroToolkitOperationActions({
     clearFullAnalysisCache,
     client,
     loadFullAnalysis,
+    modelChainQuery,
     payload?.output_dir,
     recordActionReceipt,
     scriptsQuery,
@@ -485,9 +544,16 @@ export function useMacroToolkitOperationActions({
         artifact: `步骤 ${result.receipts.length}/${result.manifest.length} · 缺口 ${result.readiness_after.degraded_count}`,
         nextStep: "核对 model_readiness 与 receipts",
       });
-      await clearFullAnalysisCache();
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
-      await loadFullAnalysis();
+      if (!dryRun) {
+        await clearFullAnalysisCache();
+        await Promise.all([
+          scriptsQuery.refetch(),
+          analysisQuery.refetch(),
+          strategyQuery.refetch(),
+          modelChainQuery.refetch(),
+        ]);
+        await loadFullAnalysis();
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "模型链运行失败";
       setChainRunError(errorMessage);
@@ -509,6 +575,7 @@ export function useMacroToolkitOperationActions({
     clearFullAnalysisCache,
     client,
     loadFullAnalysis,
+    modelChainQuery,
     payload?.output_dir,
     recordActionReceipt,
     scriptsQuery,
@@ -534,10 +601,12 @@ export function useMacroToolkitOperationActions({
       nextStep: "等待刷新完成后核对席位状态",
     });
     try {
+      const idempotencyKey = nextIdempotencyKey("cffex-refresh");
       const refresh = await runPollingTask({
         start: async () => {
           const response = await client.refreshCffexMemberRank({
             tradeDate: analysis?.as_of_date ?? undefined,
+            idempotencyKey,
           });
           return {
             ...response.result.refresh,
@@ -582,7 +651,12 @@ export function useMacroToolkitOperationActions({
         nextStep: isCompleted ? "核对 CFFEX席位状态" : "复核未完成来源，席位状态保持待确认",
       });
       await clearFullAnalysisCache();
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
+      await Promise.all([
+        scriptsQuery.refetch(),
+        analysisQuery.refetch(),
+        strategyQuery.refetch(),
+        modelChainQuery.refetch(),
+      ]);
       await loadFullAnalysis();
     } catch (error) {
       if (signal?.aborted) return;
@@ -610,6 +684,7 @@ export function useMacroToolkitOperationActions({
     clearFullAnalysisCache,
     client,
     loadFullAnalysis,
+    modelChainQuery,
     recordActionReceipt,
     scriptsQuery,
     strategyQuery,
@@ -633,6 +708,7 @@ export function useMacroToolkitOperationActions({
       nextStep: "完成后核对策略供数闭环",
     });
     try {
+      const idempotencyKey = nextIdempotencyKey("choice-stock-refresh");
       const refresh = await runPollingTask<MacroToolkitChoiceStockRefreshRun>({
         start: async () => {
           const response = await client.refreshChoiceStock({
@@ -640,6 +716,7 @@ export function useMacroToolkitOperationActions({
             refreshHistory: true,
             refreshFactors: true,
             factorMaxStockCount: null,
+            idempotencyKey,
           });
           return response.result.refresh;
         },
@@ -678,7 +755,12 @@ export function useMacroToolkitOperationActions({
         nextStep: "核对策略展示和刷新状态",
       });
       await clearFullAnalysisCache();
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
+      await Promise.all([
+        scriptsQuery.refetch(),
+        analysisQuery.refetch(),
+        strategyQuery.refetch(),
+        modelChainQuery.refetch(),
+      ]);
       await loadFullAnalysis();
     } catch (error) {
       if (signal?.aborted) return;
@@ -706,12 +788,14 @@ export function useMacroToolkitOperationActions({
     clearFullAnalysisCache,
     client,
     loadFullAnalysis,
+    modelChainQuery,
     recordActionReceipt,
     scriptsQuery,
     strategyQuery,
   ]);
 
   const refreshCommodityFutures = useCallback(async (options?: CommodityRefreshOptions) => {
+    const signal = unmountAbortRef.current?.signal;
     const dryRun = options?.dryRun ?? false;
     const products = options?.products ?? selectedCommodityProducts;
     const receiptId = nextActionReceiptId(dryRun ? "commodity-dry-run" : "commodity-refresh");
@@ -771,28 +855,147 @@ export function useMacroToolkitOperationActions({
       });
     }
     try {
-      const response = await client.refreshCommodityFutures({
-        startDate: options?.startDate,
-        endDate: analysis?.as_of_date ?? undefined,
-        products,
-        dryRun,
+      const refresh = await runPollingTask({
+        start: async () => {
+          const response = await client.refreshCommodityFutures({
+            startDate: options?.startDate,
+            endDate: analysis?.as_of_date ?? undefined,
+            products,
+            dryRun,
+          });
+          return {
+            ...response.result.refresh,
+            report_date: response.result.refresh.report_date ?? undefined,
+            source_version: response.result.refresh.source_version ?? undefined,
+          };
+        },
+        getStatus: async (runId) => {
+          const response = await client.getCommodityFuturesRefreshStatus(runId);
+          return {
+            ...response.result.refresh,
+            report_date: response.result.refresh.report_date ?? undefined,
+            source_version: response.result.refresh.source_version ?? undefined,
+          };
+        },
+        intervalMs: 5_000,
+        maxAttempts: 240,
+        signal,
+        isTerminal: (status) =>
+          ["completed", "partial", "no_rows", "blocked", "failed", "dry_run"].includes(status),
+        onUpdate: (payload) => {
+          setCommodityRefreshRun(payload);
+          setCommodityRefreshResult(payload.status === "failed" ? null : formatCommodityRefreshResult(payload));
+          if (
+            dryRun ||
+            ["completed", "partial", "no_rows", "blocked", "failed"].includes(payload.status)
+          ) {
+            return;
+          }
+          const pendingMessage = asyncRefreshPendingMessage("商品期货刷新", payload.status);
+          setCommodityEvidenceReloadMessage(pendingMessage);
+          if (commodityGapGroup) {
+            setCrisisGapRepairFeedback({
+              groupKey: commodityGapGroup.key,
+              groupLabel: commodityGapGroup.label,
+              status: "pending",
+              message: pendingMessage,
+              detail: formatCommodityRefreshResult(payload),
+            });
+          }
+        },
       });
-      const refresh = response.result.refresh;
+      if (signal?.aborted) return;
+      if (refresh.status === "failed") {
+        const errorMessage = publicCommodityRefreshFailureMessage(refresh);
+        setCommodityRefreshRun(refresh);
+        setCommodityRefreshResult(null);
+        setCommodityRefreshError(errorMessage);
+        setCommodityEvidenceReloadMessage("刷新失败，完整分析保持原状态");
+        recordActionReceipt({
+          id: receiptId,
+          ...receiptDecision,
+          action: dryRun ? "预估商品期货" : "刷新商品期货",
+          status: "failed",
+          time: "刚刚",
+          target: formatCommodityProducts(products),
+          artifact: errorMessage,
+          nextStep: "检查商品期货刷新授权和数据源",
+        });
+        if (commodityGapGroup) {
+          setCrisisGapRepairFeedback({
+            groupKey: commodityGapGroup.key,
+            groupLabel: commodityGapGroup.label,
+            status: "failed",
+            message: dryRun ? "预估失败，缺口仍需处理" : "刷新失败，缺口仍需处理",
+            detail: errorMessage,
+          });
+        }
+        return;
+      }
+      const hasCapturedSnapshot = hasCapturedCommodityRefreshTerminalSnapshot(refresh);
+      const canReloadEvidence =
+        (refresh.status === "completed" || refresh.status === "partial") && hasCapturedSnapshot;
+      const shouldShowTerminalResult =
+        dryRun ||
+        refresh.status === "completed" ||
+        refresh.status === "partial" ||
+        refresh.status === "no_rows" ||
+        refresh.status === "blocked";
+      const terminalResultMessage =
+        (refresh.status === "completed" || refresh.status === "partial") && !hasCapturedSnapshot
+          ? "刷新已结束但终态快照捕获失败，不能据此判断刷新结果"
+          : refresh.status === "partial"
+            ? formatCommodityRefreshResult(refresh).replace("刷新完成", "部分完成")
+            : refresh.status === "no_rows"
+            ? "商品期货刷新未新增数据"
+            : refresh.status === "blocked"
+              ? "商品期货刷新受阻，请复核任务状态和数据源"
+              : formatCommodityRefreshResult(refresh);
       setCommodityRefreshRun(refresh);
-      setCommodityRefreshResult(formatCommodityRefreshResult(refresh));
-      const isQueuedRefresh = refresh.status === "queued";
+      setCommodityRefreshResult(shouldShowTerminalResult ? terminalResultMessage : null);
+      setCommodityEvidenceReloadMessage(null);
       recordActionReceipt({
         id: receiptId,
         ...receiptDecision,
         action: dryRun ? "预估商品期货" : "刷新商品期货",
-        status: refresh.status === "completed" || refresh.status === "dry_run" ? "completed" : "warning",
+        status:
+          (refresh.status === "completed" && hasCapturedSnapshot) || refresh.status === "dry_run"
+            ? "completed"
+            : "warning",
         time: "刚刚",
         target: formatCommodityProducts(products),
-        artifact: formatCommodityRefreshResult(refresh),
+        artifact: terminalResultMessage,
         nextStep: dryRun ? "根据预计行数决定是否正式刷新" : "核对商品期货状态与完整分析证据",
       });
       if (dryRun) {
         setCommodityShortfallEstimates(formatCommodityShortfallEstimates(shortfallsBeforeRefresh, refresh));
+        return;
+      }
+      if (!canReloadEvidence) {
+        setCommodityRefreshError(
+          (refresh.status === "completed" || refresh.status === "partial") && !hasCapturedSnapshot
+            ? "刷新已结束但终态快照捕获失败，完整分析保持原状态"
+            : null,
+        );
+        setCommodityEvidenceReloadMessage(
+          (refresh.status === "completed" || refresh.status === "partial") && !hasCapturedSnapshot
+            ? "终态快照未捕获，完整分析保持原状态"
+            : "未产生可重读的商品期货证据，完整分析保持原状态",
+        );
+        if (commodityGapGroup) {
+          setCrisisGapRepairFeedback({
+            groupKey: commodityGapGroup.key,
+            groupLabel: commodityGapGroup.label,
+            status: "partial",
+            message:
+              (refresh.status === "completed" || refresh.status === "partial") && !hasCapturedSnapshot
+                ? "终态快照未捕获，缺口仍需处理"
+                : refresh.status === "blocked"
+                  ? "商品期货刷新受阻，缺口仍需处理"
+                  : "商品期货刷新未新增数据",
+            detail: terminalResultMessage,
+          });
+        }
         return;
       }
       setCommodityRefreshEvidenceChain({
@@ -800,22 +1003,13 @@ export function useMacroToolkitOperationActions({
         refreshedProducts: commodityRefreshRunProducts(refresh),
         fullReloaded: false,
       });
-      if (isQueuedRefresh) {
-        setCommodityEvidenceReloadMessage("商品期货刷新已排队，等待后台任务完成。");
-        if (commodityGapGroup) {
-          setCrisisGapRepairFeedback({
-            groupKey: commodityGapGroup.key,
-            groupLabel: commodityGapGroup.label,
-            status: "pending",
-            message: "商品期货刷新已排队。",
-            detail: formatCommodityRefreshResult(refresh),
-          });
-        }
-        await scriptsQuery.refetch();
-        return;
-      }
       await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: shouldReloadFullAnalysis && Boolean(commodityGapGroup) });
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
+      await Promise.all([
+        scriptsQuery.refetch(),
+        analysisQuery.refetch(),
+        strategyQuery.refetch(),
+        modelChainQuery.refetch(),
+      ]);
       if (shouldReloadFullAnalysis) {
         setCommodityEvidenceReloadMessage("正在重新读取完整分析证据");
         const reloaded = await loadFullAnalysis({ force: true });
@@ -833,7 +1027,7 @@ export function useMacroToolkitOperationActions({
         );
         if (commodityGapGroup) {
           setCrisisGapRepairFeedback(
-            buildCrisisGapRepairFeedback(commodityGapGroup, reloaded, formatCommodityRefreshResult(refresh)),
+            buildCrisisGapRepairFeedback(commodityGapGroup, reloaded, terminalResultMessage),
           );
         }
         setCommodityEvidenceReloadMessage(
@@ -841,8 +1035,10 @@ export function useMacroToolkitOperationActions({
         );
       }
     } catch (error) {
+      if (signal?.aborted) return;
       const errorMessage = formatCommodityFuturesRefreshError(error);
       setCommodityRefreshError(errorMessage);
+      setCommodityRefreshResult(null);
       setCommodityRefreshRun(null);
       setCommodityEvidenceReloadMessage(null);
       setCommodityRefreshEvidenceChain(null);
@@ -868,7 +1064,9 @@ export function useMacroToolkitOperationActions({
         });
       }
     } finally {
-      setIsRefreshingCommodity(false);
+      if (!signal?.aborted) {
+        setIsRefreshingCommodity(false);
+      }
     }
   }, [
     analysis?.as_of_date,
@@ -879,6 +1077,7 @@ export function useMacroToolkitOperationActions({
     isCoreAnalysis,
     isCommodityRefreshAllowed,
     loadFullAnalysis,
+    modelChainQuery,
     commodityPermission,
     recordActionReceipt,
     scriptsQuery,

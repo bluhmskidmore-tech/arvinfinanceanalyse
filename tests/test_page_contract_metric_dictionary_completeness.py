@@ -39,9 +39,6 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
         "candidate / blocked-by-contract-gap; page contract keeps display-field truth "
         "without promoting standalone `MTR-*` bindings yet."
     ),
-    "PAGE-POS-001": (
-        "positions DTO remains page/schema truth only; no approved `MTR-*` page bindings yet."
-    ),
     "PAGE-BANK-LEDGER-001": (
         "candidate ledger read model; the page contract explicitly forbids promoting its "
         "headline fields to `MTR-*` without metric ownership and approval."

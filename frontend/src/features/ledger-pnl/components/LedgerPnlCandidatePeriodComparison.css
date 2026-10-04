@@ -1,5 +1,5 @@
 .candidate-period-comparison {
-  --candidate-navy: var(--dh-api-blue);
+  --candidate-navy: var(--dh-api-ink);
   --candidate-blue: var(--dh-api-blue);
   --candidate-ink: var(--dh-api-ink);
   --candidate-muted: var(--dh-api-soft);
@@ -8,12 +8,12 @@
   display: grid;
   gap: 12px;
   margin: 14px 0;
-  padding: 14px;
-  border: 1px solid var(--candidate-line, var(--dh-api-line));
-  border-left: 3px solid var(--candidate-blue, var(--dh-api-blue));
-  border-radius: var(--dh-api-radius);
-  background: var(--candidate-soft, var(--dh-api-panel-2));
+  padding: var(--moss-space-4) 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--candidate-ink, var(--dh-api-ink));
+  border: 0;
+  border-top: 1px solid var(--dh-api-line-soft);
 }
 
 .candidate-period-comparison__header {
@@ -28,16 +28,16 @@
 }
 
 .candidate-period-comparison__header > div:first-child > span {
-  color: var(--candidate-blue, var(--dh-api-blue));
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 .candidate-period-comparison__header h3 {
   margin: 4px 0 0;
   color: var(--candidate-navy, var(--dh-api-blue));
-  font-size: 18px;
+  font-size: 14px;
   line-height: 1.25;
 }
 
@@ -59,11 +59,11 @@
 
 .candidate-period-comparison__boundary strong {
   padding: 5px 8px;
-  border: 1px solid var(--moss-color-warning-300);
-  border-radius: var(--dh-api-radius);
-  background: var(--moss-color-warning-50);
+  border-radius: 0;
+  background: transparent;
   color: var(--dh-api-amber);
-  font-size: 11px;
+  font-size: 12px;
+  border: 0;
 }
 
 .candidate-period-comparison__boundary small,
@@ -80,12 +80,12 @@
   justify-content: space-between;
   gap: 12px;
   padding: 9px 10px;
-  border: 1px solid var(--moss-color-warning-300);
-  border-radius: var(--dh-api-radius);
-  background: var(--moss-color-warning-50);
+  border-radius: 0;
+  background: transparent;
   color: var(--dh-api-amber);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
+  border: 0;
 }
 
 .candidate-period-comparison__source-warning span {
@@ -95,8 +95,8 @@
 .candidate-period-comparison__scope-ready {
   display: grid;
   border-color: var(--moss-color-info-200);
-  background: var(--moss-color-info-50);
-  color: var(--dh-api-blue);
+  background: transparent;
+  color: var(--dh-api-muted);
 }
 
 .candidate-period-comparison__scope-ready small {
@@ -108,9 +108,9 @@
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.55fr);
   gap: 12px 18px;
   padding: 11px 12px;
-  border: 1px solid var(--moss-color-warning-300);
-  border-radius: var(--dh-api-radius);
-  background: var(--candidate-paper, var(--dh-api-panel));
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .candidate-period-comparison__scope-gap > div > strong {
@@ -135,7 +135,7 @@
   border-left: 2px solid var(--dh-api-amber);
   background: var(--moss-color-warning-50);
   color: var(--dh-api-amber);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .candidate-period-comparison__scope-gap > small {
@@ -146,9 +146,9 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  border: 1px solid var(--moss-color-info-200);
-  border-radius: var(--dh-api-radius);
-  background: var(--candidate-paper, var(--dh-api-panel));
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .candidate-period-comparison__interest-bridge-header {
@@ -193,11 +193,12 @@
 
 .candidate-period-comparison__interest-bridge-result span {
   padding: 3px 6px;
-  border: 1px solid var(--moss-color-info-200);
-  border-radius: var(--dh-api-radius);
+  border-radius: 0;
   color: var(--dh-api-blue);
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 500;
+  border: 0;
+  background: transparent;
 }
 
 .candidate-period-comparison__interest-bridge-table-wrap {
@@ -216,8 +217,9 @@
 .candidate-period-comparison__interest-bridge tbody td {
   color: var(--candidate-ink, var(--dh-api-ink));
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: var(--moss-table-cell-weight);
   white-space: nowrap;
+  text-align: right;
 }
 
 .candidate-period-comparison__interest-bridge-trigger {
@@ -274,9 +276,9 @@
 
 .candidate-period-comparison__table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--candidate-line, var(--dh-api-line));
-  border-radius: var(--dh-api-radius);
-  background: var(--candidate-paper, var(--dh-api-panel));
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .candidate-period-comparison table {
@@ -284,23 +286,25 @@
   min-width: 920px;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .candidate-period-comparison th,
 .candidate-period-comparison td {
-  padding: 9px 10px;
+  padding: var(--moss-space-1) var(--moss-space-3);
   border-bottom: 1px solid var(--candidate-line, var(--dh-api-line));
   vertical-align: top;
   text-align: left;
+  height: var(--moss-table-row-h);
+  line-height: var(--moss-table-line-height);
 }
 
 .candidate-period-comparison thead th {
   background: var(--candidate-soft, var(--dh-api-panel-2));
   color: var(--candidate-muted, var(--dh-api-soft));
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-header-weight);
+  letter-spacing: 0;
 }
 
 .candidate-period-comparison thead th:first-child {
@@ -320,40 +324,50 @@
 }
 
 .candidate-period-comparison tbody th {
-  display: grid;
-  gap: 3px;
-  color: var(--candidate-navy, var(--dh-api-blue));
+  display: table-cell;
+  color: var(--moss-table-cell-color);
+  font-weight: var(--moss-table-cell-weight);
 }
 
 .candidate-period-comparison tbody th code {
-  overflow: hidden;
   color: var(--candidate-muted, var(--dh-api-soft));
   font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .candidate-period-comparison tbody th small {
   color: var(--dh-api-amber);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-header-weight);
   line-height: 1.4;
 }
 
 .candidate-period-comparison__number {
   color: var(--candidate-ink, var(--dh-api-ink));
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 400;
   white-space: nowrap;
+  text-align: right;
 }
 
 .candidate-period-comparison__delta {
-  color: var(--candidate-blue, var(--dh-api-blue));
+  color: var(--dh-api-ink);
 }
 
 .candidate-period-comparison tbody td:last-child {
-  display: grid;
-  gap: 3px;
+  display: table-cell;
+}
+
+/* 多行科目与限制说明参与原生表格测高，32px 为单行密度而非内容裁切上限。 */
+.candidate-period-comparison tbody th > *,
+.candidate-period-comparison tbody td:last-child > * {
+  display: block;
+}
+
+.candidate-period-comparison tbody th > * + *,
+.candidate-period-comparison tbody td:last-child > * + * {
+  margin-top: var(--moss-space-1);
 }
 
 .candidate-period-comparison tbody td:last-child strong {
@@ -377,10 +391,10 @@
   place-content: center;
   gap: 6px;
   padding: 20px;
-  border: 1px dashed var(--candidate-line, var(--dh-api-line));
-  border-radius: var(--dh-api-radius);
-  background: var(--candidate-paper, var(--dh-api-panel));
+  border-radius: 0;
+  background: transparent;
   text-align: center;
+  border: 0;
 }
 
 .candidate-period-comparison__state strong {
@@ -409,8 +423,8 @@
   color: var(--candidate-blue, var(--dh-api-blue));
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
-  font-weight: 750;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 @media (max-width: 760px) {

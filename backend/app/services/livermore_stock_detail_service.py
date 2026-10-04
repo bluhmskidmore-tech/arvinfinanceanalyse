@@ -42,6 +42,8 @@ def livermore_stock_detail_envelope(
         "pb": None,
         "roe": None,
         "dividend_yield": None,
+        "total_mv": None,
+        "circ_mv": None,
     }
 
     path = Path(duckdb_path)
@@ -222,6 +224,8 @@ def _normalize_factor_row(
                 "pb": None,
                 "roe": None,
                 "dividend_yield": None,
+                "total_mv": None,
+                "circ_mv": None,
             },
             None,
             None,
@@ -237,6 +241,8 @@ def _normalize_factor_row(
             "pb": _maybe_float(row.get("pb")),
             "roe": _maybe_float(row.get("roe")),
             "dividend_yield": _maybe_float(row.get("dividend_yield")),
+            "total_mv": _maybe_float(row.get("total_mv")),
+            "circ_mv": _maybe_float(row.get("circ_mv")),
         },
         _optional_str(row.get("source_version")),
         _optional_str(row.get("vendor_version")),

@@ -4,19 +4,36 @@ import logging
 import time
 from collections.abc import Mapping
 from datetime import date
-from typing import Literal, cast
+from pathlib import Path
+from typing import Literal, NotRequired, TypedDict, cast
 
+from backend.app.repositories.stock_analysis_current_rule_cohort_reader import (
+    empty_current_rule_replay_closure,
+    read_current_rule_replay_closure,
+)
 from backend.app.repositories.stock_analysis_theme_overlay_reader import (
     StockAnalysisThemeOverlayReader,
 )
+from backend.app.repositories.system_read_publication_repo import current_system_read_context
 from backend.app.services.formal_result_runtime import build_result_envelope
-from backend.app.services.market_data_livermore_service import livermore_strategy_envelope_from_catalog
+from backend.app.services.market_data_livermore_service import (
+    EXECUTION_STOCK_CANDIDATE_POLICY,
+    latest_complete_stock_analysis_date,
+    livermore_attested_strategy_envelope_from_catalog,
+    livermore_strategy_envelope_from_catalog,
+)
+from backend.app.services.pretrade_qualification import (
+    STRATEGY_CALCULATION_MODE,
+    canonical_pretrade_output_sha256,
+    qualify_sealed_pretrade_read,
+    unavailable_pretrade_qualification,
+)
 
 logger = logging.getLogger(__name__)
 
 WORKBENCH_RESULT_KIND = "market_data.stock_analysis.workbench"
-WORKBENCH_RULE_VERSION = "rv_stock_analysis_workbench_v1"
-WORKBENCH_CACHE_VERSION = "cv_stock_analysis_workbench_v1"
+WORKBENCH_RULE_VERSION = "rv_stock_analysis_workbench_v2"
+WORKBENCH_CACHE_VERSION = "cv_stock_analysis_workbench_v2"
 
 DEFAULT_INCLUDE_KEYS = frozenset({"main", "evidence_summary"})
 OPTIONAL_MODULE_ENDPOINTS: dict[str, str] = {
@@ -40,6 +57,26 @@ REQUIRED_GAP_FAMILIES = frozenset(
         "position_risk",
     }
 )
+_PRETRADE_DECISION_OUTPUT_KEYS = frozenset(
+    {
+        "stock_candidates",
+        "factor_screen_candidates",
+        "hybrid_fusion_candidates",
+        "uptrend_momentum_candidates",
+        "fresh_trend_watchlist",
+        "mean_reversion_candidates",
+        "theme_breakout",
+        "risk_exit",
+    }
+)
+
+
+class _StrategyCatalogArgs(TypedDict):
+    duckdb_path: str
+    as_of_date: str | None
+    choice_stock_catalog_file: str | Path
+    stock_candidate_policy: str
+    theme_overlay_reader: NotRequired[StockAnalysisThemeOverlayReader]
 
 
 def stock_analysis_workbench_envelope(
@@ -51,20 +88,91 @@ def stock_analysis_workbench_envelope(
     sector_window_days: int = 20,
     top_k: int = 10,
     theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
+    _pretrade_qualification: Mapping[str, object] | None = None,
+    _captured_external_inputs: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     total_started = time.perf_counter()
-    strategy_kwargs: dict[str, object] = {
+    strategy_as_of_date = as_of_date
+    if strategy_as_of_date is None and _pretrade_qualification is not None:
+        strategy_as_of_date = _optional_text(_pretrade_qualification.get("target_date"))
+    if strategy_as_of_date is None:
+        strategy_as_of_date = latest_complete_stock_analysis_date(duckdb_path=duckdb_path)
+        if strategy_as_of_date is not None:
+            logger.info(
+                "stock_analysis_workbench_default_date resolved_as_of_date=%s",
+                strategy_as_of_date,
+            )
+    system_read_context = current_system_read_context()
+    if _pretrade_qualification is not None:
+        pretrade_qualification = dict(_pretrade_qualification)
+    elif system_read_context is None or strategy_as_of_date is None:
+        pretrade_qualification = unavailable_pretrade_qualification(
+            "system_read_generation_missing"
+            if system_read_context is None
+            else "pretrade_qualification_target_date_missing"
+        )
+    else:
+        pretrade_qualification = qualify_sealed_pretrade_read(
+            evidence=system_read_context.pretrade_availability,
+            target_date=strategy_as_of_date,
+            stock_candidate_policy=EXECUTION_STOCK_CANDIDATE_POLICY,
+        )
+    qualification_rules = _mapping(pretrade_qualification.get("rule_identity"))
+    use_attested_replay = (
+        pretrade_qualification.get("status") in {"ready", "ready_empty"}
+        and qualification_rules.get("strategy_calculation_mode")
+        == STRATEGY_CALCULATION_MODE
+    )
+    strategy_kwargs: _StrategyCatalogArgs = {
         "duckdb_path": duckdb_path,
-        "as_of_date": as_of_date,
-        "choice_stock_catalog_file": choice_stock_catalog_file,
+        "as_of_date": strategy_as_of_date,
+        "choice_stock_catalog_file": cast(str | Path, choice_stock_catalog_file),
+        "stock_candidate_policy": EXECUTION_STOCK_CANDIDATE_POLICY,
     }
     if theme_overlay_reader is not None:
         strategy_kwargs["theme_overlay_reader"] = theme_overlay_reader
     strategy_started = time.perf_counter()
-    strategy_envelope = livermore_strategy_envelope_from_catalog(**strategy_kwargs)
+    strategy_loader = (
+        livermore_attested_strategy_envelope_from_catalog
+        if use_attested_replay
+        else livermore_strategy_envelope_from_catalog
+    )
+    if use_attested_replay and _captured_external_inputs is not None:
+        strategy_envelope = livermore_attested_strategy_envelope_from_catalog(
+            **strategy_kwargs,
+            captured_external_inputs=_captured_external_inputs,
+        )
+    else:
+        strategy_envelope = strategy_loader(**strategy_kwargs)
+    if as_of_date is None:
+        strategy_envelope = _with_requested_as_of_date(strategy_envelope, None)
     logger.info(
         "stock_analysis_workbench_timing stage=strategy_envelope ms=%d",
         int((time.perf_counter() - strategy_started) * 1000),
+    )
+    strategy_meta = _mapping(strategy_envelope.get("result_meta"))
+    strategy_result = _mapping(strategy_envelope.get("result"))
+    resolved_as_of_date = _optional_text(strategy_result.get("as_of_date")) or _optional_text(
+        strategy_meta.get("as_of_date")
+    )
+    if resolved_as_of_date is None:
+        pretrade_qualification = unavailable_pretrade_qualification(
+            "pretrade_qualification_target_date_missing"
+        )
+    elif resolved_as_of_date != strategy_as_of_date:
+        if _pretrade_qualification is not None or system_read_context is None:
+            pretrade_qualification = unavailable_pretrade_qualification(
+                "pretrade_qualification_target_date_mismatch"
+            )
+        else:
+            pretrade_qualification = qualify_sealed_pretrade_read(
+                evidence=system_read_context.pretrade_availability,
+                target_date=resolved_as_of_date,
+                stock_candidate_policy=EXECUTION_STOCK_CANDIDATE_POLICY,
+            )
+    replay_closure = read_current_rule_replay_closure(
+        duckdb_path=duckdb_path,
+        page_as_of_date=resolved_as_of_date,
     )
     projection_started = time.perf_counter()
     envelope = build_stock_analysis_workbench_envelope(
@@ -73,6 +181,9 @@ def stock_analysis_workbench_envelope(
         include=include,
         sector_window_days=sector_window_days,
         top_k=top_k,
+        replay_closure=replay_closure,
+        pretrade_qualification=pretrade_qualification,
+        stock_candidate_policy=EXECUTION_STOCK_CANDIDATE_POLICY,
     )
     logger.info(
         "stock_analysis_workbench_timing stage=workbench_projection ms=%d",
@@ -85,6 +196,26 @@ def stock_analysis_workbench_envelope(
     return envelope
 
 
+def _with_requested_as_of_date(
+    envelope: dict[str, object],
+    requested_as_of_date: str | None,
+) -> dict[str, object]:
+    result = _mapping(envelope.get("result"))
+    meta = _mapping(envelope.get("result_meta"))
+    filters_applied = _mapping(meta.get("filters_applied"))
+    return {
+        **envelope,
+        "result": {**result, "requested_as_of_date": requested_as_of_date},
+        "result_meta": {
+            **meta,
+            "filters_applied": {
+                **filters_applied,
+                "requested_as_of_date": requested_as_of_date,
+            },
+        },
+    }
+
+
 def build_stock_analysis_workbench_envelope(
     *,
     strategy_envelope: dict[str, object],
@@ -92,6 +223,9 @@ def build_stock_analysis_workbench_envelope(
     include: str | None = None,
     sector_window_days: int = 20,
     top_k: int = 10,
+    replay_closure: Mapping[str, object] | None = None,
+    pretrade_qualification: Mapping[str, object] | None = None,
+    stock_candidate_policy: str = EXECUTION_STOCK_CANDIDATE_POLICY,
 ) -> dict[str, object]:
     include_keys, unknown_include_keys = _parse_include(include)
     strategy_meta = _mapping(strategy_envelope.get("result_meta"))
@@ -105,13 +239,34 @@ def build_stock_analysis_workbench_envelope(
         meta=strategy_meta,
         result=strategy_result,
     )
+    qualification, strategy_payload_sha256 = _workbench_pretrade_qualification(
+        qualification=pretrade_qualification,
+        resolved_as_of_date=resolved_as_of_date,
+        stock_candidate_policy=stock_candidate_policy,
+        strategy_result=strategy_result,
+    )
+    decision_ready = qualification.get("status") == "ready"
+    projected_strategy_result = (
+        strategy_result
+        if decision_ready
+        else _without_pretrade_decision_hints(strategy_result)
+    )
+    projected_strategy_envelope = {
+        **strategy_envelope,
+        "result": projected_strategy_result,
+    }
     first_screen = _first_screen(strategy_result, top_k=top_k)
+    if not decision_ready:
+        first_screen = {
+            **first_screen,
+            "risk_exit_snapshot": [],
+        }
     data_status = _data_status(strategy_meta)
     main_module = _module_from_envelope(
         key="main",
         label="Livermore strategy snapshot",
         endpoint="/ui/market-data/livermore",
-        envelope=strategy_envelope,
+        envelope=projected_strategy_envelope,
     )
     modules: dict[str, object] = {"main": main_module}
     for key, endpoint in OPTIONAL_MODULE_ENDPOINTS.items():
@@ -131,10 +286,45 @@ def build_stock_analysis_workbench_envelope(
         strategy_result=strategy_result,
         unknown_include_keys=unknown_include_keys,
     )
+    if qualification.get("status") == "unavailable":
+        issues.insert(
+            0,
+            {
+                "severity": "warning",
+                "code": "pretrade_qualification_unavailable",
+                "message": str(
+                    qualification.get("reason")
+                    or "completed_pretrade_provenance_missing"
+                ),
+                "source_module": "pretrade_qualification",
+            },
+        )
     decision_summary = _decision_summary(
         first_screen=first_screen,
         strategy_meta=strategy_meta,
         issues=issues,
+    )
+    replay_closure_payload = dict(
+        replay_closure
+        or empty_current_rule_replay_closure(
+            reason_codes=[
+                "controlled_schema_unavailable",
+                "current_rule_cohort_reader_not_invoked",
+            ]
+        )
+    )
+    page_question = _page_question(decision_summary=decision_summary, issues=issues)
+    workbench_projection_sha256 = canonical_pretrade_output_sha256(
+        {
+            "first_screen": first_screen,
+            "decision_summary": decision_summary,
+            "page_question": page_question,
+        }
+    )
+    qualification_payload = _pretrade_qualification_payload(
+        qualification,
+        strategy_payload_sha256=strategy_payload_sha256,
+        workbench_projection_sha256=workbench_projection_sha256,
     )
     payload = {
         "page_id": "GAP-STOCK-ANALYSIS-PAGE",
@@ -142,11 +332,13 @@ def build_stock_analysis_workbench_envelope(
         "basis": "analytical",
         "contract_status": "observational_only",
         "formal_use_allowed": False,
+        "replay_closure": replay_closure_payload,
+        "pretrade_qualification": qualification_payload,
         "requested_as_of_date": _optional_text(requested_as_of_date),
         "as_of_date": resolved_as_of_date,
         "fallback_date": fallback_date,
         "stale": _is_stale(strategy_meta, fallback_date=fallback_date),
-        "page_question": _page_question(decision_summary=decision_summary, issues=issues),
+        "page_question": page_question,
         "decision_summary": decision_summary,
         "data_status": data_status,
         "first_screen": first_screen,
@@ -185,13 +377,92 @@ def build_stock_analysis_workbench_envelope(
             "sector_window_days": sector_window_days,
             "top_k": top_k,
         },
-        tables_used=_string_list(strategy_meta.get("tables_used")),
+        tables_used=_deduplicated_strings(
+            _string_list(strategy_meta.get("tables_used"))
+            + _string_list(replay_closure_payload.get("tables_used"))
+        ),
         evidence_rows=_optional_int(strategy_meta.get("evidence_rows")),
         source_surface="market_data",
         as_of_date=resolved_as_of_date,
         fallback_date=fallback_date,
         result_payload=payload,
     )
+
+
+def _workbench_pretrade_qualification(
+    *,
+    qualification: Mapping[str, object] | None,
+    resolved_as_of_date: str | None,
+    stock_candidate_policy: str,
+    strategy_result: Mapping[str, object],
+) -> tuple[dict[str, object], str]:
+    strategy_payload_sha256 = canonical_pretrade_output_sha256(strategy_result)
+    candidate = dict(
+        qualification
+        or unavailable_pretrade_qualification("completed_pretrade_provenance_missing")
+    )
+    if candidate.get("status") not in {"ready", "ready_empty"}:
+        return candidate, strategy_payload_sha256
+    if candidate.get("target_date") != resolved_as_of_date:
+        return (
+            unavailable_pretrade_qualification(
+                "pretrade_qualification_target_date_mismatch"
+            ),
+            strategy_payload_sha256,
+        )
+    if candidate.get("stock_candidate_policy") != stock_candidate_policy:
+        return (
+            unavailable_pretrade_qualification(
+                "pretrade_qualification_policy_mismatch"
+            ),
+            strategy_payload_sha256,
+        )
+    outputs = _mapping(candidate.get("outputs"))
+    if outputs.get("strategy_payload_sha256") != strategy_payload_sha256:
+        return (
+            unavailable_pretrade_qualification(
+                "pretrade_strategy_projection_mismatch"
+            ),
+            strategy_payload_sha256,
+        )
+    return candidate, strategy_payload_sha256
+
+
+def _without_pretrade_decision_hints(
+    strategy_result: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in strategy_result.items()
+        if key not in _PRETRADE_DECISION_OUTPUT_KEYS
+    }
+
+
+def _pretrade_qualification_payload(
+    qualification: Mapping[str, object],
+    *,
+    strategy_payload_sha256: str,
+    workbench_projection_sha256: str,
+) -> dict[str, object]:
+    snapshot = _mapping(qualification.get("input_snapshot"))
+    outputs = _mapping(qualification.get("outputs"))
+    return {
+        "schema": str(qualification.get("schema") or "pretrade_qualification/v1"),
+        "status": str(qualification.get("status") or "unavailable"),
+        "reason": _optional_text(qualification.get("reason")),
+        "producer_run_id": _optional_text(qualification.get("producer_run_id")),
+        "target_date": _optional_text(qualification.get("target_date")),
+        "stock_candidate_policy": _optional_text(
+            qualification.get("stock_candidate_policy")
+        ),
+        "evidence_sha256": _optional_text(qualification.get("evidence_sha256")),
+        "input_snapshot_sha256": _optional_text(snapshot.get("sha256")),
+        "attested_strategy_payload_sha256": _optional_text(
+            outputs.get("strategy_payload_sha256")
+        ),
+        "strategy_payload_sha256": strategy_payload_sha256,
+        "workbench_projection_sha256": workbench_projection_sha256,
+    }
 
 
 def _parse_include(include: str | None) -> tuple[set[str], set[str]]:
@@ -815,6 +1086,10 @@ def _string_list(value: object) -> list[str]:
     return [text for text in (_optional_text(item) for item in value) if text]
 
 
+def _deduplicated_strings(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(values))
+
+
 def _optional_text(value: object) -> str | None:
     text = str(value or "").strip()
     return text or None
@@ -824,7 +1099,7 @@ def _optional_int(value: object) -> int | None:
     if value in (None, ""):
         return None
     try:
-        return max(int(value), 0)
+        return max(int(cast(str | int, value)), 0)
     except (TypeError, ValueError):
         return None
 

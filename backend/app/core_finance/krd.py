@@ -38,12 +38,23 @@ from backend.app.core_finance.field_normalization import (
 )
 
 from .attribution_core import get_tenor_bucket
+from .bond_analytics.common import resolve_ytm_with_par_fallback
 from .bond_duration import (
     estimate_convexity_bond,
     estimate_duration,
     modified_duration_from_macaulay,
 )
+from .rate_units import NEGATIVE_YIELD_DIRTY_FLOOR
 from .safe_decimal import safe_decimal
+
+_NEGATIVE_YIELD_DIRTY_FLOOR_DECIMAL = Decimal(str(NEGATIVE_YIELD_DIRTY_FLOOR))
+
+
+def _dirty_floor_ytm(ytm: Decimal | None) -> Decimal | None:
+    """低于 −20% 或非有限的 YTM 视为缺失；有限零保留为观测值。"""
+    if ytm is None or not ytm.is_finite() or ytm < _NEGATIVE_YIELD_DIRTY_FLOOR_DECIMAL:
+        return None
+    return ytm
 
 logger = logging.getLogger(__name__)
 
@@ -335,7 +346,7 @@ def build_krd_position_metrics(
 
         bond_code = str(_get_value(position, "bond_code", default=""))
         coupon_rate = safe_decimal(_get_value(position, "coupon_rate"))
-        ytm = safe_decimal(_get_value(position, "yield_to_maturity"))
+        ytm = _dirty_floor_ytm(_optional_decimal(_get_value(position, "yield_to_maturity")))
         coupon_frequency = _get_coupon_frequency(position)
         report_for_position = _coerce_date(
             _get_value(position, "report_date", "biz_date", "report_date_end", default=report_date)
@@ -352,12 +363,15 @@ def build_krd_position_metrics(
             coupon_frequency=coupon_frequency,
         )
         wind_mod_duration = _optional_decimal(wind_bond.get("mod_duration"))
+        # estimate_duration 对有票息缺 ytm 的债按 par 假设（ytm=coupon）计算 Macaulay；
+        # 修正久期的除数必须用同一生效 ytm，否则缺 ytm 行会少除 (1 + c/f)。
+        effective_ytm, _par_fallback_used = resolve_ytm_with_par_fallback(coupon_rate, ytm)
         modified_duration = (
             wind_mod_duration
             if wind_mod_duration is not None
             else modified_duration_from_macaulay(
                 duration=duration,
-                ytm=ytm,
+                ytm=effective_ytm,
                 coupon_frequency=max(coupon_frequency, 1),
                 wind_mod_dur=None,
             )
@@ -379,11 +393,13 @@ def build_krd_position_metrics(
             if wind_convexity is not None
             else estimate_convexity_bond(
                 duration=duration,
-                ytm=ytm,
+                ytm=effective_ytm,
                 wind_convexity=None,
                 coupon_frequency=max(coupon_frequency, 1),
                 coupon_rate=coupon_rate,
                 years_to_maturity=years_to_maturity,
+                report_date=krd_report_date,
+                maturity_date=maturity_date,
             )
         )
         weight = market_value / total_market_value if total_market_value > 0 else Decimal("0")

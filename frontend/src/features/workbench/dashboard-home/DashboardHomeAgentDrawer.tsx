@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 
-import { Button as AntButton, Drawer as AntDrawer } from "antd";
+import { Button as AntButton, Drawer as AntDrawer, Space as AntSpace } from "antd";
+import { useNavigate } from "react-router-dom";
 
 import { isAgentFrontendEnabled } from "../../../app/navigation";
 import styles from "./dashboardHomeShell.module.css";
@@ -26,9 +27,21 @@ export function DashboardHomeAgentDrawer({
   currentFilters,
   onClose,
 }: DashboardHomeAgentDrawerProps) {
+  const navigate = useNavigate();
+
   if (!isAgentFrontendEnabled()) {
     return null;
   }
+
+  const pageContext = {
+    page_id: "dashboard",
+    current_filters: {
+      ...currentFilters,
+      ...(reportDate ? { report_date: reportDate } : {}),
+    },
+    selected_rows: [],
+    context_note: "dashboard-home 组合经营日报观察上下文",
+  };
 
   return (
     <AntDrawer
@@ -40,9 +53,17 @@ export function DashboardHomeAgentDrawer({
       data-moss-theme-scope="dashboard-home"
       title="复核助手"
       extra={
-        <AntButton type="text" onClick={onClose} aria-label="关闭抽屉">
-          关闭
-        </AntButton>
+        <AntSpace size="small">
+          <AntButton
+            type="text"
+            onClick={() => navigate("/agent", { state: { agentPageContext: pageContext } })}
+          >
+            带当前页面到 MOSS Chat
+          </AntButton>
+          <AntButton type="text" onClick={onClose} aria-label="关闭抽屉">
+            关闭
+          </AntButton>
+        </AntSpace>
       }
     >
       {/* Drawer 经 portal 渲染在页根 scope 之外，根与 body 双声明防主题回落钢蓝。 */}

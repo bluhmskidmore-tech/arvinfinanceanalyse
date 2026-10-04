@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 import ast
 import json
 import subprocess
@@ -9,6 +10,20 @@ from pathlib import Path
 import pytest
 
 from tests.helpers import load_module
+
+def test_release_suite_includes_audited_read_and_publication_boundaries():
+    from scripts.backend_release_suite import RELEASE_SUITE_TESTS
+
+    assert {
+        "tests/test_system_online_read_boundary.py",
+        "tests/test_system_online_publication_concurrency.py",
+        "tests/test_system_read_publication_process_crash.py",
+        "tests/test_campisi_formal_bridge_coverage.py",
+        "tests/test_product_category_read_boundary.py",
+        "tests/test_backend_release_suite.py",
+        "tests/test_caliber_gate_mapping.py",
+    } <= set(RELEASE_SUITE_TESTS)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED_SURFACE_ACCEPTANCE_MARKER = "excluded_surface_acceptance"
@@ -122,6 +137,13 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
     assert module.RELEASE_SUITE_NAME == "governed-phase2-backend-release-suite"
     assert module.GOVERNANCE_MCP_SUITE_NAME == "governance-mcp-contract-suite"
     assert module.RELEASE_SUITE_TESTS == [
+        "tests/test_backend_release_suite.py",
+        "tests/test_caliber_gate_mapping.py",
+        "tests/test_system_online_read_boundary.py",
+        "tests/test_system_online_publication_concurrency.py",
+        "tests/test_system_read_publication_process_crash.py",
+        "tests/test_campisi_formal_bridge_coverage.py",
+        "tests/test_product_category_read_boundary.py",
         "tests/test_settings_contract.py",
         "tests/test_health_endpoints.py",
         "tests/test_positions_api_contract.py",
@@ -148,7 +170,15 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
         "tests/test_ci_skip_registry.py",
         "tests/test_api_contract_baseline_gate.py",
         "tests/test_api_response_model_field_preservation.py",
+        "tests/test_release_approval_registry.py",
+        "tests/test_release_approval_evidence_gate.py",
+        "tests/test_release_control_golden_blocker_review.py",
+        "tests/test_wp7_release_rehearsal.py",
+        "tests/test_wp7_fixed_income_pilot_preflight.py",
         "tests/test_no_finance_logic_in_frontend.py",
+        "tests/test_no_finance_logic_in_api.py",
+        "tests/test_api_route_boundaries.py",
+        "tests/test_service_storage_boundaries.py",
         "tests/test_caliber_rule_fx_mid_conversion.py",
         "tests/test_caliber_rule_hat_mapping.py",
         "tests/test_caliber_rule_subject_514_516_517_merge.py",
@@ -206,6 +236,7 @@ def test_backend_release_suite_dry_run_emits_expected_plan(capsys):
     assert report["executive_release_sample_ids"] == module.EXECUTIVE_RELEASE_SAMPLE_IDS
     assert report["env"]["MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS"] == "1"
     assert report["env"]["MOSS_SKIP_POSTGRES_MIGRATIONS"] == "1"
+    assert report["env"]["MOSS_SKIP_STORAGE_READINESS_CHECKS"] == "1"
     # 默认选择只走显式 argv，不再劫持开发者环境里已有的 PYTEST_ADDOPTS。
     assert "PYTEST_ADDOPTS" not in report["env"]
 
@@ -505,7 +536,7 @@ def test_bounded_release_tests_do_not_use_repo_relative_fake_governance():
     offenders = [
         test_path
         for test_path in module.RELEASE_SUITE_TESTS
-        if '"fake-governance"'
+        if ('"fake-' + 'governance"')
         in (ROOT / test_path).read_text(encoding="utf-8")
     ]
 
@@ -564,9 +595,11 @@ def test_gated_release_suite_per_case_acceptance_waivers_stay_declared():
     )
 
 
-def test_backend_release_suite_stops_before_governance_mcp_when_bounded_pytest_fails(
+def test_backend_release_suite_still_runs_governance_mcp_when_bounded_pytest_fails(
     monkeypatch,
+    capsys,
 ):
+    """第一阶段失败不再短路第二阶段：两阶段都执行，汇总后返回第一个非零退出码。"""
     module = load_module(
         "scripts.backend_release_suite",
         "scripts/backend_release_suite.py",
@@ -580,7 +613,7 @@ def test_backend_release_suite_stops_before_governance_mcp_when_bounded_pytest_f
 
     def _fake_run(args, **kwargs):
         calls.append(list(args))
-        return subprocess.CompletedProcess(args, 7)
+        return subprocess.CompletedProcess(args, 7 if len(calls) == 1 else 0)
 
     monkeypatch.setattr(module.subprocess, "run", _fake_run)
 
@@ -594,8 +627,45 @@ def test_backend_release_suite_stops_before_governance_mcp_when_bounded_pytest_f
             "-m",
             "not excluded_surface_acceptance",
             *module.RELEASE_SUITE_TESTS,
-        ]
+        ],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-m",
+            "mcp_fast and not excluded_surface_acceptance",
+            *module.GOVERNANCE_MCP_FAST_SUITE_TESTS,
+        ],
     ]
+    summary = capsys.readouterr().out
+    assert f"{module.RELEASE_SUITE_NAME}=7" in summary
+    assert f"{module.GOVERNANCE_MCP_SUITE_NAME}=0" in summary
+    assert "-> exit 7" in summary
+
+
+def test_backend_release_suite_reports_bounded_failure_code_when_both_phases_fail(
+    monkeypatch,
+    capsys,
+):
+    module = load_module(
+        "scripts.backend_release_suite",
+        "scripts/backend_release_suite.py",
+    )
+    calls: list[list[str]] = []
+
+    def _fake_run(args, **kwargs):
+        calls.append(list(args))
+        return subprocess.CompletedProcess(args, 7 if len(calls) == 1 else 9)
+
+    monkeypatch.setattr(module.subprocess, "run", _fake_run)
+
+    assert module.run_release_suite(root=ROOT) == 7
+    assert len(calls) == 2
+    summary = capsys.readouterr().out
+    assert f"{module.RELEASE_SUITE_NAME}=7" in summary
+    assert f"{module.GOVERNANCE_MCP_SUITE_NAME}=9" in summary
+    assert "-> exit 7" in summary
 
 
 def test_backend_release_suite_returns_governance_mcp_failure(monkeypatch):

@@ -223,6 +223,28 @@ def _ledger_dict_row(code: str, name: str, currency: str, ending_balance: int) -
         "大类5": code[:5],
     }
 
+@pytest.mark.parametrize("column", ["D", "E", "F", "G"])
+@pytest.mark.parametrize("invalid_amount", ["BROKEN", "NaN", "Infinity", "-Infinity", None, ""])
+def test_parse_general_ledger_rejects_invalid_amount_cells(tmp_path, column, invalid_amount):
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    _avg_path, ledger_path = _write_month_pair(tmp_path, "202602")
+    workbook = load_workbook(ledger_path)
+    worksheet = workbook["综本"]
+    for cell, value in {"D7": 100_000_000, "E7": 0, "F7": 0, "G7": 100_000_000}.items():
+        worksheet[cell] = value
+    worksheet[f"{column}7"] = invalid_amount
+    workbook.save(ledger_path)
+    workbook.close()
+
+    with pytest.raises(ValueError) as exc_info:
+        module.parse_general_ledger(ledger_path)
+    assert "综本" in str(exc_info.value)
+    assert f"{column}7" in str(exc_info.value)
+
+
 def test_parse_general_ledger_raises_on_shuffled_header(tmp_path):
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -426,6 +448,122 @@ def test_qdb_gl_workbook_alerts_ledger_self_check_placeholder_mismatch():
     ]
     assert len(matching) == 1
     assert "不具备独立对账能力" in matching[0]["科目名称"]
+
+def _balance_check_ledger_dict_row(code, name, opening, debit, credit, closing):
+    """复刻 parse_general_ledger 行结构，金额可独立指定以构造闭合/不闭合样例。"""
+    from decimal import Decimal
+
+    opening, debit, credit, closing = (Decimal(v) for v in (opening, debit, credit, closing))
+    return {
+        "科目代码": code,
+        "科目名称": name,
+        "币种": "CNX",
+        "期初余额": opening,
+        "本期借方": debit,
+        "本期贷方": credit,
+        "期末余额": closing,
+        "变动额": closing - opening,
+        "本期净额": debit - credit,
+        "大类1": code[:1],
+        "大类3": code[:3],
+        "大类5": code[:5],
+    }
+
+def test_ledger_row_balance_check_flags_broken_row_and_applies_fail_safe_rules():
+    """行级"期初+发生额=期末"闭合校验：方向自适应闭合不告警，仅真不闭合行挂 alerts。"""
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    merged_data = {
+        "3位": [],
+        "11位": [
+            # 借方余额科目闭合：期末 = 期初 + 借 - 贷（有符号约定主公式）。
+            _balance_check_ledger_dict_row("10101000001", "现金", 100 * B, 30 * B, 10 * B, 120 * B),
+            # 贷方余额科目闭合：余额负号吸收方向，同一主公式成立（-650 + 0 - 50 = -700）。
+            _balance_check_ledger_dict_row("20101000001", "单位活期存款", -650 * B, 0, 50 * B, -700 * B),
+            # 贷方余额记正的无符号约定：变动 +30 = 贷 - 借，落宽松反向分支，不告警。
+            _balance_check_ledger_dict_row("20201000001", "应解汇款", 100 * B, 20 * B, 50 * B, 130 * B),
+            # 借/贷均为真实 0 时仍须闭合，余额变化不能被忽略。
+            _balance_check_ledger_dict_row("11401000001", "存放同业", 50 * B, 0, 0, 80 * B),
+            _balance_check_ledger_dict_row("11401000002", "存放同业零发生额闭合", 50 * B, 0, 0, 50 * B),
+            # 借/贷发生额字段缺失：同样跳过。
+            {"科目代码": "14004000001", "科目名称": "买入返售", "期末余额": 8 * B},
+            # 两个方向公式均不闭合：必须告警。
+            _balance_check_ledger_dict_row("12301000001", "公司贷款", 100 * B, 30 * B, 10 * B, 999 * B),
+        ],
+        "5位_公司贷款": [],
+        "5位_活期存款": [],
+        "5位_定期存款": [],
+        "外币分析": [],
+    }
+
+    workbook = module.build_qdb_gl_monthly_analysis_workbook(
+        report_month="202602",
+        merged_data=merged_data,
+    )
+
+    alerts_sheet = next(sheet for sheet in workbook["sheets"] if sheet["key"] == "alerts")
+    balance_alerts = [row for row in alerts_sheet["rows"] if row["异动类型"] == "ledger_row_balance_check"]
+    assert [row["科目代码"] for row in balance_alerts] == ["11401000001", "12301000001"]
+    assert balance_alerts[0]["偏离额(亿)"] == 30
+    alert = balance_alerts[1]
+    assert alert["预警级别"] == "严重"
+    # 告警文本必须披露期初/借/贷/期末/差额（元级原值）。
+    assert "期初10000000000元" in alert["科目名称"]
+    assert "借3000000000元" in alert["科目名称"]
+    assert "贷1000000000元" in alert["科目名称"]
+    assert "期末99900000000元" in alert["科目名称"]
+    # 差额 = 变动额 - 本期净额 = 899亿 - 20亿 = 879亿。
+    assert "差额87900000000元" in alert["科目名称"]
+    assert alert["期末余额(亿)"] == 999
+    assert alert["偏离额(亿)"] == 879
+
+def test_ledger_row_balance_check_flags_tampered_ending_balance_end_to_end(tmp_path):
+    """端到端：源 Excel 期末余额被篡改 1 亿后，解析→合并→工作簿必须产出行级闭合告警。"""
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    avg_path, ledger_path = _write_month_pair(tmp_path, "202602")
+
+    workbook = load_workbook(ledger_path)
+    worksheet = workbook["综本"]
+    # 第 7 行是 10101000001 现金（期初 18 亿、借 2 亿、贷 0、期末 20 亿）：期末改为 21 亿。
+    worksheet.cell(row=7, column=7, value=21 * B)
+    workbook.save(ledger_path)
+    workbook.close()
+
+    payload = module.build_qdb_gl_monthly_analysis_workbook(
+        report_month="202602",
+        merged_data=module.merge_all(
+            module.parse_general_ledger(ledger_path),
+            module.parse_daily_avg(avg_path),
+        ),
+    )
+
+    alerts_sheet = next(sheet for sheet in payload["sheets"] if sheet["key"] == "alerts")
+    balance_alerts = [row for row in alerts_sheet["rows"] if row["异动类型"] == "ledger_row_balance_check"]
+    assert [row["科目代码"] for row in balance_alerts] == ["10101000001"]
+
+def test_ledger_row_balance_check_passes_on_balanced_fixture(tmp_path):
+    """既有自洽 fixture（含借方余额与贷方余额科目）在行级闭合校验下不得产生告警。"""
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    avg_path, ledger_path = _write_month_pair(tmp_path, "202602")
+
+    payload = module.build_qdb_gl_monthly_analysis_workbook(
+        report_month="202602",
+        merged_data=module.merge_all(
+            module.parse_general_ledger(ledger_path),
+            module.parse_daily_avg(avg_path),
+        ),
+    )
+
+    alerts_sheet = next(sheet for sheet in payload["sheets"] if sheet["key"] == "alerts")
+    assert not any(row["异动类型"] == "ledger_row_balance_check" for row in alerts_sheet["rows"])
 
 def test_exported_workbook_contains_all_required_sheets(tmp_path):
     module = load_module(
@@ -1167,7 +1305,7 @@ def test_real_202603_qdb_gl_workbook_includes_income_rate_attribution_sheet():
         "\u589e\u51cf\u989d",
         "\u89c4\u6a21\u8d21\u732e",
         "\u5229\u7387\u8d21\u732e",
-        "\u6821\u9a8c\u5dee\u5f02",
+        "\u6052\u7b49\u5f0f\u81ea\u68c0\uff08\u975e\u72ec\u7acb\u5bf9\u8d26\uff09",
         "\u53e3\u5f84\u6765\u6e90",
     ]
 
@@ -1181,7 +1319,7 @@ def test_real_202603_qdb_gl_workbook_includes_income_rate_attribution_sheet():
         "\u589e\u51cf\u989d": 3.24,
         "\u89c4\u6a21\u8d21\u732e": 6.12,
         "\u5229\u7387\u8d21\u732e": -2.88,
-        "\u6821\u9a8c\u5dee\u5f02": 0,
+        "\u6052\u7b49\u5f0f\u81ea\u68c0\uff08\u975e\u72ec\u7acb\u5bf9\u8d26\uff09": 0,
         "\u53e3\u5f84\u6765\u6e90": source_value,
     }
     assert rows["\u50a8\u84c4\u5b58\u6b3e\u5229\u606f\u652f\u51fa"] == {
@@ -1192,7 +1330,7 @@ def test_real_202603_qdb_gl_workbook_includes_income_rate_attribution_sheet():
         "\u589e\u51cf\u989d": -1.23,
         "\u89c4\u6a21\u8d21\u732e": 1.43,
         "\u5229\u7387\u8d21\u732e": -2.65,
-        "\u6821\u9a8c\u5dee\u5f02": 0,
+        "\u6052\u7b49\u5f0f\u81ea\u68c0\uff08\u975e\u72ec\u7acb\u5bf9\u8d26\uff09": 0,
         "\u53e3\u5f84\u6765\u6e90": source_value,
     }
     personal_loan_income = rows["\u4e2a\u4eba\u8d37\u6b3e\u5229\u606f\u6536\u5165"]
@@ -1201,7 +1339,7 @@ def test_real_202603_qdb_gl_workbook_includes_income_rate_attribution_sheet():
     assert personal_loan_income["\u589e\u51cf\u989d"] == -1.15
     assert personal_loan_income["\u89c4\u6a21\u8d21\u732e"] is None
     assert personal_loan_income["\u5229\u7387\u8d21\u732e"] is None
-    assert personal_loan_income["\u6821\u9a8c\u5dee\u5f02"] is None
+    assert personal_loan_income["\u6052\u7b49\u5f0f\u81ea\u68c0\uff08\u975e\u72ec\u7acb\u5bf9\u8d26\uff09"] is None
     assert str(personal_loan_income["\u53e3\u5f84\u6765\u6e90"]).startswith("source_missing:")
     assert "\u4fe1\u7528\u5361\u751f\u606f\u89c4\u6a21" in str(personal_loan_income["\u53e3\u5f84\u6765\u6e90"])
     assert rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u589e\u51cf\u989d"] is None

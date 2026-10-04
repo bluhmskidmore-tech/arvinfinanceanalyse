@@ -54,7 +54,7 @@ export const stockAnalysisPageCssVars: CSSProperties = {
   "--sa-danger-border": "var(--dh-api-red-soft)",
   "--sa-danger-text": "var(--dh-api-red)",
   "--sa-chart-track": "var(--dh-api-line-soft)",
-  "--sa-font-tabular": "var(--moss-font-mono), ui-monospace, monospace",
+  "--sa-font-tabular": "var(--moss-font-tabular)",
 
   "--ib-paper": "var(--dh-api-bg)",
   "--ib-surface": "var(--dh-api-panel)",

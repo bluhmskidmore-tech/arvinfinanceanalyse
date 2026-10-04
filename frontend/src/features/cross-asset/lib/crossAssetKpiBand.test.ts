@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { EM_DASH } from "../../../utils/format";
-import type { ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
+import { PRECOMPUTED_SPREAD_MISSING_NOTE, type ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
 import { buildKpiBandItems, KPI_BAND_SLOTS, KPI_BAND_SPARK_LENGTH } from "./crossAssetKpiBand";
 
 function kpiFixture(overrides: Partial<ResolvedCrossAssetKpi> & { key: string }): ResolvedCrossAssetKpi {
@@ -134,6 +134,7 @@ describe("crossAssetKpiBand", () => {
           changeLabel: EM_DASH,
           changeTone: "default",
           sparkline: [],
+          missingNote: PRECOMPUTED_SPREAD_MISSING_NOTE,
         }),
       ],
       "gov_spread",
@@ -143,7 +144,7 @@ describe("crossAssetKpiBand", () => {
       unit: "",
       changeLabel: EM_DASH,
       impact: "neutral",
-      sourceLabel: "待接入",
+      sourceLabel: PRECOMPUTED_SPREAD_MISSING_NOTE,
       dateLabel: EM_DASH,
       spark: [],
     });
@@ -193,10 +194,20 @@ describe("crossAssetKpiBand", () => {
       "Choice",
     );
     expect(
-      itemByKey([kpiFixture({ key: "gov_spread", label: "中美10Y利差", sourceKind: "derived" })], "gov_spread").sourceLabel,
+      itemByKey([kpiFixture({ key: "gov_spread", label: "中美10Y利差", sourceKind: "choice", resolvedSeriesId: "EM1" })], "gov_spread")
+        .sourceLabel,
     ).toBe("中债+UST");
     expect(
-      itemByKey([kpiFixture({ key: "gov_spread", label: "国开-国债10Y", sourceKind: "derived" })], "gov_spread").sourceLabel,
-    ).toBe("中债口径");
+      itemByKey(
+        [kpiFixture({ key: "gov_spread", label: "中美10Y利差", sourceKind: "public", resolvedSeriesId: "CA.CN_US_SPREAD" })],
+        "gov_spread",
+      ).sourceLabel,
+    ).toBe("公共补充");
+    expect(
+      itemByKey(
+        [kpiFixture({ key: "gov_spread", label: "中美10Y利差", sourceKind: "missing", missingNote: PRECOMPUTED_SPREAD_MISSING_NOTE })],
+        "gov_spread",
+      ).sourceLabel,
+    ).toBe(PRECOMPUTED_SPREAD_MISSING_NOTE);
   });
 });

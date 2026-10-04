@@ -208,8 +208,11 @@ def compute_monetary_policy_stance(
         [("CN_MLF", "1Y"), ("CN_RRP", "7D"), ("CN_LPR", "1Y")],
         _TWENTY_ONE,
     )
-    if policy_change_bp is None and len(dates) <= _TWENTY_ONE:
-        warnings.append("POLICY_RATE_HISTORY_SHORT")
+    if policy_change_bp is None:
+        warnings.append(
+            "POLICY_RATE_HISTORY_SHORT" if len(dates) <= _TWENTY_ONE
+            else "POLICY_RATE_HISTORY_UNPAIRED"
+        )
 
     dr_history = [
         rate

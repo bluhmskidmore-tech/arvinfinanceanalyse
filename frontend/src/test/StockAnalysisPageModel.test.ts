@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type {
   BacktestWindowSummary,
@@ -14,7 +14,9 @@ import type {
   LivermoreStrategyScorePayload,
   LivermoreStrategyPayload,
   ResultMeta,
+  StockAnalysisReplayClosure,
 } from "../api/contracts";
+import { EM_DASH } from "../utils/format";
 import {
   buildCandidateReviewQueue,
   buildCandidateEvidenceCards,
@@ -246,6 +248,9 @@ const strategyPayload: LivermoreStrategyPayload = {
         sector_rank: 1,
         close: 21.9,
         breakout_level: 21.8,
+        distance_to_breakout_pct: 0.4587,
+        pattern: "突破（参考）",
+        pattern_code: "breakout",
         ema10: 20.6,
         ma20: 21.05,
         ma60: 19.05,
@@ -375,6 +380,8 @@ const confluencePayload: LivermoreSignalConfluencePayload = {
     status: "neutral",
     composite_score: 0.05,
     multiplier: 0.5,
+    authority_status: "ready",
+    authority_reasons: [],
   },
   strategy_context: {
     market_gate_state: "WARM",
@@ -401,6 +408,7 @@ const confluencePayload: LivermoreSignalConfluencePayload = {
 function buildReplayStatus(overrides: Partial<ConfluenceReplayStatus> = {}): ConfluenceReplayStatus {
   return {
     window_status: "valid",
+    maturity_status: "ready",
     has_decision_usable_completed_stats: true,
     completed_dates: 2,
     pending_dates: 0,
@@ -414,6 +422,104 @@ function buildReplayStatus(overrides: Partial<ConfluenceReplayStatus> = {}): Con
     blocked_dates: [],
     completed_zero_signal_dates: [],
     ...overrides,
+  };
+}
+
+type ReplayClosureOverrides = Omit<
+  Partial<StockAnalysisReplayClosure>,
+  "counts" | "thresholds" | "versions" | "sources" | "receipt"
+> & {
+  counts?: Partial<StockAnalysisReplayClosure["counts"]>;
+  thresholds?: Partial<StockAnalysisReplayClosure["thresholds"]>;
+  versions?: Partial<StockAnalysisReplayClosure["versions"]>;
+  sources?: Partial<StockAnalysisReplayClosure["sources"]>;
+  receipt?: Partial<StockAnalysisReplayClosure["receipt"]>;
+};
+
+function buildReplayClosure(overrides: ReplayClosureOverrides = {}): StockAnalysisReplayClosure {
+  const base: StockAnalysisReplayClosure = {
+    cohort_mode: "current_rule_certified",
+    selection_status: "unique_active_certified",
+    data_availability: "fresh",
+    status: "ready",
+    active_cohort_count: 1,
+    cohort_id: "cohort-current-rule-20260429",
+    requested_start_date: "2026-03-01",
+    requested_end_date: "2026-04-29",
+    observed_start_date: "2026-03-02",
+    observed_end_date: "2026-04-29",
+    certified_start_date: "2026-03-02",
+    certified_end_date: "2026-04-29",
+    evaluation_as_of_date: "2026-04-29",
+    governed_era_start: "2026-03-02",
+    governed_era_end: "2026-04-29",
+    stock_candidate_selection_policy: "current_rule_pit",
+    decision_metric_basis: "net_next_open_adj",
+    coverage_authority_mode: "strict_certified_calendar",
+    strict_coverage: true,
+    fallback_covered: false,
+    versions: {
+      candidate_rule_version: "rv_candidate_v1",
+      stock_candidate_selection_formula_version: "fv_selection_v1",
+      candidate_outcome_formula_version: "fv_outcome_v1",
+      execution_formula_version: "fv_execution_v1",
+      matched_baseline_formula_version: "fv_baseline_v1",
+      market_gate_rule_version: "rv_gate_v1",
+      signal_confluence_rule_version: "rv_confluence_v1",
+      macro_formula_version: "fv_macro_v1",
+    },
+    sources: {
+      candidate_source_version: "sv_candidate_v1",
+      execution_source_version: "sv_execution_v1",
+      matched_baseline_source_version: "sv_baseline_v1",
+      macro_source_version: "sv_macro_v1",
+      calendar_source_id: "exchange_calendar",
+      calendar_source_version: "calendar_sha",
+      theme_overlay_fingerprint: "theme_sha",
+      choice_catalog_fingerprint: "catalog_sha",
+    },
+    counts: {
+      completed_dates: 20,
+      completed_with_signals_dates: 18,
+      completed_no_signal_dates: 2,
+      pending_tail_dates: 3,
+      blocking_pending_dates: 0,
+      unsupported_dates: 0,
+      proxy_only_dates: 0,
+      matched_entry_count: 100,
+      t5_usable_count: 100,
+      t20_usable_count: 100,
+      stale_execution_row_count: 0,
+      stale_matched_baseline_row_count: 0,
+    },
+    thresholds: {
+      completed_dates: 20,
+      matched_entry_count: 100,
+    },
+    primary_blocker_code: null,
+    reason_codes: [],
+    run_id: "materialize:current-rule-20260429",
+    promotion_run_id: "promote:current-rule-20260429",
+    receipt: {
+      path: "receipts/current-rule.json",
+      sha256: "receipt_sha",
+      calendar_path: "receipts/calendar.json",
+      calendar_sha256: "calendar_sha",
+    },
+    tables_used: [
+      "stock_analysis_current_rule_cohort_manifest",
+      "stock_analysis_current_rule_replay_fact",
+      "stock_analysis_current_rule_date_certificate",
+    ],
+  };
+  return {
+    ...base,
+    ...overrides,
+    counts: { ...base.counts, ...overrides.counts },
+    thresholds: { ...base.thresholds, ...overrides.thresholds },
+    versions: { ...base.versions, ...overrides.versions },
+    sources: { ...base.sources, ...overrides.sources },
+    receipt: { ...base.receipt, ...overrides.receipt },
   };
 }
 
@@ -565,8 +671,8 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].stockCode).toBe("000001.SZ");
     expect(cards[0].headline).toContain("观察候选");
     expect(cards[0].pattern).toBe("突破（参考）");
-    expect(cards[0].patternNote).toContain("前端启发式");
-    expect(cards[0].distanceToBreakoutPct).toMatch(/%/);
+    expect(cards[0].patternNote).toContain("后端统一");
+    expect(cards[0].distanceToBreakoutPct).toBe("0.46%");
     expect(cards[0].evidence.join(" ")).toContain("行业排名第 1");
     expect(cards[0].evidence.join(" ")).toContain("收盘价 21.90");
     expect(cards[0].evidence.join(" ")).toContain("基本面因子");
@@ -580,6 +686,48 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].invalidationRules.join(" ")).toContain("涨跌停状态");
     expect(cards[0].rawFields.some((row) => row.key === "gap_norm")).toBe(true);
     expect(cards[0].rawFields.some((row) => row.key === "breakout_extension_norm")).toBe(true);
+  });
+
+  it("consumes backend candidate geometry and fails closed when fields are missing", () => {
+    const backendGeometryPayload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      stock_candidates: {
+        ...strategyPayload.stock_candidates!,
+        items: [
+          {
+            ...strategyPayload.stock_candidates!.items[0],
+            close: 200,
+            breakout_level: 100,
+            distance_to_breakout_pct: -3.4567,
+            pattern: "回撤观察（参考）",
+            pattern_code: "pullback",
+          },
+        ],
+      },
+    };
+    const backendCard = buildCandidateEvidenceCards(backendGeometryPayload)[0];
+
+    expect(backendCard.pattern).toBe("回撤观察（参考）");
+    expect(backendCard.distanceToBreakoutPct).toBe("-3.46%");
+
+    const missingGeometryPayload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      stock_candidates: {
+        ...strategyPayload.stock_candidates!,
+        items: [
+          {
+            ...strategyPayload.stock_candidates!.items[0],
+            distance_to_breakout_pct: null,
+            pattern: "突破（参考）",
+            pattern_code: null,
+          },
+        ],
+      },
+    };
+    const missingCard = buildCandidateEvidenceCards(missingGeometryPayload)[0];
+
+    expect(missingCard.pattern).toBe(EM_DASH);
+    expect(missingCard.distanceToBreakoutPct).toBe(EM_DASH);
   });
 
   it("does not surface non-finite candidate raw field values", () => {
@@ -658,7 +806,7 @@ describe("stockAnalysisPageModel", () => {
     ].join(" ");
 
     expect(localizeMetaQualityFlag("warning")).toBe("质量需复核");
-    expect(localizeMetaVendorStatus("vendor_unavailable")).toBe("供数待确认");
+    expect(localizeMetaVendorStatus("vendor_unavailable")).toBe("供数不可用");
     expect(localizeFallbackMode("external_vendor_snapshot")).toBe("待确认");
     expect(copy).not.toContain("warning");
     expect(copy).not.toContain("vendor_unavailable");
@@ -985,7 +1133,7 @@ describe("stockAnalysisPageModel", () => {
     expect(missing?.detailLabel).toContain("缺失 PMI、信用脉冲、价差");
     expect(missing?.detailLabel).not.toContain("credit_impulse");
     expect(missing?.detailLabel).not.toContain("(missing)");
-    expect(missing?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v5");
+    expect(missing?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v6");
   });
 
   it("uses hybrid fusion candidates as the primary review queue when present", () => {
@@ -1857,6 +2005,280 @@ describe("stockAnalysisPageModel", () => {
     );
   });
 
+  it("renders backend-certified replay ready without recomputing the 20/100 thresholds", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      {
+        ...confluencePayload,
+        closed_loop_state: {
+          entry_gate: "open",
+          exit_gate: "watch",
+          replay_status: "missing",
+          lineage_status: "complete",
+        },
+      },
+      { quality_flag: "ok", vendor_status: "ok", fallback_mode: "none" },
+      buildReplayClosure({
+        status: "ready",
+        counts: { completed_dates: 1, matched_entry_count: 1 },
+      }),
+    );
+
+    const replay = summary.items.find((item) => item.key === "replay");
+    expect(replay).toMatchObject({
+      status: "ready",
+      statusLabel: "当前规则回放已认证",
+      tone: "positive",
+    });
+    expect(replay?.detail).toContain("完成日：1/20");
+    expect(replay?.detail).toContain("匹配样本：1/100");
+    expect(replay?.detail).toContain("认证范围：2026-03-02 至 2026-04-29");
+    expect(replay?.detail).toContain("批次：cohort-current-rule-20260429");
+    expect(replay?.detail).toContain("物化运行：materialize:current-rule-20260429");
+  });
+
+  it("fails closed when a successful workbench path explicitly lacks replay_closure", () => {
+    const confluence = {
+      ...confluencePayload,
+      closed_loop_state: {
+        entry_gate: "open",
+        exit_gate: "watch",
+        replay_status: "available",
+        lineage_status: "complete",
+      },
+    };
+    const missingContract = buildClosedLoopSummary(
+      strategyPayload,
+      confluence,
+      { quality_flag: "ok", vendor_status: "ok", fallback_mode: "none" },
+      null,
+    );
+    const legacyOnly = buildClosedLoopSummary(
+      strategyPayload,
+      confluence,
+      { quality_flag: "ok", vendor_status: "ok", fallback_mode: "none" },
+    );
+
+    expect(missingContract.items.find((item) => item.key === "replay")).toMatchObject({
+      status: "insufficient",
+      statusLabel: "当前规则回放新契约缺失 / 证据不足",
+      tone: "warning",
+    });
+    expect(missingContract.items.find((item) => item.key === "replay")?.detail).not.toContain(
+      "候选历史回放已接通",
+    );
+    expect(legacyOnly.items.find((item) => item.key === "replay")).toMatchObject({
+      status: "available",
+      tone: "positive",
+    });
+  });
+
+  it("does not mark unknown or non-unique active selection states positive", () => {
+    const confluence = {
+      ...confluencePayload,
+      adversarial_context: {
+        status: "complete",
+        mode: "anti_crowding_v1",
+        risk_gate: "pass",
+        position_scale: 0.75,
+      },
+      closed_loop_state: {
+        entry_gate: "open",
+        exit_gate: "watch",
+        replay_status: "available",
+        lineage_status: "complete",
+      },
+    };
+    const unknownSelection = buildClosedLoopSummary(
+      strategyPayload,
+      confluence,
+      { quality_flag: "ok", vendor_status: "ok", fallback_mode: "none" },
+      buildReplayClosure({
+        selection_status: "future_backend_selection_state",
+        active_cohort_count: 1,
+        status: "ready",
+        data_availability: "fresh",
+      }),
+    );
+    const nonUniqueCount = buildClosedLoopSummary(
+      strategyPayload,
+      confluence,
+      { quality_flag: "ok", vendor_status: "ok", fallback_mode: "none" },
+      buildReplayClosure({
+        selection_status: "unique_active_certified",
+        active_cohort_count: 2,
+        status: "ready",
+        data_availability: "fresh",
+      }),
+    );
+
+    expect(unknownSelection.items.find((item) => item.key === "replay")).toMatchObject({
+      status: "ready",
+      statusLabel: "认证批次治理状态待确认 / 证据不足",
+      tone: "warning",
+    });
+    expect(nonUniqueCount.items.find((item) => item.key === "replay")).toMatchObject({
+      status: "ready",
+      statusLabel: "生效认证批次基数异常 / 证据不足",
+      tone: "warning",
+    });
+    expect(unknownSelection.referenceRating.code).toBe("pause");
+    expect(nonUniqueCount.referenceRating.code).toBe("pause");
+  });
+
+  it("pauses a backend-ready replay closure when its independent availability is stale", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      {
+        ...confluencePayload,
+        adversarial_context: {
+          status: "complete",
+          mode: "anti_crowding_v1",
+          risk_gate: "pass",
+          position_scale: 0.75,
+        },
+        closed_loop_state: {
+          entry_gate: "open",
+          exit_gate: "watch",
+          replay_status: "available",
+          lineage_status: "complete",
+        },
+      },
+      { quality_flag: "ok", vendor_status: "ok", fallback_mode: "none" },
+      buildReplayClosure({ data_availability: "stale", status: "ready" }),
+    );
+
+    const replay = summary.items.find((item) => item.key === "replay");
+    expect(replay).toMatchObject({ status: "ready", tone: "warning" });
+    expect(replay?.detail).toContain("供数：陈旧");
+    expect(summary.referenceRating).toMatchObject({ code: "pause", tone: "warning" });
+  });
+
+  it("keeps zero-active replay insufficient even when displayed counts equal 20/100", () => {
+    const replayClosure = buildReplayClosure({
+      selection_status: "no_active_certified",
+      data_availability: "no_data",
+      status: "insufficient",
+      active_cohort_count: 0,
+      cohort_id: null,
+      certified_start_date: null,
+      certified_end_date: null,
+      primary_blocker_code: "no_active_certified_cohort",
+      reason_codes: ["no_active_certified_cohort"],
+      run_id: null,
+      promotion_run_id: null,
+    });
+    const summary = buildClosedLoopSummary(strategyPayload, confluencePayload, {}, replayClosure);
+    const replay = summary.items.find((item) => item.key === "replay");
+
+    expect(replay).toMatchObject({
+      status: "insufficient",
+      statusLabel: "无已生效认证批次 / 证据不足",
+      tone: "warning",
+    });
+    expect(replay?.detail).toContain("完成日：20/20");
+    expect(replay?.detail).toContain("匹配样本：100/100");
+    expect(replay?.detail).toContain("主要阻断：无已生效认证批次");
+  });
+
+  it("fails closed on multiple active certified cohorts", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      confluencePayload,
+      {},
+      buildReplayClosure({
+        selection_status: "governance_conflict",
+        data_availability: "unsupported",
+        status: "blocked",
+        active_cohort_count: 2,
+        cohort_id: null,
+        primary_blocker_code: "multiple_active_certified_cohorts",
+        reason_codes: ["multiple_active_certified_cohorts"],
+        run_id: null,
+        promotion_run_id: null,
+      }),
+    );
+    const replay = summary.items.find((item) => item.key === "replay");
+
+    expect(replay).toMatchObject({
+      status: "blocked",
+      statusLabel: "治理冲突/阻断",
+      tone: "negative",
+    });
+    expect(replay?.detail).toContain("生效认证批次：2");
+    expect(replay?.detail).toContain("存在多个已生效认证批次");
+    expect(summary.referenceRating.code).toBe("blocked");
+  });
+
+  it("localizes stable backend replay readiness reasons without generic fallback copy", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      confluencePayload,
+      {},
+      buildReplayClosure({
+        data_availability: "fallback",
+        status: "blocked",
+        strict_coverage: false,
+        fallback_covered: true,
+        counts: { completed_dates: 19, matched_entry_count: 99, blocking_pending_dates: 1 },
+        primary_blocker_code: "current_rule_cohort_not_ready",
+        reason_codes: [
+          "completed_dates_below_threshold",
+          "matched_entry_count_below_threshold",
+          "decision_metric_basis_not_net_next_open_adj",
+          "strict_coverage_not_proven",
+          "fallback_coverage_present",
+          "blocking_pending_dates",
+          "active_cohort_calendar_source_mismatch",
+          "active_cohort_certificate_date_outside_certified_range",
+          "active_cohort_certificate_bounds_mismatch",
+          "active_cohort_noncompleted_certificate_count_invalid",
+          "active_cohort_pending_tail_has_non_maturity_gap",
+          "active_cohort_zero_signal_certificate_count_mismatch",
+          "active_cohort_completed_certificate_has_source_gap",
+        ],
+      }),
+    );
+    const detail = summary.items.find((item) => item.key === "replay")?.detail ?? "";
+
+    expect(detail).toContain("完成日期不足 20 日");
+    expect(detail).toContain("匹配样本不足 100 条");
+    expect(detail).toContain("决策收益口径未通过认证");
+    expect(detail).toContain("严格覆盖尚未证明");
+    expect(detail).toContain("认证窗口包含回退覆盖");
+    expect(detail).toContain("存在阻断待处理日期");
+    expect(detail).toContain("交易日历权威版本不一致");
+    expect(detail).toContain("日期认证超出批次认证范围");
+    expect(detail).toContain("日期认证边界与批次范围不一致");
+    expect(detail).toContain("未完成日期认证计数不合理");
+    expect(detail).toContain("自然待成熟尾部混入其他缺口");
+    expect(detail).toContain("无信号日期认证计数不一致");
+    expect(detail).toContain("已完成日期仍存在来源缺口");
+    expect(detail).not.toContain("治理原因待确认");
+  });
+
+  it("uses confluence macro authority instead of the gate-level macro status", () => {
+    const summary = buildClosedLoopSummary(strategyPayload, {
+      ...confluencePayload,
+      macro_context: {
+        ...confluencePayload.macro_context,
+        authority_status: "blocked",
+        authority_reasons: ["credit_impulse input is stale"],
+      },
+      closed_loop_state: {
+        entry_gate: "observe_only",
+        exit_gate: "watch",
+        replay_status: "available",
+        lineage_status: "complete",
+      },
+    });
+
+    const entryGate = summary.items.find((item) => item.key === "entry_gate");
+    expect(entryGate?.detail).toContain("宏观权威（PMI+信用代理） 阻断");
+    expect(entryGate?.detail).toContain("credit impulse input is stale");
+    expect(entryGate?.detail).not.toContain("宏观权威：股票市场门控 可用");
+  });
+
   it("keeps unknown vendor closed-loop statuses out of status labels", () => {
     const summary = buildClosedLoopSummary(
       strategyPayload,
@@ -1893,7 +2315,7 @@ describe("stockAnalysisPageModel", () => {
     ].join(" ");
 
     expect(summary.items.map((item) => item.statusLabel)).toEqual(
-      expect.arrayContaining(["状态待确认", "待确认"]),
+      expect.arrayContaining(["状态待确认", "降级"]),
     );
     expect(summary.items.find((item) => item.key === "adversarial_gate")?.detail).toBe("风险待确认");
     expect(copy).not.toContain("external_vendor_entry_gate");
@@ -1946,6 +2368,32 @@ describe("stockAnalysisPageModel", () => {
     expect(copy).not.toContain("external_vendor_mode");
     expect(copy).not.toContain("external_vendor_adversarial_status");
     expect(copy).not.toContain("external_vendor_risk_gate");
+  });
+
+  it("renders final-signal adversarial fallback as business gate copy", () => {
+    const summary = buildClosedLoopSummary(strategyPayload, {
+      ...confluencePayload,
+      adversarial_context: {
+        status: "ok",
+        mode: "final_signal",
+        risk_gate: "block",
+        position_scale: 0,
+        strongest_block_reason: null,
+      },
+      closed_loop_state: {
+        entry_gate: "open",
+        exit_gate: "watch",
+        replay_status: "available",
+        lineage_status: "complete",
+      },
+    });
+
+    const adversarialGate = summary.items.find((item) => item.key === "adversarial_gate");
+    expect(adversarialGate?.detail).toBe("\u6700\u7ec8\u4fe1\u53f7\u8bc1\u636e\uff0c\u53cd\u62e5\u6324\u95e8\u963b\u65ad");
+    expect(summary.verdict.primaryReason).toBe("\u6700\u7ec8\u4fe1\u53f7\u8bc1\u636e\uff0c\u53cd\u62e5\u6324\u95e8\u963b\u65ad");
+    expect(`${adversarialGate?.detail} ${summary.verdict.primaryReason}`).not.toMatch(
+      /final_signal|\u72b6\u6001\s*ok/i,
+    );
   });
 
   it("builds a closed-loop summary that surfaces block states as blockers", () => {
@@ -2031,7 +2479,7 @@ describe("stockAnalysisPageModel", () => {
         expect.objectContaining({
           key: "lineage",
           label: "血缘状态",
-          status: "degraded",
+          status: "stale",
           tone: "warning",
         }),
       ]),
@@ -2089,7 +2537,7 @@ describe("stockAnalysisPageModel", () => {
         expect.objectContaining({
           key: "lineage",
           label: "血缘状态",
-          status: "missing",
+          status: "error",
           tone: "warning",
         }),
       ]),
@@ -2154,7 +2602,7 @@ describe("stockAnalysisPageModel", () => {
             window_status: "partial",
             completed_dates: 1,
             pending_dates: 1,
-            unsupported_dates: 1,
+            unsupported_dates: 2,
             proxy_only_dates: 1,
             completed_candidate_rows: 0,
             pending_candidate_rows: 17,
@@ -2167,6 +2615,12 @@ describe("stockAnalysisPageModel", () => {
                 status: "unsupported",
                 reason_code: "missing_daily_limit_flags",
                 signal_kinds: ["stock_candidate", "theme_breakout"],
+              },
+              {
+                trade_date: "2026-05-01",
+                status: "unsupported",
+                reason_code: "missing_candidate_history_receipt",
+                signal_kinds: ["stock_candidate"],
               },
               {
                 trade_date: "2026-05-08",
@@ -2201,8 +2655,11 @@ describe("stockAnalysisPageModel", () => {
       status: "partial",
       tone: "warning",
     });
-    expect(replayItem?.detail).toContain("剔除日期：2026-04-30、2026-05-08、2026-05-07");
+    expect(replayItem?.detail).toContain(
+      "剔除日期：2026-04-30、2026-05-01、2026-05-08、2026-05-07",
+    );
     expect(replayItem?.detail).toContain("2026-04-30 涨跌停标记缺失");
+    expect(replayItem?.detail).toContain("2026-05-01 缺少历史回放执行回执");
     expect(replayItem?.detail).toContain("2026-05-08 远期收益待成熟");
     expect(replayItem?.detail).toContain("2026-05-07 仅代理题材");
     expect(replayItem?.detail).toContain("完成但无信号日期：2026-05-06");
@@ -2211,7 +2668,7 @@ describe("stockAnalysisPageModel", () => {
       expect.arrayContaining([
         "完成 1日",
         "待成熟 1日",
-        "不可用 1日",
+        "不可用 2日",
         "代理观察 1日",
         "完成样本 0",
       ]),
@@ -2288,7 +2745,7 @@ describe("stockAnalysisPageModel", () => {
       tone: "warning",
     });
     expect(replayItem).toMatchObject({
-      status: "unsupported",
+      status: "insufficient",
       tone: "warning",
     });
     expect(replayItem?.detail).toContain("暂无可用于判断的完成回放日");
@@ -2301,6 +2758,34 @@ describe("stockAnalysisPageModel", () => {
     expect(replayItem?.detail).not.toContain("source_table_choice_stock_intraday_movement_event_missing");
     expect(replayItem?.detail).not.toContain("external_vendor_replay_paused");
     expect(replayItem?.detail).not.toContain("external vendor replay paused");
+  });
+
+  it("fails closed when replay maturity is missing even if the usable flag is true", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      {
+        ...confluencePayload,
+        adversarial_context: {
+          status: "complete",
+          mode: "anti_crowding_v1",
+          risk_gate: "pass",
+          position_scale: 0.5,
+        },
+        closed_loop_state: {
+          entry_gate: "open",
+          exit_gate: "watch",
+          replay_status: buildReplayStatus({ maturity_status: undefined }),
+          lineage_status: "complete",
+        },
+      },
+      { quality_flag: "ok", vendor_status: "ok", fallback_mode: "none" },
+    );
+
+    expect(summary.referenceRating).toMatchObject({ code: "insufficient_data", tone: "warning" });
+    expect(summary.items.find((item) => item.key === "replay")).toMatchObject({
+      status: "missing",
+      tone: "warning",
+    });
   });
 
   it("combines risk exits and confluence exit observations without trading labels", () => {
@@ -2873,6 +3358,206 @@ describe("stockAnalysisPageModel", () => {
     expect(trend?.evidence.some((row) => row.key === "factor_missing")).toBe(false);
   });
 
+  it("maps pool walk_forward verdicts onto strategy lens badges and tolerates legacy payloads", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      stock_candidates: strategyPayload.stock_candidates
+        ? {
+            ...strategyPayload.stock_candidates,
+            walk_forward: {
+              contract_version: "rv_strategy_walk_forward_verdict_v1",
+              signal_kind: "stock_candidate",
+              verdict: "weakened",
+              verdict_label: "样本外削弱",
+              oos_windows: 5,
+              positive_excess_windows: 1,
+              chained_excess_return: -0.5458,
+              reason: "5 个验证窗仅 1 窗正超额，链式超额 -54.58%。",
+              split: "primary_equal_weight_fixed_20d",
+              report: "docs/strategy-reports/walk-forward-rerun-20260813.md",
+              judged_at: "2026-08-13",
+            },
+          }
+        : undefined,
+    };
+
+    const items = buildStrategyLensItems(payload, buildConsensusSummary(payload));
+    const trend = items.find((item) => item.key === "livermore");
+    expect(trend?.verdict).toEqual({
+      key: "weakened",
+      label: "样本外削弱",
+      detail: "5 个验证窗仅 1 窗正超额，链式超额 -54.58%。（2026-08-13 walk-forward 复验）",
+    });
+
+    // Legacy payloads without the field must not render a badge.
+    const legacyItems = buildStrategyLensItems(strategyPayload, buildConsensusSummary(strategyPayload));
+    expect(legacyItems.find((item) => item.key === "livermore")?.verdict).toBeNull();
+    expect(legacyItems.find((item) => item.key === "factor")?.verdict).toBeNull();
+  });
+
+  it("orders strategy lens cards by walk-forward verdict strength", () => {
+    function verdictFor(signalKind: string, verdict: "supported" | "weakened" | "not_assessable") {
+      return {
+        contract_version: "rv_strategy_walk_forward_verdict_v1",
+        signal_kind: signalKind,
+        verdict,
+        verdict_label:
+          verdict === "supported" ? "样本外支持" : verdict === "weakened" ? "样本外削弱" : "样本外未检验",
+        oos_windows: null,
+        positive_excess_windows: null,
+        chained_excess_return: null,
+        reason: "判定理由。",
+        split: "primary_equal_weight_fixed_20d",
+        report: "docs/strategy-reports/walk-forward-rerun-20260813.md",
+        judged_at: "2026-08-13",
+      };
+    }
+
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      // 默认顺序里 livermore(削弱) 在 factor(未检验) 之前，排序后必须反过来。
+      stock_candidates: strategyPayload.stock_candidates
+        ? { ...strategyPayload.stock_candidates, walk_forward: verdictFor("stock_candidate", "weakened") }
+        : undefined,
+      factor_screen_candidates: strategyPayload.factor_screen_candidates
+        ? {
+            ...strategyPayload.factor_screen_candidates,
+            walk_forward: verdictFor("factor_screen", "not_assessable"),
+          }
+        : undefined,
+    };
+
+    const keys = buildStrategyLensItems(payload, buildConsensusSummary(payload)).map((item) => item.key);
+    expect(keys.indexOf("factor")).toBeLessThan(keys.indexOf("livermore"));
+    // 无判定字段的池与"未检验"同档，不被削弱池挤到后面。
+    expect(keys.indexOf("hybrid")).toBeLessThan(keys.indexOf("livermore"));
+  });
+
+  it("prefers the walk-forward supported theme pool over hybrid and stock candidates in the review queue", () => {
+    // strategyPayload 已带 stock_candidates；再补一个 hybrid 池，验证题材池仍优先。
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_hybrid_fusion_candidates_v6",
+        market_state: "WARM",
+        observation_only: true,
+        candidate_count: 1,
+        items: [
+          {
+            rank: 1,
+            stock_code: "000009.SZ",
+            stock_name: "融合候选",
+            sector_code: "801002",
+            sector_name: "新能源车",
+            fusion_score: 0.61,
+            cycle_score: 0.5,
+            lifecourt_proxy_score: 0.3,
+            attention_score: 0.4,
+            price_confirm_score: 0.9,
+            crowding_penalty: 0.1,
+            confidence: "medium",
+            reason: "Observation-only fusion candidate.",
+            evidence: { source_kinds: ["stock_candidate"] },
+          },
+        ],
+      },
+      theme_breakout: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_livermore_theme_breakout_real_concept_interval_v7",
+        is_proxy: false,
+        theme_count: 1,
+        walk_forward: {
+          contract_version: "rv_strategy_walk_forward_verdict_v1",
+          signal_kind: "theme_breakout",
+          verdict: "supported",
+          verdict_label: "样本外支持",
+          oos_windows: 5,
+          positive_excess_windows: 5,
+          chained_excess_return: 1.5378,
+          reason: "5/5 个验证窗正超额，链式超额 +153.78%。",
+          split: "primary_equal_weight_fixed_20d",
+          report: "docs/strategy-reports/walk-forward-rerun-20260813.md",
+          judged_at: "2026-08-13",
+        },
+        items: [
+          {
+            rank: 1,
+            as_of_date: "2026-04-29",
+            theme_key: "ai_computing_proxy",
+            theme_name: "算力AI",
+            parent_sector_code: "801080",
+            parent_sector_name: "电子",
+            parent_sector_rank: 2,
+            member_count: 10,
+            advance_count: 8,
+            advance_ratio: 0.8,
+            strong_stock_count: 4,
+            limit_stock_count: 1,
+            avg_pctchange: 5.5,
+            avg_turn: 3.2,
+            avg_amplitude: 6.1,
+            observation_only: true,
+            reason: "Observation-only cluster.",
+            items: [
+              // 非强势个股必须被过滤掉，只有 strong/涨停 才进队列。
+              {
+                stock_code: "300777.SZ",
+                stock_name: "弱势成分",
+                sector_code: "801080",
+                sector_name: "电子",
+                sector_rank: 2,
+                open: 10,
+                high: 10.2,
+                low: 9.8,
+                close: 9.9,
+                pctchange: -1,
+                turn: 1.1,
+                amplitude: 4,
+                close_strength: 0.2,
+                closed_up_limit: false,
+                strong: false,
+              },
+              {
+                stock_code: "300888.SZ",
+                stock_name: "题材龙头",
+                sector_code: "801080",
+                sector_name: "电子",
+                sector_rank: 2,
+                open: 20,
+                high: 22,
+                low: 19.8,
+                close: 22,
+                pctchange: 10,
+                turn: 6.5,
+                amplitude: 11,
+                close_strength: 1,
+                closed_up_limit: true,
+                strong: true,
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const queue = buildCandidateReviewQueue(payload);
+
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      stockCode: "300888.SZ",
+      sourcePool: "theme_breakout",
+      sourcePoolLabel: "题材突破",
+    });
+    expect(queue[0].walkForward).toMatchObject({ key: "supported", label: "样本外支持" });
+    // 无题材池时退回既有择池顺序：hybrid 优先于 stock_candidates。
+    const withoutTheme = buildCandidateReviewQueue({ ...payload, theme_breakout: undefined });
+    expect(withoutTheme[0]).toMatchObject({
+      stockCode: "000009.SZ",
+      sourcePool: "hybrid_fusion",
+    });
+  });
+
   it("uses backend candidate_count for strategy ledger counts instead of preview length", () => {
     const payload: LivermoreStrategyPayload = {
       ...strategyPayload,
@@ -3305,6 +3990,9 @@ describe("stockAnalysisPageModel", () => {
         sectorCode: "BK002",
         sectorName: "Banking",
         headline: "观察候选 #1 · Alpha",
+        sourcePool: "stock_candidates",
+        sourcePoolLabel: "趋势突破",
+        walkForward: null,
         pattern: "突破",
         patternNote: "UI 辅助归类标签，不构成正式结论",
         distanceToBreakoutPct: "2.4%",
@@ -3323,6 +4011,9 @@ describe("stockAnalysisPageModel", () => {
         sectorCode: "BK001",
         sectorName: "Tech",
         headline: "观察候选 #2 · Beta",
+        sourcePool: "stock_candidates",
+        sourcePoolLabel: "趋势突破",
+        walkForward: null,
         pattern: "突破",
         patternNote: "UI 辅助归类标签，不构成正式结论",
         distanceToBreakoutPct: "3.1%",

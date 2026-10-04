@@ -3,9 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../api/client";
-import type { ResultMeta } from "../../api/contracts";
+import type { ConcentrationItem, ResultMeta } from "../../api/contracts";
 import { apiQueryKeys } from "../../api/queryKeys";
 import { KpiCard } from "../../components/KpiCard";
+import { DataTable, SectionHead, type DataTableColumn } from "../../components/layout";
 import {
   EvidencePanel,
   PageDecisionHero,
@@ -17,6 +18,7 @@ import { limitTone, limitToneToKpi, type LimitTone } from "../workbench/componen
 import { EM_DASH } from "../../utils/format";
 import {
   displayStr,
+  formatConcentrationIndex,
   formatConcentrationPercent,
   formatLimitThresholdPercent,
   formatLimitUsagePercent,
@@ -57,6 +59,33 @@ function limitStatusText(tone: LimitTone, missing: boolean): string {
   return "正常";
 }
 
+function concentrationColumns(
+  isRatingDimension: boolean,
+): readonly DataTableColumn<ConcentrationItem>[] {
+  return [
+    {
+      key: "name",
+      title: "名称",
+      render: (row) => {
+        const displayName = isRatingDimension && row.name === "unknown" ? "未知评级" : row.name;
+        return displayName === row.name ? displayName : <span title={row.name}>{displayName}</span>;
+      },
+    },
+    {
+      key: "weight",
+      title: "权重",
+      align: "numeric",
+      render: (row) => formatConcentrationPercent(row.weight),
+    },
+    {
+      key: "market_value",
+      title: "市值",
+      align: "numeric",
+      render: (row) => displayStr(row.market_value),
+    },
+  ];
+}
+
 function ConcentrationTable({
   title,
   metricsKey,
@@ -74,53 +103,25 @@ function ConcentrationTable({
 }) {
   const m = data?.[metricsKey];
   const rows = m?.top_items ?? [];
+  const columns = useMemo(
+    () => concentrationColumns(metricsKey === "concentration_by_rating"),
+    [metricsKey],
+  );
 
   return (
     <div>
       <h3 className="concentration-monitor-page__panel-title">{title}</h3>
       {m ? (
         <p className="concentration-monitor-page__panel-meta concentration-monitor-page__tabular">
-          HHI {formatConcentrationPercent(m.hhi)} · 前五 {formatConcentrationPercent(m.top5_concentration)}
+          HHI {formatConcentrationIndex(m.hhi)} · 前五 {formatConcentrationPercent(m.top5_concentration)}
         </p>
       ) : null}
-      <div className={styles.tableShell}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>权重</th>
-              <th>市值</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="concentration-monitor-page__empty-cell">
-                  暂无明细
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => {
-                const displayName =
-                  metricsKey === "concentration_by_rating" && row.name === "unknown"
-                    ? "未知评级"
-                    : row.name;
-                return (
-                  <tr key={`${metricsKey}-${row.name}`}>
-                    <td title={displayName === row.name ? undefined : row.name}>{displayName}</td>
-                    <td className="concentration-monitor-page__tabular">
-                      {formatConcentrationPercent(row.weight)}
-                    </td>
-                    <td className="concentration-monitor-page__tabular">
-                      {displayStr(row.market_value)}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<ConcentrationItem>
+        rows={rows}
+        rowKey="name"
+        columns={columns}
+        emptyMessage="暂无明细"
+      />
     </div>
   );
 }
@@ -204,9 +205,9 @@ export default function ConcentrationMonitorPage() {
       },
       {
         label: "发行人 HHI",
-        currentDisplay: formatConcentrationPercent(issuer?.hhi),
+        currentDisplay: formatConcentrationIndex(issuer?.hhi),
         currentNum: hhi,
-        limitDisplay: formatLimitThresholdPercent(displayLimits.hhi_warning),
+        limitDisplay: formatConcentrationIndex(displayLimits.hhi_warning),
         usageDisplay: formatLimitUsagePercent(hhi, displayLimits.hhi_warning),
         tone: limitTone(hhi, displayLimits.hhi_warning),
       },
@@ -235,6 +236,65 @@ export default function ConcentrationMonitorPage() {
     maxSingleWeight,
     top5,
   ]);
+
+  // 着色语义（超限/接近限额）落在业务口径的 tone/missingData 上，不属于表格结构本身，
+  // 因此渲染时把它落在单元格内的 <span> 上（className/data-* 与迁移前逐字一致），
+  // 供既有测试按类名与 dataset 断言，DataTable 本身不承载业务着色。
+  type LimitRow = (typeof limitRows)[number];
+  const limitColumns: readonly DataTableColumn<LimitRow>[] = [
+    { key: "label", title: "指标", render: (row) => row.label },
+    {
+      key: "current",
+      title: "当前值",
+      align: "numeric",
+      render: (row) => {
+        const missing = "missingData" in row && row.missingData;
+        return (
+          <span
+            className="concentration-monitor-page__limit-cell concentration-monitor-page__tabular"
+            data-tone={missing ? undefined : row.tone}
+            data-missing={missing ? "true" : undefined}
+          >
+            {row.currentDisplay}
+          </span>
+        );
+      },
+    },
+    { key: "limit", title: "限额", align: "numeric", render: (row) => row.limitDisplay },
+    {
+      key: "usage",
+      title: "限额使用率",
+      align: "numeric",
+      render: (row) => {
+        const missing = "missingData" in row && row.missingData;
+        return (
+          <span
+            className="concentration-monitor-page__limit-usage concentration-monitor-page__tabular"
+            data-tone={missing ? undefined : row.tone}
+            data-missing={missing ? "true" : undefined}
+          >
+            {row.usageDisplay}
+          </span>
+        );
+      },
+    },
+    {
+      key: "status",
+      title: "状态",
+      render: (row) => {
+        const missing = "missingData" in row && row.missingData;
+        return (
+          <span
+            className="concentration-monitor-page__limit-status"
+            data-tone={missing ? undefined : row.tone}
+            data-missing={missing ? "true" : undefined}
+          >
+            {limitStatusText(row.tone, Boolean(missing))}
+          </span>
+        );
+      },
+    },
+  ];
 
   return (
     <section
@@ -355,7 +415,7 @@ export default function ConcentrationMonitorPage() {
               <div className="concentration-monitor-page__kpi-cell" title="口径字段 concentration_by_issuer.hhi">
                 <KpiCard
                   title="发行人 HHI 指数"
-                  value={formatConcentrationPercent(issuer?.hhi)}
+                  value={formatConcentrationIndex(issuer?.hhi)}
                   tone={
                     displayLimits
                       ? limitToneToKpi(limitTone(parseRatio(issuer?.hhi), displayLimits.hhi_warning))
@@ -403,7 +463,9 @@ export default function ConcentrationMonitorPage() {
               </div>
             </div>
 
-            <h2 className="concentration-monitor-page__block-title">分项集中度（前列市值）</h2>
+            <div className="concentration-monitor-page__block-head">
+              <SectionHead title="分项集中度（前列市值）" numbered={false} />
+            </div>
             <div className="concentration-monitor-page__grid-2x2">
               <ConcentrationTable title="发行人集中度" metricsKey="concentration_by_issuer" data={credit} />
               <ConcentrationTable title="行业集中度" metricsKey="concentration_by_industry" data={credit} />
@@ -411,7 +473,9 @@ export default function ConcentrationMonitorPage() {
               <ConcentrationTable title="期限分布" metricsKey="concentration_by_tenor" data={credit} />
             </div>
 
-            <h2 className="concentration-monitor-page__block-title">限额预警（展示对照）</h2>
+            <div className="concentration-monitor-page__block-head">
+              <SectionHead title="限额预警（展示对照）" numbered={false} />
+            </div>
             {displayLimits ? (
               <>
                 <p
@@ -420,53 +484,12 @@ export default function ConcentrationMonitorPage() {
                 >
                   超限标红，达到限额 80% 以上未超限标黄。阈值为展示限额（后端下发，非风控正式限额）。
                 </p>
-                <div className={`${styles.tableShell} concentration-monitor-page__limit-table-shell`}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>指标</th>
-                        <th>当前值</th>
-                        <th>限额</th>
-                        <th>限额使用率</th>
-                        <th>状态</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {limitRows.map((row) => {
-                        const missing = "missingData" in row && row.missingData;
-                        const statusText = limitStatusText(row.tone, Boolean(missing));
-                        return (
-                          <tr key={row.label}>
-                            <td>{row.label}</td>
-                            <td
-                              className="concentration-monitor-page__limit-cell concentration-monitor-page__tabular"
-                              data-tone={missing ? undefined : row.tone}
-                              data-missing={missing ? "true" : undefined}
-                            >
-                              {row.currentDisplay}
-                            </td>
-                            <td className="concentration-monitor-page__tabular">
-                              {row.limitDisplay}
-                            </td>
-                            <td
-                              className="concentration-monitor-page__limit-usage concentration-monitor-page__tabular"
-                              data-tone={missing ? undefined : row.tone}
-                              data-missing={missing ? "true" : undefined}
-                            >
-                              {row.usageDisplay}
-                            </td>
-                            <td
-                              className="concentration-monitor-page__limit-status"
-                              data-tone={missing ? undefined : row.tone}
-                              data-missing={missing ? "true" : undefined}
-                            >
-                              {statusText}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="concentration-monitor-page__limit-table-shell">
+                  <DataTable<(typeof limitRows)[number]>
+                    rows={limitRows}
+                    rowKey="label"
+                    columns={limitColumns}
+                  />
                 </div>
               </>
             ) : (

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
 from tests.helpers import load_module
 from tests.test_bond_analytics_materialize_flow import (
     REPORT_DATE,
@@ -26,11 +27,48 @@ def _read_jsonl(path):
     ]
 
 
+def _ensure_empty_tyw_liability_fact(duckdb_path) -> None:
+    import duckdb
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists fact_formal_tyw_balance_daily (
+              report_date varchar,
+              position_id varchar,
+              product_type varchar,
+              position_side varchar,
+              counterparty_name varchar,
+              account_type varchar,
+              special_account_type varchar,
+              core_customer_type varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              currency_code varchar,
+              principal_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              funding_cost_rate decimal(18, 8),
+              maturity_date varchar,
+              source_version varchar,
+              rule_version varchar,
+              ingest_batch_id varchar,
+              trace_id varchar
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+
 def _configure_upstream(tmp_path):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_bond_snapshot_rows(str(duckdb_path))
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+    _ensure_empty_tyw_liability_fact(duckdb_path)
     bond_task_mod = load_module(
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
@@ -48,6 +86,7 @@ def _configure_upstream_with_semiannual_coupon(tmp_path):
     governance_dir = tmp_path / "governance.semiannual"
     _seed_bond_snapshot_rows(str(duckdb_path))
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+    _ensure_empty_tyw_liability_fact(duckdb_path)
 
     import duckdb
 
@@ -96,6 +135,15 @@ def _base_discount_ncd_row() -> dict[str, object]:
     }
 
 
+def _verified_empty_tyw_liability_state() -> SimpleNamespace:
+    return SimpleNamespace(
+        availability="available",
+        row_count=0,
+        source_version="",
+        rule_version="",
+    )
+
+
 def _execute_risk_tensor_with_rows(monkeypatch, rows):
     task_mod = load_module(
         "backend.app.tasks.risk_tensor_materialize",
@@ -111,8 +159,8 @@ def _execute_risk_tensor_with_rows(monkeypatch, rows):
         "load_latest_bond_analytics_lineage",
         lambda **_kwargs: {
             "source_version": "sv_bond_snap_1",
-            "rule_version": "rv_bond_analytics_formal_materialize_v2",
-            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
+            "rule_version": FIXED_INCOME_VERSION_SET.bond_analytics.rule_version,
+            "cache_version": FIXED_INCOME_VERSION_SET.bond_analytics.cache_version,
         },
     )
     monkeypatch.setattr(
@@ -121,15 +169,30 @@ def _execute_risk_tensor_with_rows(monkeypatch, rows):
         lambda self, *, report_date: rows,
     )
     monkeypatch.setattr(task_mod, "_load_liability_rows", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        task_mod,
+        "load_current_tyw_liability_lineage_state",
+        lambda **_kwargs: _verified_empty_tyw_liability_state(),
+    )
     monkeypatch.setattr(task_mod, "repository_task_write_scope", lambda *_args, **_kwargs: nullcontext())
 
     def _capture_compute(rows_arg, report_date_arg, *, liability_rows):
         captured["compute_rows"] = rows_arg
         assert report_date_arg.isoformat() == REPORT_DATE
         assert liability_rows == []
+        assumption_value_row_count = sum(
+            1
+            for row in rows_arg
+            if row.get("duration_quality_flag")
+            in {"ytm_par_fallback", "ytm_unavailable", "coupon_unavailable"}
+        )
         return SimpleNamespace(
             bond_count=len(rows_arg),
-            quality_flag="ok",
+            quality_flag="warning" if assumption_value_row_count else "ok",
+            input_quality_metadata={
+                "assumption_value_row_count": assumption_value_row_count,
+                "total_row_count": len(rows_arg),
+            },
         )
 
     def _capture_replace(self, **kwargs):
@@ -194,6 +257,8 @@ def test_risk_tensor_materialize_writes_fact_and_governance_records(tmp_path):
     projection_quality_fields = (
         "missing_maturity_market_value",
         "missing_maturity_count",
+        "missing_liability_maturity_principal_amount",
+        "missing_liability_maturity_count",
         "floating_rate_proxy_market_value",
         "floating_rate_proxy_count",
         "payment_frequency_fallback_market_value",
@@ -202,6 +267,18 @@ def test_risk_tensor_materialize_writes_fact_and_governance_records(tmp_path):
         "bullet_value_date_fallback_count",
     )
     assert all(row[field_name] is not None for field_name in projection_quality_fields)
+    maturity_breakdown_fields = (
+        "fund_no_maturity_market_value", "fund_no_maturity_count",
+        "unknown_maturity_market_value", "unknown_maturity_count",
+        "matured_outstanding_market_value", "matured_outstanding_count",
+        "nonpositive_duration_market_value", "nonpositive_duration_count",
+    )
+    assert all(row[field_name] is not None for field_name in maturity_breakdown_fields)
+    assert sum(
+        (row[field_name] for field_name in maturity_breakdown_fields if field_name.endswith("_market_value")),
+        Decimal("0"),
+    ) == row["duration_excluded_market_value"]
+    assert sum(row[field_name] for field_name in maturity_breakdown_fields if field_name.endswith("_count")) == row["duration_excluded_count"]
     assert any(record["cache_key"] == bond_task_mod.CACHE_KEY for record in build_runs)
     assert any(record["cache_key"] == risk_task_mod.CACHE_KEY and record["status"] == "completed" for record in build_runs)
     assert any(record["cache_key"] == risk_task_mod.CACHE_KEY and record["cache_version"] == risk_task_mod.CACHE_VERSION for record in manifests)
@@ -270,6 +347,97 @@ def test_risk_tensor_materialize_requires_complete_upstream_lineage_triple(
     assert risk_runs
     assert risk_runs[-1]["status"] == "failed"
     assert all(record["status"] != "completed" for record in risk_runs)
+
+
+def test_risk_tensor_materialize_requires_configured_current_bond_lineage(monkeypatch):
+    task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+    compute_calls = []
+    monkeypatch.setattr(
+        task_mod,
+        "load_latest_bond_analytics_lineage",
+        lambda **_kwargs: {
+            "source_version": "sv_bond_snap_legacy",
+            "rule_version": "rv_bond_analytics_formal_materialize_v4",
+            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v4",
+        },
+    )
+    monkeypatch.setattr(
+        task_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        lambda self, *, report_date: [_base_discount_ncd_row()],
+    )
+    monkeypatch.setattr(
+        task_mod,
+        "load_current_tyw_liability_lineage_state",
+        lambda **_kwargs: _verified_empty_tyw_liability_state(),
+    )
+    monkeypatch.setattr(
+        task_mod,
+        "compute_portfolio_risk_tensor",
+        lambda *_args, **_kwargs: compute_calls.append("called"),
+    )
+
+    with pytest.raises(RuntimeError, match="configured-current bond_analytics lineage"):
+        task_mod._execute_risk_tensor_materialization(
+            report_date=REPORT_DATE,
+            duckdb_file=Path("ignored.duckdb"),
+            governance_dir="ignored-governance",
+        )
+
+    assert compute_calls == []
+
+
+@pytest.mark.parametrize("liability_availability", ("missing_table", "unavailable"))
+def test_risk_tensor_materialize_fails_closed_when_tyw_liability_input_is_not_readable(
+    monkeypatch,
+    liability_availability,
+):
+    task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+    compute_calls = []
+    monkeypatch.setattr(
+        task_mod,
+        "load_latest_bond_analytics_lineage",
+        lambda **_kwargs: {
+            "source_version": "sv_bond_snap_1",
+            "rule_version": FIXED_INCOME_VERSION_SET.bond_analytics.rule_version,
+            "cache_version": FIXED_INCOME_VERSION_SET.bond_analytics.cache_version,
+        },
+    )
+    monkeypatch.setattr(
+        task_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        lambda self, *, report_date: [_base_discount_ncd_row()],
+    )
+    monkeypatch.setattr(
+        task_mod,
+        "load_current_tyw_liability_lineage_state",
+        lambda **_kwargs: SimpleNamespace(
+            availability=liability_availability,
+            row_count=0,
+            source_version="",
+            rule_version="",
+        ),
+    )
+    monkeypatch.setattr(
+        task_mod,
+        "compute_portfolio_risk_tensor",
+        lambda *_args, **_kwargs: compute_calls.append("called"),
+    )
+
+    with pytest.raises(RuntimeError, match="readable formal TYW liability input"):
+        task_mod._execute_risk_tensor_materialization(
+            report_date=REPORT_DATE,
+            duckdb_file=Path("ignored.duckdb"),
+            governance_dir="ignored-governance",
+        )
+
+    assert compute_calls == []
 
 
 def test_risk_tensor_materialize_fails_closed_on_pct_style_bond_rates(tmp_path):
@@ -378,8 +546,8 @@ def test_risk_tensor_materialize_fails_closed_on_unknown_payment_frequency_prove
         "load_latest_bond_analytics_lineage",
         lambda **_kwargs: {
             "source_version": "sv_bond_snap_1",
-            "rule_version": "rv_bond_analytics_formal_materialize_v2",
-            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
+            "rule_version": FIXED_INCOME_VERSION_SET.bond_analytics.rule_version,
+            "cache_version": FIXED_INCOME_VERSION_SET.bond_analytics.cache_version,
         },
     )
     monkeypatch.setattr(
@@ -388,6 +556,11 @@ def test_risk_tensor_materialize_fails_closed_on_unknown_payment_frequency_prove
         lambda self, *, report_date: [source_row],
     )
     monkeypatch.setattr(task_mod, "_load_liability_rows", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        task_mod,
+        "load_current_tyw_liability_lineage_state",
+        lambda **_kwargs: _verified_empty_tyw_liability_state(),
+    )
 
     with pytest.raises(RuntimeError, match="payment-frequency fallback provenance"):
         task_mod._execute_risk_tensor_materialization(
@@ -415,6 +588,7 @@ def _coupon_bond_fact_row(
     coupon_rate,
     ytm,
     market_value,
+    duration_quality_flag: str = "observed",
 ) -> dict[str, object]:
     return {
         "instrument_code": code,
@@ -430,28 +604,40 @@ def _coupon_bond_fact_row(
         "dv01": Decimal("0.0853"),
         "spread_dv01": Decimal("0.0853"),
         "interest_payment_frequency_fallback_used": False,
+        "duration_quality_flag": duration_quality_flag,
     }
 
 
-def test_risk_tensor_materialize_reports_ytm_par_fallback_aggregate(monkeypatch):
-    """W-fi-2026-08 P1：有票息但 ytm 缺失/非正的行（上游按 par 假设算久期/DV01）
-    在物化结果元数据中做聚合披露；无行级 provenance 列，schema 不变。"""
+def test_risk_tensor_materialize_reports_persisted_assumption_quality_metadata(monkeypatch):
+    """行级 provenance 驱动 par 回退及全体假设值行数披露，数值行仍全部参与汇总。"""
     rows = [
         # 有票息 + ytm 缺失 → 计入
         _coupon_bond_fact_row(
-            "PAR-FB-001", coupon_rate=Decimal("0.03"), ytm=None, market_value=Decimal("120")
+            "PAR-FB-001",
+            coupon_rate=Decimal("0.03"),
+            ytm=None,
+            market_value=Decimal("120"),
+            duration_quality_flag="ytm_par_fallback",
         ),
         # 有票息 + ytm 非正 → 计入
         _coupon_bond_fact_row(
-            "PAR-FB-002", coupon_rate=Decimal("0.028"), ytm=Decimal("0"), market_value=Decimal("80")
+            "PAR-FB-002",
+            coupon_rate=Decimal("0.028"),
+            ytm=Decimal("0"),
+            market_value=Decimal("80"),
+            duration_quality_flag="ytm_par_fallback",
         ),
         # 有票息 + ytm 正常 → 不计入
         _coupon_bond_fact_row(
             "NORMAL-001", coupon_rate=Decimal("0.03"), ytm=Decimal("0.025"), market_value=Decimal("500")
         ),
-        # 零票息 + ytm 缺失（零息回退口径本就正确）→ 不计入
+        # 零票息 + ytm 缺失：Macaulay 正确，但修正久期/凸性仍是近似 → 假设值计数。
         _coupon_bond_fact_row(
-            "ZERO-001", coupon_rate=Decimal("0"), ytm=None, market_value=Decimal("300")
+            "ZERO-001",
+            coupon_rate=Decimal("0"),
+            ytm=None,
+            market_value=Decimal("300"),
+            duration_quality_flag="ytm_unavailable",
         ),
     ]
 
@@ -460,6 +646,10 @@ def test_risk_tensor_materialize_reports_ytm_par_fallback_aggregate(monkeypatch)
     assert result.payload["ytm_par_fallback_rule_id"] == "ytm_par_fallback_duration_v1"
     assert result.payload["ytm_par_fallback_row_count"] == 2
     assert result.payload["ytm_par_fallback_market_value"] == "200"
+    assert result.payload["input_quality"] == {
+        "assumption_value_row_count": 3,
+        "total_row_count": 4,
+    }
 
 
 def test_risk_tensor_materialize_ytm_par_fallback_zero_when_all_ytm_present(monkeypatch):
@@ -512,8 +702,8 @@ def test_risk_tensor_materialize_fails_closed_when_discount_ncd_predicate_not_fu
         "load_latest_bond_analytics_lineage",
         lambda **_kwargs: {
             "source_version": "sv_bond_snap_1",
-            "rule_version": "rv_bond_analytics_formal_materialize_v2",
-            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
+            "rule_version": FIXED_INCOME_VERSION_SET.bond_analytics.rule_version,
+            "cache_version": FIXED_INCOME_VERSION_SET.bond_analytics.cache_version,
         },
     )
     monkeypatch.setattr(
@@ -522,6 +712,11 @@ def test_risk_tensor_materialize_fails_closed_when_discount_ncd_predicate_not_fu
         lambda self, *, report_date: [source_row],
     )
     monkeypatch.setattr(task_mod, "_load_liability_rows", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        task_mod,
+        "load_current_tyw_liability_lineage_state",
+        lambda **_kwargs: _verified_empty_tyw_liability_state(),
+    )
     monkeypatch.setattr(task_mod, "repository_task_write_scope", lambda *_args, **_kwargs: nullcontext())
 
     def _unexpected_compute(*_args, **_kwargs):
@@ -595,9 +790,9 @@ def test_risk_tensor_module_descriptor_registers_without_collision():
     assert descriptor.cache_key == risk_task_mod.CACHE_KEY
     assert descriptor.cache_key != bond_task_mod.CACHE_KEY
     assert descriptor.lock_key != bond_task_mod.BOND_ANALYTICS_LOCK.key
-    assert descriptor.rule_version == "rv_risk_tensor_formal_materialize_v6"
+    assert descriptor.rule_version == "rv_risk_tensor_formal_materialize_v12"
     assert (
-        descriptor.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
+        descriptor.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v12"
     )
 
 
@@ -708,6 +903,42 @@ def test_risk_tensor_materialize_nets_formal_tyw_liability_cashflows(tmp_path):
                 "trace-liab-1",
             ],
         )
+        conn.execute(
+            """
+            insert into fact_formal_tyw_balance_daily (
+              report_date, position_id, product_type, position_side, counterparty_name,
+              account_type, special_account_type, core_customer_type, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code, principal_amount,
+              accrued_interest_amount, funding_cost_rate, maturity_date, source_version,
+              rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                REPORT_DATE,
+                "TYW-L-MISSING-MATURITY",
+                "Interbank",
+                "liability",
+                "Bank Missing",
+                "",
+                "",
+                "",
+                "H",
+                "AC",
+                "liability",
+                "CNY",
+                "CNY",
+                Decimal("6"),
+                Decimal("0"),
+                Decimal("0"),
+                None,
+                "sv_tyw_liab_1",
+                "rv_balance_analysis_formal_materialize_v1",
+                "ib-liab-missing",
+                "trace-liab-missing",
+            ],
+        )
     finally:
         conn.close()
 
@@ -730,3 +961,10 @@ def test_risk_tensor_materialize_nets_formal_tyw_liability_cashflows(tmp_path):
     assert row["liquidity_gap_30d"] == 10
     assert row["liquidity_gap_90d"] == 10
     assert row["liquidity_gap_30d"] == row["asset_cashflow_30d"] - row["liability_cashflow_30d"]
+    assert row["missing_liability_maturity_count"] == 1
+    assert row["missing_liability_maturity_principal_amount"] == 6
+    assert any(
+        "Excluded 1 liability rows" in warning
+        and "principal_amount=6.00000000 CNY yuan" in warning
+        for warning in row["warnings"]
+    )

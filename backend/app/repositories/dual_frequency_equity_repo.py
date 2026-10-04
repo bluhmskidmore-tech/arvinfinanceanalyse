@@ -8,6 +8,7 @@ from typing import Any
 
 import duckdb
 from backend.app.repositories.choice_stock_units import amount_rmb_sql, scale_unknown_sql
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 
 INDEX_TABLE = "fact_choice_macro_daily"
 MARKET_AMOUNT_TABLE = "choice_stock_daily_observation"
@@ -58,7 +59,7 @@ def load_dual_frequency_equity_history(
     if requested_lookback > MAX_LOOKBACK_ROWS:
         result["warnings"].append(f"lookback_capped_to_{MAX_LOOKBACK_ROWS}")
 
-    path = Path(duckdb_path)
+    path = Path(resolve_effective_read_path(duckdb_path))
     if not path.is_file():
         result["warnings"].append("missing_database")
         return result

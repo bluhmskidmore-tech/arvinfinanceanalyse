@@ -1539,7 +1539,9 @@ def test_product_category_refresh_reuses_run_for_same_idempotency_key(
     get_settings.cache_clear()
 
 
-def test_product_category_refresh_resolves_repo_source_dir_in_development(tmp_path):
+def test_product_category_refresh_resolves_repo_source_dir_in_development(tmp_path, monkeypatch):
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT", raising=False)
+    monkeypatch.delenv("RAW_FILES_DIR", raising=False)
     runtime_root = tmp_path / "runtime"
     configured_dir = runtime_root / "data_input" / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
     configured_dir.mkdir(parents=True)
@@ -1550,6 +1552,7 @@ def test_product_category_refresh_resolves_repo_source_dir_in_development(tmp_pa
     _write_month_pair(repo_source_dir, "202602", january=False)
 
     settings = Settings(
+        _env_file=None,
         duckdb_path=str(runtime_root / "moss.duckdb"),
         governance_path=runtime_root / "governance",
         product_category_source_dir=configured_dir,
@@ -1562,7 +1565,9 @@ def test_product_category_refresh_resolves_repo_source_dir_in_development(tmp_pa
     ) == repo_source_dir.resolve()
 
 
-def test_product_category_refresh_does_not_resolve_repo_source_dir_in_production(tmp_path):
+def test_product_category_refresh_does_not_resolve_repo_source_dir_in_production(tmp_path, monkeypatch):
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT", raising=False)
+    monkeypatch.delenv("RAW_FILES_DIR", raising=False)
     runtime_root = tmp_path / "runtime"
     configured_dir = runtime_root / "data_input" / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
     configured_dir.mkdir(parents=True)
@@ -1573,6 +1578,7 @@ def test_product_category_refresh_does_not_resolve_repo_source_dir_in_production
     _write_month_pair(repo_source_dir, "202602", january=False)
 
     settings = Settings(
+        _env_file=None,
         duckdb_path=str(runtime_root / "moss.duckdb"),
         governance_path=runtime_root / "governance",
         product_category_source_dir=configured_dir,
@@ -1583,6 +1589,47 @@ def test_product_category_refresh_does_not_resolve_repo_source_dir_in_production
         settings,
         repo_root=repo_root,
     ) == configured_dir
+
+
+@pytest.mark.parametrize("empty_directory", [False, True])
+def test_product_category_refresh_explicit_input_root_never_falls_back_to_repository(tmp_path, empty_directory):
+    external_root = tmp_path / "external-inputs"
+    settings = Settings(_env_file=None, data_input_root=external_root, environment="development")
+    configured_dir = Path(settings.product_category_source_dir)
+    if empty_directory:
+        configured_dir.mkdir(parents=True)
+    repo_root = tmp_path / "repo"
+    old_source = repo_root / "data_input" / configured_dir.name
+    old_source.mkdir(parents=True)
+    _write_month_pair(old_source, "202602", january=False)
+
+    assert _resolve_product_category_refresh_source_dir(settings, repo_root=repo_root) == configured_dir
+
+
+def test_explicit_raw_files_dir_never_falls_back_to_repository_inputs(tmp_path, monkeypatch):
+    import backend.app.services.accounting_asset_movement_service as movement_service
+    from backend.app.tasks.fx_mid_materialize import resolve_fx_mid_csv_path
+
+    external_root = tmp_path / "external-raw-inputs"
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT", raising=False)
+    monkeypatch.setenv("RAW_FILES_DIR", str(external_root))
+    settings = Settings(_env_file=None, environment="development", fx_official_source_path="", fx_mid_csv_path="")
+    configured_dir = Path(settings.product_category_source_dir)
+    repo_root = tmp_path / "repo"
+    old_source = repo_root / "data_input" / configured_dir.name
+    old_source.mkdir(parents=True)
+    _write_month_pair(old_source, "202602", january=False)
+    old_fx = repo_root / "data_input/fx/fx_daily_mid.csv"
+    old_fx.parent.mkdir(parents=True)
+    old_fx.write_bytes(b"synthetic old repository FX must not be selected")
+    monkeypatch.setattr(movement_service, "__file__", str(repo_root / "backend/app/services/accounting_asset_movement_service.py"))
+
+    assert settings.data_input_root == external_root
+    assert _resolve_product_category_refresh_source_dir(settings, repo_root=repo_root) == configured_dir
+    selected_fx = movement_service._resolve_refresh_fx_source_path(settings)
+    assert selected_fx == str(external_root / "fx/fx_daily_mid.csv")
+    with pytest.raises(FileNotFoundError, match="FX official CSV not found"):
+        resolve_fx_mid_csv_path(official_csv_path=selected_fx, explicit_csv_path="", data_input_root=external_root)
 
 
 def test_product_category_refresh_empty_source_keeps_existing_read_model(tmp_path, monkeypatch):
@@ -1803,8 +1850,10 @@ def test_product_category_refresh_fails_closed_outside_normalized_development(
         duckdb_path=str(tmp_path / "moss.duckdb"),
         governance_path=governance_dir,
         product_category_source_dir=source_dir,
-        environment=environment,
-    )
+        environment="production",
+    ).model_copy(update={"environment": environment})
+    # Exercise the dispatch guard even for malformed legacy/injected settings;
+    # ordinary Settings construction rejects these values before dispatch.
 
     service_mod = _load_product_category_pnl_service_module()
     fallback_calls: list[dict[str, object]] = []
@@ -1813,8 +1862,9 @@ def test_product_category_refresh_fails_closed_outside_normalized_development(
         "send",
         lambda **_: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
     )
-    monkeypatch.setattr(
-        service_mod.materialize_product_category_pnl,
+    # The proxy delegates fn via __getattr__; restore its absent instance key.
+    monkeypatch.setitem(
+        vars(service_mod.materialize_product_category_pnl),
         "fn",
         lambda **kwargs: fallback_calls.append(kwargs)
         or {"status": "completed", "run_id": kwargs["run_id"]},
@@ -1865,8 +1915,8 @@ def test_product_category_refresh_development_rejects_non_connection_os_errors(
             exception_type(f"unsafe dispatch failure at {sensitive_uri}")
         ),
     )
-    monkeypatch.setattr(
-        service_mod.materialize_product_category_pnl,
+    monkeypatch.setitem(
+        vars(service_mod.materialize_product_category_pnl),
         "fn",
         lambda **kwargs: fallback_calls.append(kwargs)
         or {"status": "completed", "run_id": kwargs["run_id"]},
@@ -1914,8 +1964,8 @@ def test_product_category_refresh_fails_closed_for_unexpected_development_dispat
             RuntimeError(f"unexpected broker failure at {sensitive_uri}")
         ),
     )
-    monkeypatch.setattr(
-        service_mod.materialize_product_category_pnl,
+    monkeypatch.setitem(
+        vars(service_mod.materialize_product_category_pnl),
         "fn",
         lambda **kwargs: fallback_calls.append(kwargs)
         or {"status": "completed", "run_id": kwargs["run_id"]},
@@ -2009,8 +2059,8 @@ def test_product_category_refresh_returns_503_when_sync_fallback_fails(
         "send",
         lambda **_: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
     )
-    monkeypatch.setattr(
-        service_mod.materialize_product_category_pnl,
+    monkeypatch.setitem(
+        vars(service_mod.materialize_product_category_pnl),
         "fn",
         lambda **_: (_ for _ in ()).throw(
             RuntimeError("sync fallback failed via redis://user:secret@host:6379/0")
@@ -2061,8 +2111,8 @@ def test_product_category_refresh_sync_fallback_service_error_suppresses_sensiti
         "send",
         lambda **_: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
     )
-    monkeypatch.setattr(
-        service_mod.materialize_product_category_pnl,
+    monkeypatch.setitem(
+        vars(service_mod.materialize_product_category_pnl),
         "fn",
         lambda **_: (_ for _ in ()).throw(
             RuntimeError(f"sync fallback failed via {sensitive_uri}")
@@ -3155,6 +3205,48 @@ def test_manual_adjustment_export_locks_csv_order_under_sort_and_range(tmp_path,
     get_settings.cache_clear()
 
 
+def test_manual_adjustment_export_preserves_zero_and_missing_values_separately(
+    tmp_path, monkeypatch
+):
+    client, governance_dir = _build_product_category_client(tmp_path, monkeypatch)
+    repo = GovernanceRepository(base_dir=governance_dir)
+
+    for adjustment_id, monthly_pnl, account_name in (
+        ("adj-zero", "0", 'Zero, "quoted"'),
+        ("adj-negative", "-2", "Negative"),
+        ("adj-missing", None, "Missing"),
+    ):
+        _append_adjustment_event(
+            repo,
+            adjustment_id=adjustment_id,
+            event_type="created",
+            created_at="2026-02-02T00:00:00Z",
+            report_date="2026-02-28",
+            approval_status="approved",
+            account_code=adjustment_id,
+            account_name=account_name,
+            monthly_pnl=monthly_pnl,
+        )
+
+    response = client.get(
+        "/ui/pnl/product-category/manual-adjustments/export",
+        params={"report_date": "2026-02-28"},
+    )
+    assert response.status_code == 200
+    current_rows, event_rows = _parse_adjustment_csv_sections(response.text)
+
+    for rows in (current_rows, event_rows):
+        values = {row["adjustment_id"]: row["monthly_pnl"] for row in rows}
+        assert values == {
+            "adj-zero": "0",
+            "adj-negative": "-2",
+            "adj-missing": "",
+        }
+    zero_row = next(row for row in current_rows if row["adjustment_id"] == "adj-zero")
+    assert zero_row["account_name"] == 'Zero, "quoted"'
+    get_settings.cache_clear()
+
+
 def _product_category_scope_repo(tmp_path, monkeypatch) -> UserScopeRepository:
     dsn = os.environ.get("MOSS_POSTGRES_DSN", "").strip()
     if not dsn or not dsn.startswith("sqlite:///"):
@@ -3208,6 +3300,7 @@ def _append_adjustment_event(
     approval_status: str,
     account_code: str,
     account_name: str | None = None,
+    monthly_pnl: str | None = "1",
 ) -> None:
     repo.append(
         PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
@@ -3221,7 +3314,7 @@ def _append_adjustment_event(
             "account_code": account_code,
             "currency": "CNX",
             "account_name": account_name or f"Account {account_code}",
-            "monthly_pnl": "1",
+            "monthly_pnl": monthly_pnl,
         },
     )
 

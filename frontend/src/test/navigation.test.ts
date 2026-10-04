@@ -20,7 +20,7 @@ describe("workbench navigation mocks", () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it("keeps MOSS Chat hidden as a controlled direct-route pilot", () => {
+  it("keeps the gated MOSS Chat entry hidden without the explicit frontend flag", () => {
     const agent = workbenchNavigation.find((s) => s.key === "agent");
     expect(agent).toBeDefined();
     expect(agent?.label).toBe("MOSS Chat");
@@ -28,16 +28,17 @@ describe("workbench navigation mocks", () => {
     expect(agent?.readinessLabel).toBe("受控试用");
     expect(agent?.navigationVisibility).toBe("hidden");
     expect(agent?.path).toBe("/agent");
-    expect(agent?.readinessNote).toContain("开发态显式开启前端开关");
-    expect(agent?.readinessNote).toContain("默认与生产环境保持关闭");
+    expect(agent?.readinessNote).toContain("显式前端开关");
+    expect(agent?.readinessNote).toContain("不代表正式发布");
+    expect(agent?.readinessNote).toContain("后端权限与运行开关");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
     expect(isAgentFrontendEnabled()).toBe(false);
   });
 
-  it("exposes MOSS Chat only with the explicit Vite development opt-in", () => {
+  it.each([true, false])("exposes MOSS Chat with the explicit release flag when DEV=%s", (dev) => {
     const enabledEnvironment = {
-      DEV: true,
+      DEV: dev,
       VITE_MOSS_AGENT_FRONTEND_ENABLED: "true",
     };
 
@@ -45,19 +46,17 @@ describe("workbench navigation mocks", () => {
     expect(getVisibleWorkbenchNavigation(enabledEnvironment).some((s) => s.key === "agent")).toBe(
       true,
     );
-    expect(
-      isAgentFrontendEnabled({
-        DEV: false,
-        VITE_MOSS_AGENT_FRONTEND_ENABLED: "true",
-      }),
-    ).toBe(false);
-    expect(
-      isAgentFrontendEnabled({
-        DEV: true,
-        VITE_MOSS_AGENT_FRONTEND_ENABLED: undefined,
-      }),
-    ).toBe(false);
   });
+
+  it.each([undefined, "false", "", "TRUE", "1"])(
+    "keeps MOSS Chat closed in production when the flag is %s",
+    (flag) => {
+      const environment = { DEV: false, VITE_MOSS_AGENT_FRONTEND_ENABLED: flag };
+
+      expect(isAgentFrontendEnabled(environment)).toBe(false);
+      expect(getVisibleWorkbenchNavigation(environment).some((s) => s.key === "agent")).toBe(false);
+    },
+  );
 
   it("excludes hidden entries from primaryWorkbenchNavigation", () => {
     expect(

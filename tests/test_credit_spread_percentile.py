@@ -3,6 +3,9 @@
 覆盖：
 - hist_3y / hist_1y 分母排除当日观测（回归 bug：当日曾混入自身对比样本）
 - 当日值为历史最大/最小时分位分别为 100 / 0
+- 估值极性（回归 bug：曾把利差高分位标"偏贵"、低分位标"偏便宜"，与固收口径相反）：
+  利差分位高=利差宽=信用补偿厚=偏便宜；分位低=利差窄=保护薄=偏贵
+- 汇总 overall_valuation / assessment 的极性与单利差口径一致
 - 无历史数据时的 unavailable 降级行为
 """
 
@@ -113,7 +116,10 @@ class TestPercentileBoundaries:
 
         assert aaa["percentile_3y"] == 100.0
         assert aaa["percentile_1y"] == 100.0
-        assert aaa["valuation"] == "偏贵"
+        # 高分位=利差处于历史宽位=信用补偿厚=偏便宜（极性修复回归锁定）。
+        assert aaa["valuation"] == "偏便宜"
+        assert result["summary"] == {"cheap_count": 1, "expensive_count": 0, "total_analyzed": 1}
+        assert result["overall_valuation"] == "偏便宜"
 
     def test_today_value_is_history_min_percentile_is_0(self) -> None:
         rows: list[dict[str, object]] = []
@@ -126,7 +132,49 @@ class TestPercentileBoundaries:
 
         assert aaa["percentile_3y"] == 0.0
         assert aaa["percentile_1y"] == 0.0
-        assert aaa["valuation"] == "偏便宜"
+        # 低分位=利差处于历史窄位=保护薄=偏贵（极性修复回归锁定）。
+        assert aaa["valuation"] == "偏贵"
+        assert result["summary"] == {"cheap_count": 0, "expensive_count": 1, "total_analyzed": 1}
+        assert result["overall_valuation"] == "偏贵"
+
+
+class TestOverallValuationPolarity:
+    """汇总分支（>=3 个同向利差）的极性与文案锁定。"""
+
+    @staticmethod
+    def _multi_spread_rows(biz_date: date, scale: float) -> list[dict[str, object]]:
+        """构造 4 条随 scale 单调放大的利差：AAA=scale、AA+=2*scale、AA=3*scale、AA-AAA=2*scale（bp）。"""
+        return [
+            _curve_row(biz_date, "CN_GOVT", "3Y", Decimal("0")),
+            _curve_row(biz_date, "CN_CREDIT_AAA", "3Y", Decimal(str(scale)) / Decimal("100")),
+            _curve_row(biz_date, "CN_CREDIT_AA_PLUS", "3Y", Decimal(str(2 * scale)) / Decimal("100")),
+            _curve_row(biz_date, "CN_CREDIT_AA", "3Y", Decimal(str(3 * scale)) / Decimal("100")),
+        ]
+
+    def test_most_spreads_at_history_high_means_cheap_with_allocation_value(self) -> None:
+        rows: list[dict[str, object]] = []
+        rows += self._multi_spread_rows(REPORT_DATE, 100.0)
+        for offset, scale in enumerate([10.0, 20.0, 30.0], start=1):
+            rows += self._multi_spread_rows(REPORT_DATE - timedelta(days=offset), scale)
+
+        result = compute_credit_spread_percentile(rows, REPORT_DATE)
+
+        assert result["summary"]["cheap_count"] >= 3
+        assert result["overall_valuation"] == "偏便宜"
+        assert "偏便宜" in result["assessment"]
+        assert "配置价值" in result["assessment"]
+
+    def test_most_spreads_at_history_low_means_expensive_thin_protection(self) -> None:
+        rows: list[dict[str, object]] = []
+        rows += self._multi_spread_rows(REPORT_DATE, 1.0)
+        for offset, scale in enumerate([10.0, 20.0, 30.0], start=1):
+            rows += self._multi_spread_rows(REPORT_DATE - timedelta(days=offset), scale)
+
+        result = compute_credit_spread_percentile(rows, REPORT_DATE)
+
+        assert result["summary"]["expensive_count"] >= 3
+        assert result["overall_valuation"] == "偏贵"
+        assert "偏贵" in result["assessment"]
 
 
 class TestNoHistoryDataUnavailable:

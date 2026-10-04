@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Pagination, Tabs } from "antd";
+import { Drawer, Pagination, Tabs } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import type {
@@ -10,6 +10,9 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import { EM_DASH } from "../../../utils/format";
+import { localeOrDash } from "../../../pageModel";
+import { DataTable, type DataTableColumn } from "../../../components/layout/DataTable";
+import { seriesDisplayName } from "../../market-data/lib/marketDataFormat";
 import type { ModuleHomeSourceQueries } from "./moduleHomeModel";
 import styles from "./marketBackendDataWorkbench.module.css";
 
@@ -43,6 +46,7 @@ type EnvelopeQuery<T = unknown> = {
 
 type MarketBackendDataWorkbenchProps = {
   queries: ModuleHomeSourceQueries;
+  onActiveKeyChange?: (key: string) => void;
 };
 
 type PayloadNodeProps = {
@@ -57,10 +61,23 @@ type ScalarContext = {
 };
 
 const FIELD_LABELS: Record<string, string> = {
+  series_name: "原始指标名",
+  display_name: "指标名称",
+  series_id: "指标代码",
+  trade_date: "数据日期",
+  value_numeric: "观测值",
+  unit: "单位",
+  latest_change: "较前值变化",
+  frequency: "频率",
+  recent_points: "近期观测记录",
   default_data_sources: "默认数据源",
   as_of_date: "数据日期",
   conclusion: "市场结论",
   coverage: "覆盖情况",
+  derived_spreads: "派生期限利差（分析）",
+  term_spread_10y_1y: "10Y-1Y 利差",
+  term_spread_10y_2y: "10Y-2Y 利差",
+  term_spread_10y_5y: "10Y-5Y 利差",
   indicators: "指标明细",
   signal_cards: "信号卡",
   hason_strategy: "Hason 策略",
@@ -212,7 +229,7 @@ function primitiveText(value: unknown, context: ScalarContext = {}) {
   if (typeof value === "boolean") return value ? "是" : "否";
   if (typeof value === "number")
     return Number.isFinite(value)
-      ? value.toLocaleString("zh-CN")
+      ? String(value)
       : "无有效数值";
   if (typeof value === "string") {
     const enumLabel = ENUM_VALUE_LABELS[value.trim().toLowerCase()];
@@ -375,6 +392,31 @@ function ScalarGrid({
   );
 }
 
+/** 原生 details 负责键盘交互，展开状态同时决定是否挂载较大的返回对象。 */
+function LazyPayloadDetails({
+  className,
+  summary,
+  children,
+  defaultOpen = false,
+}: {
+  className: string;
+  summary: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultOpen);
+  return (
+    <details
+      className={className}
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
+      <summary>{summary}</summary>
+      {expanded ? children : null}
+    </details>
+  );
+}
+
 function ArrayNode({
   items,
   path,
@@ -467,21 +509,23 @@ export function MarketPayloadNode({
       {nestedEntries.length > 0 ? (
         <div className={styles.nestedList}>
           {nestedEntries.map(([key, item]) => (
-            <details
+            <LazyPayloadDetails
               className={styles.nestedBlock}
               key={`${path}.${key}`}
-              open={depth === 0}
+              defaultOpen={depth === 0}
+              summary={(
+                <>
+                  <span>{fieldLabel(key)}</span>
+                  <em>{valueSummary(item)}</em>
+                </>
+              )}
             >
-              <summary>
-                <span>{fieldLabel(key)}</span>
-                <em>{valueSummary(item)}</em>
-              </summary>
               <MarketPayloadNode
                 value={item}
                 path={`${path}.${key}`}
                 depth={depth + 1}
               />
-            </details>
+            </LazyPayloadDetails>
           ))}
         </div>
       ) : null}
@@ -498,28 +542,32 @@ function ResultMetaPanel({ meta }: { meta: ResultMeta }) {
   const additionalEntries = entries.filter(([key]) => !primaryKeys.has(key));
 
   return (
-    <details className={styles.metaPanel} open>
+    <details className={styles.metaPanel}>
       <summary>
         <span>结果口径与来源</span>
-        <em>
-          {BASIS_LABELS[meta.basis]} · {meta.result_kind} ·{" "}
-          {QUALITY_STATE_LABELS[meta.quality_flag]}
+        {/* 单行 ≤1 个 `·`（§7）：result_kind 技术标识收进 title，正文留口径+质量。 */}
+        <em title={`结果类型 ${meta.result_kind}`}>
+          {BASIS_LABELS[meta.basis]} · {QUALITY_STATE_LABELS[meta.quality_flag]}
         </em>
       </summary>
       <div className={styles.metaBody}>
         <ScalarGrid entries={primaryEntries} path="result_meta.primary" />
         {additionalEntries.length > 0 ? (
-          <details className={styles.additionalMeta}>
-            <summary>
-              <span>其余来源与口径字段</span>
-              <em>{additionalEntries.length} 个字段 · 展开核验</em>
-            </summary>
+          <LazyPayloadDetails
+            className={styles.additionalMeta}
+            summary={(
+              <>
+                <span>其余来源与口径字段</span>
+                <em>{additionalEntries.length} 个字段 · 展开核验</em>
+              </>
+            )}
+          >
             <MarketPayloadNode
               value={Object.fromEntries(additionalEntries)}
               path="result_meta.additional"
               depth={1}
             />
-          </details>
+          </LazyPayloadDetails>
         ) : null}
       </div>
     </details>
@@ -558,6 +606,7 @@ function EnvelopeBoundary<T>({
     <div className={styles.envelope}>
       <div className={styles.envelopeState}>
         <span data-tone={state.tone}>{state.label}</span>
+        <em>{BASIS_LABELS[query.data.result_meta.basis]}{query.data.result_meta.formal_use_allowed === false ? " · 正式使用受限" : ""}</em>
         <em>
           {query.data.result_meta.fallback_mode !== "none" ||
           query.data.result_meta.fallback_date
@@ -625,6 +674,8 @@ function RecordTable({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedRecord, setSelectedRecord] = useState<Record<string, unknown> | null>(null);
+  const isQuoteTable = path === "choice.series" || path === "rates.series";
   const keys = useMemo(() => recordKeys(rows), [rows]);
   const filteredRows = useMemo(() => {
     const normalized = searchTerm.trim().toLocaleLowerCase("zh-CN");
@@ -639,6 +690,65 @@ function RecordTable({
     (safePage - 1) * pageSize,
     safePage * pageSize,
   );
+  const quoteRows = visibleRows.map((row, index) => ({
+    record: isRecord(row) ? row : { value: row },
+    index: (safePage - 1) * pageSize + index,
+  }));
+  const quoteColumns: DataTableColumn<(typeof quoteRows)[number]>[] = [
+    {
+      key: "name", title: "指标", width: 250,
+      render: ({ record }) => (
+        <span className={styles.quoteName} title={primitiveText(record.series_name)}>
+          {seriesDisplayName({
+            series_name: typeof record.series_name === "string" ? record.series_name : EM_DASH,
+            display_name: typeof record.display_name === "string" ? record.display_name : null,
+          })}
+        </span>
+      ),
+    },
+    {
+      key: "value", title: "最新值", align: "numeric", width: 130,
+      note: "最多保留四位小数；原始数值可在单条记录核验中查看。",
+      render: ({ record }) => localeOrDash(
+        typeof record.value_numeric === "number" ? record.value_numeric : null,
+        "zh-CN", { maximumFractionDigits: 4 },
+      ),
+    },
+    { key: "unit", title: "单位", width: 100, render: ({ record }) => record.unit ? primitiveText(record.unit) : EM_DASH },
+    {
+      key: "change", title: "较前值变化", align: "numeric", width: 130,
+      note: "原单位差值，不是涨跌幅；百分比序列的差值按百分点理解。",
+      render: ({ record }) => localeOrDash(
+        typeof record.latest_change === "number" ? record.latest_change : null,
+        "zh-CN", { maximumFractionDigits: 4, signDisplay: "exceptZero" },
+      ),
+    },
+    { key: "date", title: "数据日期", width: 110, render: ({ record }) => record.trade_date ? primitiveText(record.trade_date) : EM_DASH },
+    {
+      key: "quality", title: "质量", width: 100,
+      render: ({ record }) => (
+        <span className={styles.quoteQuality} data-quality={record.quality_flag}>
+          {typeof record.quality_flag === "string"
+            ? QUALITY_STATE_LABELS[record.quality_flag as ResultMeta["quality_flag"]] ?? record.quality_flag
+            : EM_DASH}
+        </span>
+      ),
+    },
+    {
+      key: "details", title: "详情", width: 68,
+      render: ({ record }) => (
+        <button
+          type="button"
+          className={styles.recordButton}
+          aria-label={`核验 ${record.display_name || record.series_name || record.series_id || "记录"}`}
+          aria-haspopup="dialog"
+          onClick={() => setSelectedRecord(record)}
+        >
+          核验
+        </button>
+      ),
+    },
+  ];
 
   return (
     <section className={styles.recordTableSection}>
@@ -648,24 +758,23 @@ function RecordTable({
           <span>
             {filteredRows.length.toLocaleString("zh-CN")}
             {searchTerm ? ` / ${rows.length.toLocaleString("zh-CN")}` : ""} 条
-            {" · "}
-            {keys.length} 个返回字段
+            {isQuoteTable ? "" : ` · ${keys.length} 个返回字段`}
           </span>
         </div>
         <div className={styles.tableTools}>
           <label className={styles.searchField}>
-            <span>搜索字段</span>
+            <span>搜索</span>
             <input
               type="search"
               value={searchTerm}
-              placeholder="series_id / 名称 / vendor"
+              placeholder="指标名称、代码或来源"
               onChange={(event) => {
                 setSearchTerm(event.currentTarget.value);
                 setPage(1);
               }}
             />
           </label>
-          <em>横向滚动查看全部字段</em>
+          {isQuoteTable ? null : <em>横向滚动查看全部字段</em>}
         </div>
       </header>
       {rows.length === 0 ? (
@@ -674,6 +783,16 @@ function RecordTable({
         <div className={styles.emptyValue}>没有匹配当前搜索条件的记录。</div>
       ) : (
         <>
+          {isQuoteTable ? (
+            <DataTable
+              columns={quoteColumns}
+              rows={quoteRows}
+              rowKey={({ index }) => `${path}-${index}`}
+              rowHeaderKey="name"
+              ariaLabel={title}
+              testId={`market-quotes-${path}`}
+            />
+          ) : (
           <div className={styles.tableScroll}>
             <table>
               <thead>
@@ -696,14 +815,13 @@ function RecordTable({
                         return (
                           <td key={key}>
                             {Array.isArray(value) || isRecord(value) ? (
-                              <details className={styles.cellDetails}>
-                                <summary>{valueSummary(value)}</summary>
+                              <LazyPayloadDetails className={styles.cellDetails} summary={valueSummary(value)}>
                                 <MarketPayloadNode
                                   value={value}
                                   path={`${path}.${absoluteIndex}.${key}`}
                                   depth={2}
                                 />
-                              </details>
+                              </LazyPayloadDetails>
                             ) : (
                               <BackendScalarValue
                                 compact
@@ -721,6 +839,7 @@ function RecordTable({
               </tbody>
             </table>
           </div>
+          )}
           <Pagination
             current={safePage}
             pageSize={pageSize}
@@ -739,6 +858,17 @@ function RecordTable({
           />
         </>
       )}
+      <Drawer
+        title="行情记录核验"
+        open={selectedRecord !== null}
+        onClose={() => setSelectedRecord(null)}
+        rootClassName={`theme-dh-api ${styles.recordDrawer}`}
+        data-moss-theme-scope="market-overview"
+        width="min(640px, 100vw)"
+        destroyOnHidden
+      >
+        {selectedRecord ? <MarketPayloadNode value={selectedRecord} path={`${path}.selected`} /> : null}
+      </Drawer>
     </section>
   );
 }
@@ -761,13 +891,15 @@ function SeriesEnvelope({
         );
         return (
           <>
+            <RecordTable rows={series} title={title} path={`${path}.series`} />
             {restEntries.length > 0 ? (
-              <MarketPayloadNode
+              <LazyPayloadDetails className={styles.nestedBlock} summary="补充指标与返回字段">
+                <MarketPayloadNode
                 value={Object.fromEntries(restEntries)}
                 path={`${path}.summary`}
-              />
+                />
+              </LazyPayloadDetails>
             ) : null}
-            <RecordTable rows={series} title={title} path={`${path}.series`} />
           </>
         );
       }}
@@ -840,16 +972,16 @@ function NewsEnvelope({
                 </span>
               </header>
               {events.map((event, index) => (
-                <details
+                <LazyPayloadDetails
                   className={styles.newsEvent}
                   key={event.event_key || `${offset}-${index}`}
+                  summary={eventTitle(event, offset + index)}
                 >
-                  <summary>{eventTitle(event, offset + index)}</summary>
                   <MarketPayloadNode
                     value={event}
                     path={`news.events.${offset + index}`}
                   />
-                </details>
+                </LazyPayloadDetails>
               ))}
               {events.length === 0 ? (
                 <div className={styles.emptyValue}>当前分页没有事件。</div>
@@ -878,6 +1010,7 @@ function tabCount(value: number | undefined) {
 
 export function MarketBackendDataWorkbench({
   queries,
+  onActiveKeyChange,
 }: MarketBackendDataWorkbenchProps) {
   const client = useApiClient();
   const [activeKey, setActiveKey] = useState("choice");
@@ -914,13 +1047,16 @@ export function MarketBackendDataWorkbench({
   const newsCount =
     newsPageQuery.data?.result.total_rows ??
     queries.newsEvents?.data?.result.total_rows;
+  const newsAuditQuery = newsPageQuery.data || newsPageQuery.isFetching || newsPageQuery.isError
+    ? newsPageQuery
+    : queries.newsEvents;
   const returnedSourceCount = [
     queries.choiceLatest,
     queries.marketRates,
     queries.marketCatalog,
     queries.macroToolkitAnalysis,
     queries.macroToolkitStrategySummaries,
-    queries.newsEvents,
+    newsAuditQuery,
   ].filter((query) => Boolean(query?.data)).length;
   const macroKeys = queries.macroToolkitAnalysis?.data
     ? Object.keys(queries.macroToolkitAnalysis.data.result)
@@ -928,12 +1064,12 @@ export function MarketBackendDataWorkbench({
   const strategyKeys = queries.macroToolkitStrategySummaries?.data
     ? Object.keys(queries.macroToolkitStrategySummaries.data.result)
     : [];
-  const newsSamples = queries.newsEvents?.data?.result.events?.slice(0, 3) ?? [];
+  const newsSamples = newsAuditQuery?.data?.result.events?.slice(0, 3) ?? [];
   const verificationAsOf =
     queries.choiceLatest?.data?.result_meta.as_of_date ??
     queries.choiceLatest?.data?.result_meta.resolved_report_date ??
     queries.choiceLatest?.data?.result_meta.fallback_date ??
-    "日期未返回";
+    EM_DASH;
   const sourceAuditRows = [
     {
       key: "choice",
@@ -969,7 +1105,7 @@ export function MarketBackendDataWorkbench({
       key: "news",
       label: "新闻事件",
       count: tabCount(newsCount),
-      query: queries.newsEvents,
+      query: newsAuditQuery,
     },
   ].map((row) => ({ ...row, state: queryState(row.query) }));
 
@@ -980,7 +1116,7 @@ export function MarketBackendDataWorkbench({
       children: (
         <SeriesEnvelope
           query={queries.choiceLatest}
-          title="Choice 最新行情序列"
+          title="最新行情"
           path="choice"
         />
       ),
@@ -991,7 +1127,7 @@ export function MarketBackendDataWorkbench({
       children: (
         <SeriesEnvelope
           query={queries.marketRates}
-          title="市场利率完整序列"
+          title="正式利率"
           path="rates"
         />
       ),
@@ -1039,16 +1175,15 @@ export function MarketBackendDataWorkbench({
 
   return (
     <section
-      id="market-backend-data-all"
       className={styles.workbench}
       data-testid="module-home-market-backend-data"
     >
       <header className={styles.workbenchHeader}>
         <div>
           <span>04</span>
-          <h2>数据核验 · 6 来源</h2>
+          <h2>行情明细与来源核验</h2>
           <p>
-            六条后端读链路保留全部返回字段；左侧核对数据，右侧固定查看口径、质量、回退与日期依据。
+            先查看行情，单条记录可核对来源、质量与近期观测。
           </p>
         </div>
         <div className={styles.coverageSummary}>
@@ -1059,11 +1194,20 @@ export function MarketBackendDataWorkbench({
           </em>
         </div>
       </header>
-      <Tabs activeKey={activeKey} items={items} onChange={setActiveKey} />
-      <div
+      <Tabs
+        activeKey={activeKey}
+        items={items}
+        renderTabBar={(props, DefaultTabBar) => <DefaultTabBar {...props} mobile />}
+        onChange={(key) => {
+          setActiveKey(key);
+          onActiveKeyChange?.(key);
+        }}
+      />
+      <details
         className={styles.auditSummary}
         data-testid="module-home-market-backend-audit-summary"
       >
+        <summary>六类数据源的读取状态与结构</summary>
         <article className={styles.auditPanel}>
           <header>
             <strong>宏观 / 策略对象</strong>
@@ -1086,7 +1230,7 @@ export function MarketBackendDataWorkbench({
         <article className={styles.auditPanel}>
           <header>
             <strong>新闻分页预览</strong>
-            <span>母查询最新 3 条</span>
+            <span>{newsPageQuery.data ? "当前分页前 3 条" : "图表样本前 3 条"}</span>
           </header>
           <div className={styles.auditNews}>
             {newsSamples.length > 0 ? (
@@ -1102,7 +1246,7 @@ export function MarketBackendDataWorkbench({
             ) : (
               <div>
                 <span>--</span>
-                <strong>等待新闻母查询返回</strong>
+                <strong>打开新闻页签后读取事件</strong>
                 <em>--</em>
               </div>
             )}
@@ -1128,7 +1272,7 @@ export function MarketBackendDataWorkbench({
             ))}
           </div>
         </article>
-      </div>
+      </details>
     </section>
   );
 }

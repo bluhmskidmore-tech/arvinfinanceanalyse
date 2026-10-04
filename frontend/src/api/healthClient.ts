@@ -14,27 +14,6 @@ export type HealthClientMethods = {
   getHealthSummary: () => Promise<HealthStatusResponse>;
 };
 
-type Delay = () => Promise<void>;
-
-export function createDemoHealthClient(delay: Delay): HealthClientMethods {
-  return {
-    async getHealth() {
-      await delay();
-      return { status: "ok" };
-    },
-    async getHealthLive() {
-      await delay();
-      return { status: "ok" };
-    },
-    async getHealthSummary() {
-      await delay();
-      return { status: "ok" };
-    },
-  };
-}
-
-export const createMockHealthClient = createDemoHealthClient;
-
 /**
  * Health payloads are plain `{ status }` JSON (no ApiEnvelope), served via the
  * shared transport: status-only error messages plus the default 60s timeout

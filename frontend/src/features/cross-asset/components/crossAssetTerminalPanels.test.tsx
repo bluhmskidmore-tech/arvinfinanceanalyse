@@ -1,11 +1,16 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ibTokens } from "../../../theme/designSystem";
 import type { CorrelationMatrix, WaterfallBar } from "../lib/crossAssetAnalytics";
+import { resolveCrossAssetChartPalette } from "../lib/crossAssetChartTheme";
 
 import { CorrelationHeatmapPanel } from "./CorrelationAndRegimePanels";
 import { DriverWaterfallPanel } from "./DriverWaterfallPanel";
+
+vi.mock("./CrossAssetECharts", () => ({
+  LazyCrossAssetECharts: ({ option }: { option: unknown }) => <div data-chart-option={JSON.stringify(option)} />,
+}));
 
 const MATRIX: CorrelationMatrix = {
   keys: ["csi300", "cn_gov_10y"],
@@ -29,14 +34,23 @@ const BARS: WaterfallBar[] = [
 ];
 
 describe("CorrelationHeatmapPanel terminal theme", () => {
-  it("uses the terminal heatmap ramp while the default stays on correlationColor", () => {
+  it("uses the selected chart palette without changing correlation values", () => {
     const { container: light } = render(<CorrelationHeatmapPanel matrix={MATRIX} />);
-    const lightCell = light.querySelector<HTMLElement>('[title="沪深300 × 10Y国债: 0.80"]')!;
-    expect(lightCell.style.background).toContain("34, 139, 34");
+    const lightOption = JSON.parse(light.querySelector<HTMLElement>("[data-chart-option]")!.dataset.chartOption!);
+    const lightPalette = resolveCrossAssetChartPalette("light");
+    expect(lightOption.visualMap.inRange.color).toEqual([
+      lightPalette.heatmapLow, lightPalette.heatmapMid, lightPalette.heatmapHigh,
+    ]);
 
     const { container: dark } = render(<CorrelationHeatmapPanel matrix={MATRIX} theme="terminal" />);
-    const darkCell = dark.querySelector<HTMLElement>('[title="沪深300 × 10Y国债: 0.80"]')!;
-    expect(darkCell.style.background).toContain("90, 189, 153");
+    const darkOption = JSON.parse(dark.querySelector<HTMLElement>("[data-chart-option]")!.dataset.chartOption!);
+    const darkPalette = resolveCrossAssetChartPalette("terminal");
+    expect(darkOption.visualMap.inRange.color).toEqual([
+      darkPalette.heatmapLow, darkPalette.heatmapMid, darkPalette.heatmapHigh,
+    ]);
+    expect(darkOption.tooltip.textStyle.color).toBe(darkPalette.text);
+    expect(darkOption.series[0].data).toEqual(lightOption.series[0].data);
+    expect(darkOption.series[0].data).toContainEqual([1, 0, 0.8]);
   });
 });
 

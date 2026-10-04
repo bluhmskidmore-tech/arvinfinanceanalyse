@@ -16,6 +16,7 @@ from backend.app.core_finance.liability_analytics_compat import (
     ONE_HUNDRED_MILLION,
     ZERO,
     clean_text,
+    coerce_date,
     compute_liability_yield_metrics,
     is_interbank_cd,
     is_interest_bearing_bond_asset,
@@ -63,6 +64,7 @@ def compute_cockpit_warnings(
     # --- Rebuild lightweight aggregates from the same data as risk_buckets ---
     total_liability = ZERO
     short_term_liability = ZERO  # ≤1Y bucket
+    missing_maturity_count = 0
 
     for row in zqtz_rows:
         if not bool(row.get("is_issuance_like")):
@@ -70,6 +72,8 @@ def compute_cockpit_warnings(
         amount = zqtz_liability_amount(row)
         if amount > ZERO:
             total_liability += amount
+            if coerce_date(row.get("maturity_date")) is None:
+                missing_maturity_count += 1
             bucket = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
             if bucket in ("0-3M", "3-6M", "6-12M", "Matured"):
                 short_term_liability += amount
@@ -81,6 +85,8 @@ def compute_cockpit_warnings(
         amount = to_decimal(row.get("principal_native"))
         if amount > ZERO:
             total_liability += amount
+            if coerce_date(row.get("maturity_date")) is None:
+                missing_maturity_count += 1
             bucket = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
             if bucket in ("0-3M", "3-6M", "6-12M", "Matured"):
                 short_term_liability += amount
@@ -127,20 +133,27 @@ def compute_cockpit_warnings(
         })
 
     # Short-term pressure
+    if missing_maturity_count:
+        watch_items.append({
+            "id": "watch_missing_maturity",
+            "label": "到期日信息不完整",
+            "level": "warning",
+            "detail": f"{missing_maturity_count} 条负债记录未提供到期日，未计入1年内到期金额；当前到期压力仅覆盖已知到期日部分。",
+        })
     if short_term_yi >= SHORT_TERM_PRESSURE_YI:
         alert_events.append({
             "id": "alert_short_term_maturity",
             "severity": "medium",
             "title": "1年内到期负债偏高",
             "occurred_at": report_date,
-            "detail": f"1年内到期负债 {to_float(short_term_yi):.0f} 亿元，存在再融资压力。",
+            "detail": f"已知1年内到期负债（含已到期）{to_float(short_term_yi):.0f} 亿元，达到 100 亿元关注线；未提供到期日部分另列。",
         })
     elif short_term_yi > ZERO:
         watch_items.append({
             "id": "watch_short_term_maturity",
             "label": "短期到期关注",
             "level": "watch",
-            "detail": f"1年内到期负债 {to_float(short_term_yi):.0f} 亿元。",
+            "detail": f"已知1年内到期负债（含已到期）{to_float(short_term_yi):.0f} 亿元；未提供到期日部分另列。",
         })
 
     # High liability cost
@@ -173,8 +186,10 @@ def compute_contribution_split(
       - category: '利率债', '信用债', '同业负债', '发行负债', ...
       - side: 'asset' | 'liability'
       - amount_yi: 金额（亿元）
-      - yield_or_cost: 加权收益或成本（小数形式）
-      - contribution_yi: amount_yi × yield_or_cost  (亿元贡献)
+      - yield_or_cost: 全部金额均有利率时的加权收益或成本（小数形式）
+      - contribution_yi: 全部金额均有利率时的贡献（亿元）；覆盖不全为 None
+      - known_contribution_yi: 已知利率部分的贡献；无已知利率为 None
+      - missing_rate_amount_yi / rate_coverage_pct: 缺失金额及已知利率金额覆盖率
     """
     categories: dict[str, dict[str, Any]] = {}
 
@@ -257,22 +272,27 @@ def compute_contribution_split(
         key=lambda x: (0 if x[1]["side"] == "asset" else 1, -x[1]["amount"]),
     ):
         amount_yi = entry["amount"] / ONE_HUNDRED_MILLION
+        missing_rate_amount = entry["amount"] - entry["weighted_den"]
         yield_or_cost = (
             entry["weighted_num"] / entry["weighted_den"]
+            if entry["weighted_den"] > ZERO and missing_rate_amount == ZERO
+            else None
+        )
+        known_contribution_yi = (
+            entry["weighted_num"] / ONE_HUNDRED_MILLION
             if entry["weighted_den"] > ZERO
             else None
         )
-        contribution_yi = (
-            amount_yi * yield_or_cost
-            if yield_or_cost is not None
-            else None
-        )
+        contribution_yi = known_contribution_yi if missing_rate_amount == ZERO else None
         contributions.append({
             "category": entry["category"],
             "side": entry["side"],
             "amount_yi": to_float(amount_yi),
             "yield_or_cost": to_float(yield_or_cost),
             "contribution_yi": to_float(contribution_yi),
+            "known_contribution_yi": to_float(known_contribution_yi),
+            "missing_rate_amount_yi": to_float(missing_rate_amount / ONE_HUNDRED_MILLION),
+            "rate_coverage_pct": to_float(entry["weighted_den"] / entry["amount"] * Decimal("100")),
         })
 
     return {

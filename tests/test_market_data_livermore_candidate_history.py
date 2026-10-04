@@ -5,6 +5,8 @@ import json
 import sys
 from contextlib import contextmanager
 from datetime import date, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import duckdb
@@ -30,6 +32,8 @@ from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_envelope,
     livermore_candidate_history_portfolio_backtest_envelope,
 )
+from backend.app.services import market_data_livermore_service as livermore_service
+from backend.app.services.pretrade_qualification import canonical_pretrade_output_sha256
 from backend.app.tasks.livermore_candidate_history_materialize import (
     EXECUTION_FORMULA_VERSION,
     backfill_livermore_candidate_execution_history,
@@ -211,7 +215,13 @@ def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade
           input_family varchar,
           field_key varchar,
           status varchar,
-          row_count integer
+          row_count integer,
+          call varchar,
+          vendor_indicator varchar,
+          request_arguments_json varchar,
+          request_options_json varchar,
+          source_version varchar,
+          vendor_version varchar
         )
         """
     )
@@ -264,15 +274,51 @@ def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade
         """
     )
     conn.executemany(
-        "insert into choice_stock_request_audit values (?, ?, ?, ?, ?)",
+        "insert into choice_stock_request_audit values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            (trade_date, "stock_universe", "a_share_universe_sector_001004", "completed", 1),
-            (trade_date, "sector_membership", "sw2021_industry_membership", "completed", 1),
-            (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1),
-            (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1),
-            (trade_date, "stock_status", "daily_trade_status", "completed", 1),
-            (trade_date, "limit_up_quality", "daily_limit_flags", "completed", 1),
-            (trade_date, "limit_up_quality", "point_in_time_limit_streaks", "completed", 1),
+            (
+                trade_date,
+                "stock_universe",
+                "a_share_universe_sector_001004",
+                "completed",
+                1,
+                "sector",
+                "001004",
+                f'["001004","{trade_date}"]',
+                "{}",
+                "choice-test-source",
+                "choice-test-vendor",
+            ),
+            (
+                trade_date,
+                "sector_membership",
+                "sw2021_industry_membership",
+                "completed",
+                1,
+                "css",
+                "SW2021,SW2021CODE",
+                '["000001.SZ","SW2021,SW2021CODE"]',
+                f'{{"EndDate":"{trade_date}","Classification":"1"}}',
+                "choice-test-source",
+                "choice-test-vendor",
+            ),
+            (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+            (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+            (trade_date, "stock_status", "daily_trade_status", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+            (trade_date, "limit_up_quality", "daily_limit_flags", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+            (
+                trade_date,
+                "limit_up_quality",
+                "point_in_time_limit_streaks",
+                "completed",
+                1,
+                "css",
+                "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS",
+                '["000001.SZ","ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS"]',
+                f'{{"TradeDate":"{trade_date}"}}',
+                "choice-test-source",
+                "choice-test-vendor",
+            ),
         ],
     )
     conn.execute(
@@ -341,6 +387,8 @@ def _insert_strategy_score_rows(
     rows: list[tuple[str, str, str, str, float | None, float | None, float | None, str]],
 ) -> None:
     _ensure_livermore_candidate_history_test_schema(conn)
+    # Research statistics are adjusted-only; mirror the raw returns into the
+    # *_adj columns so these fixture rows stay visible to research stats.
     conn.executemany(
         """
         insert into livermore_candidate_history (
@@ -355,6 +403,9 @@ def _insert_strategy_score_rows(
           return_1d,
           return_5d,
           return_20d,
+          return_1d_adj,
+          return_5d_adj,
+          return_20d_adj,
           data_status,
           formula_version,
           source_version,
@@ -363,7 +414,7 @@ def _insert_strategy_score_rows(
           run_id,
           signal_kind,
           signal_evidence_json
-        ) values (?, ?, ?, ?, 10.0, ?, ?, ?, ?, ?, ?, 'complete', 'fv1', 'sv_score', 'vv_score', 'rv_score', ?, ?, ?)
+        ) values (?, ?, ?, ?, 10.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'complete', 'fv1', 'sv_score', 'vv_score', 'rv_score', ?, ?, ?)
         """,
         [
             (
@@ -374,6 +425,9 @@ def _insert_strategy_score_rows(
                 snapshot_date,
                 snapshot_date,
                 snapshot_date,
+                return_1d,
+                return_5d,
+                return_20d,
                 return_1d,
                 return_5d,
                 return_20d,
@@ -495,7 +549,7 @@ def test_task_happy_path_forward_returns(monkeypatch, tmp_path) -> None:
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -579,7 +633,7 @@ def test_task_writes_adjusted_forward_returns_using_adj_factor_ratio(monkeypatch
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -641,7 +695,7 @@ def test_task_leaves_adjusted_return_null_when_adj_factor_missing_and_sets_evide
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -708,7 +762,7 @@ def test_task_writes_execution_history_with_next_open_and_net_returns(monkeypatc
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -786,7 +840,7 @@ def test_task_execution_write_same_date_replay_keeps_one_logical_row(monkeypatch
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -865,7 +919,7 @@ def test_task_marks_execution_entry_ex_div_when_entry_adj_factor_differs_from_si
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -933,7 +987,7 @@ def test_task_marks_execution_entry_blocked_on_limit_up_open(monkeypatch, tmp_pa
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -1008,7 +1062,7 @@ def test_execution_only_backfill_rebuilds_execution_history_from_existing_candid
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -1553,7 +1607,7 @@ def test_stock_candidate_history_persists_breakout_evidence_fields(monkeypatch, 
         return payload, meta
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -1645,7 +1699,7 @@ def test_stock_candidate_history_passes_policy_to_strategy_loader_and_persists_p
         return payload, meta
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -1720,7 +1774,7 @@ def test_stock_candidate_universe_history_keeps_pre_truncation_rows(monkeypatch,
         return payload, meta
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -1778,7 +1832,7 @@ def test_task_partial_halt_long_gap(monkeypatch, tmp_path) -> None:
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
     materialize_livermore_candidate_history(str(db_path))
@@ -1837,7 +1891,7 @@ def test_task_does_not_mark_exchange_holiday_gap_as_partial_halt(monkeypatch, tm
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -1881,7 +1935,7 @@ def test_task_treats_holiday_gap_with_incomplete_forward_window_as_pending(monke
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -1913,7 +1967,7 @@ def test_task_pending_insufficient_forward_bars(monkeypatch, tmp_path) -> None:
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
     materialize_livermore_candidate_history(str(db_path))
@@ -1954,19 +2008,46 @@ def test_task_uses_configured_choice_stock_readiness(monkeypatch, tmp_path) -> N
         return ready
 
     def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
-        seen["stock_readiness"] = kwargs.get("stock_readiness")
+        seen["stock_readiness"] = kwargs["captured_external_inputs"][
+            "stock_readiness"
+        ]
         return _fake_payload(
             as_of_date=snap.isoformat(),
             items=[{"rank": 1, "stock_code": stock, "stock_name": "Ready", "sector_code": "S1", "sector_name": "Sec"}],
         )
 
     monkeypatch.setattr("backend.app.tasks.livermore_candidate_history_materialize.get_settings", lambda: _Settings())
+    def _mock_capture() -> dict[str, object]:
+        captured_readiness = _mock_readiness(expected_catalog)
+        return {
+            "identity_profiles": [
+                {"name": name, "present": False, "content_sha256": "a" * 64}
+                for name in (
+                    "choice_stock_catalog",
+                    "cycle_rotation_macro_official_availability",
+                    "cycle_rotation_macro_official_releases",
+                    "macro_adversarial_signal_payload",
+                )
+            ],
+            "stock_readiness": captured_readiness,
+            "availability_manifest_payload": {},
+            "releases_manifest_payload": {},
+            "adversarial_payload": {},
+            "adversarial_meta": {},
+        }
+
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_choice_stock_readiness",
-        _mock_readiness,
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE,
+        "_capture_configured_external_inputs",
+        _mock_capture,
     )
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE,
+        "_configured_external_input_identities_match",
+        lambda _captured: True,
+    )
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -1977,29 +2058,319 @@ def test_task_uses_configured_choice_stock_readiness(monkeypatch, tmp_path) -> N
     assert seen["stock_readiness"] is ready
 
 
-def test_task_loads_strategy_before_opening_write_connection(monkeypatch, tmp_path) -> None:
+def test_task_loads_strategy_from_the_open_write_connection(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "lock.duckdb"
     snap = date(2026, 5, 1)
     stock = "000005.SZ"
     _seed_calendar_observations(str(db_path), stock_code=stock, start=snap, days=25)
 
-    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
-        probe = duckdb.connect(str(db_path), read_only=True)
-        probe.close()
+    seen: dict[str, object] = {}
+
+    def _mock_load(conn: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        seen["conn"] = conn
+        assert isinstance(conn, duckdb.DuckDBPyConnection)
+        assert conn.execute("select 1").fetchone() == (1,)
         return _fake_payload(
             as_of_date=snap.isoformat(),
             items=[{"rank": 1, "stock_code": stock, "stock_name": "Lock", "sector_code": "S1", "sector_name": "Sec"}],
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
     out = materialize_livermore_candidate_history(str(db_path))
 
     assert out["row_count"] == 1
+    assert seen["conn"] is not None
 
+
+def test_task_rolls_back_strategy_side_effect_when_connection_loader_fails(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "strategy-rollback.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("create table transaction_probe (value integer)")
+    finally:
+        conn.close()
+
+    def _mock_load(conn: duckdb.DuckDBPyConnection, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        conn.execute("insert into transaction_probe values (1)")
+        raise RuntimeError("strategy failed")
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
+        _mock_load,
+    )
+
+    with pytest.raises(RuntimeError, match="strategy failed"):
+        materialize_livermore_candidate_history(str(db_path))
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        assert conn.execute("select count(*) from transaction_probe").fetchone() == (0,)
+    finally:
+        conn.close()
+
+
+def test_task_rolls_back_when_prewrite_projection_fails_after_strategy_load(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "projection-rollback.duckdb"
+    snap = date(2026, 5, 1)
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("create table transaction_probe (value integer)")
+    finally:
+        conn.close()
+
+    def _mock_load(
+        conn: duckdb.DuckDBPyConnection,
+        **kwargs: object,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        conn.execute("insert into transaction_probe values (1)")
+        return _fake_payload(as_of_date=snap.isoformat(), items=[])
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
+        _mock_load,
+    )
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.canonical_pretrade_output_sha256",
+        lambda _payload: (_ for _ in ()).throw(RuntimeError("projection failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="projection failed"):
+        materialize_livermore_candidate_history(
+            str(db_path),
+            as_of_date=snap.isoformat(),
+        )
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        assert conn.execute("select count(*) from transaction_probe").fetchone() == (0,)
+    finally:
+        conn.close()
+
+
+def test_task_rolls_back_when_captured_external_inputs_change_before_commit(
+    monkeypatch, tmp_path
+) -> None:
+    db_path = tmp_path / "external-input-rollback.duckdb"
+    snap = date(2026, 5, 1)
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("create table transaction_probe (value integer)")
+    finally:
+        conn.close()
+
+    captured_external_inputs = {
+        "identity_profiles": [
+            {"name": name, "present": True, "content_sha256": "a" * 64}
+            for name in (
+                "choice_stock_catalog",
+                "cycle_rotation_macro_official_availability",
+                "cycle_rotation_macro_official_releases",
+                "macro_adversarial_signal_payload",
+            )
+        ],
+        "stock_readiness": ChoiceStockReadiness(
+            ready=True,
+            status="ready",
+            catalog_path="choice-stock.json",
+            missing_input_families=[],
+            message="ready for test",
+        ),
+        "availability_manifest_payload": {},
+        "releases_manifest_payload": {},
+        "adversarial_payload": {},
+        "adversarial_meta": {},
+    }
+
+    def _mock_load(
+        conn: duckdb.DuckDBPyConnection,
+        **kwargs: object,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        conn.execute("insert into transaction_probe values (1)")
+        assert kwargs["captured_external_inputs"] is captured_external_inputs
+        return _fake_payload(as_of_date=snap.isoformat(), items=[])
+
+    monkeypatch.setattr(
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE,
+        "_capture_configured_external_inputs",
+        lambda: captured_external_inputs,
+    )
+    monkeypatch.setattr(
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE,
+        "_configured_external_input_identities_match",
+        lambda _captured: False,
+    )
+    monkeypatch.setattr(
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE,
+        "load_livermore_strategy_payload_from_connection",
+        _mock_load,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="livermore external inputs changed during production",
+    ):
+        materialize_livermore_candidate_history(
+            str(db_path),
+            as_of_date=snap.isoformat(),
+        )
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        assert conn.execute("select count(*) from transaction_probe").fetchone() == (0,)
+    finally:
+        conn.close()
+
+
+def test_captured_missing_manifest_is_not_reread_during_strategy_calculation(
+    monkeypatch,
+) -> None:
+    def _unexpected_read(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("captured missing manifest must not fall back to latest")
+
+    monkeypatch.setattr(Path, "read_text", _unexpected_read)
+
+    assert not livermore_service._official_availability_binding_allows(
+        series_id="CN_PMI",
+        business_date=date(2026, 4, 30),
+        vendor_version="official:20260502",
+        rule_version="cycle_rotation_macro_official_availability/v1",
+        as_of_date=date(2026, 5, 1),
+        availability_manifest_path=None,
+        official_releases_manifest_path=None,
+        availability_manifest_payload=None,
+        official_releases_manifest_payload=None,
+    )
+
+
+def test_attested_replay_uses_producer_theme_overlay_mode(
+    monkeypatch, tmp_path
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_strategy_envelope(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"result": {"as_of_date": "2026-04-06"}, "result_meta": {}}
+
+    monkeypatch.setattr(
+        livermore_service,
+        "_livermore_strategy_envelope",
+        fake_strategy_envelope,
+    )
+    reader = livermore_service.StockAnalysisThemeOverlayReader(
+        archive_root=tmp_path,
+        governance_repo=object(),
+    )
+
+    livermore_service.livermore_attested_strategy_envelope_from_catalog(
+        duckdb_path=str(tmp_path / "producer-mode.duckdb"),
+        choice_stock_catalog_file="choice-stock.json",
+        as_of_date="2026-04-06",
+        theme_overlay_reader=reader,
+        captured_external_inputs={"stock_readiness": object()},
+    )
+
+    assert captured["backfill_mode"] is True
+    assert captured["theme_overlay_reader"] is None
+
+
+def test_materialized_strategy_identity_matches_actual_workbench_strategy_projection(
+    monkeypatch, tmp_path
+) -> None:
+    from tests.test_market_data_livermore_api import (
+        _ready_choice_stock_readiness,
+        _seed_choice_macro_history,
+        _seed_minimal_factor_snapshot,
+    )
+
+    db_path = tmp_path / "producer-workbench-identity.duckdb"
+    target_date = "2026-04-06"
+    _seed_choice_macro_history(
+        str(db_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 8 for day in range(65)],
+    )
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _seed_minimal_factor_snapshot(conn, as_of_date=target_date)
+    finally:
+        conn.close()
+
+    readiness = _ready_choice_stock_readiness()
+    captured_external_inputs = livermore_service.capture_livermore_external_inputs(
+        "choice-stock.json"
+    )
+    captured_external_inputs["stock_readiness"] = readiness
+    monkeypatch.setattr(
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE,
+        "_capture_configured_external_inputs",
+        lambda: captured_external_inputs,
+    )
+    monkeypatch.setattr(
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE,
+        "_configured_external_input_identities_match",
+        lambda _captured: True,
+    )
+    monkeypatch.setattr(
+        livermore_service,
+        "load_choice_stock_readiness",
+        lambda _catalog_file: readiness,
+    )
+    producer_payload: dict[str, object] = {}
+    original_connection_loader = (
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE.load_livermore_strategy_payload_from_connection
+    )
+
+    def _capture_producer_payload(*args, **kwargs):
+        payload, meta = original_connection_loader(*args, **kwargs)
+        producer_payload.update(payload)
+        return payload, meta
+
+    monkeypatch.setattr(
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE,
+        "load_livermore_strategy_payload_from_connection",
+        _capture_producer_payload,
+    )
+
+    producer_result = materialize_livermore_candidate_history(
+        str(db_path),
+        as_of_date=target_date,
+    )
+    workbench_strategy = livermore_service.livermore_attested_strategy_envelope_from_catalog(
+        duckdb_path=str(db_path),
+        choice_stock_catalog_file="choice-stock.json",
+        as_of_date=target_date,
+        stock_candidate_policy=producer_result["stock_candidate_policy"],
+        theme_overlay_reader=livermore_service.StockAnalysisThemeOverlayReader(
+            archive_root=tmp_path,
+            governance_repo=object(),
+        ),
+    )["result"]
+
+    def _diff_paths(left, right, path="result"):
+        if isinstance(left, dict) and isinstance(right, dict):
+            paths = []
+            for key in sorted(set(left) | set(right)):
+                paths.extend(_diff_paths(left.get(key), right.get(key), f"{path}.{key}"))
+            return paths
+        if isinstance(left, list) and isinstance(right, list):
+            paths = []
+            for index in range(max(len(left), len(right))):
+                left_value = left[index] if index < len(left) else "<missing>"
+                right_value = right[index] if index < len(right) else "<missing>"
+                paths.extend(_diff_paths(left_value, right_value, f"{path}[{index}]"))
+            return paths
+        return [] if left == right else [f"{path}: {left!r} != {right!r}"]
+
+    assert workbench_strategy == producer_payload, "\n".join(
+        _diff_paths(workbench_strategy, producer_payload)
+    )
+    assert canonical_pretrade_output_sha256(workbench_strategy) == producer_result[
+        "strategy_payload_sha256"
+    ]
 
 def test_materialize_holds_candidate_history_lock_during_write(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "lock-hold.duckdb"
@@ -2033,7 +2404,7 @@ def test_materialize_holds_candidate_history_lock_during_write(monkeypatch, tmp_
 
     monkeypatch.setattr(task_mod, "acquire_lock", tracking_acquire_lock)
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         lambda *args, **kwargs: _fake_payload(
             as_of_date=snap.isoformat(),
             items=[
@@ -2086,7 +2457,7 @@ def test_execution_backfill_holds_candidate_history_lock_during_write(monkeypatc
 
     monkeypatch.setattr(task_mod, "acquire_lock", tracking_acquire_lock)
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         lambda *args, **kwargs: _fake_payload(
             as_of_date=snap.isoformat(),
             items=[
@@ -2179,7 +2550,7 @@ def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_n
         return payload, meta
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -2371,7 +2742,7 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
         return payload, meta
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -2468,7 +2839,7 @@ def test_task_materializes_hybrid_fusion_signal_rows_with_core_scores(monkeypatc
         return payload, meta
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -2515,7 +2886,7 @@ def test_task_reports_no_strategy_signals_when_payload_has_no_candidates(monkeyp
         return payload, meta
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -2525,6 +2896,37 @@ def test_task_reports_no_strategy_signals_when_payload_has_no_candidates(monkeyp
     assert out["row_count"] == 0
     assert out["skipped_count"] == 1
     assert out["skipped"] == ["no_strategy_signals"]
+
+
+def test_task_treats_no_strategy_signals_as_ready_empty_when_inputs_are_complete(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "ready-empty-signals.duckdb"
+    snap = date(2026, 5, 1)
+    _seed_calendar_observations(str(db_path), stock_code="000007.SZ", start=snap, days=25)
+
+    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        payload, meta = _fake_payload(as_of_date=snap.isoformat(), items=[])
+        payload["theme_breakout"] = {"items": []}
+        return payload, meta
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
+        _mock_load,
+    )
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize._choice_stock_inputs_have_full_coverage",
+        lambda **_kwargs: True,
+        raising=False,
+    )
+
+    out = materialize_livermore_candidate_history(str(db_path))
+
+    assert out["status"] == "ok"
+    assert out["row_count"] == 0
+    assert out["empty_result"] is True
+    assert out["input_coverage_status"] == "ready"
 
 
 def test_task_dedupe_second_run(monkeypatch, tmp_path) -> None:
@@ -2540,7 +2942,7 @@ def test_task_dedupe_second_run(monkeypatch, tmp_path) -> None:
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -2583,7 +2985,7 @@ def test_backfill_materializes_available_trade_dates_and_summarizes_results(monk
         )
 
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
         _mock_load,
     )
 
@@ -2919,7 +3321,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     -0.1,
                     None,
                     None,
-                    None,
+                    -0.1,
                     None,
                     None,
                     None,
@@ -2957,10 +3359,10 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     0.02,
                     0.03,
                     0.04,
+                    0.02,
+                    0.03,
                     None,
-                    None,
-                    None,
-                    None,
+                    0.04,
                     "complete",
                     "fv1",
                     "sv1",
@@ -3300,7 +3702,13 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
               input_family varchar,
               field_key varchar,
               status varchar,
-              row_count integer
+              row_count integer,
+              call varchar,
+              vendor_indicator varchar,
+              request_arguments_json varchar,
+              request_options_json varchar,
+              source_version varchar,
+              vendor_version varchar
             )
             """
         )
@@ -3354,21 +3762,63 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
         )
         for trade_date in ("2026-04-30", "2026-05-06", "2026-05-07", "2026-05-08"):
             conn.executemany(
-                "insert into choice_stock_request_audit values (?, ?, ?, ?, ?)",
+                "insert into choice_stock_request_audit values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (trade_date, "stock_universe", "a_share_universe_sector_001004", "completed", 1),
-                    (trade_date, "sector_membership", "sw2021_industry_membership", "completed", 1),
-                    (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1),
-                    (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1),
-                    (trade_date, "stock_status", "daily_trade_status", "completed", 1),
+                    (
+                        trade_date,
+                        "stock_universe",
+                        "a_share_universe_sector_001004",
+                        "completed",
+                        1,
+                        "sector",
+                        "001004",
+                        f'["001004","{trade_date}"]',
+                        "{}",
+                        "choice-test-source",
+                        "choice-test-vendor",
+                    ),
+                    (
+                        trade_date,
+                        "sector_membership",
+                        "sw2021_industry_membership",
+                        "completed",
+                        1,
+                        "css",
+                        "SW2021,SW2021CODE",
+                        '["000001.SZ","SW2021,SW2021CODE"]',
+                        f'{{"EndDate":"{trade_date}","Classification":"1"}}',
+                        "choice-test-source",
+                        "choice-test-vendor",
+                    ),
+                    (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+                    (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+                    (trade_date, "stock_status", "daily_trade_status", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
                     (
                         trade_date,
                         "limit_up_quality",
                         "daily_limit_flags",
                         "completed" if trade_date != "2026-04-30" else "partial",
                         1 if trade_date != "2026-04-30" else 0,
+                        "csd",
+                        "",
+                        "[]",
+                        "{}",
+                        "choice-test-source",
+                        "choice-test-vendor",
                     ),
-                    (trade_date, "limit_up_quality", "point_in_time_limit_streaks", "completed", 1),
+                    (
+                        trade_date,
+                        "limit_up_quality",
+                        "point_in_time_limit_streaks",
+                        "completed",
+                        1,
+                        "css",
+                        "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS",
+                        '["000001.SZ","ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS"]',
+                        f'{{"TradeDate":"{trade_date}"}}',
+                        "choice-test-source",
+                        "choice-test-vendor",
+                    ),
                 ],
             )
             conn.execute(
@@ -3460,14 +3910,16 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
 
     result = envelope["result"]
     assert isinstance(result, dict)
-    assert result["backtest_window_summary"] == {
-        "status": "partial",
+    summary = result["backtest_window_summary"]
+    assert isinstance(summary, dict)
+    expected_core = {
+        "status": "unsupported",
         "snapshot_from": "2026-04-30",
         "snapshot_to": "2026-05-08",
         "replay_dates_total": 4,
-        "replay_dates_completed": 1,
+        "replay_dates_completed": 0,
         "replay_dates_pending": 1,
-        "replay_dates_unsupported": 1,
+        "replay_dates_unsupported": 2,
         "replay_dates_proxy_only": 1,
         "completed_rows": 0,
         "pending_rows": 1,
@@ -3475,8 +3927,8 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
         "proxy_only_rows": 1,
             "forward_coverage_row_counts": {"complete": 1, "pending": 1, "missing_bar": 0, "partial_halt": 0},
             "outcome_evaluation_as_of_date": "2026-06-05",
-        "included_completed_stats_dates": ["2026-05-06"],
-        "excluded_from_completed_stats_dates": ["2026-04-30", "2026-05-07", "2026-05-08"],
+        "included_completed_stats_dates": [],
+        "excluded_from_completed_stats_dates": ["2026-04-30", "2026-05-06", "2026-05-07", "2026-05-08"],
         "date_reasons": [
             {
                 "trade_date": "2026-04-30",
@@ -3488,10 +3940,10 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
             },
             {
                 "trade_date": "2026-05-06",
-                "status": "completed",
-                "reason_code": "no_strategy_signals",
-                "message": "Full replay coverage produced no Livermore strategy signal rows for 2026-05-06.",
-                "affects_completed_stats": True,
+                "status": "unsupported",
+                "reason_code": "missing_candidate_history_receipt",
+                "message": "Full source coverage exists, but no certified candidate-history materialization receipt proves a completed zero-signal replay for 2026-05-06.",
+                "affects_completed_stats": False,
                 "signal_kinds": ["hybrid_fusion", "stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"],
             },
             {
@@ -3513,6 +3965,15 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
             },
         ],
     }
+    assert {key: summary[key] for key in expected_core} == expected_core
+    assert summary["requested_snapshot_from"] == "2026-04-30"
+    assert summary["requested_snapshot_to"] == "2026-05-08"
+    assert summary["observed_snapshot_from"] == "2026-04-30"
+    assert summary["observed_snapshot_to"] == "2026-05-08"
+    assert summary["decision_metric_basis"] == "net_next_open_adj"
+    assert summary["research_metric_basis"] == "adjusted_close_return"
+    assert summary["pending_tail_dates"] == ["2026-05-08"]
+    assert summary["blocking_pending_dates"] == []
 
 
 def test_backtest_summary_reports_incomplete_coverage_when_audit_is_missing_but_daily_flags_landed(tmp_path) -> None:
@@ -3657,6 +4118,115 @@ def test_historical_evaluation_masks_later_complete_rows_from_backtest_replay(
             "missing_bar_row_count": 0,
         }
     ]
+
+
+def test_backtest_window_execution_stats_mask_future_exit_dates_point_in_time(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    db_path = tmp_path / "execution-pit-window.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _ensure_livermore_candidate_history_test_schema(conn)
+        conn.execute(
+            """
+            insert into livermore_candidate_history (
+              snapshot_as_of_date, stock_code, stock_name, candidate_rank,
+              data_status, signal_kind, return_1d_adj, return_5d_adj,
+              return_10d_adj, return_20d_adj
+            ) values (
+              '2026-05-01', '000001.SZ', 'PIT Candidate', 1,
+              'complete', 'stock_candidate', 0.01, 0.02, 0.03, 0.04
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into livermore_candidate_execution_history (
+              signal_date, stock_code, stock_name, signal_kind, candidate_rank,
+              market_state, entry_date, entry_executable,
+              exit_date_1d, return_1d_net_adj,
+              exit_date_5d, return_5d_net_adj,
+              exit_date_10d, return_10d_net_adj,
+              exit_date_20d, return_20d_net_adj
+            ) values (
+              '2026-05-01', '000001.SZ', 'PIT Candidate', 'stock_candidate', 1,
+              'HOT', '2026-05-02', true,
+              '2026-05-03', 0.01,
+              '2026-05-09', 0.02,
+              '2026-05-20', 0.03,
+              '2026-06-01', 0.04
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        service,
+        "load_choice_stock_materialization_coverage",
+        lambda **_kwargs: SimpleNamespace(
+            full_coverage=True,
+            missing_request_items=[],
+            status="ready",
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_annotate_forward_maturity",
+        lambda _conn, *, items, **_kwargs: items,
+    )
+
+    summary = livermore_candidate_history_backtest_window_summary(
+        duckdb_path=str(db_path),
+        stock_code=None,
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+        evaluation_as_of_date="2026-05-10",
+    )
+
+    execution_stats = summary["execution_usable_stats"]
+    stock_stats = execution_stats["by_signal_kind_horizon_usable_stats"]["stock_candidate"]
+    assert execution_stats["metric_basis"] == "net_next_open_adj"
+    assert stock_stats["return_1d"]["available_count"] == 1
+    assert stock_stats["return_5d"]["available_count"] == 1
+    assert stock_stats["return_10d"]["available_count"] == 0
+    assert stock_stats["return_20d"]["available_count"] == 0
+    assert summary["execution_pit"]["future_exit_date_counts"] == {
+        "1d": 0,
+        "5d": 0,
+        "10d": 1,
+        "20d": 1,
+    }
+
+
+def test_pending_tail_only_accepts_forward_return_pending_reason() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    summary = service._enrich_backtest_window_summary_metrics(
+        {
+            "status": "partial",
+            "outcome_evaluation_as_of_date": "2026-05-02",
+            "included_completed_stats_dates": [],
+            "date_reasons": [
+                {
+                    "trade_date": "2026-05-02",
+                    "status": "pending",
+                    "reason_code": "upstream_materialization_pending",
+                }
+            ],
+        },
+        rows=[],
+        trade_dates=["2026-05-01", "2026-05-02"],
+        execution_rows=[],
+        execution_pit_disclosure={},
+        tables=set(),
+    )
+
+    assert summary["pending_tail_dates"] == []
+    assert summary["blocking_pending_dates"] == ["2026-05-02"]
 
 
 def test_service_reports_decision_usable_mature_return_stats_for_completed_dates_only(tmp_path) -> None:
@@ -3974,7 +4544,9 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
     assert isinstance(result, dict)
     summary = result["summary"]
     assert summary["row_count"] == 2
-    assert summary["avg_return_1d"] == 0.005
+    # Research basis: the pending row has no *_adj values and is dropped, so
+    # the average reads the adjusted T+1 return of the complete row only.
+    assert summary["avg_return_1d"] == 0.03
     assert summary["by_signal_kind"] == {"stock_candidate": 2}
     assert summary["decision_usable_stats"] == {
         "metric_basis": "adjusted_close_return",
@@ -4075,28 +4647,31 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
     assert matched_t5["paired_alpha_median"] == 0.05
     assert matched_t5["bootstrap_ci_95"]["low"] == 0.05
     assert matched_t5["bootstrap_ci_95"]["high"] == 0.05
+    # Research (adjusted_close_return) stats: raw returns are overwritten by
+    # the *_adj columns and the pending row without any adjusted value drops
+    # out of the sample entirely.
     assert summary["horizon_usable_stats"] == {
         "return_1d": {
-            "available_count": 2,
+            "available_count": 1,
             "missing_count": 0,
             "positive_count": 1,
-            "non_positive_count": 1,
-            "avg_return": 0.005,
-            "median_return": 0.005,
-            "win_rate": 0.5,
+            "non_positive_count": 0,
+            "avg_return": 0.03,
+            "median_return": 0.03,
+            "win_rate": 1.0,
         },
         "return_5d": {
             "available_count": 1,
-            "missing_count": 1,
+            "missing_count": 0,
             "positive_count": 1,
             "non_positive_count": 0,
-            "avg_return": 0.1,
-            "median_return": 0.1,
+            "avg_return": 0.12,
+            "median_return": 0.12,
             "win_rate": 1.0,
         },
         "return_10d": {
             "available_count": 1,
-            "missing_count": 1,
+            "missing_count": 0,
             "positive_count": 1,
             "non_positive_count": 0,
             "avg_return": 0.15,
@@ -4105,37 +4680,37 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
         },
         "return_20d": {
             "available_count": 1,
-            "missing_count": 1,
+            "missing_count": 0,
             "positive_count": 1,
             "non_positive_count": 0,
-            "avg_return": 0.2,
-            "median_return": 0.2,
+            "avg_return": 0.22,
+            "median_return": 0.22,
             "win_rate": 1.0,
         },
     }
     assert summary["by_signal_kind_horizon_usable_stats"] == {
         "stock_candidate": {
             "return_1d": {
-                "available_count": 2,
+                "available_count": 1,
                 "missing_count": 0,
                 "positive_count": 1,
-                "non_positive_count": 1,
-                "avg_return": 0.005,
-                "median_return": 0.005,
-                "win_rate": 0.5,
+                "non_positive_count": 0,
+                "avg_return": 0.03,
+                "median_return": 0.03,
+                "win_rate": 1.0,
             },
             "return_5d": {
                 "available_count": 1,
-                "missing_count": 1,
+                "missing_count": 0,
                 "positive_count": 1,
                 "non_positive_count": 0,
-                "avg_return": 0.1,
-                "median_return": 0.1,
+                "avg_return": 0.12,
+                "median_return": 0.12,
                 "win_rate": 1.0,
             },
             "return_10d": {
                 "available_count": 1,
-                "missing_count": 1,
+                "missing_count": 0,
                 "positive_count": 1,
                 "non_positive_count": 0,
                 "avg_return": 0.15,
@@ -4144,15 +4719,17 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
             },
             "return_20d": {
                 "available_count": 1,
-                "missing_count": 1,
+                "missing_count": 0,
                 "positive_count": 1,
                 "non_positive_count": 0,
-                "avg_return": 0.2,
-                "median_return": 0.2,
+                "avg_return": 0.22,
+                "median_return": 0.22,
                 "win_rate": 1.0,
             },
         }
     }
+    # The unknown-state pending row carries no adjusted returns, so only the
+    # HOT bucket survives on the research basis.
     assert summary["by_market_state_signal_kind_horizon_stats"] == {
         "HOT": {
             "stock_candidate": {
@@ -4161,8 +4738,8 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "missing_count": 0,
                     "positive_count": 1,
                     "non_positive_count": 0,
-                    "avg_return": 0.02,
-                    "median_return": 0.02,
+                    "avg_return": 0.03,
+                    "median_return": 0.03,
                     "win_rate": 1.0,
                 },
                 "return_5d": {
@@ -4170,8 +4747,8 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "missing_count": 0,
                     "positive_count": 1,
                     "non_positive_count": 0,
-                    "avg_return": 0.1,
-                    "median_return": 0.1,
+                    "avg_return": 0.12,
+                    "median_return": 0.12,
                     "win_rate": 1.0,
                 },
                 "return_10d": {
@@ -4188,53 +4765,55 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "missing_count": 0,
                     "positive_count": 1,
                     "non_positive_count": 0,
-                    "avg_return": 0.2,
-                    "median_return": 0.2,
+                    "avg_return": 0.22,
+                    "median_return": 0.22,
                     "win_rate": 1.0,
                 },
             }
         },
-        "unknown": {
-            "stock_candidate": {
-                "return_1d": {
-                    "available_count": 1,
-                    "missing_count": 0,
-                    "positive_count": 0,
-                    "non_positive_count": 1,
-                    "avg_return": -0.01,
-                    "median_return": -0.01,
-                    "win_rate": 0.0,
-                },
-                "return_5d": {
-                    "available_count": 0,
-                    "missing_count": 1,
-                    "positive_count": 0,
-                    "non_positive_count": 0,
-                    "avg_return": None,
-                    "median_return": None,
-                    "win_rate": None,
-                },
-                "return_10d": {
-                    "available_count": 0,
-                    "missing_count": 1,
-                    "positive_count": 0,
-                    "non_positive_count": 0,
-                    "avg_return": None,
-                    "median_return": None,
-                    "win_rate": None,
-                },
-                "return_20d": {
-                    "available_count": 0,
-                    "missing_count": 1,
-                    "positive_count": 0,
-                    "non_positive_count": 0,
-                    "avg_return": None,
-                    "median_return": None,
-                    "win_rate": None,
-                },
-            }
-        },
     }
+
+
+def test_research_horizon_stats_use_adjusted_returns_and_drop_rows_without_adjusted_values() -> None:
+    """P0-5 防回归：研究口径统计读复权收益，无复权值的样本整行剔除。"""
+    from backend.app.services.livermore_candidate_history_service import _build_horizon_stats
+    from backend.app.services.livermore_candidate_history_window_stats import _horizon_usable_items
+
+    items = [
+        {
+            # Raw T+5 return inflated by an ex-dividend distortion; the
+            # adjusted column carries the economic return.
+            "snapshot_as_of_date": "2026-05-06",
+            "stock_code": "000001.SZ",
+            "signal_kind": "stock_candidate",
+            "data_status": "complete",
+            "return_5d": 0.10,
+            "return_5d_adj": 0.02,
+        },
+        {
+            # No adjusted value at any horizon: dropped from research stats.
+            "snapshot_as_of_date": "2026-05-06",
+            "stock_code": "000002.SZ",
+            "signal_kind": "stock_candidate",
+            "data_status": "complete",
+            "return_5d": 0.50,
+        },
+    ]
+
+    usable_items = _horizon_usable_items(
+        items,
+        backtest_window_summary={
+            "included_completed_stats_dates": ["2026-05-06"],
+            "date_reasons": [],
+        },
+    )
+
+    assert [item["stock_code"] for item in usable_items] == ["000001.SZ"]
+    stats = _build_horizon_stats(usable_items)
+    assert stats["return_5d"]["available_count"] == 1
+    assert stats["return_5d"]["avg_return"] == 0.02
+    assert stats["return_5d"]["median_return"] == 0.02
+    assert stats["return_5d"]["win_rate"] == 1.0
 
 
 def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_path) -> None:
@@ -4257,6 +4836,9 @@ def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_pa
               return_1d double,
               return_5d double,
               return_20d double,
+              return_1d_adj double,
+              return_5d_adj double,
+              return_20d_adj double,
               data_status varchar,
               formula_version varchar,
               source_version varchar,
@@ -4282,7 +4864,7 @@ def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_pa
         conn.executemany(
             """
             insert into livermore_candidate_history values
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -4295,6 +4877,9 @@ def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_pa
                     10.0,
                     "2026-05-07",
                     "2026-05-13",
+                    None,
+                    0.02,
+                    0.10,
                     None,
                     0.02,
                     0.10,
@@ -4328,6 +4913,9 @@ def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_pa
                     "Sector",
                     20.0,
                     "2026-05-08",
+                    None,
+                    None,
+                    -0.01,
                     None,
                     None,
                     -0.01,
@@ -4855,6 +5443,9 @@ def test_strategy_score_service_ranks_current_market_state_by_t5_score(tmp_path)
         "avg_return": 0.025,
         "median_return": 0.025,
         "win_rate": 1.0,
+        # 30 条逐行样本只来自 2 个快照日（2026-05-01 / 2026-05-02）。
+        "snapshot_day_count": 2,
+        "snapshot_day_win_rate": 1.0,
     }
     assert current_rows[1]["priority_label"] == "降权观察"
     assert current_rows[1]["priority_rank"] is None
@@ -4935,6 +5526,10 @@ def test_strategy_score_service_accepts_return_10d_primary_horizon(tmp_path) -> 
               return_5d,
               return_10d,
               return_20d,
+              return_1d_adj,
+              return_5d_adj,
+              return_10d_adj,
+              return_20d_adj,
               data_status,
               formula_version,
               source_version,
@@ -4943,7 +5538,7 @@ def test_strategy_score_service_accepts_return_10d_primary_horizon(tmp_path) -> 
               run_id,
               signal_kind,
               signal_evidence_json
-            ) values (?, ?, ?, ?, 10.0, ?, ?, ?, ?, ?, ?, ?, ?, 'complete', 'fv1', 'sv_score', 'vv_score', 'rv_score', ?, 'stock_candidate', ?)
+            ) values (?, ?, ?, ?, 10.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'complete', 'fv1', 'sv_score', 'vv_score', 'rv_score', ?, 'stock_candidate', ?)
             """,
             [
                 (
@@ -4955,6 +5550,10 @@ def test_strategy_score_service_accepts_return_10d_primary_horizon(tmp_path) -> 
                     "2026-05-08",
                     "2026-05-15",
                     "2026-05-29",
+                    0.01,
+                    0.02,
+                    0.11 if index <= 15 else 0.03,
+                    0.03,
                     0.01,
                     0.02,
                     0.11 if index <= 15 else 0.03,
@@ -4993,6 +5592,8 @@ def test_strategy_score_service_accepts_return_10d_primary_horizon(tmp_path) -> 
         "avg_return": 0.07,
         "median_return": 0.07,
         "win_rate": 1.0,
+        "snapshot_day_count": 2,
+        "snapshot_day_win_rate": 1.0,
     }
     assert row["priority_score"] == 102.0
     assert "T+5" in row["reason"]
@@ -5093,6 +5694,7 @@ def test_strategy_score_service_reports_overheat_rank_scope_and_long_window_risk
               forward_trade_date_5d,
               forward_trade_date_20d,
               return_1d,
+              return_1d_adj,
               return_5d,
               return_20d,
               data_status,
@@ -5103,7 +5705,7 @@ def test_strategy_score_service_reports_overheat_rank_scope_and_long_window_risk
               run_id,
               signal_kind,
               signal_evidence_json
-            ) values (?, ?, ?, ?, 10.0, ?, null, null, ?, null, null, 'pending', 'fv1', 'sv_score', 'vv_score', 'rv_score', ?, 'factor_screen', '{"market_state":"OVERHEAT"}')
+            ) values (?, ?, ?, ?, 10.0, ?, null, null, ?, ?, null, null, 'pending', 'fv1', 'sv_score', 'vv_score', 'rv_score', ?, 'factor_screen', '{"market_state":"OVERHEAT"}')
             """,
             [
                 (
@@ -5112,6 +5714,7 @@ def test_strategy_score_service_reports_overheat_rank_scope_and_long_window_risk
                     f"Pending Factor {index}",
                     index,
                     "2026-05-02",
+                    0.01,
                     0.01,
                     f"pending-run-{index}",
                 )
@@ -5307,6 +5910,129 @@ def test_strategy_score_family_readiness_attaches_macro_context_without_changing
     assert fresh_row["family_readiness"] is None
 
 
+def _overlapping_snapshot_day_items() -> list[dict[str, object]]:
+    """3 个快照日 x 10 只候选 = 30 个逐行样本，其中第 3 天按日净收益为负。
+
+    逐行 T+5 胜率 27/30 = 90%，但按快照日聚合后只有 2/3 天为正，用于验证
+    「30 个样本」与「3 个独立快照日」的差异被如实披露。
+    """
+    day_returns_5d: dict[str, list[float]] = {
+        "2026-05-06": [0.02] * 10,
+        "2026-05-07": [0.02] * 10,
+        # 7 个微弱正收益 + 3 个较大负收益 -> 当日均值 -0.0023，逐行仍记 7 个正样本
+        "2026-05-08": [0.001] * 7 + [-0.01] * 3,
+    }
+    items: list[dict[str, object]] = []
+    for snapshot_date, returns in day_returns_5d.items():
+        for offset, return_5d in enumerate(returns, start=1):
+            items.append(
+                {
+                    "snapshot_as_of_date": snapshot_date,
+                    "stock_code": f"{offset:06d}.SZ",
+                    "stock_name": f"Trend {offset}",
+                    "candidate_rank": offset,
+                    "signal_kind": "stock_candidate",
+                    "signal_evidence_json": '{"market_state":"HOT"}',
+                    "return_1d": 0.005,
+                    "return_5d": return_5d,
+                    "return_20d": 0.03,
+                }
+            )
+    return items
+
+
+def _strategy_score_hot_stock_candidate_row(items: list[dict[str, object]]) -> dict[str, object]:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    payload = service._build_strategy_score_payload(
+        items=items,
+        snapshot_from="2026-05-06",
+        snapshot_to="2026-05-08",
+        current_market_state="HOT",
+        min_sample=30,
+        primary_horizon="return_5d",
+        backtest_window_summary={},
+    )
+    return next(
+        row
+        for row in cast(list[dict[str, object]], payload["rows"])
+        if row["market_state"] == "HOT" and row["signal_kind"] == "stock_candidate"
+    )
+
+
+def test_strategy_score_discloses_independent_snapshot_day_count() -> None:
+    items = _overlapping_snapshot_day_items()
+    row = _strategy_score_hot_stock_candidate_row(items)
+    t5_stats = cast(dict[str, object], cast(dict[str, object], row["stats"])["return_5d"])
+
+    # 逐行样本 30 条，但只来自 3 个独立快照日。
+    assert t5_stats["available_count"] == 30
+    assert t5_stats["snapshot_day_count"] == 3
+    assert t5_stats["win_rate"] == pytest.approx(0.9)
+    assert t5_stats["snapshot_day_win_rate"] == pytest.approx(2 / 3, abs=1e-6)
+
+    assert row["sample_status"] == "sufficient"
+    reason = cast(str, row["reason"])
+    assert "T+5 成熟样本 30/30" in reason
+    assert "来自 3 个独立快照日" in reason
+    assert "按日胜率 66.7%" in reason
+
+
+def test_strategy_score_snapshot_day_disclosure_is_additive_only() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    items = _overlapping_snapshot_day_items()
+    row = _strategy_score_hot_stock_candidate_row(items)
+    disclosed_stats = cast(dict[str, dict[str, object]], row["stats"])
+    baseline_stats = service._build_horizon_stats(items)
+
+    for horizon, baseline in baseline_stats.items():
+        disclosed = disclosed_stats[horizon]
+        assert set(disclosed) - set(baseline) == {"snapshot_day_count", "snapshot_day_win_rate"}
+        assert {key: disclosed[key] for key in baseline} == baseline
+
+    # priority_score 仍由逐行统计决定，未被按日聚合替换。
+    t5_stats = disclosed_stats["return_5d"]
+    expected_score = round(
+        cast(float, t5_stats["win_rate"]) * 100 + cast(float, t5_stats["avg_return"]) * 100,
+        4,
+    )
+    assert row["priority_score"] == pytest.approx(expected_score)
+    assert row["priority_label"] == "优先复核"
+    assert row["priority_rank"] == 1
+
+
+def test_strategy_review_gate_reason_unchanged_without_snapshot_day_disclosure() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+    from backend.app.services.livermore_candidate_history_strategy_support import _strategy_review_gate
+
+    items = _overlapping_snapshot_day_items()
+    baseline_reason = cast(str, _strategy_review_gate(stats=service._build_horizon_stats(items), min_sample=30)["reason"])
+
+    # 未携带披露字段的调用方（策略优化摘要/切片、rank 桶诊断）文案保持原样。
+    assert "T+5 成熟样本 30/30，胜率 90.0%" in baseline_reason
+    assert "独立快照日" not in baseline_reason
+
+
+def test_strategy_score_empty_rows_expose_snapshot_day_disclosure_fields() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    payload = service._build_strategy_score_payload(
+        items=[],
+        snapshot_from="2026-05-06",
+        snapshot_to="2026-05-08",
+        current_market_state="HOT",
+        min_sample=30,
+        primary_horizon="return_5d",
+        backtest_window_summary={},
+    )
+
+    for row in cast(list[dict[str, object]], payload["current_market_state_rows"]):
+        for horizon_stats in cast(dict[str, dict[str, object]], row["stats"]).values():
+            assert horizon_stats["snapshot_day_count"] == 0
+            assert horizon_stats["snapshot_day_win_rate"] is None
+
+
 def test_macro_context_v1_stabilizes_lineage_and_missing_state() -> None:
     from backend.app.services import macro_bond_linkage_service as svc
 
@@ -5427,17 +6153,26 @@ def test_livermore_macro_context_wrapper_uses_service_normalizer(monkeypatch) ->
             },
         }
 
-    # Patch the namespace the route-bound function actually dereferences:
-    # tests.helpers.load_module can fork backend.app.services.macro_bond_linkage_service
-    # in sys.modules, so patching a module handle resolved via import may miss the
-    # instance whose get_macro_context_v1 the route bound at its own import time.
+    # Patch the namespace the invoked function actually dereferences, by walking
+    # the real call chain instead of trusting any import-resolved handle:
+    # ``route._livermore_macro_context_v1_for_date`` is re-exported from
+    # ``market_data_livermore_route_support``, whose own ``get_macro_context_v1``
+    # binding (not the route module's) is what the wrapper calls, and that
+    # function looks up ``get_macro_environment_context`` in the
+    # ``macro_bond_linkage_service`` instance it was defined in. Other test
+    # files fork both modules via ``tests.helpers.load_module``, so under xdist
+    # the route module's ``get_macro_context_v1`` handle can point at a different
+    # module instance than the one the wrapper will call, and a patch applied
+    # there would silently miss.
+    wrapper = route._livermore_macro_context_v1_for_date
+    macro_context_v1 = wrapper.__globals__["get_macro_context_v1"]
     monkeypatch.setitem(
-        route.get_macro_context_v1.__globals__,
+        macro_context_v1.__globals__,
         "get_macro_environment_context",
         fake_macro_environment_context,
     )
 
-    context = route._livermore_macro_context_v1_for_date("2026-05-01T15:30:00+08:00")
+    context = wrapper("2026-05-01T15:30:00+08:00")
 
     assert captured_report_dates == [date(2026, 5, 1)]
     assert context is not None
@@ -6114,6 +6849,12 @@ def test_cycle_proxy_backtest_reports_nav_gain_and_drawdown_intervals(tmp_path) 
                 ("2026-05-11", "2026-05-04"),
             ],
         )
+        # Legacy rows without adjusted returns: keeps the gross second-fallback
+        # path under test.
+        conn.execute(
+            "update livermore_candidate_history"
+            " set return_1d_adj = null, return_5d_adj = null, return_20d_adj = null"
+        )
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-02")
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-03")
@@ -6450,7 +7191,7 @@ def test_candidate_history_portfolio_backtest_reports_formula_version(tmp_path) 
     )
 
     body = envelope["result"]
-    assert body["formula_version"] == "fv_livermore_candidate_history_portfolio_adj_mtm_v2"
+    assert body["formula_version"] == "fv_livermore_candidate_history_portfolio_adj_mtm_v3"
 
 
 def test_candidate_history_portfolio_backtest_uses_adjusted_mtm_and_reports_fallback_rows(tmp_path) -> None:
@@ -6498,7 +7239,7 @@ def test_candidate_history_portfolio_backtest_uses_adjusted_mtm_and_reports_fall
         "choice_stock_daily_observation",
         "stock_adjustment_factor",
     ]
-    assert body["formula_version"] == "fv_livermore_candidate_history_portfolio_adj_mtm_v2"
+    assert body["formula_version"] == "fv_livermore_candidate_history_portfolio_adj_mtm_v3"
     assert [row["nav"] for row in body["nav_series"]] == [0.9982, 1.04811]
     summary = body["summary"]
     assert summary["price_field_used"] == "adj_close_value"
@@ -6689,6 +7430,12 @@ def test_cycle_proxy_backtest_api_exposes_caliber_disclosure(monkeypatch, tmp_pa
                     '{"market_state":"WARM"}',
                 ),
             ],
+        )
+        # Legacy rows without adjusted returns: keeps the gross second-fallback
+        # counter under test.
+        conn.execute(
+            "update livermore_candidate_history"
+            " set return_1d_adj = null, return_5d_adj = null, return_20d_adj = null"
         )
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
     finally:

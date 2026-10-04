@@ -5,6 +5,11 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { PageStateSurface } from "../../../components/page/PagePrimitives";
+import {
+  SECTION_HEAD_STACK_CLASSNAME,
+  SectionHead,
+  type SectionState,
+} from "../../../components/layout";
 import type { CockpitWatchItem, CockpitAlertEvent, ContributionSplitRow } from "../../../api/contracts";
 import type { LiabilityYieldKpi } from "../../../api/liabilityAdbContracts";
 import { adaptLiabilityCounterparty, getLiabilitySyntheticSectionStates } from "../adapters/liabilityAdapter";
@@ -14,8 +19,8 @@ import { LiabilityKnowledgePanel } from "../components/LiabilityKnowledgePanel";
 import { LiabilityMonthlySnapshotCards } from "../components/LiabilityMonthlySnapshotCards";
 import { LiabilityNimStressMonthlyPanel } from "../components/LiabilityNimStressMonthlyPanel";
 import { LiabilityNimStressPanel } from "../components/LiabilityNimStressPanel";
-import { LiabilitySectionLead, type LiabilitySectionState } from "../components/LiabilitySectionLead";
 import { LiabilityStructureGrids } from "../components/LiabilityStructureGrids";
+import { LiabilityYieldTrendPanel } from "../components/LiabilityYieldTrendPanel";
 import {
   bucketAmountToYiNumeric,
   nameAmountToYiNumeric,
@@ -43,19 +48,11 @@ function sumKnownNumericRaw(values: Array<number | null | undefined>): number | 
 
 function bucketFallsWithinOneYear(bucket: string) {
   const normalized = bucket.trim().toUpperCase();
-  return (
-    normalized.includes("M") ||
-    normalized === "1Y" ||
-    normalized.includes("0-3") ||
-    normalized.includes("3-12") ||
-    normalized.includes("6-12") ||
-    normalized.includes("31-90") ||
-    normalized.includes("91-1Y")
-  );
+  return ["0-3M", "3-6M", "6-12M", "1Y", "MATURED"].includes(normalized);
 }
 
 /** 分区头状态位：loading/error/empty 三态露一句话，正常返回 null。 */
-function sectionLeadState(loading: boolean, error: boolean, isEmpty: boolean): LiabilitySectionState {
+function sectionLeadState(loading: boolean, error: boolean, isEmpty: boolean): SectionState {
   if (loading) return { label: "读取中", tone: "loading" };
   if (error) return { label: "读取失败", tone: "error" };
   if (isEmpty) return { label: "暂无数据", tone: "empty" };
@@ -170,10 +167,17 @@ export default function LiabilityAnalyticsPage() {
     retry: false,
   });
 
-  const monthlyQuery = useQuery({
-    queryKey: ["liability", "monthly", client.mode, selectedYear],
-    queryFn: () => client.getLiabilitiesMonthly(selectedYear),
+  const monthlySummaryQuery = useQuery({
+    queryKey: ["liability", "monthly-summary", client.mode, selectedYear],
+    queryFn: () => client.getLiabilitiesMonthlySummary(selectedYear),
     enabled: activeTab === "monthly",
+    retry: false,
+  });
+
+  const monthlyDetailQuery = useQuery({
+    queryKey: ["liability", "monthly-detail", client.mode, selectedMonth],
+    queryFn: () => client.getLiabilitiesMonthlyDetail(selectedMonth),
+    enabled: activeTab === "monthly" && Boolean(selectedMonth),
     retry: false,
   });
 
@@ -198,10 +202,13 @@ export default function LiabilityAnalyticsPage() {
     retry: false,
   });
 
+  const reportDateYear = Number.parseInt(reportDate.slice(0, 4), 10);
+  const adbMonthlyYear =
+    activeTab === "daily" && Number.isFinite(reportDateYear) ? reportDateYear : selectedYear;
   const adbMonthlyQuery = useQuery({
-    queryKey: ["liability", "adb-monthly", client.mode, selectedYear],
-    queryFn: () => client.getLiabilityAdbMonthly(selectedYear),
-    enabled: activeTab === "monthly",
+    queryKey: ["liability", "adb-monthly", client.mode, adbMonthlyYear],
+    queryFn: () => client.getLiabilityAdbMonthly(adbMonthlyYear),
+    enabled: activeTab === "monthly" || (activeTab === "daily" && Boolean(reportDate)),
     retry: false,
   });
 
@@ -221,9 +228,9 @@ export default function LiabilityAnalyticsPage() {
   const dailyCpRows = cpVm.vm?.rows ?? [];
 
   const monthlyMonthsSorted = useMemo(() => {
-    const ms = monthlyQuery.data?.months || [];
+    const ms = monthlySummaryQuery.data?.months || [];
     return [...ms].sort((a, b) => (a.month > b.month ? -1 : a.month < b.month ? 1 : 0));
-  }, [monthlyQuery.data?.months]);
+  }, [monthlySummaryQuery.data?.months]);
 
   useEffect(() => {
     if (activeTab !== "monthly") {
@@ -244,6 +251,8 @@ export default function LiabilityAnalyticsPage() {
     return monthlyMonthsSorted.find((m) => m.month === selectedMonth) || null;
   }, [monthlyMonthsSorted, selectedMonth]);
 
+  const selectedMonthDetail = monthlyDetailQuery.data?.detail ?? null;
+
   const selectedAdbMonthData = useMemo(() => {
     if (!selectedMonth) {
       return null;
@@ -253,10 +262,10 @@ export default function LiabilityAnalyticsPage() {
   }, [adbMonthlyQuery.data?.months, selectedMonth]);
 
   const monthlyCpRowsAll: LiabilityCpRow[] = useMemo(() => {
-    if (!selectedMonthData) {
+    if (!selectedMonthDetail) {
       return [];
     }
-    return (selectedMonthData.counterparty_details ?? []).map((it) => {
+    return (selectedMonthDetail.counterparty_details ?? []).map((it) => {
       return {
         name: it.name ?? "",
         value: it.avg_value ?? null,
@@ -265,22 +274,22 @@ export default function LiabilityAnalyticsPage() {
         weightedCost: it.weighted_cost ?? null,
       };
     });
-  }, [selectedMonthData]);
+  }, [selectedMonthDetail]);
 
   const monthlyByInstitution = useMemo(() => {
-    if (!selectedMonthData?.by_institution_type) {
+    if (!selectedMonthDetail?.by_institution_type) {
       return [];
     }
-    return selectedMonthData.by_institution_type.map((x) => ({
+    return selectedMonthDetail.by_institution_type.map((x) => ({
       name: x.type ?? "",
       value: x.avg_value ?? null,
     }));
-  }, [selectedMonthData?.by_institution_type]);
+  }, [selectedMonthDetail?.by_institution_type]);
 
   /** 与 V1 一致：柱状图优先使用后端给出的 `counterparty_top10` 顺序与集合。 */
   const monthlyCpBarRows = useMemo((): LiabilityCpRow[] | undefined => {
-    const top10 = selectedMonthData?.counterparty_top10;
-    if (!top10?.length || !selectedMonthData) {
+    const top10 = selectedMonthDetail?.counterparty_top10;
+    if (!top10?.length || !selectedMonthDetail) {
       return undefined;
     }
     return top10.map((it) => {
@@ -292,7 +301,7 @@ export default function LiabilityAnalyticsPage() {
         weightedCost: it.weighted_cost ?? null,
       };
     });
-  }, [selectedMonthData]);
+  }, [selectedMonthDetail]);
 
   const dailyStructure = useMemo(() => {
     const raw = riskQuery.data?.liabilities_structure ?? [];
@@ -325,64 +334,64 @@ export default function LiabilityAnalyticsPage() {
   }, [riskQuery.data?.issued_liabilities_term_buckets]);
 
   const mStructure = useMemo(() => {
-    if (!selectedMonthData) {
+    if (!selectedMonthDetail) {
       return [];
     }
-    return (selectedMonthData.structure_overview ?? []).map((x) => ({
+    return (selectedMonthDetail.structure_overview ?? []).map((x) => ({
       name: x.category ?? "",
       amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
-  }, [selectedMonthData]);
+  }, [selectedMonthDetail]);
 
   const mTerm = useMemo(() => {
-    if (!selectedMonthData) {
+    if (!selectedMonthDetail) {
       return [];
     }
-    return (selectedMonthData.term_buckets ?? []).map((x) => ({
+    return (selectedMonthDetail.term_buckets ?? []).map((x) => ({
       bucket: x.bucket ?? "",
       amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
-  }, [selectedMonthData]);
+  }, [selectedMonthDetail]);
 
   const mIbStructure = useMemo(() => {
-    if (!selectedMonthData) {
+    if (!selectedMonthDetail) {
       return [];
     }
-    return (selectedMonthData.interbank_by_type ?? []).map((x) => ({
+    return (selectedMonthDetail.interbank_by_type ?? []).map((x) => ({
       name: x.category ?? "",
       amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
-  }, [selectedMonthData]);
+  }, [selectedMonthDetail]);
 
   const mIbTerm = useMemo(() => {
-    if (!selectedMonthData) {
+    if (!selectedMonthDetail) {
       return [];
     }
-    return (selectedMonthData.interbank_term_buckets ?? []).map((x) => ({
+    return (selectedMonthDetail.interbank_term_buckets ?? []).map((x) => ({
       bucket: x.bucket ?? "",
       amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
-  }, [selectedMonthData]);
+  }, [selectedMonthDetail]);
 
   const mIssuedStructure = useMemo(() => {
-    if (!selectedMonthData) {
+    if (!selectedMonthDetail) {
       return [];
     }
-    return (selectedMonthData.issued_by_type ?? []).map((x) => ({
+    return (selectedMonthDetail.issued_by_type ?? []).map((x) => ({
       name: x.category ?? "",
       amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
-  }, [selectedMonthData]);
+  }, [selectedMonthDetail]);
 
   const mIssuedTerm = useMemo(() => {
-    if (!selectedMonthData) {
+    if (!selectedMonthDetail) {
       return [];
     }
-    return (selectedMonthData.issued_term_buckets ?? []).map((x) => ({
+    return (selectedMonthDetail.issued_term_buckets ?? []).map((x) => ({
       bucket: x.bucket ?? "",
       amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
-  }, [selectedMonthData]);
+  }, [selectedMonthDetail]);
 
   const yearOptions = useMemo(() => {
     const y = new Date().getFullYear();
@@ -443,20 +452,46 @@ export default function LiabilityAnalyticsPage() {
     return allMissing ? "负债收益读面未返回读数，本区暂缺。" : null;
   }, [yieldQuery.data?.kpi, yieldQuery.isError, yieldQuery.isLoading]);
   const liabilityTotalYi = useMemo((): number | null => {
-    const fromCp = numericToYiNumeric(cpQuery.data?.total_value ?? null)?.raw;
-    const fromBuckets = sumKnownNumericRaw(dailyStructure.map((item) => item.amountYi?.raw));
-    return fromCp ?? fromBuckets;
-  }, [cpQuery.data?.total_value, dailyStructure]);
+    return sumKnownNumericRaw(dailyStructure.map((item) => item.amountYi?.raw));
+  }, [dailyStructure]);
   const firstYearPressureYi = useMemo((): number | null => {
     return sumKnownNumericRaw(
       dailyTerm.filter((item) => bucketFallsWithinOneYear(item.bucket)).map((item) => item.amountYi?.raw),
     );
   }, [dailyTerm]);
   const missingMaturityCount = riskQuery.data?.missing_maturity_count ?? 0;
-  const watchItems: CockpitWatchItem[] = cockpitWarningsQuery.data?.result?.watch_items ?? [];
-  const alertEvents: CockpitAlertEvent[] = cockpitWarningsQuery.data?.result?.alert_events ?? [];
+  /** 预警读面未成功返回（error / 报告日缺失未启用）时不能把「未知」当成 0 条。 */
+  const cockpitWarnings = cockpitWarningsQuery.data?.result ?? null;
+  const warningsReturned = cockpitWarnings !== null;
+  const watchItems: CockpitWatchItem[] = cockpitWarnings?.watch_items ?? [];
+  const alertEvents: CockpitAlertEvent[] = cockpitWarnings?.alert_events ?? [];
   const syntheticSections = useMemo(() => getLiabilitySyntheticSectionStates(), []);
   const contributionRows: ContributionSplitRow[] = contributionQuery.data?.result?.contributions ?? [];
+  const monthlyDetailLoading =
+    activeTab === "monthly" && Boolean(selectedMonth) && monthlyDetailQuery.isPending;
+  const monthlyDetailError =
+    activeTab === "monthly" && Boolean(selectedMonth) && monthlyDetailQuery.isError;
+  const monthlyDetailEmpty =
+    activeTab === "monthly" &&
+    Boolean(selectedMonth) &&
+    !monthlyDetailQuery.isPending &&
+    !monthlyDetailQuery.isError &&
+    !selectedMonthDetail;
+  const monthlyDetailLeadState = sectionLeadState(
+    monthlyDetailLoading,
+    monthlyDetailError,
+    monthlyDetailEmpty,
+  );
+  /*
+   * 日常页核心读面以 reportDate 门控：报告日目录失败/为空时三条 query 一直是
+   * disabled-pending，不能当成「读取中」；用 evidenceBlocked 单独露「未触发」。
+   */
+  const evidenceLoading =
+    activeTab === "daily"
+      ? datesQuery.isLoading ||
+        (Boolean(reportDate) && (riskQuery.isPending || yieldQuery.isPending || cpQuery.isPending))
+      : monthlySummaryQuery.isPending || monthlyDetailLoading || adbMonthlyQuery.isPending;
+  const evidenceBlocked = activeTab === "daily" && (datesBlockingError || datesEmpty);
   const pageReadModel = useMemo(
     () =>
       buildLiabilityAnalyticsPageReadModel({
@@ -472,25 +507,37 @@ export default function LiabilityAnalyticsPage() {
         liabilityTotalYi,
         firstYearPressureYi,
         topCounterpartyShare: authoritativeTop10ShareDisplay,
-        warningCount: watchItems.length,
-        alertCount: alertEvents.length,
+        warningCount: warningsReturned ? watchItems.length : null,
+        alertCount: warningsReturned ? alertEvents.length : null,
         resultMetas:
           activeTab === "daily"
             ? [
-                // Daily hero + KPI band are driven by risk, yield, and counterparty reads.
-                { key: "risk-buckets", title: "负债期限结构", required: true, meta: riskQuery.data?.result_meta },
-                { key: "yield-metrics", title: "负债收益指标", required: true, meta: yieldQuery.data?.result_meta },
+                // Daily hero + KPI band use daily reads; the embedded trend uses analytical ADB monthly.
+                { key: "risk-buckets", title: "负债期限结构", required: !riskQuery.isPending, meta: riskQuery.data?.result_meta },
+                { key: "yield-metrics", title: "负债收益指标", required: !yieldQuery.isPending, meta: yieldQuery.data?.result_meta },
+                { key: "adb-monthly-trend", title: "ADB 月度日均趋势", required: false, meta: adbMonthlyQuery.data?.result_meta },
                 { key: "dates", title: "报告日目录", required: false, meta: datesQuery.data?.result_meta },
                 { key: "asset-overview", title: "资产端正式总览", required: false, meta: balanceOverviewQuery.data?.result_meta },
-                { key: "counterparty", title: "对手方集中度", required: true, meta: cpQuery.data?.result_meta },
+                { key: "counterparty", title: "对手方集中度", required: !cpQuery.isPending, meta: cpQuery.data?.result_meta },
                 { key: "knowledge", title: "业务资料", required: false, meta: knowledgeQuery.data?.result_meta },
                 { key: "warnings", title: "关注/预警", required: false, meta: cockpitWarningsQuery.data?.result_meta },
                 { key: "contribution", title: "贡献拆分", required: false, meta: contributionQuery.data?.result_meta },
               ]
             : [
-                // Monthly tab readout is driven by liabilities-monthly and adb-monthly.
-                { key: "liabilities-monthly", title: "负债月度日均", required: true, meta: monthlyQuery.data?.result_meta },
-                { key: "adb-monthly", title: "ADB 月度日均", required: true, meta: adbMonthlyQuery.data?.result_meta },
+                // 月度概览先返回；所选月明细与 ADB 压力读面独立加载、独立披露。
+                {
+                  key: "liabilities-monthly",
+                  title: "负债月度概览",
+                  required: !monthlySummaryQuery.isPending,
+                  meta: monthlySummaryQuery.data?.result_meta,
+                },
+                {
+                  key: "liabilities-monthly-detail",
+                  title: "所选月结构明细",
+                  required: Boolean(selectedMonth) && !monthlyDetailQuery.isPending,
+                  meta: monthlyDetailQuery.data?.result_meta,
+                },
+                { key: "adb-monthly", title: "ADB 月度日均", required: !adbMonthlyQuery.isPending, meta: adbMonthlyQuery.data?.result_meta },
               ],
         syntheticSections: [
           syntheticSections.riskIndicators,
@@ -509,24 +556,33 @@ export default function LiabilityAnalyticsPage() {
       cockpitWarningsQuery.data?.result_meta,
       contributionQuery.data?.result_meta,
       cpQuery.data?.result_meta,
+      cpQuery.isPending,
       datesQuery.data?.result_meta,
       explicitReportDate,
       firstYearPressureYi,
       knowledgeQuery.data?.result_meta,
       liabilityTotalYi,
-      monthlyQuery.data?.result_meta,
+      monthlySummaryQuery.data?.result_meta,
+      monthlySummaryQuery.isPending,
+      monthlyDetailQuery.data?.result_meta,
+      monthlyDetailQuery.isPending,
       adbMonthlyQuery.data?.result_meta,
+      adbMonthlyQuery.isPending,
       reportDate,
       riskQuery.data?.result_meta,
       riskQuery.data?.report_date,
+      riskQuery.isPending,
       selectedMonthData?.month_label,
+      selectedMonth,
       selectedReportDate,
       selectedYear,
       syntheticSections.calendarItems,
       syntheticSections.riskIndicators,
       authoritativeTop10ShareDisplay,
+      warningsReturned,
       watchItems.length,
       yieldQuery.data?.result_meta,
+      yieldQuery.isPending,
       yieldKpi,
     ],
   );
@@ -544,12 +600,15 @@ export default function LiabilityAnalyticsPage() {
     datesEmpty || dailyPrimaryEmpty,
   );
   const monthlyLeadState = sectionLeadState(
-    monthlyQuery.isLoading,
-    monthlyQuery.isError,
-    !monthlyQuery.isLoading && !monthlyQuery.isError && !selectedMonthData,
+    monthlySummaryQuery.isLoading,
+    monthlySummaryQuery.isError,
+    !monthlySummaryQuery.isLoading && !monthlySummaryQuery.isError && !selectedMonthData,
   );
   const monthlyContentReady =
-    activeTab === "monthly" && !monthlyQuery.isLoading && !monthlyQuery.isError && Boolean(selectedMonthData);
+    activeTab === "monthly" &&
+    !monthlySummaryQuery.isLoading &&
+    !monthlySummaryQuery.isError &&
+    Boolean(selectedMonthData);
   const knowledgeSectionVisible =
     knowledgeQuery.isLoading || knowledgeQuery.isError || knowledgeNotes.length > 0;
 
@@ -561,7 +620,7 @@ export default function LiabilityAnalyticsPage() {
     <section
       data-testid="liability-analytics-page"
       data-moss-theme-scope="liability-analytics"
-      className="liability-analytics-page theme-dh-api"
+      className={`liability-analytics-page theme-dh-api ${SECTION_HEAD_STACK_CLASSNAME}`}
     >
       <header className="liability-analytics-page__header">
         <div className="liability-analytics-page__header-copy">
@@ -642,7 +701,7 @@ export default function LiabilityAnalyticsPage() {
         <>
           {/* 01 当日结论：readiness 锚点（liability-conclusion）必须留在本文件。 */}
           <section className="liability-section" id="liability-section-verdict">
-            <LiabilitySectionLead title="当日结论" state={dailyLeadState} />
+            <SectionHead title="当日结论" state={dailyLeadState} />
             {balanceOverviewQuery.isError && !datesBlockingError && !datesEmpty ? (
               <div className="liability-notice liability-notice--warning">
                 <strong className="liability-notice__title">市场资产（正式总览·资产口径）加载失败</strong>
@@ -756,7 +815,7 @@ export default function LiabilityAnalyticsPage() {
             <>
               {/* 02 收益成本与风险 */}
               <section className="liability-section">
-                <LiabilitySectionLead title="收益成本与风险" />
+                <SectionHead title="收益成本与风险" />
                 <div className="liability-analytics-page__grid liability-analytics-page__grid--2">
                   <div className="liability-panel">
                     <h3 className="liability-panel__title">收益成本分解（静态口径）</h3>
@@ -772,11 +831,11 @@ export default function LiabilityAnalyticsPage() {
                         <span className="liability-kpi-cell__note">静态口径</span>
                       </div>
                       <div className="liability-kpi-cell">
-                        <span className="liability-kpi-cell__label">负债成本</span>
+                        <span className="liability-kpi-cell__label">市场化负债成本</span>
                         <span className="liability-kpi-cell__value">
-                          {yieldKpi?.liability_cost?.display ?? EM_DASH}
+                          {yieldKpi?.market_liability_cost?.display ?? EM_DASH}
                         </span>
-                        <span className="liability-kpi-cell__note">静态口径</span>
+                        <span className="liability-kpi-cell__note">NIM 使用的成本口径</span>
                       </div>
                       <div className="liability-kpi-cell">
                         <span className="liability-kpi-cell__label">净息差</span>
@@ -789,18 +848,24 @@ export default function LiabilityAnalyticsPage() {
                           {fixedOrDash(firstYearPressureYi, 2)}
                           <span className="liability-kpi-cell__unit">亿</span>
                         </span>
-                        <span className="liability-kpi-cell__note">到期负债</span>
+                        <span className="liability-kpi-cell__note">已知到期日，含已到期</span>
                       </div>
                     </div>
+                    <LiabilityYieldTrendPanel
+                      year={adbMonthlyYear}
+                      months={adbMonthlyQuery.data?.months}
+                      loading={adbMonthlyQuery.isLoading}
+                      error={adbMonthlyQuery.isError}
+                    />
                     <p className="liability-caption">
-                      这里保留静态资产收益、负债成本和净息差的首屏拆解，用来判断收益成本是否仍由资产端主导。
+                      静态 NIM = 资产收益率 − 市场化负债成本（同业负债 + 发行同业存单）；整体负债成本还包括其他发行负债。下方趋势采用月度日均口径。
                     </p>
                     {missingMaturityCount > 0 ? (
                       <p
                         className="liability-caption liability-caption--gap"
                         data-testid="liability-missing-maturity-warning"
                       >
-                        {missingMaturityCount} 条负债记录缺少到期日，已按兼容口径进入最短期限桶；1 年内到期压力可能偏高。
+                        {missingMaturityCount} 条负债记录未列到期日，期限属性待核实；单列为“到期日未提供”，不计入已知的 1 年内到期金额，到期压力尚不完整。
                       </p>
                     ) : null}
                   </div>
@@ -828,7 +893,17 @@ export default function LiabilityAnalyticsPage() {
                         <tbody>
                           {contributionRows.map((row) => (
                             <tr key={`${row.side}-${row.category}`}>
-                              <td className="is-label">{row.category}</td>
+                              <td className="is-label">
+                                {row.category}
+                                {(row.missing_rate_amount_yi ?? 0) > 0 ? (
+                                  <div>
+                                    利率覆盖 {row.rate_coverage_pct?.toFixed(2) ?? EM_DASH}%；
+                                    缺失利率金额 {row.missing_rate_amount_yi?.toFixed(2)} 亿；
+                                    已知部分贡献 {row.known_contribution_yi != null ? row.known_contribution_yi.toFixed(2) : EM_DASH} 亿；
+                                    总体贡献不可用
+                                  </div>
+                                ) : null}
+                              </td>
                               <td>
                                 {/* 方向是分类不是语义状态：统一中性描边，靠文字区分（§4）。 */}
                                 <span className="liability-ib-tag">
@@ -857,7 +932,7 @@ export default function LiabilityAnalyticsPage() {
 
               {/* 03 结构与期限 */}
               <section className="liability-section">
-                <LiabilitySectionLead title="期限结构（资产 / 负债 / 净缺口）" note="单位：亿元" />
+                <SectionHead title="期限结构（资产 / 负债 / 净缺口）" note="单位：亿元" />
                 <LiabilityStructureGrids
                   structure={dailyStructure}
                   term={dailyTerm}
@@ -870,7 +945,7 @@ export default function LiabilityAnalyticsPage() {
 
               {/* 04 资金来源集中度 */}
               <section className="liability-section">
-                <LiabilitySectionLead
+                <SectionHead
                   title="资金来源集中度"
                   state={cpQuery.isLoading ? { label: "读取中", tone: "loading" } : null}
                 />
@@ -899,18 +974,22 @@ export default function LiabilityAnalyticsPage() {
 
               {/* 06 预警与关注 */}
               <section className="liability-section">
-                <LiabilitySectionLead title="预警与关注" />
+                <SectionHead title="预警与关注" />
                 <div className="liability-analytics-page__grid liability-analytics-page__grid--2">
                   <div className="liability-panel">
                     <h3 className="liability-panel__title">待关注事项</h3>
                     {watchItems.length === 0 ? (
                       <div className="liability-notice liability-notice--info">
                         {/* 空态不做「所有指标正常」全称断言：右卡预警不计入本卡口径（§7 自审）。 */}
-                        <strong className="liability-notice__title">暂无结构化待办事项</strong>
+                        <strong className="liability-notice__title">
+                          {cockpitWarningsQuery.isError ? "待办事项读取失败" : "暂无结构化待办事项"}
+                        </strong>
                         <span className="liability-notice__description">
                           {cockpitWarningsQuery.isLoading
                             ? "加载中…"
-                            : "本卡仅统计结构化待办；预警事件见右侧卡片。"}
+                            : cockpitWarningsQuery.isError
+                              ? "预警读面未返回，本卡不判定为无待办。"
+                              : "本卡仅统计结构化待办；预警事件见右侧卡片。"}
                         </span>
                       </div>
                     ) : (
@@ -934,9 +1013,15 @@ export default function LiabilityAnalyticsPage() {
                     <h3 className="liability-panel__title">预警与事件</h3>
                     {alertEvents.length === 0 ? (
                       <div className="liability-notice liability-notice--info">
-                        <strong className="liability-notice__title">当前无预警事件</strong>
+                        <strong className="liability-notice__title">
+                          {cockpitWarningsQuery.isError ? "预警事件读取失败" : "当前无预警事件"}
+                        </strong>
                         <span className="liability-notice__description">
-                          {cockpitWarningsQuery.isLoading ? "加载中…" : "未触发预警阈值。"}
+                          {cockpitWarningsQuery.isLoading
+                            ? "加载中…"
+                            : cockpitWarningsQuery.isError
+                              ? "预警读面未返回，本卡不判定为未触发。"
+                              : "未触发预警阈值。"}
                         </span>
                       </div>
                     ) : (
@@ -966,7 +1051,7 @@ export default function LiabilityAnalyticsPage() {
               {/* 07 业务资料（无笔记且无状态时整节隐藏，编号自动顺延） */}
               {knowledgeSectionVisible ? (
                 <section className="liability-section">
-                  <LiabilitySectionLead
+                  <SectionHead
                     title="业务资料"
                     state={
                       knowledgeQuery.isLoading
@@ -996,7 +1081,7 @@ export default function LiabilityAnalyticsPage() {
         <>
           {/* 01 月度概览 */}
           <section className="liability-section">
-            <LiabilitySectionLead
+            <SectionHead
               title="月度概览（月日均）"
               state={monthlyLeadState}
               note={
@@ -1005,20 +1090,20 @@ export default function LiabilityAnalyticsPage() {
                   : undefined
               }
             />
-            {monthlyQuery.isLoading ? (
+            {monthlySummaryQuery.isLoading ? (
               <p className="liability-analytics-page__surface liability-analytics-page__surface--loading">
                 载入中…
               </p>
-            ) : monthlyQuery.isError ? (
+            ) : monthlySummaryQuery.isError ? (
               <div className="liability-notice liability-notice--error">
-                <strong className="liability-notice__title">月度数据加载失败</strong>
+                <strong className="liability-notice__title">月度概览加载失败</strong>
                 <span className="liability-notice__description">
-                  {(monthlyQuery.error as Error)?.message ?? "请求失败"}
+                  {(monthlySummaryQuery.error as Error)?.message ?? "请求失败"}
                 </span>
                 <button
                   type="button"
                   className="liability-notice__retry"
-                  onClick={() => void monthlyQuery.refetch()}
+                  onClick={() => void monthlySummaryQuery.refetch()}
                 >
                   重试
                 </button>
@@ -1028,21 +1113,11 @@ export default function LiabilityAnalyticsPage() {
                 <strong className="liability-notice__title">{`暂无 ${selectedYear} 年的月度数据`}</strong>
               </div>
             ) : (
-              <>
-                {adbMonthlyQuery.isError ? (
-                  <div className="liability-notice liability-notice--warning">
-                    <strong className="liability-notice__title">日均月度数据加载失败</strong>
-                    <span className="liability-notice__description">
-                      {(adbMonthlyQuery.error as Error)?.message ?? "请求失败"}
-                    </span>
-                  </div>
-                ) : null}
-                <LiabilityMonthlySnapshotCards
-                  month={selectedMonthData}
-                  ytdAvgTotalLiabilities={monthlyQuery.data?.ytd_avg_total_liabilities ?? null}
-                  ytdAvgLiabilityCost={monthlyQuery.data?.ytd_avg_liability_cost ?? null}
-                />
-              </>
+              <LiabilityMonthlySnapshotCards
+                month={selectedMonthData}
+                ytdAvgTotalLiabilities={monthlySummaryQuery.data?.ytd_avg_total_liabilities ?? null}
+                ytdAvgLiabilityCost={monthlySummaryQuery.data?.ytd_avg_liability_cost ?? null}
+              />
             )}
             <div className="liability-analytics-page__status-row" data-testid="liability-analytics-data-status">
               {pageReadModel.statusBadges.map((badge) => (
@@ -1055,45 +1130,127 @@ export default function LiabilityAnalyticsPage() {
 
           {monthlyContentReady && selectedMonthData ? (
             <>
-              {/* 02 压力测试（月度，组件自渲染编号分区帧） */}
-              <LiabilityNimStressMonthlyPanel adbMonth={selectedAdbMonthData} />
+              {/* 02 压力测试（月度）：与概览、结构明细分别加载。 */}
+              {adbMonthlyQuery.isPending ? (
+                <section className="liability-section">
+                  <SectionHead
+                    title="压力测试：NIM 敏感性（负债成本 +50bps）"
+                    state={{ label: "读取中", tone: "loading" }}
+                  />
+                  <p className="liability-analytics-page__surface liability-analytics-page__surface--loading">
+                    月度 NIM 压力数据读取中…
+                  </p>
+                </section>
+              ) : adbMonthlyQuery.isError ? (
+                <section className="liability-section">
+                  <SectionHead
+                    title="压力测试：NIM 敏感性（负债成本 +50bps）"
+                    state={{ label: "读取失败", tone: "error" }}
+                  />
+                  <div className="liability-notice liability-notice--error">
+                    <strong className="liability-notice__title">月度 NIM 压力数据加载失败</strong>
+                    <span className="liability-notice__description">
+                      {(adbMonthlyQuery.error as Error)?.message ?? "请求失败"}
+                    </span>
+                    <button
+                      type="button"
+                      className="liability-notice__retry"
+                      onClick={() => void adbMonthlyQuery.refetch()}
+                    >
+                      重试
+                    </button>
+                  </div>
+                </section>
+              ) : !selectedAdbMonthData ? (
+                <section className="liability-section">
+                  <SectionHead
+                    title="压力测试：NIM 敏感性（负债成本 +50bps）"
+                    state={{ label: "暂无数据", tone: "empty" }}
+                  />
+                  <div className="liability-notice liability-notice--info">
+                    <strong className="liability-notice__title">所选月份暂无 ADB 压力读数</strong>
+                  </div>
+                </section>
+              ) : (
+                <LiabilityNimStressMonthlyPanel adbMonth={selectedAdbMonthData} />
+              )}
 
               {/* 03 资金来源集中度（月度日均） */}
               <section className="liability-section">
-                <LiabilitySectionLead title="资金来源集中度" />
-                <LiabilityCounterpartyBlock
-                  title="资金来源依赖度（前十对手方）"
-                  subtitle="口径：月度日均（TYWL 负债端）。"
-                  totalValue={selectedMonthData.avg_total_liabilities ?? null}
-                  authoritativeTop10Share={selectedMonthData.top10_share ?? null}
-                  authoritativeHhi={selectedMonthData.hhi ?? null}
-                  populationCount={selectedMonthData.population_count ?? null}
-                  isTruncated={selectedMonthData.is_truncated ?? false}
-                  counterpartyRows={monthlyCpRowsAll}
-                  barRankingRows={monthlyCpBarRows}
-                  byType={monthlyByInstitution}
-                  loading={false}
-                  errorText={null}
-                />
-                <LiabilityCustomerTable
-                  rows={monthlyCpRowsAll}
-                  loading={false}
-                  subtitle="口径：月度日均（TYWL 负债端）。"
-                />
+                <SectionHead title="资金来源集中度" state={monthlyDetailLeadState} />
+                {monthlyDetailError ? (
+                  <div className="liability-notice liability-notice--error">
+                    <strong className="liability-notice__title">所选月份结构明细加载失败</strong>
+                    <span className="liability-notice__description">
+                      {(monthlyDetailQuery.error as Error)?.message ?? "请求失败"}
+                    </span>
+                    <button
+                      type="button"
+                      className="liability-notice__retry"
+                      onClick={() => void monthlyDetailQuery.refetch()}
+                    >
+                      重试
+                    </button>
+                  </div>
+                ) : monthlyDetailEmpty ? (
+                  <div className="liability-notice liability-notice--info">
+                    <strong className="liability-notice__title">所选月份暂无集中度明细</strong>
+                  </div>
+                ) : (
+                  <>
+                    <LiabilityCounterpartyBlock
+                      title="资金来源依赖度（前十对手方）"
+                      subtitle="口径：月度日均（TYWL 负债端）。"
+                      totalValue={selectedMonthDetail?.counterparty_total ?? null}
+                      authoritativeTop10Share={selectedMonthDetail?.top10_share ?? null}
+                      authoritativeHhi={selectedMonthDetail?.hhi ?? null}
+                      populationCount={selectedMonthDetail?.population_count ?? null}
+                      isTruncated={selectedMonthDetail?.is_truncated ?? false}
+                      counterpartyRows={monthlyCpRowsAll}
+                      barRankingRows={monthlyCpBarRows}
+                      byType={monthlyByInstitution}
+                      loading={monthlyDetailLoading}
+                      errorText={null}
+                    />
+                    <LiabilityCustomerTable
+                      rows={monthlyCpRowsAll}
+                      loading={monthlyDetailLoading}
+                      subtitle="口径：月度日均（TYWL 负债端）。"
+                    />
+                  </>
+                )}
               </section>
 
               {/* 04 结构与期限（月度日均） */}
               <section className="liability-section">
-                <LiabilitySectionLead title="期限结构（资产 / 负债 / 净缺口）" note="单位：亿元" />
-                <LiabilityStructureGrids
-                  structure={mStructure}
-                  term={mTerm}
-                  interbankStructure={mIbStructure}
-                  interbankTerm={mIbTerm}
-                  issuedStructure={mIssuedStructure}
-                  issuedTerm={mIssuedTerm}
-                  structurePieCaption="同业负债业务结构（按产品类型）与发行负债业务结构（按业务种类）在总视图中的合并展示。"
+                <SectionHead
+                  title="期限结构（资产 / 负债 / 净缺口）"
+                  note="单位：亿元"
+                  state={monthlyDetailLeadState}
                 />
+                {monthlyDetailLoading ? (
+                  <p className="liability-analytics-page__surface liability-analytics-page__surface--loading">
+                    所选月份期限结构读取中…
+                  </p>
+                ) : monthlyDetailError ? (
+                  <div className="liability-notice liability-notice--error">
+                    <strong className="liability-notice__title">所选月份期限结构加载失败</strong>
+                  </div>
+                ) : monthlyDetailEmpty ? (
+                  <div className="liability-notice liability-notice--info">
+                    <strong className="liability-notice__title">所选月份暂无期限结构明细</strong>
+                  </div>
+                ) : (
+                  <LiabilityStructureGrids
+                    structure={mStructure}
+                    term={mTerm}
+                    interbankStructure={mIbStructure}
+                    interbankTerm={mIbTerm}
+                    issuedStructure={mIssuedStructure}
+                    issuedTerm={mIssuedTerm}
+                    structurePieCaption="同业负债业务结构（按产品类型）与发行负债业务结构（按业务种类）在总视图中的合并展示。"
+                  />
+                )}
               </section>
             </>
           ) : null}
@@ -1103,11 +1260,29 @@ export default function LiabilityAnalyticsPage() {
       {/* 证据与口径：两个页签共用，始终后置披露。 */}
       {/* 两面板改单栏满宽 + 卡片 auto-fill 流铺（§11.2：禁止左右栏裸空白断层；ledger-pnl 先例）。 */}
       <section className="liability-section" id="liability-section-evidence">
-        <LiabilitySectionLead title="证据与口径" />
+        <SectionHead title="证据与口径" />
         <div className="liability-analytics-page__grid">
           <div className="liability-panel">
             <h3 className="liability-panel__title">状态证据</h3>
             <div className="liability-analytics-page__state-stack">
+              {evidenceLoading ? (
+                <PageStateSurface
+                  variant="loading"
+                  title="核心读面元数据读取中"
+                  description="账本将在核心读面返回后生成，不提前判定为元数据缺口。"
+                />
+              ) : null}
+              {evidenceBlocked ? (
+                <PageStateSurface
+                  variant={datesBlockingError ? "error" : "empty"}
+                  title="核心读面未触发"
+                  description={
+                    datesBlockingError
+                      ? "报告日目录读取失败，核心读面未发起请求，账本无法生成。"
+                      : "暂无可用报告日，核心读面未发起请求，账本无法生成。"
+                  }
+                />
+              ) : null}
               {pageReadModel.stateSurfaces.map((surface) => (
                 <PageStateSurface
                   key={surface.key}
@@ -1121,13 +1296,19 @@ export default function LiabilityAnalyticsPage() {
           <div className="liability-panel">
             <h3 className="liability-panel__title">证据账本</h3>
             <div className="liability-analytics-page__evidence-ledger">
+              {evidenceLoading ? (
+                <div className="liability-analytics-page__evidence-loading">证据账本读取中…</div>
+              ) : null}
+              {evidenceBlocked ? (
+                <div className="liability-analytics-page__evidence-loading">核心读面未触发，证据账本未生成。</div>
+              ) : null}
               {pageReadModel.evidenceCards.map((card) => (
                 <article key={card.key} className="liability-analytics-page__evidence-card" data-tone={card.tone}>
                   <div className="liability-analytics-page__evidence-card-top">
                     <strong>{card.title}</strong>
                     <span>{card.basisLabel}</span>
                   </div>
-                  <dl>
+                  <dl className="liability-analytics-page__evidence-summary">
                     <div>
                       <dt title="result_kind">结果类型</dt>
                       <dd>{card.resultKind}</dd>
@@ -1144,19 +1325,27 @@ export default function LiabilityAnalyticsPage() {
                       <dt title="as_of_date">截至日</dt>
                       <dd>{card.asOfDate}</dd>
                     </div>
-                    <div>
-                      <dt title="trace_id">追踪号</dt>
-                      <dd>{card.traceId}</dd>
-                    </div>
-                    <div>
-                      <dt title="source_version">来源版本</dt>
-                      <dd>{card.sourceVersion}</dd>
-                    </div>
-                    <div>
-                      <dt title="rule_version">规则版本</dt>
-                      <dd>{card.ruleVersion}</dd>
-                    </div>
                   </dl>
+                  <details
+                    className="liability-analytics-page__evidence-lineage"
+                    data-testid={`liability-evidence-lineage-${card.key}`}
+                  >
+                    <summary>查看完整血缘</summary>
+                    <dl>
+                      <div>
+                        <dt title="trace_id">追踪号</dt>
+                        <dd>{card.traceId}</dd>
+                      </div>
+                      <div>
+                        <dt title="source_version">来源版本</dt>
+                        <dd>{card.sourceVersion}</dd>
+                      </div>
+                      <div>
+                        <dt title="rule_version">规则版本</dt>
+                        <dd>{card.ruleVersion}</dd>
+                      </div>
+                    </dl>
+                  </details>
                 </article>
               ))}
             </div>

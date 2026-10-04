@@ -1,11 +1,11 @@
 import type { EChartsOption } from "echarts";
 
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
 // canvas 不消费 CSS 变量：示意瀑布取色走 nocturneTokens 常量组
 // （operations-analysis 页根已声明 Nocturne scope，risk-tensor 先例）。
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
-import styles from "./RevenueCostBridge.module.css";
 
 const STEPS = [
   { name: "债券资产收益", value: 68.56 },
@@ -40,8 +40,7 @@ function buildOption(): EChartsOption {
   const { placeholder, positive, negative, categories } = buildWaterfallParts();
   return {
     color: ["rgba(0,0,0,0)", nocturneTokens.color.green, nocturneTokens.color.red],
-    grid: { left: 48, right: 24, top: 40, bottom: 72 },
-    legend: { show: false },
+    grid: { left: 48, right: 24, top: 40 },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
@@ -83,14 +82,12 @@ function buildOption(): EChartsOption {
         name: "增收",
         type: "bar",
         stack: "bridge",
-        itemStyle: { borderRadius: [4, 4, 0, 0] },
         data: positive,
       },
       {
         name: "成本",
         type: "bar",
         stack: "bridge",
-        itemStyle: { borderRadius: [4, 4, 0, 0] },
         data: negative,
       },
     ],
@@ -104,11 +101,14 @@ function buildOption(): EChartsOption {
  */
 export function RevenueCostBridge() {
   return (
-    <div className={styles.body}>
-      <p className={styles.note} data-testid="revenue-cost-bridge-sample-note">
-        正式口径读数：{EM_DASH}（未接入）；瀑布为静态样例，数值不代表正式读数。
-      </p>
-      <BaseChart option={buildOption()} height={300} />
-    </div>
+    <ChartCard
+      flat
+      ariaLabel="收益成本桥（示意瀑布）"
+      unit="亿元"
+      height={CHART_CARD_HEIGHTS.hero}
+      legend="none"
+      option={buildOption()}
+      footnote={`正式口径读数：${EM_DASH}（未接入）；瀑布为静态样例，数值不代表正式读数。`}
+    />
   );
 }

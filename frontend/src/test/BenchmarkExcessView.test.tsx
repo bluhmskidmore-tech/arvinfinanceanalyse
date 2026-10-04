@@ -114,7 +114,7 @@ describe("BenchmarkExcessView", () => {
       "基准超额收益",
     );
     expect(screen.getByTestId("benchmark-excess-shell-lead")).toHaveTextContent(
-      "不在前端重算超额收益",
+      "比较组合超额收益及其来源",
     );
     expect(screen.getByTestId("benchmark-excess-summary-lead")).toHaveTextContent(
       "组合与基准摘要",

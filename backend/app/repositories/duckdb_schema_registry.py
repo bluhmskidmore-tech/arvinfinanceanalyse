@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 Migration = Callable[[duckdb.DuckDBPyConnection], None]
 
 
+@dataclass(frozen=True, slots=True)
+class DeclaredDuckDBMigration:
+    """Public, immutable migration metadata without the executable callback."""
+
+    version: int
+    description: str
+
+
 def _connection_has_explicit_transaction(conn: duckdb.DuckDBPyConnection) -> bool:
     """Detect whether consecutive statements share a caller-owned transaction."""
     first_id = conn.execute("select txid_current()").fetchone()[0]
@@ -42,6 +50,14 @@ class DuckDBSchemaRegistry:
 
     def register(self, version: int, description: str, fn: Migration) -> None:
         self._migrations.append((version, description, fn))
+
+    @property
+    def declared_migrations(self) -> tuple[DeclaredDuckDBMigration, ...]:
+        """Return declared ledger metadata without exposing registry internals."""
+        return tuple(
+            DeclaredDuckDBMigration(version=version, description=description)
+            for version, description, _migration in self._migrations
+        )
 
     def apply_pending(self, conn: duckdb.DuckDBPyConnection | None = None) -> list[str]:
         """Apply pending migrations. Pass `conn` to run on an existing open connection (avoids file lock issues)."""
@@ -75,12 +91,7 @@ class DuckDBSchemaRegistry:
                 migration_table_exists = True
 
             applied = (
-                {
-                    row[0]
-                    for row in conn.execute(
-                        "SELECT version FROM _schema_migrations"
-                    ).fetchall()
-                }
+                {row[0] for row in conn.execute("SELECT version FROM _schema_migrations").fetchall()}
                 if migration_table_exists
                 else set()
             )

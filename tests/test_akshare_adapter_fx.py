@@ -1,10 +1,128 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import sys
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
 from tests.helpers import load_module
+
+
+class _AkShareFrame:
+    def __init__(self, records):
+        self._records = records
+
+    def to_dict(self, *, orient):
+        assert orient == "records"
+        return self._records
+
+
+def test_akshare_local_fx_loader_calls_safe_once_without_args_and_skips_incompatible_loaders(
+    monkeypatch,
+):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+    calls = []
+
+    def _currency_boc_safe(*args, **kwargs):
+        calls.append((args, kwargs))
+        return _AkShareFrame(
+            [
+                {
+                    "\u65e5\u671f": "2026-08-31",
+                    "\u7f8e\u5143": "679.01",
+                }
+            ]
+        )
+
+    def _unexpected_loader(*_args, **_kwargs):
+        raise AssertionError("non-formal FX loader must not be called")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "akshare",
+        SimpleNamespace(
+            currency_boc_safe=_currency_boc_safe,
+            fx_spot_quote=_unexpected_loader,
+            currency_latest=_unexpected_loader,
+        ),
+    )
+
+    records = module.VendorAdapter()._fetch_akshare_fx_records_locally("2026-08-31")
+
+    assert calls == [((), {})]
+    assert records == [{"\u65e5\u671f": "2026-08-31", "\u7f8e\u5143": "679.01"}]
+
+
+def test_akshare_local_fx_loader_preserves_safe_failure_and_does_not_mask_it(monkeypatch):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+    safe_error = ConnectionError("SAFE fixture unavailable")
+
+    def _currency_boc_safe():
+        raise safe_error
+
+    def _unexpected_loader(*_args, **_kwargs):
+        raise AssertionError("non-formal FX loader must not mask the SAFE failure")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "akshare",
+        SimpleNamespace(
+            currency_boc_safe=_currency_boc_safe,
+            fx_spot_quote=_unexpected_loader,
+            currency_latest=_unexpected_loader,
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="AkShare currency_boc_safe fetch failed: SAFE fixture unavailable",
+    ) as exc_info:
+        module.VendorAdapter()._fetch_akshare_fx_records_locally("2026-08-31")
+
+    assert exc_info.value.__cause__ is safe_error
+
+
+def test_akshare_local_fx_loader_rejects_empty_safe_result(monkeypatch):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "akshare",
+        SimpleNamespace(currency_boc_safe=lambda: _AkShareFrame([])),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="AkShare currency_boc_safe returned no records",
+    ):
+        module.VendorAdapter()._fetch_akshare_fx_records_locally("2026-08-31")
+
+
+def test_akshare_local_fx_loader_rejects_unsupported_safe_result(monkeypatch):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "akshare",
+        SimpleNamespace(currency_boc_safe=lambda: object()),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="AkShare currency_boc_safe returned an unsupported payload shape",
+    ):
+        module.VendorAdapter()._fetch_akshare_fx_records_locally("2026-08-31")
 
 
 def test_akshare_fx_snapshot_matches_direct_and_reverse_pairs(monkeypatch):

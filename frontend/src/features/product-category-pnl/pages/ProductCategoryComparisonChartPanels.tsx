@@ -5,7 +5,7 @@ import type { ResultMeta } from "../../../api/contracts";
 import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
 import type { EChartsOption } from "../../../lib/echarts";
 import { LazyChartMount } from "./LazyChartMount";
-import { LazyReactECharts } from "./LazyReactECharts";
+import { LazyChartCard } from "./LazyReactECharts";
 import type { ProductCategoryComparisonReadout } from "./ProductCategoryComparisonCharts";
 import type {
   ProductCategoryInterestSpreadAttributionSurface,
@@ -114,11 +114,12 @@ export function DerivedChartPanel(props: DerivedChartPanelProps) {
         placeholderClassName="product-category-derived-chart__canvas"
         placeholderTestId={`${props.testId}-canvas-placeholder`}
       >
-        <LazyReactECharts
+        <LazyChartCard
+          flat
+          ariaLabel={props.title}
+          height={props.wide ? 280 : 220}
           option={props.option}
-          className="product-category-derived-chart__canvas"
-          notMerge
-          lazyUpdate
+          canvasClassName="product-category-derived-chart__canvas"
           onEvents={props.onEvents}
         />
       </LazyChartMount>
@@ -216,7 +217,7 @@ export function ProductCategoryInterestSpreadAttributionPanel(props: {
                     {"\u65e5\u5747\u989d"} {point.amountLabel}
                   </dd>
                   <dd>
-                    {"\u5229\u606f\u6536\u652f"} {point.cashLabel}
+                    {"收入/支出（FTP前）"} {point.cashLabel}
                   </dd>
                   <dd>
                     {"\u6536\u76ca\u7387/\u6210\u672c"} {point.yieldLabel}

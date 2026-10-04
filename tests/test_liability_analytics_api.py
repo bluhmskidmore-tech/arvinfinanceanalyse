@@ -24,6 +24,8 @@ _LIABILITY_ANALYTICS_READ_CASES: tuple[tuple[str, dict[str, str]], ...] = (
     ("/api/analysis/yield-by-period", {"year": "2026", "period_type": "monthly"}),
     ("/api/analysis/liabilities/counterparty", {"report_date": "2026-01-31", "top_n": "10"}),
     ("/api/liabilities/monthly", {"year": "2026"}),
+    ("/api/liabilities/monthly", {"year": "2026", "detail_level": "summary"}),
+    ("/api/liabilities/monthly/detail", {"month": "2026-01"}),
     ("/ui/liability/business-context", {}),
     ("/api/analysis/liabilities/cockpit-warnings", {"report_date": "2026-01-31"}),
     ("/api/analysis/liabilities/contribution-split", {"report_date": "2026-01-31"}),
@@ -94,7 +96,9 @@ def test_liability_analytics_read_surface_allows_development_fallback_without_ex
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(route_mod.router)
-    client = TestClient(app)
+    # dev fallback 额外要求 loopback 客户端（P1 安全收紧）；TestClient 默认
+    # client host 是非 IP 的 "testclient"，显式设置为 127.0.0.1 以满足该判定。
+    client = TestClient(app, client=("127.0.0.1", 12345))
 
     response = client.get("/api/risk/buckets")
 
@@ -114,6 +118,8 @@ def test_liability_analytics_routes_keep_live_compatibility_surface_analytical(
         ("/api/analysis/yield-by-period", {"year": "2026", "period_type": "monthly"}),
         ("/api/analysis/liabilities/counterparty", {"report_date": "2026-01-31", "top_n": "10"}),
         ("/api/liabilities/monthly", {"year": "2026"}),
+        ("/api/liabilities/monthly", {"year": "2026", "detail_level": "summary"}),
+        ("/api/liabilities/monthly/detail", {"month": "2026-01"}),
     ):
         response = client.get(path, params=params)
         assert response.status_code == 200, path
@@ -147,6 +153,127 @@ def test_liability_analytics_monthly_route_still_validates_year_bounds(
 
     response = client.get("/api/liabilities/monthly", params={"year": "1999"})
     assert response.status_code == 422
+
+
+@pytest.mark.excluded_surface_regression
+def test_liability_monthly_default_stays_full_while_summary_and_detail_are_explicit(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    full = client.get("/api/liabilities/monthly", params={"year": "2026"})
+    summary = client.get(
+        "/api/liabilities/monthly",
+        params={"year": "2026", "detail_level": "summary"},
+    )
+    detail = client.get("/api/liabilities/monthly/detail", params={"month": "2026-01"})
+
+    assert full.status_code == 200
+    assert full.json()["result_meta"]["result_kind"] == "liability_analytics.monthly"
+    assert summary.status_code == 200
+    assert summary.json()["result_meta"]["result_kind"] == "liability_analytics.monthly_summary"
+    assert summary.json()["result"]["months"] == []
+    assert detail.status_code == 200
+    assert detail.json()["result_meta"]["result_kind"] == "liability_analytics.monthly_detail"
+    assert detail.json()["result"] == {
+        "year": 2026,
+        "selected_month": "2026-01",
+        "detail": None,
+    }
+
+
+@pytest.mark.excluded_surface_regression
+def test_liability_monthly_split_routes_validate_mode_and_month(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    invalid_mode = client.get(
+        "/api/liabilities/monthly",
+        params={"year": "2026", "detail_level": "compact"},
+    )
+    invalid_month = client.get(
+        "/api/liabilities/monthly/detail",
+        params={"month": "2026-13"},
+    )
+
+    assert invalid_mode.status_code == 422
+    assert invalid_month.status_code == 422
+
+
+@pytest.mark.excluded_surface_regression
+def test_monthly_service_uses_daily_totals_for_comparison_year(monkeypatch) -> None:
+    service_mod = load_module(
+        "backend.app.services.liability_analytics_service_monthly_comparison_totals",
+        "backend/app/services/liability_analytics_service.py",
+    )
+    captured: dict[str, object] = {}
+
+    class Repo:
+        def __init__(self, _duckdb_path: str) -> None:
+            pass
+
+        def fetch_zqtz_liability_rows_for_year(self, year: int):
+            assert year == 2026
+            return [{"report_date": "2026-01-31", "source_version": "sv_z_current"}]
+
+        def fetch_tyw_liability_rows_for_year(self, year: int):
+            assert year == 2026
+            return [{"report_date": "2026-01-31", "source_version": "sv_t_current"}]
+
+        def fetch_zqtz_liability_daily_totals_for_year(self, year: int):
+            assert year == 2025
+            return [{"report_date": "2025-01-31", "source_version": "sv_z_compare"}]
+
+        def fetch_tyw_liability_daily_totals_for_year(self, year: int):
+            assert year == 2025
+            return [{"report_date": "2025-01-31", "source_version": "sv_t_compare"}]
+
+    def fake_compute(year, zqtz_rows, tyw_rows):
+        captured.update(year=year, zqtz_rows=zqtz_rows, tyw_rows=tyw_rows)
+        return {
+            "year": year,
+            "months": [],
+            "ytd_avg_total_liabilities": 0.0,
+            "ytd_avg_liability_cost": None,
+        }
+
+    monkeypatch.setattr(service_mod, "LiabilityAnalyticsRepository", Repo)
+    monkeypatch.setattr(service_mod, "compute_liabilities_monthly", fake_compute)
+
+    service_mod.liabilities_monthly_payload(duckdb_path="unused.duckdb", year=2026)
+
+    assert captured["year"] == 2026
+    assert [row["source_version"] for row in captured["zqtz_rows"]] == [
+        "sv_z_compare",
+        "sv_z_current",
+    ]
+    assert [row["source_version"] for row in captured["tyw_rows"]] == [
+        "sv_t_compare",
+        "sv_t_current",
+    ]
+
+
+@pytest.mark.excluded_surface_regression
+def test_monthly_summary_lineage_expands_compacted_daily_versions() -> None:
+    service_mod = load_module(
+        "backend.app.services.liability_analytics_service_monthly_summary_lineage",
+        "backend/app/services/liability_analytics_service.py",
+    )
+
+    rows = [
+        {"source_version": "sv_b|sv_a", "rule_version": "rv_2|rv_1"},
+        {"source_version": "sv_a", "rule_version": "rv_1"},
+    ]
+
+    assert service_mod._expand_compacted_lineage(rows) == [
+        {"source_version": "sv_a"},
+        {"source_version": "sv_b"},
+        {"rule_version": "rv_1"},
+        {"rule_version": "rv_2"},
+    ]
 
 
 @pytest.mark.excluded_surface_regression
@@ -589,8 +716,190 @@ def test_yield_metrics_envelope_stays_ok_without_history_skips(tmp_path: Path, m
     )
 
     assert envelope["result_meta"]["quality_flag"] == "ok"
+    assert envelope["result_meta"]["fallback_mode"] == "none"
+    assert envelope["result_meta"]["requested_report_date"] == "2026-01-31"
+    assert envelope["result_meta"]["resolved_report_date"] == "2026-01-31"
     assert envelope["result_meta"]["filters_applied"] == {}
     assert [point["date"] for point in envelope["result"]["history"]] == [
         "2026-01-30",
         "2026-01-31",
     ]
+
+
+@pytest.mark.excluded_surface_regression
+def test_yield_metrics_unknown_report_date_stays_200_with_warning_envelope(
+    tmp_path: Path, monkeypatch
+) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    response = client.get("/api/analysis/yield_metrics", params={"report_date": "2020-01-15"})
+
+    assert response.status_code == 200
+    body = response.json()
+    meta = body["result_meta"]
+    assert meta["quality_flag"] == "warning"
+    assert meta["fallback_mode"] == "none"
+    assert meta["requested_report_date"] == "2020-01-15"
+    assert meta["resolved_report_date"] == "2020-01-15"
+    assert body["result"]["history"] == []
+    kpi = body["result"]["kpi"]
+    for field in ("asset_yield", "liability_cost", "market_liability_cost", "nim"):
+        value = kpi[field]
+        raw = value.get("raw") if isinstance(value, dict) else value
+        assert raw is None, field
+
+
+@pytest.mark.excluded_surface_regression
+def test_yield_metrics_catalog_date_keeps_ok_and_no_fallback(tmp_path: Path, monkeypatch) -> None:
+    service_mod = load_module(
+        "backend.app.services.liability_analytics_service_catalog_ok_envelope",
+        "backend/app/services/liability_analytics_service.py",
+    )
+
+    class Repo:
+        def __init__(self, _duckdb_path: str) -> None:
+            pass
+
+        def resolve_latest_report_date(self):
+            return "2026-01-31"
+
+        def fetch_zqtz_yield_rows(self, report_date: str):
+            return [{"report_date": report_date, "source_version": "sv_zqtz"}]
+
+        def fetch_tyw_rows(self, report_date: str):
+            return [{"report_date": report_date, "source_version": "sv_tyw"}]
+
+        def list_report_dates(self):
+            return ["2026-01-31", "2026-01-30"]
+
+        def fetch_yield_rows_for_dates(self, dates):
+            return (
+                {d: [{"report_date": d, "source_version": "sv_zqtz"}] for d in dates},
+                {d: [{"report_date": d, "source_version": "sv_tyw"}] for d in dates},
+            )
+
+    def healthy_compute(report_date, _zqtz_rows, _tyw_rows):
+        return {
+            "report_date": report_date,
+            "kpi": {
+                "asset_yield": 0.031,
+                "liability_cost": 0.018,
+                "market_liability_cost": 0.021,
+                "nim": 0.010,
+            },
+        }
+
+    monkeypatch.setattr(service_mod, "LiabilityAnalyticsRepository", Repo)
+    monkeypatch.setattr(service_mod, "compute_liability_yield_metrics", healthy_compute)
+
+    envelope = service_mod.liability_yield_metrics_payload(
+        duckdb_path=str(tmp_path / "liability.duckdb"),
+        report_date="2026-01-31",
+    )
+
+    meta = envelope["result_meta"]
+    assert meta["quality_flag"] == "ok"
+    assert meta["fallback_mode"] == "none"
+    assert meta["requested_report_date"] == "2026-01-31"
+    assert meta["resolved_report_date"] == "2026-01-31"
+
+
+@pytest.mark.excluded_surface_regression
+def test_yield_metrics_empty_request_date_discloses_latest_snapshot_fallback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    service_mod = load_module(
+        "backend.app.services.liability_analytics_service_empty_date_fallback",
+        "backend/app/services/liability_analytics_service.py",
+    )
+
+    class Repo:
+        def __init__(self, _duckdb_path: str) -> None:
+            pass
+
+        def resolve_latest_report_date(self):
+            return "2026-01-31"
+
+        def fetch_zqtz_yield_rows(self, report_date: str):
+            return [{"report_date": report_date, "source_version": "sv_zqtz"}]
+
+        def fetch_tyw_rows(self, report_date: str):
+            return [{"report_date": report_date, "source_version": "sv_tyw"}]
+
+        def list_report_dates(self):
+            return ["2026-01-31"]
+
+        def fetch_yield_rows_for_dates(self, dates):
+            return (
+                {d: [{"report_date": d, "source_version": "sv_zqtz"}] for d in dates},
+                {d: [{"report_date": d, "source_version": "sv_tyw"}] for d in dates},
+            )
+
+    def healthy_compute(report_date, _zqtz_rows, _tyw_rows):
+        return {
+            "report_date": report_date,
+            "kpi": {
+                "asset_yield": 0.031,
+                "liability_cost": 0.018,
+                "market_liability_cost": 0.021,
+                "nim": 0.010,
+            },
+        }
+
+    monkeypatch.setattr(service_mod, "LiabilityAnalyticsRepository", Repo)
+    monkeypatch.setattr(service_mod, "compute_liability_yield_metrics", healthy_compute)
+
+    envelope = service_mod.liability_yield_metrics_payload(
+        duckdb_path=str(tmp_path / "liability.duckdb"),
+        report_date=None,
+    )
+
+    meta = envelope["result_meta"]
+    assert meta["quality_flag"] == "ok"
+    assert meta["fallback_mode"] == "latest_snapshot"
+    assert meta["requested_report_date"] is None
+    assert meta["resolved_report_date"] == "2026-01-31"
+    assert envelope["result"]["report_date"] == "2026-01-31"
+
+
+@pytest.mark.excluded_surface_regression
+def test_yield_metrics_date_absent_from_catalog_sets_warning_without_latest_fallback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    service_mod = load_module(
+        "backend.app.services.liability_analytics_service_absent_catalog_date",
+        "backend/app/services/liability_analytics_service.py",
+    )
+
+    class Repo:
+        def __init__(self, _duckdb_path: str) -> None:
+            pass
+
+        def resolve_latest_report_date(self):
+            return "2026-01-31"
+
+        def fetch_zqtz_yield_rows(self, _report_date: str):
+            return []
+
+        def fetch_tyw_rows(self, _report_date: str):
+            return []
+
+        def list_report_dates(self):
+            return ["2026-01-31"]
+
+        def fetch_yield_rows_for_dates(self, _dates):
+            return ({}, {})
+
+    monkeypatch.setattr(service_mod, "LiabilityAnalyticsRepository", Repo)
+
+    envelope = service_mod.liability_yield_metrics_payload(
+        duckdb_path=str(tmp_path / "liability.duckdb"),
+        report_date="2020-01-15",
+    )
+
+    meta = envelope["result_meta"]
+    assert meta["quality_flag"] == "warning"
+    assert meta["fallback_mode"] == "none"
+    assert meta["requested_report_date"] == "2020-01-15"
+    assert meta["resolved_report_date"] == "2020-01-15"
+    assert envelope["result"]["history"] == []

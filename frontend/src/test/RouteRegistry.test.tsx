@@ -286,8 +286,21 @@ vi.mock("../features/stock-analysis/pages/StockAnalysisPage", () => ({
   ),
 }));
 
+vi.mock("../features/stock-analysis/pages/StockPortfolioConstructionPage", () => ({
+  default: () => (
+    <section data-testid="stock-analysis-portfolio-route">
+      <h1>股票策略舱</h1>
+    </section>
+  ),
+}));
+
+// 省掉 antd ConfigProvider，但保留真实边界的 DOM 标记，让「错误页仍在深色边界内」可断言。
 vi.mock("../app/ThemedRouteBoundary", () => ({
-  default: ({ children }: { children: ReactNode }) => <>{children}</>,
+  default: ({ children }: { children: ReactNode }) => (
+    <div className="themed-route-boundary theme-dh-api" data-moss-theme="dark" data-moss-theme-scope="route">
+      {children}
+    </div>
+  ),
 }));
 
 // 预热本文件未被 vi.mock 的懒加载路由重链：/cross-asset（双层懒链，重头是
@@ -408,6 +421,11 @@ describe("RouteRegistry", () => {
       const groupNav = screen.getByTestId("workbench-group-nav");
       expect(within(groupNav).getAllByRole("link").length).toBeGreaterThan(0);
       expect(screen.getByTestId("workbench-main-content")).toContainElement(errorPage);
+      // 错误页仍在深色路由边界内：否则壳层 :has(.themed-route-boundary) 失配，整页翻回 IB 浅色。
+      const themedBoundary = errorPage.closest(".themed-route-boundary");
+      expect(themedBoundary).not.toBeNull();
+      expect(themedBoundary).toHaveClass("theme-dh-api");
+      expect(themedBoundary).toHaveAttribute("data-moss-theme", "dark");
     } finally {
       window.removeEventListener("error", preventExpectedRouteError);
       consoleError.mockRestore();
@@ -456,8 +474,8 @@ describe("RouteRegistry", () => {
     renderWorkbenchApp(["/operations-analysis"], { client: mockClient });
 
     expect(await screen.findByText("MOSS")).toBeInTheDocument();
-    expect(await screen.findByRole("navigation")).toBeInTheDocument();
-    expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
+    expect(await screen.findByRole("navigation", { name: "主工作台" })).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-governance-pill")).toBeInTheDocument();
   });
 
   it("renders the source-preview route as a hidden reserved placeholder", async () => {
@@ -467,11 +485,11 @@ describe("RouteRegistry", () => {
     expect(screen.queryByTestId("source-preview-page-title")).not.toBeInTheDocument();
   });
 
-  it("renders the news-events route with NewsEventsPage and governance banner", async () => {
+  it("renders the news-events route with NewsEventsPage and governance pill", async () => {
     renderWorkbenchApp(["/news-events"], { client: mockClient });
 
     expect(await screen.findByTestId("news-events-page-title")).toHaveTextContent("新闻事件");
-    expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-governance-pill")).toBeInTheDocument();
     expect(await screen.findByTestId("news-events-table")).toBeInTheDocument();
     expect(await screen.findByLabelText("news-events-topic-code")).toBeInTheDocument();
   });
@@ -488,7 +506,7 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("bond-analysis-route-shell")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "债券分析" })).toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-governance-banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-governance-pill")).not.toBeInTheDocument();
   });
 
   it("renders the cross-asset route", async () => {
@@ -608,6 +626,20 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("stock-analysis-page")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "股票分析" })).toBeInTheDocument();
+  });
+
+  it("renders the stock-analysis portfolio route", async () => {
+    renderWorkbenchApp(["/stock-analysis/portfolio"], { client: mockClient });
+
+    expect(await screen.findByTestId("stock-analysis-portfolio-route")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "股票策略舱" })).toBeInTheDocument();
+  });
+
+  it("renders the stock-analysis risk route", async () => {
+    renderWorkbenchApp(["/stock-analysis/risk"], { client: mockClient });
+
+    expect(await screen.findByTestId("stock-analysis-portfolio-route")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "股票策略舱" })).toBeInTheDocument();
   });
 
   it("redirects V1 bookmark /market to the live market-data page", async () => {
@@ -739,7 +771,7 @@ describe("RouteRegistry", () => {
     expect(screen.queryByText("MOSS Chat")).not.toBeInTheDocument();
   });
 
-  it("renders the Agent workbench only with the explicit development opt-in", async () => {
+  it("renders the Agent workbench with the explicit release flag", async () => {
     vi.stubEnv("VITE_MOSS_AGENT_FRONTEND_ENABLED", "true");
 
     renderWorkbenchApp(["/agent"], { client: mockClient });
@@ -747,6 +779,7 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("agent-workbench-page")).toBeInTheDocument();
     expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-not-found-page")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
   it("renders the hidden Agent Lab with compact Agent-owned shell chrome", async () => {
@@ -755,20 +788,21 @@ describe("RouteRegistry", () => {
     renderWorkbenchApp(["/agent-lab"], { client: mockClient });
 
     expect(await screen.findByTestId("agent-lab-page")).toBeInTheDocument();
-    expect(screen.getByTestId("workbench-page-context")).toHaveTextContent("MOSS Chat");
+    expect(screen.queryByTestId("workbench-page-context")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
     expect(document.querySelector(".workbench-workspace-hero")).not.toBeInTheDocument();
   });
 
-  it("keeps the Agent workbench closed in production even when the flag is set", async () => {
+  it("renders the live Agent workbench in production when the release flag is set", async () => {
     vi.stubEnv("DEV", false);
     vi.stubEnv("VITE_MOSS_AGENT_FRONTEND_ENABLED", "true");
 
     renderWorkbenchApp(["/agent"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-not-found-page")).toHaveTextContent("/agent");
-    expect(screen.queryByTestId("agent-workbench-page")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(AGENT_QUESTION_INPUT_LABEL)).not.toBeInTheDocument();
+    expect(await screen.findByTestId("agent-workbench-page")).toBeInTheDocument();
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-not-found-page")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 });

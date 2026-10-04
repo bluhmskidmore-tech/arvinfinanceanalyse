@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import {
   formatManagedRunFailureMessage,
+  getAgentApiErrorStatus,
+  isTerminalAgentRunStatus,
   latestAgentRunStatusRequests,
   mergeRestoredManagedTurn,
 } from "../lib/agentWorkbenchModel";
@@ -21,7 +23,7 @@ type UseAgentRunRestoreOptions = {
   isCurrentConversationSession: (session: number) => boolean;
   fetchAgentRunStatus: (runId: string) => Promise<AgentRunPayload>;
   setRestoringRunId: (runId: string) => void;
-  setRestoreErrorRunId: (runId: string) => void;
+  setRestoreErrorRunId: (runId: string, retryable?: boolean) => void;
   setOrdinaryConversationMode: (mode: AgentOrdinaryConversationMode) => void;
   setAgentRun: (run: AgentRunPayload | null) => void;
   setConversationTurns: (
@@ -33,23 +35,17 @@ type UseAgentRunRestoreOptions = {
 
 /**
  * Restores the latest managed Hermes/Dexter/local run after a workbench remount.
- * Dependency array intentionally matches the previous in-page effect: only
- * `shouldPersistConversation`, so the fetch closure is captured from the first
- * render the same way as before.
+ *
+ * 回调经由 ref 读取最新闭包，effect 只依赖 `shouldPersistConversation`：既保持
+ * "每次挂载只恢复一次"的既有语义，又不需要关闭 exhaustive-deps 规则。
+ * 恢复到终态（completed/failed/cancelled）后清除 latest run id，避免每次挂载都
+ * 重复 GET 一个已经结束的 run。
  */
-export function useAgentRunRestore({
-  shouldPersistConversation,
-  currentConversationSession,
-  isCurrentConversationSession,
-  fetchAgentRunStatus,
-  setRestoringRunId,
-  setRestoreErrorRunId,
-  setOrdinaryConversationMode,
-  setAgentRun,
-  setConversationTurns,
-  setResult,
-  setError,
-}: UseAgentRunRestoreOptions) {
+export function useAgentRunRestore(options: UseAgentRunRestoreOptions) {
+  const { shouldPersistConversation } = options;
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
   useEffect(() => {
     if (!shouldPersistConversation) {
       return;
@@ -61,8 +57,21 @@ export function useAgentRunRestore({
 
     let cancelled = false;
     const abortController = new AbortController();
-    const restoreSession = currentConversationSession();
-    setRestoringRunId(latestRunId);
+    const restoreSession = optionsRef.current.currentConversationSession();
+    let lastFetchErrorStatus: number | null = null;
+    const fetchAgentRunStatus = async (runId: string) => {
+      try {
+        const payload = await optionsRef.current.fetchAgentRunStatus(runId);
+        lastFetchErrorStatus = null;
+        return payload;
+      } catch (error) {
+        lastFetchErrorStatus = getAgentApiErrorStatus(error);
+        throw error;
+      }
+    };
+    const isCurrentRestoreSession = () =>
+      optionsRef.current.isCurrentConversationSession(restoreSession);
+    optionsRef.current.setRestoringRunId(latestRunId);
     let restoreRequest = latestAgentRunStatusRequests.get(latestRunId);
     if (!restoreRequest) {
       restoreRequest = fetchAgentRunStatus(latestRunId).finally(() => {
@@ -78,46 +87,60 @@ export function useAgentRunRestore({
           fetchAgentRunStatus,
           signal: abortController.signal,
           onUpdate: (nextPayload) => {
-            if (cancelled || !isCurrentConversationSession(restoreSession)) {
+            if (cancelled || !isCurrentRestoreSession()) {
               return;
             }
-            setOrdinaryConversationMode("managed");
-            setAgentRun(nextPayload);
-            setConversationTurns((currentTurns) => mergeRestoredManagedTurn(currentTurns, nextPayload));
+            optionsRef.current.setOrdinaryConversationMode("managed");
+            optionsRef.current.setAgentRun(nextPayload);
+            optionsRef.current.setConversationTurns((currentTurns) =>
+              mergeRestoredManagedTurn(currentTurns, nextPayload),
+            );
           },
         }),
       )
       .then((payload) => {
-        if (cancelled || !isCurrentConversationSession(restoreSession)) {
+        if (cancelled || !isCurrentRestoreSession()) {
           return;
         }
-        setRestoringRunId("");
-        setRestoreErrorRunId("");
-        setOrdinaryConversationMode("managed");
-        setAgentRun(payload);
-        setConversationTurns((currentTurns) => mergeRestoredManagedTurn(currentTurns, payload));
+        optionsRef.current.setRestoringRunId("");
+        optionsRef.current.setRestoreErrorRunId("");
+        optionsRef.current.setOrdinaryConversationMode("managed");
+        optionsRef.current.setAgentRun(payload);
+        optionsRef.current.setConversationTurns((currentTurns) =>
+          mergeRestoredManagedTurn(currentTurns, payload),
+        );
         if (payload.status === "completed" && payload.result) {
-          setResult(payload.result);
+          optionsRef.current.setResult(payload.result);
         }
         if (payload.status === "failed") {
-          setError({
+          optionsRef.current.setError({
             kind: "request",
             message: payload.error_message || formatManagedRunFailureMessage(payload.provider),
           });
         }
+        if (
+          isTerminalAgentRunStatus(payload.status) &&
+          loadLatestAgentRunId() === latestRunId
+        ) {
+          // 已结束的 run 没有后续状态可接回：清除标记，下次挂载不再重复 GET。
+          clearLatestAgentRunId();
+        }
       })
       .catch((error) => {
-        if (cancelled || isAbortError(error) || !isCurrentConversationSession(restoreSession)) {
+        if (cancelled || isAbortError(error) || !isCurrentRestoreSession()) {
           return;
         }
-        setRestoringRunId("");
-        setRestoreErrorRunId(latestRunId);
-        clearLatestAgentRunId();
+        // 轮询耗尽重试后会包装错误，仍按最后一次 GET 区分任务不可访问与暂时断线。
+        const status = getAgentApiErrorStatus(error) ?? lastFetchErrorStatus;
+        optionsRef.current.setRestoringRunId("");
+        optionsRef.current.setRestoreErrorRunId(latestRunId, status !== 403 && status !== 404);
+        if ((status === 403 || status === 404) && loadLatestAgentRunId() === latestRunId) {
+          clearLatestAgentRunId();
+        }
       });
     return () => {
       cancelled = true;
       abortController.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- preserve prior restore effect deps
   }, [shouldPersistConversation]);
 }

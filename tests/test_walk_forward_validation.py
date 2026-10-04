@@ -841,3 +841,28 @@ def test_real_engine_parameter_selection_is_immune_to_future_rows() -> None:
         poisoned_rows, poisoned_paths, calendar, window, cutoff=False
     )
     assert repr(sorted(leaky_poisoned.items())) != repr(sorted(leaky_baseline.items()))
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_cli_preserves_configured_database_unless_explicitly_overridden(monkeypatch, tmp_path, explicit) -> None:
+    import sys
+    from types import SimpleNamespace
+    from scripts import run_walk_forward_validation as cli
+
+    configured_path = str(tmp_path / "external storage" / "moss.duckdb")
+    explicit_path = str(tmp_path / "explicit.duckdb")
+    observed = {}
+
+    def fake_run(**kwargs):
+        observed.update(kwargs)
+        return {"report_path": "unused.md", "json_path": "unused.json", "execution_row_count": 0,
+                "usable_row_count": 0, "backtest_run_count": 0, "elapsed_seconds": 0, "issues": []}
+
+    monkeypatch.setattr(cli, "get_settings", lambda: SimpleNamespace(duckdb_path=configured_path), raising=False)
+    monkeypatch.setattr(cli, "run_walk_forward_validation", fake_run)
+    monkeypatch.setattr(sys, "argv", ["walk-forward", *(["--db-path", explicit_path] if explicit else [])])
+
+    cli.main()
+
+    assert observed["db_path"] == (explicit_path if explicit else configured_path)
+    assert not (tmp_path / "external storage").exists()

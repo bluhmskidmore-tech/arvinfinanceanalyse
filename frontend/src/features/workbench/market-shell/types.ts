@@ -24,6 +24,8 @@ export type MarketWorkbenchMetaItem = {
   hint?: string;
 };
 
+export type MarketWorkbenchFrameChrome = "full" | "nav-only" | "body-only";
+
 export type MarketWorkbenchFrameProps = {
   pageKey: MarketWorkbenchPageKey;
   title: string;
@@ -31,6 +33,11 @@ export type MarketWorkbenchFrameProps = {
   status: MarketWorkbenchStatus;
   metaItems: MarketWorkbenchMetaItem[];
   navDensity?: "default" | "compact";
+  /**
+   * `full` 保留完整框架；`nav-only` 保留市场子导航与正文；`body-only` 仅保留正文容器。
+   * 两种 page-owned 模式都让页面正文自行拥有标题、状态与证据层。
+   */
+  chrome?: MarketWorkbenchFrameChrome;
   actions?: ReactNode;
   children: ReactNode;
   auditContent?: ReactNode;

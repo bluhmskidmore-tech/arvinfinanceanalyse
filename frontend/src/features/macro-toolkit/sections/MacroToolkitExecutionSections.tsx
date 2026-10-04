@@ -28,7 +28,8 @@ import type {
   MacroToolkitScriptRecord,
   MacroToolkitSourceCheck,
 } from "../../../api/macroToolkitClient";
-import { DataStatusStrip, PageSectionLead } from "../../../components/page/PagePrimitives";
+import { SectionHead } from "../../../components/layout";
+import { DataStatusStrip } from "../../../components/page/PagePrimitives";
 import {
   formatCommodityShortfallChangeList,
   formatCommodityShortfallEstimateList,
@@ -579,10 +580,12 @@ export function MacroToolkitExecutionReceiptWorkspace({
               selectedEvidenceHref === "#macro-toolkit-cffex-detail" ? "macro-toolkit-section--audit-focus" : ""
             }`}
           >
-            <PageSectionLead
-              eyebrow="席位"
+            <SectionHead
+              category="席位"
               title="CFFEX席位状态"
-              description="中金所席位排名数据，供拥挤度等宏观脚本使用；刷新入口在操作台。"
+              note="中金所席位排名数据，供拥挤度等宏观脚本使用；刷新入口在操作台。"
+              numbered={{ counter: "mt-section" }}
+              contentGap="flush"
             />
             <div className="macro-toolkit-cffex-panel">
               <div className="macro-toolkit-cffex-metrics">
@@ -614,10 +617,12 @@ export function MacroToolkitExecutionReceiptWorkspace({
               selectedEvidenceHref === "#macro-toolkit-commodity-detail" ? "macro-toolkit-section--audit-focus" : ""
             }`}
           >
-            <PageSectionLead
-              eyebrow="商品"
+            <SectionHead
+              category="商品"
               title="商品期货状态"
-              description="刷新南华指数和宏观旁证商品期货；Crisis Score 公式仍只读取南华输入。"
+              note="刷新南华指数和宏观旁证商品期货；Crisis Score 公式仍只读取南华输入。"
+              numbered={{ counter: "mt-section" }}
+              contentGap="flush"
             />
             <div className="macro-toolkit-cffex-panel" aria-label="商品期货刷新">
               <div className="macro-toolkit-cffex-metrics">
@@ -828,10 +833,12 @@ export function MacroToolkitExecutionReceiptWorkspace({
                       : ""
                   }`}
                 >
-                  <PageSectionLead
-                    eyebrow="产物"
+                  <SectionHead
+                    category="产物"
                     title="脚本产物"
-                    description="运行脚本后核对 CSV、图片或报告是否生成。"
+                    note="运行脚本后核对 CSV、图片或报告是否生成。"
+                    numbered={{ counter: "mt-section" }}
+                    contentGap="flush"
                   />
                   {payload?.output_files.length ? (
                     <Table
@@ -849,10 +856,12 @@ export function MacroToolkitExecutionReceiptWorkspace({
                 </section>
 
                 <section className="macro-toolkit-section">
-                  <PageSectionLead
-                    eyebrow="来源"
+                  <SectionHead
+                    category="来源"
                     title="系统数据源命中"
-                    description={`来源命中 ${sourceHitCount}/${sourceChecks.length}；逐序列来源与行数以指标矩阵为准，此处不再重复。`}
+                    note={`来源命中 ${sourceHitCount}/${sourceChecks.length}；逐序列来源与行数以指标矩阵为准，此处不再重复。`}
+                    numbered={{ counter: "mt-section" }}
+                    contentGap="flush"
                   />
                   <a
                     className="macro-toolkit-receipt-technical-details__matrix-link"
@@ -864,10 +873,12 @@ export function MacroToolkitExecutionReceiptWorkspace({
 
                 {omittedEntries.length ? (
                   <section className="macro-toolkit-section">
-                    <PageSectionLead
-                      eyebrow="未纳入"
+                    <SectionHead
+                      category="未纳入"
                       title="未纳入脚本"
-                      description="这些源文件保留为迁移证据，但暂不作为可执行宏观工作流。"
+                      note="这些源文件保留为迁移证据，但暂不作为可执行宏观工作流。"
+                      numbered={{ counter: "mt-section" }}
+                      contentGap="flush"
                     />
                     <div className="macro-toolkit-omitted-list">
                       {omittedEntries.map(([filename, reason]) => (
@@ -881,10 +892,12 @@ export function MacroToolkitExecutionReceiptWorkspace({
                 ) : null}
 
                 <section className="macro-toolkit-section">
-                  <PageSectionLead
-                    eyebrow="脚本"
+                  <SectionHead
+                    category="脚本"
                     title="脚本注册表"
-                    description="后端宏观模块的可执行脚本注册表。"
+                    note="后端宏观模块的可执行脚本注册表。"
+                    numbered={{ counter: "mt-section" }}
+                    contentGap="flush"
                   />
                   <div className="macro-toolkit-toolbar">
                     <Select
@@ -932,10 +945,12 @@ export function MacroToolkitExecutionReceiptWorkspace({
                 </section>
 
                 <section className="macro-toolkit-section">
-                  <PageSectionLead
-                    eyebrow="运行"
+                  <SectionHead
+                    category="运行"
                     title="运行结果"
-                    description={selectedScript ? selectedScript.name : "暂无选中脚本"}
+                    note={selectedScript ? selectedScript.name : "暂无选中脚本"}
+                    numbered={{ counter: "mt-section" }}
+                    contentGap="flush"
                   />
                   <div className="macro-toolkit-run-panel">
                     <div className="macro-toolkit-run-title">

@@ -15,6 +15,7 @@ from typing import Any
 
 import duckdb
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.schemas.yield_curve import YieldCurveSnapshot
@@ -654,8 +655,9 @@ def ensure_yield_curve_tables(conn: duckdb.DuckDBPyConnection) -> None:
 
 
 def _connect(path: str, *, read_only: bool) -> duckdb.DuckDBPyConnection | None:
+    effective_path = resolve_effective_read_path(path) if read_only else path
     try:
-        return duckdb.connect(path, read_only=read_only)
+        return duckdb.connect(str(effective_path), read_only=read_only)
     except duckdb.Error:
         return None
 

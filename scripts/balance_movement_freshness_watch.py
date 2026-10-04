@@ -7,8 +7,9 @@ from datetime import UTC, datetime
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -25,6 +26,7 @@ from backend.app.tasks.accounting_asset_movement import (  # noqa: E402
     RULE_VERSION,
     refresh_accounting_asset_movement_window_sync,
 )
+from scripts.dev_runtime_control import require_owner  # noqa: E402
 
 
 SUCCESS_STATUSES = frozenset({"fresh", "repaired"})
@@ -369,6 +371,45 @@ def _write_receipt_atomic(path: Path, receipt: dict[str, object]) -> None:
         raise
 
 
+def _scheduled_refresh(
+    *, duckdb_path: str | Path, governance_dir: str | Path, currency_basis: str,
+) -> dict[str, object]:
+    # The existing scheduler command remains valid. Its writer runs only after
+    # the host has acquired maintenance and drained the verified API tree.
+    with TemporaryDirectory(prefix="moss-balance-watch-") as directory:
+        child_receipt = Path(directory) / "receipt.json"
+        command = [
+            "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-File", str(ROOT / "scripts/scheduling/run_daily_data_refresh_host.ps1"),
+            "-BalanceMovementOnly", "-PythonExe", sys.executable,
+            "-BalanceMovementReceiptPath", str(child_receipt),
+            "-BalanceMovementDuckdbPath", str(duckdb_path),
+            "-BalanceMovementGovernanceDir", str(governance_dir),
+            "-BalanceMovementCurrencyBasis", currency_basis,
+        ]
+        completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        receipt = json.loads(child_receipt.read_text(encoding="utf-8")) if child_receipt.exists() else None
+        result = receipt.get("result") if isinstance(receipt, dict) and receipt.get("task_name") == TASK_NAME else None
+        if not isinstance(result, dict):
+            raise RuntimeError(
+                f"maintenance host exited {completed.returncode} without a balance receipt: "
+                + " ".join(completed.stderr.split())[:300]
+            )
+        if completed.returncode and result.get("status") in SUCCESS_STATUSES:
+            # A successful writer followed by failed API recovery is still a
+            # failed scheduled run; keep the underlying result for diagnosis.
+            result = {
+                **result,
+                "status": "failed",
+                "materialization_status": result.get("status"),
+                "alert": {
+                    "active": True, "code": "balance_movement_runtime_failed", "severity": "high",
+                    "message": f"maintenance host exited {completed.returncode}: " + " ".join(completed.stderr.split())[:300],
+                },
+            }
+        return result
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-once", action="store_true", required=True)
@@ -376,6 +417,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--governance-dir")
     parser.add_argument("--currency-basis", default="CNX")
     parser.add_argument("--receipt-path", type=Path)
+    parser.add_argument("--maintenance-owner-token", help=argparse.SUPPRESS)
     parser.add_argument(
         "--run-kind",
         choices=("manual", "scheduled"),
@@ -383,14 +425,30 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     settings = get_settings()
-    result = reconcile_balance_movement_freshness(
-        duckdb_path=args.duckdb_path or settings.duckdb_path,
-        governance_dir=args.governance_dir or settings.governance_path,
-        currency_basis=args.currency_basis,
-        product_category_source_dir=settings.product_category_source_dir,
-        data_root=settings.data_input_root,
-        archive_dir=settings.local_archive_path,
-    )
+    try:
+        if args.maintenance_owner_token:
+            require_owner(ROOT, args.maintenance_owner_token)
+        if args.run_kind == "scheduled" and not args.maintenance_owner_token:
+            result = _scheduled_refresh(
+                duckdb_path=args.duckdb_path or settings.duckdb_path,
+                governance_dir=args.governance_dir or settings.governance_path,
+                currency_basis=args.currency_basis,
+            )
+        else:
+            result = reconcile_balance_movement_freshness(
+                duckdb_path=args.duckdb_path or settings.duckdb_path,
+                governance_dir=args.governance_dir or settings.governance_path,
+                currency_basis=args.currency_basis,
+                product_category_source_dir=settings.product_category_source_dir,
+                data_root=settings.data_input_root,
+                archive_dir=settings.local_archive_path,
+            )
+    except Exception as exc:  # noqa: BLE001 - preparation/recovery must also produce a receipt
+        result = _failed_result(
+            code="balance_movement_runtime_failed", message=_safe_error(exc),
+            currency_basis=args.currency_basis,
+            latest_read_model_before=None, latest_upstream_control_report_date=None,
+        )
     status = str(result.get("status") or "failed")
     exit_code = 0 if status in SUCCESS_STATUSES else 1
     receipt = {

@@ -64,9 +64,11 @@ describe("RatingDistributionCard", () => {
   it("renders normalized rating yield as percent", async () => {
     renderCard("0.0325");
 
-    expect(await screen.findByText("评级收益率")).toBeInTheDocument();
-    expect(await screen.findByText("2 天 / 利率债默认 AAA")).toBeInTheDocument();
+    // 迁入 ChartCard 后：口径在问题句位、天数在元信息位，卡片本体为 role=figure。
     expect(await screen.findByText("3.25%")).toBeInTheDocument();
+    const card = screen.getByRole("figure", { name: "评级收益率" });
+    expect(card).toHaveTextContent("利率债默认 AAA");
+    expect(card).toHaveTextContent("2 天");
   });
 
   it("renders the bond_count column with row values in column order", async () => {
@@ -87,8 +89,9 @@ describe("RatingDistributionCard", () => {
   it("keeps missing rating yield visually distinct from zero", async () => {
     renderCard(null);
 
-    expect(await screen.findByText("评级收益率")).toBeInTheDocument();
-    expect(await screen.findByText("2 天 / 利率债默认 AAA")).toBeInTheDocument();
+    // 先等表格行出现（数据已到），再断言缺值占位与元信息。
+    expect(await screen.findByText("AAA")).toBeInTheDocument();
+    expect(screen.getByRole("figure", { name: "评级收益率" })).toHaveTextContent("2 天");
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 });

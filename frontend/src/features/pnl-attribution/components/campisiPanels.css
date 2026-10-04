@@ -69,7 +69,7 @@
 
 .campisi-callout__title {
   margin-bottom: 4px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* ---- 键值读数（标签 12px muted / 值 700 等宽） ----------------------- */
@@ -82,13 +82,13 @@
 .campisi-field-value {
   margin-top: 8px;
   color: var(--dh-api-ink);
-  font-weight: 700;
-  font-family: var(--moss-font-mono);
+  font-weight: 600;
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
 .campisi-tabular {
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
@@ -114,7 +114,7 @@
 .campisi-headline {
   margin-top: 8px;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .campisi-chip-row {
@@ -177,7 +177,7 @@
   margin-bottom: 8px;
   color: var(--dh-api-ink);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .campisi-insight-box__body {
@@ -219,14 +219,14 @@
 
 .campisi-effect__name {
   color: var(--dh-api-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* 盈亏语义着色：绿涨红跌（Nocturne 去饱和），与 TONE_DH_CSS_VAR 同源。 */
 .campisi-effect__amount {
   margin-bottom: 8px;
-  font-weight: 700;
-  font-family: var(--moss-font-mono);
+  font-weight: 600;
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
@@ -322,7 +322,7 @@
 
 .campisi-table__numeric-head,
 .campisi-table__numeric-cell {
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }

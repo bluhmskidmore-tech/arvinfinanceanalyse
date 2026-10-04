@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date
+from math import isfinite
 from typing import Any
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -82,14 +83,22 @@ def build_macro_etf_strategy_snapshot(
     macro = deep_merge(DEFAULT_MACRO_STATE, macro_state)
     warnings = _config_warnings(cfg, macro)
     macro_score = compute_macro_score(macro)
-    total_position = compute_total_position(cfg, macro_score=macro_score, as_of_date=as_of_date)
-    targets, target_notes = compute_target_weights(cfg, total_position=total_position, as_of_date=as_of_date)
-    order_payload = build_order_drafts(
-        targets=targets,
-        config=cfg,
-        quotes=quotes,
-        portfolio_state=portfolio_state,
-    )
+    if macro_score is None:
+        total_position = None
+        targets: dict[str, float] = {}
+        target_notes = ["Macro inputs are unavailable; no target allocation calculated."]
+        order_payload = _blocked_orders(
+            "macro_input_invalid", "MACRO_INPUT_INVALID: all macro scores and weights must be finite numbers."
+        )
+    else:
+        total_position = compute_total_position(cfg, macro_score=macro_score, as_of_date=as_of_date)
+        targets, target_notes = compute_target_weights(cfg, total_position=total_position, as_of_date=as_of_date)
+        order_payload = build_order_drafts(
+            targets=targets,
+            config=cfg,
+            quotes=quotes,
+            portfolio_state=portfolio_state,
+        )
     warnings.extend(order_payload["warnings"])
     updated = _text(macro.get("updated"))
     staleness_days = _staleness_days(updated, as_of_date)
@@ -104,15 +113,15 @@ def build_macro_etf_strategy_snapshot(
         "execution_enabled": False,
         "as_of_date": as_of_date.isoformat(),
         "macro": {
-            "score": round(macro_score, 6),
+            "score": round(macro_score, 6) if macro_score is not None else None,
             "updated": updated,
             "staleness_days": staleness_days,
-            "scores": {key: _float(macro.get("scores", {}).get(key), 0.0) for key in MACRO_SCORE_KEYS},
-            "weights": {key: _float(macro.get("weights", {}).get(key), 0.0) for key in MACRO_SCORE_KEYS},
+            "scores": _macro_numbers(macro, "scores"),
+            "weights": _macro_numbers(macro, "weights"),
         },
         "position": {
-            "target_total_weight": round(total_position, 6),
-            "cash_weight": round(max(0.0, 1.0 - sum(targets.values())), 6),
+            "target_total_weight": round(total_position, 6) if total_position is not None else None,
+            "cash_weight": round(max(0.0, 1.0 - sum(targets.values())), 6) if total_position is not None else None,
             "target_weights": {code: round(weight, 6) for code, weight in targets.items()},
             "notes": target_notes,
         },
@@ -141,18 +150,42 @@ def build_macro_etf_strategy_snapshot(
     }
 
 
-def compute_macro_score(macro_state: Mapping[str, Any]) -> float:
-    scores = macro_state.get("scores", {})
-    weights = macro_state.get("weights", {})
-    score = sum(_float(scores.get(key), 0.0) * _float(weights.get(key), 0.0) for key in MACRO_SCORE_KEYS)
-    return _clip(score, -1.0, 1.0)
+def compute_macro_score(macro_state: Mapping[str, Any]) -> float | None:
+    scores = _macro_numbers(macro_state, "scores")
+    weights = _macro_numbers(macro_state, "weights")
+    score = 0.0
+    for key in MACRO_SCORE_KEYS:
+        value, weight = scores[key], weights[key]
+        if value is None or weight is None:
+            return None
+        score += value * weight
+    return _clip(score, -1.0, 1.0) if isfinite(score) else None
+
+
+def _macro_numbers(macro_state: Mapping[str, Any], field: str) -> dict[str, float | None]:
+    raw = macro_state.get(field)
+    values = raw if isinstance(raw, Mapping) else {}
+    parsed: dict[str, float | None] = {}
+    for key in MACRO_SCORE_KEYS:
+        value = values.get(key)
+        try:
+            number = float(value) if value is not None and not isinstance(value, bool) else None
+        except (TypeError, ValueError, OverflowError):
+            number = None
+        parsed[key] = number if number is not None and isfinite(number) else None
+    return parsed
 
 
 def compute_total_position(config: Mapping[str, Any], *, macro_score: float, as_of_date: date) -> float:
+    min_position = _float(config.get("min_position"), 0.0)
+    max_position = _float(config.get("max_position"), 1.0)
     position = _float(config.get("base_position"), 0.0) + _float(config.get("macro_sensitivity"), 0.0) * macro_score
-    position = _clip(position, _float(config.get("min_position"), 0.0), _float(config.get("max_position"), 1.0))
+    position = _clip(position, min_position, max_position)
     if _near_risk_event(config, as_of_date):
         position *= _float(config.get("event_position_scaler"), 1.0)
+        # 事件缩放可能把处于下限的仓位乘穿 min_position（如 0.30 * 0.9 = 0.27），
+        # 必须再 clip 一次以保证返回值恒在声明的 [min_position, max_position] 内。
+        position = _clip(position, min_position, max_position)
     return position
 
 
@@ -310,9 +343,8 @@ def _config_warnings(config: Mapping[str, Any], macro_state: Mapping[str, Any]) 
     universe = _universe(config)
     if not universe:
         warnings.append("strategy universe is empty")
-    for key in MACRO_SCORE_KEYS:
-        score = _float((macro_state.get("scores") or {}).get(key), 0.0)
-        if score < -1.0 or score > 1.0:
+    for key, score in _macro_numbers(macro_state, "scores").items():
+        if score is not None and (score < -1.0 or score > 1.0):
             warnings.append(f"macro score {key} is outside [-1, 1]")
     return warnings
 

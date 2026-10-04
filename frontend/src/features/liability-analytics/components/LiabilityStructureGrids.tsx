@@ -1,6 +1,7 @@
 import type { Numeric } from "../../../api/contracts";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
-import { BaseChart } from "../../../components/charts/BaseChart";
 import { type EChartsOption } from "../../../lib/echarts";
 import { termBucketLabel } from "../utils/labels";
 import { numericOrDash, numericRaw } from "../utils/money";
@@ -17,10 +18,17 @@ const COLORS = [
 type NamedYi = { name: string; amountYi: Numeric | null };
 type BucketYi = { bucket: string; amountYi: Numeric | null };
 
+/** 2026-09-02 迁入 ChartCard：六张结构图统一 hero 档（原 300px），空态由铬件收缩。 */
+const CHART_HEIGHT = CHART_CARD_HEIGHTS.hero;
+
+function hasAnyValue(items: Array<{ amountYi: Numeric | null }>): boolean {
+  return items.some((item) => numericRaw(item.amountYi) !== null);
+}
+
+/* 环形图图例走下方 PieLegend（带金额与缺数 EM_DASH），ECharts 自带图例由铬件 legend="none" 关闭。 */
 function pieOption(items: NamedYi[]): EChartsOption {
   return nocturneChartTheme.createBaseChartOption({
     color: [...COLORS],
-    legend: { show: false },
     tooltip: {
       trigger: "item",
       formatter: (params: unknown) => {
@@ -50,7 +58,6 @@ function pieOption(items: NamedYi[]): EChartsOption {
 function barOption(items: BucketYi[]): EChartsOption {
   return nocturneChartTheme.createBarChartOption({
     color: [COLORS[0]],
-    legend: { show: false },
     tooltip: {
       trigger: "axis",
       formatter: (params: unknown) => {
@@ -60,7 +67,7 @@ function barOption(items: BucketYi[]): EChartsOption {
         return `${first?.name ?? ""}<br/>${numericOrDash(data?.amountYi)}`;
       },
     },
-    grid: { left: 48, right: 16, top: 16, bottom: 32 },
+    grid: { left: 48, right: 16, top: 16 },
     xAxis: {
       type: "category",
       // 桶名中文化（显示层）；interval: 0 禁止轴标签抽稀，8 桶全量可见。
@@ -115,58 +122,68 @@ export function LiabilityStructureGrids({
   issuedTerm: BucketYi[];
   structurePieCaption?: string;
 }) {
+  /* 标题里的口径与单位拆到 question / unit / footnote，标题本身 ≤ 12 字（视觉方案 §5）。 */
   return (
     <>
-      <div className="liability-analytics-page__grid liability-analytics-page__grid--structure">
-        <div className="liability-panel">
-          <h3 className="liability-panel__title">负债结构总览（单位：亿元）</h3>
-          {structurePieCaption ? <p className="liability-caption">{structurePieCaption}</p> : null}
-          <div className="liability-chart-frame liability-chart-frame--structure">
-            <BaseChart option={pieOption(structure)} height={300} />
-          </div>
+      <div className="liability-analytics-page__grid liability-analytics-page__grid--structure liability-analytics-page__grid--matched-panels">
+        <ChartCard
+          title="负债结构总览"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(structure) ? pieOption(structure) : null}
+          footnote={structurePieCaption}
+        >
           <PieLegend items={structure} />
-        </div>
-        <div className="liability-panel">
-          <h3 className="liability-panel__title">期限结构（单位：亿元）</h3>
-          <p className="liability-caption">
-            口径：发行债券（asset_class 含“发行类”）+ 同业负债（direction=Liability）。
-          </p>
-          <div className="liability-chart-frame liability-chart-frame--structure">
-            <BaseChart option={barOption(term)} height={300} />
-          </div>
-        </div>
+        </ChartCard>
+        <ChartCard
+          title="期限结构"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(term) ? barOption(term) : null}
+          footnote="口径：发行债券（asset_class 含“发行类”）+ 同业负债（direction=Liability）。"
+        />
       </div>
 
-      <div className="liability-analytics-page__grid liability-analytics-page__grid--2">
-        <div className="liability-panel">
-          <h3 className="liability-panel__title">同业负债业务结构（按产品类型，亿元）</h3>
-          <div className="liability-chart-frame liability-chart-frame--structure">
-            <BaseChart option={pieOption(interbankStructure)} height={300} />
-          </div>
+      <div className="liability-analytics-page__grid liability-analytics-page__grid--2 liability-analytics-page__grid--matched-panels">
+        <ChartCard
+          title="同业负债业务结构"
+          question="按产品类型"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(interbankStructure) ? pieOption(interbankStructure) : null}
+        >
           <PieLegend items={interbankStructure} />
-        </div>
-        <div className="liability-panel">
-          <h3 className="liability-panel__title">同业负债期限结构（亿元）</h3>
-          <div className="liability-chart-frame liability-chart-frame--structure">
-            <BaseChart option={barOption(interbankTerm)} height={300} />
-          </div>
-        </div>
+        </ChartCard>
+        <ChartCard
+          title="同业负债期限结构"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(interbankTerm) ? barOption(interbankTerm) : null}
+        />
       </div>
 
-      <div className="liability-analytics-page__grid liability-analytics-page__grid--2">
-        <div className="liability-panel">
-          <h3 className="liability-panel__title">发行负债业务结构（按业务种类，亿元）</h3>
-          <div className="liability-chart-frame liability-chart-frame--structure">
-            <BaseChart option={pieOption(issuedStructure)} height={300} />
-          </div>
+      <div className="liability-analytics-page__grid liability-analytics-page__grid--2 liability-analytics-page__grid--matched-panels">
+        <ChartCard
+          title="发行负债业务结构"
+          question="按业务种类"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(issuedStructure) ? pieOption(issuedStructure) : null}
+        >
           <PieLegend items={issuedStructure} />
-        </div>
-        <div className="liability-panel">
-          <h3 className="liability-panel__title">发行负债期限结构（亿元）</h3>
-          <div className="liability-chart-frame liability-chart-frame--structure">
-            <BaseChart option={barOption(issuedTerm)} height={300} />
-          </div>
-        </div>
+        </ChartCard>
+        <ChartCard
+          title="发行负债期限结构"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(issuedTerm) ? barOption(issuedTerm) : null}
+        />
       </div>
     </>
   );

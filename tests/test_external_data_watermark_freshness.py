@@ -127,7 +127,14 @@ def test_fetch_series_watermark_without_rows_has_null_age_and_unknown_tier(tmp_p
     assert wm.freshness_tier == "unknown"
 
 
-def test_watermark_ledger_exposes_age_tier_and_last_successful_ingest(tmp_path) -> None:
+def test_watermark_ledger_exposes_age_tier_and_last_successful_ingest(tmp_path, monkeypatch) -> None:
+    class MockDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 7, 1)
+
+    monkeypatch.setattr("backend.app.repositories.external_data_catalog_repo.date", MockDate)
+
     db_path = tmp_path / "ledger.duckdb"
     conn = duckdb.connect(str(db_path))
     try:
@@ -151,9 +158,9 @@ def test_watermark_ledger_exposes_age_tier_and_last_successful_ingest(tmp_path) 
     rows = {entry.series_id: entry for entry in ledger.entries}
     # Ledger runs against date.today(): assert the derived age, and that a mapped
     # cadence yields a real tier while an unmapped one stays "unknown".
-    assert rows["s.monthly"].age_days == (date.today() - date(2026, 6, 1)).days
+    assert rows["s.monthly"].age_days == (date(2026, 7, 1) - date(2026, 6, 1)).days
     assert rows["s.monthly"].freshness_tier in {"fresh", "stale", "expired"}
-    assert rows["s.nofreq"].age_days == (date.today() - date(2026, 5, 20)).days
+    assert rows["s.nofreq"].age_days == (date(2026, 7, 1) - date(2026, 5, 20)).days
     assert rows["s.nofreq"].freshness_tier == "unknown"
 
 

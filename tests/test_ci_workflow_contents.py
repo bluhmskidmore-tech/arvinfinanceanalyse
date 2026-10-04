@@ -1,6 +1,19 @@
+import re
 from pathlib import Path
 
+from scripts import backend_release_suite
+
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _pytest_test_targets(text: str) -> tuple[str, ...]:
+    return tuple(re.findall(r"tests/test_[a-z0-9_]+\.py", text))
+
+
+def _workflow_step(workflow: str, step_name: str) -> str:
+    return workflow.split(f"\n      - name: {step_name}", 1)[1].split(
+        "\n      - name:", 1
+    )[0]
 
 
 def test_ci_workflow_default_release_suite_does_not_read_live_governance():
@@ -18,6 +31,64 @@ def test_ci_workflow_uses_bounded_backend_release_suite():
 
     assert "python scripts/backend_release_suite.py" in workflow
     assert "pytest tests/ -x -q --tb=short" not in workflow
+
+
+def test_ci_workflow_has_release_control_structure_only_job():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    job = workflow.split("\n  agent-eval-replay:", 1)[0].split(
+        "\n  release-control-structure:", 1
+    )[1]
+
+    assert "name: Release Control Structure (not approval)" in job
+    assert "python scripts/check_release_approval_registry.py" in job
+    assert "--execute-evidence" not in job
+    assert "structure-only.json" in job
+    assert 'assert payload["structure_only"] is True, payload' in job
+    assert 'assert payload["gate_scope"] == "structure_only", payload' in job
+    assert 'assert payload["approval_decision"] == "not_evaluated", payload' in job
+    assert 'assert payload["release_gate_eligible"] is False, payload' in job
+
+
+def test_ci_workflow_release_control_structure_job_runs_only_structural_suite():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    job = workflow.split("\n  agent-eval-replay:", 1)[0].split(
+        "\n  release-control-structure:", 1
+    )[1]
+
+    assert "tests/test_release_control_schema.py" in job
+    assert "tests/test_release_control_state_machine.py" in job
+    assert "tests/test_release_control_repo.py" in job
+    assert "tests/test_release_control_cli.py" in job
+    assert "tests/test_release_approval_registry.py" in job
+    assert "tests/test_bond_risk_shadow_candidate.py" in job
+    assert "tests/test_fixed_income_version_set.py" in job
+    assert "tests/test_bond_risk_shadow_batch.py" in job
+    assert "tests/test_release_approval_evidence_gate.py" not in job
+
+
+def test_ci_release_control_job_requires_real_postgres_cas_concurrency_proof():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    job = workflow.split("\n  agent-eval-replay:", 1)[0].split(
+        "\n  release-control-structure:", 1
+    )[1]
+
+    assert "image: postgres:16" in job
+    assert "POSTGRES_HOST_AUTH_METHOD: trust" in job
+    assert "POSTGRES_PASSWORD" not in job
+    assert "POSTGRES_DB: moss_release_control_test" in job
+    assert (
+        "MOSS_TEST_POSTGRES_DSN: "
+        "postgresql+psycopg://moss_test@127.0.0.1:5432/"
+        "moss_release_control_test"
+    ) in job
+    assert 'MOSS_REQUIRE_POSTGRES_CONCURRENCY_TEST: "1"' in job
+    assert "python -m alembic -c backend/alembic.ini upgrade head" in job
+    assert "tests/test_release_control_postgres_concurrency.py" in job
+    assert "postgres-cas-junit.xml" in job
+    assert 'for key in ("tests", "failures", "errors", "skipped")' in job
+    assert '"tests": 2' in job
+    assert '"skipped": 0' in job
+    assert "production" not in job.lower()
 
 
 def test_ci_workflow_checks_backend_uv_lock_consistency():
@@ -50,6 +121,45 @@ def test_ci_workflow_uses_existing_agent_eval_targets():
     assert "tests/test_agent_eval_runner.py" not in workflow
     assert "tests/test_agent_eval_spec.py" in workflow
     assert "tests/test_agent_eval_reward.py" in workflow
+
+
+def test_agent_harness_documentation_matches_ci_step_targets():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    documentation = (ROOT / "docs" / "ci-release-suite.md").read_text(encoding="utf-8")
+    documented_harness = documentation.split("agent harness +", 1)[1].split("；", 1)[0]
+
+    assert _pytest_test_targets(documented_harness) == _pytest_test_targets(
+        _workflow_step(workflow, "Run agent harness tests")
+    )
+
+
+def test_release_suite_documentation_has_no_missing_or_stale_test_targets():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    documentation = (ROOT / "docs" / "ci-release-suite.md").read_text(encoding="utf-8")
+    suite_targets = {
+        *backend_release_suite.RELEASE_SUITE_TESTS,
+        *backend_release_suite.GOVERNANCE_MCP_FAST_SUITE_TESTS,
+        *backend_release_suite.GOVERNANCE_MCP_FULL_SUITE_TESTS,
+    }
+    harness_targets = set(
+        _pytest_test_targets(_workflow_step(workflow, "Run agent harness tests"))
+    )
+    documented_targets = set(_pytest_test_targets(documentation))
+
+    assert not suite_targets - documented_targets
+    assert not documented_targets - suite_targets - harness_targets
+
+
+def test_ci_workflow_runs_its_configuration_and_path_gate_checks():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    backend_job = workflow.split("\n  release-control-structure:", 1)[0].split(
+        "\n  backend:", 1
+    )[1]
+
+    assert "tests/test_ci_workflow_contents.py" in backend_job
+    assert "tests/test_caliber_gate_mapping.py" in backend_job
+    assert "fetch-depth: 0" in backend_job
+    assert 'python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"' in backend_job
 
 
 def test_ci_workflow_uses_repo_typecheck_entrypoint():
@@ -203,3 +313,51 @@ def test_ci_workflow_runs_frontend_production_build():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "npm run build" in workflow
+
+
+def test_mypy_identity_gate_blocks_regressions_and_tests_the_checker():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    job = workflow.split("\n  mypy-ratchet:", 1)[1].split("\n  frontend:", 1)[0]
+
+    assert "continue-on-error:" not in job
+    assert "tests/test_check_mypy_baseline.py" in job
+    assert "tests/test_backend_debt_gate.py" in job
+    assert "tests/test_mypy_import_boundary.py" in job
+    assert "python -m pytest -p _pytest_duckdb_guard -q" in job
+    assert "python scripts/check_mypy_baseline.py" in job
+    assert "--update-baseline" not in job
+
+
+def test_frontend_checks_keep_reporting_after_an_independent_check_fails():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    job = workflow.split("\n  frontend-a11y-smoke-shard:", 1)[0].split(
+        "\n  frontend:", 1
+    )[1]
+
+    assert (
+        "- name: Install dependencies\n"
+        "        id: frontend_dependencies\n"
+        "        run: npm ci"
+    ) in job
+    assert "continue-on-error:" not in job
+    for name, command in {
+        "TypeScript type check": "npm run typecheck",
+        "Frontend debt audit": "npm run debt:audit",
+        "Production build": "VITE_DATA_SOURCE=real npm run build",
+    }.items():
+        assert (
+            f"- name: {name}\n"
+            "        if: ${{ !cancelled() && "
+            "steps.frontend_dependencies.outcome == 'success' }}\n"
+            f"        run: {command}\n"
+        ) in job, name
+    assert (
+        "- name: Run Vitest\n"
+        "        if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}\n"
+        "        run: |\n"
+    ) in job
+    assert '"${{ github.event_name }}" = "schedule"' in job
+    assert '"${{ github.ref }}" = "refs/heads/main"' in job
+    assert "npm test -- --coverage" in job
+    assert "            npm test\n" in job
+    assert "path: frontend/coverage/" in job

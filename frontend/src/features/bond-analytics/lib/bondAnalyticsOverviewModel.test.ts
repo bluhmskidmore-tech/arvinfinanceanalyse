@@ -260,7 +260,7 @@ describe("buildBondAnalyticsOverviewModel", () => {
       expect.objectContaining({ key: "basis", value: "驾驶舱快照", tone: "warning" }),
       expect.objectContaining({
         key: "freshness",
-        value: "动作归因不可用",
+        value: "动作归因读取失败",
         tone: "warning",
       }),
       expect.objectContaining({ key: "quality", value: "部分总览", tone: "warning" }),

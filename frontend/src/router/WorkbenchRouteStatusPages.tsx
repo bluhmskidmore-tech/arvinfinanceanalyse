@@ -8,6 +8,7 @@ type RouteStatusPageProps = {
   body: string;
   detail?: string;
   testId: string;
+  reloadPage?: boolean;
 };
 
 function routeErrorMessage(error: unknown) {
@@ -23,20 +24,27 @@ function routeErrorMessage(error: unknown) {
   return "";
 }
 
-function RouteStatusPage({ status, title, body, detail, testId }: RouteStatusPageProps) {
+function RouteStatusPage({ status, title, body, detail, testId, reloadPage }: RouteStatusPageProps) {
+  const location = useLocation();
   return (
     <section className={styles.routeStatus} data-testid={testId} role="alert">
       <div className={styles.routeStatusHeader}>
-        <span className={styles.routeStatusCode}>{status}</span>
+        <span className={styles.routeStatusCode}>{status === "error" ? "暂不可用" : status}</span>
         <h1 className={styles.routeStatusTitle}>{title}</h1>
         <p className={styles.routeStatusBody}>{body}</p>
       </div>
       {detail ? (
-        <div className={styles.routeStatusMeta}>
-          <span>{detail}</span>
-        </div>
+        <details className={styles.routeStatusMeta}>
+          <summary>技术诊断</summary>
+          <p>{detail}</p>
+        </details>
       ) : null}
       <div className={styles.routeStatusActions}>
+        {reloadPage ? (
+          <Link className={styles.routeStatusAction} reloadDocument to={`${location.pathname}${location.search}${location.hash}`}>
+            重新加载当前页
+          </Link>
+        ) : null}
         <Link className={styles.routeStatusAction} to="/">
           返回工作台首页
         </Link>
@@ -58,7 +66,7 @@ export function WorkbenchNotFoundPage() {
     <RouteStatusPage
       status="404"
       title="页面不存在"
-      body="当前地址没有匹配到已登记的工作台页面。"
+      body="当前页面不存在，请检查地址或返回工作台首页。"
       detail={`请求路径：${location.pathname}`}
       testId="workbench-not-found-page"
     />
@@ -74,7 +82,7 @@ export function WorkbenchRouteErrorBoundary() {
       <RouteStatusPage
         status="403"
         title="没有访问权限"
-        body="当前账号不能打开这个工作台入口。"
+        body="当前账号没有访问此页面的权限。如需使用，请联系管理员。"
         detail={detail}
         testId="workbench-route-permission-page"
       />
@@ -86,7 +94,7 @@ export function WorkbenchRouteErrorBoundary() {
       <RouteStatusPage
         status="404"
         title="页面不存在"
-        body="当前地址没有匹配到已登记的工作台页面。"
+        body="当前页面不存在，请检查地址或返回工作台首页。"
         detail={detail}
         testId="workbench-not-found-page"
       />
@@ -97,7 +105,8 @@ export function WorkbenchRouteErrorBoundary() {
     <RouteStatusPage
       status="error"
       title="页面加载失败"
-      body="页面渲染或加载过程中发生异常，当前结果未作为正常页面展示。"
+      body="暂时无法打开页面，请重新加载。若仍未恢复，请联系系统支持。"
+      reloadPage
       detail={detail}
       testId="workbench-route-error-page"
     />

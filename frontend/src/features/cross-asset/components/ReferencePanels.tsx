@@ -40,6 +40,7 @@ function compactGeneratedAt(value: string | null | undefined): string {
 
 function sourceNameForKpi(kpi: ResolvedCrossAssetKpi | null | undefined) {
   if (!kpi) return "待定";
+  if (kpi.missingNote) return kpi.missingNote;
   if (kpi.sourceKind === "choice") return "中债估值";
   if (kpi.sourceKind === "public" && kpi.vendorName) return kpi.vendorName;
   if (kpi.sourceKind === "public") return "公共补充";
@@ -159,9 +160,10 @@ export function CrossAssetReferenceSummary({
           aria-label="今日传导结论"
         >
           <span className="moss-page-v2-decision-hero__eyebrow">核心结论</span>
-          <h1 className="moss-page-v2-decision-hero__title" title={display.hero.summary}>
+          {/* 页面 h1 是工具条里的「跨资产驱动」；结论标题降为 h2，避免一页两个 h1。 */}
+          <h2 className="moss-page-v2-decision-hero__title" title={display.hero.summary}>
             {display.hero.headline}
-          </h1>
+          </h2>
           <p className="moss-page-v2-decision-hero__question">
             {display.hero.question}
           </p>

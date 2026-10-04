@@ -21,10 +21,20 @@ const CROSS_ASSET_DRIVERS_CSS_PATH = resolve(
   "src/features/cross-asset/pages/CrossAssetDriversPage.css",
 );
 
-function renderPage(client: ApiClient = createApiClient({ mode: "mock" })) {
+function deferredTrendChartStubs() {
+  return screen.queryAllByTestId("cross-asset-echarts-stub").filter((node) =>
+    node.closest('[data-testid="cross-asset-trend-panel"], [data-testid="cross-asset-yield-curve-slot"]'),
+  );
+}
+
+function renderPage(
+  client: ApiClient = createApiClient({ mode: "mock" }),
+  options?: { queryClient?: QueryClient },
+) {
   function Wrapper({ children }: { children: ReactNode }) {
     const [queryClient] = useState(
       () =>
+        options?.queryClient ??
         new QueryClient({
           defaultOptions: {
             queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false },
@@ -165,6 +175,47 @@ beforeAll(async () => {
 }, 30_000);
 
 describe("CrossAssetPage", () => {
+  it("collapses research actions and evidence constraints while keeping their summaries visible", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+    const actions = await screen.findByTestId("cross-asset-action-details");
+    const constraints = screen.getByTestId("cross-asset-constraint-details");
+    expect(actions).not.toHaveAttribute("open");
+    expect(constraints).not.toHaveAttribute("open");
+    expect(actions).toContainElement(screen.getByTestId("cross-asset-candidate-actions"));
+    expect(constraints).toContainElement(screen.getByTestId("cross-asset-trust-panel"));
+    expect(constraints).toContainElement(screen.getByTestId("cross-asset-action-rail"));
+    expect(constraints.querySelector("summary")).toHaveTextContent("证据与动作约束");
+    fireEvent.click(within(actions).getByText("研究行动参考"));
+    fireEvent.click(within(constraints).getByText("证据与动作约束"));
+    expect(actions).toHaveAttribute("open");
+    expect(constraints).toHaveAttribute("open");
+    fireEvent.click(within(actions).getByText("研究行动参考"));
+    expect(actions).not.toHaveAttribute("open");
+  });
+
+  it("loads collapsed evidence and supplemental content when opened before scrolling", async () => {
+    stubIntersectionObserver();
+    try {
+      renderPage(createApiClient({ mode: "mock" }));
+      const evidence = await screen.findByTestId("cross-asset-evidence-details");
+      expect(evidence).not.toHaveAttribute("open");
+      expect(screen.queryByTestId("cross-asset-evidence-groups")).not.toBeInTheDocument();
+      fireEvent.click(within(evidence).getByText("指标明细与相关性热力"));
+      expect(await screen.findByTestId("cross-asset-evidence-groups")).toBeInTheDocument();
+      expect(evidence).toHaveAttribute("open");
+
+      const appendix = screen.getByTestId("cross-asset-decision-appendix");
+      fireEvent.click(within(appendix).getByText("补充复核"));
+      expect(await screen.findByTestId("cross-asset-page-output")).toBeInTheDocument();
+      expect(appendix).toHaveAttribute("open");
+      fireEvent.click(within(appendix).getByText("补充复核"));
+      expect(appendix).not.toHaveAttribute("open");
+      expect(screen.getByTestId("cross-asset-page-output")).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("mounts below-fold evidence, observation, and appendix bodies one stage at a time", async () => {
     const observer = stubIntersectionObserver();
 
@@ -173,11 +224,11 @@ describe("CrossAssetPage", () => {
 
       await screen.findByTestId("cross-asset-evidence-tape");
       await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(1));
-      expect(screen.getByTestId("cross-asset-evidence-details")).toHaveAttribute("open");
+      expect(screen.getByTestId("cross-asset-evidence-details")).not.toHaveAttribute("open");
       expect(observer.observe).toHaveBeenLastCalledWith(
         screen.getByTestId("cross-asset-evidence-details"),
       );
-      expect(screen.getByTestId("cross-asset-decision-appendix")).toHaveAttribute("open");
+      expect(screen.getByTestId("cross-asset-decision-appendix")).not.toHaveAttribute("open");
       expect(screen.queryByTestId("cross-asset-evidence-groups")).not.toBeInTheDocument();
       expect(screen.queryByTestId("cross-asset-trend-panel")).not.toBeInTheDocument();
       expect(screen.queryByTestId("cross-asset-livermore-status")).not.toBeInTheDocument();
@@ -261,6 +312,24 @@ describe("CrossAssetPage", () => {
     }
   });
 
+  it("reuses a fresh shell macro-latest cache without refetching on mount", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const latestSpy = vi.spyOn(client, "getChoiceMacroLatest");
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false },
+      },
+    });
+    const cachedLatest = await client.getChoiceMacroLatest();
+    latestSpy.mockClear();
+    queryClient.setQueryData(["workbench-shell", "choice-macro-latest", "mock"], cachedLatest);
+
+    renderPage(client, { queryClient });
+
+    expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
+    expect(latestSpy).not.toHaveBeenCalled();
+  });
+
   it("mounts the two ECharts instances across separate animation frames", async () => {
     const observer = stubIntersectionObserver();
     const animationFrames = stubAnimationFrames();
@@ -282,7 +351,7 @@ describe("CrossAssetPage", () => {
       expect(await screen.findByTestId("cross-asset-trend-panel")).toBeInTheDocument();
       expect(await screen.findByTestId("cross-asset-trend-chart-deferred")).toBeInTheDocument();
       expect(await screen.findByTestId("yield-curve-panel-chart-deferred")).toBeInTheDocument();
-      expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(0);
+      expect(deferredTrendChartStubs()).toHaveLength(0);
       await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
 
       await act(async () => {
@@ -290,7 +359,7 @@ describe("CrossAssetPage", () => {
       });
 
       await waitFor(() =>
-        expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(1),
+        expect(deferredTrendChartStubs()).toHaveLength(1),
       );
       expect(screen.getByTestId("cross-asset-trend-chart-deferred")).toBeInTheDocument();
       expect(screen.queryByTestId("yield-curve-panel-chart-deferred")).not.toBeInTheDocument();
@@ -300,7 +369,7 @@ describe("CrossAssetPage", () => {
         animationFrames.flushNext();
       });
 
-      expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(1);
+      expect(deferredTrendChartStubs()).toHaveLength(1);
       expect(screen.getByTestId("cross-asset-trend-chart-deferred")).toBeInTheDocument();
       await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
 
@@ -309,7 +378,7 @@ describe("CrossAssetPage", () => {
       });
 
       await waitFor(() =>
-        expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(2),
+        expect(deferredTrendChartStubs()).toHaveLength(2),
       );
       expect(screen.queryByTestId("cross-asset-trend-chart-deferred")).not.toBeInTheDocument();
     } finally {
@@ -349,7 +418,7 @@ describe("CrossAssetPage", () => {
           await Promise.resolve();
         });
 
-        const chartCount = screen.queryAllByTestId("cross-asset-echarts-stub").length;
+        const chartCount = deferredTrendChartStubs().length;
         if (chartCount === 1) {
           sawSingleChartStage = true;
         }
@@ -359,7 +428,7 @@ describe("CrossAssetPage", () => {
       }
 
       expect(sawSingleChartStage).toBe(true);
-      expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(2);
+      expect(deferredTrendChartStubs()).toHaveLength(2);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -396,7 +465,7 @@ describe("CrossAssetPage", () => {
         animationFrames.flushNext();
       });
       await waitFor(() =>
-        expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(2),
+        expect(deferredTrendChartStubs()).toHaveLength(2),
       );
       await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(3));
 
@@ -473,7 +542,7 @@ describe("CrossAssetPage", () => {
       expect(screen.getByTestId("cross-asset-livermore-factor-candidates")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-ncd-proxy")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-page-output")).toBeInTheDocument();
-      expect(await screen.findAllByTestId("cross-asset-echarts-stub")).toHaveLength(2);
+      await waitFor(() => expect(deferredTrendChartStubs()).toHaveLength(2));
     } finally {
       vi.unstubAllGlobals();
     }
@@ -527,7 +596,8 @@ describe("CrossAssetPage", () => {
       expect(screen.getByTestId("cross-asset-livermore-factor-candidates")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-ncd-proxy")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-page-output")).toBeInTheDocument();
-      expect(await screen.findAllByTestId("cross-asset-echarts-stub")).toHaveLength(2);
+      await waitFor(() => expect(deferredTrendChartStubs()).toHaveLength(2));
+      expect(document.querySelectorAll(".cross-asset-drivers-page details:not([open])")).toHaveLength(0);
       expect(animationFrames.pendingCount()).toBe(0);
     } finally {
       vi.unstubAllGlobals();
@@ -577,7 +647,7 @@ describe("CrossAssetPage", () => {
     expect(toolbar).toHaveTextContent("跨资产驱动");
     expect(toolbar).toHaveTextContent("报告日");
     expect(toolbar).toHaveTextContent("导出报告");
-    expect(heroPanel).toHaveTextContent("固收组合决策首屏");
+    expect(within(heroPanel).getByRole("heading", { level: 2 })).toHaveClass("cross-asset-hero-panel__conclusion");
     expect(heroPanel).toHaveTextContent("体制");
     expect(heroPanel).toHaveTextContent("利率方向");
     expect(heroPanel).toHaveTextContent("环境综合评分");
@@ -654,7 +724,7 @@ describe("CrossAssetPage", () => {
     expect(firstScreen).toContainElement(heroPanel);
     expect(toolbar).toHaveTextContent("跨资产驱动");
     expect(toolbar).toHaveTextContent("报告日");
-    expect(heroPanel).toHaveTextContent("固收组合决策首屏");
+    expect(within(heroPanel).getByRole("heading", { level: 2 })).toHaveClass("cross-asset-hero-panel__conclusion");
     expect(heroPanel).toHaveTextContent("报告日");
     expect(heroPanel).not.toHaveTextContent("CA.DRIVERS");
     expect(transmissionZone).toContainElement(transmissionCanvas);
@@ -854,8 +924,9 @@ describe("CrossAssetPage", () => {
     expect(decisionZoneTitleBlock).toContain("font-size: 0.74rem;");
     expect(decisionZoneTitleBlock).toContain("text-transform: none;");
     expect(evidenceDetailsBlock).toContain("background: transparent;");
-    expect(evidenceLedgerLayoutBlock).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
-    expect(evidenceLedgerTableBlock).toContain("table-layout: fixed;");
+    expect(evidenceLedgerLayoutBlock).toContain("repeat(auto-fit, minmax(min(100%, 450px), 1fr))");
+    expect(evidenceLedgerLayoutBlock).toContain("align-items: start;");
+    expect(evidenceLedgerTableBlock).toContain("table-layout: auto;");
     expect(linkageHeatmapBlock).toContain("border: 1px solid var(--ca-border-soft);");
     expect(evidenceGroupBlock).toContain("min-height: 0;");
     expect(evidenceGroupBlock).toContain("box-shadow: none;");
@@ -1068,7 +1139,7 @@ describe("CrossAssetPage", () => {
     expect(toolbar).toHaveTextContent("跨资产驱动");
     expect(heroPanel).toHaveTextContent("环境综合评分");
     expect(statusStrip).toHaveTextContent("数据状态");
-    expect(kpiBand.querySelectorAll(".cross-asset-kpi-band__card")).toHaveLength(6);
+    expect(kpiBand.querySelectorAll('[data-kpi-cell="true"]')).toHaveLength(6);
     expect(kpiBand).toHaveTextContent("10Y国债收益率");
     expect(kpiBand).toHaveTextContent("DR007");
     expect(firstScreenFrame).toContainElement(toolbar);
@@ -1184,7 +1255,7 @@ describe("CrossAssetPage", () => {
     const riskBlock = css.match(/^\.cross-asset-risk-snapshot-grid \{[\s\S]*?\n\}/m)?.[0] ?? "";
     const volBarsBlock = css.match(/\.ca-vol-alert__bars \{[\s\S]*?\n\}/)?.[0] ?? "";
     const observationDesktopBlock =
-      css.match(/@media \(min-width: 1000px\) \{[\s\S]*?\.cross-asset-observation-support-grid \{[\s\S]*?\n  \}/)?.[0] ??
+      css.match(/\.cross-asset-reference-depth \.cross-asset-observation-support-grid \{[\s\S]*?\n\}/)?.[0] ??
       "";
 
     expect(riskBlock).toContain("grid-template-columns: minmax(0, 1fr);");
@@ -1192,7 +1263,7 @@ describe("CrossAssetPage", () => {
     expect(css).toContain(".ca-waterfall__decision");
     expect(css).toContain(".ca-waterfall__evidence-strip");
     expect(observationDesktopBlock).toContain(
-      "grid-template-columns: minmax(320px, 0.78fr) minmax(0, 1.22fr);",
+      "grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));",
     );
 
     renderPage(createApiClient({ mode: "mock" }));
@@ -1208,9 +1279,11 @@ describe("CrossAssetPage", () => {
     expect(observationZone).toContainElement(riskRail);
     expect(waterfallEvidence).toHaveTextContent("海外利率");
     expect(riskRail).toContainElement(foldedVolAssets);
-    expect(foldedVolAssets).toHaveTextContent(/其余 \d+ 项/);
-    expect(foldedVolAssets).toHaveTextContent("常规波动");
-    expect(foldedVolAssets).toHaveAttribute("title", expect.stringContaining("USD/CNY"));
+    expect(foldedVolAssets).toHaveTextContent(/波动明细.*\d+ 项资产/);
+    expect(foldedVolAssets.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(foldedVolAssets);
+    expect(foldedVolAssets.closest("details")).toHaveAttribute("open");
+    expect(foldedVolAssets.closest("details")).toHaveTextContent("USD/CNY");
   });
 
   it("renders two waterfall gap chips as a compact balanced evidence row", async () => {
@@ -1277,7 +1350,7 @@ describe("CrossAssetPage", () => {
     expect(candidateActions).toHaveClass("cross-asset-candidate-actions");
     expect(transmissionZone).toContainElement(waterfall);
     expect(transmissionZone).toContainElement(candidateActions);
-    expect(Boolean(waterfall.compareDocumentPosition(candidateActions) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Boolean(candidateActions.compareDocumentPosition(waterfall) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 
   it("shows tail observations and supplemental review as quiet lower ledgers", async () => {
@@ -1325,9 +1398,9 @@ describe("CrossAssetPage", () => {
     expect(screen.queryByTestId("cross-asset-reference-depth-summary")).not.toBeInTheDocument();
     expect(depthBoard).toHaveClass("cross-asset-reference-depth");
     expect(observationZone).toContainElement(secondaryDisclosure);
-    expect(secondaryDisclosure).toHaveAttribute("open");
+    expect(secondaryDisclosure).not.toHaveAttribute("open");
     expect(secondaryDisclosure).toContainElement(secondaryGrid);
-    expect(appendix).toHaveAttribute("open");
+    expect(appendix).not.toHaveAttribute("open");
     expect(appendix).toContainElement(livermoreStatus);
     expect(appendix).toContainElement(structuredOutput);
     expect(Boolean(secondaryDisclosure.compareDocumentPosition(appendix) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
@@ -1364,7 +1437,7 @@ describe("CrossAssetPage", () => {
     expect(css).toContain(".cross-asset-candidate-actions__item::before");
     expect(lastOddBlock).toContain("grid-column: auto;");
     expect(rankBlock).toContain("display: inline-grid;");
-    expect(actionBlock).toContain("font-weight: 800;");
+    expect(actionBlock).toContain("font-weight: 600;");
     expect(reasonBlock).toContain("text-overflow: ellipsis;");
     expect(evidenceBlock).toContain("text-overflow: ellipsis;");
     expect(targetBlock).toContain("border-radius: var(--ib-radius, 2px);");
@@ -1759,46 +1832,6 @@ describe("CrossAssetPage", () => {
     expect(negativeStatusBlock).toContain("bottom: -82px;");
   });
 
-  it("contains the desktop correlation matrix without page-level horizontal spill", () => {
-    const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
-    const panelBlock = css.match(/\.ca-correlation \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const summaryBlock = css.match(/\.ca-correlation__summary \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const summaryCardBlock = css.match(/\.ca-correlation__summary-card \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const detailsBlock = css.match(/\.ca-correlation__details \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const wrapBlock = css.match(/\.ca-correlation__matrix-wrap \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const wrapFadeBlock = css.match(/\.ca-correlation__matrix-wrap::after \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const gridBlock = css.match(/\.ca-correlation__grid \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const compactGridBlock = css.match(/\.ca-correlation__grid--compact \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const cellBlock = css.match(/\.ca-correlation__cell \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const headerBlock = css.match(/\.ca-correlation__cell--header \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const observationDesktopBlock =
-      css.match(/@media \(min-width: 1000px\) \{[\s\S]*?\.cross-asset-observation-support-grid \{[\s\S]*?\n  \}/)?.[0] ??
-      "";
-
-    expect(panelBlock).toContain("overflow: hidden;");
-    expect(panelBlock).toContain("position: relative;");
-    expect(summaryBlock).toContain("grid-template-columns: repeat(3, minmax(0, 1fr));");
-    expect(summaryCardBlock).toContain("border-left: 3px solid");
-    expect(detailsBlock).toContain("border-top: 1px dashed var(--ca-border-muted);");
-    expect(css).toContain(".ca-correlation__matrix-wrap::after");
-    expect(wrapBlock).toContain("max-width: 100%;");
-    expect(wrapBlock).toContain("overflow-x: hidden;");
-    expect(wrapBlock).toContain("scrollbar-width: thin;");
-    expect(wrapFadeBlock).toContain("position: absolute;");
-    expect(wrapFadeBlock).toContain("top: 0;");
-    expect(wrapFadeBlock).toContain("bottom: 4px;");
-    expect(wrapFadeBlock).not.toContain("position: sticky;");
-    expect(wrapFadeBlock).not.toContain("margin-top:");
-    expect(compactGridBlock).toContain("width: 100%;");
-    expect(compactGridBlock).toContain("min-width: 0;");
-    expect(gridBlock).toContain("min-width: max-content;");
-    expect(cellBlock).toContain("min-width: 0;");
-    expect(headerBlock).toContain("min-width: 0;");
-    expect(observationDesktopBlock).toContain(
-      "grid-template-columns: minmax(320px, 0.78fr) minmax(0, 1.22fr);",
-    );
-  });
-
   it("shows the most important correlation pairs before the full matrix", async () => {
     renderPage(createApiClient({ mode: "mock" }));
 
@@ -1810,12 +1843,12 @@ describe("CrossAssetPage", () => {
     expect(heatmap).toContainElement(summary);
     expect(heatmap).toContainElement(details);
     expect(details.tagName.toLowerCase()).toBe("details");
-    expect(details).toHaveAttribute("open");
+    expect(details).not.toHaveAttribute("open");
     expect(details).toContainElement(matrixWrap);
-    expect(summary.querySelectorAll(".ca-correlation__summary-card")).toHaveLength(3);
+    expect(summary.querySelectorAll(".ca-correlation__summary-card")).toHaveLength(2);
     expect(summary).toHaveTextContent("最强共振");
-    expect(summary).toHaveTextContent("最强背离");
-    expect(summary).toHaveTextContent("关注组合");
+    expect(summary).toHaveTextContent("最低相关");
+    expect(summary).not.toHaveTextContent("关注组合");
     expect(Boolean(summary.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 
@@ -1838,20 +1871,6 @@ describe("CrossAssetPage", () => {
     );
   });
 
-  it("uses compact correlation matrix columns so desktop can inspect it without page spill", async () => {
-    renderPage(createApiClient({ mode: "mock" }));
-
-    const matrixGrid = await waitFor(() => {
-      const grid = screen.getByTestId("cross-asset-correlation-matrix-wrap").querySelector(".ca-correlation__grid");
-      expect(grid).toBeInTheDocument();
-      return grid as HTMLElement;
-    });
-
-    expect(matrixGrid).toHaveClass("ca-correlation__grid--compact");
-    expect(matrixGrid.getAttribute("style")).toContain("grid-template-columns: 48px repeat(");
-    expect(matrixGrid.getAttribute("style")).toContain("minmax(30px, 1fr)");
-  });
-
   it("groups cross-asset evidence into a compact factor ledger with heatmap follow-up", async () => {
     renderPage(createApiClient({ mode: "mock" }));
 
@@ -1866,7 +1885,7 @@ describe("CrossAssetPage", () => {
 
     expect(evidenceZone).toContainElement(evidenceTape);
     expect(evidenceZone).toContainElement(evidenceDetails);
-    expect(evidenceDetails).toHaveAttribute("open");
+    expect(evidenceDetails).not.toHaveAttribute("open");
     expect(evidenceZone).toContainElement(evidenceGroups);
     expect(evidenceGroups).toContainElement(fullKpiBand);
     expect(evidenceTape).toHaveTextContent("债券锚");
@@ -1881,8 +1900,8 @@ describe("CrossAssetPage", () => {
     expect(evidenceTape).toHaveAttribute("aria-label", "关键因子矩阵");
     expect(evidenceTape.querySelectorAll("tbody tr")).toHaveLength(4);
     expect(evidenceDetails).toHaveAttribute("aria-label", "指标明细与相关性热力");
-    expect(evidenceGroups).toHaveTextContent("指标矩阵加工台");
-    expect(evidenceGroups).toHaveTextContent("四列因子、分位、来源一次扫完");
+    expect(evidenceGroups).toHaveTextContent("指标明细");
+    expect(evidenceGroups).toHaveTextContent("因子、分位与来源");
     expect(fullKpiBand).toContainElement(kpiLedgerTable);
     expect(fullKpiBand.querySelector(".cross-asset-drivers-page__mini-kpi")).not.toBeInTheDocument();
     expect(kpiLedgerTable.querySelectorAll(".cross-asset-evidence-factor")).toHaveLength(4);

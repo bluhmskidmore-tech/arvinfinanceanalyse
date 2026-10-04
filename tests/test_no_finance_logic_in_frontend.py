@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_SRC = ROOT / "frontend" / "src"
@@ -46,10 +48,37 @@ DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS = (
 )
 
 DISPLAY_ONLY_FILE_SNIPPETS = {
+    "features/workbench/module-home/MarketPortfolioScenarioPanel.tsx": (
+        # The amount is the API's estimated_impact; only explanatory copy is removed.
+        "监管口径 DV01；估算需人工复核。",
+        "基于已物化监管口径 DV01 的线性冲击估算，不代表实际损益、未来利润或完整债券重估。",
+        "风险口径：监管口径 DV01（MTR-RSK-001R）。范围：",
+        "固定平行上行10 bp；数据口径 scenario；使用监管 DV01。需要人工复核，不提供账户拆分或利率下行情景。",
+    ),
+    "features/workbench/module-home/RiskOverviewPage.tsx": (
+        # JSX text explains the backend buckets and chart-width display scaling.
+        "KRD 按到期期限桶汇总，条形长度为读数比例",
+    ),
+    "features/workbench/module-home/riskHomeAdapter.ts": (
+        # Caption of the backend-provided cs01 field, not a risk calculation.
+        'caption: "信用债 DV01 代理 · 每 bp",',
+    ),
+    "features/agent/components/AgentGenericCardsGrid.tsx": (
+        # Agent card body copy documents backend ownership of formal PnL only.
+        "Keeps formal PnL calculations inside existing MOSS intent handlers.",
+    ),
     "features/cross-asset/components/utils.ts": (
         # This token pair appears only in the display-formatting doc comment;
         # the helper formats a backend-provided CNY impact value.
         "DV01/CS01",
+    ),
+    "features/publication-showcase/PublicationShowcasePage.tsx": (
+        # Publication showcase is static marketing/demo copy and fixture values.
+        'body: "由金融规则计算久期、DV01、损益桥和分类汇总。",',
+        '<MetricCard label="组合 DV01" value="820" unit="万元/bp" detail="确定性计算 · 用于利率情景估算" />',
+        '["组合复盘", "portfolio_review", "持仓 · 久期 · DV01", "database"],',
+        '["久期 / DV01", "规则版本 FI-RISK-2.3", "已计算", "accent"],',
+        "<div><span>主要证据</span><ul><li>组合 DV01 为 820 万元/bp</li><li>5年以上久期敞口占 34%</li><li>信用走阔 20bp 情景损益 -3,420 万元</li></ul></div>",
     ),
     "features/workbench/dashboard/dashboardCockpitModel.ts": DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS,
     "features/workbench/dashboard-home/dashboardHomeBodyView.ts": (
@@ -75,6 +104,9 @@ DISPLAY_ONLY_FILE_SNIPPETS = {
     "features/workbench/dashboard-home/DashboardHomeOptionTwoSupportBand.tsx": (
         # KRD strip renders backend-provided per-tenor exposures; title/aria
         # strings are display copy only.
+        "DV01 是组合敞口而非市场利率，与国债收益率同卡时标题覆盖不到卡内主体面积，",
+        "组合层利差 DV01 原本只存在于一个 display:none 的指标条里，全页无处可见；",
+        "期限 DV01 与利差 DV01 同属敞口口径，收在这张卡的页脚而不是另开一格。",
         '各期限 DV01',
         'title={`${bucket.tenor} DV01 ${bucket.dv01Display}（利率上行 1bp 的估值敏感度）`}',
     ),
@@ -200,6 +232,7 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "? ",
         "? `",
         "//",
+        "* ",
         "const RISK_KRD_FIELDS:",
         "const RISK_ACCOUNTING_DV01_FIELDS:",
         "{ key: ",
@@ -218,6 +251,16 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         # Label alias map for backend-provided fact KPIs; display copy only.
         "DV01: ",
         "/**",
+        "<p>",
+    ),
+    "features/workbench/module-home/portfolioHomeModel.ts": (
+        # Portfolio home model extracted from moduleHomeModel.ts: it labels and
+        # formats backend-provided risk-tensor fields (weighted_convexity,
+        # total_dv01) and never recomputes them; same prefix set as its parent.
+        "label: ",
+        "key: ",
+        "source: ",
+        "const raw = nativeToNumber(",
     ),
     "features/workbench/module-home/PortfolioStructureTabPanel.tsx": (
         # Compact list header cell and source-string cleanup; display copy only.
@@ -260,6 +303,7 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
     ),
     "features/workbench/module-home/RiskOverviewPage.tsx": (
         # JSX display copy for backend-provided hero/KRD values; no computation.
+        'note="KRD / 收益率曲线 / 现金流窗口 / 字段级明细"',
         "{hero.",
         "<div",
         "<span",
@@ -323,3 +367,37 @@ def test_frontend_source_does_not_contain_formal_finance_logic_tokens():
                 violations.append(f"{path}: {token}")
 
     assert not violations, "Finance logic leaked into frontend:\n" + "\n".join(violations)
+
+
+@pytest.mark.parametrize(
+    "relative_path, display_copy, calculation",
+    [
+        (
+            "features/workbench/module-home/MarketPortfolioScenarioPanel.tsx",
+            '<p>监管口径 DV01；估算需人工复核。</p>',
+            "const derivedDV01 = amount * duration * 0.0001;",
+        ),
+        (
+            "features/workbench/module-home/RiskOverviewPage.tsx",
+            '<p>KRD 按到期期限桶汇总，条形长度为读数比例</p>',
+            "const derivedKRD = amount * duration * 0.0001;",
+        ),
+        (
+            "features/workbench/module-home/riskHomeAdapter.ts",
+            'const caption = { caption: "信用债 DV01 代理 · 每 bp", };',
+            "const derivedDV01 = amount * duration * 0.0001;",
+        ),
+    ],
+)
+def test_display_copy_registration_still_rejects_finance_calculations(
+    tmp_path, monkeypatch, relative_path, display_copy, calculation,
+):
+    monkeypatch.setitem(globals(), "FRONTEND_SRC", tmp_path)
+    path = tmp_path / relative_path
+    path.parent.mkdir(parents=True)
+    path.write_text(display_copy, encoding="utf-8")
+    test_frontend_source_does_not_contain_formal_finance_logic_tokens()
+
+    path.write_text(f"{display_copy}\n{calculation}\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="Finance logic leaked into frontend"):
+        test_frontend_source_does_not_contain_formal_finance_logic_tokens()

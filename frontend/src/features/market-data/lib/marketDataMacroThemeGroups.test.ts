@@ -67,6 +67,16 @@ describe("marketDataMacroThemeGroups", () => {
     expect(classifyMacroThemeGroup(point("X3", "布伦特原油", "USD/bbl"))).toBe("commodity");
   });
 
+  it("routes commodity futures close/settle series to commodity, not equity", () => {
+    // 「收盘」不再单独判权益，且 commodity 判定先于 equity。
+    expect(classifyMacroThemeGroup(point("X4", "铜主力期货收盘价", "元/吨"))).toBe("commodity");
+    expect(classifyMacroThemeGroup(point("X5", "铜主力期货收盘价", ""))).toBe("commodity");
+    expect(classifyMacroThemeGroup(point("X6", "螺纹钢主力期货结算价", "CNY/t"))).toBe("commodity");
+    // 权益收盘序列仍靠指数类词命中权益组。
+    expect(classifyMacroThemeGroup(point("X7", "沪深300收盘", "点"))).toBe("equity");
+    expect(classifyMacroThemeGroup(point("X8", "上证综合指数收盘", "点"))).toBe("equity");
+  });
+
   it("does not classify mis-tagged fallback macro series as rates", () => {
     const misTaggedCatalog = new Map<string, MacroVendorSeries>([
       [

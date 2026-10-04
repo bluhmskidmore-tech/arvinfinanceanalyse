@@ -116,6 +116,46 @@ def test_monthly_accounting_asset_movement_uses_gl_control_and_excludes_oci_equi
     assert summary.bucket_count == 3
 
 
+def test_unmapped_144_family_is_disclosed_and_not_bucketed():
+    report_date = date(2026, 2, 28)
+    result = build_accounting_asset_movement_rows(
+        report_date=report_date,
+        zqtz_rows=[],
+        gl_rows=[
+            GlAccountingAssetBalance(
+                report_date=report_date,
+                account_code="14401010001",
+                beginning_balance=Decimal("70"),
+                ending_balance=Decimal("80"),
+            ),
+            GlAccountingAssetBalance(
+                report_date=report_date,
+                account_code="14402010001",
+                beginning_balance=Decimal("5"),
+                ending_balance=Decimal("6"),
+            ),
+            GlAccountingAssetBalance(
+                report_date=report_date,
+                account_code="14403010001",
+                beginning_balance=Decimal("11"),
+                ending_balance=Decimal("13"),
+            ),
+        ],
+        excluded_gl_account_prefixes=("144020",),
+    )
+
+    by_bucket = {row.basis_bucket: row for row in result.rows}
+    assert by_bucket["OCI"].previous_balance == Decimal("70")
+    assert by_bucket["OCI"].current_balance == Decimal("80")
+    assert by_bucket["AC"].current_balance == Decimal("0")
+    assert by_bucket["TPL"].current_balance == Decimal("0")
+
+    unmapped = {item.account_code: item for item in result.unmapped_gl_accounts}
+    assert set(unmapped) == {"14403010001"}
+    assert unmapped["14403010001"].beginning_balance == Decimal("11")
+    assert unmapped["14403010001"].ending_balance == Decimal("13")
+
+
 def test_monthly_accounting_asset_movement_flags_zqtz_diagnostic_mismatch():
     report_date = date(2026, 2, 28)
     rows = build_accounting_asset_movement_rows(

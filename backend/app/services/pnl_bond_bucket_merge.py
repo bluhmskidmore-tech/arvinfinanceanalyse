@@ -8,11 +8,11 @@ amounts, re-applying the identical `core_finance` annualized-yield formula to
 the summed `total_pnl` / `avg_balance` over the payload period.
 """
 
-from datetime import datetime
 from decimal import Decimal
 
 from backend.app.core_finance.pnl import compute_pnl_by_business_yield_and_ftp
 from backend.app.schemas.pnl import PnlByBusinessAnalysisPayload, PnlByBusinessAnalysisRow
+from backend.app.services.pnl_service_shared_utils import _calendar_days
 
 MERGED_OTHER_BUCKET_KEY = "other_merged"
 MERGED_OTHER_BUCKET_LABEL = "其他"
@@ -78,9 +78,3 @@ def _merge_bucket_rows(
 
 def _sum_amount(values) -> Decimal:
     return sum(values, Decimal("0")).quantize(_TWOPLACES)
-
-
-def _calendar_days(start_date: str, end_date: str) -> int:
-    start = datetime.strptime(start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(end_date, "%Y-%m-%d").date()
-    return max((end - start).days + 1, 0)

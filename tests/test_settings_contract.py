@@ -6,6 +6,8 @@ import os
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from backend.app.governance.settings import (
     DEV_POSTGRES_DSN,
     Settings,
@@ -44,6 +46,7 @@ def test_settings_defaults(monkeypatch):
     assert s.agent_dexter_model == ""
     assert s.agent_dexter_toolsets == ""
     assert s.agent_dexter_timeout_seconds == 180.0
+    assert s.agent_pi_forward_api_key is False
     assert s.agent_run_queued_timeout_seconds == 600.0
     assert s.agent_action_token_secret == ""
     assert s.governance_backend == "jsonl"
@@ -75,6 +78,7 @@ def test_settings_env_overrides(monkeypatch):
     monkeypatch.setenv("MOSS_AGENT_DEXTER_MODEL", "dexter-test")
     monkeypatch.setenv("MOSS_AGENT_DEXTER_TOOLSETS", "sql,files")
     monkeypatch.setenv("MOSS_AGENT_DEXTER_TIMEOUT_SECONDS", "22.5")
+    monkeypatch.setenv("MOSS_AGENT_PI_FORWARD_API_KEY", "true")
     monkeypatch.setenv("MOSS_AGENT_RUN_QUEUED_TIMEOUT_SECONDS", "45.5")
     monkeypatch.setenv("MOSS_AGENT_ACTION_TOKEN_SECRET", "contract-test-secret")
     monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "sql-authority")
@@ -103,6 +107,7 @@ def test_settings_env_overrides(monkeypatch):
     assert s.agent_dexter_model == "dexter-test"
     assert s.agent_dexter_toolsets == "sql,files"
     assert s.agent_dexter_timeout_seconds == 22.5
+    assert s.agent_pi_forward_api_key is True
     assert s.agent_run_queued_timeout_seconds == 45.5
     assert s.agent_action_token_secret == "contract-test-secret"
     assert s.governance_backend == "sql-authority"
@@ -111,6 +116,85 @@ def test_settings_env_overrides(monkeypatch):
     assert s.governance_path == (repo_root / "custom" / "gov").resolve()
     assert s.data_input_root == (repo_root / "custom" / "in").resolve()
     assert s.local_archive_path == (repo_root / "custom" / "archive").resolve()
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {
+            "environment": "development",
+            "agent_provider": "local",
+            "agent_hermes_transport": "cli",
+            "agent_dexter_transport": "cli",
+            "governance_backend": "jsonl",
+            "source_preview_governance_backend": "jsonl",
+            "object_store_mode": "local",
+        },
+        {
+            "environment": "staging",
+            "agent_provider": "hermes",
+            "agent_hermes_transport": "bridge",
+            "agent_dexter_transport": "sidecar",
+            "governance_backend": "sql-authority",
+            "source_preview_governance_backend": "sql-shadow",
+            "object_store_mode": "minio",
+        },
+        {
+            "environment": "test",
+            "agent_provider": "dexter",
+            "agent_hermes_transport": "cli",
+            "agent_dexter_transport": "sidecar",
+            "governance_backend": "jsonl",
+            "source_preview_governance_backend": "jsonl",
+            "object_store_mode": "local",
+        },
+        {
+            "environment": "production",
+            "agent_provider": "hermes",
+            "agent_hermes_transport": "bridge",
+            "agent_dexter_transport": "sidecar",
+            "governance_backend": "sql-authority",
+            "source_preview_governance_backend": "sql-authority",
+            "object_store_mode": "minio",
+        },
+    ],
+)
+def test_settings_accepts_all_known_closed_set_values(monkeypatch, values):
+    _clear_moss_env(monkeypatch)
+
+    settings = Settings(_env_file=None, **values)
+
+    for field_name, expected in values.items():
+        assert getattr(settings, field_name) == expected
+
+
+def test_settings_rejects_unknown_environment_with_legal_values(monkeypatch):
+    _clear_moss_env(monkeypatch)
+
+    with pytest.raises(ValueError) as exc_info:
+        Settings(environment="prodcution", _env_file=None)
+
+    message = str(exc_info.value)
+    for legal_value in ("development", "production", "staging", "test"):
+        assert legal_value in message
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "agent_hermes_max_turns",
+        "agent_hermes_timeout_seconds",
+        "agent_dexter_timeout_seconds",
+        "agent_run_queued_timeout_seconds",
+        "agent_run_stream_retention_days",
+        "choice_timeout_seconds",
+    ],
+)
+def test_settings_rejects_nonpositive_runtime_limits(monkeypatch, field_name):
+    _clear_moss_env(monkeypatch)
+
+    with pytest.raises(ValueError, match="greater than 0"):
+        Settings(_env_file=None, **{field_name: 0})
 
 
 def test_agent_run_queued_timeout_default_matches_run_service_constant(monkeypatch):

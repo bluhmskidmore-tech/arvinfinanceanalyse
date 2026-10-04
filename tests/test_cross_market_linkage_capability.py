@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_analysis_service as macro_toolkit_analysis
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
 from datetime import date, timedelta
 
-import pytest
 
 import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.core_finance.macro import analyze_cross_market_linkage
@@ -33,15 +35,15 @@ def _wide_rows(*, with_fx: bool = True, with_oil: bool = True, with_vix: bool = 
 
 def test_cross_market_capability_definition_is_wired_visible() -> None:
     definition = next(
-        item for item in macro_toolkit_route._CAPABILITY_DEFINITIONS if item["key"] == "cross_market_linkage"
+        item for item in macro_toolkit_support._CAPABILITY_DEFINITIONS if item["key"] == "cross_market_linkage"
     )
     assert definition["route_status"] == "wired"
     assert definition["frontend_status"] == "visible"
     assert "fact_formal_yield_curve_daily" in definition["data_tables"]
     assert "fact_choice_macro_daily" in definition["data_tables"]
     assert set(definition["data_aliases"]) == {"CA.BRENT", "M0067855", "S0059749", "CA.US_GOV_10Y"}
-    assert ("us_treasury_10y", "CA.US_GOV_10Y") in macro_toolkit_route._WIDE_SERIES_ALIASES
-    assert ("CA.US_GOV_10Y", "US_GOVT", "10Y") in macro_toolkit_route._CURVE_ALIAS_POINTS
+    assert ("us_treasury_10y", "CA.US_GOV_10Y") in macro_toolkit_support._WIDE_SERIES_ALIASES
+    assert ("CA.US_GOV_10Y", "US_GOVT", "10Y") in macro_toolkit_support._CURVE_ALIAS_POINTS
     assert "cross_market_linkage" in macro_toolkit_route._DECISION_SUMMARY_OBSERVATION_KEYS
 
 
@@ -186,9 +188,9 @@ def test_cross_market_linkage_cn_us_spread_unit_bp() -> None:
 def test_cross_market_card_surfaces_risk_metric() -> None:
     raw = analyze_cross_market_linkage(_wide_rows(with_vix=True), _REPORT_DATE)
     definition = next(
-        item for item in macro_toolkit_route._CAPABILITY_DEFINITIONS if item["key"] == "cross_market_linkage"
+        item for item in macro_toolkit_support._CAPABILITY_DEFINITIONS if item["key"] == "cross_market_linkage"
     )
-    card = macro_toolkit_route._capability_result_card(definition, raw)
+    card = macro_toolkit_analysis._capability_result_card(definition, raw)
     assert card["key"] == "cross_market_linkage"
     assert card["primary_metric"]["label"] == "联动风险"
     assert card["primary_metric"]["value"] == raw["overall_risk"]

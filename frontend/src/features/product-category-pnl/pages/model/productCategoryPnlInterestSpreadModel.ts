@@ -61,8 +61,8 @@ export function buildProductCategoryInterestSpreadAttributionImpl(input: {
     priorMetrics.assetYield,
   );
   const liabilityContributionBp = basisPointDelta(
-    priorMetrics.liabilityYield,
     currentMetrics.liabilityYield,
+    priorMetrics.liabilityYield,
   );
   const spreadDeltaBp = basisPointDelta(
     currentMetrics.spread,

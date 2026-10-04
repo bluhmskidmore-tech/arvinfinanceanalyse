@@ -5,6 +5,13 @@ import { Link } from "react-router-dom";
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { isAgentFrontendEnabled } from "../../../app/navigation";
+import {
+  DataTable,
+  SECTION_HEAD_STACK_CLASSNAME,
+  SectionHead,
+  type DataTableColumn,
+  type DataTableStatus,
+} from "../../../components/layout";
 import { EM_DASH } from "../../../utils/format";
 import {
   formatYieldCurveDateSummary,
@@ -34,6 +41,7 @@ import {
   type RiskBondMetricKey,
   type RiskV6CurveTone,
   type RiskV6KpiCard,
+  type RiskV6TableRow,
 } from "./riskHomeAdapter";
 import dh from "../dashboard-home/dashboardHomeShell.module.css";
 import styles from "./riskOverview.module.css";
@@ -79,6 +87,24 @@ function curveToneClass(tone: RiskV6CurveTone): string {
   return styles.roV6CurveInk;
 }
 
+/*
+ * 03 区字段级明细表的列定义。读数与报告日走 align="numeric"（原来靠
+ * `.roV6TblNum` / `td:last-child` 各自右对齐 + `.roNum` 换等宽，三处规则表达的
+ * 是同一件事）。tone 只有 watch 一档需要着色，仍走页面 token 类。
+ */
+const DETAIL_TABLE_COLUMNS: readonly DataTableColumn<RiskV6TableRow>[] = [
+  { key: "label", title: "字段" },
+  {
+    key: "value",
+    title: "读数",
+    align: "numeric",
+    render: (row) => (
+      <span className={row.tone === "watch" ? styles.roToneWatch : undefined}>{row.value}</span>
+    ),
+  },
+  { key: "date", title: "报告日", align: "numeric" },
+];
+
 /* ── 债券分析辅助证据（OCI / TPL 独立状态） ───────────────────── */
 type RiskBondDv01Summary = ReturnType<typeof buildRiskBondDv01Summary>;
 type RiskBondComparisonPeriod = "mom" | "yoy";
@@ -95,12 +121,14 @@ function BondMetricComparison({
   metricKey,
   period,
   readout,
+  comparisonLoading,
   unavailableText,
 }: {
   summaryKey: RiskBondDv01Summary["key"];
   metricKey: RiskBondMetricKey;
   period: RiskBondComparisonPeriod;
   readout: RiskBondComparisonReadout | undefined;
+  comparisonLoading: boolean;
   unavailableText: string;
 }) {
   const label = period === "mom" ? "系统环比" : "系统同比";
@@ -111,7 +139,7 @@ function BondMetricComparison({
   return (
     <div
       className={styles.roBondComparison}
-      data-state={readout?.state ?? "unavailable"}
+      data-state={comparisonLoading ? "loading" : readout?.state ?? "unavailable"}
       data-testid={`risk-overview-${summaryKey}-${metricKey}-${period}`}
     >
       <span>{label}</span>
@@ -184,7 +212,7 @@ function BondDv01Trend({
       data-expected-points={expectedPointCount}
       data-point-count={availablePointCount}
       data-segment-count={segmentCount}
-      data-state={trend?.state ?? "unavailable"}
+      data-state={comparisonLoading ? "loading" : trend?.state ?? "unavailable"}
       data-testid={`risk-overview-${summary.key}-dv01-trend`}
     >
       <div className={styles.roBondTrendHead}>
@@ -300,6 +328,7 @@ function BondEvidenceCard({
                 </strong>
                 <div className={styles.roBondComparisonGrid}>
                   <BondMetricComparison
+                    comparisonLoading={comparisonLoading}
                     metricKey={metric.key}
                     period="mom"
                     readout={comparison?.mom}
@@ -307,6 +336,7 @@ function BondEvidenceCard({
                     unavailableText={comparisonUnavailableText}
                   />
                   <BondMetricComparison
+                    comparisonLoading={comparisonLoading}
                     metricKey={metric.key}
                     period="yoy"
                     readout={comparison?.yoy}
@@ -354,7 +384,7 @@ function BondEvidenceCard({
 }
 
 /* ── KPI 曜石卡（渐变描边 ::before mask + 渐变数字 + 辉光走势 + 涨跌胶囊） ── */
-function V6KpiCardView({ card }: { card: RiskV6KpiCard }) {
+function V6KpiCardView({ card, historyLoading }: { card: RiskV6KpiCard; historyLoading: boolean }) {
   return (
     <article
       className={`${styles.roV6Kpi} ${card.alert ? styles.roV6KpiAlert : ""}`}
@@ -396,7 +426,9 @@ function V6KpiCardView({ card }: { card: RiskV6KpiCard }) {
           />
         </svg>
       ) : (
-        <div className={styles.roV6SparkEmpty}>近 24 期序列待接入</div>
+        <div className={styles.roV6SparkEmpty}>
+          {historyLoading ? "近 24 期序列读取中…" : "近 24 期序列待接入"}
+        </div>
       )}
       <div className={styles.roV6KpiFoot}>
         {card.delta ? (
@@ -416,6 +448,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
   const client = useApiClient();
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [agentPanelMounted, setAgentPanelMounted] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const openAgentPanel = useCallback(() => {
     setAgentPanelMounted(true);
@@ -464,24 +497,6 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     retry: false,
     staleTime: 60_000,
   });
-  const riskHistoryQuery = useQuery({
-    queryKey: ["risk-overview", "risk-tensor-history", client.mode, riskReportDate],
-    queryFn: () => client.getRiskTensorHistory(riskReportDate, 24),
-    enabled: Boolean(riskReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
-  const yieldCurveQuery = useQuery({
-    queryKey: ["risk-overview", "yield-curve-term", client.mode, riskReportDate],
-    queryFn: () =>
-      client.getBondAnalyticsYieldCurveTermStructure(riskReportDate, {
-        curveTypes: "treasury,cdb,aaa_credit",
-      }),
-    enabled: Boolean(riskReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
-
   const bondOciQuery = useQuery({
     queryKey: apiQueryKeys.bondAnalyticsDv01Risk(
       client.mode,
@@ -518,6 +533,27 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     retry: false,
     staleTime: 60_000,
   });
+  const currentReadsSettled = Boolean(riskReportDate) && riskDatesQuery.isSuccess && !isRefreshing &&
+    [riskTensorQuery, cashflowQuery, bondOciQuery, bondTplQuery]
+      .every((query) => query.isSuccess || query.isError);
+  const riskHistoryQuery = useQuery({
+    queryKey: ["risk-overview", "risk-tensor-history", client.mode, riskReportDate],
+    queryFn: () => client.getRiskTensorHistory(riskReportDate, 24),
+    enabled: currentReadsSettled,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const yieldCurveQuery = useQuery({
+    queryKey: ["risk-overview", "yield-curve-term", client.mode, riskReportDate],
+    queryFn: () =>
+      client.getBondAnalyticsYieldCurveTermStructure(riskReportDate, {
+        curveTypes: "treasury,cdb,aaa_credit",
+      }),
+    enabled: currentReadsSettled,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const bondHistoryWaiting = bondComparisonPlan.enabled && !currentReadsSettled && !riskDatesQuery.isError;
 
   const bondHistoryRequests = useMemo(
     () =>
@@ -546,7 +582,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           topN: BOND_EVIDENCE_TOP_N,
           shockBps: BOND_EVIDENCE_SHOCK_BPS,
         }),
-      enabled: bondComparisonPlan.enabled,
+      enabled: currentReadsSettled && bondComparisonPlan.enabled,
       retry: false,
       staleTime: 60_000,
     })),
@@ -574,11 +610,11 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
         reportDate: request.reportDate,
         envelope: query?.data,
         error: query?.error,
-        isLoading: query?.isLoading ?? false,
+        isLoading: bondHistoryWaiting || (query?.isLoading ?? false),
       });
     });
     return observations;
-  }, [bondHistoryQueries, bondHistoryRequests]);
+  }, [bondHistoryQueries, bondHistoryRequests, bondHistoryWaiting]);
 
   const bondOciSummary = useMemo(
     () =>
@@ -632,7 +668,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     )
       ? bondOciSummary.notices
       : null;
-  const bondComparisonHistoryLoading = bondHistoryQueries.some(
+  const bondComparisonHistoryLoading = bondHistoryWaiting || bondHistoryQueries.some(
     (query) => query.isLoading,
   );
   const bondComparisonHistoryError = bondHistoryQueries.some(
@@ -662,6 +698,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
       ),
   );
   const comparisonLoading =
+    isRefreshing ||
     bondDatesQuery.isLoading ||
     bondCurrentLoading ||
     bondComparisonHistoryLoading;
@@ -673,7 +710,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     disabledComparisonClassLabel === "OCI" ? "TPL" : "OCI";
   const bondComparisonStatusState = comparisonLoading
     ? "loading"
-    : bondDatesQuery.isError ||
+    : riskDatesQuery.isError || bondDatesQuery.isError ||
         comparisonPlanDisabled ||
         bondComparisonHistoryError ||
         bothComparisonClassesDisabled
@@ -683,7 +720,9 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
         : "ready";
   const bondComparisonStatusText = comparisonLoading
     ? "系统环比、系统同比基期与近 6 个报告月趋势读取中。"
-    : bondDatesQuery.isError
+    : riskDatesQuery.isError
+      ? "风险报告日读取失败；系统比较与趋势暂不可用。"
+      : bondDatesQuery.isError
       ? "债券报告日读取失败；当前值仍可读取，系统比较与趋势暂不可用。"
       : comparisonPlanDisabled
         ? bondComparisonPlan.disabledReason ?? bondComparisonPlan.basisText
@@ -711,6 +750,10 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
   const tensor = riskTensorQuery.data?.result;
   const history = riskHistoryQuery.data?.result;
   const cashflow = cashflowQuery.data?.result;
+  const riskHistoryLoading = riskDatesQuery.isLoading ||
+    (Boolean(riskReportDate) && !riskHistoryQuery.data && !riskHistoryQuery.isError);
+  const yieldCurveLoading = riskDatesQuery.isLoading ||
+    (Boolean(riskReportDate) && !yieldCurveQuery.data && !yieldCurveQuery.isError);
 
   const hero = useMemo(() => buildRiskV6Hero(tensor), [tensor]);
   const kpiCards = useMemo(() => buildRiskV6KpiCards(tensor, history), [tensor, history]);
@@ -729,6 +772,14 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     [yieldCurveQuery.data?.result.curves],
   );
   const detailTables = useMemo(() => buildRiskV6DetailTables(tensor, cashflow), [tensor, cashflow]);
+  /* 03 区明细表的读取状态（DESIGN.md §6 不能静默吞态）：报告日在途也算读取中，
+     否则报告日未定期间表会先说「字段待接入」，随后又长出数据。 */
+  const detailTableStatus: DataTableStatus =
+    riskDatesQuery.isLoading || riskTensorQuery.isLoading
+      ? "loading"
+      : riskDatesQuery.isError || riskTensorQuery.isError
+        ? "error"
+        : "ready";
   const lineageRows = useMemo(
     () => [
       ...buildRiskV6LineageRows(riskTensorQuery.data?.result_meta),
@@ -743,6 +794,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
   const hotKrdBucket = krdBars.find((bar) => bar.hot)?.bucket;
 
   const isFetching =
+    isRefreshing ||
     riskDatesQuery.isFetching ||
     riskTensorQuery.isFetching ||
     cashflowQuery.isFetching ||
@@ -753,18 +805,40 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     bondTplQuery.isFetching ||
     bondHistoryQueries.some((query) => query.isFetching);
 
-  const refreshAll = () => {
-    void riskDatesQuery.refetch();
-    void riskTensorQuery.refetch();
-    void cashflowQuery.refetch();
-    void riskHistoryQuery.refetch();
-    void yieldCurveQuery.refetch();
-    void bondDatesQuery.refetch();
-    void bondOciQuery.refetch();
-    void bondTplQuery.refetch();
-    bondHistoryQueries.forEach((query) => {
-      void query.refetch();
-    });
+  const refreshAll = async () => {
+    setIsRefreshing(true);
+    try {
+      const [riskDates, bondDates] = await Promise.all([
+        riskDatesQuery.refetch(),
+        bondDatesQuery.refetch(),
+      ]);
+      // refetch bypasses enabled. Recheck the date gate first; a changed date
+      // activates its own query keys on render, so never refetch the old closures.
+      const nextReportDate = riskDates.data?.result.report_dates[0] ?? "";
+      if (riskDates.isError || !nextReportDate || nextReportDate !== riskReportDate) return;
+
+      const nextComparisonPlan = buildRiskBondComparisonPlan(
+        nextReportDate,
+        bondDates.isError ? [] : bondDates.data?.result.report_dates ?? [],
+      );
+      await Promise.all([
+        riskTensorQuery.refetch(),
+        cashflowQuery.refetch(),
+        bondOciQuery.refetch(),
+        bondTplQuery.refetch(),
+      ]);
+      await Promise.all([
+        riskHistoryQuery.refetch(),
+        yieldCurveQuery.refetch(),
+        ...bondHistoryQueries
+          .filter((_, index) =>
+            nextComparisonPlan.requestDates.includes(bondHistoryRequests[index].reportDate),
+          )
+          .map((query) => query.refetch()),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const reportDate = view.decision?.facts.find((fact) => fact.label === "报告日")?.value ?? EM_DASH;
@@ -843,8 +917,10 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
         className={`${dh.dhLayout} ${styles.roLayout}`}
         data-testid="risk-overview-layout"
       >
+        {/* 一个 stack 容器 = 一个独立编号域：01-04 四个 SectionHead 都在这层之下，
+            债券证据区的头不编号（numbered 未启用），不占编号位。 */}
         <div
-          className={`${dh.dhMain} ${styles.roMain}`}
+          className={`${dh.dhMain} ${styles.roMain} ${SECTION_HEAD_STACK_CLASSNAME}`}
           data-testid="risk-overview-main"
         >
           {/* 工具栏 — 首页 dhTopbar 语言：左标题+报告日，右状态胶囊+刷新 */}
@@ -907,7 +983,10 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                   {blockedReportDates.length} 个报告日被规则版本拦截
                   {latestBlocked ? `，最新 ${latestBlocked.report_date}` : ""}
                 </strong>
-                <span>{latestBlocked?.reason ?? "需重新物化后恢复风险张量读取。"}</span>
+                {/* 后端拦截原因是英文诊断串，属证据层：叙述位用中文说明，原文收进 title（DESIGN §6/§7）。 */}
+                <span title={latestBlocked?.reason ?? undefined}>
+                  风险张量物化版本落后于当前规则版本，需重新物化后恢复读取。
+                </span>
               </div>
               <Link className={styles.roBlockedLink} to="/risk-tensor">
                 前往风险张量页 →
@@ -922,14 +1001,13 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
             id="risk-overview-actions"
           >
             <div data-testid="risk-overview-decision">
-              <div className={styles.roSecHead}>
-                <i>01</i>
-                <h2>风险处置判断</h2>
-                <span>数据来源 风险张量 / 现金流</span>
-              </div>
+              <SectionHead
+                title="风险处置判断"
+                meta={[{ label: "数据来源", value: "风险张量 / 现金流" }]}
+              />
               <div className={styles.roV6HeroGrid}>
                 <div>
-                  <div className={styles.roV6HeroQ}>利率每变动 1 个基点，组合市值约变动</div>
+                  <div className={styles.roV6HeroQ}>监管口径 DV01 · 面值基数线性敏感度读数</div>
                   <div
                     className={`${styles.roV6HeroNum} ${
                       hero.dv01Wan === null ? styles.roV6HeroNumVoid : ""
@@ -940,11 +1018,11 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                   </div>
                   {hero.dv01Wan !== null ? (
                     <div className={styles.roV6HeroSub}>
-                      ≈ {hero.dv01Yi} 亿元 / bp
+                      面值基数线性读数 ≈ {hero.dv01Yi} 亿元 / bp
                       {hero.peakKrdBucket !== null && hero.peakKrdWan !== null ? (
                         <>
                           {" "}
-                          · 峰值敞口位于{" "}
+                          · 峰值到期期限桶为{" "}
                           <b>
                             {hero.peakKrdBucket}（KRD {hero.peakKrdWan} 万元/bp）
                           </b>
@@ -998,7 +1076,9 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                           <i aria-hidden="true" />
                           {status.value}
                         </span>
-                        {status.tone === "error" ? (
+                        {status.tone === "error" ||
+                        (status.tone === "watch" &&
+                          (status.key === "tensor" || status.key === "cashflow")) ? (
                           <em className={styles.roV6GateDetail}>{status.detail}</em>
                         ) : null}
                       </div>
@@ -1073,7 +1153,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           {/* 曜石 KPI 卡 ×8 */}
           <section className={styles.roV6Kpis} data-testid="risk-overview-kpi-strip">
             {kpiCards.length > 0 ? (
-              kpiCards.map((card) => <V6KpiCardView card={card} key={card.key} />)
+              kpiCards.map((card) => <V6KpiCardView card={card} historyLoading={riskHistoryLoading} key={card.key} />)
             ) : (
               <div className={styles.roEmptyState}>
                 <p className={styles.roV6EmptyText}>风险张量未返回，KPI 待接入。</p>
@@ -1088,18 +1168,16 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
               </div>
             ) : (
               <div className={styles.roV6SparkCap} data-testid="risk-overview-sparkcap">
-                近 24 期序列未返回，走势与涨跌胶囊暂不展示，不使用前端补数。
+                {riskHistoryLoading
+                  ? "近 24 期序列读取中…"
+                  : "近 24 期序列未返回，走势与涨跌胶囊暂不展示，不使用前端补数。"}
               </div>
             )
           ) : null}
 
           {/* 02 风险截面摘要（开放三栏） */}
           <section data-testid="risk-overview-briefings" id="risk-overview-briefings">
-            <div className={styles.roSecHead}>
-              <i>02</i>
-              <h2>风险截面摘要</h2>
-              <span>字段级读数，不在首页补算</span>
-            </div>
+            <SectionHead title="风险截面摘要" note="字段级读数，不在首页补算" />
             <div className={styles.roV6BriefGrid}>
               {briefs.map((brief) => (
                 <article className={styles.roV6Brief} key={brief.key}>
@@ -1113,16 +1191,15 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
 
           {/* 03 风险证据链 */}
           <section data-testid="risk-overview-evidence" id="risk-overview-evidence">
-            <div className={styles.roSecHead}>
-              <i>03</i>
-              <h2>风险证据板</h2>
-              <span>KRD / 收益率曲线 / 现金流窗口 / 字段级明细</span>
-            </div>
+            <SectionHead
+              title="风险证据板"
+              note="KRD / 收益率曲线 / 现金流窗口 / 字段级明细"
+            />
             <div className={styles.roV6Duo}>
               <div className={styles.roV6Panel} data-testid="risk-overview-krd-panel">
                 <div className={styles.roV6PanelHead}>
                   <b>KRD 分布</b>
-                  <span>DV01 贡献 · 万元/bp</span>
+                  <span>到期期限桶 DV01 汇总 · 万元/bp</span>
                 </div>
                 {krdBars.length > 0 ? (
                   <>
@@ -1165,7 +1242,8 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                       </div>
                     ))}
                     <div className={styles.roV6PanelFoot}>
-                      条形长度为读数比例{hotKrdBucket ? ` · ${hotKrdBucket} 为峰值桶（琥珀）` : ""}
+                      KRD 按到期期限桶汇总，条形长度为读数比例
+                      {hotKrdBucket ? ` · ${hotKrdBucket} 为峰值桶（琥珀）` : ""}
                     </div>
                   </>
                 ) : (
@@ -1269,7 +1347,9 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                   </>
                 ) : (
                   <p className={styles.roV6EmptyText}>
-                    收益率曲线待接入{yieldCurveQuery.isError ? "（读取失败，不使用前端补数）" : ""}。
+                    {yieldCurveLoading
+                      ? "收益率曲线读取中…"
+                      : `收益率曲线待接入${yieldCurveQuery.isError ? "（读取失败，不使用前端补数）" : ""}。`}
                   </p>
                 )}
               </div>
@@ -1277,8 +1357,8 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
 
             <div className={`${styles.roV6Panel} ${styles.roV6CashPanel}`} data-testid="risk-overview-cashflow-panel">
               <div className={styles.roV6PanelHead}>
-                <b>现金流窗口 · 资产端 vs 负债端</b>
-                <span>亿元 · 30D / 90D</span>
+                <b>风险张量现金流窗口 · 资产端 vs 负债端</b>
+                <span>正式风险张量 · 亿元 · 30D / 90D</span>
               </div>
               {cashTrack ? (
                 <>
@@ -1322,6 +1402,9 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                       ))}
                     </div>
                   ) : null}
+                  <div className={styles.roV6PanelFoot}>
+                    30D / 90D 缺口直读风险张量；久期缺口与 12M 再投资风险为分析口径，仅供复核。
+                  </div>
                 </>
               ) : (
                 <p className={styles.roV6EmptyText}>现金流窗口字段待接入。</p>
@@ -1335,34 +1418,22 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                     {table.title}
                     <span>字段级证据</span>
                   </div>
-                  {table.rows.length > 0 ? (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>字段</th>
-                          <th>读数</th>
-                          <th>报告日</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {table.rows.map((row) => (
-                          <tr key={row.key}>
-                            <td>{row.label}</td>
-                            <td
-                              className={`${styles.roV6TblNum} ${styles.roNum} ${
-                                row.tone === "watch" ? styles.roToneWatch : ""
-                              }`}
-                            >
-                              {row.value}
-                            </td>
-                            <td className={`${styles.roV6TblDt} ${styles.roNum}`}>{row.date}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <p className={styles.roV6EmptyText}>字段待接入。</p>
-                  )}
+                  {/*
+                   * 空行只可能来自 tensor 未到达（buildRiskV6DetailTables 在
+                   * `!tensor` 时直接返回两张空表），所以状态直接接主链读取结果：
+                   * 读取中出骨架、读取失败出失败面，只有真的读到才说「字段待接入」。
+                   * 原实现三种情况都渲染同一句「字段待接入。」，把失败说成了待接入。
+                   */}
+                  <DataTable<RiskV6TableRow>
+                    rows={table.rows}
+                    rowKey="key"
+                    columns={DETAIL_TABLE_COLUMNS}
+                    status={detailTableStatus}
+                    emptyPolicy="collapse"
+                    emptyMessage="字段待接入。"
+                    errorMessage="风险张量读取失败，字段级证据不可用。"
+                    ariaLabel={`${table.title}字段级证据`}
+                  />
                 </div>
               ))}
             </div>
@@ -1370,11 +1441,10 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
 
           {/* 04 数据质量与血缘 */}
           <section data-testid="risk-overview-quality" id="risk-overview-quality">
-            <div className={styles.roSecHead}>
-              <i>04</i>
-              <h2>数据质量与血缘</h2>
-              <span>warnings_json 原文 · 版本与追溯</span>
-            </div>
+            <SectionHead
+              title="数据质量与血缘"
+              note="warnings_json 原文 · 版本与追溯"
+            />
             <div className={styles.roV6Qual}>
               <div>
                 <div className={styles.roV6TblHead}>

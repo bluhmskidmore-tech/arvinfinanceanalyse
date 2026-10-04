@@ -6,6 +6,10 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
+from importlib import import_module, reload
+from inspect import isfunction
+
+import pytest
 
 from backend.app.core_finance.balance_analysis import (
     FormalTywBalanceFactRow,
@@ -34,6 +38,87 @@ CROSS_SCOPE_SECTION_KEYS = (
     "event_calendar",
     "risk_alerts",
 )
+
+_COMPATIBILITY_CALCULATION_EXPORTS = {
+    "_utils": (
+        "_ZERO",
+        "_TEN_THOUSAND",
+        "_MATURITY_BUCKETS",
+        "_MISSING_MATURITY_FALLBACK_BUCKET",
+        "_RATE_BUCKETS",
+        "_LIQUIDITY_LAYER_ORDER",
+        "_LIQUIDITY_LEVEL1_BOND_TYPES",
+        "_LIQUIDITY_HQLA_HAIRCUTS",
+        "_LIQUIDITY_HIGH_RATING",
+        "_CAMPISI_POLICY_BOND",
+        "_group_rows",
+        "_to_finite_decimal",
+        "_sum_decimal",
+        "_weighted_average",
+        "_merged_weighted_average",
+        "_remaining_years",
+        "_optional_remaining_years",
+        "_match_bucket",
+        "_matches_maturity_bucket",
+        "_safe_ratio",
+        "_spread_bp",
+        "_rate_value",
+        "_normalize_interest_mode",
+        "_to_wanyuan",
+        "_decimal_value",
+        "_severity_from_gap",
+        "_month_ladder",
+        "_month_key",
+        "_month_key_from_index",
+        "_card",
+        "_section",
+        "_table",
+    ),
+    "_bond_tables": (
+        "_build_cards",
+        "_build_bond_business_type_table",
+        "_bond_business_type_label",
+        "_build_maturity_gap_table",
+        "_build_issuance_business_type_table",
+        "_build_issuer_concentration_table",
+        "_classify_liquidity_layer",
+        "_build_liquidity_layers_table",
+        "_build_portfolio_comparison_table",
+        "_build_cashflow_calendar_table",
+        "_build_vintage_analysis_table",
+        "_build_customer_attribute_analysis_table",
+    ),
+    "_ifrs9_tables": (
+        "_build_ifrs9_classification_table",
+        "_build_ifrs9_position_scope_table",
+        "_build_ifrs9_source_family_table",
+        "_build_account_category_comparison_table",
+        "_build_rule_reference_table",
+    ),
+    "_analysis_tables": (
+        "_build_currency_split_table",
+        "_build_rating_table",
+        "_rating_bucket_label",
+        "_is_interest_rate_bond",
+        "_build_rate_distribution_table",
+        "_build_industry_table",
+        "_build_counterparty_type_table",
+        "_build_campisi_table",
+        "_build_cross_analysis_table",
+        "_build_interest_mode_table",
+        "_build_decision_items_table",
+        "_maturity_full_scope_gap_value",
+        "_build_event_calendar_table",
+    ),
+    "_risk_tables": (
+        "_regulatory_metric_status",
+        "_build_regulatory_limits_table",
+        "_build_overdue_credit_quality_detail_table",
+        "_build_overdue_credit_quality_rating_table",
+        "_build_risk_alerts_table",
+        "_maturity_full_scope_gap_value",
+    ),
+}
 
 
 def _zqtz_asset() -> FormalZqtzBalanceFactRow:
@@ -146,6 +231,93 @@ def _table(payload: dict, key: str) -> dict:
         if table["key"] == key:
             return table
     raise AssertionError(f"table {key} not found")
+
+
+@pytest.mark.parametrize("scope", ["all", "asset", "liability"])
+@pytest.mark.parametrize("missing_rate", [None, Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity"), "", "BROKEN"])
+def test_rate_distribution_discloses_missing_rates_without_losing_balances(scope, missing_rate):
+    zqtz_rows = [
+        replace(_zqtz_asset(), coupon_rate=rate)
+        for rate in (missing_rate, Decimal("0"), Decimal("3.20"))
+    ]
+    tyw_rows = [
+        replace(row, funding_cost_rate=rate)
+        for row in (_tyw_asset(), _tyw_liability())
+        for rate in (missing_rate, Decimal("0"), Decimal("3.20"))
+    ]
+    payload = build_balance_analysis_workbook_payload(
+        report_date=RD,
+        position_scope=scope,
+        currency_basis="native",
+        zqtz_rows=[row for row in zqtz_rows if scope == "all" or row.position_scope == scope],
+        tyw_rows=[row for row in tyw_rows if scope == "all" or row.position_scope == scope],
+        zqtz_full_rows=zqtz_rows,
+        tyw_full_rows=tyw_rows,
+    )
+    distribution = _table(payload, "rate_distribution")
+    buckets = {row["bucket"]: row for row in distribution["rows"]}
+    assert distribution["rows"][0]["bucket"] == "利率缺失"
+    assert buckets["零息/无息"]["bond_count"] == 1
+    assert "利率缺失" in buckets
+    for count_key, amount_key, expected_amount in (
+        ("bond_count", "bond_amount", Decimal("10000")),
+        ("interbank_asset_count", "interbank_asset_amount", Decimal("3000")),
+        ("interbank_liability_count", "interbank_liability_amount", Decimal("5000")),
+    ):
+        for label in ("利率缺失", "零息/无息", "3.0%-3.5%"):
+            assert buckets[label][count_key] == 1
+            assert buckets[label][amount_key] == expected_amount
+        assert sum(row[count_key] for row in distribution["rows"]) == 3
+        assert sum(row[amount_key] for row in distribution["rows"]) == expected_amount * 3
+
+
+@pytest.mark.parametrize("negative_rate", [Decimal("-0.50"), "-0.50"])
+def test_rate_distribution_keeps_negative_rates_separate_from_observed_zero(negative_rate):
+    payload = build_balance_analysis_workbook_payload(
+        report_date=RD,
+        position_scope="all",
+        currency_basis="native",
+        zqtz_rows=[replace(_zqtz_asset(), coupon_rate=rate) for rate in (negative_rate, Decimal("0"))],
+        tyw_rows=[
+            replace(row, funding_cost_rate=rate)
+            for row in (_tyw_asset(), _tyw_liability())
+            for rate in (negative_rate, Decimal("0"))
+        ],
+    )
+    buckets = {row["bucket"]: row for row in _table(payload, "rate_distribution")["rows"]}
+    for count_key, amount_key, amount in (
+        ("bond_count", "bond_amount", Decimal("10000")),
+        ("interbank_asset_count", "interbank_asset_amount", Decimal("3000")),
+        ("interbank_liability_count", "interbank_liability_amount", Decimal("5000")),
+    ):
+        assert buckets["利率缺失"][count_key] == 0
+        for label in ("0%以下", "零息/无息"):
+            assert buckets[label][count_key] == 1
+            assert buckets[label][amount_key] == amount
+
+
+def test_rate_distribution_excel_preserves_missing_rate_amounts():
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from backend.app.services.balance_analysis_workbook_service import _build_balance_analysis_workbook_xlsx_bytes
+
+    payload = build_balance_analysis_workbook_payload(
+        report_date=RD,
+        position_scope="all",
+        currency_basis="native",
+        zqtz_rows=[replace(_zqtz_asset(), coupon_rate=None)],
+        tyw_rows=[replace(row, funding_cost_rate=None) for row in (_tyw_asset(), _tyw_liability())],
+    )
+    workbook = load_workbook(BytesIO(_build_balance_analysis_workbook_xlsx_bytes(payload)), data_only=True)
+    try:
+        missing_row = next(
+            row for row in workbook["利率分布"].iter_rows(values_only=True) if row[0] == "利率缺失"
+        )
+        assert missing_row[:7] == ("利率缺失", 1, 10000, 1, 3000, 1, 5000)
+    finally:
+        workbook.close()
 
 
 def _all_zqtz() -> list[FormalZqtzBalanceFactRow]:
@@ -301,16 +473,45 @@ def test_missing_maturity_falls_into_shortest_bucket_with_disclosure():
     assert "发行类负债 1" in alert["reason"]
     assert "同业资产 1" in alert["reason"]
     assert "同业负债 1" in alert["reason"]
+    assert "涉及期限分析面值/本金 2.20 亿元" in alert["reason"]
+    assert "占该口径余额 100.00%" in alert["reason"]
     assert "四类行在期限缺口中归入「3个月以内」桶" in alert["reason"]
     assert "不落「已到期/逾期」" in alert["reason"]
+    assert "工作簿的短期限代理" in alert["reason"]
+    assert "负债分析兼容页则单列「到期日未提供」" in alert["reason"]
+    assert "两者用途和口径不同" in alert["reason"]
     assert "债券投资资产和同业资产同时按 0 年进入组合剩余期限 proxy" in alert["reason"]
     assert "加权期限及现金流、事件日历剔除缺失值" in alert["reason"]
 
 
+def test_balance_workbook_compatibility_modules_reuse_authoritative_calculations():
+    authority = import_module("backend.app.core_finance.balance_analysis_workbook")
+
+    for module_name, expected_exports in _COMPATIBILITY_CALCULATION_EXPORTS.items():
+        compatibility = import_module(
+            f"backend.app.core_finance.balance_workbook.{module_name}"
+        )
+        # Several service-contract tests intentionally reload the authority module.
+        # Refresh the compatibility module so this assertion observes the current
+        # authoritative module instance rather than an earlier test's import cache.
+        compatibility = reload(compatibility)
+        assert tuple(compatibility.__all__) == expected_exports
+        locally_defined_functions = {
+            name
+            for name, value in vars(compatibility).items()
+            if isfunction(value) and value.__module__ == compatibility.__name__
+        }
+        assert locally_defined_functions == set()
+        for symbol_name in expected_exports:
+            assert getattr(compatibility, symbol_name) is getattr(
+                authority,
+                symbol_name,
+            ), f"{module_name}.{symbol_name} must reuse the authoritative calculation"
+
+
 def test_missing_maturity_caliber_package_copies_match_monolith():
-    # B10-1 双实现钉住：休眠副本（balance_workbook/_bond_tables、_risk_tables）
-    # 与单体权威实现对缺失 maturity_date 的行必须同口径——归入"3个月以内"桶
-    # 并输出 bal_wb_risk_maturity_missing_001 披露，不落"已到期/逾期"。
+    # B10-1 兼容路径钉住：历史私有 import 必须复用单体权威实现，并保持
+    # 缺失 maturity_date 归入"3个月以内"桶、输出治理披露的业务语义。
     from backend.app.core_finance.balance_analysis_workbook import (
         _build_maturity_gap_table as monolith_maturity_gap,
     )

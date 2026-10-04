@@ -6,11 +6,15 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from copy import deepcopy
 from datetime import date, datetime
 from decimal import Decimal
+from os import PathLike
 from pathlib import Path
-from typing import Literal
+from typing import Literal, SupportsFloat, SupportsIndex, cast
+
+from duckdb import Error as DuckDBError
 
 from backend.app.core_finance.alert_engine import evaluate_alerts
 from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
@@ -19,6 +23,7 @@ from backend.app.governance.formal_compute_lineage import resolve_completed_form
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.dashboard_repo import DashboardRepository
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.formal_zqtz_balance_metrics_repo import (
     FormalZqtzBalanceMetricsRepository,
 )
@@ -28,6 +33,7 @@ from backend.app.repositories.news_warehouse_repo import NewsWarehouseRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.repositories.risk_tensor_repo import load_latest_bond_analytics_lineage
+from backend.app.repositories.system_read_publication_repo import raise_if_system_read_failure
 from backend.app.schemas.common_numeric import Numeric
 from backend.app.schemas.executive_dashboard import (
     AlertItem,
@@ -60,27 +66,11 @@ from backend.app.services.bond_analytics_service import (
     get_benchmark_excess,
     get_benchmark_excess_many,
 )
-from backend.app.services.formal_result_runtime import build_result_envelope
-from backend.app.services.kpi_service import (
-    resolve_executive_kpi_metrics,
-    resolve_kpi_authority_gate,
-)
-from backend.app.services.product_category_pnl_service import (
-    product_category_pnl_envelope,
-    resolve_product_category_ytd_payload_for_home_snapshot,
-)
-from backend.app.services.risk_tensor_service import (
-    risk_tensor_dates_envelope,
-    risk_tensor_envelope,
-)
-from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 from backend.app.services.executive_service_builders import (
     _CATEGORY_ID_TO_ATTRIBUTION_SEGMENT,
     _HOME_SNAPSHOT_CALIBERS,
     _VERDICT_TONES,
     _ZERO_ATTRIBUTION_SEGMENTS,
-    _DegradedProductCategoryHeadline,
-    _ProductCategoryHeadlineValues,
     _aggregate_attribution_segments,
     _build_contribution_from_repo,
     _build_pnl_attribution_from_repo,
@@ -89,6 +79,7 @@ from backend.app.services.executive_service_builders import (
     _contribution_explicit_miss_payload,
     _contribution_unavailable_payload,
     _decimal_from_formal_numeric,
+    _DegradedProductCategoryHeadline,
     _domain_dates_from_context,
     _empty_alerts_payload,
     _empty_home_snapshot_payload,
@@ -100,6 +91,7 @@ from backend.app.services.executive_service_builders import (
     _portfolio_risk_tensor_from_formal_result,
     _product_category_monthly_headline_from_values,
     _product_category_ytd_headline_from_values,
+    _ProductCategoryHeadlineValues,
     _zero_pnl_attribution_payload,
     executive_verdict,
 )
@@ -137,7 +129,6 @@ from backend.app.services.executive_service_home_support import (
     _HOME_INCOME_BENCHMARK_PERIOD_TYPE,
     _HOME_INCOME_CURVE_FALLBACK_PREFIX,
     _HOME_INCOME_MAX_CURVE_FALLBACK_DAYS,
-    _HomeGovernanceFileFingerprint,
     _duckdb_file_edge_hash,
     _governance_file_fingerprint,
     _home_income_benchmark_warning,
@@ -146,6 +137,7 @@ from backend.app.services.executive_service_home_support import (
     _home_income_null_pnl,
     _home_income_pct_points_from_payload,
     _home_income_warning_date,
+    _HomeGovernanceFileFingerprint,
     _is_bounded_home_income_curve_fallback,
     _is_home_income_amount_disclosure_warning,
     _is_home_income_reconciliation_warning,
@@ -153,6 +145,21 @@ from backend.app.services.executive_service_home_support import (
     _numeric_raw_and_unit_from_payload,
     _selected_governance_files_fingerprint,
 )
+from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.kpi_service import (
+    resolve_executive_kpi_metrics,
+    resolve_kpi_authority_gate,
+)
+from backend.app.services.product_category_pnl_service import (
+    ProductCategoryReadModelNotFoundError,
+    product_category_pnl_envelope,
+    resolve_product_category_ytd_payload_for_home_snapshot,
+)
+from backend.app.services.risk_tensor_service import (
+    risk_tensor_dates_envelope,
+    risk_tensor_envelope,
+)
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 # 与 tasks 模块常量对齐；只读路径不得 import tasks（broker/actor 注册）。
 BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
@@ -165,7 +172,7 @@ _HOME_CACHE_BUILD_RUN_TAIL_BYTES = 256 * 1024
 _MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
 _DEFAULT_SOURCE = "sv_exec_dashboard_v1"
 _DEFAULT_RULE = "rv_exec_dashboard_v1"
-_CACHE_VERSION = "cv_exec_dashboard_v1"
+_CACHE_VERSION = "cv_exec_dashboard_nim_percent_points_v2"
 _EXECUTIVE_OVERVIEW_CACHE_TTL_SECONDS: float = 300.0
 _ExecutiveOverviewCacheKey = tuple[object, ...]
 _EXECUTIVE_OVERVIEW_CACHE: InMemoryTTLCache[
@@ -675,6 +682,7 @@ def _fetch_aum_history(
 ) -> list[float] | None:
     """逐日取 _fetch_executive_aum_row(...)['total_market_value_amount']，按时间正序返回最近 n 个。
     单日异常跳过；整体异常返回 None。"""
+    values: list[float]
     try:
         slice_dates = _history_date_slice(report_dates, current_report_date, n)
         if not slice_dates:
@@ -703,7 +711,7 @@ def _fetch_aum_history(
                     current_report_date=current_report_date,
                     slice_dates=slice_dates,
                 )
-        values: list[float] = []
+        values = []
         for d in slice_dates:
             try:
                 row = _fetch_executive_aum_row(
@@ -745,6 +753,7 @@ def _fetch_aum_context(
     current_report_date: str | None,
     n: int = 20,
 ) -> tuple[dict[str, dict[str, object]], list[float] | None]:
+    rows_by_date: dict[str, dict[str, object]]
     slice_dates = _history_date_slice(report_dates, current_report_date, n) or []
     fetch_dates = list(slice_dates)
     previous_report_date = _previous_report_date(report_dates, current_report_date)
@@ -764,7 +773,7 @@ def _fetch_aum_context(
             )
             if rows_by_date:
                 values = [
-                    float(row["total_market_value_amount"])
+                    float(cast(str | SupportsFloat | SupportsIndex, row["total_market_value_amount"]))
                     for d in slice_dates
                     if (row := rows_by_date.get(d)) is not None
                     and row.get("total_market_value_amount") is not None
@@ -780,7 +789,7 @@ def _fetch_aum_context(
                 fetch_dates=fetch_dates,
             )
 
-    rows_by_date: dict[str, dict[str, object]] = {}
+    rows_by_date = {}
     for d in fetch_dates:
         try:
             row = _fetch_executive_aum_row(
@@ -799,7 +808,7 @@ def _fetch_aum_context(
         if row is not None:
             rows_by_date[d] = row
     values = [
-        float(row["total_market_value_amount"])
+        float(cast(str | SupportsFloat | SupportsIndex, row["total_market_value_amount"]))
         for d in slice_dates
         if (row := rows_by_date.get(d)) is not None
         and row.get("total_market_value_amount") is not None
@@ -817,6 +826,7 @@ def _fetch_ytd_history(
     n: int = 20,
 ) -> list[float] | None:
     """逐日取 FI + nonstd bridge 年度累计损益。"""
+    values: list[float]
     try:
         slice_dates = _history_date_slice(report_dates, current_report_date, n)
         if not slice_dates:
@@ -848,7 +858,7 @@ def _fetch_ytd_history(
                     current_report_date=current_report_date,
                     slice_dates=slice_dates,
                 )
-        values: list[float] = []
+        values = []
         for d in slice_dates:
             try:
                 v = _sum_business_ytd_pnl(pnl_repo, d)
@@ -891,6 +901,7 @@ def _fetch_ytd_context(
     current_report_date: str | None,
     n: int = 20,
 ) -> tuple[dict[str, object], list[float] | None]:
+    values_by_date: dict[str, object]
     slice_dates = _history_date_slice(report_dates, current_report_date, n) or []
     fetch_dates = list(slice_dates)
     previous_report_date = _previous_report_date(report_dates, current_report_date)
@@ -917,7 +928,7 @@ def _fetch_ytd_context(
                 for d in fetch_dates
                 if d in formal_by_date
             }
-            values = [float(values_by_date[d]) for d in slice_dates if d in values_by_date]
+            values = [float(cast(str | SupportsFloat | SupportsIndex, values_by_date[d])) for d in slice_dates if d in values_by_date]
             if values:
                 values.reverse()
             return values_by_date, values or None
@@ -929,7 +940,7 @@ def _fetch_ytd_context(
                 fetch_dates=fetch_dates,
             )
 
-    values_by_date: dict[str, object] = {}
+    values_by_date = {}
     for d in fetch_dates:
         try:
             values_by_date[d] = _sum_business_ytd_pnl(pnl_repo, d)
@@ -941,7 +952,7 @@ def _fetch_ytd_context(
                 current_report_date=current_report_date,
             )
             continue
-    values = [float(values_by_date[d]) for d in slice_dates if d in values_by_date]
+    values = [float(cast(str | SupportsFloat | SupportsIndex, values_by_date[d])) for d in slice_dates if d in values_by_date]
     if values:
         values.reverse()
     return values_by_date, values or None
@@ -955,6 +966,7 @@ def _fetch_nim_history(
     n: int = 20,
 ) -> list[float] | None:
     """逐日 fetch_zqtz_rows + fetch_tyw_rows → compute_liability_yield_metrics → kpi.nim。"""
+    values: list[float]
     try:
         slice_dates = _history_date_slice(report_dates, current_report_date, n)
         if not slice_dates:
@@ -969,7 +981,7 @@ def _fetch_nim_history(
             try:
                 zqtz_rows_by_date = fetch_zqtz_history(slice_dates)
                 tyw_rows_by_date = fetch_tyw_history(slice_dates)
-                values: list[float] = []
+                values = []
                 for d in slice_dates:
                     payload = compute_liability_yield_metrics(
                         d,
@@ -990,7 +1002,7 @@ def _fetch_nim_history(
                     current_report_date=current_report_date,
                     slice_dates=slice_dates,
                 )
-        values: list[float] = []
+        values = []
         for d in slice_dates:
             try:
                 fetch_zqtz_yield = getattr(liability_repo, "fetch_zqtz_yield_rows", None)
@@ -1034,6 +1046,7 @@ def _fetch_liability_rows_by_dates(
     batch_method_name: str,
     single_method_name: str,
 ) -> dict[str, list[dict[str, object]]]:
+    rows_by_date: dict[str, list[dict[str, object]]]
     if not report_dates:
         return {}
     fetch_many = getattr(liability_repo, batch_method_name, None)
@@ -1054,7 +1067,7 @@ def _fetch_liability_rows_by_dates(
             )
 
     fetch_one = getattr(liability_repo, single_method_name)
-    rows_by_date: dict[str, list[dict[str, object]]] = {}
+    rows_by_date = {}
     for d in report_dates:
         try:
             rows_by_date[d] = list(fetch_one(d))
@@ -1134,6 +1147,8 @@ def _fetch_nim_context_uncached(
     dict[str, list[dict[str, object]]],
     list[float] | None,
 ]:
+    payloads_by_date: dict[str, dict[str, object]]
+    history_values: list[float]
     slice_dates = _history_date_slice(report_dates, current_report_date, n) or []
     fetch_dates = list(slice_dates)
     if current_report_date is not None and current_report_date not in fetch_dates:
@@ -1157,7 +1172,7 @@ def _fetch_nim_context_uncached(
                     extra=f"dates={len(fetch_dates)} payloads={len(payloads_by_date)}",
                     report_date=current_report_date,
                 )
-                history_values: list[float] = []
+                history_values = []
                 for d in slice_dates:
                     payload = payloads_by_date.get(d)
                     kpi = payload.get("kpi") if isinstance(payload, dict) else None
@@ -1217,7 +1232,7 @@ def _fetch_nim_context_uncached(
             single_method_name="fetch_tyw_rows",
         )
 
-    payloads_by_date: dict[str, dict[str, object]] = {}
+    payloads_by_date = {}
     compute_t0 = time.perf_counter()
     for d in fetch_dates:
         try:
@@ -1242,7 +1257,7 @@ def _fetch_nim_context_uncached(
         report_date=current_report_date,
     )
 
-    history_values: list[float] = []
+    history_values = []
     for d in slice_dates:
         payload = payloads_by_date.get(d)
         kpi = payload.get("kpi") if isinstance(payload, dict) else None
@@ -1264,6 +1279,7 @@ def _fetch_dv01_history(
     n: int = 20,
 ) -> list[float] | None:
     """逐日 fetch_risk_overview_snapshot(date)['portfolio_dv01']。"""
+    values: list[float]
     try:
         slice_dates = _history_date_slice(report_dates, current_report_date, n)
         if not slice_dates:
@@ -1288,7 +1304,7 @@ def _fetch_dv01_history(
                     current_report_date=current_report_date,
                     slice_dates=slice_dates,
                 )
-        values: list[float] = []
+        values = []
         for d in slice_dates:
             try:
                 snapshot = bond_repo.fetch_risk_overview_snapshot(report_date=d)
@@ -1326,6 +1342,7 @@ def _fetch_dv01_context(
     current_report_date: str | None,
     n: int = 20,
 ) -> tuple[dict[str, dict[str, object]], list[float] | None]:
+    snapshots_by_date: dict[str, dict[str, object]]
     slice_dates = _history_date_slice(report_dates, current_report_date, n) or []
     fetch_dates = list(slice_dates)
     previous_report_date = _previous_report_date(report_dates, current_report_date)
@@ -1341,7 +1358,7 @@ def _fetch_dv01_context(
             snapshots_by_date = fetch_snapshots(report_dates=fetch_dates)
             if snapshots_by_date:
                 values = [
-                    float(snapshot["portfolio_dv01"])
+                    float(cast(str | SupportsFloat | SupportsIndex, snapshot["portfolio_dv01"]))
                     for d in slice_dates
                     if (snapshot := snapshots_by_date.get(d)) is not None
                     and snapshot.get("portfolio_dv01") is not None
@@ -1357,7 +1374,7 @@ def _fetch_dv01_context(
                 fetch_dates=fetch_dates,
             )
 
-    snapshots_by_date: dict[str, dict[str, object]] = {}
+    snapshots_by_date = {}
     for d in fetch_dates:
         try:
             snapshot = bond_repo.fetch_risk_overview_snapshot(report_date=d)
@@ -1372,7 +1389,7 @@ def _fetch_dv01_context(
         if snapshot is not None:
             snapshots_by_date[d] = snapshot
     values = [
-        float(snapshot["portfolio_dv01"])
+        float(cast(str | SupportsFloat | SupportsIndex, snapshot["portfolio_dv01"]))
         for d in slice_dates
         if (snapshot := snapshots_by_date.get(d)) is not None
         and snapshot.get("portfolio_dv01") is not None
@@ -1908,7 +1925,7 @@ def _compute_executive_overview(
     else:
         with ThreadPoolExecutor(max_workers=len(domain_loaders)) as executor:
             futures = {
-                name: executor.submit(timed_domain_load, name, loader)
+                name: executor.submit(copy_context().run, timed_domain_load, name, loader)
                 for name, loader in domain_loaders.items()
             }
             domain_states = {}
@@ -2647,6 +2664,7 @@ def _list_domain_date_context() -> dict[str, list[str]]:
     try:
         return DashboardRepository(str(settings.duckdb_path)).list_domain_date_context()
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError) as exc:
+        raise_if_system_read_failure(exc)
         _log_degraded_fallback(
             "home snapshot domain date context degrades to empty",
             exc,
@@ -2665,8 +2683,9 @@ def _fetch_product_category_home_headline_values(
             report_date=report_date,
             views=views,
         )
-    except Exception as exc:
-        reason = f"{type(exc).__name__}: {exc}"
+    except (DuckDBError, OSError, RuntimeError, ValueError) as exc:
+        raise_if_system_read_failure(exc)
+        reason = f"Product-category headline read unavailable (error_type={type(exc).__name__})."
         logger.warning(
             "product_category home headline fast path failed (views=%s, report_date=%s): %s",
             views,
@@ -2697,8 +2716,9 @@ def _build_product_category_ytd_headline(
             report_date,
             float(settings.ftp_rate_pct),
         )
-    except Exception as exc:
-        reason = f"{type(exc).__name__}: {exc}"
+    except (DuckDBError, OSError, RuntimeError, ValueError) as exc:
+        raise_if_system_read_failure(exc)
+        reason = f"Product-category YTD headline unavailable (error_type={type(exc).__name__})."
         logger.warning(
             "product_category ytd headline fallback resolver failed (report_date=%s): %s",
             report_date,
@@ -2774,8 +2794,9 @@ def _build_product_category_monthly_headline(
         from backend.app.schemas.product_category_pnl import ProductCategoryPnlPayload
 
         pc_payload = ProductCategoryPnlPayload.model_validate(result_dict)
-    except Exception as exc:
-        reason = f"{type(exc).__name__}: {exc}"
+    except (DuckDBError, OSError, RuntimeError, ValueError, ProductCategoryReadModelNotFoundError) as exc:
+        raise_if_system_read_failure(exc)
+        reason = f"Product-category monthly headline unavailable (error_type={type(exc).__name__})."
         logger.warning(
             "product_category monthly headline fallback resolver failed (report_date=%s): %s",
             report_date,
@@ -2839,8 +2860,8 @@ def _build_product_category_headlines(
         return _build_product_category_monthly_headline(report_date), int((time.perf_counter() - started_at) * 1000)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        ytd_future = executor.submit(timed_ytd)
-        monthly_future = executor.submit(timed_monthly)
+        ytd_future = executor.submit(copy_context().run, timed_ytd)
+        monthly_future = executor.submit(copy_context().run, timed_monthly)
         ytd_headline, ytd_ms = ytd_future.result()
         monthly_headline, monthly_ms = monthly_future.result()
         return ytd_headline, monthly_headline, ytd_ms, monthly_ms
@@ -2939,7 +2960,10 @@ def _fetch_home_income_benchmark_envelopes(point_dates: list[str]) -> dict[str, 
 
     max_workers = min(len(point_dates), 8)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {point_date: executor.submit(load, point_date) for point_date in point_dates}
+        futures = {
+            point_date: executor.submit(copy_context().run, load, point_date)
+            for point_date in point_dates
+        }
         return {point_date: future.result() for point_date, future in futures.items()}
 
 
@@ -3158,8 +3182,12 @@ def _compute_home_income_trend_envelope(
 def warm_home_income_trend_cache_if_configured(settings: object) -> bool:
     if not bool(getattr(settings, "home_income_trend_prewarm_enabled", False)):
         return False
+    read_context = copy_context()
     thread = threading.Thread(
-        target=_warm_home_income_trend_cache_quietly,
+        target=lambda **kwargs: read_context.run(
+            _warm_home_income_trend_cache_quietly,
+            **kwargs,
+        ),
         kwargs={"report_date": None, "window": 7},
         daemon=True,
         name="moss-home-income-trend-warmup",
@@ -3222,7 +3250,8 @@ def _latest_product_category_report_date() -> str | None:
     try:
         repo = ProductCategoryPnlRepository(str(get_settings().duckdb_path))
         dates = repo.list_report_dates()
-    except (RuntimeError, OSError, TypeError, ValueError, KeyError):
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError) as exc:
+        raise_if_system_read_failure(exc)
         return None
     return dates[0] if dates else None
 
@@ -3310,7 +3339,7 @@ _HOME_DUCKDB_STORAGE_FINGERPRINT_CACHE: dict[
 
 
 def _duckdb_version_token() -> tuple[str, int | None]:
-    duckdb_path = str(get_settings().duckdb_path)
+    duckdb_path = str(resolve_effective_read_path(get_settings().duckdb_path))
     try:
         return duckdb_path, Path(duckdb_path).stat().st_mtime_ns
     except OSError:
@@ -3358,11 +3387,12 @@ def _duckdb_storage_content_fingerprint(duckdb_path: object) -> tuple[tuple[str,
 
 def _home_data_version_token(
     *,
-    duckdb_path: object | None = None,
+    duckdb_path: str | PathLike[str] | None = None,
     governance_path: object | None = None,
 ) -> _HomeDataVersionToken:
     settings = get_settings()
-    resolved_duckdb_path = str(settings.duckdb_path if duckdb_path is None else duckdb_path)
+    requested_duckdb_path = settings.duckdb_path if duckdb_path is None else duckdb_path
+    resolved_duckdb_path = str(resolve_effective_read_path(requested_duckdb_path))
     resolved_governance_path = str(
         getattr(settings, "governance_path", "") if governance_path is None else governance_path
     )
@@ -3546,7 +3576,8 @@ def home_snapshot_unified_report_date() -> str | None:
     """
     try:
         envelope = home_snapshot_envelope(report_date=None, allow_partial=False)
-    except Exception:
+    except Exception as exc:
+        raise_if_system_read_failure(exc)
         logger.exception("home_snapshot_unified_report_date_failed")
         return None
     result = envelope.get("result")
@@ -3577,8 +3608,12 @@ def warm_home_snapshot_cache_if_configured(settings: object) -> bool:
         last_step_durations_ms={},
         error=None,
     )
+    read_context = copy_context()
     thread = threading.Thread(
-        target=_warm_home_snapshot_cache_quietly,
+        target=lambda **kwargs: read_context.run(
+            _warm_home_snapshot_cache_quietly,
+            **kwargs,
+        ),
         kwargs={"report_date": None, "allow_partial": False},
         daemon=True,
         name="moss-home-snapshot-warmup",
@@ -3691,8 +3726,8 @@ def _build_home_snapshot_core_envelopes(
         return envelope, int((time.perf_counter() - started_at) * 1000)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        overview_future = executor.submit(timed_overview)
-        attribution_future = executor.submit(timed_attribution)
+        overview_future = executor.submit(copy_context().run, timed_overview)
+        attribution_future = executor.submit(copy_context().run, timed_attribution)
         overview_env, overview_ms = overview_future.result()
         attribution_env, attribution_ms = attribution_future.result()
         return overview_env, attribution_env, overview_ms, attribution_ms
@@ -3738,6 +3773,13 @@ def _compute_home_snapshot_envelope(
 
     if target_date is None:
         step_t0 = time.perf_counter()
+        latest_available, _, _ = _compute_unified_report_date(
+            requested=None, allow_partial=False, domain_dates=domain_dates
+        )
+        missing_for_requested = [
+            domain for domain in _HOME_SNAPSHOT_CALIBERS
+            if normalized is None or normalized not in domain_dates[domain]
+        ]
         envelope = _envelope(
             "home.snapshot",
             _empty_home_snapshot_payload(),
@@ -3748,7 +3790,8 @@ def _compute_home_snapshot_envelope(
                 "requested_report_date": normalized,
                 "allow_partial": allow_partial,
                 "effective_report_dates": {},
-                "domains_missing": list(_HOME_SNAPSHOT_CALIBERS),
+                "domains_missing": missing_for_requested,
+                "latest_available_report_date": latest_available,
             },
         )
         _log_home_snapshot_perf_step(

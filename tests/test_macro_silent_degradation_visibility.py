@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_analysis_service as macro_toolkit_analysis
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
 import logging
 from datetime import date, timedelta
 
 import duckdb
 import pytest
 
-import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.core_finance.macro.crisis_score import compute_crisis_score_payload
 from backend.app.core_finance.macro.toolkit.system_sources import (
     clear_system_macro_source_cache,
@@ -185,6 +187,13 @@ def test_degraded_crisis_score_payload_marks_data_status() -> None:
     assert payload["available_component_count"] == 4
     assert payload["component_count"] == 5
     assert payload["report_date"] == report_date.isoformat()
+    assert payload["score_trend"]["window_points"] == 20
+    assert payload["risk_gate"] == {
+        "eligible": False,
+        "triggered": False,
+        "threshold": 2.0,
+        "reason_code": "crisis_score_data_not_complete",
+    }
 
     complete = compute_crisis_score_payload(
         _crisis_series_data(include_nanhua=True),
@@ -234,14 +243,14 @@ def test_degraded_crisis_score_surfaces_in_capability_card(tmp_path) -> None:
     _seed_crisis_history_without_nanhua(duckdb_path)
     report_date = _CRISIS_HISTORY_START + timedelta(days=_CRISIS_HISTORY_DAYS - 1)
 
-    raw_result = macro_toolkit_route._run_capability(
+    raw_result = macro_toolkit_support._run_capability(
         "crisis_score_cn",
-        lambda: macro_toolkit_route._compute_crisis_score_capability(duckdb_path, report_date),
+        lambda: macro_toolkit_support._compute_crisis_score_capability(duckdb_path, report_date),
     )
     definition = next(
-        item for item in macro_toolkit_route._CAPABILITY_DEFINITIONS if item["key"] == "crisis_score_cn"
+        item for item in macro_toolkit_support._CAPABILITY_DEFINITIONS if item["key"] == "crisis_score_cn"
     )
-    card = macro_toolkit_route._capability_result_card(definition, raw_result)
+    card = macro_toolkit_analysis._capability_result_card(definition, raw_result)
 
     assert card["status"] == "degraded"
     assert card["result"]["data_status"] == "degraded"

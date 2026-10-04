@@ -48,6 +48,8 @@
 
 ### 4.1 zqtz_bond_daily_snapshot
 
+日期校验（2026-09-06 修复）：文件名报告日期与非空明细日期冲突时，停止快照物化，等待核实源表，不允许用文件名静默覆盖。2025-11-20 的历史余额按用户确认保留为待核实来源；其暂列状态由治理记录传到业务种类损益页面，取得正确源表并重算后方可解除。
+
 用途：债券逐日快照。
 
 层级归属：
@@ -209,6 +211,8 @@ formal-only derived later：
 - 任何把该表直接重标成 formal result 的服务路径
 
 ### 4.3 fact_formal_zqtz_balance_daily
+
+业务种类损益页从该表读取的 `avg_amount` 与 `current_amount` 均使用含应计利息的账面余额：H/AC 取摊余成本，A/FVOCI、T/FVTPL 取公允价值，凭证式国债沿用期末面值兜底。该页面口径于 2026-09-06 经用户确认对所有日期适用；不改变其他日均分析页面的定义。YTD、月报和下钻 DTO 标记 `avg_balance_basis=book_value_including_accrued_interest`，并返回按请求期间过滤的 `balance_quality_issues`；预计算命中也必须读取当前复核状态。
 
 用途：`zqtz` 正式资产负债分析逐日事实表。
 
@@ -389,6 +393,7 @@ deferred enrichment：
 - `(report_date, instrument_code, portfolio_name, cost_center, currency_basis)` is a report-position lookup / aggregation key, not the formal-recognized storage grain.
 - `fair_value_change_516` 是 standardized component，不天然等于 formal-recognized pnl
 - `capital_gain_517` 是 standardized realized component，是否进入 formal 取决于 `accounting_basis` 与 event semantics
+- FI 原始源表规则全日期适用（2026-09-06 用户确认）：`T损益516` 在源表解析时反号、不除以 `1.06`，正式损益仅认定 T/FVTPL；`投资收益517` 在 FI 源事件标准化时反号并除以 `1.06`，派生 H/A 已实现与 T 不重叠增量语义。已标准化字段不再重复反号或除税；514 仍遵循其独立规则。
 - `manual_adjustment` 只有在治理/审批状态字段（如 `approval_status` / `governance_status`）为 approved 时才可进入 formal total；未批准 adjustment 不进入 formal total_pnl。
 
 ### 4.6 nonstd_journal_entry
@@ -500,6 +505,8 @@ source kind：
 - `account_code_raw`
 - `avg_balance_raw`
 
+总账必填金额 D:G 与日均余额原始值必须能够解析为有限数值。非空文本、NaN 和正负 Infinity 不能通过必填校验，也不得在解析时替换为零；拒绝证据应定位到 sheet 与 cell。合法零值保留。总账即使借贷发生额均为零，仍须满足期初与期末闭合。没有日均来源时，总览及资产／负债结构表的日均金额统一保留 null。
+
 account-code text preservation：
 - `account_code_raw` 必须以 digit-only text 解释。
 - 不允许 scientific notation。
@@ -577,6 +584,7 @@ canonical grain：
 - 正式候选仅包含真实的 `middle-rate` 序列；非中间价观测（例如人民币指数、外汇掉期曲线等）保持分析用途，不得回灌本表
 - 持久化行必须规范为 `base_currency -> CNY`（`quote_currency='CNY'`）；供应商反向报价须在写入前反转
 - 缺失营业日所需正式中间价时 fail closed，不得静默用无关序列填数
+- 本节营业日指中国外汇交易中心中间价发布日，不是境外货币清算日。发布日要求同日观测；非发布日要求紧邻的上一发布日观测，不能沿用任意更早值。`observed_trade_date` 必须存在，且 `is_business_day` / `is_carry_forward` 与实际日期关系一致；未登记年份、未来观测和标志冲突均 fail closed。该准入覆盖供应商、CSV 写入边界和正式读取，历史行不会因代码更新而被自动改写。
 - 显式 CSV / 手动覆盖仅允许在配置中直接声明时使用（`MOSS_FX_OFFICIAL_SOURCE_PATH`、`MOSS_FX_MID_CSV_PATH`），不是正常受治理路径的默认回退
 
 ### 4.9 choice_market_snapshot / choice_market_curve
@@ -605,10 +613,12 @@ canonical grain：
 
 | 代际 | `vendor_version` 特征 | 覆盖区间 | `amount` 存储单位 | `volume` 存储单位 | 价格类列 |
 | --- | --- | --- | --- | --- | --- |
-| Tushare 代际 | `like '%tushare%'`（`vv_choice_tushare_stock_*`） | 2024-01-02 至 2025-12-31（总 2,489,981 行，`amount` 非空 2,484,974 行） | 千元 | 手（100 股） | `open_value` / `high_value` / `low_value` / `close_value` 均为元 |
-| Choice native 代际 | 不含 `tushare`（例如 `vv_choice_stock_20260811_*`） | 2026-01-05 至今（总 760,368 行，`amount` 非空 755,704 行） | 元 | 股 | `open_value` / `high_value` / `low_value` / `close_value` 均为元 |
+| Tushare 代际 | `like '%tushare%'`（`vv_choice_tushare_stock_*`） | 基线为 2024-01-02 至 2025-12-31；显式受控补录可覆盖后续缺口 | 千元 | 手（100 股） | `open_value` / `high_value` / `low_value` / `close_value` 均为元 |
+| Choice native 代际 | `vv_choice_stock_*` 前缀且不含 `tushare` | 2026-01-05 起已有原生行 | 元 | 股 | `open_value` / `high_value` / `low_value` / `close_value` 均为元 |
 
-代际边界为 **2025-12-31 → 2026-01-05**。两代际在 `(stock_code, trade_date)` 上零重叠。
+默认摄入仍以 2025-12-31 和 2026-01-05 为代际边界。显式指定 `history_start_date` 与 `allow_cross_era_backfill=True` 的受控 Tushare 补录使用同一请求、校验和删除窗口，在供应商请求前及写事务内拒绝覆盖已有 native 或未知来源行，并保留真实 Tushare 标签及补录审计。窗口外历史不得改动；不得仅凭日期判断单位。两种来源在 `(stock_code, trade_date)` 上不得重叠。
+
+上述受控模式用于 Choice 权限不可用时补齐已确认缺口，不改变默认 220 日回看或默认代际保护。补录验收须核对交易日、当日因子、市值元单位和 `stock_adjustment_factor` 覆盖；行情日期更新本身不能证明复权链完整。
 
 #### 证据摘要
 
@@ -622,7 +632,7 @@ canonical grain：
 - 任一读取 `amount` / `volume` 的绝对阈值比较，必须先按 `vendor_version` 将原始值归一化到元 / 股。
 - 任一跨代际时序计算（包括均线、量比及其派生信号），必须先按代际归一化；禁止直接拼接或比较原始 `amount` / `volume`。
 - **fail-closed 规则**：`vendor_version` 行值为 NULL / 空白、观察表缺失 `vendor_version` 列（旧 schema / 合成表）、或**非空但不匹配任一已知代际模式（未知 vendor）**时，`amount` / `volume` 一律输出 NULL 并告警，禁止原值透传或按 native 猜测（无法定标的原始值不得流入任何阈值比较、时序计算或对外展示/提示语料）。
-- **已知 vendor 模式白名单**：`like '%tushare%'` → 千元/手（覆盖主模式 `vv_choice_tushare_stock_*` 与盘后补充模式 `vv_livermore_supplement_tushare_sina_*`，后者数据来自 Tushare `pro.daily`，同为千元/手口径）；`vv_choice_stock_*` 前缀 → 元/股透传。新数据源接入必须同步登记：消费端 `backend/app/repositories/choice_stock_units.py`、摄入侧白名单 `DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS`（`backend/app/tasks/choice_stock_materialize.py`）与本节。
+- **已知 vendor 模式白名单**：`like '%tushare%'` → 千元/手（覆盖主模式 `vv_choice_tushare_stock_*` 与盘后补充模式 `vv_livermore_supplement_tushare_sina_*`，后者数据来自 Tushare `pro.daily`，同为千元/手口径）；`vv_choice_stock_*` 前缀 → 元/股透传。新数据源接入必须同步登记：消费端 `backend/app/core_finance/choice_stock_units.py`（原 `backend/app/repositories/choice_stock_units.py` 保留兼容导出）、摄入侧白名单 `DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS`（`backend/app/tasks/choice_stock_materialize.py`）与本节。`portfolio_paths` 和 `matched_baseline` 的原始行情读取亦复用此规则，只换算一次。
 - 价格类列两代单位均为元，不适用上述金额和成交量换算。
 - `turn`（换手率，百分点）两代口径一致：Tushare 摄入优先取 `turnover_rate_f`（自由流通口径），缺失时回退 `turnover_rate`（总股本口径）；边界实证无尺度断裂（跨界均值比中位 0.90），`abnormal_turnover` 等相对量比跨代可比。消费者不应假设该列是严格单一口径的自由流通换手。
 
@@ -644,7 +654,7 @@ canonical grain：
 
 #### Batch3 治理状态
 
-`scripts/run_batch3_stock_strategy_research.py` 先前将该字段标为 `daily_amount_rmb_unconfirmed`，原因是当时仅有本地 pass-through lineage，尚无 vendor 单位证据。现已具备 Tushare 官方接口口径及上述代际交叉校验，可建议将该状态升级为 confirmed；该状态变更及其脚本内落实由 Batch3 维护者负责，不属于本文档变更范围。
+`scripts/archive/strategy-research-2026-07/run_batch3_stock_strategy_research.py`（原 `scripts/run_batch3_stock_strategy_research.py`，已归档）先前将该字段标为 `daily_amount_rmb_unconfirmed`，原因是当时仅有本地 pass-through lineage，尚无 vendor 单位证据。现已具备 Tushare 官方接口口径及上述代际交叉校验，可建议将该状态升级为 confirmed；该状态变更及其脚本内落实由 Batch3 维护者负责，不属于本文档变更范围。
 
 ### 4.11 choice_stock_concept_membership_interval（概念成分时点化 SCD 区间表）
 

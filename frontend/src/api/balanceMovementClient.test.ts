@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createRealBalanceMovementClient } from "./balanceMovementClient";
-import { createMockBalanceMovementClient } from "./balanceMovementMockClient";
+import { createMockBalanceMovementClient } from "../mocks/balanceMovementMockClient";
 import { DEFAULT_REQUEST_JSON_TIMEOUT_MS } from "./transport";
 
 const baseUrl = "http://localhost:8000";

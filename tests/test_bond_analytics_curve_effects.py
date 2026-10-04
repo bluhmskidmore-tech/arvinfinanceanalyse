@@ -31,6 +31,7 @@ def _fail_closed_against_live_yield_vendor(monkeypatch):
     monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_akshare_curve", _fail_if_vendor_called)
     monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_choice_curve", _fail_if_vendor_called)
     monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_chinabond_gkh_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod, "fetch_curve_snapshot_with_timeout", _fail_if_vendor_called)
 
 
 def _seed_curve_rows(duckdb_path: str) -> None:
@@ -119,6 +120,21 @@ def _clear_materialization_anchor_rows(duckdb_path: str) -> None:
 
 def _materialize_curve_effects_facts(duckdb_path: str, governance_dir: str) -> None:
     _seed_materialization_anchor_rows(duckdb_path)
+    # Build inputs must satisfy the current bounded lookup window. These exact
+    # date nodes are preparation-only and removed before testing read fallback.
+    with duckdb.connect(duckdb_path) as conn:
+        conn.execute(f"""
+            insert into {FORMAL_FACT_TABLE}
+            (trade_date, curve_type, tenor, rate_pct, vendor_name, vendor_version, source_version, rule_version)
+            select dates.trade_date::date, curves.curve_type, tenors.tenor, tenors.rate_pct,
+                   'synthetic', 'vv_preparation', 'sv_materialization_preparation', 'rv_curve'
+            from (values ('2026-03-01'), ('2026-03-31')) dates(trade_date)
+            cross join (values ('treasury'), ('cdb'), ('aaa_credit')) curves(curve_type)
+            cross join (values ('1Y', 2.0), ('2Y', 3.0), ('3Y', 4.0)) tenors(tenor, rate_pct)
+            where not exists (select 1 from {FORMAL_FACT_TABLE} existing
+                              where existing.trade_date = dates.trade_date::date
+                              and existing.curve_type = curves.curve_type)
+        """)
     task_mod = load_module(
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
@@ -131,6 +147,8 @@ def _materialize_curve_effects_facts(duckdb_path: str, governance_dir: str) -> N
         )
     finally:
         _clear_materialization_anchor_rows(duckdb_path)
+        with duckdb.connect(duckdb_path) as conn:
+            conn.execute(f"delete from {FORMAL_FACT_TABLE} where source_version = 'sv_materialization_preparation'")
 
 
 def test_return_decomposition_uses_curve_effects_and_merges_lineage(tmp_path, monkeypatch):
@@ -525,7 +543,7 @@ def test_return_decomposition_fails_closed_when_same_day_curve_snapshot_lineage_
             """,
             [
                 ("2026-03-31", "treasury", "1Y", Decimal("2.00"), "akshare", "vv_curve", "sv_curve", "rv_curve"),
-                ("2026-03-31", "treasury", "2Y", Decimal("3.00"), "choice", "vv_curve", "sv_curve", "rv_curve"),
+                ("2026-03-31", "treasury", "2Y", Decimal("3.00"), "akshare", "vv_curve", "sv_curve", "rv_curve"),
                 ("2026-03-01", "treasury", "1Y", Decimal("1.00"), "akshare", "vv_prior", "sv_prior", "rv_curve"),
                 ("2026-03-01", "treasury", "2Y", Decimal("2.00"), "akshare", "vv_prior", "sv_prior", "rv_curve"),
             ],
@@ -538,6 +556,11 @@ def test_return_decomposition_fails_closed_when_same_day_curve_snapshot_lineage_
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
+
+    # Inject corrupt lineage after preparing valid formal facts; this test owns
+    # the read boundary and must not request a vendor repair during preparation.
+    with duckdb.connect(str(duckdb_path)) as conn:
+        conn.execute(f"update {FORMAL_FACT_TABLE} set vendor_name = 'choice' where trade_date = '2026-03-31' and curve_type = 'treasury' and tenor = '2Y'")
 
     with pytest.raises(RuntimeError, match="corrupt|inconsistent|lineage"):
         service_mod.get_return_decomposition(date(2026, 3, 31), "MoM", "rate", "all")

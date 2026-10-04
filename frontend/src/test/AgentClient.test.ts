@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   AgentDisabledError,
-  buildStableDemoAgentEnvelope,
-  createDemoAgentClient,
   createRealAgentClient,
   type AgentClientMethods,
 } from "../api/agentClient";
+import {
+  buildStableDemoAgentEnvelope,
+  createDemoAgentClient,
+} from "../mocks/agentMockClient";
 import { createApiClient } from "../api/client";
 
 describe("AgentClient", () => {
@@ -14,13 +16,19 @@ describe("AgentClient", () => {
     const client = createApiClient({ mode: "mock" });
     const env = await client.queryAgent({ question: "test question" });
     expect(env.answer).toBe("Agent is running in demo mode.");
-    expect(env.evidence.quality_flag).toBe("ok");
+    // 后端 AgentEvidence 默认 evidence_strength="local_fallback"，触发
+    // _downgrade_non_governed_quality 把 quality_flag 降级为 "warning"；
+    // demo 桩必须复现该降级，而非比正式治理更乐观地写死 "ok"。
+    expect(env.evidence.quality_flag).toBe("warning");
+    expect(env.evidence.evidence_strength).toBe("local_fallback");
     expect(Array.isArray(env.suggested_actions)).toBe(true);
   });
 
   it("buildStableDemoAgentEnvelope matches contract shape", () => {
     const env = buildStableDemoAgentEnvelope();
     expect(env.result_meta.trace_id).toBeTruthy();
+    expect(env.result_meta.quality_flag).toBe("warning");
+    expect(env.result_meta.evidence_strength).toBe("local_fallback");
     expect(env.cards).toEqual([]);
   });
 

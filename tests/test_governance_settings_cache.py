@@ -14,20 +14,20 @@ def test_get_settings_reuses_the_process_settings_instance() -> None:
 
 
 def test_get_settings_cache_clear_rebuilds_from_current_environment(monkeypatch) -> None:
-    monkeypatch.setenv("MOSS_ENVIRONMENT", "cache-before-clear")
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "staging")
     get_settings.cache_clear()
     try:
         before_clear = get_settings()
 
-        monkeypatch.setenv("MOSS_ENVIRONMENT", "cache-after-clear")
+        monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
         assert get_settings() is before_clear
-        assert get_settings().environment == "cache-before-clear"
+        assert get_settings().environment == "staging"
 
         get_settings.cache_clear()
         after_clear = get_settings()
 
         assert after_clear is not before_clear
-        assert after_clear.environment == "cache-after-clear"
+        assert after_clear.environment == "test"
     finally:
         get_settings.cache_clear()
 

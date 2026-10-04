@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 
 import {
   ApiClientProvider,
@@ -13,7 +14,14 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import { MarketFinancialChartsWorkbench } from "./MarketFinancialChartsWorkbench";
-import type { ModuleHomeSourceQueries } from "./moduleHomeModel";
+import { MarketOverviewDenseFirstScreen } from "./MarketOverviewDenseFirstScreen";
+import { buildMockMarketOverviewSnapshot } from "../../../mocks/marketOverviewSnapshot";
+import {
+  buildMarketFinancialChartSections,
+  DENSE_FIRST_SCREEN_CHART_PICKS,
+  type MarketFinancialChartSection,
+} from "./marketFinancialChartsModel";
+import type { ModuleHomeSourceQueries, ModuleHomeView } from "./moduleHomeModel";
 
 vi.mock("../../../lib/echarts", () => ({
   default: ({ option }: { option: unknown }) => (
@@ -25,6 +33,7 @@ vi.mock("../../../lib/echarts", () => ({
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  sessionStorage.removeItem("moss:market-home:funding-controls");
 });
 
 function meta(overrides: Partial<ResultMeta> = {}): ResultMeta {
@@ -50,6 +59,8 @@ function meta(overrides: Partial<ResultMeta> = {}): ResultMeta {
 function renderWorkbench(
   client: ApiClient,
   queries: ModuleHomeSourceQueries,
+  onChartSectionsChange?: (keys: MarketFinancialChartSection["key"][]) => void,
+  withFirstScreen = false,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -57,13 +68,37 @@ function renderWorkbench(
   return render(
     <ApiClientProvider client={client}>
       <QueryClientProvider client={queryClient}>
-        <MarketFinancialChartsWorkbench queries={queries} />
+        <MemoryRouter>
+          {withFirstScreen ? (
+            <MarketOverviewDenseFirstScreen
+              view={{ stateLabel: "已接入", marketDeskIntel: {} } as ModuleHomeView}
+              queries={queries}
+              searchValue=""
+            />
+          ) : null}
+          <MarketFinancialChartsWorkbench queries={queries} onChartSectionsChange={onChartSectionsChange} />
+        </MemoryRouter>
       </QueryClientProvider>
     </ApiClientProvider>,
   );
 }
 
 describe("MarketFinancialChartsWorkbench", () => {
+  it("requests only expanded groups in overview and the active group in focus mode", () => {
+    const onChartSectionsChange = vi.fn();
+    renderWorkbench(createApiClient({ mode: "mock" }), {}, onChartSectionsChange);
+    expect(onChartSectionsChange).toHaveBeenLastCalledWith(["rates"]);
+    fireEvent.click(screen.getByTestId("module-home-market-section-toggle-macro"));
+    expect(onChartSectionsChange).toHaveBeenLastCalledWith(["rates", "macro"]);
+    fireEvent.click(screen.getByRole("button", { name: "重点" }));
+    expect(onChartSectionsChange).toHaveBeenLastCalledWith(["rates"]);
+    const nav = screen.getByRole("navigation", { name: "金融图表分组导航" });
+    fireEvent.click(within(nav).getByRole("button", { name: "新闻事件" }));
+    expect(onChartSectionsChange).toHaveBeenLastCalledWith(["news"]);
+    fireEvent.click(screen.getByRole("button", { name: "全览" }));
+    expect(onChartSectionsChange).toHaveBeenLastCalledWith(["rates", "macro"]);
+  });
+
   it("tracks the section closest to the measured navigation anchor from live section geometry", () => {
     let observerCallback:
       | IntersectionObserverCallback
@@ -301,9 +336,18 @@ describe("MarketFinancialChartsWorkbench", () => {
     expect(
       workbench.querySelectorAll('[data-testid^="module-home-market-chart-"]'),
     ).toHaveLength(12);
+    expect(
+      workbench.querySelectorAll('[data-testid^="module-home-market-section-toggle-"]'),
+    ).toHaveLength(0);
+
+    fireEvent.click(overviewButton);
+
+    expect(
+      workbench.querySelectorAll('[data-testid^="module-home-market-section-toggle-"]'),
+    ).toHaveLength(6);
   });
 
-  it("expands only the first chart group in overview and lets the rest open on demand", () => {
+  it("expands the first chart group with a non-reference chart in overview and lets the rest open on demand", () => {
     const client = createApiClient({ mode: "mock" });
     const queries = {} as ModuleHomeSourceQueries;
 
@@ -312,11 +356,18 @@ describe("MarketFinancialChartsWorkbench", () => {
     const ratesSection = document.getElementById(
       "market-financial-section-rates",
     )!;
+    const crossSection = document.getElementById(
+      "market-financial-section-cross",
+    )!;
     const strategySection = document.getElementById(
       "market-financial-section-strategy",
     )!;
 
     expect(ratesSection).toHaveAttribute("data-expanded", "true");
+    expect(crossSection).toHaveAttribute("data-expanded", "false");
+    expect(ratesSection).toContainElement(
+      screen.getByTestId("module-home-market-chart-yield-curve"),
+    );
     expect(strategySection).toHaveAttribute("data-expanded", "false");
 
     const strategyToggle = screen.getByTestId(
@@ -358,6 +409,103 @@ describe("MarketFinancialChartsWorkbench", () => {
     expect(
       document.getElementById("market-financial-section-coverage"),
     ).toHaveAttribute("data-expanded", "true");
+  });
+
+  it("retains the complete original rate charts and points every reference at its actual first-screen original", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const snapshot = buildMockMarketOverviewSnapshot();
+    const rates = await client.getMarketDataRates();
+    const base = rates.result.series[0]!;
+    const days = ["08-26", "08-27", "08-28", "08-31", "09-01", "09-02", "09-03", "09-04"];
+    snapshot.result.charts!.choice_latest = {
+      read_target: "duckdb",
+      series: [{
+        ...base,
+        series_id: "synthetic-csi300",
+        series_name: "沪深300指数收盘价",
+        value_numeric: 4007,
+        unit: "点",
+        trade_date: "2026-09-04",
+        recent_points: days.map((day, index) => ({
+          trade_date: `2026-${day}`,
+          value_numeric: 4000 + index,
+          source_version: "synthetic-test-source",
+          vendor_version: "synthetic-test-vendor",
+          quality_flag: "ok" as const,
+        })),
+      }],
+    };
+    rates.result.series = [
+      ["gov-2y", "中债国债到期收益率:2年", 1.2],
+      ["gov-5y", "中债国债到期收益率:5年", 1.4],
+      ["gov-10y", "中债国债到期收益率:10年", 1.7],
+      ["cdb-2y", "中债政策性金融债到期收益率(国开行):2年", 1.3],
+      ["cdb-5y", "中债政策性金融债到期收益率(国开行):5年", 1.5],
+      ["cdb-10y", "中债政策性金融债到期收益率(国开行):10年", 1.8],
+      ["dr007", "银行间质押式回购加权利率:DR007", 1.42],
+      ["omo", "公开市场操作:逆回购:7天:中标利率", 1.4],
+    ].map(([seriesId, seriesName, value]) => ({
+      ...base,
+      series_id: String(seriesId),
+      series_name: String(seriesName),
+      value_numeric: Number(value),
+      unit: "%",
+      trade_date: "2026-09-04",
+      recent_points: days.map((day) => ({
+        trade_date: `2026-${day}`,
+        value_numeric: Number(value),
+        source_version: "synthetic-test-source",
+        vendor_version: "synthetic-test-vendor",
+        quality_flag: "ok" as const,
+      })),
+    }));
+    snapshot.result.charts!.market_rates = rates.result;
+    renderWorkbench(
+      client,
+      {
+        marketSnapshot: { data: snapshot, isLoading: false, isError: false },
+        marketRates: { data: rates, isError: false },
+      } as ModuleHomeSourceQueries,
+      undefined,
+      true,
+    );
+
+    const sections = buildMarketFinancialChartSections({});
+    const pickedChartKeys = DENSE_FIRST_SCREEN_CHART_PICKS.flatMap((pick) => {
+      const chart = sections.find((section) => section.key === pick.sectionKey)?.charts[
+        pick.chartIndex
+      ];
+      return chart ? [chart.key] : [];
+    });
+
+    expect(pickedChartKeys).toHaveLength(DENSE_FIRST_SCREEN_CHART_PICKS.length);
+    for (const key of pickedChartKeys) {
+      const reference = screen.getByTestId(`module-home-market-chart-ref-${key}`);
+      const link = within(reference).getByRole("link", { name: "查看上方原图" });
+      fireEvent.click(link);
+      const target = document.querySelector(link.getAttribute("href")!)!;
+      expect(target).toBeVisible();
+      expect(target).toHaveAttribute("data-testid", `module-home-market-dense-chart-${key}`);
+      expect(within(target as HTMLElement).getByTestId("market-financial-chart-canvas")).toBeInTheDocument();
+      expect(screen.queryByTestId(`module-home-market-chart-${key}`)).not.toBeInTheDocument();
+    }
+    const workbench = screen.getByTestId("module-home-market-financial-charts");
+    expect(workbench.querySelectorAll('[data-testid^="module-home-market-chart-"]')).toHaveLength(12);
+    expect(workbench.querySelectorAll('[data-chart-view="reference"]')).toHaveLength(2);
+    for (const key of ["yield-curve"]) {
+      const original = screen.getByTestId(`module-home-market-chart-${key}`);
+      expect(original).toHaveAttribute("data-chart-view", "chart");
+      expect(within(original).getByTestId("market-financial-chart-canvas")).toBeVisible();
+      expect(screen.queryByTestId(`module-home-market-chart-ref-${key}`)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(`module-home-market-dense-chart-${key}`)).not.toBeInTheDocument();
+    }
+    const curve = screen.getByTestId("module-home-market-chart-yield-curve");
+    expect(curve).toHaveTextContent("国债");
+    expect(curve).toHaveTextContent("国开");
+    const trend = screen.getByTestId("module-home-market-dense-chart-key-rate-trend");
+    expect(trend).toHaveTextContent("国债 10Y");
+    expect(trend).toHaveTextContent("DR007");
+    expect(trend).toHaveTextContent("7D 逆回购");
   });
 
   it("uses the shared news query and keeps error quality above fallback/stale badges", () => {
@@ -439,6 +587,89 @@ describe("MarketFinancialChartsWorkbench", () => {
     expect(
       screen.getByTestId("module-home-market-section-status-rates"),
     ).toHaveTextContent("质量异常");
+  });
+
+  it("shows the latest news sample date instead of the backend query as-of date", () => {
+    const client = createApiClient({ mode: "mock" });
+    const newsEnvelope: ApiEnvelope<ChoiceNewsEventsPayload> = {
+      result: {
+        total_rows: 11_108,
+        limit: 500,
+        offset: 0,
+        as_of_date: "2026-08-27",
+        excluded_future_rows: 0,
+        payload_json_included: false,
+        events: [
+          {
+            event_key: "event-old",
+            received_at: "2026-07-14T10:00:00Z",
+            group_id: "market",
+            content_type: "news",
+            serial_id: 1,
+            request_id: 2,
+            error_code: 0,
+            error_msg: "",
+            topic_code: "rates",
+            item_index: 0,
+            payload_text: "旧新闻",
+            payload_json: null,
+          },
+          {
+            event_key: "event-latest",
+            received_at: "2026-07-15T09:30:00Z",
+            group_id: "market",
+            content_type: "news",
+            serial_id: 2,
+            request_id: 3,
+            error_code: 0,
+            error_msg: "",
+            topic_code: "rates",
+            item_index: 0,
+            payload_text: "最新新闻",
+            payload_json: null,
+          },
+        ],
+      },
+      result_meta: meta({ as_of_date: "2026-08-27" }),
+    };
+    const queries = {
+      newsEvents: { data: newsEnvelope, isError: false },
+    } as unknown as ModuleHomeSourceQueries;
+
+    renderWorkbench(client, queries);
+
+    const newsBadge = screen.getByTestId(
+      "module-home-market-section-status-news",
+    ).parentElement!;
+
+    // result_meta.as_of_date 是查询日（received_at 过滤截止），不是样本日期；
+    // 分组行必须显示事件 received_at 的最大值，样本停更事实直接可见。
+    expect(newsBadge).toHaveTextContent("最新样本 2026-07-15");
+    expect(newsBadge).not.toHaveTextContent("2026-08-27");
+    expect(newsBadge).toHaveTextContent("最新 500 条样本");
+  });
+
+  it("omits the group date segment when a section has no business date", () => {
+    const client = createApiClient({ mode: "mock" });
+    const queries = {
+      marketCatalog: {
+        data: {
+          result: { series: [] },
+          result_meta: meta({ as_of_date: null }),
+        },
+        isError: false,
+      },
+    } as unknown as ModuleHomeSourceQueries;
+
+    renderWorkbench(client, queries);
+
+    const coverageBadge = screen.getByTestId(
+      "module-home-market-section-status-coverage",
+    ).parentElement!;
+
+    expect(coverageBadge).toHaveTextContent("已返回");
+    expect(coverageBadge).toHaveTextContent("2 张图表");
+    expect(coverageBadge).not.toHaveTextContent("日期未返回");
   });
 
   it("renders one returned tenor as a readable comparison rather than a yield curve", async () => {

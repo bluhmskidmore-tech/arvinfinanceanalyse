@@ -121,6 +121,38 @@ export function stockSupplyVendorLabel(value: string | null | undefined) {
   return labels[normalized] ?? "供数待确认";
 }
 
+export function pretradeQualificationReasonLabel(reason: string | null | undefined): string {
+  const normalized = String(reason ?? "").trim().toLowerCase();
+  if (!normalized || normalized === "completed_pretrade_provenance_missing") {
+    return "未找到已闭合的盘前来源资格证据";
+  }
+  if (normalized === "pretrade_qualification_schema_unsupported") {
+    return "旧版盘前来源资格证据已停用";
+  }
+  if (normalized === "pretrade_qualification_target_date_mismatch") {
+    return "资格证据日期与当前观察日不一致";
+  }
+  if (normalized === "pretrade_qualification_policy_mismatch") {
+    return "资格证据候选策略与当前策略不一致";
+  }
+  if (normalized === "pretrade_strategy_projection_mismatch") {
+    return "当前策略主包与已闭合资格证据不一致";
+  }
+  if (
+    normalized.includes("digest") ||
+    normalized.includes("identity") ||
+    normalized.includes("snapshot") ||
+    normalized.includes("rule") ||
+    normalized.includes("output")
+  ) {
+    return "盘前来源资格证据校验失败";
+  }
+  if (normalized === "system_read_generation_missing") {
+    return "当前数据尚未绑定已发布版本";
+  }
+  return "盘前来源资格证据未闭合";
+}
+
 export function stockSupplyFallbackLabel(value: string | null | undefined) {
   const normalized = (value ?? "").trim().toLowerCase();
   if (!normalized || normalized === "none") return "数据正常";

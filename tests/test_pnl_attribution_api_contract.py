@@ -35,12 +35,12 @@ _CAMPISI_ENDPOINTS: list[tuple[str, dict[str, str | int]]] = [
 ]
 
 
-def _assert_formal_envelope(payload: dict[str, Any]) -> None:
+def _assert_formal_envelope(payload: dict[str, Any], *, formal_use_allowed: bool = True) -> None:
     assert "result_meta" in payload
     assert "result" in payload
     meta = payload["result_meta"]
     assert meta.get("basis") == "formal"
-    assert meta.get("formal_use_allowed") is True
+    assert meta.get("formal_use_allowed") is formal_use_allowed
     for key in ("trace_id", "source_version", "rule_version", "result_kind"):
         assert key in meta, f"result_meta missing {key!r}"
         assert meta[key] not in (None, ""), f"result_meta.{key} must be non-empty"
@@ -178,9 +178,13 @@ def test_pnl_attribution_endpoints_empty_duckdb(tmp_path, monkeypatch) -> None:
         response = client.get(path, params=params)
         assert response.status_code == 200, f"{path} {params} -> {response.status_code}: {response.text}"
         body = response.json()
-        _assert_formal_envelope(body)
+        _assert_formal_envelope(body, formal_use_allowed=path != "/api/pnl-attribution/advanced/krd")
         assert body["result_meta"].get("quality_flag") == "warning"
         res = body["result"]
+        if path == "/api/pnl-attribution/advanced/krd":
+            assert res["total_duration_effect"]["raw"] is None
+            assert res["calculation_status"] == "unavailable"
+            assert res["max_contribution_tenor"] == ""
         assert "warnings" in res
         assert any("物化" in w for w in res["warnings"])
     get_settings.cache_clear()

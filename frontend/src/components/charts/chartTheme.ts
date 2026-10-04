@@ -15,6 +15,7 @@ type ChartThemeColors = {
   palette: readonly string[];
   categoricalPalette: readonly string[];
   ink: string;
+  inkSoft: string;
   inkMuted: string;
   hairline: string;
   surface: string;
@@ -43,6 +44,7 @@ const ibThemeColors: ChartThemeColors = {
     ibTokens.color.gold,
   ],
   ink: ibTokens.color.ink,
+  inkSoft: ibTokens.color.inkSecondary,
   inkMuted: ibTokens.color.inkMuted,
   hairline: ibTokens.color.hairline,
   surface: ibTokens.color.surface,
@@ -69,6 +71,7 @@ const dhApiThemeColors: ChartThemeColors = {
     dhApiTokens.color.red,
   ],
   ink: dhApiTokens.color.ink,
+  inkSoft: dhApiTokens.color.inkSoft,
   inkMuted: dhApiTokens.color.inkMuted,
   hairline: dhApiTokens.color.lineSoft,
   surface: dhApiTokens.color.panel2,
@@ -97,6 +100,7 @@ const nocturneThemeColors: ChartThemeColors = {
     nocturneTokens.color.red,
   ],
   ink: nocturneTokens.color.ink,
+  inkSoft: nocturneTokens.color.inkSoft,
   inkMuted: nocturneTokens.color.inkMuted,
   hairline: nocturneTokens.color.lineSoft,
   surface: nocturneTokens.color.panel2,
@@ -181,7 +185,11 @@ function buildChartTheme(colors: ChartThemeColors) {
     bottom: 0,
     itemWidth: 18,
     itemHeight: 8,
-    textStyle: axisLabel,
+    textStyle: {
+      ...axisLabel,
+      color: colors.inkSoft,
+      fontSize: designTokens.fontSize[12],
+    },
   };
 
   const categoryAxis = {

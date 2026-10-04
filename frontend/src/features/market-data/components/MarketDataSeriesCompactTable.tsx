@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useState, type HTMLAttributes } from "react";
+import { useCallback, useEffect, useMemo, useState, type HTMLAttributes } from "react";
 import { Table, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
 
-import {
-  formatChoiceMacroDelta,
-  formatChoiceMacroValueParts,
-} from "../../../utils/choiceMacroFormat";
 import { EM_DASH } from "../../../utils/format";
+import {
+  formatMarketSeriesDelta,
+  formatMarketSeriesValueParts,
+  seriesDisplayName,
+} from "../lib/marketDataFormat";
 import type { ChoiceMacroRecentPoint } from "../../../api/contracts";
 import {
   marketSeriesRefreshTier,
+  seriesAgeTier,
   type MarketObservationPoint,
 } from "../lib/marketDataCategoryStore";
 import { MarketDataSeriesTimeChart } from "./MarketDataSeriesTimeChart";
@@ -20,6 +23,8 @@ export type MarketDataSeriesCompactRow = MarketObservationPoint & {
 };
 
 const PLACEHOLDER = EM_DASH;
+
+// 时效分档 seriesAgeTier（>365 天历史存量折叠小节、90~365 天淡化）见 lib/marketDataCategoryStore。
 
 // 序列上行=偏空、下行=偏多；着色复用页面 ticker 的 data-tone 语义类
 // （MarketDataPage.css：up=红、down=绿、flat=muted），不再使用内联色值。
@@ -82,26 +87,66 @@ export function MarketDataSeriesCompactTable({
   showTier = false,
   initialVisibleCount,
   compactSparseColumns = false,
+  observationDate,
+  selectedSeriesId,
+  onSelectedSeriesChange,
 }: {
   series: readonly MarketDataSeriesCompactRow[];
   testIdPrefix?: string;
   showTier?: boolean;
   initialVisibleCount?: number;
   compactSparseColumns?: boolean;
+  /** 时效分档的观察日（YYYY-MM-DD）；缺省取当天。 */
+  observationDate?: string;
+  /** 受控选中序列（序列浏览器钻取）；与 onSelectedSeriesChange 成对使用。 */
+  selectedSeriesId?: string | null;
+  /** 提供后表格进入受控模式：不再内联渲染走势图，选中态交由调用方（如 URL query）承载。 */
+  onSelectedSeriesChange?: (seriesId: string | null) => void;
 }) {
-  const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
+  const [internalExpandedSeriesId, setInternalExpandedSeriesId] = useState<string | null>(null);
+  const isSelectionControlled = onSelectedSeriesChange !== undefined;
+  const expandedSeriesId = isSelectionControlled
+    ? (selectedSeriesId ?? null)
+    : internalExpandedSeriesId;
+  const changeExpandedSeriesId = useCallback(
+    (next: string | null) => {
+      if (onSelectedSeriesChange) {
+        onSelectedSeriesChange(next);
+      } else {
+        setInternalExpandedSeriesId(next);
+      }
+    },
+    [onSelectedSeriesChange],
+  );
   const [showAllRows, setShowAllRows] = useState(false);
+  const resolvedObservationDate = observationDate ?? dayjs().format("YYYY-MM-DD");
+
+  // 行分组：>365 天的行归入"历史存量"折叠小节；其余走主表（90-365 天仅淡化）。
+  const currentSeries = useMemo(
+    () =>
+      series.filter(
+        (row) => seriesAgeTier(row.trade_date, resolvedObservationDate) !== "historical",
+      ),
+    [resolvedObservationDate, series],
+  );
+  const historicalSeries = useMemo(
+    () =>
+      series.filter(
+        (row) => seriesAgeTier(row.trade_date, resolvedObservationDate) === "historical",
+      ),
+    [resolvedObservationDate, series],
+  );
 
   const visibleSeries = useMemo(() => {
-    if (!initialVisibleCount || showAllRows || series.length <= initialVisibleCount) {
-      return series;
+    if (!initialVisibleCount || showAllRows || currentSeries.length <= initialVisibleCount) {
+      return currentSeries;
     }
-    return series.slice(0, initialVisibleCount);
-  }, [initialVisibleCount, series, showAllRows]);
+    return currentSeries.slice(0, initialVisibleCount);
+  }, [currentSeries, initialVisibleCount, showAllRows]);
 
   const hiddenRowCount =
-    initialVisibleCount && !showAllRows && series.length > initialVisibleCount
-      ? series.length - initialVisibleCount
+    initialVisibleCount && !showAllRows && currentSeries.length > initialVisibleCount
+      ? currentSeries.length - initialVisibleCount
       : 0;
 
   useEffect(() => {
@@ -110,18 +155,18 @@ export function MarketDataSeriesCompactTable({
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setExpandedSeriesId(null);
+        changeExpandedSeriesId(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [expandedSeriesId]);
+  }, [expandedSeriesId, changeExpandedSeriesId]);
 
   const showDeltaColumn = useMemo(() => {
     if (!compactSparseColumns) {
       return true;
     }
-    return series.some((row) => formatChoiceMacroDelta(row, { emptyDisplay: PLACEHOLDER }) !== PLACEHOLDER);
+    return series.some((row) => formatMarketSeriesDelta(row, { emptyDisplay: PLACEHOLDER }) !== PLACEHOLDER);
   }, [compactSparseColumns, series]);
 
   const columns: ColumnsType<MarketDataSeriesCompactRow> = useMemo(() => {
@@ -143,9 +188,21 @@ export function MarketDataSeriesCompactTable({
         dataIndex: "series_name",
         key: "series_name",
         ellipsis: true,
-        render: (name: string, row) => (
-          <span title={`${name} (${row.series_id})`}>{name}</span>
-        ),
+        // 展示清洗短名（display_name 回退 series_name），title 保留原始名+编号便于溯源。
+        render: (_name: string, row) => {
+          const isHistorical =
+            seriesAgeTier(row.trade_date, resolvedObservationDate) === "historical";
+          return (
+            <span title={`${row.series_name} (${row.series_id})`}>
+              {seriesDisplayName(row)}
+              {isHistorical ? (
+                <span className="market-data-series-compact-cutoff">
+                  数据截至 {row.trade_date}
+                </span>
+              ) : null}
+            </span>
+          );
+        },
       },
       {
         title: "最新",
@@ -154,9 +211,10 @@ export function MarketDataSeriesCompactTable({
         width: 84,
         className: "market-data-series-compact-col-value",
         render: (_value, row) => {
-          const { value, unit } = formatChoiceMacroValueParts(row);
+          const { value, unit } = formatMarketSeriesValueParts(row);
+          const rawTitle = `${row.value_numeric}${row.unit?.trim() ? ` ${row.unit.trim()}` : ""}`;
           return (
-            <div className="market-data-series-compact-value-stack">
+            <div className="market-data-series-compact-value-stack" title={rawTitle}>
               <span className="market-data-series-compact-value">{value}</span>
               {unit ? <span className="market-data-series-compact-unit">{unit}</span> : null}
             </div>
@@ -170,7 +228,7 @@ export function MarketDataSeriesCompactTable({
         width: 76,
         className: "market-data-series-compact-col-delta",
         render: (_value, row) => {
-          const delta = formatChoiceMacroDelta(row, { emptyDisplay: PLACEHOLDER });
+          const delta = formatMarketSeriesDelta(row, { emptyDisplay: PLACEHOLDER });
           if (delta === PLACEHOLDER) {
             return <CompactPlaceholder />;
           }
@@ -202,7 +260,7 @@ export function MarketDataSeriesCompactTable({
         className: "market-data-series-compact-col-recent",
         render: (_value, row) => {
           const sparkValues = sparklineValuesFromRecent(row.recent_points);
-          const delta = formatChoiceMacroDelta(row, { emptyDisplay: PLACEHOLDER });
+          const delta = formatMarketSeriesDelta(row, { emptyDisplay: PLACEHOLDER });
           const priorHint = formatPriorPointHint(row.recent_points, row.trade_date);
           const tooltipTitle = formatRecentTrailTooltip(row.recent_points);
           const isExpanded = expandedSeriesId === row.series_id;
@@ -240,7 +298,7 @@ export function MarketDataSeriesCompactTable({
                 data-testid={`${testIdPrefix}-chart-toggle-${row.series_id}`}
                 aria-expanded={isExpanded}
                 onClick={() =>
-                  setExpandedSeriesId((current) => (current === row.series_id ? null : row.series_id))
+                  changeExpandedSeriesId(expandedSeriesId === row.series_id ? null : row.series_id)
                 }
               >
                 {isExpanded ? "收起" : "走势"}
@@ -256,7 +314,15 @@ export function MarketDataSeriesCompactTable({
     }
 
     return cols;
-  }, [compactSparseColumns, expandedSeriesId, showDeltaColumn, showTier, testIdPrefix]);
+  }, [
+    changeExpandedSeriesId,
+    compactSparseColumns,
+    expandedSeriesId,
+    resolvedObservationDate,
+    showDeltaColumn,
+    showTier,
+    testIdPrefix,
+  ]);
 
   if (series.length === 0) {
     return (
@@ -266,25 +332,30 @@ export function MarketDataSeriesCompactTable({
     );
   }
 
+  const rowProps = (row: MarketDataSeriesCompactRow) =>
+    ({
+      "data-testid": `${testIdPrefix}-${row.series_id}`,
+      "data-age": seriesAgeTier(row.trade_date, resolvedObservationDate),
+    }) as HTMLAttributes<HTMLElement>;
+
   return (
     <div className="market-data-series-compact-wrap">
-      <Table<MarketDataSeriesCompactRow>
-        className="market-data-series-compact-table"
-        data-testid={`${testIdPrefix}-compact-table`}
-        size="small"
-        pagination={false}
-        rowKey="series_id"
-        columns={columns}
-        dataSource={[...visibleSeries]}
-        scroll={{ x: 520 }}
-        tableLayout="fixed"
-        onRow={(row) =>
-          ({
-            "data-testid": `${testIdPrefix}-${row.series_id}`,
-          }) as HTMLAttributes<HTMLElement>
-        }
-      />
-      {expandedSeriesId ? (() => {
+      {currentSeries.length > 0 ? (
+        <Table<MarketDataSeriesCompactRow>
+          className="market-data-series-compact-table"
+          data-testid={`${testIdPrefix}-compact-table`}
+          size="small"
+          pagination={false}
+          rowKey="series_id"
+          columns={columns}
+          dataSource={[...visibleSeries]}
+          scroll={{ x: 520 }}
+          tableLayout="fixed"
+          onRow={rowProps}
+        />
+      ) : null}
+      {/* 受控模式下选中走势由调用方（浏览器视图钻取区）渲染，表内不再重复内联图。 */}
+      {expandedSeriesId && !isSelectionControlled ? (() => {
         const expandedRow = series.find((row) => row.series_id === expandedSeriesId);
         if (!expandedRow) {
           return null;
@@ -309,11 +380,11 @@ export function MarketDataSeriesCompactTable({
             data-testid={`${testIdPrefix}-expand-all`}
             onClick={() => setShowAllRows(true)}
           >
-            展开全部 {series.length} 条
+            展开全部 {currentSeries.length} 条
           </button>
         </div>
       ) : null}
-      {initialVisibleCount && showAllRows && series.length > initialVisibleCount ? (
+      {initialVisibleCount && showAllRows && currentSeries.length > initialVisibleCount ? (
         <div className="market-data-series-compact-expand">
           <button
             type="button"
@@ -324,6 +395,29 @@ export function MarketDataSeriesCompactTable({
             收起列表
           </button>
         </div>
+      ) : null}
+      {historicalSeries.length > 0 ? (
+        /* 原生 details：历史存量默认折叠但 DOM 常驻（折叠可及，不是隐藏删除）。 */
+        <details
+          className="market-data-series-compact-historical"
+          data-testid={`${testIdPrefix}-historical-section`}
+        >
+          <summary data-testid={`${testIdPrefix}-historical-summary`}>
+            历史存量（{historicalSeries.length} 条）
+          </summary>
+          <Table<MarketDataSeriesCompactRow>
+            className="market-data-series-compact-table"
+            data-testid={`${testIdPrefix}-historical-table`}
+            size="small"
+            pagination={false}
+            rowKey="series_id"
+            columns={columns}
+            dataSource={[...historicalSeries]}
+            scroll={{ x: 520 }}
+            tableLayout="fixed"
+            onRow={rowProps}
+          />
+        </details>
       ) : null}
     </div>
   );

@@ -5,6 +5,7 @@ from typing import Annotated
 
 from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.home_support_read_contracts import SupplyAuctionCalendarEnvelope
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.research_calendar_service import (
     supply_auction_calendar_envelope,
@@ -18,7 +19,11 @@ def _ensure_research_calendar_read_allowed(auth: AuthContext) -> None:
     ensure_read_allowed(auth, "research_calendar", settings=get_settings(), authorize=ensure_user_allowed)
 
 
-@router.get("/supply-auctions")
+@router.get(
+    "/supply-auctions",
+    response_model=SupplyAuctionCalendarEnvelope,
+    response_model_exclude_unset=True,
+)
 def supply_auctions(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     start_date: date | None = Query(default=None, description="Inclusive event start date"),

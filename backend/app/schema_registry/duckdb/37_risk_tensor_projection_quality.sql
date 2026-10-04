@@ -3,6 +3,10 @@ alter table fact_formal_risk_tensor_daily add column if not exists missing_matur
 -- MOSS:STMT
 alter table fact_formal_risk_tensor_daily add column if not exists missing_maturity_count integer
 -- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists missing_liability_maturity_principal_amount decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists missing_liability_maturity_count integer
+-- MOSS:STMT
 alter table fact_formal_risk_tensor_daily add column if not exists floating_rate_proxy_market_value decimal(24, 8)
 -- MOSS:STMT
 alter table fact_formal_risk_tensor_daily add column if not exists floating_rate_proxy_count integer

@@ -1,10 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
+import MarketSourceContextBanner from "../../workbench/module-home/MarketSourceContextBanner";
 import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/clientContext";
 import type { ApiEnvelope } from "../../../api/contracts";
 import type { MacroToolkitAnalysisPayload } from "../../../api/macroToolkitClient";
+import { SectionHead } from "../../../components/layout";
 import { formatObservationDeferredSectionLabel } from "../../macro-toolkit/lib/macroToolkitDataHealthSupport";
 import {
   formatQueryError,
@@ -14,7 +16,11 @@ import {
   MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT,
   MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
 } from "../../macro-toolkit/lib/macroToolkitPageModel";
-import MacroObservationSectionLead from "../components/MacroObservationSectionLead";
+import { MacroToolkitContractBoundary } from "../../macro-toolkit/sections/MacroToolkitPrimitives";
+import {
+  MACRO_OBSERVATION_SECTION_NUMBERING,
+  macroObservationSectionHeadState,
+} from "../components/macroObservationSectionHeadNumbering";
 import {
   buildAShareRiskView,
   buildCrisisEvidenceView,
@@ -44,6 +50,12 @@ import MacroObservationSignalRiskSection from "../sections/MacroObservationSigna
 import "./MacroObservationPage.css";
 
 const MACRO_OBSERVATION_READ_STALE_MS = 60_000;
+const MACRO_OBSERVATION_CONTRACT_FALLBACK = {
+  basis: "analytical",
+  formalUseAllowed: false,
+  resultKind: "macro_toolkit.analysis",
+  ruleVersion: "rv_macro_toolkit_ui_v1",
+} as const;
 
 /**
  * /macro-observation 只读观察页（首页 Nocturne 标准骨架）。
@@ -53,13 +65,8 @@ const MACRO_OBSERVATION_READ_STALE_MS = 60_000;
 export default function MacroObservationPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
-  const [fullAnalysisEnvelope, setFullAnalysisEnvelope] = useState<
-    ApiEnvelope<MacroToolkitAnalysisPayload> | null
-  >(
-    () =>
-      queryClient.getQueryData<ApiEnvelope<MacroToolkitAnalysisPayload>>(
-        MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
-      ) ?? null,
+  const [fullAnalysisEnvelope, setFullAnalysisEnvelope] = useState<ApiEnvelope<MacroToolkitAnalysisPayload> | null>(
+    null,
   );
   const [fullAnalysisError, setFullAnalysisError] = useState<string | null>(null);
   const [isLoadingFullAnalysis, setIsLoadingFullAnalysis] = useState(false);
@@ -107,6 +114,7 @@ export default function MacroObservationPage() {
   const analysisEnvelope = fullAnalysisEnvelope ?? analysisQuery.data;
   const analysis = analysisEnvelope?.result;
   const analysisMeta = analysisEnvelope?.result_meta;
+  const analysisBasis = analysisMeta?.basis ?? MACRO_OBSERVATION_CONTRACT_FALLBACK.basis;
   const strategyPayload = strategyQuery.data?.result;
   const strategyMeta = strategyQuery.data?.result_meta;
   const isAnalysisLoading = analysisQuery.isLoading && !analysis;
@@ -168,6 +176,8 @@ export default function MacroObservationPage() {
   };
 
   const header = (
+    <>
+    <MarketSourceContextBanner />
     <header className="macro-observation-view__header">
       <div className="macro-observation-view__header-copy">
         <h1 className="macro-observation-view__title">宏观观察</h1>
@@ -183,6 +193,7 @@ export default function MacroObservationPage() {
         </Link>
       </div>
     </header>
+    </>
   );
 
   // Playwright dark-theme readySelector 与 liveRoute 契约锚点：三态都必须渲染。
@@ -194,6 +205,23 @@ export default function MacroObservationPage() {
       只读宏观观察 · 本页只展示宏观分析证据；刷新、脚本执行和运营注册表保留在宏观工具页。
     </p>
   );
+  const contractBoundary = (
+    <div className="macro-observation-view__contract-boundary">
+      <MacroToolkitContractBoundary
+        formalUseAllowed={analysisMeta?.formal_use_allowed ?? MACRO_OBSERVATION_CONTRACT_FALLBACK.formalUseAllowed}
+        resultKind={analysisMeta?.result_kind ?? MACRO_OBSERVATION_CONTRACT_FALLBACK.resultKind}
+        ruleVersion={analysisMeta?.rule_version ?? MACRO_OBSERVATION_CONTRACT_FALLBACK.ruleVersion}
+      />
+      {!analysisMeta ? (
+        <p
+          className="macro-observation-view__contract-fallback"
+          data-testid="macro-observation-contract-fallback"
+        >
+          result_meta 缺失，当前按 {analysisBasis} / 非正式口径展示，仅供观察使用。
+        </p>
+      ) : null}
+    </div>
+  );
 
   if (!analysis && analysisQuery.isError) {
     return (
@@ -204,6 +232,7 @@ export default function MacroObservationPage() {
       >
         {header}
         {readonlyBoundary}
+        {contractBoundary}
         <div
           className="macro-observation-view__error-state"
           data-testid="macro-observation-error-state"
@@ -274,6 +303,7 @@ export default function MacroObservationPage() {
       </div>
 
       {readonlyBoundary}
+      {contractBoundary}
 
       {isAnalysisLoading ? (
         <p
@@ -295,7 +325,11 @@ export default function MacroObservationPage() {
       ) : null}
 
       <section id="mo-section-01" className="macro-observation-view__section">
-        <MacroObservationSectionLead title="当日观察结论" state={conclusionLead} />
+        <SectionHead
+          title="当日观察结论"
+          state={macroObservationSectionHeadState(conclusionLead)}
+          numbered={MACRO_OBSERVATION_SECTION_NUMBERING}
+        />
         <MacroObservationConclusionSection
           kpiItems={kpiItems}
           conclusion={conclusion}
@@ -306,12 +340,20 @@ export default function MacroObservationPage() {
       </section>
 
       <section id="mo-section-02" className="macro-observation-view__section">
-        <MacroObservationSectionLead title="信号与风险对照" state={sectionStates.signalRisk} />
+        <SectionHead
+          title="信号与风险对照"
+          state={macroObservationSectionHeadState(sectionStates.signalRisk)}
+          numbered={MACRO_OBSERVATION_SECTION_NUMBERING}
+        />
         <MacroObservationSignalRiskSection signalCards={signalCards} risk={riskView} />
       </section>
 
       <section id="mo-section-03" className="macro-observation-view__section">
-        <MacroObservationSectionLead title="模型与策略证据" state={sectionStates.modelStrategy} />
+        <SectionHead
+          title="模型与策略证据"
+          state={macroObservationSectionHeadState(sectionStates.modelStrategy)}
+          numbered={MACRO_OBSERVATION_SECTION_NUMBERING}
+        />
         <MacroObservationModelStrategySection
           modelReadiness={analysis?.model_readiness ?? []}
           hasonStrategy={analysis?.hason_strategy ?? null}
@@ -320,17 +362,29 @@ export default function MacroObservationPage() {
       </section>
 
       <section id="mo-section-04" className="macro-observation-view__section">
-        <MacroObservationSectionLead title="危机分证据" state={sectionStates.crisis} />
+        <SectionHead
+          title="危机分证据"
+          state={macroObservationSectionHeadState(sectionStates.crisis)}
+          numbered={MACRO_OBSERVATION_SECTION_NUMBERING}
+        />
         <MacroObservationCrisisSection crisis={crisisView} />
       </section>
 
       <section id="mo-section-05" className="macro-observation-view__section">
-        <MacroObservationSectionLead title="数据健康与修复项" state={sectionStates.dataHealth} />
+        <SectionHead
+          title="数据健康与修复项"
+          state={macroObservationSectionHeadState(sectionStates.dataHealth)}
+          numbered={MACRO_OBSERVATION_SECTION_NUMBERING}
+        />
         <MacroObservationDataHealthSection health={healthView} />
       </section>
 
       <section id="mo-section-06" className="macro-observation-view__section">
-        <MacroObservationSectionLead title="证据与口径" state={sectionStates.evidence} />
+        <SectionHead
+          title="证据与口径"
+          state={macroObservationSectionHeadState(sectionStates.evidence)}
+          numbered={MACRO_OBSERVATION_SECTION_NUMBERING}
+        />
         <MacroObservationEvidenceSection
           metaView={metaView}
           analysisMeta={analysisMeta}

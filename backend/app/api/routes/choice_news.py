@@ -2,6 +2,7 @@ import re
 from typing import Annotated
 
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.home_support_read_contracts import ChoiceNewsLatestBatchEnvelope
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.choice_news_service import (
     StockMatchMode,
@@ -143,7 +144,11 @@ def choice_events_latest(
     )
 
 
-@router.get("/choice-events/latest-batch")
+@router.get(
+    "/choice-events/latest-batch",
+    response_model=ChoiceNewsLatestBatchEnvelope,
+    response_model_exclude_unset=True,
+)
 def choice_events_latest_batch(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     topics: str | None = Query(

@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import types
 
@@ -323,3 +324,206 @@ def test_calc_rp_weights_differentiates_heteroscedastic_assets(monkeypatch) -> N
     assert weights.sum() == pytest.approx(1.0, abs=1e-6)
     assert weights[2] > weights[0] + 0.05  # 低波动 gold 权重应明显高于高波动 hs300
     assert float(np.max(np.abs(weights - 1.0 / 3.0))) > 0.03  # 显著偏离等权
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_toolkit
+def test_backtest_heatmap_prefers_shallower_drawdown(monkeypatch) -> None:
+    bt = _load_toolkit_script("backtest_cn", monkeypatch, "_m5_heatmap_drawdown")
+    metrics_df = pd.DataFrame(
+        [
+            {"策略": "浅回撤", "年化收益%": 20.0, "年化波动%": 12.0, "夏普比率": 1.5, "索提诺比率": 2.0, "最大回撤%": -12.5, "Calmar比率": 1.6, "胜率%": 58.0},
+            {"策略": "深回撤", "年化收益%": 20.0, "年化波动%": 12.0, "夏普比率": 1.5, "索提诺比率": 2.0, "最大回撤%": -27.53, "Calmar比率": 1.6, "胜率%": 58.0},
+        ]
+    )
+
+    norm = bt._normalize_metrics_for_heatmap(metrics_df)
+
+    assert norm.loc["浅回撤", "最大回撤%"] > norm.loc["深回撤", "最大回撤%"]
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_toolkit
+@pytest.mark.parametrize("missing_module", ["plt", "mdates"])
+def test_backtest_charts_require_optional_matplotlib(monkeypatch, missing_module: str) -> None:
+    bt = _load_toolkit_script("backtest_cn", monkeypatch, "_m5_backtest_optional_plotting")
+    monkeypatch.setattr(bt, missing_module, None)
+
+    for plot in (bt.plot_nav, bt.plot_annual, bt.plot_metrics_heatmap):
+        with pytest.raises(RuntimeError, match="matplotlib is required"):
+            plot(pd.DataFrame())
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_toolkit
+def test_backtest_manifest_reports_actual_sample_and_asset_coverage(monkeypatch) -> None:
+    bt = _load_toolkit_script("backtest_cn", monkeypatch, "_m5_backtest_manifest_coverage")
+    prices = pd.DataFrame(
+        {
+            "hs300": [100.0, 101.0, 102.0],
+            "csi500": [100.0, 100.5, 101.0],
+            "gold": [100.0, 101.0, 100.0],
+            "copper": [100.0, 99.0, 98.5],
+            "crude_oil": [100.0, 101.5, 102.0],
+        },
+        index=pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-05"]),
+    )
+
+    returns = pd.DataFrame(
+        {"买持等权": [0.01, 0.0]},
+        index=pd.to_datetime(["2024-01-03", "2024-01-05"]),
+    )
+    manifest = bt.build_backtest_run_manifest(
+        prices,
+        returns,
+        macro_input_columns=("date", "value"),
+    )
+
+    assert manifest["sample"] == {
+        "price_start_date": "2024-01-02",
+        "price_end_date": "2024-01-05",
+        "price_observation_days": 3,
+        "return_start_date": "2024-01-03",
+        "return_end_date": "2024-01-05",
+        "return_trading_days": 2,
+        "declared_window_years": 5,
+    }
+    assert manifest["asset_coverage"]["configured_asset_count"] == 8
+    assert manifest["asset_coverage"]["used_asset_count"] == 5
+    assert manifest["asset_coverage"]["used_assets"] == [
+        "hs300",
+        "csi500",
+        "gold",
+        "copper",
+        "crude_oil",
+    ]
+    assert manifest["asset_coverage"]["missing_assets"] == [
+        "bond_gov",
+        "bond_10y",
+        "bond_cdb",
+    ]
+    assert manifest["asset_coverage"]["complete"] is False
+    assert "BACKTEST_SAMPLE_SCOPE_PARTIAL" in manifest["warnings"]
+    assert "BACKTEST_ASSET_COVERAGE_INCOMPLETE" in manifest["warnings"]
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_toolkit
+def test_backtest_manifest_fails_closed_without_pit_metadata(monkeypatch) -> None:
+    bt = _load_toolkit_script("backtest_cn", monkeypatch, "_m5_backtest_manifest_pit")
+    prices = pd.DataFrame(
+        {
+            "hs300": [100.0, 101.0],
+            "csi500": [100.0, 100.5],
+            "gold": [100.0, 101.0],
+            "copper": [100.0, 99.0],
+            "crude_oil": [100.0, 101.5],
+        },
+        index=pd.to_datetime(["2024-01-02", "2024-01-03"]),
+    )
+
+    returns = pd.DataFrame(
+        {"买持等权": [0.01]},
+        index=pd.to_datetime(["2024-01-03"]),
+    )
+    manifest = bt.build_backtest_run_manifest(
+        prices,
+        returns,
+        macro_input_columns=("date", "value"),
+    )
+
+    assert manifest["status"] == "not_admitted"
+    assert manifest["quality_flag"] == "warning"
+    assert manifest["admission_status"] is None
+    assert manifest["observation_only"] is True
+    assert manifest["formal_use_allowed"] is False
+    assert manifest["pit_gate"] == {
+        "status": "blocked",
+        "reason_code": "pit_metadata_unavailable",
+        "required_fields": ["release_at", "available_at", "vintage", "revision"],
+        "available_fields": [],
+        "missing_fields": ["release_at", "available_at", "vintage", "revision"],
+        "completeness_pct": 0.0,
+        "decision_rule": "available_at <= decision_at",
+    }
+    assert "PIT_METADATA_UNAVAILABLE" in manifest["warnings"]
+    assert manifest["research_output_generated"] is True
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_toolkit
+def test_backtest_manifest_does_not_admit_from_column_names_alone(monkeypatch) -> None:
+    bt = _load_toolkit_script("backtest_cn", monkeypatch, "_m5_backtest_manifest_column_guard")
+    prices = pd.DataFrame(
+        {"hs300": [100.0, 101.0]},
+        index=pd.to_datetime(["2024-01-02", "2024-01-03"]),
+    )
+    returns = pd.DataFrame(
+        {"买持等权": [0.01]},
+        index=pd.to_datetime(["2024-01-03"]),
+    )
+
+    manifest = bt.build_backtest_run_manifest(
+        prices,
+        returns,
+        macro_input_columns=("release_at", "available_at", "vintage", "revision"),
+    )
+
+    assert manifest["pit_gate"]["available_fields"] == [
+        "release_at",
+        "available_at",
+        "vintage",
+        "revision",
+    ]
+    assert manifest["pit_gate"]["completeness_pct"] == 100.0
+    assert manifest["pit_gate"]["status"] == "blocked"
+    assert manifest["pit_gate"]["reason_code"] == "pit_evidence_unverified"
+    assert manifest["status"] == "not_admitted"
+    assert manifest["admission_status"] is None
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_toolkit
+def test_backtest_main_writes_run_manifest_even_when_pit_gate_is_blocked(
+    tmp_path, monkeypatch
+) -> None:
+    bt = _load_toolkit_script("backtest_cn", monkeypatch, "_m5_backtest_main_manifest")
+    prices = pd.DataFrame(
+        {
+            "hs300": [100.0, 101.0, 102.0],
+            "csi500": [100.0, 100.5, 101.0],
+            "gold": [100.0, 101.0, 100.0],
+            "copper": [100.0, 99.0, 98.5],
+            "crude_oil": [100.0, 101.5, 102.0],
+        },
+        index=pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-05"]),
+    )
+    ret_df = pd.DataFrame(
+        {
+            "买持等权": [0.01, 0.0],
+            "风险平价": [0.012, -0.001],
+            "CTA趋势": [0.005, 0.002],
+            "状态切换": [0.003, 0.001],
+            "全模型综合": [0.011, 0.002],
+        },
+        index=pd.to_datetime(["2024-01-03", "2024-01-05"]),
+    )
+
+    monkeypatch.setattr(bt, "ROOT", tmp_path)
+    monkeypatch.setattr(bt, "ASSET_DIR", tmp_path)
+    monkeypatch.setattr(bt, "load_prices", lambda: prices)
+    monkeypatch.setattr(bt, "load_merrill_clock_input_columns", lambda: ("date", "value"))
+    monkeypatch.setattr(bt, "run_backtest", lambda incoming: (ret_df, pd.Series(["中性"] * len(incoming), index=incoming.index)))
+    monkeypatch.setattr(bt, "plot_nav", lambda _ret_df: tmp_path / "backtest_nav.png")
+    monkeypatch.setattr(bt, "plot_annual", lambda _annual_df: tmp_path / "backtest_annual.png")
+    monkeypatch.setattr(bt, "plot_metrics_heatmap", lambda _metrics_df: tmp_path / "backtest_metrics.png")
+
+    bt.main()
+
+    manifest = json.loads((tmp_path / "backtest_run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["formal_use_allowed"] is False
+    assert manifest["status"] == "not_admitted"
+    assert manifest["admission_status"] is None
+    assert manifest["sample"]["return_start_date"] == "2024-01-03"
+    assert manifest["sample"]["return_end_date"] == "2024-01-05"
+    assert manifest["pit_gate"]["status"] == "blocked"

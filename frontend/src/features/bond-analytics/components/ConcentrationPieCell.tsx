@@ -1,23 +1,13 @@
 import { useMemo } from "react";
 import { type EChartsOption } from "../../../lib/echarts";
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { ConcentrationMetrics } from "../types";
-import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { formatYi } from "../utils/formatters";
-import { DetailEmptyNote } from "./BondAnalyticsDetailPrimitives";
-
-const dt = designTokens;
 
 function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
   return nocturneChartTheme.createBaseChartOption({
-    title: {
-      text: `${metrics.dimension}  HHI ${metrics.hhi.display}  前五 ${metrics.top5_concentration.display}`,
-      left: "center",
-      top: dt.space[1],
-      textStyle: { fontSize: dt.fontSize[11], color: nocturneTokens.color.inkMuted },
-    },
     tooltip: {
       trigger: "item",
       formatter: (p) => {
@@ -46,9 +36,20 @@ export function ConcentrationPieCell({ metrics }: { metrics: ConcentrationMetric
     return concentrationPieOption(metrics);
   }, [metrics]);
 
-  if (!option) {
-    return <DetailEmptyNote>暂无数据</DetailEmptyNote>;
-  }
-
-  return <BaseChart option={option} height={200} />;
+  return (
+    <ChartCard
+      flat
+      title={metrics?.dimension}
+      question={
+        metrics
+          ? `HHI ${metrics.hhi.display} · 前五 ${metrics.top5_concentration.display}`
+          : undefined
+      }
+      ariaLabel={metrics?.dimension ?? "集中度分布"}
+      option={option}
+      height={220}
+      legend="none"
+      emptyMessage="暂无数据"
+    />
+  );
 }

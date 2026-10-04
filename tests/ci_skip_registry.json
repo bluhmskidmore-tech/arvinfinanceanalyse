@@ -1,25 +1,39 @@
 {
   "schema_version": "ci-skip-registry-v1",
   "description": "受控的环境/数据依赖型 pytest 跳过清单。守卫测试 tests/test_ci_skip_registry.py 会静态扫描 scan_roots 下的 *.py（纯文本、不执行被扫测试），任何未登记的新增依赖型跳过（pytest.mark.skipif / pytest.skip( / importorskip，最后一项含 pytest. 前缀与裸用法）都会导致守卫失败；新增跳过必须先在本文件登记并说明原因分类、依赖资产与合成替代情况。",
-  "as_of": "2026-09-24",
-  "scan_roots": ["tests", "backend/tests"],
+  "as_of": "2026-10-04",
+  "scan_roots": [
+    "tests",
+    "backend/tests"
+  ],
   "kinds": {
     "skipif": "pytest.mark.skipif",
     "skip_call": "pytest.skip(",
     "importorskip": "importorskip"
   },
-  "categories": ["real-data", "redis", "postgres", "symlink", "system-db", "other"],
+  "categories": [
+    "real-data",
+    "redis",
+    "postgres",
+    "symlink",
+    "system-db",
+    "other"
+  ],
   "entries": [
     {
       "file": "tests/liability_v1_harness.py",
-      "expected_counts": {"skip_call": 3},
+      "expected_counts": {
+        "skip_call": 3
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "real-data",
           "reason": "负债 V1 回放样本 manifest.json 缺失时跳过，需人工从模板填充真实 V1 载荷",
-          "depends_on": ["tests/fixtures/liability_v1_samples/manifest.json（人工维护，模板为 manifest.template.json）"],
+          "depends_on": [
+            "tests/fixtures/liability_v1_samples/manifest.json（人工维护，模板为 manifest.template.json）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "真实或经审批的准真实样本就绪后才允许回放"
@@ -29,7 +43,9 @@
           "count": 1,
           "category": "other",
           "reason": "manifest 存在但 replay_enabled=false 时跳过；治理开关而非环境缺失",
-          "depends_on": ["manifest.replay_enabled 治理开关"],
+          "depends_on": [
+            "manifest.replay_enabled 治理开关"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled"
         },
@@ -38,7 +54,9 @@
           "count": 1,
           "category": "system-db",
           "reason": "回放要求设置 manifest 指定的 DuckDB 路径环境变量（默认 MOSS_DUCKDB_PATH）",
-          "depends_on": ["env MOSS_DUCKDB_PATH（或 manifest.duckdb_path_env 指定变量）"],
+          "depends_on": [
+            "env MOSS_DUCKDB_PATH（或 manifest.duckdb_path_env 指定变量）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled"
         }
@@ -46,14 +64,18 @@
     },
     {
       "file": "tests/test_agent_eval_pr_replay.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "symlink",
           "reason": "任务归档目录符号链接逃逸回归需要创建指向输出目录外的目录链接；操作系统不支持或当前用户无创建权限时跳过",
-          "depends_on": ["操作系统目录符号链接创建能力（Ubuntu CI 可用；Windows 本地可能需要开发者模式或符号链接权限）"],
+          "depends_on": [
+            "操作系统目录符号链接创建能力（Ubuntu CI 可用；Windows 本地可能需要开发者模式或符号链接权限）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "用 tmp_path 构造外部工件，无真实数据依赖，但符号链接本身不可由普通目录替代。Ubuntu CI 的 agent harness 会选中本文件；run 35955027107 因前置 release suite 失败未执行该阶段，登记后必须核对该用例实际通过，跳过不算通过。"
@@ -61,8 +83,50 @@
       ]
     },
     {
+      "file": "tests/test_dexter_agent_service.py",
+      "expected_counts": {
+        "skipif": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "other",
+          "reason": "启动器退出后子进程继承输出管道的有界读取回归需要 Windows 管道所有权语义；非 Windows 平台跳过",
+          "depends_on": [
+            "Windows 平台及创建本地合成 Python 子进程的能力"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "测试只在 tmp_path 创建合成启动器和子进程，覆盖正常退出与取消，不依赖供应商 CLI 或业务数据；跳过不计入通过。"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_bond_risk_shadow_candidate.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "候选与 live/source 同文件保护的真实硬链接探针；底层文件系统不支持创建硬链接时跳过",
+          "depends_on": [
+            "本地文件系统与当前身份允许 os.link 创建测试硬链接"
+          ],
+          "has_synthetic_alternative": true,
+          "recommendation": "keep-controlled",
+          "note": "真实硬链接路径是主证据；identity/samefile 拒绝分支另有合成与普通路径回归，CI 的常规 Linux 文件系统会执行真实探针"
+        }
+      ]
+    },
+    {
       "file": "tests/test_candidate_financial_indicator_component_detail_service.py",
-      "expected_counts": {"skipif": 5},
+      "expected_counts": {
+        "skipif": 5
+      },
       "occurrences": [
         {
           "kind": "skipif",
@@ -82,7 +146,9 @@
     },
     {
       "file": "tests/test_candidate_financial_indicator_period_comparison_service.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
@@ -103,30 +169,38 @@
     },
     {
       "file": "tests/test_data_update_queue_launcher_logging.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "other",
           "reason": "队列启动器日志契约需要执行 Windows PowerShell 脚本；Ubuntu 无 powershell.exe 时跳过平台专属用例",
-          "depends_on": ["Windows PowerShell powershell.exe（PATH 内；适用于 Windows 运行器）"],
+          "depends_on": [
+            "Windows PowerShell powershell.exe（PATH 内；适用于 Windows 运行器）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
-          "note": "用隔离目录和假 worker 验证脚本，不依赖真实队列；PowerShell 执行语义无法由普通 Python 合成替代。PR #46 的 Windows job 107491762000（run 35955100439）与安装器契约合计 15/15 通过；Ubuntu 映射门禁中的平台跳过不计为验证。"
+          "note": "用隔离目录和假 worker 验证脚本，不依赖真实队列；PowerShell 执行语义无法由普通 Python 合成替代。PR #46 的 Windows job 107491762000（run 35955100439）与安装器契约合计 15/15 通过；Ubuntu 映射门禁中的平台跳过不计为验证。 The merged temporary worker harness also checks launcher exit codes, stream encoding and credential redaction; it never drains the real queue."
         }
       ]
     },
     {
       "file": "tests/test_install_data_update_queue.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "other",
           "reason": "计划任务安装器契约需要执行 Windows PowerShell 脚本；Ubuntu 无 powershell.exe 时跳过平台专属用例",
-          "depends_on": ["Windows PowerShell powershell.exe（PATH 内；适用于 Windows 运行器）"],
+          "depends_on": [
+            "Windows PowerShell powershell.exe（PATH 内；适用于 Windows 运行器）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "通过假 ScheduledTask 命令验证参数与卸载，不注册真实任务；PowerShell 执行语义无法由普通 Python 合成替代。PR #46 的 Windows job 107491762000（run 35955100439）与启动器契约合计 15/15 通过；Ubuntu 映射门禁中的平台跳过不计为验证。"
@@ -135,14 +209,18 @@
     },
     {
       "file": "tests/test_data_quality_mcp.py",
-      "expected_counts": {"importorskip": 2},
+      "expected_counts": {
+        "importorskip": 2
+      },
       "occurrences": [
         {
           "kind": "importorskip",
           "count": 2,
           "category": "other",
           "reason": "构建临时质量/就绪 DuckDB 前防御性检查 duckdb Python 包",
-          "depends_on": ["python package duckdb（requirements 内必装）"],
+          "depends_on": [
+            "python package duckdb（requirements 内必装）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "CI 恒定安装 duckdb，实际不触发；保留为依赖缺失时的清晰跳过而非 ImportError"
@@ -151,7 +229,9 @@
     },
     {
       "file": "tests/test_finance_metric_component_detail.py",
-      "expected_counts": {"skipif": 5},
+      "expected_counts": {
+        "skipif": 5
+      },
       "occurrences": [
         {
           "kind": "skipif",
@@ -171,7 +251,9 @@
     },
     {
       "file": "tests/test_finance_metric_xlsx.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
@@ -190,14 +272,19 @@
     },
     {
       "file": "tests/test_formal_compute_lineage.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "postgres",
           "reason": "live Postgres sql-authority 血缘解析验证，未配置 DSN 时跳过",
-          "depends_on": ["env MOSS_TEST_POSTGRES_DSN", "可达的 PostgreSQL 实例"],
+          "depends_on": [
+            "env MOSS_TEST_POSTGRES_DSN",
+            "可达的 PostgreSQL 实例"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "CI 提供 Postgres service container 并设置 DSN 即自动激活；jsonl 后端路径已有常规覆盖"
@@ -205,8 +292,31 @@
       ]
     },
     {
+      "file": "tests/test_release_control_postgres_concurrency.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "postgres",
+          "reason": "WP1 whole-bundle CAS 的真实事务竞态证明依赖专用、可丢弃的本机 PostgreSQL 测试库；CI 在 release-control-structure job 中强制提供该库并核对 JUnit 为 2 tests、0 skips",
+          "depends_on": [
+            "env MOSS_TEST_POSTGRES_DSN",
+            "loopback PostgreSQL database moss_release_control_test（Alembic head）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "SQLite 回归仅证明事务回滚，不作为 PostgreSQL 真并发 CAS 证据；MOSS_REQUIRE_POSTGRES_CONCURRENCY_TEST=1 时缺少 DSN 会失败而非跳过"
+        }
+      ]
+    },
+    {
       "file": "tests/test_ledger_analytics_api.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
@@ -224,14 +334,18 @@
     },
     {
       "file": "tests/test_ledger_classification_backfill.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "symlink",
           "reason": "构造硬链接（os.link）攻击面样本失败时跳过；文件系统链接能力缺失",
-          "depends_on": ["操作系统硬链接创建能力"],
+          "depends_on": [
+            "操作系统硬链接创建能力"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "属 hard link 而非 symbolic link，同归文件系统链接能力一族；Linux CI 天然可用"
@@ -240,7 +354,9 @@
     },
     {
       "file": "tests/test_ledger_financial_indicator_summary.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
@@ -258,7 +374,9 @@
     },
     {
       "file": "tests/test_ledger_financial_indicator_summary_cny.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
@@ -276,7 +394,9 @@
     },
     {
       "file": "tests/test_ledger_import_flow.py",
-      "expected_counts": {"skip_call": 3},
+      "expected_counts": {
+        "skip_call": 3
+      },
       "occurrences": [
         {
           "kind": "skip_call",
@@ -294,14 +414,18 @@
     },
     {
       "file": "tests/test_ledger_import_worker_e2e.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "redis",
           "reason": "真实 dramatiq worker 端到端测试需要本机 redis-server 可执行文件",
-          "depends_on": ["redis-server 可执行文件（PATH 内）"],
+          "depends_on": [
+            "redis-server 可执行文件（PATH 内）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "e2e 语义要求真实 broker，fakeredis 无法等价替代；CI 安装 redis 后自动激活"
@@ -310,7 +434,9 @@
     },
     {
       "file": "tests/test_ledger_pnl_net_interest_golden_sample.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
@@ -330,14 +456,18 @@
     },
     {
       "file": "tests/test_macro_report_asset_service.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "symlink",
           "reason": "构造符号链接拒收样本失败时跳过；Windows 主机缺少符号链接权限",
-          "depends_on": ["操作系统符号链接创建能力（Windows 需开发者模式或 SeCreateSymbolicLinkPrivilege）"],
+          "depends_on": [
+            "操作系统符号链接创建能力（Windows 需开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "能力探测型跳过，Linux CI 天然激活"
@@ -346,14 +476,18 @@
     },
     {
       "file": "tests/test_macro_toolkit_refresh.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "system-db",
           "reason": "integration 标记的真实冒烟：对系统 DuckDB（get_settings().duckdb_path）跑 performance_metrics_cn 脚本",
-          "depends_on": ["系统 DuckDB 数据库文件（MOSS_DUCKDB_PATH / settings.duckdb_path）"],
+          "depends_on": [
+            "系统 DuckDB 数据库文件（MOSS_DUCKDB_PATH / settings.duckdb_path）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "刻意针对本机真实库的端到端冒烟；常规逻辑已由同文件 tmp_path 用例覆盖"
@@ -362,14 +496,18 @@
     },
     {
       "file": "tests/test_portfolio_home_blocker_closure_matrix_check.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 阻塞项收口矩阵检查依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
@@ -378,14 +516,18 @@
     },
     {
       "file": "tests/test_portfolio_home_business_owner_approval_packet.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 业务所有者审批包测试依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
@@ -394,14 +536,18 @@
     },
     {
       "file": "tests/test_portfolio_home_closure_artifact_presence_check.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 收口工件在场检查依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
@@ -410,14 +556,18 @@
     },
     {
       "file": "tests/test_portfolio_home_dependency_consistency_check.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 依赖一致性检查依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
@@ -426,14 +576,18 @@
     },
     {
       "file": "tests/test_portfolio_home_evidence_packet_guard.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 证据包守卫测试依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
@@ -442,14 +596,18 @@
     },
     {
       "file": "tests/test_portfolio_home_evidence_snapshot.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 证据快照测试对本机治理 DuckDB 当前封锁状态做快照断言，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移；精确本机状态值断言已改为结构断言"
@@ -458,14 +616,18 @@
     },
     {
       "file": "tests/test_portfolio_home_full_score_preflight.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 满分预检 build_preflight_for_test 默认落到 DEFAULT_DUCKDB=data/moss.duckdb，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同文件多数用例已用 monkeypatch stub 隔离，仅个别用例读真实库"
@@ -474,14 +636,18 @@
     },
     {
       "file": "tests/test_portfolio_home_owner_action_packet.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 所有者行动包测试依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
@@ -490,14 +656,18 @@
     },
     {
       "file": "tests/test_portfolio_home_owner_decision_intake_check.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 所有者决策接收检查依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
@@ -506,14 +676,18 @@
     },
     {
       "file": "tests/test_portfolio_home_owner_handoff_completeness_check.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 所有者交接完整性检查依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
@@ -522,14 +696,18 @@
     },
     {
       "file": "tests/test_portfolio_home_owner_handoff_packet.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 所有者交接包测试依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
@@ -538,14 +716,18 @@
     },
     {
       "file": "tests/test_portfolio_home_owner_input_needed_summary.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
           "count": 1,
           "category": "system-db",
           "reason": "portfolio-home 所有者待输入摘要测试依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
-          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "depends_on": [
+            "data/moss.duckdb（本机治理系统库）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
           "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
@@ -554,7 +736,9 @@
     },
     {
       "file": "tests/test_qdb_gl_monthly_analysis_core.py",
-      "expected_counts": {"skipif": 1},
+      "expected_counts": {
+        "skipif": 1
+      },
       "occurrences": [
         {
           "kind": "skipif",
@@ -572,30 +756,51 @@
     },
     {
       "file": "tests/test_project_mcp_servers.py",
-      "expected_counts": {"importorskip": 4},
+      "expected_counts": {
+        "importorskip": 4,
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "importorskip",
           "count": 4,
           "category": "other",
           "reason": "构建临时数据目录证据 DuckDB 前防御性检查 duckdb Python 包",
-          "depends_on": ["python package duckdb（requirements 内必装）"],
+          "depends_on": [
+            "python package duckdb（requirements 内必装）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "CI 恒定安装 duckdb，实际不触发"
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "CMD launcher coverage executes the actual Windows launcher; the portable Python launcher remains a separate test path.",
+          "depends_on": [
+            "Windows host and cmd.exe"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
         }
       ]
     },
     {
       "file": "tests/test_macro_model_chain_results.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "real-data",
           "reason": "宏观模型链真实输出比对需要本机 macro toolkit 真实输出目录，缺失时跳过",
-          "depends_on": ["data/macro_toolkit/output/（本机真实输出，位于 gitignore 的 data/ 下）"],
+          "depends_on": [
+            "data/macro_toolkit/output/（本机真实输出，位于 gitignore 的 data/ 下）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "2026-08-12 并行会话新增的真实数据比对用例；由 ci_skip_registry 守卫首次拦截后登记"
@@ -604,14 +809,18 @@
     },
     {
       "file": "tests/test_pytest_temp_isolation.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "other",
           "reason": "显式传入 --basetemp 时进程级默认 basetemp 断言不适用；流程语义跳过而非环境缺失",
-          "depends_on": ["pytest 调用方式（未显式指定 --basetemp）"],
+          "depends_on": [
+            "pytest 调用方式（未显式指定 --basetemp）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled"
         }
@@ -619,14 +828,19 @@
     },
     {
       "file": "tests/test_source_preview_worker_e2e.py",
-      "expected_counts": {"skip_call": 4},
+      "expected_counts": {
+        "skip_call": 4
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 4,
           "category": "redis",
           "reason": "source_preview 真实 worker 端到端测试需要本机 redis-server 可执行文件",
-          "depends_on": ["redis-server 可执行文件（PATH 内）", "data_input/ZQTZSHOW-20251231.xls 与 TYWLSHOW-20251231.xls（仓库内样本，复制到临时目录）"],
+          "depends_on": [
+            "redis-server 可执行文件（PATH 内）",
+            "data_input/ZQTZSHOW-20251231.xls 与 TYWLSHOW-20251231.xls（仓库内样本，复制到临时目录）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "e2e 语义要求真实 broker；CI 安装 redis 后自动激活"
@@ -634,15 +848,199 @@
       ]
     },
     {
+      "file": "tests/test_stock_analysis_current_rule_cohort_bundle_producer.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造受治理根目录、输出根目录及源回执符号链接，以证明 cohort bundle producer 对原始链接路径 fail-closed；当前身份或平台无法创建符号链接时跳过相关真实探针",
+          "depends_on": [
+            "操作系统符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "一个共享 helper 内的 skip 调用服务两个真实符号链接测试；同文件另有 junction/TOCTOU 合成探针，但不能替代真实路径解析证据"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_stock_analysis_current_rule_cohort_materialize.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造与目标 DuckDB 指向同一 inode 的硬链接备份，以证明 materialize 拒绝把同一文件别名当作 prewrite backup；文件系统不支持 os.link 时跳过",
+          "depends_on": [
+            "目标与临时备份位于支持 os.link 的同一文件系统，且当前身份允许创建硬链接"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "现有分类没有 hardlink，按文件系统链接攻击面归入 symlink；真实 inode/samefile 语义不可由普通路径样本替代"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_stock_analysis_current_rule_factor_manifest_cli.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造 trusted evidence root 内的符号链接输出目录，以证明 factor manifest CLI 在 replay/builder 执行前拒绝链接路径；无法创建符号链接时跳过",
+          "depends_on": [
+            "操作系统目录符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "能力探测型跳过；常规 Linux CI 会执行真实路径探针"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_stock_analysis_current_rule_factor_vendor_dry_run.py",
+      "expected_counts": {
+        "skip_call": 2
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造 trusted evidence root 内的符号链接输出目录，以证明 vendor dry-run 在任何 vendor 调用前拒绝链接写入路径；无法创建目录符号链接时跳过",
+          "depends_on": [
+            "操作系统目录符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造 DuckDB 文件符号链接别名，以证明 vendor dry-run 在散列数据库或调用 vendor 前 fail-closed；无法创建文件符号链接时跳过",
+          "depends_on": [
+            "操作系统文件符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_stock_analysis_current_rule_factor_write.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造 trusted evidence root 内的符号链接回执父目录，以证明 factor write 拒绝经链接写出回执；无法创建目录符号链接时仅跳过该独立链接探针",
+          "depends_on": [
+            "操作系统目录符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": true,
+          "recommendation": "synthesize",
+          "note": "越界备份与已存在回执已拆成独立、永不受符号链接能力影响的测试；后续可补 Path 链接判定合成探针"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_stock_analysis_page_gap_factor_manifest.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造 trusted evidence root 内的符号链接输出目录，以证明 page-gap factor manifest CLI 在 builder 前拒绝链接路径且不向链接目标落盘；无法创建符号链接时跳过",
+          "depends_on": [
+            "操作系统目录符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "能力探测型跳过；常规 Linux CI 会执行真实路径探针"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_stock_analysis_page_gap_factor_vendor_dry_run.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造指向受信根外 factor manifest 的文件符号链接，以证明 page-gap vendor dry-run 在任何 vendor 调用前拒绝链接证据；无法创建符号链接时跳过",
+          "depends_on": [
+            "操作系统文件符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "能力探测型跳过；常规 Linux CI 会执行真实路径探针"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_stock_analysis_page_gap_manifest_cli.py",
+      "expected_counts": {
+        "skip_call": 2
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造 trusted evidence root 内的符号链接输出目录，以证明 page-gap manifest CLI 在 builder 前拒绝链接写入路径；无法创建目录符号链接时跳过",
+          "depends_on": [
+            "操作系统目录符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造 DuckDB 文件符号链接别名，以证明 page-gap manifest CLI 在 builder 前拒绝链接数据库；无法创建文件符号链接时跳过",
+          "depends_on": [
+            "操作系统文件符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        }
+      ]
+    },
+    {
       "file": "tests/test_stock_analysis_theme_overlay_archive.py",
-      "expected_counts": {"skip_call": 2},
+      "expected_counts": {
+        "skip_call": 2
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 2,
           "category": "symlink",
           "reason": "构造目录/文件符号链接逃逸样本失败时跳过；Windows 主机缺少符号链接权限",
-          "depends_on": ["操作系统符号链接创建能力"],
+          "depends_on": [
+            "操作系统符号链接创建能力"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "能力探测型跳过，Linux CI 天然激活"
@@ -651,14 +1049,18 @@
     },
     {
       "file": "tests/test_stock_analysis_theme_overlay_reader.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "symlink",
           "reason": "构造归档对象符号链接 fail-closed 样本失败时跳过；Windows 主机缺少符号链接权限",
-          "depends_on": ["操作系统符号链接创建能力"],
+          "depends_on": [
+            "操作系统符号链接创建能力"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "能力探测型跳过，Linux CI 天然激活"
@@ -667,14 +1069,18 @@
     },
     {
       "file": "tests/test_supply_auction_calendar_boundary_guards.py",
-      "expected_counts": {"skip_call": 2},
+      "expected_counts": {
+        "skip_call": 2
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 2,
           "category": "other",
           "reason": "专用 supply/auction 功能文件尚未落地时结构守卫不适用；feature-gated 业务性跳过",
-          "depends_on": ["supply/auction 专用功能文件落地（backend/frontend）"],
+          "depends_on": [
+            "supply/auction 专用功能文件落地（backend/frontend）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "功能文件落地后守卫自动激活，无外部环境依赖"
@@ -683,14 +1089,18 @@
     },
     {
       "file": "tests/test_api_contract_baseline_gate.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "other",
           "reason": "基线门禁自证用例按排序规则选中首个标量响应属性；若该属性在提交基线中本就非 required，'失去 required 保障'场景不适用而跳过（数据形状防御，非环境缺失）",
-          "depends_on": ["contracts/openapi/openapi.default.json（仓库内提交的 OpenAPI 基线，被选标量属性需处于 required 列表）"],
+          "depends_on": [
+            "contracts/openapi/openapi.default.json（仓库内提交的 OpenAPI 基线，被选标量属性需处于 required 列表）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "当前提交基线下不触发（2026-08-14 实跑该文件全部通过、无 skip）；若触发说明被选属性已是可选，该场景本身失效而非环境缺失"
@@ -699,14 +1109,18 @@
     },
     {
       "file": "tests/test_api_contract_tooling.py",
-      "expected_counts": {"skip_call": 1},
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
           "category": "other",
           "reason": "对打印的 Schemathesis 命令做真实 CLI 选项识别校验，需要本机安装 schemathesis CLI（未声明于 backend/pyproject.toml 的可选工具），缺失时跳过",
-          "depends_on": ["schemathesis CLI（解释器同目录 Scripts/ 或 PATH 内可执行文件）"],
+          "depends_on": [
+            "schemathesis CLI（解释器同目录 Scripts/ 或 PATH 内可执行文件）"
+          ],
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "命令串形状（含 --url、禁 --app）已由同文件 test_api_contract_script_prints_offline_schemathesis_command 在无 CLI 下覆盖；仅真实选项校验受 CLI 在场门控，本机 .venv 已安装故不触发"
@@ -714,18 +1128,415 @@
       ]
     },
     {
-      "file": "tests/test_snapshot_row_parse.py",
-      "expected_counts": {"skip_call": 1},
+      "file": "tests/test_wp7_release_rehearsal.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
       "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,
-          "category": "real-data",
-          "reason": "应收/应付利息列在三种历史 ZQTZSHOW 归档版式（44/45/46 列）上的真实样本回放断言，本机归档样本缺失时跳过",
-          "depends_on": ["data/archive/ZQTZSHOW/files/ 下 20240101/20250320/2025.11.01 三个归档 xls 样本（本机治理归档，位于 gitignore 的 data/ 下）"],
-          "has_synthetic_alternative": true,
+          "category": "symlink",
+          "reason": "真实构造工作区外部 DuckDB 文件符号链接别名，以证明 WP7 回执即使重算自哈希也拒绝固定路径绕过；当前身份或平台无法创建符号链接时跳过该独立探针",
+          "depends_on": [
+            "操作系统文件符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
-          "note": "同文件 _FakeBook 合成用例已覆盖表头变体、空值置 null、缺列置 null 逻辑分支；真实归档样本保留为三种列数版式的黄金锚点。2026-08-14 工作区未提交并行改动新增，由 ci_skip_registry 守卫拦截后登记"
+          "note": "普通路径、相对路径、既有目录及 artifact relocation 另有不依赖符号链接权限的独立测试"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_capture_average_balance_monthly_golden_candidate.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "真实构造候选输出父目录的符号链接或 reparse alias，以证明非权威 ADB recapture 工具拒绝路径绕过；当前身份或平台无法创建目录符号链接时跳过该独立探针",
+          "depends_on": [
+            "操作系统目录符号链接创建能力（Windows 通常需要开发者模式或 SeCreateSymbolicLinkPrivilege）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "权威 golden 树、既存目录、必填输出目录和输出身份变化另有不依赖符号链接权限的独立拒绝测试"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_dev_keepalive_probe_recovery.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "keepalive probe recovery tests require Windows PowerShell to execute the maintenance harness",
+          "depends_on": [
+            "Windows PowerShell executable available on PATH"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_dev_runtime_control.py",
+      "expected_counts": {
+        "skip_call": 2
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "runtime control path validation uses a real symbolic-link escape fixture when the host permits link creation",
+          "depends_on": [
+            "operating system symbolic-link creation capability"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "frontend plan validation requires the Node.js executable on the test host",
+          "depends_on": [
+            "node executable available on PATH"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_dev_runtime_maintenance_scripts.py",
+      "expected_counts": {
+        "skip_call": 2
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "maintenance script tests require Windows PowerShell to execute the harness",
+          "depends_on": [
+            "Windows PowerShell executable available on PATH"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "The isolated frontend launcher test executes a synthetic Vite CLI with real Node to verify argv, cwd and selected data source; Node process semantics cannot be replaced by a Python fixture.",
+          "depends_on": [
+            "Node.js executable available on PATH",
+            "Windows PowerShell executable available on PATH"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "The CLI itself and repository are synthetic temporary fixtures; the test never launches the online frontend."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_dev_api_immutable_startup.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "The immutable/legacy startup selection tests execute PowerShell with staged scripts and owned temporary environment files; interpreter behavior cannot be replaced by a Python mock.",
+          "depends_on": [
+            "Windows PowerShell executable available on PATH"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Database probes keep the pytest DuckDB isolation guard and use temporary paths, not the active API."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_dev_postgres_print_env_purity.py",
+      "expected_counts": {
+        "skip_call": 3
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 3,
+          "category": "symlink",
+          "reason": "Valid database aliases, broken database aliases and broken ancestor aliases need real file/directory symbolic links to verify filesystem identity and error handling.",
+          "depends_on": [
+            "operating system file and directory symbolic-link creation capability"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "All targets belong to tmp_path. Mocked is_symlink/exists responses cannot prove actual broken-link behavior; ordinary files and directories have separate non-skipping cases."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_market_refresh_host_runtime.py",
+      "expected_counts": {
+        "skipif": 24
+      },
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 23,
+          "category": "other",
+          "reason": "Two Windows API identity cases and twenty-one scheduler entry-point cases use synthetic process identities, lifecycle scripts and temporary maintenance markers; they require Windows interpreter and path semantics.",
+          "depends_on": [
+            "Windows host (os.name == nt)",
+            "Windows PowerShell and cmd.exe"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "The process tree, writer and recovery actions are already synthetic; the checked-in backend CI jobs run on ubuntu-latest, where these platform tests are intentionally skipped and must not be reported as passed."
+        },
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "other",
+          "reason": "Native process-handle termination must prove Windows API behavior against a child process created by the test; a mocked process cannot establish the native handle contract.",
+          "depends_on": [
+            "Windows host (os.name == nt)",
+            "Windows PowerShell",
+            "Win32 process handle APIs"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Only the test-created sleep process is terminated; no running MOSS process is discovered or stopped. Linux backend CI skips this platform case."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_archive_storage_migration.py",
+      "expected_counts": {
+        "skip_call": 2
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "A real directory junction must be created to prove migration rejects junction traversal; a host that cannot create it cannot execute this filesystem case.",
+          "depends_on": [
+            "Windows directory junction creation permission, or POSIX symlink support"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "A real file symlink is required to verify archive reads reject aliases; operating-system privilege restrictions may prevent creation.",
+          "depends_on": [
+            "File symlink creation permission"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_choice_stock_pit_request_host.py",
+      "expected_counts": {
+        "skipif": 13
+      },
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 13,
+          "category": "other",
+          "reason": "The maintenance host uses Windows process identity, console and scheduler semantics against temporary synthetic lifecycle scripts.",
+          "depends_on": [
+            "Windows host, PowerShell and cmd.exe"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_codex_python_resolution.py",
+      "expected_counts": {
+        "skipif": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "other",
+          "reason": "Tests execute Windows CMD entry-point resolution in temporary repositories.",
+          "depends_on": [
+            "Windows host and cmd.exe"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_data_update_pit_worker.py",
+      "expected_counts": {
+        "skipif": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "other",
+          "reason": "The isolated closed-port regression verifies Windows delayed connection-refusal semantics and does not probe the live API.",
+          "depends_on": [
+            "Windows socket implementation"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_dev_frontend_application_live.py",
+      "expected_counts": {
+        "skipif": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "other",
+          "reason": "Real application-service acceptance is explicitly opt-in so ordinary unit runs do not start full services.",
+          "depends_on": [
+            "MOSS_TEST_FULL_APP=1 and installed application dependencies"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_dev_frontend_source_entry.py",
+      "expected_counts": {
+        "skip_call": 2
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "The source entry point is a Node process, so its synthetic child-process checks require an installed Node executable.",
+          "depends_on": [
+            "Node.js executable on PATH"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "POSIX SIGTERM forwarding is not a Windows console signal; Windows separately exercises Ctrl+C shutdown.",
+          "depends_on": [
+            "POSIX signals for SIGTERM case; Windows console for the companion Ctrl+C case"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_dev_frontend_source_live.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "A real Vite source-server acceptance test requires dependencies installed from the frontend lockfile.",
+          "depends_on": [
+            "frontend/node_modules/vite installed by npm ci"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_dev_python_resolution.py",
+      "expected_counts": {
+        "skipif": 1,
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "other",
+          "reason": "Tests verify Windows PowerShell interpreter resolution rather than portable Python selection.",
+          "depends_on": [
+            "Windows host"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "The temporary resolver harness must execute the actual PowerShell entry point.",
+          "depends_on": [
+            "Windows PowerShell executable on PATH"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        }
+      ]
+    },
+    {
+      "file": "tests/test_external_storage_paths.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "The storage entry-point contract runs dev-env.ps1 against temporary storage roots and requires PowerShell.",
+          "depends_on": [
+            "Windows PowerShell executable on PATH"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
         }
       ]
     }

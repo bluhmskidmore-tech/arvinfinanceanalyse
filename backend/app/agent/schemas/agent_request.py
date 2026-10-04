@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from backend.app.agent.schemas.agent_model import AgentReasoningEffort
 from pydantic import BaseModel, Field
 
 
@@ -22,4 +23,6 @@ class AgentQueryRequest(BaseModel):
     currency_basis: str = "CNX"
     context: dict[str, Any] = Field(default_factory=dict)
     page_context: AgentPageContext | None = None
-
+    routing_surface: Literal["standalone_workbench"] | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$")
+    reasoning_effort: AgentReasoningEffort | None = None

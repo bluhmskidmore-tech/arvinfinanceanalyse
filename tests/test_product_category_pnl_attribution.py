@@ -9,6 +9,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.app.core_finance.config.product_category_contract import PRODUCT_CATEGORY_RULE_VERSION
 from backend.app.core_finance.product_category_pnl_attribution import (
     build_product_category_attribution_payload,
 )
@@ -159,7 +160,7 @@ def test_product_category_attribution_endpoint_closes_scale_rate_day_ftp(tmp_pat
         current_scale=Decimal("110"),
         prior_cash_rate=Decimal("0.05"),
         current_cash_rate=Decimal("0.06"),
-        prior_ftp_rate=Decimal("0.0175"),
+        prior_ftp_rate=Decimal("0.0160"),
         current_ftp_rate=Decimal("0.0160"),
     )
     assert Decimal(str(effects["scale_effect"])) == pytest.approx(expected["scale_effect"])
@@ -654,6 +655,7 @@ def _insert_direct_hierarchy_pair(duckdb_path: Path) -> None:
 def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
     for report_date, direct_net in (("2025-02-28", Decimal("1")), ("2026-02-28", Decimal("3"))):
         source_version = f"sv_{report_date}"
+        baseline_rate = Decimal("1.75") if report_date.startswith("2025") else Decimal("1.60")
         rows = [
             _row(
                 report_date=report_date,
@@ -666,7 +668,7 @@ def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
                 ftp=Decimal("2"),
                 net=Decimal("3"),
                 weighted_yield=Decimal("5"),
-                baseline_ftp_rate_pct=Decimal("2"),
+                baseline_ftp_rate_pct=baseline_rate,
                 is_total=False,
                 source_version=source_version,
             ),
@@ -681,7 +683,7 @@ def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
                 ftp=ZERO,
                 net=direct_net,
                 weighted_yield=None,
-                baseline_ftp_rate_pct=Decimal("2"),
+                baseline_ftp_rate_pct=baseline_rate,
                 is_total=False,
                 source_version=source_version,
             ),
@@ -696,7 +698,7 @@ def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
                 ftp=Decimal("2"),
                 net=Decimal("3") + direct_net,
                 weighted_yield=Decimal("5"),
-                baseline_ftp_rate_pct=Decimal("2"),
+                baseline_ftp_rate_pct=baseline_rate,
                 is_total=True,
                 source_version=source_version,
             ),
@@ -711,7 +713,7 @@ def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
                 ftp=ZERO,
                 net=ZERO,
                 weighted_yield=None,
-                baseline_ftp_rate_pct=Decimal("2"),
+                baseline_ftp_rate_pct=baseline_rate,
                 is_total=True,
                 source_version=source_version,
             ),
@@ -726,7 +728,7 @@ def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
                 ftp=Decimal("2"),
                 net=Decimal("3") + direct_net,
                 weighted_yield=Decimal("5"),
-                baseline_ftp_rate_pct=Decimal("2"),
+                baseline_ftp_rate_pct=baseline_rate,
                 is_total=True,
                 source_version=source_version,
             ),
@@ -809,7 +811,7 @@ def _row(
         is_total,
         children_json,
         source_version,
-        "rv_product_category_pnl_v1",
+        PRODUCT_CATEGORY_RULE_VERSION,
     )
 
 

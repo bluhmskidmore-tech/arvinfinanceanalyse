@@ -28,6 +28,106 @@ from tests.test_campisi_decision_grade import (
 
 pytestmark = pytest.mark.unit
 
+@pytest.mark.parametrize("surface", ["four-effects", "enhanced", "maturity-buckets"])
+@pytest.mark.parametrize("business_code", [None, "PNL_BRIDGE_WINDOW_MISMATCH", "DUPLICATE_BALANCE_KEY"])
+def test_campisi_api_bridge_failure_preserves_code_without_private_payload(
+    monkeypatch, tmp_path, caplog, surface, business_code,
+):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.app.api.routes import campisi_attribution as route
+    from tests.test_campisi_attribution_service import (
+        _bond_row, _flat_treasury, _install_full_service_fakes,
+    )
+
+    original_closure = campisi_svc._fetch_formal_closure
+    row = _bond_row(code="SYNTHETIC", asset_class="rate", market_value=Decimal("1000"), face_value=Decimal("1000"))
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-08-31", "2026-07-31"],
+        rows_by_date={"2026-07-31": [row], "2026-08-31": [row]},
+        curves={(day, "treasury"): _flat_treasury(Decimal("3")) for day in ("2026-07-31", "2026-08-31")},
+        duckdb_path=str(tmp_path / "unused.duckdb"),
+    )
+    monkeypatch.setattr(campisi_svc, "_fetch_formal_closure", original_closure)
+    marker = "synthetic-campisi-private-source-payload"
+
+    def fail_bridge(**_kwargs):
+        raise ValueError(f"{business_code or 'arbitrary data failure'}: {marker}")
+
+    monkeypatch.setattr(campisi_svc, "_fetch_formal_bridge", fail_bridge)
+    # Actual route serialization, with authorization and all business data sources isolated.
+    monkeypatch.setattr(route, "_ensure_pnl_attribution_read_allowed", lambda _auth: None)
+    monkeypatch.setattr(route, "_svc", lambda: campisi_svc)
+    app = FastAPI()
+    app.dependency_overrides[route.get_auth_context] = lambda: SimpleNamespace(user_id="synthetic-user")
+    app.include_router(route.router)
+    campisi_svc.clear_campisi_four_effects_runtime_cache()
+    try:
+        response = TestClient(app).get(
+            f"/api/pnl-attribution/campisi/{surface}",
+            params={"start_date": "2026-07-31", "end_date": "2026-08-31"},
+        )
+    finally:
+        campisi_svc.clear_campisi_four_effects_runtime_cache()
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["quality_flag"] != "ok"
+    if surface == "four-effects":
+        closure = payload["result"]["formal_closure"]
+        assert closure["status"] == "unavailable"
+        assert closure["formal_actual_pnl"] is None
+        assert closure["residual_to_formal_pnl"] is None
+        assert closure["residual_ratio"] is None
+    if business_code:
+        assert business_code in response.text
+    assert marker not in response.text
+    assert marker not in caplog.text
+    assert "ValueError" in response.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+@pytest.mark.parametrize("entry", ["uncached", "cached", "closure"])
+@pytest.mark.parametrize("error_kind", ["type", "attribute", "key", "read_selection"])
+def test_campisi_bridge_preserves_programming_and_read_selection_errors(
+    monkeypatch, tmp_path, caplog, entry, error_kind,
+):
+    from backend.app.repositories.duckdb_read_context import DuckDBReadSelectionError
+
+    error_type = {
+        "type": TypeError, "attribute": AttributeError,
+        "key": KeyError, "read_selection": DuckDBReadSelectionError,
+    }[error_kind]
+    marker = "synthetic-campisi-error-must-propagate"
+    error = error_type(marker)
+
+    def fail(**_kwargs):
+        raise error
+
+    monkeypatch.setattr(campisi_svc, "_fetch_formal_bridge", fail)
+    settings = SimpleNamespace(duckdb_path=str(tmp_path / "unused.duckdb"), governance_path=str(tmp_path / "gov"))
+    kwargs = {"settings": settings, "report_date": "2026-08-31", "start_date": "2026-07-31"}
+    warnings = []
+    if entry == "closure":
+        operation = campisi_svc._fetch_formal_closure
+        kwargs["campisi_total_return"] = Decimal("7")
+    elif entry == "cached":
+        operation = campisi_svc._try_fetch_cached_formal_bridge
+        kwargs.update(duckdb_fingerprint=None, warnings=warnings)
+    else:
+        operation = campisi_svc._try_fetch_formal_bridge
+        kwargs["warnings"] = warnings
+    campisi_svc.clear_campisi_four_effects_runtime_cache()
+    try:
+        with pytest.raises(error_type) as caught:
+            operation(**kwargs)
+    finally:
+        campisi_svc.clear_campisi_four_effects_runtime_cache()
+    assert caught.value is error
+    assert warnings == []
+    assert marker not in caplog.text
+
+
 MISSING_INPUTS = [
     None,
     "",
@@ -245,3 +345,64 @@ def test_try_fetch_formal_bridge_no_longer_swallows_programming_errors(
             settings=SimpleNamespace(),
             report_date="2026-01-31",
         )
+
+
+@pytest.mark.parametrize("ambiguous,reverse_order", [(True, False), (True, True), (False, False)])
+def test_balance_ambiguity_cannot_become_formal_campisi_closure(
+    monkeypatch: pytest.MonkeyPatch, ambiguous: bool, reverse_order: bool,
+) -> None:
+    from backend.app.core_finance.pnl_bridge import build_pnl_bridge_rows
+    from backend.app.services import pnl_bridge_service
+
+    identity = {
+        "instrument_code": "SYNTH", "portfolio_name": "P", "cost_center": "C",
+        "currency_basis": "CNY", "accounting_basis": "FVTPL",
+    }
+    balance = {
+        **identity, "report_date": "2026-08-31", "market_value_amount": Decimal("100"),
+        "face_value_amount": Decimal("100"), "accrued_interest_amount": Decimal("0"),
+        "maturity_date": "2030-08-31", "modified_duration": Decimal("2"),
+        "bond_type": "企业债", "asset_class": "信用债",
+    }
+    current = [balance]
+    if ambiguous:
+        current.append({**balance, "market_value_amount": Decimal("400"),
+                        "modified_duration": Decimal("4")})
+    if reverse_order:
+        current.reverse()
+    prior = [{**balance, "report_date": "2026-07-31"}]
+    pnl = [{**identity, "report_date": "2026-08-31", "interest_income_514": Decimal("0"),
+            "fair_value_change_516": Decimal("-2"), "capital_gain_517": Decimal("0"),
+            "manual_adjustment": Decimal("0"), "total_pnl": Decimal("-2")}]
+
+    def bridge_from_synthetic_inputs(**_kwargs):
+        rows = build_pnl_bridge_rows(
+            pnl, current, prior,
+            treasury_curve_current={"3Y": Decimal("4"), "5Y": Decimal("4")},
+            treasury_curve_prior={"3Y": Decimal("3"), "5Y": Decimal("3")},
+            aaa_credit_curve_current={"3Y": Decimal("4"), "5Y": Decimal("4")},
+            aaa_credit_curve_prior={"3Y": Decimal("3"), "5Y": Decimal("3")},
+        )
+        return {
+            "result": {"summary": pnl_bridge_service._build_summary(rows).model_dump(mode="json")},
+            "result_meta": {"filters_applied": {
+                "window_aligned": True,
+                "balance_window": {"start": "2026-07-31", "end": "2026-08-31"},
+            }},
+        }
+
+    monkeypatch.setattr(pnl_bridge_service, "pnl_bridge_envelope", bridge_from_synthetic_inputs)
+    closure = campisi_svc._fetch_formal_closure(
+        settings=SimpleNamespace(duckdb_path="unused", governance_path="unused"),
+        report_date="2026-08-31", start_date="2026-07-31",
+        campisi_total_return=Decimal("-2"),
+    )
+    if ambiguous:
+        assert closure["status"] == "unavailable"
+        assert closure["formal_actual_pnl"] is None
+        assert closure["residual_to_formal_pnl"] is None
+        assert "DUPLICATE_BALANCE_KEY" in closure["message"]
+    else:
+        assert closure["status"] == "closed"
+        assert closure["formal_actual_pnl"] == -2.0
+        assert closure["residual_to_formal_pnl"] == 0.0

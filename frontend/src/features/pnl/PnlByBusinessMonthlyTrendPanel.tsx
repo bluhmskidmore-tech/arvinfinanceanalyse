@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 
 import type { PnlByBusinessMonthlyBucket } from "../../api/contracts";
-import { BaseChart } from "../../components/charts/BaseChart";
+import { ChartCard } from "../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../components/charts/chartCardScale";
 // 本页为 Nocturne scope：显式走 nocturneChartTheme（canvas 不消费 CSS 变量），
 // 不再经共享别名 createLineChartOption/mossChartPalette（IB 浅色默认）取色。
 import { nocturneChartTheme } from "../../components/charts/chartTheme";
@@ -29,19 +30,19 @@ const TREND_VIEW_META: Record<
 > = {
   pnl: {
     label: "损益 / FTP后",
-    title: "损益与 FTP 后收益（万元）",
+    title: "损益与FTP后收益",
     description: "优先判断损益方向，以及扣除资金成本后是否仍然为正。",
     unit: "万元",
   },
   balance: {
     label: "日均 / 期末",
-    title: "日均与期末余额（亿元）",
+    title: "日均与期末余额",
     description: "观察规模变化，以及日均余额与月末时点余额的偏离。",
     unit: "亿元",
   },
   yield: {
     label: "收益率 / FTP",
-    title: "收益率与 FTP（%）",
+    title: "收益率与FTP",
     description: "对照年化收益率、FTP 年化利率与 FTP 后年化收益率。",
     unit: "%",
   },
@@ -78,9 +79,8 @@ function buildTrendOption(
     },
     legend: {
       data: series.map((item) => item.name),
-      top: 0,
     },
-    grid: { left: 12, right: 18, top: 48, bottom: 12, containLabel: true },
+    grid: { left: 12, right: 18, top: 48 },
     xAxis: {
       type: "category",
       data: points.map((point) => point.monthKey),
@@ -214,34 +214,40 @@ export function PnlByBusinessMonthlyTrendPanel({
         </span>
       </div>
 
-      {isLoading ? (
-        <div className="pnl-by-business-analysis-state">正在读取选中业务月度趋势</div>
-      ) : isError ? (
-        <div className="pnl-by-business-analysis-state">选中业务月度趋势读取失败</div>
-      ) : !selectedBusiness ? (
-        <div className="pnl-by-business-analysis-state">请选择业务种类后查看月度趋势</div>
-      ) : !hasAvailableTrend ? (
-        <div className="pnl-by-business-analysis-state">
-          暂无所选业务月度趋势；月报接口未返回“{trend.businessLabel}”对应 row_key，未按 0 补齐。
-        </div>
-      ) : (
-        <>
-          {trend.coverageWarningMonths.length > 0 ||
+      {!isLoading && !isError && selectedBusiness && hasAvailableTrend &&
+      (trend.coverageWarningMonths.length > 0 ||
           trend.missingBucketMonths.length > 0 ||
-          trend.missingRowMonths.length > 0 ? (
-            <div className="pnl-by-business-selected-trend__quality" role="note">
-              {trend.coverageWarningMonths.length > 0 ? (
-                <span>该月余额样本覆盖/补样待复核：{trend.coverageWarningMonths.join("、")}</span>
-              ) : null}
-              {trend.missingBucketMonths.length > 0 ? (
-                <span>月报缺少整月 bucket 并保留断点：{trend.missingBucketMonths.join("、")}</span>
-              ) : null}
-              {trend.missingRowMonths.length > 0 ? (
-                <span>缺少该业务行并保留断点：{trend.missingRowMonths.join("、")}</span>
-              ) : null}
-            </div>
+          trend.missingRowMonths.length > 0) ? (
+        <div className="pnl-by-business-selected-trend__quality" role="note">
+          {trend.coverageWarningMonths.length > 0 ? (
+            <span>该月余额样本覆盖/补样待复核：{trend.coverageWarningMonths.join("、")}</span>
           ) : null}
-          <div className="pnl-by-business-selected-trend__toolbar">
+          {trend.missingBucketMonths.length > 0 ? (
+            <span>月报缺少整月 bucket 并保留断点：{trend.missingBucketMonths.join("、")}</span>
+          ) : null}
+          {trend.missingRowMonths.length > 0 ? (
+            <span>缺少该业务行并保留断点：{trend.missingRowMonths.join("、")}</span>
+          ) : null}
+        </div>
+      ) : null}
+      <ChartCard
+        testId="pnl-by-business-trend-active-panel"
+        title={activeTrendMeta.title}
+        question={activeTrendMeta.description}
+        unit={activeTrendMeta.unit}
+        asOf={periodEndDate}
+        height={CHART_CARD_HEIGHTS.hero}
+        legendRows={activeTrendView === "yield" ? 2 : 1}
+        option={selectedBusiness && hasAvailableTrend ? activeTrendOption : null}
+        state={isLoading ? "loading" : isError ? "error" : undefined}
+        errorMessage="选中业务月度趋势读取失败"
+        emptyMessage={
+          !selectedBusiness
+            ? "请选择业务种类后查看月度趋势"
+            : `暂无“${trend.businessLabel}”对应月度趋势，未按 0 补齐。`
+        }
+        actions={
+          !isLoading && !isError && selectedBusiness && hasAvailableTrend ? (
             <div className="pnl-by-business-selected-trend__tabs" role="group" aria-label="趋势指标">
               {(Object.keys(TREND_VIEW_META) as TrendView[]).map((view) => (
                 <button
@@ -255,19 +261,10 @@ export function PnlByBusinessMonthlyTrendPanel({
                 </button>
               ))}
             </div>
-            <span>缺月、缺行保留断点，不按 0 补齐</span>
-          </div>
-          <article
-            className="pnl-by-business-selected-trend__card"
-            aria-labelledby="pnl-by-business-trend-active-title"
-            data-testid="pnl-by-business-trend-active-panel"
-          >
-            <h3 id="pnl-by-business-trend-active-title">{activeTrendMeta.title}</h3>
-            <p>{activeTrendMeta.description}</p>
-            <BaseChart option={activeTrendOption} height={320} />
-          </article>
-        </>
-      )}
+          ) : undefined
+        }
+        footnote="缺月、缺行保留断点，不按 0 补齐"
+      />
     </section>
   );
 }

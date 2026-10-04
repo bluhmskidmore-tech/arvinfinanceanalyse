@@ -590,15 +590,45 @@ export type EquityBondERP = {
   verdict: "equity_cheap" | "equity_expensive" | "neutral" | "unavailable";
   verdictLabel: string;
   verdictDescription: string;
+  /** 结论同视觉单元内的非正式口径披露，不可藏入 tooltip。 */
+  caliberLabel: string;
   verdictColor: string;
   verdictBg: string;
 };
 
+/** 展示层试算披露文案；与产品分类页「候选指标 · 非正式结论」同级可见。 */
+export const ERP_DISPLAY_CALIBER_LABEL = "展示层试算 · 非正式口径";
+
+/**
+ * 股债利差分档边界，镜像自 `backend/app/core_finance/macro_bond_linkage.py`
+ * 的 `EQUITY_BOND_SPREAD_RULES`：
+ *   - `restrictive` / `conflicted` 规则的 `spread_min=4.0` → 利差高档下沿；
+ *   - `supportive` 规则的 `spread_max=2.75` → 利差低档上沿。
+ * 后端改动这两个数值时，`crossAssetAnalytics.test.ts` 的常量一致性用例会失败。
+ */
+export const EQUITY_BOND_SPREAD_WIDE_MIN_PCT = 4.0;
+export const EQUITY_BOND_SPREAD_NARROW_MAX_PCT = 2.75;
+
 /**
  * Compute equity-bond risk premium from CSI300 PE and 10Y gov yield.
- * ERP = (1/PE × 100) − 10Y_yield
- * ERP > 3% → equity relatively cheap
- * ERP < 1% → equity relatively expensive
+ * ERP = (1/PE × 100) − 10Y_yield，与后端 `cycle_macro_score.compute_price_spread_signal`
+ *（`spread_ppt = (100.0 / pe) - cn10y`）以及 `macro_bond_linkage_service` 组装
+ * `EquityBondSpreadSignal.spread_pct` 时同一公式。
+ *
+ * 分档镜像后端 `EQUITY_BOND_SPREAD_RULES` 的利差边界（见上方常量），但股票视角的
+ * cheap/expensive 判定是前端展示层分档，后端未定义该判定：
+ *   - ERP ≥ 4.0：对应后端 `_match_equity_bond_spread_rule` 的 `spread_min` 检查通过
+ *     （`spread_pct < spread_min` 才跳过，即含等号命中）时的债券视角 `restrictive`/`conflicted`
+ *     高档；换成股票视角即"盈利收益率远高于无风险利率"→股票偏便宜。
+ *   - ERP ≤ 2.75：对应后端 `spread_max` 检查通过（`spread_pct > spread_max` 才跳过，即含等号
+ *     命中）时的债券视角 `supportive` 低档；股票视角即股票偏贵。
+ *   - 2.75 < ERP < 4.0：后端无规则命中、落回 `neutral`，此处同样判中性。
+ *
+ * 只镜像利差边界、不复用后端 stance：后端规则还叠加了 `index_pct_change` 日涨跌幅条件
+ * （±0.25），stance 是"利差档位 × 指数动量"的联合结果，无法一一还原为纯利差的股票估值判定。
+ * 展示文案也只用股票视角词汇，`supportive` / `restrictive` 按 `docs/page_contracts.md`
+ * §14.6.1 B 仅保留给受治理的传导轴输出。后端因债券侧原因调整这两个阈值时，需人工复核本镜像
+ * 是否仍适用——护栏测试只提示不一致，不应被当作"跟着改前端常量即可"的信号。
  */
 export function computeEquityBondERP(kpis: ResolvedCrossAssetKpi[]): EquityBondERP {
   const byKey = new Map(kpis.map((k) => [k.key, k]));
@@ -613,6 +643,7 @@ export function computeEquityBondERP(kpis: ResolvedCrossAssetKpi[]): EquityBondE
     verdict: "unavailable",
     verdictLabel: "数据不足",
     verdictDescription: "缺少沪深300市盈率或10Y国债数据，无法计算股债性价比。",
+    caliberLabel: ERP_DISPLAY_CALIBER_LABEL,
     verdictColor: CA_PALETTE.erpUnavailable,
     verdictBg: CA_PALETTE.erpUnavailableBg,
   };
@@ -633,22 +664,22 @@ export function computeEquityBondERP(kpis: ResolvedCrossAssetKpi[]): EquityBondE
   let verdictColor: string;
   let verdictBg: string;
 
-  if (erp > 3) {
+  if (erp >= EQUITY_BOND_SPREAD_WIDE_MIN_PCT) {
     verdict = "equity_cheap";
     verdictLabel = "股票偏便宜";
-    verdictDescription = `ERP ${erp.toFixed(2)}% > 3%：盈利收益率显著高于无风险利率，股票相对债券有吸引力。`;
+    verdictDescription = `ERP ${erp.toFixed(2)}% ≥ ${EQUITY_BOND_SPREAD_WIDE_MIN_PCT.toFixed(2)}%：盈利收益率显著高于无风险利率，股票相对债券有吸引力。`;
     verdictColor = CA_PALETTE.erpCheap;
     verdictBg = CA_PALETTE.erpCheapBg;
-  } else if (erp < 1) {
+  } else if (erp <= EQUITY_BOND_SPREAD_NARROW_MAX_PCT) {
     verdict = "equity_expensive";
     verdictLabel = "股票偏贵";
-    verdictDescription = `ERP ${erp.toFixed(2)}% < 1%：盈利收益率接近无风险利率，股票估值偏高。`;
+    verdictDescription = `ERP ${erp.toFixed(2)}% ≤ ${EQUITY_BOND_SPREAD_NARROW_MAX_PCT.toFixed(2)}%：盈利收益率接近无风险利率，股票估值偏高。`;
     verdictColor = CA_PALETTE.erpExpensive;
     verdictBg = CA_PALETTE.erpExpensiveBg;
   } else {
     verdict = "neutral";
-    verdictLabel = "中性区间";
-    verdictDescription = `ERP ${erp.toFixed(2)}%：盈利收益率适度高于无风险利率，股债性价比中性。`;
+    verdictLabel = "中性均衡";
+    verdictDescription = `ERP ${erp.toFixed(2)}% 落在 ${EQUITY_BOND_SPREAD_NARROW_MAX_PCT.toFixed(2)}%–${EQUITY_BOND_SPREAD_WIDE_MIN_PCT.toFixed(2)}% 之间：股债性价比中性，不构成方向判断。`;
     verdictColor = CA_PALETTE.erpNeutral;
     verdictBg = CA_PALETTE.erpNeutralBg;
   }
@@ -661,6 +692,7 @@ export function computeEquityBondERP(kpis: ResolvedCrossAssetKpi[]): EquityBondE
     verdict,
     verdictLabel,
     verdictDescription,
+    caliberLabel: ERP_DISPLAY_CALIBER_LABEL,
     verdictColor,
     verdictBg,
   };

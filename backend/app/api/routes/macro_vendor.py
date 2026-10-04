@@ -1,24 +1,24 @@
 from typing import Annotated
 
 from backend.app.api.deps import ensure_read_allowed
-from backend.app.api.perf_logging import timed_api_call
-from backend.app.api.response_cache import (
+from backend.app.governance.settings import get_settings
+from backend.app.observability.perf_logging import timed_api_call
+from backend.app.observability.response_cache import (
     market_home_catalog_cache_key,
     market_home_choice_latest_cache_key,
     market_home_rates_cache_key,
     market_home_response_cache,
 )
-from backend.app.governance.settings import get_settings
+from backend.app.schemas.home_support_read_contracts import MarketDataRatesEnvelope
 from backend.app.schemas.macro_vendor import ChoiceMacroRefreshTier
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.macro_vendor_refresh_service import (
+    MacroVendorQueueError,
     _refresh_payload_succeeded,  # noqa: F401 - preserved route-level test contract
-    refresh_choice_macro_snapshot,
-    refresh_public_cross_asset_headlines,
-    refresh_tushare_ncd_shibor_proxy,
-    run_choice_macro_refresh,
+    queue_choice_macro_refresh,
 )
 from backend.app.services.macro_vendor_service import (
+    ChoiceMacroRefreshStatusUnavailableError,
     choice_macro_formal_envelope,
     choice_macro_latest_envelope,
     choice_macro_refresh_status,
@@ -41,7 +41,11 @@ def _ensure_macro_vendor_read_allowed(auth: AuthContext) -> None:
 
 # ── Formal market-data endpoints (Phase 1 promotion) ───────────────
 
-@router.get("/ui/market-data/rates")
+@router.get(
+    "/ui/market-data/rates",
+    response_model=MarketDataRatesEnvelope,
+    response_model_exclude_unset=True,
+)
 def market_data_rates(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
     """Formal-basis rates for the market-data page (stable series only)."""
     _ensure_macro_vendor_read_allowed(auth)
@@ -162,15 +166,14 @@ def choice_series_refresh(
         # Scope-store unavailability is a service failure, not a denial
         # (same mapping as api/deps.py::ensure_read_allowed).
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    payload, refresh_succeeded = run_choice_macro_refresh(
-        backfill_days=backfill_days,
-        choice_refresh_task=refresh_choice_macro_snapshot,
-        public_refresh_task=refresh_public_cross_asset_headlines,
-        tushare_ncd_shibor_refresh_task=refresh_tushare_ncd_shibor_proxy,
-    )
-    if refresh_succeeded:
-        market_home_response_cache.invalidate()
-    return payload
+    try:
+        return queue_choice_macro_refresh(
+            duckdb_path=settings.duckdb_path,
+            governance_path=settings.governance_path,
+            backfill_days=backfill_days,
+        )
+    except MacroVendorQueueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/ui/macro/choice-series/refresh-status")
@@ -181,6 +184,23 @@ def choice_series_refresh_status(
     _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
     try:
-        return choice_macro_refresh_status(settings.governance_path, run_id=run_id)
+        payload = choice_macro_refresh_status(settings.governance_path, run_id=run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ChoiceMacroRefreshStatusUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": exc.error_code,
+                "message": str(exc),
+                "error_message": str(exc),
+                "run_id": exc.run_id,
+                "last_status": exc.last_status,
+            },
+        ) from exc
+    if _refresh_payload_succeeded(payload):
+        # The response cache is process-local. The worker invalidates its own
+        # instance after writes; observing the terminal run clears the API
+        # process instance before the page refetches Choice/rates/catalog data.
+        market_home_response_cache.invalidate()
+    return payload

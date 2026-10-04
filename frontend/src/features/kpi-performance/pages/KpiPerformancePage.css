@@ -19,7 +19,6 @@
   --ib-up: var(--dh-api-green);
   --ib-down: var(--dh-api-red);
   --ib-warn: var(--dh-api-amber);
-  --ib-radius: var(--dh-api-radius);
   --moss-color-text-primary: var(--dh-api-ink);
   --moss-color-text-secondary: var(--dh-api-soft);
   --moss-color-text-muted: var(--dh-api-muted);
@@ -30,7 +29,6 @@
   --moss-color-neutral-400: var(--dh-api-muted);
   --moss-color-neutral-600: var(--dh-api-soft);
   --moss-color-neutral-700: var(--dh-api-soft);
-  --moss-color-neutral-900: var(--dh-api-ink);
   --moss-color-success-500: var(--dh-api-green);
 }
 
@@ -266,7 +264,7 @@
 .kpi-performance-page__empty-title {
   color: var(--ib-ink);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .kpi-performance-page__empty-description {
@@ -299,8 +297,7 @@
   border-bottom: 1px solid var(--ib-hairline);
 }
 
-.kpi-owner-list__title,
-.kpi-metric-table-card__title {
+.kpi-owner-list__title {
   margin: 0;
   color: var(--ib-ink);
   font-size: 14px;
@@ -396,12 +393,7 @@
 }
 
 .kpi-metric-table-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--moss-space-3);
-  padding: var(--moss-space-3) var(--moss-space-4);
-  border-bottom: 1px solid var(--ib-hairline);
+  padding: var(--moss-space-3) var(--moss-space-4) 0;
 }
 
 .kpi-metric-table-card__count {
@@ -552,7 +544,7 @@
 }
 
 .kpi-metric-table__cell--number {
-  font-family: var(--ib-font-mono, monospace);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -640,7 +632,7 @@
 }
 
 .kpi-metric-table__summary-number {
-  font-family: var(--ib-font-mono, monospace);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
@@ -739,7 +731,7 @@
 
 .kpi-modal-v2__title-main {
   color: var(--ib-ink);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
 }
 

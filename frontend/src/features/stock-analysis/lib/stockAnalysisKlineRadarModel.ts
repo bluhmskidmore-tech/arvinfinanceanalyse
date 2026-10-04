@@ -1,6 +1,9 @@
 import type {
   FreshTrendWatchlistCandidateItem,
   HybridFusionCandidateItem,
+  LivermoreBreakoutPatternCode,
+  LivermoreModuleState,
+  LivermoreOutputKey,
   LivermoreRiskExitItem,
   LivermoreRiskExitWatchItem,
   LivermoreStockCandidateItem,
@@ -8,7 +11,9 @@ import type {
   MeanReversionCandidateItem,
   UptrendMomentumCandidateItem,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import type { StockDetailSource } from "./stockAnalysisDetailSelection";
+import { localizeStockBackendText } from "./stockAnalysisPageModel";
 import { riskExitBlockedSummary } from "./stockAnalysisPageCopy";
 
 export type StockAnalysisKlineRadarQueueKey =
@@ -86,6 +91,19 @@ export type StockAnalysisKlineRadarQueue = {
   emptyDetail: string;
 };
 
+export type StockAnalysisKlineRadarModuleState = {
+  key: LivermoreOutputKey;
+  label: string;
+  state: LivermoreModuleState["state"] | "missing";
+  stateLabel: string;
+  renderMode: LivermoreModuleState["render_mode"] | "missing";
+  outputCount: number | null;
+  outputLabel: string;
+  sourceDate: string | null;
+  reason: string | null;
+  tone: StockAnalysisKlineRadarTone;
+};
+
 export type StockAnalysisKlineRadarSummary = {
   asOfDate: string | null;
   marketGateState: string | null;
@@ -96,6 +114,7 @@ export type StockAnalysisKlineRadarSummary = {
   riskUnavailableReason: string | null;
   pendingEvidenceItems: StockAnalysisKlineRadarItem[];
   focusItems: StockAnalysisKlineRadarItem[];
+  moduleStates: StockAnalysisKlineRadarModuleState[];
   queues: StockAnalysisKlineRadarQueue[];
   topology: StockAnalysisKlineRadarTopology;
 };
@@ -139,6 +158,109 @@ const SOURCE_MODULE_LABELS: Record<StockAnalysisKlineRadarSourceModule, string> 
   "risk_exit.items": "风险退出",
   "risk_exit.watch_items": "风险观察",
 };
+
+const MODULE_STATE_META: Record<
+  LivermoreOutputKey,
+  { label: string; countLabel: string }
+> = {
+  market_gate: { label: "市场门控", countLabel: "通过条件" },
+  sector_rank: { label: "板块强弱", countLabel: "板块" },
+  stock_candidates: { label: "趋势候选", countLabel: "命中" },
+  uptrend_momentum_candidates: { label: "上行动量", countLabel: "命中" },
+  fresh_trend_watchlist: { label: "新趋势观察", countLabel: "命中" },
+  mean_reversion_candidates: { label: "超跌反转", countLabel: "命中" },
+  factor_screen_candidates: { label: "多因子", countLabel: "命中" },
+  theme_breakout: { label: "题材观察", countLabel: "题材" },
+  hybrid_fusion: { label: "融合策略", countLabel: "命中" },
+  risk_exit: { label: "风险退出", countLabel: "触发" },
+};
+
+const MODULE_STATE_KEYS = Object.keys(MODULE_STATE_META) as LivermoreOutputKey[];
+
+function moduleOutputCount(
+  payload: LivermoreStrategyPayload,
+  key: LivermoreOutputKey,
+): number | null {
+  if (key === "market_gate") return finiteNumber(payload.market_gate.passed_conditions);
+  if (key === "sector_rank") return finiteNumber(payload.sector_rank?.sector_count);
+  if (key === "stock_candidates") return finiteNumber(payload.stock_candidates?.candidate_count);
+  if (key === "uptrend_momentum_candidates") {
+    return finiteNumber(payload.uptrend_momentum_candidates?.candidate_count);
+  }
+  if (key === "fresh_trend_watchlist") {
+    return finiteNumber(payload.fresh_trend_watchlist?.candidate_count);
+  }
+  if (key === "mean_reversion_candidates") {
+    return finiteNumber(payload.mean_reversion_candidates?.candidate_count);
+  }
+  if (key === "factor_screen_candidates") {
+    return finiteNumber(payload.factor_screen_candidates?.candidate_count);
+  }
+  if (key === "theme_breakout") return finiteNumber(payload.theme_breakout?.theme_count);
+  if (key === "hybrid_fusion") {
+    return finiteNumber(payload.hybrid_fusion_candidates?.candidate_count);
+  }
+  return finiteNumber(payload.risk_exit?.signal_count);
+}
+
+function moduleStateTone(
+  state: LivermoreModuleState | undefined,
+): StockAnalysisKlineRadarTone {
+  if (!state || state.state === "blocked" || state.state === "unsupported") return "negative";
+  if (
+    state.state === "degraded"
+    || state.state === "partial"
+    || state.render_mode === "evidence_only"
+    || state.excludes_from_primary
+  ) {
+    return "warning";
+  }
+  return state.render_mode === "primary" ? "positive" : "neutral";
+}
+
+function moduleStateLabel(state: LivermoreModuleState | undefined): string {
+  if (!state) return "状态未返回";
+  if (state.state === "blocked") return "模块阻断";
+  if (state.state === "unsupported") return "模块不可用";
+  if (state.render_mode === "hidden") return "后端隐藏";
+  if (
+    state.state === "degraded"
+    || state.state === "partial"
+    || state.render_mode === "evidence_only"
+    || state.excludes_from_primary
+  ) {
+    return "证据模式";
+  }
+  return "主结果";
+}
+
+function buildStockAnalysisKlineRadarModuleStates(
+  payload: LivermoreStrategyPayload | null | undefined,
+): StockAnalysisKlineRadarModuleState[] {
+  return MODULE_STATE_KEYS.map((key) => {
+    const meta = MODULE_STATE_META[key];
+    const state = payload?.module_states?.find((item) => item.key === key);
+    const unavailable = !state || state.state === "blocked" || state.state === "unsupported";
+    const outputCount = payload && !unavailable ? moduleOutputCount(payload, key) : null;
+    const reason = state?.reasons.find((item) => item.trim().length > 0) ?? null;
+    return {
+      key,
+      label: meta.label,
+      state: state?.state ?? "missing",
+      stateLabel: moduleStateLabel(state),
+      renderMode: state?.render_mode ?? "missing",
+      outputCount,
+      outputLabel: unavailable
+        ? "不可按 0 命中解释"
+        : outputCount == null
+          ? "数量待返回"
+          : `${meta.countLabel} ${outputCount}`,
+      sourceDate: state?.source_date ?? null,
+      reason: reason ? localizeStockBackendText(reason, key) : null,
+      tone: moduleStateTone(state),
+    };
+  });
+}
 
 function topologySourceNodeId(sourceModule: StockAnalysisKlineRadarSourceModule): string {
   return `module:${sourceModule}`;
@@ -205,16 +327,27 @@ function formatSignedRatio(value: number | null | undefined, digits = 1): string
   return `${sign}${pct.toFixed(digits)}%`;
 }
 
+function formatSignedPercentPoints(value: number | null | undefined, digits = 1): string | null {
+  const parsed = finiteNumber(value);
+  if (parsed == null) return null;
+  const sign = parsed > 0 ? "+" : "";
+  return `${sign}${parsed.toFixed(digits)}%`;
+}
+
+function breakoutSignalLabel(patternCode: LivermoreBreakoutPatternCode | null | undefined): string {
+  if (patternCode === "breakout") return "平台突破";
+  if (patternCode === "pullback") return "回踩观察";
+  if (patternCode === "consolidation") return "盘整观察";
+  return EM_DASH;
+}
+
 function appendEvidence(target: string[], label: string, value: string | null | undefined): void {
   if (!value) return;
   target.push(`${label} ${value}`);
 }
 
 function buildBreakoutItem(item: LivermoreStockCandidateItem): StockAnalysisKlineRadarItem {
-  const distanceToBreakout =
-    finiteNumber(item.breakout_level) && item.breakout_level !== 0
-      ? formatSignedRatio((item.close - item.breakout_level) / item.breakout_level)
-      : null;
+  const distanceToBreakout = formatSignedPercentPoints(item.distance_to_breakout_pct);
   const evidence: string[] = [];
   appendEvidence(evidence, "距突破", distanceToBreakout);
   appendEvidence(evidence, "MA20", formatNumber(item.ma20));
@@ -229,7 +362,7 @@ function buildBreakoutItem(item: LivermoreStockCandidateItem): StockAnalysisKlin
     sectorCode: item.sector_code,
     sectorName: item.sector_name,
     rank: item.rank,
-    signalLabel: distanceToBreakout && distanceToBreakout.startsWith("+") ? "平台突破" : "临近突破",
+    signalLabel: breakoutSignalLabel(item.pattern_code),
     sourceLabel: "Livermore 候选",
     sourceModule: "stock_candidates",
     detailSource: "livermore",
@@ -518,6 +651,7 @@ export function buildStockAnalysisKlineRadar(
       riskUnavailableReason: null,
       pendingEvidenceItems: [],
       focusItems: [],
+      moduleStates: buildStockAnalysisKlineRadarModuleStates(payload),
       queues,
       topology: buildStockAnalysisKlineRadarTopology(payload, queues),
     };
@@ -581,6 +715,7 @@ export function buildStockAnalysisKlineRadar(
     riskUnavailableReason: riskUnsupported ? riskExitBlockedSummary(riskUnsupported.reason) : null,
     pendingEvidenceItems,
     focusItems: [...riskItems, ...breakoutItems, ...trendItems, ...meanReversionItems].slice(0, 6),
+    moduleStates: buildStockAnalysisKlineRadarModuleStates(payload),
     queues,
     topology: buildStockAnalysisKlineRadarTopology(payload, queues),
   };

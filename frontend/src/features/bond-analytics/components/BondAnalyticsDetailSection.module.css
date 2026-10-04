@@ -27,7 +27,7 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -80,7 +80,7 @@
    此处保留为防 cssinjs 注入顺序漂移的页面级守卫（portfolio-home 先例）。 */
 .tabRail.tabRail.tabRail :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
   color: var(--moss-color-primary-600);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .tabRail.tabRail.tabRail :global(.ant-tabs-tab:hover .ant-tabs-tab-btn) {

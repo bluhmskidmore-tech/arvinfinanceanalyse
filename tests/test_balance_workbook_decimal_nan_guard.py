@@ -1,11 +1,9 @@
 """共享 M-3 + 2026-07-20 审计 P2：balance workbook Decimal 助手不得传播 NaN。
 
-测试对象说明（2026-08-12）：生产权威实现是单体 balance_analysis_workbook.py；
-`balance_workbook/` 包（`_utils` 等）是不在生产调用路径上的拆分副本，包级公开入口
-`builder.py` 仅为委托壳。NaN 防线已双侧统一到 `_to_finite_decimal` 模式：
-`_sum_decimal` / `_weighted_average` / `_merged_weighted_average` / `_rate_value` /
-`_decimal_value` 在两侧对 NaN/None/非法输入具有相同语义（→ 0 或跳过权重）。
-本测试对两侧逐一断言，防止休眠副本与权威实现在 NaN 语义上漂移。
+测试对象说明（2026-08-19）：生产权威实现是单体 balance_analysis_workbook.py；
+`balance_workbook/` 包（`_utils` 等）只保留历史 import 的兼容导出，直接复用权威
+函数对象。NaN 防线由唯一的 `_to_finite_decimal` 计算源负责；本测试同时通过
+权威路径与兼容路径调用，防止兼容层重新形成第二套语义。
 """
 
 from __future__ import annotations
@@ -65,14 +63,52 @@ def test_weighted_average_helpers_skip_nan_weight_on_both_sides() -> None:
         )
 
 
-def test_weighted_average_helpers_map_nan_value_to_zero_on_both_sides() -> None:
+def test_weighted_average_helpers_exclude_nan_value_row_on_both_sides() -> None:
+    # 缺失值不是 0：NaN 值行必须整行退出加权平均，不进分子也不进分母。
     rows = [
         SimpleNamespace(weight=Decimal("2"), value=Decimal("NaN")),
         SimpleNamespace(weight=Decimal("2"), value=Decimal("6")),
     ]
     for module in _BOTH_SIDES:
-        assert module._weighted_average(rows, lambda r: r.weight, lambda r: r.value) == Decimal("3")
+        assert module._weighted_average(rows, lambda r: r.weight, lambda r: r.value) == Decimal("6")
         assert (
             module._merged_weighted_average([(rows, lambda r: r.weight, lambda r: r.value)])
-            == Decimal("3")
+            == Decimal("6")
+        )
+
+
+def test_weighted_average_helpers_treat_none_and_nan_values_identically() -> None:
+    # 同一“票面利率缺失”事实，来源给 None 与给 NaN 必须得到同一答案。
+    none_rows = [
+        SimpleNamespace(weight=Decimal("2"), value=None),
+        SimpleNamespace(weight=Decimal("2"), value=Decimal("6")),
+    ]
+    nan_rows = [
+        SimpleNamespace(weight=Decimal("2"), value=Decimal("NaN")),
+        SimpleNamespace(weight=Decimal("2"), value=Decimal("6")),
+    ]
+    unparsable_rows = [
+        SimpleNamespace(weight=Decimal("2"), value="n/a"),
+        SimpleNamespace(weight=Decimal("2"), value=Decimal("6")),
+    ]
+    for module in _BOTH_SIDES:
+        baseline = module._weighted_average(none_rows, lambda r: r.weight, lambda r: r.value)
+        assert baseline == Decimal("6")
+        for rows in (nan_rows, unparsable_rows):
+            assert module._weighted_average(rows, lambda r: r.weight, lambda r: r.value) == baseline
+            assert (
+                module._merged_weighted_average([(rows, lambda r: r.weight, lambda r: r.value)])
+                == baseline
+            )
+
+
+def test_weighted_average_helpers_return_none_when_every_value_is_missing() -> None:
+    rows = [
+        SimpleNamespace(weight=Decimal("2"), value=Decimal("NaN")),
+        SimpleNamespace(weight=Decimal("3"), value=None),
+    ]
+    for module in _BOTH_SIDES:
+        assert module._weighted_average(rows, lambda r: r.weight, lambda r: r.value) is None
+        assert (
+            module._merged_weighted_average([(rows, lambda r: r.weight, lambda r: r.value)]) is None
         )

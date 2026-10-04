@@ -1078,7 +1078,11 @@ def build_route_scope_classification_report(
 
 
 def _visible_navigation_routes() -> list[dict[str, str]]:
-    navigation_path = ROOT / "frontend" / "src" / "mocks" / "navigation.ts"
+    # `frontend/src/app/navigation.ts` is the single navigation source of truth.
+    # `routes.tsx` imports `workbenchNavigation` from there and builds child routes
+    # from that array, so readiness must parse the same source instead of the
+    # removed legacy mock file.
+    navigation_path = ROOT / "frontend" / "src" / "app" / "navigation.ts"
     text = navigation_path.read_text(encoding="utf-8")
     start = text.index("export const workbenchNavigation")
     end = text.index("export function pathMatchesWorkbenchSection", start)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
@@ -77,6 +77,17 @@ class RiskTensorPayload(BaseModel):
     duration_excluded_count: int
     missing_maturity_market_value: Numeric | None = None
     missing_maturity_count: int | None = None
+    fund_no_maturity_market_value: Numeric | None = None
+    fund_no_maturity_count: int | None = None
+    unknown_maturity_market_value: Numeric | None = None
+    unknown_maturity_count: int | None = None
+    matured_outstanding_market_value: Numeric | None = None
+    matured_outstanding_count: int | None = None
+    nonpositive_duration_market_value: Numeric | None = None
+    nonpositive_duration_count: int | None = None
+    maturity_breakdown_status: Literal["available", "unavailable_legacy"] = "unavailable_legacy"
+    missing_liability_maturity_principal_amount: Numeric | None = None
+    missing_liability_maturity_count: int | None = None
     floating_rate_proxy_market_value: Numeric | None = None
     floating_rate_proxy_count: int | None = None
     payment_frequency_fallback_market_value: Numeric | None = None
@@ -115,6 +126,11 @@ class RiskTensorPayload(BaseModel):
         "rate_risk_modified_duration": ("years", False),
         "duration_excluded_market_value": ("yuan", False),
         "missing_maturity_market_value": ("yuan", False),
+        "fund_no_maturity_market_value": ("yuan", False),
+        "unknown_maturity_market_value": ("yuan", False),
+        "matured_outstanding_market_value": ("yuan", False),
+        "nonpositive_duration_market_value": ("yuan", False),
+        "missing_liability_maturity_principal_amount": ("yuan", False),
         "floating_rate_proxy_market_value": ("yuan", False),
         "payment_frequency_fallback_market_value": ("yuan", False),
         "bullet_value_date_fallback_market_value": ("yuan", False),
@@ -127,7 +143,7 @@ class RiskTensorPayload(BaseModel):
 
     @classmethod
     def from_tensor(cls, tensor: PortfolioRiskTensor) -> RiskTensorPayload:
-        return cls(**asdict(tensor))
+        return cls(**asdict(tensor), maturity_breakdown_status="available")
 
 
 class RiskTensorBlockedReportDate(BaseModel):

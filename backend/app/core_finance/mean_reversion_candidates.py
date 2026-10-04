@@ -1,3 +1,11 @@
+"""超跌反弹候选（signal_kind=mean_reversion）。
+
+命名澄清：这不是统计意义上的均值回归（无均值估计、z-score 或回归半衰期），
+而是"超跌 → 企稳（close>MA5>MA10）→ 放量确认"的反弹打分。signal_kind 与
+formula_version 因历史持久化数据保留 mean_reversion 命名；页面展示名为"超跌反弹"。
+阈值与评分权重见 strategy_policy.MeanReversionParams。
+"""
+
 from __future__ import annotations
 
 import math
@@ -10,6 +18,8 @@ from backend.app.core_finance.strategy_policy import POLICY
 EPS = 1e-12
 FORMULA_VERSION = "rv_mean_reversion_candidates_v2"
 ACTIVE_MARKET_STATES = POLICY.mean_reversion_active_states
+# 阈值与评分权重统一收编在 strategy_policy.MeanReversionParams（v2 原值，行为不变）。
+PARAMS = POLICY.mean_reversion
 # 60 个交易日高点窗口需要「今日收盘价之前」一共 60 根；加上今日至少共 61 根。
 MIN_HISTORY_BARS = 61
 MAX_RANKED = 20
@@ -145,7 +155,9 @@ def _candidate_row(
     drawdown_20d = _drawdown(close_price, max_20)
     drawdown_60d = _drawdown(close_price, max_60)
 
-    distressed = drawdown_20d <= -0.15 or drawdown_60d <= -0.25
+    distressed = (
+        drawdown_20d <= PARAMS.drawdown_20d_trigger or drawdown_60d <= PARAMS.drawdown_60d_trigger
+    )
     if not distressed:
         return None
 
@@ -158,21 +170,25 @@ def _candidate_row(
     if vol_ma20 <= 0:
         return None
     vol_ratio = volume / vol_ma20
-    if not (1.5 <= vol_ratio <= 5.0):
+    if not (PARAMS.vol_ratio_min <= vol_ratio <= PARAMS.vol_ratio_max):
         return None
 
     close_strength = (close_price - low_price) / rng
-    if close_strength < 0.60:
+    if close_strength < PARAMS.close_strength_min:
         return None
 
     prior_close = closes[-2]
     if prior_close <= 0:
         return None
     pct_change = (close_price - prior_close) / prior_close
-    if pct_change >= 0.095:
+    if pct_change >= PARAMS.daily_change_max:
         return None
 
-    score = abs(drawdown_20d) * 0.4 + close_strength * 0.3 + min(vol_ratio / 3.0, 1.0) * 0.3
+    score = (
+        abs(drawdown_20d) * PARAMS.score_weight_drawdown
+        + close_strength * PARAMS.score_weight_close_strength
+        + min(vol_ratio / PARAMS.score_vol_ratio_norm, 1.0) * PARAMS.score_weight_vol_ratio
+    )
 
     return {
         "stock_code": snapshot.stock_code,

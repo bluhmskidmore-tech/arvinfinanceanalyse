@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_analysis_service as macro_toolkit_analysis
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
 from datetime import date, timedelta
 
 import pytest
@@ -15,12 +18,13 @@ from backend.app.core_finance.macro import (
     compute_yield_curve_shape,
 )
 from backend.app.core_finance.macro.macro_portfolio_impact import build_bond_portfolio_profile
+from backend.app.services.macro_toolkit_route_support import _risk_tensor_to_liquidity_inputs
 
 _REPORT = date(2026, 7, 10)
 
 
 def test_partial_capabilities_are_wired_visible() -> None:
-    definitions = {item["key"]: item for item in macro_toolkit_route._CAPABILITY_DEFINITIONS}
+    definitions = {item["key"]: item for item in macro_toolkit_support._CAPABILITY_DEFINITIONS}
     for key in (
         "yield_curve_shape",
         "credit_spread_risk",
@@ -61,6 +65,47 @@ def test_m15_rejects_default_curve_fill() -> None:
         assert scenario["new_curve"]["10Y"] == pytest.approx(2.0 + scenario["curve_shifts_bp"]["10Y"] / 100.0)
 
 
+def test_m15_10y_plus_bucket_uses_own_duration_not_portfolio_average() -> None:
+    """审计回归：10Y+ 桶此前落不进 tenor_to_bucket 映射，只能进 other 桶并被
+    赋予组合加权久期（远低于长端自身久期），系统性低估长端情景损失。"""
+    positions = [
+        {
+            "market_value": 5_000_000,
+            "maturity_date": _REPORT + timedelta(days=365 * 2),
+            "coupon_rate": 0.03,
+        },
+        {
+            "market_value": 5_000_000,
+            "maturity_date": _REPORT + timedelta(days=365 * 20),
+            "coupon_rate": 0.03,
+        },
+    ]
+    profile = build_bond_portfolio_profile(positions, _REPORT)
+    ten_plus = profile["buckets"]["10Y+"]
+    assert ten_plus["market_value"] > 0
+    # 10Y+ 桶自身久期应明显高于组合加权久期（长端持仓被短端稀释）
+    assert ten_plus["avg_duration"] > profile["weighted_duration"] * 1.5
+
+    curve = {"1Y": 1.5, "3Y": 1.7, "5Y": 1.8, "7Y": 1.9, "10Y": 2.0}
+    result = compute_macro_portfolio_impact(profile, curve, _REPORT)
+    baseline = next(s for s in result["scenarios"] if s["name"] == "baseline")
+    impacts = baseline["bucket_impacts"]
+
+    assert "other" not in impacts
+    assert "10Y+" in impacts
+    ten_plus_impact = impacts["10Y+"]
+    assert ten_plus_impact["shift_source_tenor"] == "10Y"
+
+    shift_bp = baseline["curve_shifts_bp"]["10Y"]
+    credit_shift = baseline["credit_spread_shift_bp"]
+    expected_delta = -ten_plus["market_value"] * ten_plus["avg_duration"] * (shift_bp + credit_shift) / 10000.0
+    assert ten_plus_impact["delta_mv"] == pytest.approx(round(expected_delta, 2))
+
+    # 修复前会把组合加权久期错误地赋给该桶；确认与该错误值不同，证明用了自身久期
+    wrong_delta = -ten_plus["market_value"] * profile["weighted_duration"] * (shift_bp + credit_shift) / 10000.0
+    assert ten_plus_impact["delta_mv"] != pytest.approx(round(wrong_delta, 2))
+
+
 def test_m8_secondary_spreads_not_zero_filled() -> None:
     rows = [
         {"biz_date": _REPORT, "curve_id": "CN_GOVT", "tenor": "1Y", "rate_value": 1.5},
@@ -99,7 +144,7 @@ def test_m7_uses_latest_common_government_curve_date() -> None:
     assert payload["key_metrics"]["aa_minus_aaa_bp"] == pytest.approx(30.0)
     assert "GOVERNMENT_SLOPE_MISSING" not in payload["warnings"]
     assert "AAA_SPREAD_MISSING" not in payload["warnings"]
-    assert f"as_of={common_date.isoformat()}" in macro_toolkit_route._capability_result_evidence(
+    assert f"as_of={common_date.isoformat()}" in macro_toolkit_analysis._capability_result_evidence(
         "monetary_policy_stance",
         payload,
     )
@@ -153,7 +198,7 @@ def test_m9_uses_latest_common_credit_and_government_curve_date() -> None:
     assert payload["aaa_spread_bp"] == pytest.approx(50.0)
     assert payload["aa_minus_aaa_bp"] == pytest.approx(30.0)
     assert "AAA_SPREAD_MISSING" not in payload["warnings"]
-    assert f"as_of={common_date.isoformat()}" in macro_toolkit_route._capability_result_evidence(
+    assert f"as_of={common_date.isoformat()}" in macro_toolkit_analysis._capability_result_evidence(
         "credit_spread_risk",
         payload,
     )
@@ -185,3 +230,37 @@ def test_m11_skips_buckets_without_net_gap() -> None:
     assert payload["data_status"] == "degraded"
     assert payload["buckets"] == []
     assert any(w.startswith("BUCKET_NET_GAP_MISSING") for w in payload["warnings"])
+
+
+def test_m11_issuer_top5_weight_not_scored_as_book_dv01_concentration() -> None:
+    """审计 P0-2 回归：issuer_top5_weight 是发行人市值 Top5 集中度（利率债组合常态
+    0.6-1.0），不是单账簿 DV01 份额；不得填入 share_of_abs_dv01 触发 >=0.60 的
+    CRITICAL 告警并虚增 40 分压力分。"""
+    proxy_rows, bucket_rows, total_assets = _risk_tensor_to_liquidity_inputs(
+        {
+            "issuer_top5_weight": 0.9,
+            "portfolio_dv01": 1234.5,
+            "bond_count": 42,
+            "total_market_value": 1_000_000.0,
+        }
+    )
+
+    # dv01_sum / row_count 等真实字段保留展示用途；集中度腿 fail-closed 置 None。
+    assert len(proxy_rows) == 1
+    assert proxy_rows[0]["share_of_abs_dv01"] is None
+    assert proxy_rows[0]["dv01_sum"] == 1234.5
+    assert proxy_rows[0]["row_count"] == 42
+    assert total_assets == 1_000_000.0
+
+    payload = compute_liquidity_stress_test(
+        proxy_rows,
+        bucket_rows,
+        report_date=_REPORT,
+        total_assets=total_assets,
+    )
+    assert payload["top_book_share_of_abs_dv01"] is None
+    # 集中度腿缺失 → 不加分；无期限缺口输入时压力分必须为 0（不含 40 分集中度腿）。
+    assert payload["stress_score"] == 0
+    assert payload["alerts"] == []
+    assert all("DV01 集中度" not in str(alert.get("message", "")) for alert in payload["alerts"])
+    assert payload["top_books"][0]["dv01_sum"] == 1234.5

@@ -1,4 +1,4 @@
-"""Balance analysis workbook builder - refactored into modular structure."""
+"""Compatibility package for the authoritative balance workbook builder."""
 from __future__ import annotations
 
 from .builder import build_balance_analysis_workbook_payload

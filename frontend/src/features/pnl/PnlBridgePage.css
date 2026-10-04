@@ -44,33 +44,12 @@
  */
 [data-moss-theme-scope="pnl-bridge"] .formal-result-meta-panel {
   --formal-result-meta-border-soft: var(--dh-api-line-soft);
-  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
-  --formal-meta-badge-ok-ink: var(--dh-api-green);
-  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
   --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
   --formal-meta-badge-warn-ink: var(--dh-api-amber);
   --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
   --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
   --formal-meta-badge-danger-ink: var(--dh-api-red);
   --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
-}
-
-/*
- * 共享 SectionLead 为内联浅色墨色（eyebrow neutral-500 / 标题 primary-900 /
- * 描述 neutral-600），内联恒胜普通规则，页内升权覆盖为 Nocturne 墨阶
- * （stock-analysis「页内升权覆盖」先例）；[style] 只命中内联样式元素，
- * 不影响走 class 取色的 moss-page-v2 标题。
- */
-[data-moss-theme-scope="pnl-bridge"] span[style] + h2[style] {
-  color: var(--dh-api-ink) !important;
-}
-
-[data-moss-theme-scope="pnl-bridge"] h2[style] + p[style] {
-  color: var(--dh-api-soft) !important;
-}
-
-[data-moss-theme-scope="pnl-bridge"] span[style]:has(+ h2[style]) {
-  color: var(--dh-api-muted) !important;
 }
 
 .pnl-bridge-page-header {
@@ -85,7 +64,7 @@
 .pnl-bridge-page-title {
   margin: 0;
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--dh-api-ink);
 }
@@ -111,7 +90,7 @@
   display: inline-flex;
   align-items: center;
   padding: 8px 12px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -221,7 +200,7 @@
 
 .pnl-bridge-conclusion-eyebrow {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--dh-api-soft);
@@ -254,32 +233,8 @@
   min-width: 0;
 }
 
-.pnl-bridge-waterfall-card {
+.pnl-bridge-waterfall-slot {
   margin-top: 24px;
-  border-radius: var(--dh-api-radius);
-  border: 1px solid var(--dh-api-line-soft);
-  box-shadow: none;
-  background: var(--dh-api-panel);
-}
-
-.pnl-bridge-waterfall-card__title {
-  padding: 12px 16px 0;
-  color: var(--dh-api-ink);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.pnl-bridge-waterfall-card__body {
-  padding: 12px 16px 16px;
-}
-
-.pnl-bridge-waterfall-chart {
-  height: 400px;
-}
-
-.pnl-bridge-waterfall-chart__canvas {
-  height: 100%;
-  width: 100%;
 }
 
 .pnl-bridge-warnings {

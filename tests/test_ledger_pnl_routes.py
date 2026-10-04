@@ -48,6 +48,10 @@ def _data_envelope() -> dict[str, Any]:
                 "total_pnl_cny": _money("0"),
                 "total_pnl": _money("0"),
                 "count": 0,
+                "pnl_account_count": 0,
+                "ledger_evidence_rows": 0,
+                "average_only_row_count": 0,
+                "evidence_rows_basis": "总账∪日均并集口径行数",
             },
         },
     }
@@ -146,6 +150,7 @@ def _analysis_envelope() -> dict[str, Any]:
                 "basis_difference_formula": "CNX - CNY",
                 "basis_boundary": "overlapping accounting bases; not FX PnL",
                 "basis_availability_boundary": "PnL analyzability only",
+                "evidence_rows_boundary": "union rows; ledger_evidence_rows = ledger-observed",
                 "previous_period_rule": "latest earlier report date",
                 "metric_boundary": "candidate only",
             },

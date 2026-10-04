@@ -1,4 +1,5 @@
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
 import { CalendarList } from "../../../components/CalendarList";
 import { type EChartsOption } from "../../../lib/echarts";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
@@ -12,7 +13,7 @@ type BalanceBottomRowProps = {
   variant?: "default" | "terminal";
 };
 
-function buildMaturityOption(model: BalanceStageBottomModel, includeTitle: boolean): EChartsOption {
+function buildMaturityOption(model: BalanceStageBottomModel): EChartsOption {
   const nct = nocturneTokens.color;
   const hasCategories = model.maturityCategories.length > 0;
   const categories = hasCategories ? model.maturityCategories : ["无真实数据"];
@@ -21,31 +22,18 @@ function buildMaturityOption(model: BalanceStageBottomModel, includeTitle: boole
   const liabilitySeries = hasCategories ? model.liabilitySeries : [null];
   const gapSeries = hasCategories ? model.gapSeries : [null];
   return {
-    title: includeTitle
-      ? {
-          text: "期限结构（资产/负债/净缺口）",
-          left: 0,
-          top: 0,
-          /* canvas 读不到 CSS 变量，取 nocturneTokens 常量（数值源=tokens.css Nocturne scope）。 */
-          textStyle: { fontSize: 14, fontWeight: 700, color: nct.ink },
-        }
-      : undefined,
-    legend: {
-      top: includeTitle ? 28 : 8,
-      textStyle: { fontSize: 10, color: nct.inkSoft },
-    },
-    grid: { left: 48, right: 16, top: includeTitle ? 56 : 36, bottom: 28 },
+    grid: { left: 48, right: 16, top: 36 },
     tooltip: { trigger: "axis" },
     xAxis: {
       type: "category",
       data: categories,
-      axisLabel: { rotate: 28, fontSize: 10, color: nct.inkMuted },
+      axisLabel: { rotate: 28, fontSize: designTokens.fontSize[11], color: nct.inkMuted },
       axisLine: { lineStyle: { color: nct.line } },
     },
     yAxis: {
       type: "value",
       name: "亿",
-      nameTextStyle: { fontSize: 10, color: nct.inkMuted },
+      nameTextStyle: { fontSize: designTokens.fontSize[11], color: nct.inkMuted },
       axisLabel: { color: nct.inkMuted, fontSize: designTokens.fontSize[11] },
       splitLine: { lineStyle: { color: nct.lineSoft } },
     },
@@ -80,11 +68,18 @@ function buildMaturityOption(model: BalanceStageBottomModel, includeTitle: boole
 export function BalanceBottomRow({ model, variant = "default" }: BalanceBottomRowProps) {
   const gridStyle = useBalanceAnalysisThreeColumnGridStyle();
   const isTerminal = variant === "terminal";
-  const maturityOption = buildMaturityOption(model, !isTerminal);
+  const maturityOption = buildMaturityOption(model);
 
   const maturityPanel = (
-    /* opts.renderer=canvas 为 echarts 默认值，迁 BaseChart 后省略等价。 */
-    <BaseChart option={maturityOption} height={isTerminal ? 260 : 300} />
+    <ChartCard
+      flat
+      title={isTerminal ? undefined : "期限结构"}
+      ariaLabel="期限结构"
+      question="资产、负债与净缺口"
+      unit="亿元"
+      height={CHART_CARD_HEIGHTS.hero}
+      option={model.maturityCategories.length ? maturityOption : null}
+    />
   );
 
   const riskPanel = (

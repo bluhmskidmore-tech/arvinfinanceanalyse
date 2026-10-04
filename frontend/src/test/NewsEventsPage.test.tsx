@@ -1,3 +1,4 @@
+import { MemoryRouter } from "react-router-dom";
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -11,7 +12,7 @@ import NewsEventsPage from "../features/news-events/NewsEventsPage";
 
 const PAGE_SIZE = 50;
 
-function renderNewsPage(client: ApiClient) {
+function renderNewsPage(client: ApiClient, initialEntry = "/news-events") {
   function Wrapper({ children }: { children: ReactNode }) {
     const [queryClient] = useState(
       () =>
@@ -31,7 +32,7 @@ function renderNewsPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <NewsEventsPage />
+      <MemoryRouter initialEntries={[initialEntry]}><NewsEventsPage /></MemoryRouter>
     </Wrapper>,
   );
 }
@@ -114,6 +115,26 @@ function makeComparePayload() {
 }
 
 describe("NewsEventsPage", () => {
+  it("preserves market source topic and exact received bounds in the request", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getChoiceNewsEvents = vi.fn(base.getChoiceNewsEvents);
+    const from = "2026-09-03T10:00:00+08:00";
+    const to = "2026-09-04T10:00:00+08:00";
+    const search = new URLSearchParams({ origin: "market-overview", return_section: "events", topic_code: "EXACT_SOURCE", received_from: from, received_to: to });
+    renderNewsPage({ ...base, getChoiceNewsEvents }, `/news-events?${search}`);
+    await waitFor(() => expect(getChoiceNewsEvents).toHaveBeenCalledWith(expect.objectContaining({ topicCode: "EXACT_SOURCE", receivedFrom: from, receivedTo: to, offset: 0 })));
+    expect(screen.getByRole("link", { name: "返回市场总览" })).toHaveAttribute("href", "/market-overview#market-overview-evidence");
+    expect(screen.getByRole("combobox")).toHaveValue("EXACT_SOURCE");
+  });
+
+  it("rejects invalid source windows without broadening to an unfiltered request", () => {
+    const base = createApiClient({ mode: "mock" });
+    const getChoiceNewsEvents = vi.fn(base.getChoiceNewsEvents);
+    renderNewsPage({ ...base, getChoiceNewsEvents }, "/news-events?origin=market-overview&received_from=not-a-date");
+    expect(screen.getByRole("alert")).toHaveTextContent("未执行新闻查询");
+    expect(getChoiceNewsEvents).not.toHaveBeenCalled();
+  });
+
   it("renders filters, table rows, resets page on topic change, and paginates", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });
@@ -271,5 +292,32 @@ describe("NewsEventsPage", () => {
     expect(meta).toHaveTextContent("缓存版本=cv_news_test");
     expect(meta).toHaveTextContent("数据表=choice_news_event");
     expect(meta).toHaveTextContent("生成时间=2026-04-12T08:00:00Z");
+  });
+
+  it("renders the compare section when the live payload omits rule_version instead of crashing the route", async () => {
+    // 2026-09-02 线上形态：build_choice_news_compare_payload 只返回四个桶，没有 basis / rule_version。
+    // 此前 SectionHead 对 undefined 调 .includes 抛错，整页落到「页面加载失败」。
+    const { basis: _basis, rule_version: _ruleVersion, ...liveCompare } = makeComparePayload();
+    const base = createApiClient({ mode: "mock" });
+    const getChoiceNewsEvents = vi.fn(async () => ({
+      result_meta: buildMeta("news.choice.latest", "tr_news_live_compare"),
+      result: {
+        total_rows: 1,
+        limit: PAGE_SIZE,
+        offset: 0,
+        as_of_date: "2026-09-01",
+        excluded_future_rows: 0,
+        compare: liveCompare,
+        events: [makeEvent({ event_key: "ev-live", payload_text: "Live compare payload" })],
+      },
+    }));
+
+    renderNewsPage({ ...base, getChoiceNewsEvents });
+
+    const compare = await screen.findByTestId("news-events-compare");
+    expect(compare).toHaveTextContent("跨篇对比");
+    expect(compare).toHaveTextContent("规则版本 —");
+    expect(screen.getByText("同向线索")).toBeInTheDocument();
+    expect(screen.queryByText("页面加载失败")).not.toBeInTheDocument();
   });
 });

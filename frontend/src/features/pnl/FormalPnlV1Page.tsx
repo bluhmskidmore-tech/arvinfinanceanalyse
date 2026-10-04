@@ -10,12 +10,12 @@ import "../../styles/agGridInstitutional.css";
 import { useApiClient } from "../../api/client";
 import type { Numeric, PnlBasis, PnlV1DetailRow } from "../../api/contracts";
 import type { LiabilityYieldKpi } from "../../api/liabilityAdbContracts";
-import { EM_DASH, formatNumeric } from "../../utils/format";
+import { EM_DASH, formatNumeric, formatYuanAmountAsWanPlain } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { PageAsyncSection } from "../../components/page/PageAsyncSection";
-import { SectionLead } from "../../components/page/SectionLead";
+import { SectionHead } from "../../components/layout";
 import { KpiCard } from "../../components/KpiCard";
 import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
@@ -29,16 +29,8 @@ function cellText(value: string | number | null | undefined) {
   return String(value);
 }
 
-function thousandsValueFormatter(params: ValueFormatterParams) {
-  const value = params.value;
-  if (value === null || value === undefined || value === "") {
-    return EM_DASH;
-  }
-  const numeric = Number(String(value).replace(/,/g, ""));
-  if (!Number.isFinite(numeric)) {
-    return String(value);
-  }
-  return numeric.toLocaleString("zh-CN");
+function wanValueFormatter(params: ValueFormatterParams) {
+  return formatYuanAmountAsWanPlain(params.value as string | number | null | undefined);
 }
 
 const v1DetailColumnDefs: ColDef<PnlV1DetailRow>[] = [
@@ -47,11 +39,11 @@ const v1DetailColumnDefs: ColDef<PnlV1DetailRow>[] = [
   { field: "portfolio", headerName: "组合", width: 130 },
   { field: "asset_type", headerName: "投资类型", width: 120 },
   { field: "asset_class", headerName: "资产分类", width: 140 },
-  { field: "market_value", headerName: "市值", width: 130, type: "numericColumn" },
-  { field: "interest_income", headerName: "514利息收入", width: 140, type: "numericColumn" },
-  { field: "fair_value_change", headerName: "516公允价值", width: 140, type: "numericColumn" },
-  { field: "capital_gain", headerName: "517投资收益", width: 140, type: "numericColumn" },
-  { field: "total_pnl", headerName: "合计损益", width: 130, type: "numericColumn" },
+  { field: "market_value", headerName: "市值（万元）", width: 150, type: "numericColumn" },
+  { field: "interest_income", headerName: "514利息收入（万元）", width: 180, type: "numericColumn" },
+  { field: "fair_value_change", headerName: "516公允价值（万元）", width: 180, type: "numericColumn" },
+  { field: "capital_gain", headerName: "517投资收益（万元）", width: 180, type: "numericColumn" },
+  { field: "total_pnl", headerName: "合计损益（万元）", width: 160, type: "numericColumn" },
 ];
 
 const gridDefaultColDef: ColDef = {
@@ -62,7 +54,7 @@ const gridDefaultColDef: ColDef = {
 
 function withNumericFormatters<T>(defs: ColDef<T>[]): ColDef<T>[] {
   return defs.map((def) =>
-    def.type === "numericColumn" ? { ...def, valueFormatter: thousandsValueFormatter } : def,
+    def.type === "numericColumn" ? { ...def, valueFormatter: wanValueFormatter } : def,
   );
 }
 
@@ -85,20 +77,6 @@ function isYieldKpiAllNull(kpi: LiabilityYieldKpi | null | undefined) {
     kpi.market_liability_cost == null &&
     kpi.nim == null
   );
-}
-
-function formatWan(value: string | number | null | undefined) {
-  if (value === null || value === undefined || value === "") {
-    return cellText(null);
-  }
-  const parsed = Number(String(value).replace(/,/g, ""));
-  if (!Number.isFinite(parsed)) {
-    return String(value);
-  }
-  return (parsed / 10000).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 function tabButtonClassName(active: boolean) {
@@ -380,10 +358,11 @@ export default function FormalPnlV1Page() {
       ) : null}
 
       <div data-testid="pnl-overview-section" data-state={overviewState} className="formal-pnl-v1-overview-section">
-        <SectionLead
-          eyebrow="总览"
+        <SectionHead
+          category="总览"
           title="正式损益汇总"
-          description="先确认报告日与刷新状态，再阅读 514 / 516 / 517、手工调整和损益合计；所有数值均来自后端正式读模型。"
+          note="先确认报告日与刷新状态，再阅读 514 / 516 / 517、手工调整和损益合计；所有数值均来自后端正式读模型。"
+          numbered={false}
         />
         <PageAsyncSection
           title="汇总概览"
@@ -405,34 +384,47 @@ export default function FormalPnlV1Page() {
             </div>
             <div className="formal-pnl-v1-kpi-cell" title="后端返回的汇总金额字符串。">
               <KpiCard
+                testId="pnl-kpi-interest-income"
                 title="利息收入 (514)"
-                value={formatWan(overview?.interest_income_514)}
+                value={formatYuanAmountAsWanPlain(overview?.interest_income_514)}
                 unit="万元"
-                tone={toneFromSignedDisplayString(formatWan(overview?.interest_income_514))}
+                tone={toneFromSignedDisplayString(formatYuanAmountAsWanPlain(overview?.interest_income_514))}
               />
             </div>
             <div className="formal-pnl-v1-kpi-cell" title="后端返回的汇总金额字符串。">
               <KpiCard
+                testId="pnl-kpi-fair-value"
                 title="公允价值变动 (516)"
-                value={formatWan(overview?.fair_value_change_516)}
+                value={formatYuanAmountAsWanPlain(overview?.fair_value_change_516)}
                 unit="万元"
-                tone={toneFromSignedDisplayString(formatWan(overview?.fair_value_change_516))}
+                tone={toneFromSignedDisplayString(formatYuanAmountAsWanPlain(overview?.fair_value_change_516))}
               />
             </div>
             <div className="formal-pnl-v1-kpi-cell" title="后端返回的汇总金额字符串。">
               <KpiCard
+                testId="pnl-kpi-capital-gain"
                 title="资本利得 (517)"
-                value={formatWan(overview?.capital_gain_517)}
+                value={formatYuanAmountAsWanPlain(overview?.capital_gain_517)}
                 unit="万元"
-                tone={toneFromSignedDisplayString(formatWan(overview?.capital_gain_517))}
+                tone={toneFromSignedDisplayString(formatYuanAmountAsWanPlain(overview?.capital_gain_517))}
               />
             </div>
-            <div className="formal-pnl-v1-kpi-cell" title="后端返回的汇总损益字符串。">
+            <div className="formal-pnl-v1-kpi-cell" title="后端返回的手工调整金额字符串。">
               <KpiCard
-                title="损益合计"
-                value={formatWan(overview?.total_pnl)}
+                testId="pnl-kpi-manual-adjustment"
+                title="手工调整"
+                value={formatYuanAmountAsWanPlain(overview?.manual_adjustment)}
                 unit="万元"
-                tone={toneFromSignedDisplayString(formatWan(overview?.total_pnl))}
+                tone={toneFromSignedDisplayString(formatYuanAmountAsWanPlain(overview?.manual_adjustment))}
+              />
+            </div>
+            <div className="formal-pnl-v1-kpi-cell" title="514+516+517+手工调整（后端合计）。">
+              <KpiCard
+                testId="pnl-kpi-total-pnl"
+                title="损益合计"
+                value={formatYuanAmountAsWanPlain(overview?.total_pnl)}
+                unit="万元"
+                tone={toneFromSignedDisplayString(formatYuanAmountAsWanPlain(overview?.total_pnl))}
               />
             </div>
           </div>
@@ -440,14 +432,15 @@ export default function FormalPnlV1Page() {
       </div>
 
       <div data-testid="pnl-data-section" data-state={dataState} className="formal-pnl-v1-data-section">
-        <SectionLead
-          eyebrow="明细"
+        <SectionHead
+          category="明细"
           title={dataTab === "yield" ? "收益与息差（分析口径）" : "正式明细与非标桥接"}
-          description={
+          note={
             dataTab === "yield"
               ? "与收益管理同源接口 `/api/analysis/yield_metrics`（经 `getLiabilityYieldMetrics`），仅展示后端返回的指标数值；不含历史曲线/散点等未暴露端点。"
               : "固收明细和非标桥接共用当前报告日，保留原有页签、明细表和分页行为，不改变正式损益契约。"
           }
+          numbered={false}
         />
         <PageAsyncSection
           title="明细数据"

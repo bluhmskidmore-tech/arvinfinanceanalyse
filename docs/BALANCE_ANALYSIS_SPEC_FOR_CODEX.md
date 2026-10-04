@@ -1,4 +1,4 @@
-﻿> 2026-04-17 status update:
+> 2026-04-17 status update:
 > The current repository default boundary is now interpreted as `repo-wide Phase 2 (??????)` for the governed formal-compute mainline.
 > Any older wording in this document that says the repo default is still `Phase 1` or that repo-wide `Phase 2` is not open should be read as historical context only.
 > The active cutover interpretation now enters through `AGENTS.md` -> `docs/DOCUMENT_AUTHORITY.md` -> `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`; use `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md` as the cutover-definition reference.

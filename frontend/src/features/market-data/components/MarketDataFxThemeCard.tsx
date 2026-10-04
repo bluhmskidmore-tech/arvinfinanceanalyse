@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 
 import type { FxAnalyticalEventRow, FxAnalyticalGroup } from "../../../api/contracts";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import { buildMarketDataMultiSeriesTimeChartOption } from "../lib/charts/marketDataSeriesTimeChartOption";
 import {
   canRenderMacroThemeChart,
   MACRO_THEME_CHART_MAX_SERIES,
 } from "../lib/marketDataMacroThemeGroups";
-import { MarketDataChartShell } from "./MarketDataChartShell";
 import { MarketDataSeriesCategoryCard } from "./MarketDataSeriesCategoryCard";
 import { MarketDataSeriesCompactTable } from "./MarketDataSeriesCompactTable";
 
@@ -170,9 +170,12 @@ export function MarketDataFxThemeCard({
     >
       {showThemeChart ? (
         <div className="market-data-macro-theme-card__chart" data-testid={`${testId}-chart`}>
-          <MarketDataChartShell
+          <ChartCard
+            flat
+            ariaLabel={`${title}近期走势`}
             option={chartOption}
-            height={180}
+            height={160}
+            legendRows={2}
             testId={`${testId}-multi-series-chart`}
             emptyMessage="该外汇主题暂无可绘制的近期走势。"
           />

@@ -27,7 +27,12 @@ def _powershell_quote(value: Path) -> str:
 
 def _run_harness(tmp_path: Path, name: str, source: str) -> subprocess.CompletedProcess[str]:
     harness_path = tmp_path / f"{name}.ps1"
-    harness_path.write_text(source, encoding="utf-8")
+    isolated_runtime = (
+        "$ErrorActionPreference = 'Stop'\n"
+        f"$root = {_powershell_quote(tmp_path)}\n"
+        f". {_powershell_quote(ROOT / 'scripts' / 'dev-runtime-common.ps1')}\n"
+    )
+    harness_path.write_text(isolated_runtime + source, encoding="utf-8")
     return subprocess.run(
         [
             "powershell",
@@ -175,6 +180,7 @@ def test_dev_keepalive_does_not_restart_running_default_worker_without_wrapper(t
         r'''
 $script:ProcessInspectionAvailable = $true
 $script:RestartAttempted = $false
+$script:HealthyServices = @()
 
 function Get-NativeScriptProcess { param([string]$ScriptName) return $null }
 function Get-NativeWorkerProcess {
@@ -185,6 +191,7 @@ function Get-NativeWorkerProcess {
   }
 }
 function Write-KeepaliveLog { param([string]$Message) }
+function Confirm-ServiceHealthy { param([string]$ServiceName) $script:HealthyServices += $ServiceName }
 function Test-RestartCooldown { param([string]$Key) return $false }
 function Set-RestartTimestamp { param([string]$Key) }
 function Stop-KnownServiceProcesses { param([string]$ServiceName) $script:RestartAttempted = $true }
@@ -194,6 +201,7 @@ function Start-DevScriptDetached { param([string]$ScriptName) $script:RestartAtt
         + r'''
 Ensure-WorkerRunning
 if ($script:RestartAttempted) { throw "keepalive attempted to restart a running default worker" }
+if ($script:HealthyServices -notcontains "worker") { throw "running worker was not observed as healthy" }
 '''
     )
     _assert_harness_ok(_run_harness(tmp_path, "dev-keepalive-reuses-default-worker", harness))
@@ -330,8 +338,10 @@ def test_dev_keepalive_stops_api_and_worker_behind_foreign_postgres_gate(tmp_pat
         r'''
 $script:LastPostgresProbeState = "foreign"
 $script:StoppedServices = @()
+$script:ClearedHealthyServices = @()
 
 function Ensure-DevPostgresRunning { return $false }
+function Clear-ServiceHealthyObservation { param([string]$ServiceName) $script:ClearedHealthyServices += $ServiceName }
 function Stop-KnownServiceProcesses { param([string]$ServiceName) $script:StoppedServices += $ServiceName }
 function Write-KeepaliveLog { param([string]$Message) }
 function Test-HttpEndpoint { throw "API probe must not run behind ownership gate" }
@@ -344,6 +354,9 @@ function Test-FrontendReady { throw "frontend recovery must not run behind owner
 Invoke-KeepaliveCycle
 if ($script:StoppedServices -notcontains "api") { throw "foreign ownership gate did not stop API" }
 if ($script:StoppedServices -notcontains "worker") { throw "foreign ownership gate did not stop worker" }
+foreach ($service in @("api", "worker", "frontend")) {
+  if ($script:ClearedHealthyServices -notcontains $service) { throw "skipped cycle retained stale healthy observation" }
+}
 '''
     )
     _assert_harness_ok(_run_harness(tmp_path, "dev-keepalive-postgres-foreign-gate", harness))

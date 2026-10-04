@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Ref } from "react";
 import { Link } from "react-router-dom";
 
 import { LightIcon } from "../../../components/LightIcon";
@@ -8,6 +8,7 @@ import {
 } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import type {
   DashboardHomeBodyView,
+  HomeDataStateKind,
   HomeDistributionSlice,
   HomeRiskExposureMetric,
   HomeTerminalListState,
@@ -38,15 +39,20 @@ import { ResearchCalendarSection } from "./sections/ResearchCalendarSection";
 import styles from "./dashboardHomeOptionTwo.module.css";
 
 import { EM_DASH } from "../../../utils/format";
+import type { DashboardHomeSection } from "./useDashboardHomeViewModel";
 type DashboardHomeOptionTwoBodyProps = {
   view: DashboardHomeBodyView;
+  sectionRefs?: Record<DashboardHomeSection, Ref<HTMLElement>>;
+  newsLoading?: { macro: boolean; bond: boolean };
   firstScreenView: DashboardHomeFirstScreenView;
   bondNewsActions?: BondNewsActions;
   homeAvailability?: DashboardHomeAvailability;
   homeAvailabilityKind?: "normal" | "serviceUnavailable";
   onRefresh?: () => void | Promise<unknown>;
+  onViewLatestReport?: () => void;
   snapshotRefreshing?: boolean;
   supplementalStateLabel?: string;
+  supplementalStateKind?: HomeDataStateKind;
   updatedAt?: string;
 };
 
@@ -102,9 +108,12 @@ function handleTabArrowKey<T extends string>(
 }
 
 function StateMessage({ state }: { state: HomeTerminalListState }) {
+  const kindLabel = stateLabel(state.kind);
+  // 空态只留一句话（§5）：上游文案已含状态词（如「研报暂无数据」）时不再前置「暂无数据」。
+  const showKindLabel = !state.label.includes(kindLabel);
   return (
     <div className={styles.stateMessage} data-tone={statusTone(state.kind)}>
-      <strong>{stateLabel(state.kind)}</strong>
+      {showKindLabel ? <strong>{kindLabel}</strong> : null}
       <span>{state.label}</span>
     </div>
   );
@@ -149,7 +158,8 @@ function DistributionColumn({
   rows: readonly HomeDistributionSlice[];
   state: HomeTerminalListState;
 }) {
-  if (state.kind !== "ready" || rows.length === 0) {
+  const canDisplay = state.kind === "ready" || state.kind === "partial" || state.kind === "stale";
+  if (!canDisplay || rows.length === 0) {
     return (
       <section className={styles.distributionColumn}>
         <h3>{title}</h3>
@@ -158,17 +168,27 @@ function DistributionColumn({
     );
   }
 
+  const visibleRows = rows.slice(0, 6);
+  // 任一行的占比是回退值时，整列的 pctRaw 就不再是同一个量，求和得不到有意义的百分比
+  // （曾因此显示过 253.91%）。此时只声明口径缺失，不在前端另造一个占比公式。
+  const shareIsGoverned = visibleRows.every((row) => !row.pctIsFallback);
+
   return (
     <section className={styles.distributionColumn}>
       <h3>{title}</h3>
+      {state.kind !== "ready" ? <StateMessage state={state} /> : null}
       <div className={styles.distributionRows}>
-        {rows.slice(0, 6).map((row) => (
+        {visibleRows.map((row) => (
           <div key={row.id} className={styles.distributionRow}>
             <span title={row.label}>{row.label}</span>
             <progress
               max={100}
               value={distributionPercent(row.pctRaw)}
-              aria-label={`${row.label} 占比 ${row.pct}`}
+              aria-label={
+                row.pctIsFallback
+                  ? `${row.label} ${row.pct}（后端未提供占比，条形按最大档相对长度绘制）`
+                  : `${row.label} 占比 ${row.pct}`
+              }
             />
             <strong>{row.value}</strong>
             <em>{row.pct}</em>
@@ -176,11 +196,12 @@ function DistributionColumn({
         ))}
         <div className={styles.distributionTotal}>
           <span>可见合计</span>
-          <strong>
-            {`${rows
-              .slice(0, 6)
-              .reduce((sum, row) => sum + distributionPercent(row.pctRaw), 0)
-              .toFixed(2)}%`}
+          <strong title={shareIsGoverned ? undefined : "后端未返回该维度的占比字段"}>
+            {shareIsGoverned
+              ? `${visibleRows
+                  .reduce((sum, row) => sum + distributionPercent(row.pctRaw), 0)
+                  .toFixed(2)}%`
+              : "占比未提供"}
           </strong>
         </div>
       </div>
@@ -196,13 +217,17 @@ function readinessSummary(states: readonly HomeTerminalListState[]) {
 
 export function DashboardHomeOptionTwoBody({
   view,
+  sectionRefs,
+  newsLoading,
   firstScreenView,
   bondNewsActions,
   homeAvailability,
   homeAvailabilityKind = "normal",
   onRefresh,
+  onViewLatestReport,
   snapshotRefreshing = false,
   supplementalStateLabel,
+  supplementalStateKind,
   updatedAt,
 }: DashboardHomeOptionTwoBodyProps) {
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>("asset");
@@ -221,13 +246,17 @@ export function DashboardHomeOptionTwoBody({
   const hasResearchNewsFallback = visibleResearchReports.some(
     (report) => report.isNewsFallback,
   );
-  const researchDisclosure = hasResearchNewsFallback
-    ? view.researchReportsState.label.includes("新闻补位")
-      ? view.researchReportsState.label
-      : `${view.researchReportsState.kind === "ready" ? "" : `${view.researchReportsState.label} · `}新闻补位`
-    : view.researchReportsState.kind === "ready"
+  // 0 行时状态由居中的 StateMessage 承担，不再在表头位重复同一句（§6 状态去重）。
+  const researchDisclosure =
+    visibleResearchReports.length === 0
       ? null
-      : view.researchReportsState.label;
+      : hasResearchNewsFallback
+        ? view.researchReportsState.label.includes("新闻补位")
+          ? view.researchReportsState.label
+          : `${view.researchReportsState.kind === "ready" ? "" : `${view.researchReportsState.label} · `}新闻补位`
+        : view.researchReportsState.kind === "ready"
+          ? null
+          : view.researchReportsState.label;
 
   const distributionSets = useMemo(
     () => ({
@@ -237,7 +266,7 @@ export function DashboardHomeOptionTwoBody({
         state: view.assetDistributionState,
       },
       rating: {
-        title: "评级分布（信用债）",
+        title: "评级分布（全组合）",
         rows: view.ratingDistribution,
         state: view.ratingDistributionState,
       },
@@ -276,6 +305,8 @@ export function DashboardHomeOptionTwoBody({
   const trust = readinessSummary(moduleStates);
   const serviceUnavailable =
     homeAvailabilityKind === "serviceUnavailable" || homeAvailability?.kind === "error";
+  const reportDateUnavailable =
+    homeAvailability?.failureKind === "reportDateUnavailable";
   const actions = firstScreenView.decisionRail.actions
     .filter((action) => action.id !== "no-action" && action.statusKind !== "empty")
     .slice(0, 4);
@@ -386,7 +417,16 @@ export function DashboardHomeOptionTwoBody({
             <strong>{homeAvailability.label}</strong>
             <small>{homeAvailability.reason}</small>
           </span>
-          {onRefresh ? (
+          {reportDateUnavailable && onViewLatestReport ? (
+            <button
+              type="button"
+              data-testid="dashboard-home-view-latest-report"
+              onClick={onViewLatestReport}
+              disabled={snapshotRefreshing}
+            >
+              {snapshotRefreshing ? "读取中" : "查看最新可用报告"}
+            </button>
+          ) : onRefresh ? (
             <button
               type="button"
               data-testid="dashboard-home-data-availability-retry"
@@ -401,7 +441,7 @@ export function DashboardHomeOptionTwoBody({
       ) : null}
 
       <div className={styles.holdingsRiskRow}>
-        <section className={styles.holdingsChanges} aria-labelledby="option-two-holdings-title">
+        <section ref={sectionRefs?.holdings} className={styles.holdingsChanges} aria-labelledby="option-two-holdings-title">
           <header className={styles.panelHeader}>
             <h2 id="option-two-holdings-title">重点持仓与变动</h2>
             <Link to={reportDatePath("/positions", view.reportDate)}>查看全部持仓</Link>
@@ -527,7 +567,14 @@ export function DashboardHomeOptionTwoBody({
                 <strong>{stateLabel(view.portfolioComparisonState.kind)}</strong>
               </div>
               <section className={styles.incomeTrend} data-testid="dashboard-home-income-trend">
-                <h3>
+                {/* §7 微元句：口径说明只进标题 title，不进标题文本（含 SVG <title>）。 */}
+                <h3
+                  title={
+                    view.incomeTrend.length > 1
+                      ? `组合损益走势（全序列 ${view.incomeTrend.length} 个月度点，表格列近 3 期）`
+                      : undefined
+                  }
+                >
                   <span>收益趋势（组合 / 基准 / 超额）</span>
                   {view.incomeTrendState.kind === "partial" &&
                   view.incomeTrend.length > 0 ? (
@@ -540,7 +587,6 @@ export function DashboardHomeOptionTwoBody({
                     <OptionTwoSparkline
                       className={styles.incomeTrendSpark}
                       values={view.incomeTrend.map((row) => row.portfolioRaw)}
-                      title={`组合损益走势（全序列 ${view.incomeTrend.length} 个月度点，表格列近 3 期）`}
                       endDot
                     />
                   ) : null}
@@ -600,6 +646,7 @@ export function DashboardHomeOptionTwoBody({
         </section>
 
         <section
+          ref={sectionRefs?.risk}
           data-testid="dashboard-home-risk-exposure"
           className={styles.riskTasks}
           aria-labelledby="option-two-risk-title"
@@ -612,6 +659,10 @@ export function DashboardHomeOptionTwoBody({
                 : `观测 ${riskItemCount} · 治理待办未接入`}
             </span>
           </header>
+          {supplementalStateLabel && supplementalStateKind &&
+            supplementalStateKind !== "ready" && supplementalStateKind !== "loading" ? (
+            <StateMessage state={{ kind: supplementalStateKind, label: supplementalStateLabel }} />
+          ) : null}
           <section data-testid="dashboard-home-risk-metric-strip" className={styles.riskMetricGrid}>
             {visibleRiskMetrics.map((metric) => (
               <div key={metric.id}>
@@ -773,17 +824,10 @@ export function DashboardHomeOptionTwoBody({
             <DistributionColumn {...secondaryDistribution} />
             <DistributionColumn {...tertiaryDistribution} />
           </div>
-          <dl className={styles.portfolioMetrics}>
-            {view.riskExposureMetrics.slice(0, 6).map((metric) => (
-              <div key={metric.id} data-testid="dashboard-home-portfolio-metric">
-                <dt>{metric.label}</dt>
-                <dd>{metric.value}</dd>
-              </div>
-            ))}
-          </dl>
         </section>
 
         <section
+          ref={sectionRefs?.market}
           data-testid="dashboard-home-deferred-matrix"
           className={styles.marketResearchPanel}
           aria-labelledby="option-two-market-title"
@@ -855,42 +899,44 @@ export function DashboardHomeOptionTwoBody({
                     {researchDisclosure}
                   </div>
                 ) : null}
-                <table>
-                  <thead>
-                    <tr>
-                      <th>时间</th>
-                      <th>标题</th>
-                      <th>来源</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleResearchReports.map((row) => {
-                      const researchLink = normalizeHomeResearchLink(row.link);
-                      // 可见标题走显示层清洗（去扩展名/日期戳/下划线，并剥离与
-                      // 来源列重复的机构名前缀）；title 与 href 保留原文。
-                      const displayTitle = formatResearchTitleDisplay(row.title, [
-                        row.institution,
-                        row.source,
-                      ]);
-                      return (
-                        <tr key={row.id} data-testid="dashboard-home-research-row">
-                          <td><ResearchPublishedAt value={row.publishedAt} compact /></td>
-                          <td title={row.title}>
-                            {researchLink ? (
-                              <a href={researchLink}>{displayTitle}</a>
-                            ) : (
-                              displayTitle
-                            )}
-                          </td>
-                          <td>{row.institution || row.source}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {view.researchReports.length === 0 ? (
+                {/* §5 空态收缩：0 行时不渲染只剩表头的空表，只留居中的一句话状态。 */}
+                {visibleResearchReports.length > 0 ? (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>时间</th>
+                        <th>标题</th>
+                        <th>来源</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleResearchReports.map((row) => {
+                        const researchLink = normalizeHomeResearchLink(row.link);
+                        // 可见标题走显示层清洗（去扩展名/日期戳/下划线，并剥离与
+                        // 来源列重复的机构名前缀）；title 与 href 保留原文。
+                        const displayTitle = formatResearchTitleDisplay(row.title, [
+                          row.institution,
+                          row.source,
+                        ]);
+                        return (
+                          <tr key={row.id} data-testid="dashboard-home-research-row">
+                            <td><ResearchPublishedAt value={row.publishedAt} compact /></td>
+                            <td title={row.title}>
+                              {researchLink ? (
+                                <a href={researchLink}>{displayTitle}</a>
+                              ) : (
+                                displayTitle
+                              )}
+                            </td>
+                            <td>{row.institution || row.source}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
                   <StateMessage state={view.researchReportsState} />
-                ) : null}
+                )}
               </div>
             </div>
           ) : (
@@ -915,6 +961,7 @@ export function DashboardHomeOptionTwoBody({
       </div>
 
       <DashboardHomeOptionTwoSupportBand
+        sectionRef={sectionRefs?.support}
         view={view}
         dataStatusKind={firstScreenView.headerStatus.dataStatusKind}
       />
@@ -935,7 +982,20 @@ export function DashboardHomeOptionTwoBody({
         >
           {`关注 ${trust.attention} 项`}
         </span>
-        <span>{`就绪率 ${trustCompleteness}%`}</span>
+        {/* 就绪率只覆盖上面 6 个核心模块，新闻是辅助来源、不进分母。不并列披露的话，
+            「就绪 6/6 · 100%」会和同页治理台账、日历上的「偏旧」互相打脸。 */}
+        {view.macroBriefing.newsStale ? (
+          <span
+            className={styles.trustFooterSignal}
+            data-tone="warn"
+            title="宏观新闻源落后于报告日；就绪率仅统计 6 个核心模块，不含新闻"
+          >
+            新闻源偏旧
+          </span>
+        ) : null}
+        <span title="统计范围为上述 6 个核心模块，不含新闻等辅助来源">
+          {`就绪率 ${trustCompleteness}%`}
+        </span>
         <span>{`报告日 ${view.reportDate}`}</span>
         <span>
           {`更新 ${compactClock(updatedAt || firstScreenView.headerStatus.dataUpdatedAt)}`}
@@ -943,7 +1003,14 @@ export function DashboardHomeOptionTwoBody({
         {supplementalStateLabel ? (
           <span
             className={styles.trustFooterSignal}
-            data-tone="warn"
+            // 只有真正的降级才转琥珀；「补充查询已完成」曾被固定成警告色。
+            data-tone={
+              supplementalStateKind === "error" ||
+              supplementalStateKind === "partial" ||
+              supplementalStateKind === "stale"
+                ? "warn"
+                : "muted"
+            }
             title={`辅助来源 · ${supplementalStateLabel}`}
           >{`辅助来源 · ${supplementalStateLabel}`}</span>
         ) : null}
@@ -958,11 +1025,13 @@ export function DashboardHomeOptionTwoBody({
 
       <DashboardHomeOptionTwoGovernanceSection
         view={view}
+        newsLoading={newsLoading}
         availability={homeAvailability}
         supplementalStateLabel={supplementalStateLabel}
       />
 
       <section
+        ref={sectionRefs?.evidence}
         className={styles.extendedEvidence}
         aria-labelledby="dashboard-home-research-evidence-title"
       >

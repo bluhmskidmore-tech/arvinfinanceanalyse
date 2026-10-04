@@ -5,13 +5,17 @@ import logging
 import threading
 import time
 import uuid
+from calendar import monthrange
 from collections.abc import Sequence
+from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Final, Literal, TypedDict
+from typing import Any, Final, Literal, TypedDict, cast
 
+from backend.app.core_finance.accounting_asset_movement import classify_accounting_maturity
 from backend.app.core_finance.action_attribution import (
+    ActionAttributionPnlUnavailableError,
     bond_analytics_action_line_payload,
     build_action_attribution_placeholder_payload,
     build_action_attribution_success_payload,
@@ -40,6 +44,7 @@ from backend.app.core_finance.bond_analytics.read_models import (
     summarize_return_decomposition,
     weighted_average_by_market_value,
 )
+from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
 from backend.app.governance.formal_compute_lineage import (
     resolve_formal_dates_lineage,
     resolve_formal_facts_lineage,
@@ -47,12 +52,19 @@ from backend.app.governance.formal_compute_lineage import (
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings, get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
+    _jsonl_file_cache_key,
+    _resolve_governance_backend_mode,
 )
-from backend.app.repositories.pnl_repo import PnlRepository
+from backend.app.repositories.pnl_repo import Pnl517AuthorityError, PnlRepository
+from backend.app.repositories.system_read_publication_repo import (
+    current_system_read_context,
+    system_read_cache_identity,
+)
 
 try:
     from backend.app.repositories.yield_curve_repo import (
@@ -156,17 +168,24 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_meta_from_lineage,
     build_result_envelope,
 )
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 from pydantic import BaseModel
 
 # 与 tasks 模块对齐的身份常量；只读路径不得 import tasks（broker/actor 注册）。
-CACHE_KEY = "bond_analytics:materialize:formal"
-CACHE_VERSION = "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2"
-RULE_VERSION = "rv_bond_analytics_formal_materialize_v2"
+_BOND_ANALYTICS_VERSION = FIXED_INCOME_VERSION_SET.bond_analytics
+CACHE_KEY = _BOND_ANALYTICS_VERSION.cache_key
+CACHE_VERSION = _BOND_ANALYTICS_VERSION.cache_version
+ACTION_ATTRIBUTION_RULE_VERSION = "rv_action_attribution_calendar_coverage_v2"
+ACTION_ATTRIBUTION_CACHE_VERSION = "cv_action_attribution_calendar_coverage_v2"
+RETURN_PNL517_RULE_VERSION = "rv_return_pnl517_calendar_v2"
+
+
+RULE_VERSION = _BOND_ANALYTICS_VERSION.rule_version
 BOND_ANALYTICS_LOCK = LockDefinition(
-    key="lock:duckdb:formal:bond-analytics:materialize",
-    ttl_seconds=900,
+    key=_BOND_ANALYTICS_VERSION.lock_key,
+    ttl_seconds=_BOND_ANALYTICS_VERSION.lock_ttl_seconds,
 )
-YIELD_CURVE_CACHE_VERSION = "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
+YIELD_CURVE_CACHE_VERSION = "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1__cv_source_nodes_v2"
 
 
 class _MaterializeBondAnalyticsFactsProxy:
@@ -193,9 +212,13 @@ materialize_bond_analytics_facts = _MaterializeBondAnalyticsFactsProxy()
 logger = logging.getLogger(__name__)
 
 # Backward-compatible module exports used by service tests and legacy route callers.
-__all__ = ["STANDARD_SCENARIOS", "build_formal_result_meta"]
+__all__ = [
+    "STANDARD_SCENARIOS",
+    "bond_analytics_credit_exposure_governance_meta",
+    "build_formal_result_meta",
+]
 
-JOB_NAME = "bond_analytics_materialize"
+JOB_NAME = _BOND_ANALYTICS_VERSION.job_name
 EMPTY_SOURCE_VERSION = "sv_bond_analytics_empty"
 BOND_ANALYTICS_DATE_BASIS = "bond_analytics_report_date"
 BOND_ANALYTICS_FACT_TABLE = "fact_formal_bond_analytics_daily"
@@ -401,12 +424,25 @@ class _TTLCache:
                     self._store.pop(key, None)
 
 
-_return_decomposition_cache = _TTLCache(ttl_seconds=300)
+_return_decomposition_cache: InMemoryTTLCache[tuple, dict] = InMemoryTTLCache(ttl_seconds=300)
 _benchmark_excess_cache = _TTLCache(ttl_seconds=300)
 _action_attribution_cache = _TTLCache(ttl_seconds=300)
-_bond_analytics_rows_cache = _TTLCache(ttl_seconds=300)
-_bond_analytics_rows_fetch_locks: dict[tuple, threading.Lock] = {}
-_bond_analytics_rows_fetch_locks_guard = threading.Lock()
+_bond_analytics_rows_cache: InMemoryTTLCache[tuple[object, ...], list[dict[str, object]]] = get_runtime_cache(
+    "bond_analytics.rows",
+    ttl_seconds=300,
+)
+_portfolio_headlines_cache: InMemoryTTLCache[tuple[object, ...], dict[str, object]] = get_runtime_cache(
+    "bond_analytics.portfolio_headlines",
+    ttl_seconds=300,
+)
+_krd_curve_risk_cache: InMemoryTTLCache[tuple[object, ...], dict[str, object]] = get_runtime_cache(
+    "bond_analytics.krd_curve_risk",
+    ttl_seconds=900,
+)
+_dv01_risk_cache: InMemoryTTLCache[tuple[object, ...], dict[str, object]] = get_runtime_cache(
+    "bond_analytics.dv01_risk",
+    ttl_seconds=900,
+)
 
 
 def _invalidate_bond_analytics_caches_for_report_date(report_date: object) -> None:
@@ -425,6 +461,15 @@ def _invalidate_bond_analytics_caches_for_report_date(report_date: object) -> No
     _bond_analytics_rows_cache.invalidate_matching(
         lambda key: len(key) >= 1 and key[0] == report_date_text
     )
+    _portfolio_headlines_cache.invalidate_matching(
+        lambda key: len(key) >= 1 and key[0] == report_date_text
+    )
+    _krd_curve_risk_cache.invalidate_matching(
+        lambda key: len(key) >= 1 and key[0] == report_date_text
+    )
+    _dv01_risk_cache.invalidate_matching(
+        lambda key: len(key) >= 1 and key[0] == report_date_text
+    )
 
 
 def _duckdb_cache_version_token() -> tuple[str, int | None]:
@@ -435,9 +480,63 @@ def _duckdb_cache_version_token() -> tuple[str, int | None]:
         return duckdb_path, None
 
 
-def _bond_analytics_rows_fetch_lock(key: tuple) -> threading.Lock:
-    with _bond_analytics_rows_fetch_locks_guard:
-        return _bond_analytics_rows_fetch_locks.setdefault(key, threading.Lock())
+def _bond_analytics_rows_cache_version_token() -> tuple[object, ...]:
+    """Identify the physical read target before consulting the row cache."""
+
+    active_path = str(get_settings().duckdb_path)
+    effective_path = resolve_effective_read_path(active_path)
+    resolved_path = str(Path(effective_path).resolve())
+    try:
+        stat = Path(resolved_path).stat()
+        storage_identity: tuple[object, ...] = (
+            resolved_path,
+            stat.st_mtime_ns,
+            stat.st_size,
+        )
+    except OSError:
+        storage_identity = (resolved_path, None, None)
+    return storage_identity
+
+
+def _bond_analytics_result_cache_key(
+    endpoint: str,
+    report_date: str,
+    *parts: object,
+) -> tuple[object, ...] | None:
+    storage_identity = _bond_analytics_rows_cache_version_token()
+    if any(part is None for part in storage_identity[1:]):
+        return None
+    if _resolve_governance_backend_mode("") == "sql-authority":
+        return None
+    governance_dir = Path(get_settings().governance_path)
+    governance_identities: list[tuple[object, ...]] = []
+    for stream in (CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM):
+        stream_path = governance_dir / f"{stream}.jsonl"
+        stream_identity: tuple[object, ...] | None
+        try:
+            stream_identity = _jsonl_file_cache_key(stream_path)
+        except OSError:
+            return None
+        if stream_identity is None:
+            stream_identity = (str(stream_path.resolve()), "missing", 0)
+        governance_identities.append(stream_identity)
+    return (
+        report_date,
+        endpoint,
+        *parts,
+        *storage_identity,
+        *governance_identities,
+        RULE_VERSION,
+        CACHE_VERSION,
+    )
+
+
+def _with_fresh_bond_runtime_fields(envelope: dict[str, object]) -> dict[str, object]:
+    response = deepcopy(envelope)
+    result_meta = response.get("result_meta")
+    if isinstance(result_meta, dict):
+        result_meta["trace_id"] = _trace_id()
+    return response
 
 
 def _fetch_bond_analytics_rows_cached(
@@ -445,32 +544,48 @@ def _fetch_bond_analytics_rows_cached(
     report_date: str,
     asset_class: str = "all",
     accounting_class: str = "all",
+    force_refresh: bool = False,
 ) -> list[dict[str, object]]:
     report_date_text = str(report_date)
     asset_class_text = str(asset_class or "all")
     accounting_class_text = str(accounting_class or "all")
+    physical_token = _bond_analytics_rows_cache_version_token()
     cache_key = (
         report_date_text,
         asset_class_text,
         accounting_class_text,
-        *_duckdb_cache_version_token(),
+        *physical_token,
     )
-    hit, cached = _bond_analytics_rows_cache.get(cache_key)
-    if hit:
-        return cached
-
-    fetch_lock = _bond_analytics_rows_fetch_lock(cache_key)
-    with fetch_lock:
-        hit, cached = _bond_analytics_rows_cache.get(cache_key)
-        if hit:
-            return cached
+    if force_refresh:
+        generation = _bond_analytics_rows_cache.generation()
+        database_token = _duckdb_cache_version_token()
+        read_identity = system_read_cache_identity(cache_key)
+        governance_identity = _bond_analytics_result_cache_key(
+            "rows", report_date_text, asset_class_text, accounting_class_text,
+        )
         rows = _repo().fetch_bond_analytics_rows(
             report_date=report_date_text,
             asset_class=asset_class_text,
             accounting_class=accounting_class_text,
         )
-        _bond_analytics_rows_cache.set(cache_key, rows)
+        if (
+            physical_token == _bond_analytics_rows_cache_version_token()
+            and database_token == _duckdb_cache_version_token()
+            and read_identity == system_read_cache_identity(cache_key)
+            and governance_identity == _bond_analytics_result_cache_key(
+                "rows", report_date_text, asset_class_text, accounting_class_text,
+            )
+        ):
+            _bond_analytics_rows_cache.set(cache_key, rows, generation=generation)
         return rows
+    return _bond_analytics_rows_cache.get_or_set(
+        cache_key,
+        lambda: _repo().fetch_bond_analytics_rows(
+            report_date=report_date_text,
+            asset_class=asset_class_text,
+            accounting_class=accounting_class_text,
+        ),
+    )
 
 
 def _benchmark_excess_brinson_sum_matches_explained(summary: dict[str, object]) -> bool:
@@ -652,8 +767,8 @@ def _distribute_capital_gain_517(
     return trading_by_row, split_buckets
 
 
-def _resolve_prior_bond_snapshot_date(repo: BondAnalyticsRepository, period_end: str) -> str | None:
-    prior_dates = [d for d in repo.list_report_dates() if d < period_end]
+def _resolve_prior_bond_snapshot_date(repo: BondAnalyticsRepository, period_start: str) -> str | None:
+    prior_dates = [d for d in repo.list_report_dates() if d < period_start]
     return max(prior_dates) if prior_dates else None
 
 
@@ -665,12 +780,15 @@ def _pnl_report_dates_for_action_attribution(
     period_end: date,
 ) -> tuple[list[str], list[str]]:
     available_report_dates = [] if period_type == "MoM" else pnl_repo.list_union_report_dates()
-    return select_action_attribution_pnl_report_dates(
+    dates, codes = select_action_attribution_pnl_report_dates(
         available_report_dates=available_report_dates,
         period_type=period_type,
         period_start=period_start,
         period_end=period_end,
     )
+    if any("PENDING" in code for code in codes):
+        raise ActionAttributionPnlUnavailableError("; ".join(codes))
+    return dates, codes
 
 
 def _build_action_attribution_pnl_by_key(
@@ -688,7 +806,10 @@ def _build_action_attribution_pnl_by_key(
     )
     if not dates:
         return {}, extra + ["ACTION_ATTRIBUTION_PNL517_NO_FACT_DATES"]
-    merged = pnl_repo.merged_capital_gain_517_by_position_for_dates(dates)
+    try:
+        merged = pnl_repo.merged_capital_gain_517_by_position_for_dates(dates)
+    except Pnl517AuthorityError as exc:
+        raise ActionAttributionPnlUnavailableError(f"ACTION_ATTRIBUTION_PNL517_VERSION_AUTHORITY_PENDING:{exc}") from exc
     if not merged:
         extra.append("ACTION_ATTRIBUTION_PNL517_EMPTY_MERGE")
     return merged, extra
@@ -711,12 +832,16 @@ def _overlay_return_decomposition_trading_pnl517(
     extra_warnings: list[str] = []
     details: list[dict[str, str]] = []
     pnl_repo = PnlRepository(duckdb_path)
-    dates, _ = _pnl_report_dates_for_action_attribution(
+    dates, date_warnings = _pnl_report_dates_for_action_attribution(
         pnl_repo,
         period_type=period_type,
         period_start=period_start,
         period_end=period_end,
     )
+    for warning in date_warnings:
+        if "MULTI_MONTH_SUM" not in warning:
+            extra_warnings.append(warning)
+            details.append({"code": warning, "level": "warning", "message": warning})
     if not dates:
         extra_warnings.append(
             "No formal/nonstd PnL report dates fall within period_start–period_end; "
@@ -731,7 +856,10 @@ def _overlay_return_decomposition_trading_pnl517(
         return summary, extra_warnings, details
 
     multi_month = len(dates) > 1
-    pnl_map = _capital_gain_517_buckets(pnl_repo, dates)
+    try:
+        pnl_map = _capital_gain_517_buckets(pnl_repo, dates)
+    except Pnl517AuthorityError as exc:
+        raise ActionAttributionPnlUnavailableError(f"ACTION_ATTRIBUTION_PNL517_VERSION_AUTHORITY_PENDING:{exc}") from exc
     bond_rows = list(summary.get("bond_details") or [])
     trading_by_row, split_buckets = _distribute_capital_gain_517(bond_rows, pnl_map)
     matched_mv = ZERO
@@ -796,14 +924,15 @@ def _overlay_return_decomposition_trading_pnl517(
     return summary, extra_warnings, details
 
 
-def _lineage(report_date: str, rows: list[dict[str, object]]) -> dict[str, str]:
+def _lineage(report_date: str, rows: list[dict[str, object]], *, governance_dir: str | None = None) -> dict[str, str]:
     settings = get_settings()
     _require_latest_completed_bond_analytics_run(
         report_date,
         require_present=bool(rows),
+        governance_dir=governance_dir,
     )
     return resolve_formal_facts_lineage(
-        governance_dir=str(settings.governance_path),
+        governance_dir=governance_dir or str(settings.governance_path),
         cache_key=CACHE_KEY,
         job_name=JOB_NAME,
         report_date=report_date,
@@ -852,18 +981,23 @@ def _require_latest_completed_bond_analytics_run(
     *,
     require_present: bool = False,
     cache_hit: bool = False,
+    governance_dir: str | None = None,
 ) -> dict[str, object]:
     if build_rows is None:
         settings = get_settings()
-        build_rows = GovernanceRepository(base_dir=settings.governance_path).read_all(
-            CACHE_BUILD_RUN_STREAM
+        latest_build = GovernanceRepository(base_dir=governance_dir or settings.governance_path).read_latest_run(
+            CACHE_KEY,
+            job_name=JOB_NAME,
+            report_date=report_date,
         )
-    latest_build = _latest_governance_row(
-        build_rows,
-        cache_key=CACHE_KEY,
-        job_name=JOB_NAME,
-        report_date=report_date,
-    )
+        latest_build = latest_build or {}
+    else:
+        latest_build = _latest_governance_row(
+            build_rows,
+            cache_key=CACHE_KEY,
+            job_name=JOB_NAME,
+            report_date=report_date,
+        )
     if not latest_build:
         if require_present:
             cache_context = " for cached result" if cache_hit else ""
@@ -994,9 +1128,99 @@ def _meta_from_lineage(result_kind: str, lineage: dict[str, str]):
     )
 
 
-def _meta(result_kind: str, report_date: date, rows: list[dict[str, object]]):
-    lineage = _lineage(report_date.isoformat(), rows)
+def _meta(result_kind: str, report_date: date, rows: list[dict[str, object]], *, governance_dir: str | None = None):
+    lineage = _lineage(report_date.isoformat(), rows, governance_dir=governance_dir)
     return _meta_from_lineage(result_kind, lineage)
+
+
+def bond_analytics_credit_exposure_governance_meta(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+) -> dict[str, object]:
+    """Return formal governance metadata for Agent credit exposure with explicit paths."""
+    try:
+        repo = BondAnalyticsRepository(duckdb_path)
+        rows = repo.fetch_bond_analytics_rows(report_date=report_date)
+        governance_repo = GovernanceRepository(base_dir=governance_dir)
+        build_rows = governance_repo.read_all(CACHE_BUILD_RUN_STREAM)
+        latest_build = _latest_governance_row(
+            build_rows,
+            cache_key=CACHE_KEY,
+            job_name=JOB_NAME,
+            report_date=report_date,
+            completed_only=True,
+        )
+        if not latest_build:
+            raise RuntimeError(
+                "Bond analytics formal build terminal unavailable "
+                f"for report_date={report_date}: no completed run; refusing stale lineage."
+            )
+        lineage = _lineage_from_governance_rows(
+            report_date=report_date,
+            rows=rows,
+            build_rows=build_rows,
+            manifest_rows=governance_repo.read_all(CACHE_MANIFEST_STREAM),
+        )
+        meta = build_formal_result_meta_from_lineage(
+            trace_id=_trace_id(),
+            result_kind="bond_analytics.credit_exposure",
+            lineage=lineage,
+            default_cache_version=CACHE_VERSION,
+            source_surface="bond_analytics",
+            requested_report_date=report_date,
+            resolved_report_date=report_date,
+            as_of_date=report_date,
+            date_basis=BOND_ANALYTICS_DATE_BASIS,
+        ).model_dump(mode="json")
+        return {
+            "source_version": meta["source_version"],
+            "rule_version": meta["rule_version"],
+            "cache_version": meta["cache_version"],
+            "vendor_version": meta["vendor_version"],
+            "vendor_status": meta["vendor_status"],
+            "formal_use_allowed": True,
+            "quality_flag": "ok",
+            "fallback_mode": "none",
+            "fallback_reason": None,
+            "requested_report_date": report_date,
+            "resolved_report_date": report_date,
+            "as_of_date": report_date,
+            "date_basis": BOND_ANALYTICS_DATE_BASIS,
+            "source_surface": "bond_analytics",
+            "data_built_at": meta.get("data_built_at"),
+        }
+    except Exception as exc:  # noqa: BLE001 - Any governance/lineage failure must deny formal use instead of issuing trusted metrics.
+        # A recognized prefix identifies a failure category, never trusted source text.
+        if isinstance(exc, RuntimeError) and str(exc).startswith(
+            "Bond analytics formal build terminal unavailable"
+        ):
+            fallback_reason = (
+                "Bond analytics formal build terminal unavailable; refusing stale lineage "
+                f"(error_type={type(exc).__name__})"
+            )
+        else:
+            fallback_reason = (
+                "bond analytics governance lineage unavailable "
+                f"(error_type={exc.__class__.__name__})"
+            )
+        return {
+            "source_version": EMPTY_SOURCE_VERSION,
+            "rule_version": RULE_VERSION,
+            "cache_version": CACHE_VERSION,
+            "vendor_version": "vv_none",
+            "vendor_status": "ok",
+            "formal_use_allowed": False,
+            "quality_flag": "warning",
+            "fallback_mode": "none",
+            "fallback_reason": fallback_reason,
+            "requested_report_date": report_date,
+            "resolved_report_date": report_date,
+            "as_of_date": report_date,
+            "date_basis": BOND_ANALYTICS_DATE_BASIS,
+            "source_surface": "bond_analytics",
+        }
 
 
 def _is_cny_currency(currency_code: object) -> bool:
@@ -1102,9 +1326,9 @@ def _action_attribution_candidate_meta(
     return build_analytical_result_meta(
         trace_id=formal_meta.trace_id,
         result_kind=formal_meta.result_kind,
-        cache_version=formal_meta.cache_version,
+        cache_version=f"{formal_meta.cache_version}__{ACTION_ATTRIBUTION_CACHE_VERSION}",
         source_version=formal_meta.source_version,
-        rule_version=formal_meta.rule_version,
+        rule_version=f"{formal_meta.rule_version}__{ACTION_ATTRIBUTION_RULE_VERSION}",
         quality_flag=quality_flag or formal_meta.quality_flag or "warning",
         vendor_version=formal_meta.vendor_version,
         vendor_status=formal_meta.vendor_status,
@@ -1650,13 +1874,21 @@ def _get_return_decomposition(
     accounting_class: str,
     *,
     include_bond_details: bool,
+    force_refresh: bool = False,
+    duckdb_path: str | None = None,
+    governance_dir: str | None = None,
 ) -> dict:
+    explicit_paths = duckdb_path is not None or governance_dir is not None
+    read_path = duckdb_path or str(get_settings().duckdb_path)
     latest_build = _require_latest_completed_bond_analytics_run(
-        report_date.isoformat()
+        report_date.isoformat(), governance_dir=governance_dir,
     )
+    database_token = (read_path, None) if explicit_paths else _duckdb_cache_version_token()
+    terminal_token = _completed_build_cache_token(latest_build)
     cache_version_token = (
-        *_duckdb_cache_version_token(),
-        *_completed_build_cache_token(latest_build),
+        RETURN_PNL517_RULE_VERSION,
+        *database_token,
+        *terminal_token,
     )
     _cache_key = (
         (
@@ -1676,7 +1908,7 @@ def _get_return_decomposition(
             *cache_version_token,
         )
     )
-    hit, cached = _return_decomposition_cache.get(_cache_key)
+    hit, cached = (False, None) if force_refresh or explicit_paths else _return_decomposition_cache.get(_cache_key)
     if hit:
         if not latest_build:
             _require_latest_completed_bond_analytics_run(
@@ -1685,24 +1917,45 @@ def _get_return_decomposition(
                 cache_hit=True,
             )
         if _cached_result_matches_latest_completed_run(cached, latest_build):
-            return cached
+            return cast(dict, cached)
         _return_decomposition_cache.invalidate(_cache_key)
 
+    generation = _return_decomposition_cache.generation()
+    read_identity = system_read_cache_identity(_cache_key)
+    physical_token = _bond_analytics_rows_cache_version_token() if force_refresh else None
+
+    def cache_result(result: dict) -> None:
+        if explicit_paths:
+            return
+        if force_refresh:
+            current_build = _require_latest_completed_bond_analytics_run(
+                report_date.isoformat(),
+            )
+            if (
+                database_token != _duckdb_cache_version_token()
+                or physical_token != _bond_analytics_rows_cache_version_token()
+                or read_identity != system_read_cache_identity(_cache_key)
+                or terminal_token != _completed_build_cache_token(current_build)
+            ):
+                return
+        _return_decomposition_cache.set(_cache_key, result, generation=generation)
+
     period_start, period_end = resolve_period(report_date, period_type)
-    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class=asset_class, accounting_class=accounting_class)
+    repo = BondAnalyticsRepository(read_path) if explicit_paths else _repo()
+    rows = repo.fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class=asset_class, accounting_class=accounting_class)
     if not rows:
-        meta = _meta("bond_analytics.return_decomposition", report_date, rows)
+        meta = _meta("bond_analytics.return_decomposition", report_date, rows, governance_dir=governance_dir)
         result = _empty_return_response(meta, report_date, period_type, period_start, period_end)
-        _return_decomposition_cache.set(_cache_key, result)
+        cache_result(result)
         return result
 
-    curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
+    curve_repo = YieldCurveRepository(read_path)
     inputs = _fetch_return_decomposition_inputs(
         rows=rows, curve_repo=curve_repo,
         report_date=report_date.isoformat(), period_start=period_start.isoformat(),
     )
 
-    meta = _meta("bond_analytics.return_decomposition", report_date, rows)
+    meta = _meta("bond_analytics.return_decomposition", report_date, rows, governance_dir=governance_dir)
     meta = _apply_vendor_meta_update(
         meta,
         curve_snapshots=inputs["curve_snapshots"],
@@ -1712,6 +1965,10 @@ def _get_return_decomposition(
         fx_unavailable=inputs["fx_unavailable"],
         fx_latest_fallback=inputs["fx_latest_fallback"],
     )
+    meta = meta.model_copy(update={
+        "rule_version": f"{meta.rule_version}__{RETURN_PNL517_RULE_VERSION}",
+        "cache_version": f"{meta.cache_version}__{RETURN_PNL517_RULE_VERSION}",
+    })
 
     summary, trading_extra_warnings, trading_wd = _compute_return_decomposition_summary(
         rows=rows,
@@ -1719,8 +1976,10 @@ def _get_return_decomposition(
         period_end=period_end,
         period_type=period_type,
         inputs=inputs,
-        duckdb_path=str(get_settings().duckdb_path),
+        duckdb_path=read_path,
     )
+    if any("MISSING_MONTH" in warning or "PENDING" in warning for warning in trading_extra_warnings):
+        meta = meta.model_copy(update={"quality_flag": "warning" if meta.quality_flag == "ok" else meta.quality_flag})
     payload = _build_return_decomposition_payload(
         report_date=report_date,
         period_type=period_type,
@@ -1742,17 +2001,19 @@ def _get_return_decomposition(
         ),
         rows=rows,
     )
-    _return_decomposition_cache.set(_cache_key, result)
+    cache_result(result)
     return result
 
 
-def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_class: str = "all", accounting_class: str = "all") -> dict:
+def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_class: str = "all", accounting_class: str = "all", *, duckdb_path: str | None = None, governance_dir: str | None = None) -> dict:
     return _get_return_decomposition(
         report_date,
         period_type,
         asset_class,
         accounting_class,
         include_bond_details=True,
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
     )
 
 
@@ -1774,6 +2035,8 @@ def get_return_decomposition_summary(
     period_type: str = "MoM",
     asset_class: str = "all",
     accounting_class: str = "all",
+    *,
+    force_refresh: bool = False,
 ) -> dict:
     return _get_return_decomposition(
         report_date,
@@ -1781,6 +2044,7 @@ def get_return_decomposition_summary(
         asset_class,
         accounting_class,
         include_bond_details=False,
+        force_refresh=force_refresh,
     )
 
 
@@ -2665,7 +2929,47 @@ def get_benchmark_excess_many(
     return {report_date.isoformat(): out[report_date.isoformat()] for report_date in requested_dates if report_date.isoformat() in out}
 
 
-def get_krd_curve_risk(report_date: date, scenario_set: str = "standard") -> dict:
+def get_krd_curve_risk(
+    report_date: date,
+    scenario_set: str = "standard",
+    *,
+    force_refresh: bool = False,
+) -> dict:
+    report_date_text = report_date.isoformat()
+    scenario_set_text = str(scenario_set or "standard")
+    cache_key = _bond_analytics_result_cache_key(
+        "krd_curve_risk",
+        report_date_text,
+        scenario_set_text,
+    )
+    if force_refresh:
+        generation = _krd_curve_risk_cache.generation()
+        database_token = _duckdb_cache_version_token()
+        physical_token = _bond_analytics_rows_cache_version_token()
+        read_identity = system_read_cache_identity(cache_key)
+        _fetch_bond_analytics_rows_cached(report_date=report_date_text, force_refresh=True)
+        cached = _get_krd_curve_risk_uncached(report_date, scenario_set=scenario_set_text)
+        if (
+            cache_key is not None
+            and database_token == _duckdb_cache_version_token()
+            and physical_token == _bond_analytics_rows_cache_version_token()
+            and read_identity == system_read_cache_identity(cache_key)
+            and cache_key == _bond_analytics_result_cache_key(
+                "krd_curve_risk", report_date_text, scenario_set_text,
+            )
+        ):
+            _krd_curve_risk_cache.set(cache_key, cached, generation=generation)
+        return _with_fresh_bond_runtime_fields(cached) if cache_key is not None else cached
+    if cache_key is None:
+        return _get_krd_curve_risk_uncached(report_date, scenario_set=scenario_set_text)
+    cached = _krd_curve_risk_cache.get_or_set(
+        cache_key,
+        lambda: _get_krd_curve_risk_uncached(report_date, scenario_set=scenario_set_text),
+    )
+    return _with_fresh_bond_runtime_fields(cached)
+
+
+def _get_krd_curve_risk_uncached(report_date: date, scenario_set: str = "standard") -> dict:
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
     meta = _meta("bond_analytics.krd_curve_risk", report_date, rows)
     risk = summarize_portfolio_risk(rows)
@@ -2992,8 +3296,10 @@ def _rate_duration_rows(rows: list[dict[str, object]]) -> list[dict[str, object]
     ]
 
 
-def get_portfolio_headlines(report_date: date) -> dict:
-    rows = _fetch_bond_analytics_rows_cached(report_date=report_date.isoformat())
+def _get_portfolio_headlines_uncached(report_date: date, *, force_refresh: bool = False) -> dict:
+    rows = _fetch_bond_analytics_rows_cached(
+        report_date=report_date.isoformat(), force_refresh=force_refresh,
+    )
     if not rows:
         return _build_portfolio_headlines_empty_response(report_date)
 
@@ -3041,6 +3347,50 @@ def get_portfolio_headlines(report_date: date) -> dict:
     )
 
 
+def _portfolio_headlines_with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
+    response = deepcopy(envelope)
+    result_meta = response.get("result_meta")
+    if isinstance(result_meta, dict):
+        result_meta["trace_id"] = _trace_id()
+    return response
+
+
+def get_portfolio_headlines(report_date: date, *, force_refresh: bool = False) -> dict:
+    if current_system_read_context() is None:
+        if force_refresh:
+            return _get_portfolio_headlines_uncached(report_date, force_refresh=True)
+        return _get_portfolio_headlines_uncached(report_date)
+
+    # Validate the pinned physical snapshot before a warm cache hit. This keeps
+    # required-online and deleted-snapshot failures from degrading to stale data.
+    resolve_effective_read_path(str(get_settings().duckdb_path))
+    cache_key = (report_date.isoformat(),)
+    if force_refresh:
+        generation = _portfolio_headlines_cache.generation()
+        database_token = _duckdb_cache_version_token()
+        physical_token = _bond_analytics_rows_cache_version_token()
+        read_identity = system_read_cache_identity(cache_key)
+        governance_identity = _bond_analytics_result_cache_key(
+            "portfolio_headlines", report_date.isoformat(),
+        )
+        cached = _get_portfolio_headlines_uncached(report_date, force_refresh=True)
+        if (
+            database_token == _duckdb_cache_version_token()
+            and physical_token == _bond_analytics_rows_cache_version_token()
+            and read_identity == system_read_cache_identity(cache_key)
+            and governance_identity == _bond_analytics_result_cache_key(
+                "portfolio_headlines", report_date.isoformat(),
+            )
+        ):
+            _portfolio_headlines_cache.set(cache_key, cached, generation=generation)
+        return _portfolio_headlines_with_fresh_trace(cached)
+    cached = _portfolio_headlines_cache.get_or_set(
+        cache_key,
+        lambda: _get_portfolio_headlines_uncached(report_date),
+    )
+    return _portfolio_headlines_with_fresh_trace(cached)
+
+
 def get_dv01_risk(
     report_date: date,
     accounting_class: str = "OCI",
@@ -3048,12 +3398,46 @@ def get_dv01_risk(
     shock_bps: str = "1,10,25,50",
 ) -> dict:
     normalized_class = _normalize_dv01_accounting_class(accounting_class)
+    top_n = max(1, min(int(top_n), 100))
+    shocks = dv01_core.parse_dv01_shocks(shock_bps)
+    report_date_text = report_date.isoformat()
+    cache_key = _bond_analytics_result_cache_key(
+        "dv01_risk",
+        report_date_text,
+        normalized_class,
+        top_n,
+        tuple(str(shock) for shock in shocks),
+    )
+    if cache_key is None:
+        return _get_dv01_risk_uncached(
+            report_date=report_date,
+            normalized_class=normalized_class,
+            top_n=top_n,
+            shocks=shocks,
+        )
+    cached = _dv01_risk_cache.get_or_set(
+        cache_key,
+        lambda: _get_dv01_risk_uncached(
+            report_date=report_date,
+            normalized_class=normalized_class,
+            top_n=top_n,
+            shocks=shocks,
+        ),
+    )
+    return _with_fresh_bond_runtime_fields(cached)
+
+
+def _get_dv01_risk_uncached(
+    *,
+    report_date: date,
+    normalized_class: str,
+    top_n: int,
+    shocks: list[Decimal],
+) -> dict:
     rows = _fetch_bond_analytics_rows_cached(
         report_date=report_date.isoformat(),
         accounting_class=normalized_class,
     )
-    top_n = max(1, min(int(top_n), 100))
-    shocks = dv01_core.parse_dv01_shocks(shock_bps)
     summary = dv01_core.dv01_scope_summary(rows)
     total_dv01 = summary["total_dv01"]
     total_abs_dv01 = dv01_core.total_abs_dv01(rows)
@@ -3865,8 +4249,40 @@ def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
     total_mv_dec = sum((safe_decimal(row.get("market_value")) for row in rows), ZERO)
     ordered = sorted(rows, key=lambda row: safe_decimal(row.get("market_value")), reverse=True)
     picked = ordered[:top_n]
-    items = [
-        BondTopHoldingItem.model_validate(
+    items = []
+    for row in picked:
+        raw_maturity = row.get("maturity_date")
+        maturity_date: date | None
+        if isinstance(raw_maturity, datetime):
+            maturity_date = raw_maturity.date()
+        elif isinstance(raw_maturity, date):
+            maturity_date = raw_maturity
+        else:
+            try:
+                maturity_date = date.fromisoformat(str(raw_maturity)) if raw_maturity else None
+            except ValueError:
+                maturity_date = None
+        maturity_category = classify_accounting_maturity(
+            maturity_date=maturity_date,
+            report_date=report_date,
+            instrument_code=str(row.get("instrument_code") or ""),
+            bond_type=str(row.get("bond_type") or ""),
+            force_unknown="maturity_date" not in row or (raw_maturity is not None and maturity_date is None),
+        )
+        duration_quality_flag = str(row.get("duration_quality_flag") or "") or None
+        try:
+            raw_duration = row.get("modified_duration")
+            parsed_duration = None if isinstance(raw_duration, bool) else Decimal(str(raw_duration))
+            if parsed_duration is not None and not parsed_duration.is_finite():
+                parsed_duration = None
+        except (InvalidOperation, TypeError, ValueError):
+            parsed_duration = None
+        duration_unavailable = (
+            duration_quality_flag in {"maturity_unavailable", "coupon_unavailable"}
+            or maturity_date is None
+            or parsed_duration is None
+        )
+        items.append(BondTopHoldingItem.model_validate(
             promote_flat_payload(
                 {
                     "instrument_code": str(row.get("instrument_code") or ""),
@@ -3877,14 +4293,16 @@ def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
                     "market_value": safe_decimal(row.get("market_value")),
                     "face_value": safe_decimal(row.get("face_value")),
                     "ytm": safe_decimal(row.get("ytm")),
-                    "modified_duration": safe_decimal(row.get("modified_duration")),
+                    "modified_duration": (
+                        None if duration_unavailable else parsed_duration
+                    ),
+                    "duration_quality_flag": duration_quality_flag,
+                    "maturity_category": maturity_category,
                     "weight": ZERO if total_mv_dec == ZERO else safe_decimal(row.get("market_value")) / total_mv_dec,
                 },
                 BondTopHoldingItem,
             )
-        )
-        for row in picked
-    ]
+        ))
     payload = BondTopHoldingsResponse.model_validate(
         promote_flat_payload(
             {
@@ -4176,11 +4594,12 @@ def _build_action_attribution_placeholder_response(
 def _fetch_action_attribution_snapshots(
     *,
     repo: BondAnalyticsRepository,
+    period_start: str,
     period_end: str,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]], str | None]:
     """Fetch current and prior bond snapshots for action attribution."""
     rows_end = repo.fetch_bond_analytics_rows(report_date=period_end)
-    prior_rd = _resolve_prior_bond_snapshot_date(repo, period_end)
+    prior_rd = _resolve_prior_bond_snapshot_date(repo, period_start)
     rows_start = repo.fetch_bond_analytics_rows(report_date=prior_rd) if prior_rd else []
     return rows_end, rows_start, prior_rd
 
@@ -4235,6 +4654,7 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
     _cache_key = (
         report_date.isoformat(),
         period_type,
+        ACTION_ATTRIBUTION_CACHE_VERSION,
         *_duckdb_cache_version_token(),
         *_completed_build_cache_token(latest_build),
     )
@@ -4251,14 +4671,26 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         _action_attribution_cache.invalidate(_cache_key)
 
     period_start, period_end = resolve_period(report_date, period_type)
+    if period_type == "TTM" and period_end.day == monthrange(period_end.year, period_end.month)[1]:
+        period_start += timedelta(days=1)
     repo = _repo()
     rows_end, rows_start, prior_rd = _fetch_action_attribution_snapshots(
-        repo=repo, period_end=period_end.isoformat()
+        repo=repo, period_start=period_start.isoformat(), period_end=period_end.isoformat()
     )
-    if not rows_end:
-        return _build_action_attribution_placeholder_response(
-            report_date=report_date, period_type=period_type
-        )
+    # A completed build for an empty input is evidence of an empty end snapshot.
+    # An absent fact row alone cannot distinguish liquidation from missing data.
+    confirmed_empty_end = not rows_end and all(
+        str(latest_build.get(field) or "").strip() == expected
+        for field, expected in {
+            "report_date": period_end.isoformat(),
+            "status": "completed",
+            "cache_key": CACHE_KEY,
+            "job_name": JOB_NAME,
+            "source_version": EMPTY_SOURCE_VERSION,
+            "rule_version": RULE_VERSION,
+            "cache_version": CACHE_VERSION,
+        }.items()
+    ) and not repo.load_snapshot_rows(period_end.isoformat())
 
     pnl_repo = PnlRepository(str(get_settings().duckdb_path))
     pnl_by_key, pnl_warn_codes = _build_action_attribution_pnl_by_key(
@@ -4267,6 +4699,8 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         period_start=period_start,
         period_end=period_end,
     )
+    if not rows_end and not rows_start and not pnl_by_key:
+        return _build_action_attribution_placeholder_response(report_date=report_date, period_type=period_type)
 
     try:
         raw = compute_action_attribution_bonds(
@@ -4275,6 +4709,8 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
             positions_start=[bond_analytics_action_line_payload(r) for r in rows_start],
             positions_end=[bond_analytics_action_line_payload(r) for r in rows_end],
             pnl_by_key=pnl_by_key,
+            start_snapshot_available=prior_rd is not None,
+            end_snapshot_available=bool(rows_end) or confirmed_empty_end,
         )
     except Exception as exc:
         logger.exception(

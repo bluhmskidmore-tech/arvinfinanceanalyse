@@ -3,8 +3,8 @@
 # 原 20/5 万元阈值在银行体量（生产校准 2026-07-29..31：资产约 3600-3800 亿元，
 # 桶级 |全口径缺口| p25≈90 亿 / p50≈206 亿 / max≈614 亿）下恒为 high，失去区分度。
 #
-# 单体权威实现 balance_analysis_workbook.py 与休眠拆分副本 balance_workbook/_utils.py
-# 必须双侧同步（双实现等价性，防止副本漂移；参照 test_balance_workbook_campisi_rate.py）。
+# 单体权威实现 balance_analysis_workbook.py 是唯一计算源；历史
+# balance_workbook/_utils.py 路径必须直接复用该函数对象。
 from __future__ import annotations
 
 from decimal import Decimal
@@ -47,7 +47,7 @@ def test_package_severity_thresholds_use_absolute_yi_bands(gap_wan: Decimal, exp
 
 
 def test_monolith_and_package_severity_are_identical_across_sweep() -> None:
-    # 0 元到 1000 亿元的粗扫 + 边界点，双实现输出必须逐点一致
+    # 0 元到 1000 亿元的粗扫 + 边界点，权威与兼容 import 路径必须逐点一致
     sweep = [case[0] for case in _BOUNDARY_CASES]
     sweep += [Decimal(step) * Decimal("50000") for step in range(0, 201)]  # 0..10,000,000 万元
     for gap_wan in sweep:

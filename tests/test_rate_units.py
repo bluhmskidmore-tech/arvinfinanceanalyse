@@ -373,3 +373,33 @@ class TestRoundTripConversions:
         original = Decimal("2.55")
         result = bp_to_pct(pct_to_bp(original))
         assert result == original
+
+
+class TestNegativeYieldFloor:
+    """负收益率下界与 +20% 上界对称（含端点）；票息（floor=None）仍拒绝一切负值。"""
+
+    def test_floor_constant_is_symmetric_with_dirty_ceiling(self):
+        from backend.app.core_finance.rate_units import NEGATIVE_YIELD_DIRTY_FLOOR
+
+        assert NEGATIVE_YIELD_DIRTY_FLOOR == -0.20
+
+    def test_percent_caliber_negative_yield_inside_floor_is_observed(self):
+        assert normalize_percent_rate_to_decimal(-0.5, negative_floor=-0.20) == -0.005
+        assert normalize_percent_rate_to_decimal(-20, negative_floor=-0.20) == -0.2
+
+    def test_percent_caliber_negative_yield_below_floor_is_dirty(self):
+        assert normalize_percent_rate_to_decimal(-20.01, negative_floor=-0.20) is None
+        assert normalize_percent_rate_to_decimal(-95, negative_floor=-0.20) is None
+
+    def test_percent_caliber_default_still_rejects_negatives(self):
+        assert normalize_percent_rate_to_decimal(-0.5) is None
+
+    def test_percent_caliber_ceiling_is_inclusive_like_the_floor(self):
+        assert normalize_percent_rate_to_decimal(20) == 0.2
+        assert normalize_percent_rate_to_decimal(20.01) is None
+
+    def test_decimal_caliber_negative_yield_respects_floor(self):
+        assert normalize_annual_rate_to_decimal(-0.005, negative_floor=-0.20) == -0.005
+        assert normalize_annual_rate_to_decimal(-0.20, negative_floor=-0.20) == -0.20
+        assert normalize_annual_rate_to_decimal(-0.2001, negative_floor=-0.20) is None
+        assert normalize_annual_rate_to_decimal(-0.005) is None

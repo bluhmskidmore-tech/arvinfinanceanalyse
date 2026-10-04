@@ -19,7 +19,7 @@ from backend.app.core_finance.candidate_history_proxy_backtest import (
 
 def test_formula_versions_are_stable_identifiers() -> None:
     assert CYCLE_PROXY_FORMULA_VERSION == "fv_livermore_cycle_proxy_backtest_execution_first_v4"
-    assert PORTFOLIO_PROXY_FORMULA_VERSION == "fv_livermore_candidate_history_portfolio_adj_mtm_v2"
+    assert PORTFOLIO_PROXY_FORMULA_VERSION == "fv_livermore_candidate_history_portfolio_adj_mtm_v3"
 
 
 def test_entry_price_disclosures_flag_same_day_close_assumption() -> None:
@@ -133,7 +133,131 @@ def test_portfolio_series_marks_to_market_with_forward_fill_and_costs() -> None:
     assert [row["nav"] for row in nav_series] == [0.9982, 1.04811]
     assert rebalance_log[0]["transaction_cost"] == 0.0018
     assert rebalance_log[0]["buy_turnover"] == 1.0
+    assert rebalance_log[0]["zero_close_skipped_count"] == 0
+    assert rebalance_log[0]["zero_close_skipped_codes"] == []
     assert stale_codes == ["000001.SZ"]
+
+
+def test_portfolio_series_forward_fills_zero_close_and_reports_stale_holding() -> None:
+    nav_series, _rebalance_log, stale_codes = build_candidate_history_portfolio_series(
+        rebalances=[
+            {
+                "date": "2026-05-01",
+                "market_state": "WARM",
+                "items": [{"stock_code": "000001.SZ"}],
+            }
+        ],
+        close_rows=[
+            {"trade_date": "2026-05-01", "stock_code": "000001.SZ", "close_value": 100.0},
+            {"trade_date": "2026-05-02", "stock_code": "000001.SZ", "close_value": 0.0},
+        ],
+    )
+
+    assert [row["nav"] for row in nav_series] == [0.9982, 0.9982]
+    assert stale_codes == ["000001.SZ"]
+
+
+def test_portfolio_series_resumes_mark_to_market_after_consecutive_zero_closes() -> None:
+    nav_series, _rebalance_log, stale_codes = build_candidate_history_portfolio_series(
+        rebalances=[
+            {
+                "date": "2026-05-01",
+                "market_state": "WARM",
+                "items": [{"stock_code": "000001.SZ"}],
+            }
+        ],
+        close_rows=[
+            {"trade_date": "2026-05-01", "stock_code": "000001.SZ", "close_value": 100.0},
+            {"trade_date": "2026-05-02", "stock_code": "000001.SZ", "close_value": 0.0},
+            {"trade_date": "2026-05-03", "stock_code": "000001.SZ", "close_value": 0.0},
+            {"trade_date": "2026-05-04", "stock_code": "000001.SZ", "close_value": 110.0},
+        ],
+    )
+
+    assert [row["nav"] for row in nav_series] == [0.9982, 0.9982, 0.9982, 1.09802]
+    assert stale_codes == []
+
+
+def test_portfolio_series_returns_zero_close_sleeve_to_cash() -> None:
+    nav_series, rebalance_log, stale_codes = build_candidate_history_portfolio_series(
+        rebalances=[
+            {
+                "date": "2026-05-01",
+                "market_state": "WARM",
+                "items": [{"stock_code": "000001.SZ"}, {"stock_code": "000002.SZ"}],
+            }
+        ],
+        close_rows=[
+            {"trade_date": "2026-05-01", "stock_code": "000001.SZ", "close_value": 0.0},
+            {"trade_date": "2026-05-01", "stock_code": "000002.SZ", "close_value": 100.0},
+        ],
+    )
+
+    # Only the executable half-sleeve incurs entry cost.
+    assert rebalance_log[0]["transaction_cost"] == 0.0009
+    assert rebalance_log[0]["buy_turnover"] == 0.5
+    assert rebalance_log[0]["target_count"] == 2
+    assert rebalance_log[0]["zero_close_skipped_count"] == 1
+    assert rebalance_log[0]["zero_close_skipped_codes"] == ["000001.SZ"]
+    # Filtered sleeve stays in cash; NAV equals investable_nav instead of dropping a slot.
+    assert nav_series[0]["nav"] == 0.9991
+    assert nav_series[0]["cash_weight"] == 0.5
+    assert nav_series[0]["holding_count"] == 1
+    assert stale_codes == []
+
+
+def test_portfolio_series_locks_price_caliber_per_stock_when_adjusted_is_intermittent() -> None:
+    # A stock with a large adjustment factor (adj ~= raw / 8.5) whose adjusted
+    # close is missing on one day. Day-by-day caliber switching used to flip the
+    # marked value of the same share count by the full factor (observed ±800%
+    # single-day NAV swings); the whole stock must fall back to raw closes.
+    nav_series, _rebalance_log, _stale_codes = build_candidate_history_portfolio_series(
+        rebalances=[
+            {
+                "date": "2026-05-01",
+                "market_state": "WARM",
+                "items": [{"stock_code": "000001.SZ"}],
+            }
+        ],
+        close_rows=[
+            {
+                "trade_date": "2026-05-01",
+                "stock_code": "000001.SZ",
+                "adj_close_value": 100.0,
+                "close_value": 850.0,
+            },
+            # Adjusted close missing on the middle day.
+            {"trade_date": "2026-05-02", "stock_code": "000001.SZ", "close_value": 860.0},
+            {
+                "trade_date": "2026-05-03",
+                "stock_code": "000001.SZ",
+                "adj_close_value": 102.0,
+                "close_value": 870.0,
+            },
+        ],
+    )
+
+    # Entry cost: 1.0 * (0.0008 + 0.0010) = 0.0018, then raw-close marks only.
+    assert [row["nav"] for row in nav_series] == [
+        0.9982,
+        round(0.9982 * 860.0 / 850.0, 6),
+        round(0.9982 * 870.0 / 850.0, 6),
+    ]
+
+
+def test_portfolio_price_field_stats_lock_caliber_per_stock() -> None:
+    stats = candidate_history_portfolio_price_field_stats(
+        [
+            # Stock A: complete adjusted coverage -> every row counts as adjusted.
+            {"trade_date": "2026-05-01", "stock_code": "A", "adj_close_value": 10.0, "close_value": 85.0},
+            {"trade_date": "2026-05-02", "stock_code": "A", "adj_close_value": 10.2, "close_value": 86.7},
+            # Stock B: one usable row lacks the adjusted close -> every B row is raw.
+            {"trade_date": "2026-05-01", "stock_code": "B", "adj_close_value": 5.0, "close_value": 5.0},
+            {"trade_date": "2026-05-02", "stock_code": "B", "close_value": 5.1},
+        ]
+    )
+
+    assert stats == {"price_rows_adjusted": 2, "price_rows_raw_fallback": 2}
 
 
 def test_portfolio_series_uses_adjusted_prices_through_ex_dividend_gap() -> None:
@@ -169,10 +293,10 @@ def test_portfolio_series_uses_adjusted_prices_through_ex_dividend_gap() -> None
 def test_portfolio_price_field_stats_counts_raw_fallback_rows() -> None:
     stats = candidate_history_portfolio_price_field_stats(
         [
-            {"adj_close_value": 100.0, "close_value": 50.0},
-            {"adj_close_value": None, "close_value": 51.0},
-            {"adj_close_value": float("nan"), "close_value": 52.0},
-            {"adj_close_value": None, "close_value": None},
+            {"stock_code": "A", "adj_close_value": 100.0, "close_value": 50.0},
+            {"stock_code": "B", "adj_close_value": None, "close_value": 51.0},
+            {"stock_code": "B", "adj_close_value": float("nan"), "close_value": 52.0},
+            {"stock_code": "B", "adj_close_value": None, "close_value": None},
         ]
     )
     assert stats == {"price_rows_adjusted": 1, "price_rows_raw_fallback": 2}
@@ -201,6 +325,8 @@ def test_portfolio_summary_discloses_price_basis_and_fallback_rows() -> None:
     assert summary["price_field_fallback"] == "close_value"
     assert summary["price_rows_adjusted"] == 2
     assert summary["price_rows_raw_fallback"] == 1
+    # A single NAV point can never be annualized.
+    assert summary["annualized_return"] is None
 
 
 def test_interval_metrics_report_dates_and_signs() -> None:

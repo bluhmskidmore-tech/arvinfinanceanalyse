@@ -16,7 +16,7 @@ vi.mock("../lib/echarts", () => ({
 import * as pollingModule from "../app/jobs/polling";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { Numeric, PnlBridgePayload, PnlDatesPayload, ResultMeta } from "../api/contracts";
-import PnlBridgePage from "../features/pnl/PnlBridgePage";
+import PnlBridgePage, { bridgeRowId } from "../features/pnl/PnlBridgePage";
 import {
   buildBridgeWarningDisplays,
   buildCurveAvailabilityNotices,
@@ -179,7 +179,8 @@ describe("PnlBridgePage", () => {
     expect(warnings).toHaveTextContent("Residual spike on instrument IC-1");
 
     expect(screen.getByTestId("pnl-bridge-waterfall-card")).toBeInTheDocument();
-    expect(screen.getByText("解释因子拆解（用于校验闭合）")).toBeInTheDocument();
+    expect(screen.getByTestId("pnl-bridge-waterfall-card")).toHaveTextContent("解释因子拆解");
+    expect(screen.getByTestId("pnl-bridge-waterfall-card")).toHaveTextContent("用于校验闭合");
 
     const detail = await screen.findByTestId("pnl-bridge-detail-table");
     expect(detail).toHaveTextContent("IC-1");
@@ -840,6 +841,30 @@ describe("PnlBridgePage", () => {
     expect((effectSeries?.data?.[rollDownIndex] as { value: number | null }).value).toBe(0);
   });
 
+  it("discloses missing sensitivity inputs using only the formal effect coverage blocks", () => {
+    const notices = buildCurveAvailabilityNotices({
+      treasury_curve_availability: {
+        status: "unavailable", unavailable_rows: 2, applicable_rows: 2,
+        reasons: ["sensitivity_input_unavailable"],
+      },
+    });
+    expect(notices).toHaveLength(1);
+    expect(notices[0].text).toContain("2/2 个适用行因期限或久期输入不可用无法计算");
+    expect(notices[0].text).toContain("不是市场没有变动");
+  });
+
+  it("describes partial effect coverage without inferring the missing contribution direction", () => {
+    const notices = buildCurveAvailabilityNotices({
+      credit_spread_availability: {
+        status: "partial", unavailable_rows: 1, applicable_rows: 2,
+        reasons: ["sensitivity_input_unavailable"],
+      },
+    });
+    expect(notices[0].text).toContain("1/2 个适用行因期限或久期输入不可用无法计算");
+    expect(notices[0].text).toContain("贡献信息不完整，不能按完整口径解读");
+    expect(notices[0].text).not.toContain("被低估");
+  });
+
   it("drops the roll-down waterfall bar instead of publishing a zero", () => {
     const summary = buildBridgePayload("2026-07-31", "IC-ROLL-GAP", "100.00").summary;
     summary.total_roll_down = bridgeYuan(0, "+0.00");
@@ -1086,5 +1111,25 @@ describe("PnlBridgePage", () => {
     });
 
     pollingSpy.mockRestore();
+  });
+});
+
+describe("bridgeRowId", () => {
+  // 实测 2026-07-31 明细：同一债券/组合/会计分类下按成本中心 5010、5020 各出一行。
+  const baseRow = buildBridgePayload("2026-07-31", "102281219", "15.40").rows[0];
+
+  it("keeps rows that differ only by cost_center on distinct grid node ids", () => {
+    const costCenter5010 = { ...baseRow, portfolio_name: "FIOA", cost_center: "5010" };
+    const costCenter5020 = { ...costCenter5010, cost_center: "5020" };
+
+    expect(bridgeRowId(costCenter5010)).not.toBe(bridgeRowId(costCenter5020));
+    expect(bridgeRowId(costCenter5010)).toBe(bridgeRowId({ ...costCenter5010 }));
+  });
+
+  it("keeps the same triple on different report dates on distinct grid node ids", () => {
+    const july = { ...baseRow, cost_center: "5010" };
+    const june = { ...july, report_date: "2026-06-30" };
+
+    expect(bridgeRowId(july)).not.toBe(bridgeRowId(june));
   });
 });

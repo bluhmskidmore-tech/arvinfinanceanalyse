@@ -7,6 +7,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { runAudit as runArchitectureAudit } from "./audit_frontend_style_architecture.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const designSystemPath = path.join(repoRoot, "frontend/src/theme/designSystem.ts");
@@ -130,19 +131,44 @@ function isCommentOnlyLine(line) {
   return false;
 }
 
-function stripTrailingLineComment(code) {
-  let s = code;
-  const idx = s.indexOf("//");
-  if (idx === -1) return s;
-  const before = s.slice(0, idx);
-  const quotes =
-    (before.match(/"/g) || []).length + (before.match(/'/g) || []).length;
-  if (quotes % 2 !== 0) return s;
-  return before.trimEnd();
+function stripLineComments(code) {
+  // Diff hunks can start inside a block, so do not carry lexical state across
+  // unrelated added lines. Comment-only continuations are skipped separately.
+  // Quoted CSS/JS values remain visible to the hex guard, including escapes.
+  let result = "";
+  let quote = null;
+  for (let i = 0; i < code.length; i += 1) {
+    const char = code[i];
+    const next = code[i + 1];
+    if (quote) {
+      result += char;
+      if (char === "\\" && next !== undefined) {
+        result += next;
+        i += 1;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      result += char;
+    } else if (char === "/" && next === "/") {
+      break;
+    } else if (char === "/" && next === "*") {
+      const end = code.indexOf("*/", i + 2);
+      if (end === -1) break;
+      result += " ".repeat(end + 2 - i);
+      i = end + 1;
+    } else {
+      result += char;
+    }
+  }
+  return result;
 }
 
 function findBadHexesInLine(line, allowlist) {
-  const scan = stripTrailingLineComment(line);
+  const scan = stripLineComments(line);
   const bad = [];
   HEX_RE.lastIndex = 0;
   let m;
@@ -440,6 +466,19 @@ function runSelfTest() {
     die("self-test: non-token hex should fail line scan", 2);
   }
 
+  const commentOnlyHex = `color: dt.color.primary[900] /* old value #aabbcc */`;
+  if (findBadHexesInLine(commentOnlyHex, allow).length !== 0) {
+    die("self-test: inline block-comment hex must not count as a color", 2);
+  }
+  const actualWithComment = `color: '#aabbcc', /* old #123456 */ background: '#abcdef' // old #fedcba`;
+  const actualColors = findBadHexesInLine(actualWithComment, allow).map((item) => item.raw);
+  if (actualColors.join(",") !== "#aabbcc,#abcdef") {
+    die(`self-test: real declarations around comments must remain blocked, got ${actualColors}`, 2);
+  }
+  if (findBadHexesInLine(`content: '/* #aabbcc */'`, allow).length !== 1) {
+    die("self-test: comment markers inside strings must not hide hex strings", 2);
+  }
+
   const testPathDiff = [
     "diff --git a/frontend/src/x/TestThing.test.tsx b/frontend/src/x/TestThing.test.tsx",
     "+++ b/frontend/src/x/TestThing.test.tsx",
@@ -547,6 +586,9 @@ function main() {
 
   const cached = argv.has("--cached");
   const baseRef = resolveBaseRef();
+  // A5 checks all current CSS, including untracked styles. It is the same
+  // identity-based no-growth guard used by debt:audit, not a second baseline.
+  const architectureExit = runArchitectureAudit();
 
   if (!existsSync(designSystemPath)) {
     die(`missing design system: ${path.relative(repoRoot, designSystemPath)}`, 2);
@@ -559,6 +601,7 @@ function main() {
     console.log(
       `style diff audit: no changes vs ${cached ? "index (staged)" : baseRef}`,
     );
+    process.exitCode = architectureExit;
     return;
   }
 
@@ -599,6 +642,7 @@ function main() {
   console.log(
     `style diff audit: pass (${primaryLabel}; ${summarizeAuditResult(primaryFindings)})`,
   );
+  process.exitCode = architectureExit;
 }
 
 main();

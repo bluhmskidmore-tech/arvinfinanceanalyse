@@ -1,7 +1,9 @@
 import type { AssetStructurePayload } from "../../../api/contracts";
 import { EM_DASH } from "../../../pageModel";
 import { nocturneTokens } from "../../../theme/designSystem";
+import type { BondSectionDataState } from "../sectionStatus";
 import { formatRatePercent, formatYi, nativeToNumber } from "../utils/format";
+import { BondSectionSurface } from "./BondSectionSurface";
 
 const RATING_ORDER = [
   "AAA",
@@ -36,6 +38,12 @@ const RATING_COLORS: Record<string, string> = {
   "A-": nocturneTokens.color.amber,
 };
 
+/**
+ * 色带最小高度：载入骨架的防重排下限与 CSS 里的 `.rating-strip` 同值，
+ * 数据到达时不产生高度跳变（DESIGN.md §11.10）。
+ */
+const RATING_STRIP_MIN_HEIGHT = 132;
+
 function ratingRank(name: string): number {
   const i = RATING_ORDER.indexOf(name.trim().toUpperCase());
   return i >= 0 ? i : 500;
@@ -57,12 +65,16 @@ function ratingColor(category: string): string {
   return nocturneTokens.color.inkMuted;
 }
 
+/*
+ * 本组件刻意不走 DataTable：色块按市值占比分配 flex 权重，「面积即占比」是
+ * 核心视觉编码，塞进 <table> 会丢掉这层信息（DESIGN.md §12 第 13 条同源纪律）。
+ */
 export function CreditRatingBlocks({
   data,
-  loading,
+  state,
 }: {
   data: AssetStructurePayload | undefined;
-  loading: boolean;
+  state: BondSectionDataState;
 }) {
   const items = [...(data?.items ?? [])].sort(
     (a, b) => ratingRank(a.category) - ratingRank(b.category),
@@ -74,25 +86,21 @@ export function CreditRatingBlocks({
     }, 0) || 1;
 
   return (
-    <div className="bond-dashboard-page__panel bond-dashboard-charts__panel">
-      <div className="bond-dashboard-charts__head">
-        <h3 className="bond-dashboard-charts__head-title">信用等级分布</h3>
+    <div className="bond-dashboard-page__panel">
+      <div className="bond-dashboard-page__panel-head">
+        <h3 className="bond-dashboard-page__panel-head-title">信用等级分布</h3>
       </div>
-      {loading ? (
-        <p className="bond-dashboard-page__surface bond-dashboard-page__surface--loading">
-          载入中…
-        </p>
-      ) : data && items.length === 0 ? (
-        /* 仅真实空 payload 收敛为暂无数据；envelope 未到达时保留色带骨架防高度跳变。 */
-        <p className="bond-dashboard-page__surface bond-dashboard-page__surface--empty">
-          暂无数据
-        </p>
-      ) : items.length === 0 ? (
-        <div className="bond-dashboard-charts__rating-strip bond-dashboard-charts__fill">
-          <div className="bond-dashboard-charts__rating-empty">{EM_DASH}</div>
-        </div>
-      ) : (
-        <div className="bond-dashboard-charts__rating-strip bond-dashboard-charts__fill">
+      {/*
+       * 重构前这里有第三条分支：信封未到达时渲染一条 EM_DASH 色带骨架。分区状态
+       * 接进来后，「信封未到达」已经由 loading / error 明确表达，ready 必然带数据，
+       * 那条分支不再可达，随之删除（对应 CSS 的 __rating-empty 同步删除）。
+       */}
+      <BondSectionSurface
+        state={state}
+        isEmpty={items.length === 0}
+        loadingMinHeight={RATING_STRIP_MIN_HEIGHT}
+      >
+        <div className="bond-dashboard-charts__rating-strip bond-dashboard-page__panel-body">
           {items.map((it) => {
             const rawMarketValue = nativeToNumber(it.total_market_value);
             const w = rawMarketValue === null ? 6 : (rawMarketValue / total) * 100;
@@ -125,7 +133,7 @@ export function CreditRatingBlocks({
             );
           })}
         </div>
-      )}
+      </BondSectionSurface>
     </div>
   );
 }

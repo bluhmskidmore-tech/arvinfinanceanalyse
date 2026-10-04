@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Literal
 
 import duckdb
-
 from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
 
 RELATION_CHOICE_NEWS_EVENT = "choice_news_event"
@@ -114,7 +113,12 @@ def choice_news_filters(
         filters.append("received_at >= ?")
         params.append(received_from)
     if received_to is not None:
-        filters.append("received_at <= ?")
+        # received_to 是日期口径（date_basis=received_at_as_of_filter；未来行统计
+        # 同样按日截断）。直接 `received_at <= 'YYYY-MM-DD'` 会退化成当天 00:00:00
+        # 边界，把当天此后时刻的行既不算未来也不进结果，到次日才可见。
+        filters.append(
+            "try_cast(substr(cast(received_at as varchar), 1, 10) as date) <= try_cast(substr(?, 1, 10) as date)"
+        )
         params.append(received_to)
     if not filters:
         return "", params

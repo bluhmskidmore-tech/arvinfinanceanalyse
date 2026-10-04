@@ -1,11 +1,13 @@
 import { useMemo } from "react";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import type { EChartsOption } from "../../../lib/echarts";
 import type { Numeric, VolumeRateAttributionPayload } from "../../../api/contracts";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { numericRaw } from "../../../pageModel";
 import { EM_DASH } from "../../../utils/format";
+import { hasDirectPnlAttribution } from "./pnlAttributionViewModel";
 import "./VolumeRateAnalysisChart.css";
 
 type Props = {
@@ -50,6 +52,7 @@ function signedDirection(value: NumericLike): "positive" | "negative" {
 
 /** 量价归因：分类别当期/上期损益对比 + 明细表（规模、收益率、一阶效应与对账）。 */
 export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
+  const includesDirectPnl = data !== null && hasDirectPnlAttribution(data);
   const categoryOption = useMemo<EChartsOption | null>(() => {
     if (!data) {
       return null;
@@ -63,18 +66,10 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
     // ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用 Nocturne TS 镜像 token。
     return {
       tooltip: { trigger: "axis" },
-      legend: {
-        bottom: 0,
-        textStyle: {
-          fontSize: designTokens.fontSize[12],
-          color: nocturneTokens.color.inkSoft,
-        },
-      },
       grid: {
         left: 48,
         right: designTokens.space[6],
         top: designTokens.space[6],
-        bottom: 48,
       },
       xAxis: {
         type: "category",
@@ -106,12 +101,6 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
           }),
           itemStyle: {
             color: nocturneTokens.color.blue,
-            borderRadius: [
-              designTokens.radius.sm,
-              designTokens.radius.sm,
-              0,
-              0,
-            ],
           },
         },
         {
@@ -123,12 +112,6 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
           }),
           itemStyle: {
             color: nocturneTokens.color.inkMuted,
-            borderRadius: [
-              designTokens.radius.sm,
-              designTokens.radius.sm,
-              0,
-              0,
-            ],
           },
         },
       ],
@@ -140,17 +123,14 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
       {data ? (
         <div className="volume-rate-analysis-chart">
           {categoryOption && (
-            <div className="volume-rate-analysis-chart__card">
-              <h3 className="volume-rate-analysis-chart__section-title">
-                各产品类别损益对比（资产类顶层）
-              </h3>
-              <ReactECharts
-                option={categoryOption}
-                className="volume-rate-analysis-chart__chart"
-                notMerge
-                lazyUpdate
-              />
-            </div>
+            <ChartCard
+              flat
+              ariaLabel="各产品类别损益对比"
+              question="资产类顶层"
+              unit="亿元"
+              height={280}
+              option={categoryOption}
+            />
           )}
 
           <div className="volume-rate-analysis-chart__card">
@@ -158,24 +138,33 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
               归因分析明细表（亿元）
             </h3>
             <p className="volume-rate-analysis-chart__note">
-              损益变动 = 规模一阶效应 + 利率一阶效应 + 交叉效应
+              {includesDirectPnl
+                ? "利息收入按期末规模与当月利息收益率拆分（期末市值口径、非年化）；公允价值损益、投资收益和手工调整按两期变动单列。损益变动等于六项已知效应加未解释差额。"
+                : "损益变动 = 规模一阶效应 + 利率一阶效应 + 交叉效应 + 未解释差额"}
             </p>
             <div className="volume-rate-analysis-chart__table-shell">
               <table className="volume-rate-analysis-chart__table">
                 <thead>
                   <tr>
                     <th data-align="left">产品类别</th>
-                    <th>规模日均·当期</th>
-                    <th>规模日均·上期</th>
-                    <th>收益率·当期</th>
-                    <th>收益率·上期</th>
+                    <th>期末规模·当期</th>
+                    <th>期末规模·上期</th>
+                    <th>{includesDirectPnl ? "当月利息收益率·当期" : "收益率·当期"}</th>
+                    <th>{includesDirectPnl ? "当月利息收益率·上期" : "收益率·上期"}</th>
                     <th>当期损益</th>
                     <th>损益变动</th>
-                    <th>规模一阶</th>
-                    <th>利率一阶</th>
+                    <th>{includesDirectPnl ? "利息规模效应" : "规模一阶"}</th>
+                    <th>{includesDirectPnl ? "利息收益率效应" : "利率一阶"}</th>
                     <th>交叉</th>
+                    {includesDirectPnl ? (
+                      <>
+                        <th>公允价值变动</th>
+                        <th>投资收益变动</th>
+                        <th>手工调整变动</th>
+                      </>
+                    ) : null}
                     <th>归因合计</th>
-                    <th>对账差异</th>
+                    <th>未解释差额</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -210,6 +199,13 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                         <td>{yiText(item.volume_effect, 4)}</td>
                         <td>{yiText(item.rate_effect, 4)}</td>
                         <td>{yiText(item.interaction_effect, 4)}</td>
+                        {includesDirectPnl ? (
+                          <>
+                            <td>{yiText(item.fair_value_effect, 4)}</td>
+                            <td>{yiText(item.capital_gain_effect, 4)}</td>
+                            <td>{yiText(item.manual_adjustment_effect, 4)}</td>
+                          </>
+                        ) : null}
                         <td data-weight="600">{yiText(item.attrib_sum, 4)}</td>
                         <td>{reconErrorText(item.recon_error)}</td>
                       </tr>
@@ -245,6 +241,13 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                         <td>{yiText(item.volume_effect, 4)}</td>
                         <td>{yiText(item.rate_effect, 4)}</td>
                         <td>{yiText(item.interaction_effect, 4)}</td>
+                        {includesDirectPnl ? (
+                          <>
+                            <td>{yiText(item.fair_value_effect, 4)}</td>
+                            <td>{yiText(item.capital_gain_effect, 4)}</td>
+                            <td>{yiText(item.manual_adjustment_effect, 4)}</td>
+                          </>
+                        ) : null}
                         <td data-weight="600">{yiText(item.attrib_sum, 4)}</td>
                         <td>{reconErrorText(item.recon_error)}</td>
                       </tr>

@@ -19,6 +19,7 @@ def _fact(
     ending_balance: str = "0",
     monthly_pnl: str = "0",
     report_date: date = date(2026, 6, 30),
+    source_presence: str = "ledger",
 ) -> CanonicalFactRow:
     return CanonicalFactRow(
         report_date=report_date,
@@ -31,6 +32,7 @@ def _fact(
         daily_avg_balance=Decimal("0"),
         annual_avg_balance=Decimal("0"),
         days_in_period=report_date.day,
+        source_presence=source_presence,
     )
 
 
@@ -455,6 +457,7 @@ def test_build_ledger_pnl_analysis_locks_202606_exact_candidate_sample() -> None
         "cnx_minus_cny": Decimal("200"),
         "availability": {"CNX": "ready", "CNY": "ready"},
         "evidence_rows": {"CNX": 1, "CNY": 1},
+        "ledger_evidence_rows": {"CNX": 1, "CNY": 1},
     }
     assert basis_rows["liabilities"]["cnx_minus_cny"] == Decimal("50")
     assert basis_rows["net_assets"]["cnx_minus_cny"] == Decimal("150")
@@ -624,6 +627,7 @@ def test_build_ledger_pnl_analysis_marks_selected_basis_no_data_explicitly() -> 
         "cnx_minus_cny": None,
         "availability": {"CNX": "no_data", "CNY": "ready"},
         "evidence_rows": {"CNX": 0, "CNY": 1},
+        "ledger_evidence_rows": {"CNX": 0, "CNY": 1},
     }
 
 
@@ -652,6 +656,7 @@ def test_build_ledger_pnl_analysis_keeps_balance_metrics_when_selected_pnl_is_mi
         "cnx_minus_cny": None,
         "availability": {"CNX": "ready", "CNY": "no_data"},
         "evidence_rows": {"CNX": 1, "CNY": 0},
+        "ledger_evidence_rows": {"CNX": 1, "CNY": 0},
     }
     assert rows["liabilities"]["cnx"] == Decimal("400")
     assert rows["liabilities"]["availability"] == {"CNX": "ready", "CNY": "no_data"}
@@ -659,6 +664,43 @@ def test_build_ledger_pnl_analysis_keeps_balance_metrics_when_selected_pnl_is_mi
     assert rows["net_assets"]["evidence_rows"] == {"CNX": 2, "CNY": 0}
     assert rows["all_pnl"]["cnx"] is None
     assert rows["all_pnl"]["availability"] == {"CNX": "no_data", "CNY": "no_data"}
+
+
+def test_build_ledger_pnl_analysis_discloses_ledger_vs_average_only_evidence_rows() -> None:
+    """并集口径 evidence_rows 不变；ledger_evidence_rows 只数总账真实观测行。"""
+    facts = [
+        _fact("10100000001", "CNX", ending_balance="1000"),
+        _fact("10100000002", "CNX", source_presence="average_only"),
+        _fact("20100000001", "CNX", ending_balance="-400"),
+        _fact("20100000002", "CNX", source_presence="average_only"),
+        _fact("51400000001", "CNX", monthly_pnl="10"),
+        _fact("51400000002", "CNX", source_presence="average_only"),
+    ]
+
+    result = build_ledger_pnl_analysis(
+        report_date=date(2026, 6, 30),
+        source_version="sv_presence",
+        currency_basis="CNX",
+        current_facts=facts,
+        previous_report_date=None,
+        previous_source_version=None,
+        previous_facts=[],
+    )
+
+    rows = _by_metric(result["basis_comparison"])
+    assert rows["assets"]["evidence_rows"]["CNX"] == 2
+    assert rows["assets"]["ledger_evidence_rows"]["CNX"] == 1
+    assert rows["liabilities"]["evidence_rows"]["CNX"] == 2
+    assert rows["liabilities"]["ledger_evidence_rows"]["CNX"] == 1
+    assert rows["net_assets"]["evidence_rows"]["CNX"] == 4
+    assert rows["net_assets"]["ledger_evidence_rows"]["CNX"] == 2
+    assert rows["all_pnl"]["evidence_rows"]["CNX"] == 2
+    assert rows["all_pnl"]["ledger_evidence_rows"]["CNX"] == 1
+    # 金额口径不变：合成行总账侧填 0，不影响任何金额。
+    assert rows["assets"]["cnx"] == Decimal("1000")
+    assert rows["all_pnl"]["cnx"] == Decimal("10")
+    assert "union-caliber" in result["calculation_basis"]["evidence_rows_boundary"]
+    assert "ledger_evidence_rows" in result["calculation_basis"]["evidence_rows_boundary"]
 
 
 def test_build_ledger_pnl_analysis_does_not_invent_balance_zero_from_pnl_only_rows() -> None:
@@ -686,6 +728,7 @@ def test_build_ledger_pnl_analysis_does_not_invent_balance_zero_from_pnl_only_ro
         "cnx_minus_cny": None,
         "availability": {"CNX": "no_data", "CNY": "no_data"},
         "evidence_rows": {"CNX": 0, "CNY": 0},
+        "ledger_evidence_rows": {"CNX": 0, "CNY": 0},
     }
     assert rows["liabilities"]["cnx"] is None
     assert rows["net_assets"]["cnx"] is None

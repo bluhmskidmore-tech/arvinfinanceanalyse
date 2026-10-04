@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
 import inspect
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -41,6 +44,11 @@ def _choice_route_client(monkeypatch, tmp_path) -> TestClient:
             governance_path=tmp_path / "governance",
             local_archive_path=tmp_path / "archive",
         ),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"refresh": {"status": "queued"}},
     )
     monkeypatch.setattr(
         route,
@@ -198,6 +206,98 @@ def test_choice_stock_public_status_redacts_internal_failure_details(tmp_path) -
         "error_message",
         "failure_reason",
     }.isdisjoint(public)
+    assert "user_id" not in public["permission"]
+    assert "role" not in public["permission"]
+    assert "identity_source" not in public["permission"]
+
+
+def test_choice_stock_refresh_status_is_owner_scoped_for_explicit_and_latest_runs(tmp_path) -> None:
+    from backend.app.services import macro_toolkit_service as service
+
+    governance_path = tmp_path / "governance"
+    owner_permission = {
+        "mode": "scoped_refresh",
+        "allowed": True,
+        "user_id": "choice-owner",
+        "role": "viewer",
+        "identity_source": "header",
+        "resource": "macro_toolkit.choice_stock",
+        "actions": ["history", "factor_snapshot", "theme_overlay"],
+    }
+    other_permission = {
+        **owner_permission,
+        "user_id": "choice-other",
+    }
+    service.append_choice_stock_refresh_run(
+        governance_path,
+        service.build_choice_stock_refresh_run_payload(
+            run_id="choice-owner-older",
+            status="completed",
+            as_of_date="2026-04-29",
+            permission=owner_permission,
+        ),
+    )
+    service.append_choice_stock_refresh_run(
+        governance_path,
+        service.build_choice_stock_refresh_run_payload(
+            run_id="choice-other-latest",
+            status="completed",
+            as_of_date="2026-04-30",
+            permission=other_permission,
+        ),
+    )
+    service.append_choice_stock_refresh_run(
+        governance_path,
+        service.build_choice_stock_refresh_run_payload(
+            run_id="choice-owner-latest",
+            status="completed",
+            as_of_date="2026-05-01",
+            permission=owner_permission,
+        ),
+    )
+    service.append_choice_stock_refresh_run(
+        governance_path,
+        service.build_choice_stock_refresh_run_payload(
+            run_id="choice-owner-missing",
+            status="completed",
+            as_of_date="2026-05-02",
+        ),
+    )
+
+    explicit = service.choice_stock_refresh_status(
+        governance_path,
+        run_id="choice-owner-latest",
+        expected_user_id="choice-owner",
+    )
+    latest = service.choice_stock_refresh_status(
+        governance_path,
+        expected_user_id="choice-owner",
+    )
+
+    assert explicit["run_id"] == "choice-owner-latest"
+    assert latest["run_id"] == "choice-owner-latest"
+    assert "user_id" not in explicit["permission"]
+    assert "role" not in explicit["permission"]
+    assert "identity_source" not in explicit["permission"]
+
+    with pytest.raises(PermissionError, match="Choice stock refresh run not found."):
+        service.choice_stock_refresh_status(
+            governance_path,
+            run_id="choice-owner-latest",
+            expected_user_id="choice-other",
+        )
+    with pytest.raises(PermissionError, match="Choice stock refresh run not found."):
+        service.choice_stock_refresh_status(
+            governance_path,
+            run_id="choice-owner-missing",
+            expected_user_id="choice-owner",
+        )
+    idle = service.choice_stock_refresh_status(
+        governance_path,
+        expected_user_id="unknown-owner",
+    )
+    assert idle["status"] == "idle"
+    assert idle["run_id"] is None
 
 
 @pytest.mark.parametrize(
@@ -238,6 +338,60 @@ def test_choice_stock_idempotency_replay_quality_matches_terminal_status(
     assert replay.payload["idempotency_replay"] is True
     assert replay.quality_flag == expected_quality
     assert len(sent) == 1
+
+
+def test_choice_stock_idempotency_key_does_not_replay_across_owners(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import macro_toolkit_service as service
+
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        service,
+        "run_choice_stock_refresh_task",
+        SimpleNamespace(send=lambda **kwargs: sent.append(dict(kwargs))),
+        raising=False,
+    )
+    owner_one = {
+        "mode": "scoped_refresh",
+        "allowed": True,
+        "user_id": "choice-owner-one",
+        "role": "viewer",
+        "identity_source": "header",
+        "resource": "macro_toolkit.choice_stock",
+        "actions": ["history", "factor_snapshot", "theme_overlay"],
+    }
+    owner_two = {
+        **owner_one,
+        "user_id": "choice-owner-two",
+    }
+    first = service.queue_choice_stock_refresh(
+        **{
+            **_choice_queue_kwargs(tmp_path),
+            "permission": owner_one,
+        }
+    )
+    repo = GovernanceRepository(base_dir=tmp_path / "governance")
+    queued = repo.read_all(CACHE_BUILD_RUN_STREAM)[-1]
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **queued,
+            "status": "completed",
+            "trigger_mode": "terminal",
+            "finished_at": datetime.now(UTC).isoformat(),
+        },
+    )
+    second = service.queue_choice_stock_refresh(
+        **{
+            **_choice_queue_kwargs(tmp_path),
+            "permission": owner_two,
+        }
+    )
+
+    assert first.payload["run_id"] != second.payload["run_id"]
+    assert len(sent) == 2
 
 
 def test_choice_stock_overlay_pending_replay_is_running_warning(
@@ -302,6 +456,277 @@ def test_choice_stock_dispatch_failure_is_terminal_and_has_no_sync_fallback(tmp_
     assert records[-1]["failure_category"] == "queue_dispatch_failure"
 
 
+def test_choice_stock_actor_defers_livermore_closure_by_default_but_allows_explicit_opt_in(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import macro_toolkit_service as service
+    from backend.app.tasks import choice_stock_refresh as task
+
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        service,
+        "_run_choice_stock_refresh_job",
+        lambda **kwargs: calls.append(dict(kwargs)),
+    )
+
+    task.run_choice_stock_refresh(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        catalog_path=str(tmp_path / "catalog.json"),
+        governance_path=str(tmp_path / "governance"),
+        archive_root=str(tmp_path / "archive"),
+        run_id="choice-stock-full-closure",
+        as_of_date="2026-08-18",
+        queued_at="2026-08-18T10:00:00Z",
+        refresh_history=True,
+        refresh_factors=True,
+        factor_max_stock_count=None,
+        theme_overlay_mode="archive",
+        permission={"allowed": True},
+    )
+
+    assert calls[0]["complete_livermore_chain"] is False
+    assert calls[0]["retry_managed_by_broker"] is True
+
+    calls.clear()
+    task.run_choice_stock_refresh(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        catalog_path=str(tmp_path / "catalog.json"),
+        governance_path=str(tmp_path / "governance"),
+        archive_root=str(tmp_path / "archive"),
+        run_id="choice-stock-explicit-full-closure",
+        as_of_date="2026-08-18",
+        queued_at="2026-08-18T10:00:00Z",
+        refresh_history=True,
+        refresh_factors=True,
+        factor_max_stock_count=None,
+        theme_overlay_mode="archive",
+        permission={"allowed": True},
+        complete_livermore_chain=True,
+    )
+
+    assert calls[0]["complete_livermore_chain"] is True
+
+
+def test_choice_stock_worker_full_closure_finishes_before_completed_record(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import macro_toolkit_service as service
+
+    governance_path = tmp_path / "governance"
+    monkeypatch.setattr(
+        service,
+        "materialize_choice_stock_inputs",
+        lambda **_kwargs: {
+            "status": "completed",
+            "row_count": 100,
+            "stock_code_count": 100,
+            "run_id": "choice-stock-materialize-fixture",
+            "as_of_date": "2026-08-18",
+            "source_version": "sv-choice-fixture",
+            "vendor_version": "vv-choice-fixture",
+            "rule_version": "rv-choice-fixture",
+            "completed_request_items": ["stock_ohlcv:daily_ohlcv_amount"],
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "materialize_choice_stock_factor_snapshot",
+        lambda **_kwargs: {
+            "status": "completed",
+            "row_count": 100,
+            "source_version": "sv-factor-fixture",
+            "vendor_version": "vv-factor-fixture",
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "verify_choice_stock_daily_observation_landing",
+        lambda **_kwargs: 100,
+    )
+    closure_calls: list[dict[str, object]] = []
+
+    def fake_closure(**kwargs):
+        closure_calls.append(dict(kwargs))
+        repo = GovernanceRepository(base_dir=governance_path)
+        records = repo.read_all(
+            CACHE_BUILD_RUN_STREAM
+        )
+        assert [row["status"] for row in records] == ["running"]
+        manifest = repo.read_latest_manifest("choice_stock.history_and_factor_snapshot")
+        assert manifest is not None
+        assert manifest["report_date"] == "2026-08-18"
+        return {
+            "status": "completed",
+            "target_date": "2026-08-18",
+            "steps": [{"name": "candidate_history", "result": {"status": "ok"}}],
+        }
+
+    monkeypatch.setattr(
+        service,
+        "run_livermore_daily_pretrade_refresh",
+        fake_closure,
+        raising=False,
+    )
+
+    service._run_choice_stock_refresh_job(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        catalog_path=str(tmp_path / "catalog.json"),
+        governance_path=str(governance_path),
+        archive_root=str(tmp_path / "archive"),
+        run_id="choice-stock-full-closure-worker",
+        as_of_date="2026-08-18",
+        queued_at="2026-08-18T10:00:00Z",
+        refresh_history=True,
+        refresh_factors=True,
+        factor_max_stock_count=None,
+        theme_overlay_mode="archive",
+        permission={"allowed": True},
+        complete_livermore_chain=True,
+    )
+
+    assert closure_calls == [
+        {
+            "duckdb_path": str(tmp_path / "moss.duckdb"),
+            "target_date": "2026-08-18",
+            "skip_upstream_probe": True,
+            "theme_overlay_mode": "archive",
+            "export_pretrade": False,
+        }
+    ]
+    records = GovernanceRepository(base_dir=governance_path).read_all(
+        CACHE_BUILD_RUN_STREAM
+    )
+    assert [row["status"] for row in records] == ["running", "completed"]
+    assert records[-1]["livermore_closure_status"] == "completed"
+
+
+def test_choice_stock_worker_full_closure_partial_is_terminal_without_retry(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import macro_toolkit_service as service
+
+    governance_path = tmp_path / "governance"
+    completion_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        service,
+        "append_choice_stock_refresh_completion",
+        lambda **kwargs: completion_calls.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        service,
+        "materialize_choice_stock_inputs",
+        lambda **_kwargs: {
+            "status": "completed",
+            "row_count": 100,
+            "stock_code_count": 100,
+            "run_id": "choice-stock-materialize-fixture",
+            "as_of_date": "2026-08-18",
+            "source_version": "sv-choice-fixture",
+            "vendor_version": "vv-choice-fixture",
+            "rule_version": "rv-choice-fixture",
+            "completed_request_items": ["stock_ohlcv:daily_ohlcv_amount"],
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "materialize_choice_stock_factor_snapshot",
+        lambda **_kwargs: {
+            "status": "completed",
+            "row_count": 100,
+            "source_version": "sv-factor-fixture",
+            "vendor_version": "vv-factor-fixture",
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "verify_choice_stock_daily_observation_landing",
+        lambda **_kwargs: 100,
+    )
+    monkeypatch.setattr(
+        service,
+        "run_livermore_daily_pretrade_refresh",
+        lambda **_kwargs: {
+            "status": "partial",
+            "reason": "signal_confluence_replay_not_ready",
+            "target_date": "2026-08-18",
+            "theme_overlay": {
+                "status": "completed",
+                "overlay_status": "completed",
+                "member_count": 12,
+                "message": "overlay archived",
+            },
+        },
+        raising=False,
+    )
+
+    service._run_choice_stock_refresh_job(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        catalog_path=str(tmp_path / "catalog.json"),
+        governance_path=str(governance_path),
+        archive_root=str(tmp_path / "archive"),
+        run_id="choice-stock-full-closure-partial",
+        as_of_date="2026-08-18",
+        queued_at="2026-08-18T10:00:00Z",
+        refresh_history=True,
+        refresh_factors=True,
+        factor_max_stock_count=None,
+        theme_overlay_mode="archive",
+        permission={"allowed": True},
+        complete_livermore_chain=True,
+    )
+
+    records = GovernanceRepository(base_dir=governance_path).read_all(
+        CACHE_BUILD_RUN_STREAM
+    )
+    assert [row["status"] for row in records] == ["running", "partial"]
+    assert completion_calls == []
+    assert records[-1]["livermore_closure_status"] == "partial"
+    assert records[-1]["livermore_closure_reason"] == "signal_confluence_replay_not_ready"
+    assert records[-1]["history_row_count"] == 100
+    assert records[-1]["factor_row_count"] == 100
+    assert records[-1]["theme_overlay_status"] == "completed"
+    assert records[-1]["theme_overlay_message"] == "overlay archived"
+    assert records[-1]["theme_overlay_member_count"] == 12
+    assert records[-1]["retryable"] is False
+    assert records[-1]["error_message"] is None
+    assert records[-1]["failure_category"] is None
+    assert records[-1]["failure_reason"] is None
+
+
+def test_stalled_choice_stock_running_record_is_terminal_and_does_not_block_dispatch(
+    tmp_path,
+) -> None:
+    from backend.app.services import macro_toolkit_service as service
+
+    governance_path = tmp_path / "governance"
+    service.append_choice_stock_refresh_run(
+        governance_path,
+        service.build_choice_stock_refresh_run_payload(
+            run_id="choice-stock-stalled",
+            status="running",
+            as_of_date="2026-08-18",
+            started_at=(datetime.now(UTC) - timedelta(hours=2)).isoformat(),
+        ),
+    )
+
+    status = service.choice_stock_refresh_status(governance_path)
+
+    assert status["status"] == "failed"
+    assert status["failure_category"] == "worker_failure"
+    assert status["stalled"] is True
+    assert "failure_reason" not in status
+    assert (
+        service.latest_choice_stock_inflight_refresh(
+            governance_path,
+            as_of_date="2026-08-18",
+        )
+        is None
+    )
+
+
 def test_choice_stock_worker_records_failure_and_propagates_it(tmp_path, monkeypatch) -> None:
     from backend.app.services import macro_toolkit_service as service
 
@@ -341,6 +766,89 @@ def test_choice_stock_worker_records_failure_and_propagates_it(tmp_path, monkeyp
         else:
             assert records[-1]["status"] == "failed"
             assert records[-1]["retryable"] is False
+
+
+def test_choice_stock_sync_failure_is_terminal_without_broker_retry(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import macro_toolkit_service as service
+
+    monkeypatch.setattr(
+        service,
+        "materialize_choice_stock_inputs",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError(
+                "choice vendor failed token=TOP-SECRET api_key=LEAKED-KEY "
+                "UNLABELED-CHOICE-CREDENTIAL"
+            )
+        ),
+    )
+    monkeypatch.setenv("CHOICE_API_KEY", "UNLABELED-CHOICE-CREDENTIAL")
+
+    with pytest.raises(RuntimeError, match="choice vendor failed"):
+        service._run_choice_stock_refresh_job(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            catalog_path=str(tmp_path / "choice-stock-catalog.json"),
+            governance_path=str(tmp_path / "governance"),
+            archive_root=str(tmp_path / "archive"),
+            run_id="choice-sync-failure",
+            as_of_date="2026-04-30",
+            queued_at="2026-05-01T00:00:00+00:00",
+            refresh_history=True,
+            refresh_factors=False,
+            factor_max_stock_count=None,
+            theme_overlay_mode="off",
+            permission={"allowed": True},
+            retry_managed_by_broker=False,
+        )
+
+    records = GovernanceRepository(base_dir=tmp_path / "governance").read_all(
+        CACHE_BUILD_RUN_STREAM
+    )
+    assert [record["status"] for record in records] == ["running", "failed"]
+    assert records[-1]["attempt_count"] == 1
+    assert records[-1]["retryable"] is False
+    serialized_records = json.dumps(records, ensure_ascii=False)
+    assert "TOP-SECRET" not in serialized_records
+    assert "LEAKED-KEY" not in serialized_records
+    assert "UNLABELED-CHOICE-CREDENTIAL" not in serialized_records
+    assert "***" in serialized_records
+
+
+def test_choice_stock_full_closure_preserves_upstream_failure_record(tmp_path, monkeypatch) -> None:
+    from backend.app.services import macro_toolkit_service as service
+
+    monkeypatch.setattr(
+        service,
+        "materialize_choice_stock_inputs",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("choice connection closed")),
+    )
+
+    with pytest.raises(RuntimeError, match="choice connection closed"):
+        service._run_choice_stock_refresh_job(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            catalog_path=str(tmp_path / "choice-stock-catalog.json"),
+            governance_path=str(tmp_path / "governance"),
+            archive_root=str(tmp_path / "archive"),
+            run_id="choice-full-closure-upstream-failure",
+            as_of_date="2026-08-18",
+            queued_at="2026-08-19T00:00:00+00:00",
+            refresh_history=True,
+            refresh_factors=True,
+            factor_max_stock_count=None,
+            theme_overlay_mode="archive",
+            permission={"allowed": True},
+            complete_livermore_chain=True,
+        )
+
+    records = GovernanceRepository(base_dir=tmp_path / "governance").read_all(
+        CACHE_BUILD_RUN_STREAM
+    )
+    assert [record["status"] for record in records] == ["running", "retrying"]
+    assert records[-1]["failure_reason"] == "choice connection closed"
+    assert records[-1]["livermore_closure_status"] == "failed"
+    assert records[-1]["livermore_closure_reason"] == "choice connection closed"
 
 
 def test_choice_stock_expired_retrying_record_does_not_block_dispatch(

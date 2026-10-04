@@ -16,6 +16,8 @@
 6. `docs/CACHE_SPEC.md`
 7. `docs/acceptance_tests.md`
 
+产品 PRD 的权威正文只维护在仓库根 [prd-moss-agent-analytics-os.md](../prd-moss-agent-analytics-os.md)。[docs/ 下的旧 PRD 路径](prd-moss-agent-analytics-os.md) 只保留章节跳转，不承载另一份产品定义或执行授权；当前范围仍由本文的[阶段边界规则](#阶段边界规则)和 [Current Surface Boundaries](#current-surface-boundaries) 维护。
+
 ### 两个空置槽位（文件从未并入本仓库）
 
 历史上这条链在第 3 位和末位还列过两份文档，但它们**在本仓库里不存在**（已按全部扩展名检索
@@ -105,6 +107,7 @@ The following docs remain useful, but they are not the repo-level current-state 
 - 只有以下两类材料可以放开未纳入 cutover 的默认 stop line：
   - 更高优先级的人类指令；
   - dated execution update。
+- 当前任务已有的用户指令只要明确覆盖该工作流，就满足该任务的范围授权；不因它属于 excluded surface 再次索要同一授权。局部开发授权不等于正式金融口径晋升或生产启用授权。
 - dated execution update 默认按 **scoped override** 解释：
   - 只对被点名工作流生效；
   - 不自动扩张 repo-wide `Phase 2` 已排除的模块；
@@ -126,26 +129,30 @@ The following docs remain useful, but they are not the repo-level current-state 
 - 为 repo-wide `Phase 2` 明确排除的工作流提供额外局部授权
 - 为未来未纳入 cutover 的新工作流提供命名授权模板
 
-repo-wide `Phase 2` 当前明确不放开的范围包括：
+## Current Surface Boundaries
 
-- Agent MVP / Phase 4A / 4B
-- `executive.*` 中除 `executive-consumer cutover v1` 以外的其余路由
-- `executive-consumer cutover v1` 当前已纳入：
-  - `/ui/home/overview`
-  - `/ui/home/summary`
-  - `/ui/pnl/attribution`
-- `executive-consumer cutover v1` 当前仍排除：
-  - `/ui/risk/overview`
-  - `/ui/home/alerts`
-  - `/ui/home/contribution`
-- `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
-- `qdb_gl_monthly_analysis` 等仍未晋升的 analytical-only / compatibility 模块
+本节维护后端与测试入口共用的当前范围；发布验收条件仍见 [V3_CUTOFF_EXIT_CRITERIA.md](V3_CUTOFF_EXIT_CRITERIA.md)。
+
+`executive-consumer cutover v1` 当前已纳入以下 E1 读取接口，保留其 analytical envelope 和 `formal_use_allowed=false` 语义：
+
+- `/ui/home/overview`
+- `/ui/home/summary`
+- `/ui/home/snapshot`
+- `/ui/pnl/attribution`
+
+repo-wide `Phase 2` 默认范围仍不包含以下扩展：
+
+- Agent MVP / Phase 4A / 4B 的生产启用
+- `executive.*` 超出上述 E1 接口的 governed rollout
+- `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical 扩展
+- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块的范围扩张
+- cube-query broad rollout 及其他 `Phase 3 / Phase 4` 扩展
 - 无关工作流的 `next slice`
 - broad frontend rollout
 
-当前这些排除面的运行语义应按以下方式理解：
+已落地接口的维护与正式金融口径晋升应分别判断。当前运行契约如下：
 
-- excluded executive surfaces：显式 `503 fail-closed`
+- `/ui/risk/overview`、`/ui/home/alerts`、`/ui/home/contribution`：通过读取权限校验后仍显式 `503 fail-closed`
 - `cube-query` public routes 已开放为受控 query surface；当前只按已覆盖事实表与 `result_meta` 声明查询结果口径，不等同于新增页面级正式指标真值面
 - liability-analytics public routes 已开放为 analytical compatibility surface；必须显式保留 mixed-source / compat 边界，不得误写为 formal balance/PnL truth
 - retained frontend entries：placeholder / compat / hidden，不代表已晋升 live governed page

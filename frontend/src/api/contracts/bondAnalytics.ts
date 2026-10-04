@@ -1,5 +1,6 @@
 /** Bond analytics: return decomposition, DV01/KRD risk, credit spread, yield curve, action attribution, and Campisi return attribution. */
 import type { Numeric } from "./core";
+import type { PnlBridgeEffectAvailabilityBlock } from "./pnl";
 
 export type BondAnalyticsRefreshPayload = {
   status: string;
@@ -184,7 +185,10 @@ export type BondTopHoldingItem = {
   market_value: Numeric;
   face_value: Numeric;
   ytm: Numeric;
-  modified_duration: Numeric;
+  /** The current read surface can return a Q8 string; null means no observed row duration. */
+  modified_duration: Numeric | string | null;
+  duration_quality_flag?: string | null;
+  maturity_category?: string;
   weight: Numeric;
 };
 
@@ -540,12 +544,6 @@ export type ConcentrationDisplayLimits = {
   credit_weight_max: number;
 };
 
-export type CreditSpreadBondDetailRow = {
-  market_value: Numeric;
-  rating?: string;
-  tenor_bucket?: string;
-};
-
 export type CreditSpreadMigrationPayload = {
   report_date: string;
   credit_bond_count: number;
@@ -563,7 +561,6 @@ export type CreditSpreadMigrationPayload = {
   concentration_by_tenor?: ConcentrationMetrics;
   /** 展示限额（后端下发，非风控正式限额）；旧响应可能缺失，缺失时页面显示「限额未下发」空态。 */
   display_limits?: ConcentrationDisplayLimits;
-  bond_details?: CreditSpreadBondDetailRow[];
   oci_credit_exposure: Numeric;
   oci_spread_dv01: Numeric;
   oci_sensitivity_25bp: Numeric;
@@ -596,7 +593,7 @@ export type CreditSpreadDetailBondRow = {
 };
 
 export type SpreadHistoricalContextPayload = {
-  current_spread_bps: string;
+  current_spread_bps: string | null;
   percentile_1y: string | null;
   percentile_3y: string | null;
   median_1y: string | null;
@@ -609,7 +606,13 @@ export type CreditSpreadAnalysisPayload = {
   report_date: string;
   credit_bond_count: number;
   total_credit_market_value: string;
-  weighted_avg_spread_bps: string;
+  /** Coverage fields are absent in responses before formal_v3. */
+  spread_bond_count?: number;
+  spread_market_value?: string;
+  missing_ytm_count?: number;
+  missing_ytm_market_value?: string;
+  spread_coverage_status?: "complete" | "partial" | "unavailable" | "empty";
+  weighted_avg_spread_bps: string | null;
   spread_term_structure: CreditSpreadTermStructurePoint[];
   top_spread_bonds: CreditSpreadDetailBondRow[];
   bottom_spread_bonds: CreditSpreadDetailBondRow[];
@@ -675,9 +678,34 @@ export type ActionAttributionPayload = {
   total_pnl_from_actions: Numeric;
   by_action_type: ActionTypeSummary[];
   action_details: ActionDetail[];
-  period_start_duration: Numeric;
-  period_end_duration: Numeric;
-  duration_change_from_actions: Numeric;
+  snapshot_window?: {
+    requested_start: string;
+    resolved_start: string | null;
+    resolved_end: string | null;
+    start_gap_days: number | null;
+    staleness_limit_status: "PENDING";
+  } | null;
+  pnl_coverage?: {
+    input_pnl: number;
+    input_absolute_pnl: number;
+    identified_pnl: number;
+    unallocated_pnl: number;
+    unallocated_absolute_pnl: number;
+    pnl_only_pnl: number;
+    pnl_only_absolute_pnl: number;
+    input_key_count: number;
+    identified_key_count: number;
+    unallocated_key_count: number;
+    pnl_only_key_count: number;
+    key_coverage_ratio: number | null;
+    reconciliation_difference: number;
+    status: "complete" | "partial";
+    period_status?: "complete" | "partial";
+    missing_months?: string[];
+  } | null;
+  period_start_duration: Numeric | null;
+  period_end_duration: Numeric | null;
+  duration_change_from_actions: Numeric | null;
   period_start_dv01: Numeric | null;
   period_end_dv01: Numeric | null;
   status?: string;
@@ -741,6 +769,9 @@ export type VolumeRateAttributionItem = {
   volume_effect: Numeric | null;
   rate_effect: Numeric | null;
   interaction_effect: Numeric | null;
+  fair_value_effect?: Numeric | null;
+  capital_gain_effect?: Numeric | null;
+  manual_adjustment_effect?: Numeric | null;
   attrib_sum: Numeric | null;
   recon_error: Numeric | null;
   volume_contribution_pct: Numeric | null;
@@ -757,6 +788,12 @@ export type VolumeRateAttributionPayload = {
   total_volume_effect: Numeric | null;
   total_rate_effect: Numeric | null;
   total_interaction_effect: Numeric | null;
+  total_fair_value_effect?: Numeric | null;
+  total_capital_gain_effect?: Numeric | null;
+  total_manual_adjustment_effect?: Numeric | null;
+  attribution_basis?: string;
+  has_complete_inputs?: boolean;
+  warnings?: string[];
   total_recon_error: Numeric | null;
   items: VolumeRateAttributionItem[];
   has_previous_data: boolean;
@@ -831,7 +868,7 @@ export type PnlCompositionPayload = {
 
 export type PnlAttributionAnalysisSummary = {
   report_date: string;
-  primary_driver: "volume" | "rate" | "market" | "unknown";
+  primary_driver: "volume" | "rate" | "interaction" | "fair_value" | "capital_gain" | "manual_adjustment" | "unexplained" | "market" | "unknown";
   primary_driver_pct: Numeric;
   key_findings: string[];
   tpl_market_aligned: boolean;
@@ -894,12 +931,39 @@ export type AttributionRiskCoverage = {
   exclusions: AttributionRiskCoverageExclusion[];
 };
 
+export type SpreadAttributionExclusion = {
+  reason: string;
+  start_row_count: number;
+  end_row_count: number;
+  start_market_value: Numeric;
+  end_market_value: Numeric;
+};
+
+export type SpreadAttributionCoverage = {
+  start_row_count: number;
+  end_row_count: number;
+  matched_position_count: number;
+  attributed_position_count: number;
+  start_market_value: Numeric;
+  end_market_value: Numeric;
+  covered_start_market_value: Numeric;
+  covered_end_market_value: Numeric;
+  excluded_start_market_value: Numeric;
+  excluded_end_market_value: Numeric;
+  start_coverage_pct: Numeric;
+  end_coverage_pct: Numeric;
+  exclusions: SpreadAttributionExclusion[];
+};
+
 export type SpreadAttributionItem = {
   category: string;
   category_type: string;
   market_value: Numeric;
   duration: Numeric;
   weight: Numeric;
+  matched_start_market_value: Numeric;
+  attribution_duration: Numeric | null;
+  attributed_position_count: number;
   yield_change: Numeric | null;
   treasury_change: Numeric | null;
   spread_change: Numeric | null;
@@ -925,6 +989,11 @@ export type SpreadAttributionPayload = {
   total_price_change: Numeric;
   primary_driver: string;
   interpretation: string;
+  attribution_basis: "matched_positions_start_exposure";
+  method_note: string;
+  calculation_status: "complete" | "partial" | "unavailable";
+  attribution_coverage: SpreadAttributionCoverage;
+  warnings: string[];
   items: SpreadAttributionItem[];
 };
 
@@ -953,6 +1022,8 @@ export type KRDAttributionPayload = {
   portfolio_duration: Numeric;
   portfolio_dv01: Numeric;
   total_duration_effect: Numeric;
+  calculation_status?: "complete" | "partial" | "unavailable";
+  warnings?: string[];
   curve_shift_type: string;
   curve_interpretation: string;
   buckets: KRDAttributionBucket[];
@@ -1007,6 +1078,7 @@ export type CampisiAttributionPayload = {
   selection_contribution_pct: Numeric;
   primary_driver: string;
   interpretation: string;
+  effect_availability?: CampisiEffectAvailability;
   items: CampisiAttributionItem[];
 };
 
@@ -1053,6 +1125,7 @@ export type CampisiFormalClosure = {
   bridge_quality_flag?: string | null;
   bridge_vendor_status?: string | null;
   bridge_fallback_mode?: string | null;
+  bridge_fallback_date?: string | null;
   message: string;
 };
 
@@ -1120,6 +1193,22 @@ export type CampisiDecisionGradePayload = {
   pnl_window?: CampisiDecisionWindowDeclaration;
   curve_window?: CampisiDecisionWindowDeclaration;
   window_disclosure?: CampisiDecisionWindowDisclosure | null;
+  scope_disclosure?: {
+    actual_scope: "matched_beginning_positions";
+    scope_decision_status: "PENDING";
+    full_input_pnl: number | null;
+    matched_input_pnl: number | null;
+    included_pnl: number;
+    unmatched_pnl: number | null;
+    full_input_absolute_pnl: number | null;
+    unmatched_absolute_pnl: number | null;
+    input_row_count: number;
+    matched_row_count: number;
+    included_row_count: number;
+    unmatched_row_count: number;
+    full_month_coverage: false;
+    message: string;
+  };
   summary: CampisiDecisionGradeSummary;
   formal_pnl_view: {
     total_actual_pnl: number;
@@ -1131,6 +1220,8 @@ export type CampisiDecisionGradePayload = {
       difference: number;
       difference_ratio?: number | null;
       basis: string;
+      scope?: "matched_beginning_positions";
+      message?: string;
     };
   };
   valuation_oci_view: {
@@ -1219,9 +1310,11 @@ export type CampisiEffectAvailabilityReason =
   | "curve_absent"
   | "curve_unusable"
   | "insufficient_shared_tenors"
+  | "insufficient_shared_positive_tenors"
   | "bridge_curve_unavailable"
   | "credit_spread_input_missing"
   | "accrued_interest_missing"
+  | "principal_change_without_cashflows"
   | "bridge_second_order_not_decomposed";
 
 export type CampisiEffectAvailabilityEntry = {
@@ -1229,6 +1322,8 @@ export type CampisiEffectAvailabilityEntry = {
   reason: CampisiEffectAvailabilityReason | null;
   unavailable_bonds: number;
   unavailable_market_value_start: number;
+  unavailable_market_value_end?: number;
+  covered_bonds?: number;
   shared_positive_tenors?: number;
   min_required_shared_tenors?: number;
   basis?: string;
@@ -1236,6 +1331,7 @@ export type CampisiEffectAvailabilityEntry = {
 
 export type CampisiEffectAvailability = {
   bonds: number;
+  position_change?: CampisiEffectAvailabilityEntry;
   treasury_effect: CampisiEffectAvailabilityEntry;
   spread_effect: CampisiEffectAvailabilityEntry;
   accrued_interest: CampisiEffectAvailabilityEntry;
@@ -1246,6 +1342,20 @@ export type CampisiEffectAvailability = {
   convexity_effect?: CampisiEffectAvailabilityEntry;
   cross_effect?: CampisiEffectAvailabilityEntry;
   reinvestment_effect?: CampisiEffectAvailabilityEntry;
+  /** 正式桥原始效应诊断；分母为各效应适用会计行，与模型持仓数量不同。 */
+  roll_down_availability?: PnlBridgeEffectAvailabilityBlock;
+  treasury_curve_availability?: PnlBridgeEffectAvailabilityBlock;
+  credit_spread_availability?: PnlBridgeEffectAvailabilityBlock;
+};
+
+/** 模型路径的国债曲线日期；解析日只有在对应 used=true 时才是实际采纳的观测日。 */
+export type CampisiTreasuryCurveDateCoverage = {
+  start_requested_date?: string | null;
+  start_resolved_date?: string | null;
+  end_requested_date?: string | null;
+  end_resolved_date?: string | null;
+  start_curve_used?: boolean | null;
+  end_curve_used?: boolean | null;
 };
 
 export type CampisiFourEffectsPayload = {
@@ -1261,6 +1371,34 @@ export type CampisiFourEffectsPayload = {
   decomposition_basis?: string;
   warnings?: string[];
   effect_availability?: CampisiEffectAvailability;
+  input_quality?: {
+    /** 正式桥会计记录行纳入覆盖，不代表市场效应输入完整或本金变化检查通过。 */
+    formal_bridge_coverage?: {
+      source: "pnl.bridge.rows";
+      basis: "formal_report_pnl_bridge";
+      status: "ok" | "partial" | "unavailable";
+      bridge_rows: number | null;
+      attributed_rows: number;
+      reason?: string | null;
+    } | null;
+    /** Native face-value evidence used only for the model's holding-change guard. */
+    principal_evidence?: {
+      source: "zqtz_bond_daily_snapshot";
+      basis: "native_face_value";
+      period_start: string;
+      period_end: string;
+      model_only: true;
+    } | null;
+    market_curve_coverage?: {
+      treasury_effect?: CampisiTreasuryCurveDateCoverage | null;
+    } | null;
+    /** 已纳入四效应模型、但到期日不可用的持仓；剩余项为带符号模型残差。 */
+    included_maturity_unavailable?: {
+      positions: number;
+      market_value_start_abs: number;
+      model_residual: number;
+    } | null;
+  } | null;
 };
 
 export type CampisiEnhancedPayload = {
@@ -1288,5 +1426,7 @@ export type CampisiMaturityBucketBreakdown = {
 export type CampisiMaturityBucketsPayload = {
   period_start: string;
   period_end: string;
+  basis?: string | null;
   buckets: Record<string, CampisiMaturityBucketBreakdown>;
+  effect_availability?: CampisiEffectAvailability;
 };

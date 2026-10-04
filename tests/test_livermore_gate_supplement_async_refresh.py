@@ -475,7 +475,78 @@ def test_livermore_status_route_returns_404_for_unknown_run(tmp_path, monkeypatc
     )
 
     assert response.status_code == 404
-    assert "missing-run" in response.text
+    detail = response.json()["detail"]
+    assert detail == "LIVERMORE_GATE_SUPPLEMENT_RUN_NOT_FOUND：未找到对应的刷新任务"
+    assert "missing-run" not in detail
+    assert "ValueError" not in detail
+
+
+@pytest.mark.parametrize(
+    ("exception_factory", "expected_status", "expected_detail"),
+    [
+        (
+            lambda route: ValueError("invalid request at F:\\private\\request.json"),
+            422,
+            "LIVERMORE_GATE_SUPPLEMENT_REQUEST_INVALID：刷新请求参数无效，请检查后重试",
+        ),
+        (
+            lambda route: route.LivermoreGateSupplementRefreshConflictError(
+                "conflict at F:\\private\\lock"
+            ),
+            409,
+            "LIVERMORE_GATE_SUPPLEMENT_REFRESH_CONFLICT：刷新任务已在执行，请稍后重试",
+        ),
+        (
+            lambda route: route.LivermoreGateSupplementRefreshQueueError(
+                "RuntimeError at F:\\private\\broker"
+            ),
+            503,
+            "LIVERMORE_GATE_SUPPLEMENT_QUEUE_FAILED：刷新任务提交失败，请稍后重试",
+        ),
+        (
+            lambda route: RuntimeError("RuntimeError at F:\\private\\unexpected.py"),
+            503,
+            "LIVERMORE_GATE_SUPPLEMENT_REFRESH_FAILED：刷新服务暂不可用，请稍后重试",
+        ),
+    ],
+)
+def test_livermore_refresh_route_redacts_internal_exceptions(
+    tmp_path,
+    monkeypatch,
+    exception_factory,
+    expected_status: int,
+    expected_detail: str,
+) -> None:
+    from backend.app.api.routes import market_data_livermore as route
+
+    monkeypatch.setattr(route, "_ensure_livermore_gate_supplement_refresh_allowed", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=tmp_path / "moss.duckdb",
+            governance_path=tmp_path / "governance",
+        ),
+    )
+
+    def fail_queue(**_kwargs):
+        raise exception_factory(route)
+
+    monkeypatch.setattr(route, "queue_gate_supplement_refresh", fail_queue)
+    app = FastAPI()
+    app.include_router(route.router)
+    app.dependency_overrides[get_auth_context] = lambda: AuthContext(user_id="writer", role="admin")
+
+    response = TestClient(app, raise_server_exceptions=False).post(
+        "/ui/market-data/livermore/refresh-gate-supplement",
+        params={"as_of_date": "2026-04-30", "lookback_days": 30},
+    )
+
+    assert response.status_code == expected_status
+    detail = response.json()["detail"]
+    assert detail == expected_detail
+    assert "F:\\private" not in detail
+    assert "Error" not in detail
 
 
 @pytest.mark.parametrize("params", [{}, {"run_id": ""}, {"run_id": "   "}])

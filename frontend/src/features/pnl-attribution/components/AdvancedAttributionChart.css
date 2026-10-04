@@ -53,7 +53,7 @@
 .advanced-attribution-chart__metric-label {
   color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .advanced-attribution-chart__metric-card[data-tone="profit"] .advanced-attribution-chart__metric-label {
@@ -77,10 +77,10 @@
 .advanced-attribution-chart__metric-value {
   margin-top: 4px;
   color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-size: 20px;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .advanced-attribution-chart__metric-value[data-size="medium"] {
@@ -113,7 +113,7 @@
   margin: 0 0 12px;
   color: var(--dh-api-ink);
   font-size: 16px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .advanced-attribution-chart__section-title--compact {
@@ -146,14 +146,6 @@
 .advanced-attribution-chart__curve-highlight {
   margin-left: 12px;
   color: var(--dh-api-blue);
-}
-
-.advanced-attribution-chart__chart {
-  height: 280px;
-}
-
-.advanced-attribution-chart__chart--carry {
-  height: 300px;
 }
 
 .advanced-attribution-chart__chart-grid {
@@ -213,7 +205,7 @@
 }
 
 .advanced-attribution-chart__table-num {
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -239,7 +231,7 @@
 }
 
 .advanced-attribution-chart__table-num--strong {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .advanced-attribution-chart__caliber-note {

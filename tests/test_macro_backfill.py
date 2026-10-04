@@ -10,6 +10,7 @@ import sys
 
 import duckdb
 import pytest
+import requests
 import xlrd
 
 from backend.app.tasks import macro_backfill as macro_backfill_module
@@ -1352,6 +1353,242 @@ def test_stable_social_financing_alias_routes_to_tushare_monthly_api() -> None:
     assert _resolve_tushare_api("social_financing_stock_yoy") == "sf_month"
     assert _is_tushare_macro_series("social_financing_stock_yoy") is True
     assert _infer_frequency("social_financing_stock_yoy", "unknown") == "monthly"
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_data
+def test_tushare_macro_fetch_uses_https_rest_contract_and_preserves_credit_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "code": 0,
+                "data": {
+                    "fields": ["month", "stk_endval"],
+                    "items": [["202507", 400.0], ["202607", 440.0]],
+                },
+            }
+
+    class _Session:
+        trust_env = True
+
+        def post(self, url: str, **kwargs: object) -> _Response:
+            calls.append({"url": url, "kwargs": kwargs, "trust_env": self.trust_env})
+            return _Response()
+
+        def close(self) -> None:
+            calls.append({"closed": True})
+
+    session = _Session()
+    monkeypatch.setattr(macro_backfill_module.requests, "Session", lambda: session)
+    monkeypatch.setattr(
+        macro_backfill_module,
+        "resolve_tushare_token_with_settings_fallback",
+        lambda _settings: "test-token",
+    )
+    monkeypatch.setattr(macro_backfill_module.time, "sleep", lambda _seconds: None)
+
+    rows = macro_backfill_module._fetch_from_tushare(
+        series_id="M5525763",
+        series_name="社会融资规模存量:同比",
+        start_date="2026-07-01",
+        end_date="2026-09-16",
+        frequency="monthly",
+        unit="%",
+    )
+
+    assert calls[0] == {
+        "url": "https://api.tushare.pro",
+        "kwargs": {
+            "json": {
+                "api_name": "sf_month",
+                "token": "test-token",
+                "params": {"start_m": "202507", "end_m": "202609"},
+                "fields": "month,inc_month,stk_endval",
+            },
+            "timeout": (10.0, 30.0),
+            "verify": True,
+        },
+        "trust_env": False,
+    }
+    assert calls[-1] == {"closed": True}
+    assert len(rows) == 1
+    assert rows[0].series_id == "M5525763"
+    assert rows[0].series_name == "社会融资规模存量:同比"
+    assert rows[0].trade_date == "2026-07-01"
+    assert rows[0].value_numeric == pytest.approx(10.0)
+    assert rows[0].frequency == "monthly"
+    assert rows[0].unit == "%"
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_data
+def test_cn_gdp_rest_fields_keep_value_and_yoy_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "code": 0,
+                "data": {
+                    "fields": ["quarter", "gdp", "gdp_yoy"],
+                    "items": [["2026Q2", 320000.0, 5.2]],
+                },
+            }
+
+    class _Session:
+        trust_env = True
+
+        def post(self, url: str, **kwargs: object) -> _Response:
+            calls.append({"url": url, "kwargs": kwargs, "trust_env": self.trust_env})
+            return _Response()
+
+        def close(self) -> None:
+            calls.append({"closed": True})
+
+    session = _Session()
+    monkeypatch.setattr(macro_backfill_module.requests, "Session", lambda: session)
+    monkeypatch.setattr(
+        macro_backfill_module,
+        "resolve_tushare_token_with_settings_fallback",
+        lambda _settings: "test-token",
+    )
+    monkeypatch.setattr(macro_backfill_module.time, "sleep", lambda _seconds: None)
+
+    rows = macro_backfill_module._fetch_from_tushare(
+        series_id="M_GDP_VALUE",
+        series_name="GDP:当季值",
+        start_date="2026-04-01",
+        end_date="2026-09-16",
+        frequency="quarterly",
+        unit="亿元",
+    )
+
+    assert calls[0]["url"] == "https://api.tushare.pro"
+    assert calls[0]["kwargs"]["json"]["fields"] == "quarter,gdp,gdp_yoy"
+    assert calls[-1] == {"closed": True}
+    assert rows[0].trade_date == "2026-06-30"
+    assert rows[0].value_numeric == pytest.approx(320000.0)
+    assert rows[0].unit == "亿元"
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_data
+def test_tushare_macro_fetch_closes_session_after_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            raise requests.exceptions.HTTPError("upstream unavailable")
+
+        def json(self) -> dict[str, object]:
+            raise AssertionError("HTTP errors must stop before JSON parsing")
+
+    class _Session:
+        trust_env = True
+
+        def post(self, url: str, **kwargs: object) -> _Response:
+            calls.append({"url": url, "kwargs": kwargs, "trust_env": self.trust_env})
+            return _Response()
+
+        def close(self) -> None:
+            calls.append({"closed": True})
+
+    session = _Session()
+    monkeypatch.setattr(macro_backfill_module.requests, "Session", lambda: session)
+
+    with pytest.raises(requests.exceptions.HTTPError, match="upstream unavailable"):
+        macro_backfill_module._fetch_tushare_macro_records(
+            api_name="sf_month",
+            token="test-token",
+            params={"start_m": "202608", "end_m": "202609"},
+        )
+
+    assert calls[-1] == {"closed": True}
+    assert calls[0]["kwargs"]["verify"] is True
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_data
+def test_tushare_macro_fetch_rejects_nonzero_provider_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    closed = False
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"code": 401, "msg": "token rejected", "data": None}
+
+    class _Session:
+        trust_env = True
+
+        def post(self, _url: str, **_kwargs: object) -> _Response:
+            return _Response()
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    monkeypatch.setattr(macro_backfill_module.requests, "Session", _Session)
+
+    with pytest.raises(RuntimeError, match="token rejected"):
+        macro_backfill_module._fetch_tushare_macro_records(
+            api_name="cn_pmi",
+            token="test-token",
+            params={"start_m": "202608", "end_m": "202609"},
+        )
+
+    assert closed is True
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_macro_data
+def test_tushare_macro_fetch_rejects_malformed_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    closed = False
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "code": 0,
+                "data": {
+                    "fields": ["month", "stk_endval"],
+                    "items": [["202608"]],
+                },
+            }
+
+    class _Session:
+        trust_env = True
+
+        def post(self, _url: str, **_kwargs: object) -> _Response:
+            return _Response()
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    monkeypatch.setattr(macro_backfill_module.requests, "Session", _Session)
+
+    with pytest.raises(ValueError, match="does not align with fields"):
+        macro_backfill_module._fetch_tushare_macro_records(
+            api_name="sf_month",
+            token="test-token",
+            params={"start_m": "202608", "end_m": "202609"},
+        )
+
+    assert closed is True
 
 
 def test_cn_pmi_uses_tushare_month_and_manufacturing_pmi_code() -> None:

@@ -791,11 +791,22 @@ def test_positions_readiness_exposes_run_commands_without_direct_record_promotio
     assert "codex-page-smoke.ps1 -PageSlug positions" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug positions -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
+    assert "tests/golden_samples/GS-POSITIONS-BONDS-LIST-A" in report["golden_samples"]
+    assert "tests/golden_samples/GS-POSITIONS-INTERBANK-LIST-A" in report["golden_samples"]
     assert_direct_evidence_visible_without_closure(report)
     assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Candidate metric dictionary-level approval remains pending." in gap for gap in report["residual_gaps"])
-    assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+    # PAGE-POS-001 now carries MTR-POS-001/002 candidate rows bound to capture-ready
+    # samples: the golden gap is "awaiting approval / DTO evidence only", not "missing".
+    assert not any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+    assert any(
+        "Golden sample approval is captured-awaiting-approval" in gap for gap in report["residual_gaps"]
+    )
+    assert any(
+        "Existing golden sample is supporting or page DTO evidence only" in gap
+        for gap in report["residual_gaps"]
+    )
 
 
 def test_operations_analysis_readiness_exposes_run_commands_without_full_page_promotion() -> None:

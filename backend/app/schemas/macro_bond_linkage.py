@@ -32,6 +32,7 @@ class MacroBondCorrelationItem(BaseModel):
     correlation_1y: float | None = None
     lead_lag_days: int
     direction: str
+    direction_source_window: str | None = None
     alignment_mode: AlignmentMode | None = None
     sample_size: int | None = None
     winsorized: bool = False

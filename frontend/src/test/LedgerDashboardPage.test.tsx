@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouterProvider } from "react-router-dom";
@@ -224,9 +224,15 @@ describe("LedgerDashboardPage", () => {
     expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("历史回填已完成");
     expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("golden sample 待审批");
     expect(screen.getByTestId("ledger-dashboard-governance-boundary")).not.toHaveTextContent("golden/backfill work remains pending");
-    // 外壳治理横幅收敛为中文摘要；英文治理记录原文默认折叠在「候选导入」卡内。
-    expect(screen.getByTestId("workbench-governance-banner")).toHaveTextContent("候选台账读模型，未获正式批准");
-    expect(screen.getByTestId("workbench-governance-banner")).not.toHaveTextContent("Candidate imported position_snapshot");
+    // 未批准限制在外层可见；开发记录另收在使用说明内的技术诊断。
+    const governancePill = screen.getByTestId("workbench-governance-pill");
+    expect(governancePill).toHaveTextContent("使用说明");
+    expect(screen.getByTestId("workbench-usage-restriction")).toHaveTextContent("当前台账尚未获准正式使用。");
+    expect(screen.getByTestId("workbench-usage-restriction")).toBeVisible();
+    fireEvent.click(within(governancePill).getByRole("button", { name: /使用说明/ }));
+    const shellDiagnostics = screen.getByTestId("workbench-governance-diagnostics");
+    expect(shellDiagnostics).not.toHaveAttribute("open");
+    expect(within(shellDiagnostics).getByText(/Candidate imported position_snapshot/)).not.toBeVisible();
     expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("治理记录原文（英文）");
     expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("UNCLASSIFIED");
     // 「无数据 否」直译修正为事件表述。
@@ -456,6 +462,70 @@ describe("LedgerDashboardPage", () => {
       expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿"),
     );
     expect(screen.queryByTestId("ledger-dashboard-status")).not.toBeInTheDocument();
+  });
+
+  it("does not fabricate zero counts or negative metadata flags when the dates read is forbidden", async () => {
+    const client = buildClient({
+      datesError: new LedgerRequestError(
+        "Ledger read access denied.",
+        "LEDGER_READ_FORBIDDEN",
+        403,
+        false,
+      ),
+    });
+
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    expect(await screen.findByTestId("ledger-dashboard-status")).toHaveTextContent("加载失败");
+    expect(client.getLedgerDashboard).not.toHaveBeenCalled();
+    expect(client.getLedgerPositions).not.toHaveBeenCalled();
+
+    // 明细：未请求 → 计数 EM_DASH + 明确的「未触发」文案，不再是「0 条」+ 永不结束的骨架。
+    const positionsPanel = screen.getByTestId("ledger-dashboard-positions-panel");
+    expect(positionsPanel).toHaveTextContent("全部 · —");
+    expect(positionsPanel).not.toHaveTextContent("0 条");
+    expect(positionsPanel).not.toHaveTextContent("数据载入中");
+    expect(screen.getByTestId("ledger-dashboard-positions-status")).toHaveTextContent(
+      "明细未触发加载：上游台账数据加载失败",
+    );
+    expect(screen.queryByTestId("ledger-dashboard-positions-table")).not.toBeInTheDocument();
+
+    // 元数据 / 持仓溯源：布尔位未知时是 EM_DASH，不是「否」/「未发生」。
+    const evidence = screen.getByTestId("ledger-dashboard-evidence");
+    expect(evidence).not.toHaveTextContent("否");
+    expect(evidence).not.toHaveTextContent("未发生");
+    expect(evidence).not.toHaveTextContent("发生");
+    expect(within(evidence).getAllByText("—").length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("keeps positions count and metadata flags unknown when the dashboard read fails", async () => {
+    const client = buildClient({
+      dashboard: () => {
+        throw new Error("LEDGER_READ_FAILED: 后端服务不可用(502)");
+      },
+    });
+
+    renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
+
+    expect(await screen.findByTestId("ledger-dashboard-status")).toHaveTextContent(
+      "加载失败：LEDGER_READ_FAILED",
+    );
+    expect(client.getLedgerPositions).not.toHaveBeenCalled();
+    const positionsPanel = screen.getByTestId("ledger-dashboard-positions-panel");
+    expect(positionsPanel).toHaveTextContent("全部 · —");
+    expect(positionsPanel).not.toHaveTextContent("0 条");
+    expect(positionsPanel).not.toHaveTextContent("数据载入中");
+    expect(screen.getByTestId("ledger-dashboard-positions-status")).toHaveTextContent(
+      "明细未触发加载：上游台账数据加载失败",
+    );
+    // 总览失败：其元数据布尔位未知；日期目录成功返回的 no_data 仍可如实显示。
+    const evidence = screen.getByTestId("ledger-dashboard-evidence");
+    expect(evidence).not.toHaveTextContent("否");
+    const positionsTrace = screen.getByRole("heading", { name: "持仓溯源" }).closest("article");
+    if (!positionsTrace) throw new Error("持仓溯源 article missing");
+    expect(positionsTrace).not.toHaveTextContent("未发生");
+    // request_id / resolved_as_of_date + 三个布尔位；requested_as_of_date 沿用地址栏日期。
+    expect(within(positionsTrace).getAllByText("—")).toHaveLength(5);
   });
 
   it("surfaces positions loading failure independently from dashboard KPIs", async () => {

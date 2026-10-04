@@ -193,13 +193,38 @@ def compute_decision_grade_row(
     spread_dv01 = decimal_value(row.get("spread_dv01"))
     # 0 是有效剩余期限（当日到期，取曲线短端）；仅在缺失时才回退 3Y 代理。
     years_raw = row.get("years_to_maturity")
-    years_missing = years_raw is None
+    years_missing = is_missing_numeric(years_raw)
     years = Decimal("3") if years_missing else decimal_value(years_raw)
     include_market_effects_in_formal_pnl = bool(row.get("include_market_effects_in_formal_pnl", True))
 
     diagnostics: list[str] = []
     residual_reasons: list[str] = []
-    if years_missing:
+    if include_market_effects_in_formal_pnl and is_missing_numeric(row.get("market_value")):
+        residual_reasons.append("missing_market_value")
+        diagnostics.append("missing_market_value：缺少期初市值，未解释金额进入残差噪音。")
+    market_value_coverage = row.get("market_value_coverage_ratio")
+    market_value_complete = market_value_coverage is None or decimal_value(market_value_coverage) == ONE
+    if include_market_effects_in_formal_pnl and not market_value_complete:
+        residual_reasons.append("partial_market_value_coverage")
+        diagnostics.append("partial_market_value_coverage：期初市值有缺失行，未计算依赖完整市值的市场效应。")
+    market_effects_applicable = include_market_effects_in_formal_pnl and market_value != ZERO and market_value_complete
+    valid_fields: dict[str, bool] = {}
+    required_fields = ["modified_duration", "convexity", "years_to_maturity"]
+    if bool(row.get("is_credit")):
+        required_fields.append("spread_dv01")
+    for field in required_fields:
+        valid = not is_missing_numeric(row.get(field))
+        reason = f"missing_{field}" if not valid else None
+        coverage = row.get(f"{field}_coverage_ratio")
+        if coverage is not None and decimal_value(coverage) < ONE:
+            valid = False
+            if reason is None:
+                reason = f"partial_{field}_coverage"
+        valid_fields[field] = valid
+        if market_effects_applicable and reason:
+            residual_reasons.append(reason)
+            diagnostics.append(f"{reason}：缺少适用敏感度或覆盖不完整，未解释金额进入残差噪音。")
+    if years_missing and market_effects_applicable:
         # 期限点是 3Y 代理，利率水平/曲线形态/信用利差/凸性都可能错位，未解释余额
         # 因此不得计为选券能力；与 missing_analytics 等缺数据情形同调归入残差噪音。
         diagnostics.append("years_to_maturity_missing_fallback_3y")
@@ -207,21 +232,25 @@ def compute_decision_grade_row(
         diagnostics.append("缺少剩余期限，曲线取点按 3Y 代理，未将剩余项计为能力。")
     dy_level = parallel_shift_decimal(treasury_start, treasury_end)
     dy_tenor = tenor_shift_decimal(treasury_start, treasury_end, years)
+    # Keep the disclosed legacy 3Y fallback for a wholly missing tenor, but do
+    # not extrapolate a partial book's observed average to the whole position.
+    tenor_applicable = years_missing or valid_fields["years_to_maturity"]
 
     rate_level_effect = ZERO
     curve_shape_effect = ZERO
     convexity_effect = ZERO
-    if include_market_effects_in_formal_pnl and modified_duration != ZERO and market_value != ZERO:
+    if market_effects_applicable and valid_fields["modified_duration"] and modified_duration != ZERO:
         if dy_level is None or dy_tenor is None:
             residual_reasons.append("missing_treasury_curve")
             diagnostics.append("缺少国债曲线，利率水平/曲线形态影响进入残差噪音。")
         else:
             rate_level_effect = -modified_duration * market_value * dy_level
-            curve_shape_effect = -modified_duration * market_value * (dy_tenor - dy_level)
+            if tenor_applicable:
+                curve_shape_effect = -modified_duration * market_value * (dy_tenor - dy_level)
 
     spread_shift = ZERO
     credit_spread_effect = ZERO
-    if include_market_effects_in_formal_pnl and bool(row.get("is_credit")) and market_value != ZERO:
+    if market_effects_applicable and tenor_applicable and bool(row.get("is_credit")) and valid_fields.get("spread_dv01", False):
         computed_spread_shift = credit_spread_shift_decimal(
             rating=row.get("rating"),
             years=years,
@@ -235,12 +264,9 @@ def compute_decision_grade_row(
             diagnostics.append("缺少信用曲线或评级映射，信用利差影响进入残差噪音。")
         else:
             spread_shift = computed_spread_shift
-            if spread_dv01 != ZERO:
-                credit_spread_effect = -spread_dv01 * (spread_shift * BP_PER_DECIMAL)
-            else:
-                credit_spread_effect = -modified_duration * market_value * spread_shift
+            credit_spread_effect = -spread_dv01 * (spread_shift * BP_PER_DECIMAL)
 
-    if include_market_effects_in_formal_pnl and convexity != ZERO and market_value != ZERO:
+    if market_effects_applicable and tenor_applicable and valid_fields["convexity"] and convexity != ZERO:
         if dy_tenor is None:
             residual_reasons.append("missing_convexity_curve")
             diagnostics.append("缺少期限点收益率，凸性影响进入残差噪音。")
@@ -251,7 +277,7 @@ def compute_decision_grade_row(
     if bool(row.get("duplicate_position_key")) and bool(row.get("duplicate_position_key_is_ambiguous", True)):
         residual_reasons.append("duplicate_position_key")
         diagnostics.append("同一组合/成本中心/会计分类存在重复 key，未将剩余项计为能力。")
-    if bool(row.get("missing_analytics")):
+    if include_market_effects_in_formal_pnl and bool(row.get("missing_analytics")):
         residual_reasons.append("missing_bond_analytics")
         diagnostics.append("缺少债券久期/凸性等 analytics，未将剩余项计为能力。")
 
@@ -291,4 +317,42 @@ def compute_decision_grade_row(
         "explained_pnl": fixed_components,
         "residual_reasons": sorted(set(residual_reasons)),
         "diagnostics": diagnostics,
+    }
+
+
+def compute_decision_scope_disclosure(
+    pnl_rows: list[dict[str, Any]],
+    matched_rows: list[dict[str, Any]],
+    unmatched_rows: list[dict[str, Any]],
+    computed_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Disclose the retained beginning-position scope without choosing a final mandate."""
+    def amount(rows: list[dict[str, Any]], *, absolute: bool = False) -> float | None:
+        total = ZERO
+        for row in rows:
+            value = row.get("total_pnl")
+            if is_missing_numeric(value):
+                return None
+            try:
+                parsed = decimal_value(value)
+            except DirtyNumericInputError:
+                return None
+            total += abs(parsed) if absolute else parsed
+        return float(total)
+
+    return {
+        "actual_scope": "matched_beginning_positions",
+        "scope_decision_status": "PENDING",
+        "full_input_pnl": amount(pnl_rows),
+        "matched_input_pnl": amount(matched_rows),
+        "included_pnl": float(sum((row["actual_pnl"] for row in computed_rows), ZERO)),
+        "unmatched_pnl": amount(unmatched_rows),
+        "full_input_absolute_pnl": amount(pnl_rows, absolute=True),
+        "unmatched_absolute_pnl": amount(unmatched_rows, absolute=True),
+        "input_row_count": len(pnl_rows),
+        "matched_row_count": len(matched_rows),
+        "included_row_count": len(computed_rows),
+        "unmatched_row_count": len(unmatched_rows),
+        "full_month_coverage": False,
+        "message": "当前仅核对已匹配期初持仓的内部归因；全月全券或期初组合范围尚待确认（PENDING）。未匹配不代表非债券或范围外。",
     }

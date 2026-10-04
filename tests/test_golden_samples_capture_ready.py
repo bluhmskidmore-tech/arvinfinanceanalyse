@@ -1522,6 +1522,8 @@ def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
                 "currency_code": "CNY",
                 "source_version": "sv_cashflow_projection_gs_a_asset",
                 "rule_version": "rv_cashflow_projection_gs_a",
+                "ingest_batch_id": "ib_cashflow_projection_gs_a_asset",
+                "trace_id": "tr_cashflow_projection_gs_a_asset",
             }
         ]
 
@@ -1541,6 +1543,8 @@ def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
                 "currency_code": "CNY",
                 "source_version": "sv_cashflow_projection_gs_a_liability",
                 "rule_version": "rv_cashflow_projection_gs_a",
+                "ingest_batch_id": "ib_cashflow_projection_gs_a_liability",
+                "trace_id": "tr_cashflow_projection_gs_a_liability",
             }
         ]
 
@@ -1556,6 +1560,10 @@ def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
                 "maturity_date": date(2026, 10, 30),
                 "coupon_rate": Decimal("0"),
                 "ytm": Decimal("0"),
+                "source_version": "sv_cashflow_projection_gs_a_bond_analytics",
+                "rule_version": "rv_bond_analytics_formal_materialize_v6",
+                "ingest_batch_id": "ib_cashflow_projection_gs_a_bond_analytics",
+                "trace_id": "tr_cashflow_projection_gs_a_bond_analytics",
             }
         ]
 
@@ -2481,6 +2489,13 @@ def _validate_cashflow_projection(actual: dict[str, Any], expected: dict[str, An
             ("result", "equity_duration"),
             ("result", "rate_sensitivity_1bp"),
             ("result", "reinvestment_risk_12m"),
+            ("result", "asset_duration_covered_balance"),
+            ("result", "liability_duration_covered_balance"),
+            ("result", "asset_excluded_balance"),
+            ("result", "liability_excluded_balance"),
+            ("result", "asset_duration_coverage_ratio"),
+            ("result", "liability_duration_coverage_ratio"),
+            ("result", "input_lineage"),
             ("result", "monthly_buckets"),
             ("result", "top_maturing_assets_12m"),
             ("result", "floating_rate_proxy_count"),

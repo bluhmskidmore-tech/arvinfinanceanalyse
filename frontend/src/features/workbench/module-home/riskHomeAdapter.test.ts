@@ -14,17 +14,19 @@ import type {
 import {
   buildRiskBondComparisonPlan,
   buildRiskBondDv01Summary,
+  buildRiskSourceUseStatus,
   buildRiskV6Briefs,
   buildRiskV6CashflowTrack,
+  buildRiskV6KpiCards,
   buildRiskV6DeltaChip,
   buildRiskV6DetailTables,
   buildRiskV6Hero,
-  buildRiskV6KpiCards,
   buildRiskV6KrdBars,
   buildRiskV6LineageRows,
   buildRiskV6Sparkline,
   buildRiskV6YieldCurveChart,
 } from "./riskHomeAdapter";
+import type { ModuleHomeStatus } from "./moduleHomeModel";
 
 function num(raw: number, overrides?: Partial<Numeric>): Numeric {
   return {
@@ -37,36 +39,43 @@ function num(raw: number, overrides?: Partial<Numeric>): Numeric {
   };
 }
 
-/** 与 2026-06-30 正式张量同形的载荷（数值即线上治理读数）。 */
+function numExact(raw: number, rawText: string, overrides?: Partial<Numeric>): Numeric {
+  return {
+    ...num(raw, overrides),
+    raw_text: rawText,
+  };
+}
+
+/** Artificial tensor: KRD sums to DV01; cashflow legs close to their gaps. No live readings. */
 function tensorFixture(): RiskTensorPayload {
   return {
     report_date: "2026-06-30",
-    portfolio_dv01: num(106949424.12992053, { unit: "dv01" }),
-    regulatory_dv01: num(106949424.12992053, { unit: "dv01" }),
-    krd_1y: num(6204347.64058226),
-    krd_3y: num(22789266.50395854),
-    krd_5y: num(18158026.62229127),
-    krd_7y: num(8575885.26732997),
-    krd_10y: num(27539150.86824232),
-    krd_30y: num(23682747.22751617),
-    cs01: num(27308897.86532232, { unit: "dv01" }),
-    portfolio_convexity: num(30.89728073, { unit: "ratio", display: "30.90" }),
-    portfolio_modified_duration: num(3.77704871, { unit: "ratio", display: "3.78" }),
-    issuer_concentration_hhi: num(0.04842124, { unit: "ratio" }),
-    issuer_top5_weight: num(0.40305884, { unit: "ratio" }),
-    asset_cashflow_30d: num(6201412918.165448),
-    asset_cashflow_90d: num(14705758881.951147),
-    liability_cashflow_30d: num(12515125677.89139),
-    liability_cashflow_90d: num(15794163600.631117),
-    liquidity_gap_30d: num(-6313712759.725942, { sign_aware: true }),
-    liquidity_gap_90d: num(-1088404718.6799679, { sign_aware: true }),
-    liquidity_gap_30d_ratio: num(-0.0181514, { unit: "ratio", sign_aware: true }),
-    total_market_value: num(347836150851.31525),
-    rate_risk_market_value: num(301718445315.9752),
-    rate_risk_dv01: num(106868724.92027242, { unit: "dv01" }),
-    rate_risk_modified_duration: num(3.77704871, { unit: "ratio" }),
-    duration_excluded_market_value: num(46117705535.340004),
-    duration_excluded_count: 131,
+    portfolio_dv01: num(125678900.125, { unit: "dv01" }),
+    regulatory_dv01: num(125678900.125, { unit: "dv01" }),
+    krd_1y: num(8000000),
+    krd_3y: num(24000000),
+    krd_5y: num(19000000),
+    krd_7y: num(10000000),
+    krd_10y: num(34000000),
+    krd_30y: num(30678900.125),
+    cs01: num(45678900.25, { unit: "dv01" }),
+    portfolio_convexity: num(28.34567891, { unit: "ratio", display: "28.35" }),
+    portfolio_modified_duration: num(4.12345678, { unit: "ratio", display: "4.12" }),
+    issuer_concentration_hhi: num(0.03765432, { unit: "ratio" }),
+    issuer_top5_weight: num(0.35678912, { unit: "ratio" }),
+    asset_cashflow_30d: num(5200000000),
+    asset_cashflow_90d: num(11700000000),
+    liability_cashflow_30d: num(9400000000),
+    liability_cashflow_90d: num(13200000000),
+    liquidity_gap_30d: num(-4200000000, { sign_aware: true }),
+    liquidity_gap_90d: num(-1500000000, { sign_aware: true }),
+    liquidity_gap_30d_ratio: num(-0.015, { unit: "ratio", sign_aware: true }),
+    total_market_value: num(280000000000),
+    rate_risk_market_value: num(240000000000),
+    rate_risk_dv01: num(125000000, { unit: "dv01" }),
+    rate_risk_modified_duration: num(4.12345678, { unit: "ratio" }),
+    duration_excluded_market_value: num(40000000000),
+    duration_excluded_count: 125,
     missing_maturity_market_value: num(0),
     missing_maturity_count: 0,
     floating_rate_proxy_market_value: num(0),
@@ -76,7 +85,7 @@ function tensorFixture(): RiskTensorPayload {
     bullet_value_date_fallback_market_value: num(0),
     bullet_value_date_fallback_count: 0,
     projection_quality_status: "available",
-    bond_count: 1767,
+    bond_count: 1250,
     quality_flag: "warning",
     warnings: ["w1"],
   };
@@ -141,7 +150,7 @@ describe("buildRiskV6DeltaChip", () => {
   });
 
   it("formats absolute deltas for duration/convexity", () => {
-    expect(buildRiskV6DeltaChip(3.76, 3.78, "absolute", 2)).toEqual({ text: "▼ 0.02", direction: "down" });
+    expect(buildRiskV6DeltaChip(4.10, 4.12, "absolute", 2)).toEqual({ text: "▼ 0.02", direction: "down" });
   });
 
   it("formats ratio deltas in pp", () => {
@@ -150,8 +159,8 @@ describe("buildRiskV6DeltaChip", () => {
   });
 
   it("formats yuan deltas in 亿元", () => {
-    expect(buildRiskV6DeltaChip(-6313712759.725942, -4492547186.2, "yi")).toEqual({
-      text: "▼ 18.21 亿元",
+    expect(buildRiskV6DeltaChip(-4200000000, -3000000000, "yi")).toEqual({
+      text: "▼ 12.00 亿元",
       direction: "down",
     });
   });
@@ -174,41 +183,44 @@ describe("buildRiskV6KpiCards", () => {
 
     const regulatory = cards[0];
     expect(regulatory.label).toBe("监管 DV01");
-    expect(regulatory.amount).toBe("10,694.94");
+    expect(regulatory.amount).toBe("12,567.89");
     expect(regulatory.unit).toBe("万元/bp");
+    expect(regulatory.caption).toBe("面值基数线性读数");
     expect(regulatory.alert).toBe(false);
     expect(regulatory.sparkline).not.toBeNull();
     expect(regulatory.delta?.direction).toBe("up");
 
     const portfolio = cards[1];
-    expect(portfolio.amount).toBe("10,694.94");
-    expect(portfolio.caption).toBe("同值属口径预期");
+    expect(portfolio.label).toBe("组合 DV01");
+    expect(portfolio.amount).toBe("12,567.89");
+    expect(portfolio.caption).toBe("全量面值基数 · 同值属范围预期");
 
     const duration = cards[2];
-    expect(duration.amount).toBe("3.78");
+    expect(duration.amount).toBe("4.12");
     expect(duration.delta?.text).toBe("▼ 0.01");
 
     const convexity = cards[3];
-    expect(convexity.amount).toBe("30.90");
+    expect(convexity.amount).toBe("28.35");
 
     const cs01 = cards[4];
-    expect(cs01.amount).toBe("2,730.89");
+    expect(cs01.amount).toBe("4,567.89");
     expect(cs01.unit).toBe("万元/bp");
+    expect(cs01.caption).toBe("信用债 DV01 代理 · 每 bp");
 
     const hhi = cards[5];
-    expect(hhi.amount).toBe("0.04842124");
+    expect(hhi.amount).toBe("0.03765432");
     expect(hhi.unit).toBeNull();
     expect(hhi.delta?.text.endsWith("pp")).toBe(false);
 
     const top5 = cards[6];
-    expect(top5.amount).toBe("40.3");
+    expect(top5.amount).toBe("35.7");
 
     const gap = cards[7];
     expect(gap.label).toBe("30D 流动性缺口");
-    expect(gap.amount).toBe("-63.14");
+    expect(gap.amount).toBe("-42.00");
     expect(gap.unit).toBe("亿元");
     expect(gap.alert).toBe(true);
-    expect(gap.caption).toBe("90D 缺口 -10.88 亿");
+    expect(gap.caption).toBe("90D 缺口 -15.00 亿");
   });
 
   it("keeps cards readable when history is missing", () => {
@@ -216,7 +228,7 @@ describe("buildRiskV6KpiCards", () => {
     expect(cards).toHaveLength(8);
     expect(cards[0].sparkline).toBeNull();
     expect(cards[0].delta).toBeNull();
-    expect(cards[0].amount).toBe("10,694.94");
+    expect(cards[0].amount).toBe("12,567.89");
   });
 
   it("surfaces missing values explicitly instead of backfilling", () => {
@@ -243,18 +255,32 @@ describe("buildRiskV6KpiCards", () => {
 describe("buildRiskV6Hero", () => {
   it("picks the peak KRD bucket and converts DV01 to 万元/亿元", () => {
     const hero = buildRiskV6Hero(tensorFixture());
-    expect(hero.dv01Wan).toBe("10,694.94");
-    expect(hero.dv01Yi).toBe("1.07");
+    expect(hero.dv01Wan).toBe("12,567.89");
+    expect(hero.dv01Yi).toBe("1.26");
     expect(hero.peakKrdBucket).toBe("10Y");
-    expect(hero.peakKrdWan).toBe("2,753.92");
-    expect(hero.duration).toBe("3.78");
-    expect(hero.convexity).toBe("30.90");
-    expect(hero.totalMarketValueYi).toBe("3,478.36");
-    expect(hero.bondCount).toBe(1767);
+    expect(hero.peakKrdWan).toBe("3,400.00");
+    expect(hero.duration).toBe("4.12");
+    expect(hero.convexity).toBe("28.35");
+    expect(hero.totalMarketValueYi).toBe("2,800.00");
+    expect(hero.bondCount).toBe(1250);
   });
 
   it("returns nulls without a tensor", () => {
     expect(buildRiskV6Hero(undefined).dv01Wan).toBeNull();
+  });
+
+  it("prefers raw_text for the peak bucket while leaving chart-only KRD bars on raw values", () => {
+    const tensor = {
+      ...tensorFixture(),
+      krd_7y: numExact(10_000_000_000_000_000, "10000000000000000.4"),
+      krd_10y: numExact(10_000_000_000_000_000, "10000000000000000.5"),
+    };
+
+    const hero = buildRiskV6Hero(tensor);
+    const bars = buildRiskV6KrdBars(tensor);
+
+    expect(hero.peakKrdBucket).toBe("10Y");
+    expect(bars.find((bar) => bar.hot)?.bucket).toBe("7Y");
   });
 });
 
@@ -262,9 +288,35 @@ describe("buildRiskV6Briefs", () => {
   it("composes the three cross-section briefs from tensor fields", () => {
     const briefs = buildRiskV6Briefs(tensorFixture());
     expect(briefs).toHaveLength(3);
-    expect(briefs[0].body).toBe("DV01 10,694.94 万元/bp，修正久期 3.78，凸度 30.90。");
-    expect(briefs[1].body).toBe("CS01 2,730.89 万元/bp，前五大权重 40.3%，HHI 0.04842124。");
-    expect(briefs[2].body).toBe("30D 缺口 -63.14 亿元，90D 缺口 -10.88 亿元。");
+    expect(briefs[0].body).toBe("DV01 12,567.89 万元/bp，修正久期 4.12，凸度 28.35。");
+    expect(briefs[1].body).toBe("CS01 4,567.89 万元/bp，前五大权重 35.7%，HHI 0.03765432。");
+    expect(briefs[2].body).toBe("30D 缺口 -42.00 亿元，90D 缺口 -15.00 亿元。");
+    expect(briefs[0].note).toContain("不表示按市价完整重估的损益");
+    expect(briefs[1].note).toContain("信用债 DV01 代理");
+    expect(briefs[2].note).toContain("30D / 90D 缺口直读风险张量");
+  });
+
+  it("uses raw_text on formal summary and table percent fields", () => {
+    const tensorLow = {
+      ...tensorFixture(),
+      issuer_top5_weight: numExact(0.4, "0.4044", { unit: "ratio" }),
+    };
+    const tensorHigh = {
+      ...tensorFixture(),
+      issuer_top5_weight: numExact(0.4, "0.4046", { unit: "ratio" }),
+    };
+
+    const briefsLow = buildRiskV6Briefs(tensorLow);
+    const briefsHigh = buildRiskV6Briefs(tensorHigh);
+    const [, creditLow] = buildRiskV6DetailTables(tensorLow, undefined);
+    const [, creditHigh] = buildRiskV6DetailTables(tensorHigh, undefined);
+    const creditLowByKey = new Map(creditLow.rows.map((row) => [row.key, row.value]));
+    const creditHighByKey = new Map(creditHigh.rows.map((row) => [row.key, row.value]));
+
+    expect(briefsLow[1].body).toContain("40.4%");
+    expect(briefsHigh[1].body).toContain("40.5%");
+    expect(creditLowByKey.get("issuer-top5")).toBe("40.4%");
+    expect(creditHighByKey.get("issuer-top5")).toBe("40.5%");
   });
 });
 
@@ -275,7 +327,7 @@ describe("buildRiskV6KrdBars", () => {
     const hot = bars.find((bar) => bar.hot);
     expect(hot?.bucket).toBe("10Y");
     expect(hot?.widthPct).toBe(100);
-    expect(hot?.wanText).toBe("2,753.92");
+    expect(hot?.wanText).toBe("3,400.00");
     expect(bars[0].bucket).toBe("1Y");
   });
 });
@@ -361,14 +413,35 @@ describe("buildRiskV6CashflowTrack", () => {
   it("scales bars to the largest leg and signs the gap chips", () => {
     const track = buildRiskV6CashflowTrack(tensorFixture());
     expect(track?.rows).toHaveLength(4);
-    expect(track?.rows[0]).toMatchObject({ window: "30D", label: "资产流入", yiText: "62.01" });
+    expect(track?.rows[0]).toMatchObject({ window: "30D", label: "资产流入", yiText: "52.00" });
     expect(track?.rows[3].widthPct).toBe(100);
-    expect(track?.rows[1].widthPct).toBeCloseTo(79.24, 1);
+    expect(track?.rows[1].widthPct).toBeCloseTo(71.21, 1);
     expect(track?.chips).toEqual([
-      { key: "gap-30d", label: "30D 净缺口", text: "-63.14 亿", tone: "alert" },
-      { key: "gap-90d", label: "90D 净缺口", text: "-10.88 亿", tone: "alert" },
-      { key: "gap-ratio", label: "30D 缺口率", text: "-1.82%", tone: "dim" },
+      { key: "gap-30d", label: "30D 净缺口", text: "-42.00 亿", tone: "alert" },
+      { key: "gap-90d", label: "90D 净缺口", text: "-15.00 亿", tone: "alert" },
+      { key: "gap-ratio", label: "30D 缺口率", text: "-1.50%", tone: "dim" },
     ]);
+  });
+
+  it("honors raw_text at the alert boundary instead of raw-only sign flips", () => {
+    const tensorNegative = {
+      ...tensorFixture(),
+      liquidity_gap_30d: numExact(0, "-0.0000000001", { sign_aware: true }),
+    };
+    const tensorPositive = {
+      ...tensorFixture(),
+      liquidity_gap_30d: numExact(0, "0.0000000001", { sign_aware: true }),
+    };
+
+    const cardsNegative = buildRiskV6KpiCards(tensorNegative, historyFixture());
+    const cardsPositive = buildRiskV6KpiCards(tensorPositive, historyFixture());
+    const trackNegative = buildRiskV6CashflowTrack(tensorNegative);
+    const trackPositive = buildRiskV6CashflowTrack(tensorPositive);
+
+    expect(cardsNegative[7].alert).toBe(true);
+    expect(cardsPositive[7].alert).toBe(false);
+    expect(trackNegative?.chips.find((chip) => chip.key === "gap-30d")?.tone).toBe("alert");
+    expect(trackPositive?.chips.find((chip) => chip.key === "gap-30d")?.tone).toBe("dim");
   });
 
   it("returns null when every cashflow leg is missing", () => {
@@ -391,7 +464,7 @@ describe("buildRiskV6DetailTables", () => {
       asset_duration: num(3.8, { unit: "ratio" }),
       liability_duration: num(0.68, { unit: "ratio" }),
       equity_duration: num(3.1, { unit: "ratio" }),
-      rate_sensitivity_1bp: num(106949424.13, { unit: "dv01" }),
+      rate_sensitivity_1bp: num(125678900.13, { unit: "dv01" }),
       reinvestment_risk_12m: num(0.2282, { unit: "pct", display: "22.82%" }),
       monthly_buckets: [],
       top_maturing_assets_12m: [],
@@ -403,19 +476,46 @@ describe("buildRiskV6DetailTables", () => {
   it("lists field-level rows for both tables", () => {
     const [portfolio, credit] = buildRiskV6DetailTables(tensorFixture(), cashflowFixture());
     const portfolioByKey = new Map(portfolio.rows.map((row) => [row.key, row.value]));
-    expect(portfolioByKey.get("total-market-value")).toBe("3,478.36 亿元");
-    expect(portfolioByKey.get("bond-count")).toBe("1,767");
-    expect(portfolioByKey.get("regulatory-dv01")).toBe("10,694.94 万元/bp");
-    expect(portfolioByKey.get("rate-risk-dv01")).toBe("10,686.87 万元/bp");
-    expect(portfolioByKey.get("rate-risk-mv")).toBe("3,017.18 亿元");
-    expect(portfolioByKey.get("duration-excluded")).toBe("131 只 · 461.18 亿元");
+    expect(portfolioByKey.get("total-market-value")).toBe("2,800.00 亿元");
+    expect(portfolioByKey.get("bond-count")).toBe("1,250");
+    expect(portfolioByKey.get("regulatory-dv01")).toBe("12,567.89 万元/bp");
+    expect(portfolioByKey.get("rate-risk-dv01")).toBe("12,500.00 万元/bp");
+    expect(portfolioByKey.get("rate-risk-mv")).toBe("2,400.00 亿元");
+    expect(portfolioByKey.get("duration-excluded")).toBe("125 条 · 400.00 亿元");
 
     const creditByKey = new Map(credit.rows.map((row) => [row.key, row.value]));
-    expect(creditByKey.get("cs01")).toBe("2,730.89 万元/bp");
-    expect(creditByKey.get("issuer-top5")).toBe("40.3%");
-    expect(creditByKey.get("issuer-hhi")).toBe("0.04842124");
+    const creditLabelByKey = new Map(credit.rows.map((row) => [row.key, row.label]));
+    expect(creditByKey.get("cs01")).toBe("4,567.89 万元/bp");
+    expect(creditByKey.get("issuer-top5")).toBe("35.7%");
+    expect(creditByKey.get("issuer-hhi")).toBe("0.03765432");
     expect(creditByKey.get("duration-gap")).toBe("+3.12");
     expect(creditByKey.get("reinvestment-risk-12m")).toBe("22.82%");
+    expect(creditLabelByKey.get("cs01")).toBe("CS01（信用债 DV01 代理）");
+    expect(creditLabelByKey.get("duration-gap")).toBe("久期缺口（分析口径）");
+    expect(creditLabelByKey.get("reinvestment-risk-12m")).toBe("12M 再投资风险（分析口径）");
+  });
+
+  it("lists classified duration exclusions only when materialized disclosure is available", () => {
+    const tensor = {
+      ...tensorFixture(),
+      maturity_breakdown_status: "available" as const,
+      fund_no_maturity_count: 123,
+      fund_no_maturity_market_value: num(38_000_000_000),
+      unknown_maturity_count: 0,
+      unknown_maturity_market_value: num(0),
+      matured_outstanding_count: 2,
+      matured_outstanding_market_value: num(2_000_000_000),
+      nonpositive_duration_count: 0,
+      nonpositive_duration_market_value: num(0),
+    };
+    const [classified] = buildRiskV6DetailTables(tensor, undefined);
+    const byKey = new Map(classified.rows.map((row) => [row.key, row.value]));
+    expect(byKey.get("fund-no-maturity")).toBe("123 条 · 380.00 亿元");
+    expect(byKey.get("unknown-maturity")).toBe("0 条 · 0.00 亿元");
+    expect(byKey.get("matured-outstanding")).toBe("2 条 · 20.00 亿元");
+
+    const [legacy] = buildRiskV6DetailTables({ ...tensor, maturity_breakdown_status: "unavailable_legacy" }, undefined);
+    expect(legacy.rows.some((row) => row.key === "fund-no-maturity")).toBe(false);
   });
 
   it("marks cashflow-sourced rows as 待接入 when the cashflow leg failed", () => {
@@ -434,8 +534,8 @@ describe("buildRiskV6LineageRows", () => {
     formal_use_allowed: true,
     source_version: "sv_risk_tensor__sv_a583ab603b92__sv_fa8f64e200b6",
     vendor_version: "vv_none",
-    rule_version: "rv_risk_tensor_formal_materialize_v6",
-    cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6",
+    rule_version: "rv_risk_tensor_formal_materialize_v7",
+    cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v7",
     quality_flag: "warning",
     vendor_status: "ok",
     fallback_mode: "none",
@@ -452,8 +552,8 @@ describe("buildRiskV6LineageRows", () => {
     const rows = buildRiskV6LineageRows(meta);
     const byKey = new Map(rows.map((row) => [row.key, row.value]));
     expect(byKey.get("source")).toBe("sv_risk_tensor__sv_a583ab603b92__sv_fa8f64e200b6");
-    expect(byKey.get("rule")).toBe("rv_risk_tensor_formal_materialize_v6");
-    expect(byKey.get("cache")).toBe("cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6");
+    expect(byKey.get("rule")).toBe("rv_risk_tensor_formal_materialize_v7");
+    expect(byKey.get("cache")).toBe("cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v7");
     expect(byKey.get("trace")).toBe("tr_9f65d8ba5e40");
     expect(byKey.get("basis")).toBe("formal");
     expect(byKey.get("formal-use")).toBe("true");
@@ -477,6 +577,54 @@ describe("buildRiskV6LineageRows", () => {
 
   it("returns nothing without meta", () => {
     expect(buildRiskV6LineageRows(undefined)).toEqual([]);
+  });
+});
+
+describe("buildRiskSourceUseStatus", () => {
+  const status: ModuleHomeStatus = {
+    key: "tensor",
+    label: "风险张量",
+    value: "已返回",
+    detail: "风险张量已返回。",
+    tone: "ok",
+  };
+  const formalMeta: ResultMeta = {
+    trace_id: "tr_risk_status",
+    basis: "formal",
+    result_kind: "risk.tensor",
+    formal_use_allowed: true,
+    source_version: "sv_risk",
+    vendor_version: "vv_none",
+    rule_version: "rv_risk",
+    cache_version: "cv_risk",
+    quality_flag: "ok",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: "2026-06-30T00:00:00Z",
+  };
+
+  it("keeps a formal source formal when quality warning blocks formal decision use", () => {
+    const result = buildRiskSourceUseStatus(status, { ...formalMeta, quality_flag: "warning" });
+
+    expect(result.value).toBe("正式来源 · 质量待复核");
+    expect(result.tone).toBe("watch");
+    expect(result.detail).toContain("来源口径：正式来源（basis=formal）");
+    expect(result.detail).toContain("质量：warning");
+    expect(result.detail).toContain("正式决策门禁未通过（quality_flag=warning）");
+  });
+
+  it("labels cashflow-style analytical results as review-only without upgrading their eligibility", () => {
+    const result = buildRiskSourceUseStatus(status, {
+      ...formalMeta,
+      basis: "analytical",
+      formal_use_allowed: false,
+    });
+
+    expect(result.value).toBe("分析口径 · 仅供复核");
+    expect(result.tone).toBe("watch");
+    expect(result.detail).toContain("basis=analytical");
+    expect(result.detail).toContain("formal_use_allowed=false");
   });
 });
 

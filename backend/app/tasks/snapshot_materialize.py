@@ -38,7 +38,7 @@ from backend.app.tasks.build_runs import BuildRunRecord
 
 logger = logging.getLogger(__name__)
 
-SNAPSHOT_RULE_VERSION = "rv_snapshot_zqtz_tyw_v1"
+SNAPSHOT_RULE_VERSION = "rv_snapshot_zqtz_tyw_v3"
 TYW_LOCF_RULE_VERSION = f"{SNAPSHOT_RULE_VERSION}__locf"
 SNAPSHOT_SCHEMA_VERSION = "snapshot.schema.v1"
 CANONICAL_GRAIN_VERSION = "cgv_v1"
@@ -72,6 +72,24 @@ def _locf_tyw_snapshot_rows(
 
     prior_date = prior_row[0]
     prior_date_text = prior_date.isoformat()
+    prior_rule_versions = {
+        str(row[0] or "").strip()
+        for row in conn.execute(
+            """
+            select distinct rule_version
+            from tyw_interbank_daily_snapshot
+            where report_date = ?::date
+            """,
+            [prior_date_text],
+        ).fetchall()
+    }
+    current_rule_versions = {SNAPSHOT_RULE_VERSION, TYW_LOCF_RULE_VERSION}
+    if not prior_rule_versions.issubset(current_rule_versions):
+        raise ValueError(
+            f"TYW LOCF source {prior_date_text} rule_version is incompatible: "
+            f"{sorted(prior_rule_versions)!r}; expected {sorted(current_rule_versions)!r}. "
+            "Rematerialize the source date under the current snapshot rule before LOCF."
+        )
     source_versions = [
         str(row[0])
         for row in conn.execute(
@@ -197,7 +215,7 @@ def _materialize_standard_snapshots(
         selected = [
             row
             for row in selected
-            if row.get("archived_path") and Path(str(row["archived_path"])).is_file()
+            if row.get("archived_path") and store._resolve_archived_path(str(row["archived_path"])).is_file()
         ]
         dropped = before - len(selected)
         if dropped:

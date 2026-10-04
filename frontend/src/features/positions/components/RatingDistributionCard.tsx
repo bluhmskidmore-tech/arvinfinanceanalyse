@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Spin, Table } from "antd";
+import { Table } from "antd";
 import type { TableColumnsType } from "antd";
 
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import type { RatingStatItem, RatingStatsResponse } from "../../../api/contracts";
 import { type EChartsOption } from "../../../lib/echarts";
-import { BaseChart } from "../../../components/charts/BaseChart";
+import { ChartCard } from "../../../components/charts/ChartCard";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { POSITIONS_QUERY_STALE_TIME_MS } from "../model/positionsPageModel";
@@ -178,19 +178,17 @@ export default function RatingDistributionCard({ startDate, endDate, subType }: 
         labelLine: { show: showLabel },
       };
     });
+    /* tooltip 底色 / 边框由 ChartCard 铬件统一；引导标签保留（评级名短、扇区少），ECharts 图例关闭。 */
     return {
       tooltip: {
         trigger: "item",
         formatter: "{b}: {c}% ({d}%)",
-        backgroundColor: nocturneTokens.color.panel2,
-        borderColor: nocturneTokens.color.line,
-        borderWidth: 1,
-        textStyle: { color: nocturneTokens.color.ink, fontSize: 11 },
       },
       series: [
         {
           type: "pie",
           radius: ["42%", "72%"],
+          center: ["50%", "50%"],
           avoidLabelOverlap: true,
           data: pieData,
           label: {
@@ -206,37 +204,31 @@ export default function RatingDistributionCard({ startDate, endDate, subType }: 
     };
   }, [rows]);
 
+  /* 2026-09-02 迁入 ChartCard（原 190 → compact 160）：五态由铬件承担，明细表作为画布下方补充区。 */
+  const hasRange = Boolean(startDate && endDate);
+  const hasData = Boolean(data && data.items.length > 0);
   return (
-    <section className="positions-view__panel">
-      <div className="positions-view__panel-head">
-        <h3 className="positions-view__panel-title">评级收益率</h3>
-        <span className="positions-view__panel-hint">
-          {data?.num_days != null ? `${data.num_days} 天` : EM_DASH} / 利率债默认 AAA
-        </span>
-      </div>
-      {!startDate || !endDate ? (
-        <p className="positions-view__table-state">请先选择可用报告日</p>
-      ) : query.isLoading ? (
-        <div className="positions-view__table-state positions-view__table-state--loading">
-          <Spin />
-        </div>
-      ) : query.isError ? (
-        <p className="positions-view__table-state">评级分布暂不可用</p>
-      ) : data && data.items.length > 0 ? (
-        <>
-          {chartOption ? <BaseChart option={chartOption} height={190} /> : null}
-          <Table
-            size="small"
-            className="positions-view__table"
-            pagination={false}
-            scroll={{ x: "max-content" }}
-            dataSource={rows}
-            columns={RATING_COLUMNS}
-          />
-        </>
-      ) : (
-        <p className="positions-view__table-state">暂无数据</p>
-      )}
-    </section>
+    <ChartCard
+      title="评级收益率"
+      question="利率债默认 AAA"
+      unit={data?.num_days != null ? `${data.num_days} 天` : undefined}
+      height={160}
+      legend="none"
+      option={hasRange && hasData ? chartOption : null}
+      state={!hasRange ? "empty" : query.isLoading ? "loading" : query.isError ? "error" : undefined}
+      emptyMessage={!hasRange ? "请先选择可用报告日" : "暂无数据"}
+      errorMessage="评级分布暂不可用"
+    >
+      {hasRange && hasData && !query.isLoading && !query.isError ? (
+        <Table
+          size="small"
+          className="positions-view__table"
+          pagination={false}
+          scroll={{ x: "max-content" }}
+          dataSource={rows}
+          columns={RATING_COLUMNS}
+        />
+      ) : null}
+    </ChartCard>
   );
 }

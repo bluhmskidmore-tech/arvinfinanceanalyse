@@ -4,7 +4,8 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDeferredApiClient } from "../api/clientContext";
-import { createMockHomeExecutiveClient, createRealHomeExecutiveClient } from "../api/homeExecutiveClient";
+import { createRealHomeExecutiveClient } from "../api/homeExecutiveClient";
+import { createMockHomeExecutiveClient } from "../mocks/homeExecutiveMockClient";
 import type { ApiEnvelope, HomeMacroReleaseContextPayload } from "../api/contracts";
 
 const emptyEnvelope: ApiEnvelope<HomeMacroReleaseContextPayload> = {

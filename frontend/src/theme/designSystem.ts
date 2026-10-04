@@ -223,11 +223,19 @@ export const designTokens = {
     12: 12,
     13: 13,
     14: 14,
-    16: 16,
-    18: 18,
     20: 20,
     24: 24,
-    30: 30,
+    /** @deprecated Compatibility for existing callers; migrate to the six explicit steps. */
+    16: 14,
+    /** @deprecated Compatibility for existing panel titles; use 14. */
+    18: 14,
+    /** @deprecated Compatibility for existing headline callers; use 24. */
+    30: 24,
+  },
+  fontWeight: {
+    regular: 400,
+    medium: 500,
+    semibold: 600,
   },
   lineHeight: {
     tight: 1.25,
@@ -236,11 +244,17 @@ export const designTokens = {
     relaxed: 1.7,
   },
   fontFamily: {
-    /** UI: local Chinese/system font stack; avoid remote font fetch on first paint. */
+    /** UI: self-hosted unicode subsets with measured local fallbacks; no external runtime requests. */
     sans:
-      '"PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
-    /** Numeric/KPI text: local monospace stack with tabular number support. */
+      '"Noto Sans SC", "Noto Sans SC Latin Fallback", "Noto Sans SC CJK Fallback", "PingFang SC", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
+    /**
+     * Numeric/KPI text: proportional UI stack (digits are tabular,
+     * pair with `font-variant-numeric: tabular-nums`); mirrors `--moss-font-tabular`.
+     */
     tabular:
+      '"Noto Sans SC", "Noto Sans SC Latin Fallback", "Noto Sans SC CJK Fallback", "PingFang SC", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
+    /** Code-like text (identifiers, logs) only; mirrors `--moss-font-mono`. */
+    mono:
       'ui-monospace, "Cascadia Mono", "Microsoft YaHei UI", Menlo, Monaco, Consolas, monospace',
   },
   radius: {
@@ -269,6 +283,18 @@ export const designTokens = {
     tableRowCompact: 28,
     tableRowNormal: 36,
     tableRowComfortable: 44,
+  },
+  table: {
+    rowHeight: 32,
+    rowHeightCompact: 28,
+    fontSize: 12,
+    lineHeight: 1.35,
+    headerWeight: 500,
+    cellWeight: 400,
+  },
+  layout: {
+    pageGutter: 16,
+    pageGutterCompact: 12,
   },
   card: {
     padding: 16,

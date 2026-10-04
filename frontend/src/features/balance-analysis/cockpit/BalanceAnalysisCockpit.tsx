@@ -10,9 +10,10 @@ import {
   TeamOutlined,
 } from "@ant-design/icons";
 
+import { SectionHead } from "../../../components/layout";
 import { BalanceBottomRow } from "../components/BalanceBottomRow";
 import { BalanceContributionRow } from "../components/BalanceContributionRow";
-import { BalanceSectionHead } from "../components/BalanceSectionHead";
+import { BALANCE_SECTION_NUMBERING, balanceSectionMeta } from "../components/balanceSectionNumbering";
 import { BalanceSummaryRow } from "../components/BalanceSummaryRow";
 import type { BalanceHeadlineCard } from "../pages/balanceAnalysisPageModel";
 import type {
@@ -67,7 +68,11 @@ export default function BalanceAnalysisCockpit({
     <div className="balance-analysis-stack" data-testid="balance-workbench">
       <div data-testid="balance-analysis-cockpit" className="balance-analysis-stack">
         <section className="balance-analysis-sec">
-          <BalanceSectionHead title="当日结论" meta="正式口径 · 净头寸与期限缺口" />
+          <SectionHead
+            title="当日结论"
+            numbered={BALANCE_SECTION_NUMBERING}
+            meta={balanceSectionMeta("正式口径 · 净头寸与期限缺口")}
+          />
           <section
             data-testid="balance-analysis-priority-board"
             className="balance-analysis-conclusion"
@@ -100,7 +105,11 @@ export default function BalanceAnalysisCockpit({
         </section>
 
         <section data-testid="balance-analysis-cockpit-stage" className="balance-analysis-sec">
-          <BalanceSectionHead title="资产负债读面" meta="摘要 / 贡献 / 期限 / 风险" />
+          <SectionHead
+            title="资产负债概览"
+            numbered={BALANCE_SECTION_NUMBERING}
+            meta={balanceSectionMeta("摘要 / 贡献 / 期限 / 风险")}
+          />
           <div className="balance-analysis-stage-stack">
             <BalanceSummaryRow model={stageModel.summary} variant="terminal" />
             <BalanceContributionRow model={stageModel.contribution} variant="terminal" />
@@ -109,10 +118,11 @@ export default function BalanceAnalysisCockpit({
         </section>
 
         <section data-testid="balance-analysis-workbench-grid" className="balance-analysis-sec">
-          <BalanceSectionHead
+          <SectionHead
             title="工作簿分析入口"
-            meta={model.workbookSummary}
-            hint="底稿默认折叠；ADB 预览与高级归因标为「分析面」，不混入正式 workbook。"
+            numbered={BALANCE_SECTION_NUMBERING}
+            meta={balanceSectionMeta(model.workbookSummary)}
+            note="日均分析与高级归因仅供分析参考，不纳入正式工作簿。"
           />
           <div className="balance-analysis-quicknav">
             {model.workbookNav.map((item) => (

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
 from backend.app.core_finance.config.classification_rules import (
@@ -280,7 +280,9 @@ def _sum_prefixes(leaf: Mapping[str, Decimal], prefixes: Sequence[str]) -> Decim
 def _percent(numerator: Decimal, denominator: Decimal) -> Decimal | None:
     if denominator == ZERO:
         return None
-    return (numerator / denominator * Decimal("100")).quantize(PERCENT_QUANTUM)
+    return (numerator / denominator * Decimal("100")).quantize(
+        PERCENT_QUANTUM, rounding=ROUND_HALF_UP
+    )
 
 
 def compute_ledger_indicator_components(
@@ -309,7 +311,9 @@ def compute_ledger_indicator_components(
     loan_provision_balance = -_sum_prefixes(leaf, (LOAN_PROVISION_PREFIX,))
 
     def yi(value: Decimal) -> Decimal:
-        return (value / ONE_HUNDRED_MILLION).quantize(MONEY_YI_QUANTUM)
+        return (value / ONE_HUNDRED_MILLION).quantize(
+            MONEY_YI_QUANTUM, rounding=ROUND_HALF_UP
+        )
 
     components: dict[str, Decimal | None] = {
         "revenue": yi(revenue),

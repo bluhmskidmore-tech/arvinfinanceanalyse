@@ -8,11 +8,15 @@ from dataclasses import asdict
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import cast
 
 import duckdb
 import requests
-from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
-from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
+from backend.app.core_finance.fx_rates import (
+    formal_fx_observation_date,
+    is_valid_fx_mid_rate,
+    validate_formal_fx_observation,
+)
 from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.akshare_adapter import VendorAdapter as AkShareVendorAdapter
@@ -130,6 +134,14 @@ def _replace_fx_mid_rows(
                 "Invalid formal FX mid_rate in materialize input: "
                 "value must be finite and greater than zero."
             )
+        validate_formal_fx_observation(
+            target_date=str(row[0]),
+            observed_date=str(row[11]) if row[11] is not None else None,
+            base_currency=str(row[1]),
+            quote_currency=str(row[2]),
+            is_business_day=cast(bool | None, row[5]),
+            is_carry_forward=cast(bool | None, row[6]),
+        )
 
     canonical_keys = {
         (row[0], str(row[1]).upper(), str(row[2]).upper())
@@ -137,6 +149,20 @@ def _replace_fx_mid_rows(
     }
     if len(canonical_keys) != len(rows):
         raise ValueError("Duplicate fx_daily_mid canonical grain in materialize input")
+
+    affected_report_dates = tuple(
+        sorted({date.fromisoformat(str(row[0])).isoformat() for row in rows})
+    )
+    if affected_report_dates:
+        from backend.app.repositories.balance_analysis_publication_state import (
+            invalidate_balance_analysis_publications_before_fact_change,
+        )
+
+        invalidate_balance_analysis_publications_before_fact_change(
+            source_duckdb_path=duckdb_path,
+            report_dates=affected_report_dates,
+            reason="formal_fx_mid_replace",
+        )
 
     conn = duckdb.connect(duckdb_path, read_only=False)
     transaction_started = False
@@ -241,15 +267,15 @@ def _normalize_vendor_row(
             f"FX vendor returned future observed_trade_date={observed_trade_date} "
             f"for requested_report_date={requested_report_date}."
         )
-    if observed_date < requested_date and not is_cfets_fx_non_business_day(
-        requested_report_date,
+    is_business_day = observed_date == requested_date
+    validate_formal_fx_observation(
+        target_date=requested_date,
+        observed_date=observed_date,
         base_currency=candidate.base_currency,
         quote_currency=candidate.quote_currency,
-    ):
-        raise ValueError(
-            f"Formal FX carry-forward is only allowed for confirmed non-business days; "
-            f"requested_report_date={requested_report_date}, observed_trade_date={observed_trade_date}."
-        )
+        is_business_day=is_business_day,
+        is_carry_forward=not is_business_day,
+    )
     mid_rate = (
         raw_mid_rate
         if mid_rate_is_normalized
@@ -262,7 +288,6 @@ def _normalize_vendor_row(
             f"Normalized formal FX mid_rate is invalid for pair={candidate.pair_label}; "
             "value must be finite and greater than zero."
         )
-    is_business_day = observed_trade_date == requested_report_date
     return (
         requested_report_date,
         candidate.base_currency,
@@ -285,10 +310,21 @@ def _fetch_choice_fx_mid_rows_for_report_date(
     candidates: list[FormalFxCandidate],
 ) -> list[tuple[object, ...]]:
     requested_date = date.fromisoformat(report_date)
+    required_date = min(
+        (
+            formal_fx_observation_date(
+                requested_date, base_currency=candidate.base_currency,
+                quote_currency=candidate.quote_currency,
+            )
+            for candidate in candidates
+        ),
+        default=requested_date,
+    )
+    lookback_days = max(CHOICE_FX_LOOKBACK_DAYS, (requested_date - required_date).days)
     client = ChoiceClient()
     vendor_codes = [candidate.vendor_series_code for candidate in candidates]
 
-    for offset in range(CHOICE_FX_LOOKBACK_DAYS + 1):
+    for offset in range(lookback_days + 1):
         query_date = (requested_date - timedelta(days=offset)).isoformat()
         request_options = (
             f"IsLatest=0,StartDate={query_date},EndDate={query_date},"
@@ -365,16 +401,28 @@ def _fetch_chinamoney_fx_mid_rows_for_report_date(
             return []
         requested_pairs.append(pair)
 
-    start_date = (requested_date - timedelta(days=CHOICE_FX_LOOKBACK_DAYS)).isoformat()
+    required_date = min(
+        (
+            formal_fx_observation_date(
+                requested_date, base_currency=candidate.base_currency,
+                quote_currency=candidate.quote_currency,
+            )
+            for candidate in candidates
+        ),
+        default=requested_date,
+    )
+    lookback_days = max(CHOICE_FX_LOOKBACK_DAYS, (requested_date - required_date).days)
+    start_date = (requested_date - timedelta(days=lookback_days)).isoformat()
+    params: dict[str, str | int] = {
+        "startDate": start_date,
+        "endDate": report_date,
+        "currency": ",".join(requested_pairs),
+        "pageNum": 1,
+        "pageSize": lookback_days + 1,
+    }
     response = requests.post(
         CHINAMONEY_FX_HISTORY_URL,
-        params={
-            "startDate": start_date,
-            "endDate": report_date,
-            "currency": ",".join(requested_pairs),
-            "pageNum": 1,
-            "pageSize": CHOICE_FX_LOOKBACK_DAYS + 1,
-        },
+        params=params,
         headers={
             "Accept": "application/json",
             "Referer": "https://www.chinamoney.com.cn/chinese/bkccpr/",

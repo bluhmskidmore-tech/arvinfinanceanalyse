@@ -552,7 +552,8 @@ def test_adb_insights_maps_service_errors_without_leaking_internal_detail(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """RuntimeError→503、ValueError→422；其余异常 500 固定文案且不回显内部文本。"""
+    """RuntimeError→503、ValueError→422、其余异常→500；三条分支都只回结构化
+    ``{code, message}`` 固定文案，绝不回显服务侧异常文本或内部路径。"""
     _seed_adb_read_scope(tmp_path, monkeypatch)
     db_path = _build_duckdb(tmp_path, name="adb-insights-boom.duckdb", with_comparison_windows=False)
     client = _client(tmp_path, monkeypatch, db_path=db_path)
@@ -570,20 +571,30 @@ def test_adb_insights_maps_service_errors_without_leaking_internal_detail(
     monkeypatch.setattr(
         route_mod.adb_analysis_service,
         "adb_insights_envelope",
-        _raiser(RuntimeError("adb insights backend unavailable")),
+        _raiser(RuntimeError("adb insights backend unavailable at C:\\secret\\moss.duckdb")),
     )
     unavailable = client.get(INSIGHTS_PATH, params=_current_window_params())
     assert unavailable.status_code == 503, unavailable.text
-    assert unavailable.json()["detail"] == "adb insights backend unavailable"
+    assert unavailable.json()["detail"] == {
+        "code": "ADB_SERVICE_UNAVAILABLE",
+        "message": "ADB 分析服务暂时不可用。",
+    }
+    assert "backend unavailable" not in unavailable.text
+    assert "secret" not in unavailable.text
 
     monkeypatch.setattr(
         route_mod.adb_analysis_service,
         "adb_insights_envelope",
-        _raiser(ValueError("adb insights window invalid")),
+        _raiser(ValueError("adb insights window invalid: secret_table")),
     )
     invalid = client.get(INSIGHTS_PATH, params=_current_window_params())
     assert invalid.status_code == 422, invalid.text
-    assert invalid.json()["detail"] == "adb insights window invalid"
+    assert invalid.json()["detail"] == {
+        "code": "ADB_REQUEST_INVALID",
+        "message": "ADB 请求参数无效。",
+    }
+    assert "window invalid" not in invalid.text
+    assert "secret" not in invalid.text
 
     monkeypatch.setattr(
         route_mod.adb_analysis_service,
@@ -592,5 +603,9 @@ def test_adb_insights_maps_service_errors_without_leaking_internal_detail(
     )
     broken = client.get(INSIGHTS_PATH, params=_current_window_params())
     assert broken.status_code == 500, broken.text
-    assert broken.json()["detail"] == "Failed to get adb insights."
+    assert broken.json()["detail"] == {
+        "code": "ADB_INTERNAL_ERROR",
+        "message": "ADB 分析请求处理失败。",
+    }
+    assert "Binder Error" not in broken.text
     assert "secret" not in broken.text

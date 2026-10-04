@@ -1,0 +1,24 @@
+{
+  "listing_urls": [
+    "https://www.stats.gov.cn/xxgk/sjfb/zxfb2020/",
+    "https://www.stats.gov.cn/xxgk/sjfb/zxfb2020/index_1.html",
+    "https://www.stats.gov.cn/xxgk/sjfb/zxfb2020/index_2.html"
+  ],
+  "allowed_hosts": [
+    "stats.gov.cn",
+    "www.stats.gov.cn"
+  ],
+  "max_document_bytes": 2000000,
+  "series": [
+    {
+      "series_id": "nbs.macro.cn_cpi.monthly",
+      "series_name": "China CPI YoY (NBS official release)",
+      "title_marker": "居民消费价格同比"
+    },
+    {
+      "series_id": "nbs.macro.cn_ppi.monthly",
+      "series_name": "China PPI YoY (NBS official release)",
+      "title_marker": "工业生产者出厂价格同比"
+    }
+  ]
+}

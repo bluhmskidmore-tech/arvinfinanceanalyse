@@ -30,7 +30,7 @@ export const reconciliationStatusLabels: Record<ReconciliationStatus, string> = 
 };
 
 export const reconciliationStatusHints: Record<ReconciliationStatus, string> = {
-  matched: "头寸与总账在容差内一致，且本月期初接得上上月期末。",
+  matched: "头寸与总账在容差内一致，跨月勾稽通过；存在已核实折算差异时单独披露。",
   mismatch: "头寸与总账两侧都有余额但金额不符，差额见 ZQTZ 诊断差异列。",
   gl_only: "该分类只有总账余额、头寸源没有对应持仓，无法完成对账；不等于已对平。",
   zqtz_only: "该分类只有头寸余额、总账没有对应科目，无法完成对账；不等于已对平。",
@@ -55,6 +55,7 @@ const reconciliationStatusKeys = Object.keys(
 
 const chainStatusLabels: Record<NonNullable<ChainStatus>, string> = {
   continuous: "衔接",
+  fx_adjusted: "折算后衔接",
   broken: "断裂",
   no_prior_month: "无上月基准",
 };

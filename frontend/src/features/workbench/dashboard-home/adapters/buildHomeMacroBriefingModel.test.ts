@@ -813,6 +813,35 @@ describe("buildPolicyFundingSummary", () => {
 });
 
 describe("buildHomeMacroBriefingModel release history", () => {
+  it("keeps the current forward calendar populated and excludes empty supply placeholders from counts", () => {
+    const result = buildHomeMacroBriefingModel({
+      todayIsoDate: "2026-08-23",
+      newsEvents: [],
+      fallbackNewsEvents: [],
+      newsLoading: false,
+      newsError: false,
+      supplyCalendar: {
+        items: [],
+        status: "empty",
+        windowLabel: "2026-08-16 至 2026-09-06",
+        message: "当前窗口暂无供给/招标事件。",
+      },
+    });
+
+    expect(result.releaseItems.map((item) => item.id)).toEqual([
+      "bea-gdp-second-2026-q2",
+      "nbs-pmi-2026-08",
+      "ism-manufacturing-pmi-2026-09",
+      "ism-services-pmi-2026-09",
+      "bls-employment-situation-2026-08",
+      "nbs-cpi-ppi-2026-08",
+    ]);
+    expect(result.supplyItems).toEqual([]);
+    expect(result.supplyMessage).toBe(
+      "供给/招标：已查询当前窗口，暂无事件",
+    );
+  });
+
   it("surfaces maintained history for every visible forward release", () => {
     const result = buildHomeMacroBriefingModel({
       todayIsoDate: "2026-06-28",
@@ -868,6 +897,7 @@ describe("buildHomeMacroBriefingModel release history", () => {
       "fomc-2026-07",
       "bea-gdp-advance-2026-q2",
       "nbs-pmi-2026-07",
+      "bea-gdp-second-2026-q2",
     ]);
     expect(result.releaseItems.every((item) => !item.history)).toBe(true);
     expect(result.releaseHistoryItems.map((item) => item.id)).toEqual([

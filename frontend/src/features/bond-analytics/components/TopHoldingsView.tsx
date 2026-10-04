@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import type { BondTopHoldingsPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
-import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
+import { bondNumericDisplay, bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import { EM_DASH } from "../../../utils/format";
 import { formatPct, formatYi } from "../utils/formatters";
 import {
@@ -21,6 +21,13 @@ interface Props {
 }
 
 const TOP_N_OPTIONS = [10, 20, 30, 50, 100] as const;
+
+function durationCoverageNote(row: BondTopHoldingsPayload["items"][number]): string {
+  if (row.maturity_category === "fund_no_maturity") return "基金未列固定到期日，底层久期未覆盖";
+  if (row.maturity_category === "unknown") return "到期日待核实，久期未计算";
+  if (row.duration_quality_flag === "coupon_unavailable") return "票息输入待核实，久期未计算";
+  return "久期未计算";
+}
 
 const buildColumns = (reportDate: string) =>
   withNumericColumns(
@@ -47,7 +54,13 @@ const buildColumns = (reportDate: string) =>
         title: "修正久期",
         dataIndex: "modified_duration",
         key: "modified_duration",
-        render: (v: Numeric) => v.display,
+        render: (v: Numeric | string | null, row: BondTopHoldingsPayload["items"][number]) =>
+          row.maturity_category === "fund_no_maturity" ||
+          row.duration_quality_flag === "maturity_unavailable" ||
+          row.duration_quality_flag === "coupon_unavailable" ||
+          bondNumericRaw(v) === null
+            ? <span>{EM_DASH} · {durationCoverageNote(row)}</span>
+            : bondNumericDisplay(v),
       },
       {
         title: "权重",
@@ -169,7 +182,7 @@ export function TopHoldingsView({ reportDate }: Props) {
                 scroll={{ x: true }}
               />
             ) : (
-              <DetailEmptyNote testId="top-holdings-empty">暂无重仓券明细</DetailEmptyNote>
+              <DetailEmptyNote testId="top-holdings-empty">暂无重仓资产明细</DetailEmptyNote>
             )}
           </Card>
         </>

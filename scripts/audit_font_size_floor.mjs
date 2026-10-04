@@ -11,9 +11,10 @@
  *    below 11 (bare number, "Npx" / 'Npx', or fontSize[N] / alias[N] token
  *    index). Unrecognized expressions are a coverage gap (not judged).
  *
- * Policy (2026-08 sign-off): DESIGN.md §3 allows 11-12px for auxiliary text,
- * so the hard floor is 11px (10px and below are violations). Data rows should
- * still be >=12px, but that distinction is enforced in review, not here.
+ * Policy (DESIGN.md §3, revised 2026-10-02): 11px is for metadata/footnotes/axes;
+ * the hard floor remains 11px. Chinese body/data rows use >=12px. This guard
+ * checks the floor only; audit_frontend_style_architecture.mjs covers CSS
+ * outside the six approved sizes, and the browser audit checks resolved text.
  *
  * Baseline lives in scripts/audit_font_size_floor.baseline.json
  * (namespaces `css` and `inline`). Tighten after paying down debt with:
@@ -364,16 +365,25 @@ function looksLikeFileMap(value) {
 }
 
 function normalizeBaseline(parsed) {
+  let namespaces;
   if (isPlainObject(parsed.css) && (parsed.inline === undefined || isPlainObject(parsed.inline))) {
-    return {
+    namespaces = {
       css: parsed.css,
       inline: parsed.inline ?? {},
     };
+  } else if (looksLikeFileMap(parsed) && parsed.css === undefined && parsed.inline === undefined) {
+    namespaces = { css: parsed, inline: {} };
+  } else {
+    throw new Error("baseline must be a JSON object keyed by file path, or { css, inline } namespaces");
   }
-  if (looksLikeFileMap(parsed) && parsed.css === undefined && parsed.inline === undefined) {
-    return { css: parsed, inline: {} };
+  for (const [namespace, entries] of Object.entries(namespaces)) {
+    for (const [repoPath, metrics] of Object.entries(entries)) {
+      if (!isPlainObject(metrics) || !Number.isInteger(metrics.belowFloor) || metrics.belowFloor < 0) {
+        throw new Error(`${namespace}.${repoPath}.belowFloor must be a non-negative integer`);
+      }
+    }
   }
-  throw new Error("baseline must be a JSON object keyed by file path, or { css, inline } namespaces");
+  return namespaces;
 }
 
 function loadBaseline() {
@@ -534,14 +544,11 @@ function runRatchet() {
   const { cssResults, inlineResults, coverage } = collect();
   const baseline = loadBaseline();
   if (baseline === null) {
-    writeBaseline(cssResults, inlineResults);
-    console.log(
-      `Baseline seeded: css ${Object.keys(cssResults).length} files ` +
-        `(below-${FLOOR_PX}px=${coverage.css.belowFloor}); inline ${Object.keys(inlineResults).length} files ` +
-        `(below-${FLOOR_PX}px=${coverage.inline.belowFloor}) -> ${baselineRelativePath}`,
+    console.error(
+      `Missing or unreadable ${baselineRelativePath}. Restore the reviewed baseline; ` +
+        "--ratchet cannot seed a new baseline.",
     );
-    printCoverage(coverage);
-    return;
+    process.exit(1);
   }
 
   const cssRatchet = ratchetNamespace(cssResults, baseline.css);
@@ -554,6 +561,15 @@ function runRatchet() {
     ...cssRatchet.blocked.map((line) => `css ${line}`),
     ...inlineRatchet.blocked.map((line) => `inline ${line}`),
   ];
+
+  if (blocked.length > 0) {
+    console.error(`Refused to raise ${blocked.length} baseline(s); baseline left unchanged:`);
+    for (const line of blocked) {
+      console.error(`- ${line}`);
+    }
+    printCoverage(coverage);
+    process.exit(1);
+  }
 
   if (tightened.length > 0) {
     writeBaseline(cssRatchet.next, inlineRatchet.next);
@@ -576,13 +592,6 @@ function runRatchet() {
   }
   printCoverage(coverage);
 
-  if (blocked.length > 0) {
-    console.error(`\nRefused to raise ${blocked.length} baseline(s):`);
-    for (const line of blocked) {
-      console.error(`- ${line}`);
-    }
-    process.exit(1);
-  }
 }
 
 function runAudit() {
@@ -591,7 +600,7 @@ function runAudit() {
   if (baseline === null) {
     console.error(
       `Missing ${baselineRelativePath}. ` +
-        "Generate it with: node scripts/audit_font_size_floor.mjs --ratchet",
+        "Restore the reviewed baseline before running this audit.",
     );
     process.exit(1);
   }

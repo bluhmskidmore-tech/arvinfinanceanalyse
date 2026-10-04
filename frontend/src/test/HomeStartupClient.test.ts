@@ -1,10 +1,68 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDeferredApiClient } from "../api/clientContext";
-import { createMockBalanceMovementClient } from "../api/balanceMovementMockClient";
+import { createRealHomeSupplementalClient } from "../api/homeSupplementalClient";
+import { createMockBalanceMovementClient } from "../mocks/balanceMovementMockClient";
 import { formatRawAsNumeric } from "../utils/format";
 
 describe("home startup deferred client", () => {
+  it.each([{}, { result: {}, result_meta: null }])("rejects malformed supplemental envelopes: %j", async (payload) => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(payload)));
+    const client = createDeferredApiClient({ mode: "real", fetchImpl });
+    await expect(client.getCoreMetrics()).rejects.toThrow(/Invalid ApiEnvelope/);
+  });
+
+  it("times out supplemental reads at the shared default deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = vi.fn<typeof fetch>(() => new Promise(() => {}));
+      const client = createRealHomeSupplementalClient({ fetchImpl, baseUrl: "" });
+      const request = client.getCoreMetrics();
+      const outcome = request.catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchImpl.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+      expect(await outcome).toMatchObject({ message: expect.stringContaining("timed out") });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves HTTP JSON error details on supplemental reads", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ detail: "source batch missing" }), { status: 409 }));
+    const client = createDeferredApiClient({ mode: "real", fetchImpl });
+    await expect(client.getCoreMetrics()).rejects.toThrow("source batch missing");
+  });
+
+  it("preserves caller cancellation on supplemental balance movement reads", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise(() => {}));
+    const client = createRealHomeSupplementalClient({ fetchImpl, baseUrl: "" });
+    const controller = new AbortController();
+    const reason = new Error("caller cancelled");
+    const request = client.getBalanceMovementDates("CNX", { signal: controller.signal });
+    const outcome = request.catch((error: unknown) => error);
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledOnce());
+    controller.abort(reason);
+    expect(await outcome).toBe(reason);
+    expect(fetchImpl.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
+
+  it.each([
+    ["getBalanceAnalysisOverview", "overview"],
+    ["getBalanceAnalysisSummaryByBasis", "summary-by-basis"],
+  ] as const)("preserves generation on the lightweight %s request", async (method, endpoint) => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ result: {}, result_meta: {} })));
+    const client = createDeferredApiClient({ mode: "real", baseUrl: "http://backend.local", fetchImpl });
+
+    await client[method]({
+      reportDate: "2026-08-31", positionScope: "all", currencyBasis: "CNY", generation: "balance/generation + 1",
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      `http://backend.local/ui/balance-analysis/${endpoint}?report_date=2026-08-31&position_scope=all&currency_basis=CNY&generation=balance%2Fgeneration+%2B+1`,
+      expect.anything(),
+    );
+  });
+
   it("routes portfolio startup reads through the lightweight home clients", async () => {
     const requestedUrls: string[] = [];
     const movementClient = createMockBalanceMovementClient();
@@ -76,8 +134,8 @@ describe("home startup deferred client", () => {
       basis: "formal",
       formal_use_allowed: true,
       source_version: "sv_risk_tensor_fact_mock_v3",
-      rule_version: "rv_risk_tensor_formal_materialize_v6",
-      cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6",
+      rule_version: "rv_risk_tensor_formal_materialize_v7",
+      cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v7",
     });
   });
 
@@ -227,6 +285,41 @@ describe("home startup deferred client", () => {
       sign_aware: false,
       display: expect.any(String),
     });
+  });
+
+  it("routes the first-screen candidate indicator through its lightweight client", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: {
+            report_month: "202607",
+            calculation_status: "warning",
+            metrics: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    const envelope = await client.getLedgerPnlCandidateFinancialIndicators(" 202607 ", {
+      includeLineage: false,
+      metricId: " income.operating.mother_bank ",
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/api/ledger-pnl/candidate-financial-indicators?report_month=202607&metric_id=income.operating.mother_bank",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(envelope.result.report_month).toBe("202607");
   });
 
   it("preserves governed Numeric spread_change_bp through the deferred home supplemental client", async () => {

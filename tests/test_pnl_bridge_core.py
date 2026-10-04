@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from backend.app.core_finance.pnl_bridge import build_pnl_bridge_rows
 
 
@@ -63,7 +65,10 @@ def test_bridge_carry_equals_514():
     assert row.quality_flag == "warning"
     assert row.current_balance_found is True
     assert row.prior_balance_found is True
-    assert row.balance_diagnostics == ()
+    assert len(row.balance_diagnostics) == 1
+    assert row.balance_diagnostics[0].startswith("SENSITIVITY_INPUT_UNAVAILABLE:")
+    assert row.treasury_curve_availability == "unavailable"
+    assert row.treasury_curve_availability_reason == "sensitivity_input_unavailable"
 
 
 def test_bridge_dirty_market_value_adds_clean_market_value_and_accrued_once():
@@ -790,6 +795,328 @@ def test_bridge_phase3_stubs_are_zero():
     assert row.fx_translation == Decimal("0")
 
 
+def test_bridge_duplicate_balance_key_rejects_formal_result():
+    """重复自然键不能以任意首行生成正式损益桥。"""
+    with pytest.raises(RuntimeError, match="DUPLICATE_BALANCE_KEY") as error:
+        build_pnl_bridge_rows(
+            pnl_fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "DUP-KEY-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "accounting_basis": "FVOCI",
+                    "interest_income_514": "0",
+                    "fair_value_change_516": "0",
+                    "capital_gain_517": "0",
+                    "manual_adjustment": "0",
+                    "total_pnl": "0",
+                    "currency_basis": "CNY",
+                }
+            ],
+            balance_rows_current=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "DUP-KEY-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "currency_basis": "CNY",
+                    "accounting_basis": "FVOCI",
+                    "market_value_amount": "100.00",
+                    "accrued_interest_amount": "2.00",
+                },
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "DUP-KEY-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "currency_basis": "CNY",
+                    "accounting_basis": "FVOCI",
+                    "market_value_amount": "999.00",
+                    "accrued_interest_amount": "999.00",
+                },
+            ],
+            balance_rows_prior=[],
+        )
+    assert "DUP-KEY-001" in str(error.value)
+    assert "2 " in str(error.value)
+
+
+def test_bridge_no_duplicate_balance_key_diagnostic_when_keys_unique():
+    """反向对照：balance_rows 无重复键时不应产生该诊断，避免误报。"""
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "NO-DUP-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "FVOCI",
+                "interest_income_514": "0",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "0",
+                "currency_basis": "CNY",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "NO-DUP-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "FVOCI",
+                "market_value_amount": "100.00",
+                "accrued_interest_amount": "2.00",
+            }
+        ],
+        balance_rows_prior=[],
+    )
+
+    row = rows[0]
+    assert row.ending_dirty_mv == Decimal("102.00")
+    assert not any("DUPLICATE_BALANCE_KEY" in message for message in row.balance_diagnostics)
+
+
+def test_bridge_multi_currency_fallback_key_no_disclosure_when_exact_hits():
+    """防误报核心用例：同券多币种行天然共享 fallback 键（键不含 currency_basis），
+    这是合法数据形态。只要请求经 exact 精确命中，粗粒度共键不得产生任何披露。
+    """
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "MULTI-CCY-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "FVOCI",
+                "interest_income_514": "0",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "0",
+                "currency_basis": "USD",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "MULTI-CCY-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "FVOCI",
+                "market_value_amount": "100.00",
+                "accrued_interest_amount": "2.00",
+            },
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "MULTI-CCY-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "USD",
+                "accounting_basis": "FVOCI",
+                "market_value_amount": "200.00",
+                "accrued_interest_amount": "3.00",
+            },
+        ],
+        balance_rows_prior=[],
+    )
+
+    row = rows[0]
+    # exact 命中 USD 行（200+3），而不是 fallback 键下的首行 CNY（100+2）。
+    assert row.ending_dirty_mv == Decimal("203.00")
+    assert row.current_balance_found is True
+    assert not any("AMBIGUOUS_BALANCE" in message for message in row.balance_diagnostics)
+    assert not any("DUPLICATE_BALANCE_KEY" in message for message in row.balance_diagnostics)
+
+
+def test_bridge_fallback_ambiguous_key_rejects_formal_result():
+    """请求实际命中多候选 fallback 时拒绝生成正式结果。"""
+    with pytest.raises(RuntimeError, match="AMBIGUOUS_BALANCE_FALLBACK_KEY") as error:
+        build_pnl_bridge_rows(
+            pnl_fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-FB-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "accounting_basis": "FVOCI",
+                    "interest_income_514": "0",
+                    "fair_value_change_516": "0",
+                    "capital_gain_517": "0",
+                    "manual_adjustment": "0",
+                    "total_pnl": "0",
+                    "currency_basis": "",
+                }
+            ],
+            balance_rows_current=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-FB-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "currency_basis": "CNY",
+                    "accounting_basis": "FVOCI",
+                    "market_value_amount": "100.00",
+                    "accrued_interest_amount": "2.00",
+                },
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-FB-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "currency_basis": "USD",
+                    "accounting_basis": "FVOCI",
+                    "market_value_amount": "999.00",
+                    "accrued_interest_amount": "999.00",
+                },
+            ],
+            balance_rows_prior=[],
+        )
+    assert "AMBIG-FB-001" in str(error.value)
+    assert "2 " in str(error.value)
+
+
+def test_bridge_fallback_ambiguity_rejects_before_currency_mismatch():
+    """多候选 fallback 应先拒绝，不能挑一行再披露币种错配。"""
+    with pytest.raises(RuntimeError, match="AMBIGUOUS_BALANCE_FALLBACK_KEY") as error:
+        build_pnl_bridge_rows(
+            pnl_fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-FB-002",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "accounting_basis": "FVOCI",
+                    "interest_income_514": "0",
+                    "fair_value_change_516": "0",
+                    "capital_gain_517": "0",
+                    "manual_adjustment": "0",
+                    "total_pnl": "0",
+                    "currency_basis": "USD",
+                }
+            ],
+            balance_rows_current=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-FB-002",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "currency_basis": "CNY",
+                    "accounting_basis": "FVOCI",
+                    "market_value_amount": "100.00",
+                    "accrued_interest_amount": "2.00",
+                },
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-FB-002",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "currency_basis": "EUR",
+                    "accounting_basis": "FVOCI",
+                    "market_value_amount": "999.00",
+                    "accrued_interest_amount": "999.00",
+                },
+            ],
+            balance_rows_prior=[],
+        )
+    assert "AMBIG-FB-002" in str(error.value)
+    assert "2 " in str(error.value)
+
+
+def test_bridge_without_basis_ambiguous_key_rejects_formal_result():
+    """空 accounting_basis 的多候选余额行不能取首行。"""
+    with pytest.raises(RuntimeError, match="AMBIGUOUS_BALANCE_WITHOUT_BASIS_KEY") as error:
+        build_pnl_bridge_rows(
+            pnl_fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-WB-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "accounting_basis": "FVOCI",
+                    "interest_income_514": "0",
+                    "fair_value_change_516": "0",
+                    "capital_gain_517": "0",
+                    "manual_adjustment": "0",
+                    "total_pnl": "0",
+                    "currency_basis": "CNY",
+                }
+            ],
+            balance_rows_current=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-WB-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "currency_basis": "CNY",
+                    "market_value_amount": "100.00",
+                    "accrued_interest_amount": "2.00",
+                },
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-WB-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "currency_basis": "CNY",
+                    "market_value_amount": "999.00",
+                    "accrued_interest_amount": "999.00",
+                },
+            ],
+            balance_rows_prior=[],
+        )
+    assert "AMBIG-WB-001" in str(error.value)
+    assert "2 " in str(error.value)
+
+
+def test_bridge_without_basis_duplicate_rows_resolved_via_exact_rejected():
+    """空 basis 请求精确命中重复自然键时拒绝生成正式结果。"""
+    with pytest.raises(RuntimeError, match="DUPLICATE_BALANCE_KEY") as error:
+        build_pnl_bridge_rows(
+            pnl_fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-WB-002",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "accounting_basis": "",
+                    "interest_income_514": "0",
+                    "fair_value_change_516": "0",
+                    "capital_gain_517": "0",
+                    "manual_adjustment": "0",
+                    "total_pnl": "0",
+                    "currency_basis": "CNY",
+                }
+            ],
+            balance_rows_current=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-WB-002",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "currency_basis": "CNY",
+                    "market_value_amount": "100.00",
+                    "accrued_interest_amount": "2.00",
+                },
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "AMBIG-WB-002",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "currency_basis": "CNY",
+                    "market_value_amount": "999.00",
+                    "accrued_interest_amount": "999.00",
+                },
+            ],
+            balance_rows_prior=[],
+        )
+    assert "AMBIG-WB-002" in str(error.value)
+    assert "2 " in str(error.value)
+
+
 def test_modified_duration_fallback_applies_par_assumption_when_ytm_missing():
     """W-fi-2026-08 P1 残余修复：有票息缺 ytm 的余额行重算修正久期时，
     Macaulay 与修正折算必须共用同一 par 生效 ytm（=coupon），而非用原始
@@ -799,13 +1126,13 @@ def test_modified_duration_fallback_applies_par_assumption_when_ytm_missing():
     par Macaulay = (1.03/0.03) x (1 - 1.03**-10) = 8.786108921879104
     修正久期 = 8.786108921879104 / 1.03 = 8.530202836775829
     """
-    from datetime import timedelta
-
     from backend.app.core_finance.pnl_bridge import _modified_duration
 
     report_date = date(2026, 7, 31)
     row = {
-        "maturity_date": (report_date + timedelta(days=3650)).isoformat(),
+        # Ten actual annual coupon periods; 3650 days misses leap days and is
+        # off the coupon-date grid, so it cannot use the whole-period benchmark.
+        "maturity_date": date(2036, 7, 31).isoformat(),
         "coupon_rate": "3",  # fact 表 percent 口径（3 = 3%）
         "ytm_value": None,
         "instrument_code": "PARFALL.IB",

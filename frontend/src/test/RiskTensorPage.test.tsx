@@ -71,6 +71,8 @@ function buildScenarioMeta(resultKind: string, traceId: string): ResultMeta {
     basis: "scenario",
     formal_use_allowed: false,
     scenario_flag: true,
+    rule_version: "rv_risk_tensor_scenario_stress_v2",
+    cache_version: "cv_risk_tensor_scenario_stress_v2",
   };
 }
 
@@ -143,7 +145,7 @@ function scenarioStressResult(reportDate: string): RiskScenarioStressPayload {
     report_date: reportDate,
     basis: "scenario",
     scenario_set_id: "standard_risk_tensor_scenario_v1",
-    rule_version: "rv_risk_tensor_scenario_stress_v1",
+    rule_version: "rv_risk_tensor_scenario_stress_v2",
     source: {
       result_kind: "risk.tensor",
       trace_id: "tr_tensor_source",
@@ -156,8 +158,9 @@ function scenarioStressResult(reportDate: string): RiskScenarioStressPayload {
       scenario_count: 4,
       available_count: 3,
       review_required_count: 4,
-      worst_estimated_impact: yuan(-50_000_000, "-50,000,000.00"),
-      worst_scenario_key: "liquidity_30d_cashflow_10pct",
+      worst_estimated_impact: yuan(-1_200_000, "-1,200,000.00"),
+      worst_scenario_key: "parallel_rate_up_10bp",
+      comparison_measure: "estimated_pnl_impact",
       message: "已生成标准多情景压力估算；所有结果均为情景口径，需复核后再用于经营判断。",
     },
     scenarios: [
@@ -221,6 +224,26 @@ function scenarioStressResult(reportDate: string): RiskScenarioStressPayload {
     ],
     warnings: ["情景压力结果为基于正式风险张量的敏感性覆盖层，不是正式损益、正式限额判定或交易建议。"],
     source_warnings: [],
+    evidence: {
+      requested_report_date: reportDate,
+      actual_risk_date: reportDate,
+      date_status: "verified",
+      fallback_status: "none",
+      fallback_date: null,
+      metric_id: "MTR-RSK-001R",
+      scope_label: "正式债券分析持仓，按监管 DV01 纳入规则；不代表全行所有资产",
+      scope_rule_ids: ["reg_dv01_include_all_formal_bond_analytics_v1"],
+      coverage: {
+        status: "complete",
+        total_position_count: 12,
+        included_position_count: 12,
+        excluded_position_count: 0,
+        missing_risk_position_count: 0,
+        reasons: [],
+      },
+      amount_display_allowed: true,
+      human_review_required: true,
+    },
   };
 }
 
@@ -280,6 +303,8 @@ describe("RiskTensorPage", () => {
         liability_cashflow_90d: "250000000",
         liquidity_gap_30d: "100000000",
         liquidity_gap_90d: "250000000",
+        missing_liability_maturity_principal_amount: "44307000000",
+        missing_liability_maturity_count: 1748,
       },
     }));
 
@@ -295,6 +320,9 @@ describe("RiskTensorPage", () => {
     expect(kpi).toHaveTextContent(new RegExp(`88\\.00\\s*${WAN_YUAN_UNIT}`));
     expect(kpi).toHaveTextContent(new RegExp(`4\\.56\\s*${WAN_YUAN_UNIT}`));
     expect(kpi).toHaveTextContent(new RegExp(`3\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(kpi).toHaveTextContent("持仓记录数");
+    expect(kpi).toHaveTextContent(/12\s*条/);
+    expect(within(kpi).queryByText("债券只数")).not.toBeInTheDocument();
 
     const cashflowGrid = await screen.findByTestId("risk-tensor-cashflow-grid");
     expect(within(cashflowGrid).getAllByText("3.00").length).toBeGreaterThanOrEqual(1);
@@ -304,6 +332,31 @@ describe("RiskTensorPage", () => {
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent(
       new RegExp(`3\\.00\\s*${WAN_YUAN_UNIT}`),
     );
+    const excludedLiability = screen.getByTestId("risk-tensor-missing-liability-maturity");
+    expect(excludedLiability).toHaveTextContent("无到期日负债排除");
+    expect(excludedLiability).toHaveTextContent(new RegExp(`443\\.07\\s*${YI_YUAN_UNIT}`));
+    expect(excludedLiability).toHaveTextContent(/1,748\s*条/);
+    expect(excludedLiability).toHaveTextContent("未纳入 30/90 日负债现金流与流动性缺口");
+  });
+
+  it("shows unavailable instead of zero when legacy facts omit liability maturity exclusions", async () => {
+    const base = createApiClient({ mode: "mock" });
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_missing_liability_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_missing_liability_${reportDate}`),
+        result: tensorResult(reportDate),
+      })),
+    });
+
+    const excludedLiability = await screen.findByTestId("risk-tensor-missing-liability-maturity");
+    expect(excludedLiability).toHaveTextContent("不可用/待重算");
+    expect(excludedLiability).toHaveTextContent("条数不可用");
+    expect(excludedLiability).not.toHaveTextContent(new RegExp(`0\\.00\\s*${YI_YUAN_UNIT}`));
   });
 
   it("renders scenario-basis stress tests from the selected risk tensor date", async () => {
@@ -335,9 +388,143 @@ describe("RiskTensorPage", () => {
     expect(panel).toHaveTextContent("信用利差走阔 10bp");
     expect(panel).toHaveTextContent("30天现金流压力 10%");
     expect(panel).toHaveTextContent("汇率波动情景");
+    expect(panel).toHaveTextContent("已估算");
+    expect(within(panel).getByTestId("risk-scenario-stress-row-parallel_rate_up_10bp")).toHaveTextContent(
+      new RegExp(`-120\\.00\\s*${WAN_YUAN_UNIT}`),
+    );
+    const worstEstimate = within(panel).getByTestId("risk-tensor-scenario-worst-estimate");
+    expect(worstEstimate).toHaveTextContent("最不利损益估算");
+    expect(worstEstimate).toHaveTextContent("利率平行上行 10bp");
+    expect(worstEstimate).not.toHaveTextContent("30天现金流压力 10%");
     expect(panel).toHaveTextContent("human_review_required=true");
     expect(panel).toHaveTextContent("scenario_set_id standard_risk_tensor_scenario_v1");
     expect(await screen.findByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_scenario_stress_2026-02-28");
+  });
+
+  it("hides every scenario amount when coverage evidence rejects amount display", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const blockedScenario = scenarioStressResult("2026-02-28");
+    blockedScenario.evidence = {
+      ...blockedScenario.evidence!,
+      coverage: {
+        ...blockedScenario.evidence!.coverage,
+        status: "incomplete",
+        missing_risk_position_count: 1,
+        reasons: ["适用范围内有 1 项缺少有限数值 DV01。"],
+      },
+      amount_display_allowed: false,
+    };
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_stress_blocked_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_stress_blocked_${reportDate}`),
+        result: tensorResult(reportDate),
+      })),
+      getRiskScenarioStress: vi.fn(async () => ({
+        result_meta: buildScenarioMeta("risk.tensor.scenario_stress", "tr_scenario_stress_blocked"),
+        result: blockedScenario,
+      })),
+    });
+
+    const panel = await screen.findByTestId("risk-tensor-scenario-stress");
+    const gate = within(panel).getByTestId("risk-tensor-scenario-amount-gate");
+    const worstEstimate = within(panel).getByTestId("risk-tensor-scenario-worst-estimate");
+    const rateScenario = within(panel).getByTestId("risk-scenario-stress-row-parallel_rate_up_10bp");
+    const creditScenario = within(panel).getByTestId("risk-scenario-stress-row-credit_spread_up_10bp");
+    const liquidityScenario = within(panel).getByTestId("risk-scenario-stress-row-liquidity_30d_cashflow_10pct");
+
+    expect(gate).toHaveTextContent("情景金额暂不展示");
+    expect(gate).toHaveTextContent("监管 DV01 覆盖不完整");
+    expect(gate).toHaveTextContent("适用范围内有 1 项缺少有限数值 DV01");
+    expect(worstEstimate).toHaveTextContent("暂不展示");
+    expect(worstEstimate).toHaveTextContent("覆盖证据未通过");
+    expect(rateScenario).toHaveTextContent("金额待核验");
+    expect(creditScenario).toHaveTextContent("金额待核验");
+    expect(liquidityScenario).toHaveTextContent("金额待核验");
+    expect(panel).not.toHaveTextContent("已估算");
+    expect(rateScenario).not.toHaveTextContent(new RegExp(`-120\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(creditScenario).not.toHaveTextContent(new RegExp(`-18\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(liquidityScenario).not.toHaveTextContent(new RegExp(`-5,000\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(liquidityScenario).not.toHaveTextContent(new RegExp(`5,000\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(liquidityScenario).not.toHaveTextContent("压力后");
+  });
+
+  it("fails closed when scenario amount evidence is absent", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const scenarioWithoutEvidence = scenarioStressResult("2026-02-28");
+    delete scenarioWithoutEvidence.evidence;
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_stress_no_evidence_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_stress_no_evidence_${reportDate}`),
+        result: tensorResult(reportDate),
+      })),
+      getRiskScenarioStress: vi.fn(async () => ({
+        result_meta: buildScenarioMeta("risk.tensor.scenario_stress", "tr_scenario_stress_no_evidence"),
+        result: scenarioWithoutEvidence,
+      })),
+    });
+
+    const panel = await screen.findByTestId("risk-tensor-scenario-stress");
+    expect(within(panel).getByTestId("risk-tensor-scenario-amount-gate")).toHaveTextContent(
+      "后端未返回监管 DV01 覆盖证据",
+    );
+    expect(within(panel).getByTestId("risk-tensor-scenario-worst-estimate")).toHaveTextContent("暂不展示");
+    expect(within(panel).getByTestId("risk-scenario-stress-row-parallel_rate_up_10bp")).not.toHaveTextContent(
+      new RegExp(`-120\\.00\\s*${WAN_YUAN_UNIT}`),
+    );
+  });
+
+  it("keeps a verified zero scenario amount visible when the evidence gate allows display", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const zeroScenario = scenarioStressResult("2026-02-28");
+    const rateScenario = zeroScenario.scenarios.find((row) => row.scenario_key === "parallel_rate_up_10bp");
+    if (!rateScenario) throw new Error("rate scenario fixture missing");
+    rateScenario.estimated_impact = {
+      raw: 0,
+      unit: "yuan",
+      display: "0.00",
+      precision: 2,
+      sign_aware: true,
+    };
+    zeroScenario.summary.worst_estimated_impact = {
+      raw: -180_000,
+      unit: "yuan",
+      display: "-180,000.00",
+      precision: 2,
+      sign_aware: true,
+    };
+    zeroScenario.summary.worst_scenario_key = "credit_spread_up_10bp";
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_stress_zero_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_stress_zero_${reportDate}`),
+        result: tensorResult(reportDate),
+      })),
+      getRiskScenarioStress: vi.fn(async () => ({
+        result_meta: buildScenarioMeta("risk.tensor.scenario_stress", "tr_scenario_stress_zero"),
+        result: zeroScenario,
+      })),
+    });
+
+    const rateCard = await screen.findByTestId("risk-scenario-stress-row-parallel_rate_up_10bp");
+    expect(rateCard).toHaveTextContent("已估算");
+    expect(rateCard).toHaveTextContent(new RegExp(`0\\.00\\s*${WAN_YUAN_UNIT}`));
   });
 
   it("surfaces the backend rate-risk duration denominator scope", async () => {
@@ -367,12 +554,47 @@ describe("RiskTensorPage", () => {
 
     const durationScope = await screen.findByTestId("risk-tensor-duration-scope");
     expect(durationScope).toHaveTextContent("利率风险适用资产覆盖");
-    expect(durationScope).toHaveTextContent("无到期日或零久期资产不造期限");
+    expect(durationScope).toHaveTextContent("基金不编造合同期限");
     expect(durationScope).toHaveTextContent(new RegExp(`4\\.00\\s*${YI_YUAN_UNIT}`));
     expect(durationScope).toHaveTextContent(new RegExp(`12\\.00\\s*${WAN_YUAN_UNIT}`));
     expect(durationScope).toHaveTextContent(new RegExp(`4\\.2\\s*年`));
     expect(durationScope).toHaveTextContent(new RegExp(`1\\.00\\s*${YI_YUAN_UNIT}`));
-    expect(durationScope).toHaveTextContent("排除行数 2");
+    expect(durationScope).toHaveTextContent("2 条持仓未计入久期");
+    expect(durationScope).toHaveTextContent("旧版物化行尚未提供排除原因拆分");
+  });
+
+  it("displays the four materialized exclusion reasons without treating fund risk as zero", async () => {
+    const base = createApiClient({ mode: "mock" });
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_breakdown_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_breakdown_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          maturity_breakdown_status: "available" as const,
+          fund_no_maturity_market_value: "60000000",
+          fund_no_maturity_count: 1,
+          unknown_maturity_market_value: "10000000",
+          unknown_maturity_count: 1,
+          matured_outstanding_market_value: "30000000",
+          matured_outstanding_count: 1,
+          nonpositive_duration_market_value: "0",
+          nonpositive_duration_count: 0,
+        },
+      })),
+    });
+
+    const durationScope = await screen.findByTestId("risk-tensor-duration-scope");
+    expect(durationScope).toHaveTextContent("基金未列固定到期日");
+    expect(durationScope).toHaveTextContent("底层利率风险尚未穿透");
+    expect(durationScope).toHaveTextContent("期限属性待核实");
+    expect(durationScope).toHaveTextContent("已到期仍有余额");
+    expect(durationScope).toHaveTextContent("未来到期但久期非正");
+    expect(durationScope).not.toHaveTextContent("旧版物化行尚未提供");
   });
 
   it("renders projection quality disclosures separately from duration exclusions", async () => {
@@ -419,7 +641,7 @@ describe("RiskTensorPage", () => {
     expect(projectionQuality).toHaveTextContent("9 笔");
     expect(projectionQuality).not.toHaveTextContent("1.00");
     expect(durationScope).toHaveTextContent(new RegExp(`1\\.00\\s*${YI_YUAN_UNIT}`));
-    expect(durationScope).toHaveTextContent("排除行数 2");
+    expect(durationScope).toHaveTextContent("2 条持仓未计入久期");
   });
 
   it("shows unavailable projection quality placeholders for legacy payloads without optional fields", async () => {
@@ -505,8 +727,8 @@ describe("RiskTensorPage", () => {
     const getRiskTensor = vi.fn(async (reportDate: string) => ({
       result_meta: {
         ...buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
-        rule_version: "rv_risk_tensor_formal_materialize_v6",
-        cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6",
+        rule_version: "rv_risk_tensor_formal_materialize_v7",
+        cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v7",
       },
       result: tensorResult(reportDate),
     }));
@@ -525,8 +747,12 @@ describe("RiskTensorPage", () => {
     expect(brief).toHaveTextContent("30 日缺口为正");
     expect(brief).toHaveTextContent("质量标记：预警");
     expect(brief).toHaveTextContent("报告日 2026-02-28");
-    expect(brief).toHaveTextContent("未降级");
-    expect(brief).toHaveTextContent("来源 sv_tensor_test");
+    expect(brief).not.toHaveTextContent("未降级");
+    expect(brief).not.toHaveTextContent("来源 sv_tensor_test");
+    expect(screen.getByTestId("risk-tensor-quality-evidence")).toHaveTextContent("sv_tensor_test");
+    expect(screen.getByTestId("risk-tensor-quality-detail")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("risk-tensor-technical-details")).not.toHaveAttribute("open");
+    expect(kpi).not.toHaveTextContent("portfolio_dv01");
     expect(brief).toHaveTextContent("1 条需核对");
     expect(brief).not.toHaveTextContent("控制项未接入");
     expect(brief).not.toHaveTextContent("上期变化载荷");
@@ -554,10 +780,12 @@ describe("RiskTensorPage", () => {
     expect(scenarioPanel).toBeVisible();
     await waitFor(() => {
       expect(scenarioPanel).toHaveTextContent("利率平行上行 10bp");
-      expect(scenarioPanel).toHaveTextContent("liquidity_30d_cashflow_10pct");
+      expect(scenarioPanel).toHaveTextContent("30天现金流压力 10%");
     });
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("5Y");
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).not.toBeVisible();
+    await userEvent.click(screen.getByText("技术信息与数据血缘"));
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toBeVisible();
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_2026-02-28");
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("sv_tensor_test");
@@ -566,6 +794,43 @@ describe("RiskTensorPage", () => {
       expect(getRiskTensorDates).toHaveBeenCalled();
       expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
     });
+  });
+
+  it("uses raw_text for the first-screen liquidity conclusion and dominant tenor", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const exact = (raw: number, rawText: string) => ({
+      raw,
+      raw_text: rawText,
+      unit: "yuan" as const,
+      display: rawText,
+      precision: 8,
+      sign_aware: true,
+    });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_exact_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_exact_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        liquidity_gap_30d: exact(100, "-0.00000001"),
+        krd_5y: exact(5, "1.00000000"),
+        krd_7y: exact(4, "6.00000000"),
+        krd_10y: exact(3, "6.00000000"),
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const brief = await screen.findByTestId("risk-tensor-brief");
+    expect(brief).toHaveTextContent("主风险桶 7Y");
+    expect(brief).toHaveTextContent("30 日缺口为负");
+    expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("7Y");
   });
 
   it("summarizes hidden warnings in the first-screen risk judgement", async () => {
@@ -974,9 +1239,12 @@ describe("RiskTensorPage", () => {
       const dataStatusAction = within(brief).getByTestId("risk-tensor-data-status-action");
       const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
       expect(within(brief).queryByTestId("risk-tensor-quality-review-action")).not.toBeInTheDocument();
+      expect(qualityDetail).not.toHaveAttribute("open");
 
       await user.click(dataStatusAction);
 
+      expect(qualityDetail).toHaveAttribute("open");
+      expect(within(qualityDetail).getByTestId("risk-tensor-quality-evidence")).toBeVisible();
       expect(scrollTargets).toContain(qualityDetail);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
     } finally {
@@ -1111,8 +1379,8 @@ describe("RiskTensorPage", () => {
       const dataStatusAction = within(brief).getByTestId("risk-tensor-data-status-action");
       const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
 
-      expect(dataStatusAction).toHaveTextContent("latest snapshot fallback");
-      expect(dataStatusAction).toHaveTextContent("1 个陈旧日期已拦截");
+      expect(brief).toHaveTextContent("latest snapshot fallback");
+      expect(brief).toHaveTextContent("1 个陈旧日期已拦截");
       expect(qualityDetail).toHaveTextContent("latest snapshot fallback");
       expect(qualityDetail).toHaveTextContent("fallback_date 2026-02-27");
       expect(qualityDetail).toHaveTextContent("sv_tensor_fallback");
@@ -1870,8 +2138,9 @@ describe("RiskTensorPage", () => {
     expect(issuerDetail).toHaveTextContent("发行人集中度");
     expect(issuerDetail).toHaveTextContent("42.0%");
     expect(issuerDetail).toHaveTextContent("0.18");
-    expect(issuerDetail).toHaveTextContent("issuer_top5_weight");
-    expect(issuerDetail).toHaveTextContent("issuer_concentration_hhi");
+    expect(issuerDetail).toHaveTextContent("前五大权重");
+    expect(issuerDetail).toHaveTextContent("发行人 HHI");
+    expect(issuerDetail).not.toHaveTextContent("issuer_top5_weight");
     expect(issuerHhi).toHaveAttribute("data-tone", "default");
     expect(within(issuerHhi).getByText("0.18")).toHaveClass("kpi-card__value");
   });
@@ -2079,7 +2348,7 @@ describe("RiskTensorPage", () => {
     await waitFor(() => {
       expect(getRiskTensor).toHaveBeenCalledWith("2026-01-31");
     });
-    expect(reportDateSelect).toHaveValue("2026-01-31");
+    expect(screen.getByLabelText("风险报告日")).toHaveValue("2026-01-31");
     expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-01-31");
     expect(screen.getByTestId("risk-tensor-brief")).toHaveTextContent("主风险桶 1Y");
   });
@@ -3257,7 +3526,8 @@ describe("RiskTensorPage", () => {
         expect(metaPanel).toHaveTextContent("cv_tensor_reissued");
       });
       expect(metaPanel).toHaveTextContent("2026-04-12T09:30:00Z");
-      expect(screen.getByTestId("risk-tensor-brief")).toHaveTextContent("regulatory_dv01 口径");
+      expect(screen.getByTestId("risk-tensor-brief")).toHaveTextContent("数据口径需复核");
+      expect(metaPanel).toHaveTextContent("regulatory_dv01");
       expect(tracePriority).toHaveTextContent("复核状态：待复核");
       expect(tracePriority).not.toHaveTextContent("业务已确认");
       expect(within(tracePriority).queryByRole("button", { name: "复制确认记录" })).not.toBeInTheDocument();
@@ -4786,7 +5056,7 @@ describe("RiskTensorPage", () => {
           ],
         },
       })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         result_meta: buildMeta("risk.tensor.dates", "tr_tensor_blocked_no_replacement_recovered"),
         result: {
           report_dates: ["2026-02-28"],

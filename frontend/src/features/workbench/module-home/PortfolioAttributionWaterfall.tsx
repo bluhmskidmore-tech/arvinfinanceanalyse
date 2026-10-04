@@ -1,7 +1,10 @@
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import DeferredChart, { type EChartsOption } from "../../../lib/echarts";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { PageStateSurface } from "../../../components/page/PagePrimitives";
 import type { Numeric, VolumeRateAttributionPayload } from "../../../api/contracts";
 import { nocturneTokens } from "../../../theme/designSystem";
-import { EM_DASH, numericRaw } from "../../../pageModel";
+import { EM_DASH, numericRaw, type StateSurfaceItem } from "../../../pageModel";
+import { hasDirectPnlAttribution } from "../../pnl-attribution/components/pnlAttributionViewModel";
 import { useDeferredChartMount } from "./useDeferredChartMount";
 import styles from "./portfolioHome.module.css";
 
@@ -20,13 +23,26 @@ function effectColor(value: number | null): string {
 
 type PortfolioAttributionWaterfallProps = {
   payload: VolumeRateAttributionPayload | undefined;
+  state?: StateSurfaceItem[];
 };
 
 /**
- * 损益变动「规模/利率/交叉」分解柱图（与归因摘要 primary_driver 同源）。
- * 数据不足（无上期对比）时不渲染，不用占位数据补图。
+ * 损益变动分解柱图与归因页同源，完整列示利息量价、非利息直接变动及残差。
+ * 数据不足时保留来源状态，不用占位数据补图。
  */
-export function PortfolioAttributionWaterfall({ payload }: PortfolioAttributionWaterfallProps) {
+export function PortfolioAttributionWaterfall({ payload, state = [] }: PortfolioAttributionWaterfallProps) {
+  if (!payload?.has_previous_data && state.length === 0) return null;
+  return (
+    <div className={styles.attributionWaterfall} data-testid="module-home-portfolio-pnl-waterfall">
+      {state.map((item) => (
+        <PageStateSurface key={item.key} variant={item.variant} title={item.title} description={item.description} />
+      ))}
+      <PortfolioAttributionChart payload={payload} />
+    </div>
+  );
+}
+
+function PortfolioAttributionChart({ payload }: Pick<PortfolioAttributionWaterfallProps, "payload">) {
   const { containerRef, ready, onChartReady } = useDeferredChartMount<HTMLDivElement>();
 
   if (!payload?.has_previous_data) {
@@ -37,16 +53,31 @@ export function PortfolioAttributionWaterfall({ payload }: PortfolioAttributionW
   const volume = toYi(payload.total_volume_effect);
   const rate = toYi(payload.total_rate_effect);
   const interaction = toYi(payload.total_interaction_effect);
+  const includesDirectPnl = hasDirectPnlAttribution(payload);
+  const unexplained = toYi(payload.total_recon_error);
   const current = toYi(payload.total_current_pnl);
 
-  const categories = ["上期损益", "规模效应", "利率效应"];
-  const values: Array<number | null> = [previous, volume, rate];
-  const colors = [nocturneTokens.color.inkMuted, effectColor(volume), effectColor(rate)];
-  if (interaction !== null && Math.abs(interaction) > 0.001) {
-    categories.push("交叉效应");
-    values.push(interaction);
-    colors.push(nocturneTokens.color.inkMuted);
+  const categories = [
+    "上期损益",
+    includesDirectPnl ? "利息规模效应" : "规模效应",
+    includesDirectPnl ? "利息收益率效应" : "利率效应",
+    "交叉效应",
+  ];
+  const values: Array<number | null> = [previous, volume, rate, interaction];
+  const colors = [nocturneTokens.color.inkMuted, effectColor(volume), effectColor(rate), nocturneTokens.color.inkMuted];
+  if (includesDirectPnl) {
+    const directEffects = [
+      toYi(payload.total_fair_value_effect),
+      toYi(payload.total_capital_gain_effect),
+      toYi(payload.total_manual_adjustment_effect),
+    ];
+    categories.push("公允价值变动", "投资收益变动", "手工调整变动");
+    values.push(...directEffects);
+    colors.push(...directEffects.map(effectColor));
   }
+  categories.push("未解释差额");
+  values.push(unexplained);
+  colors.push(nocturneTokens.color.inkMuted);
   categories.push("当期损益");
   values.push(current);
   colors.push(nocturneTokens.color.blue);
@@ -57,22 +88,18 @@ export function PortfolioAttributionWaterfall({ payload }: PortfolioAttributionW
 
   const option: EChartsOption = {
     animationDuration: 320,
-    grid: { left: 52, right: 14, top: 12, bottom: 26 },
+    grid: { left: 52, right: 14, top: 12 },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow", shadowStyle: { color: "rgba(145, 132, 217, 0.08)" } },
-      backgroundColor: nocturneTokens.color.panel2,
-      borderColor: nocturneTokens.color.line,
-      borderWidth: 1,
       padding: [8, 10],
-      textStyle: { color: nocturneTokens.color.ink, fontSize: 11, fontWeight: 650 },
       valueFormatter: (value: unknown) =>
         typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(2)} 亿元` : EM_DASH,
     },
     xAxis: {
       type: "category",
       data: categories,
-      axisLabel: { fontSize: 11, color: nocturneTokens.color.inkMuted, fontWeight: 600, interval: 0 },
+      axisLabel: { fontSize: 11, color: nocturneTokens.color.inkMuted, fontWeight: 600, interval: 0, ...(includesDirectPnl ? { rotate: 20 } : {}) },
       axisTick: { show: false },
       axisLine: { show: false },
     },
@@ -91,33 +118,34 @@ export function PortfolioAttributionWaterfall({ payload }: PortfolioAttributionW
         barMaxWidth: 26,
         data: values.map((value, index) => ({
           value,
-          itemStyle: { color: colors[index], borderRadius: [3, 3, 0, 0] },
+          itemStyle: { color: colors[index] },
         })),
       },
     ],
   };
 
   return (
-    <div
-      className={styles.attributionWaterfall}
-      ref={containerRef}
-      data-testid="module-home-portfolio-pnl-waterfall"
-    >
-      <div className={styles.attributionWaterfallHead}>
-        <span>损益变动分解</span>
-        <em>
-          {payload.previous_period} → {payload.current_period} · 亿元
-        </em>
-      </div>
-      {ready ? (
-        <ReactECharts
-          option={option}
-          style={{ height: 176, width: "100%" }}
-          notMerge
-          lazyUpdate
-          onChartReady={onChartReady}
-        />
-      ) : null}
+    <div ref={containerRef}>
+      <ChartCard
+        flat
+        title="损益变动分解"
+        question={`${payload.previous_period} 至 ${payload.current_period}${includesDirectPnl ? "；利息收益率按期末市值、非年化" : ""}`}
+        unit="亿元"
+        option={option}
+        height={160}
+        legend="none"
+        chartRenderer={({ option: chromedOption, height }) =>
+          ready ? (
+            <DeferredChart
+              option={chromedOption}
+              style={{ height, width: "100%" }}
+              notMerge
+              lazyUpdate
+              onChartReady={onChartReady}
+            />
+          ) : null
+        }
+      />
     </div>
   );
 }

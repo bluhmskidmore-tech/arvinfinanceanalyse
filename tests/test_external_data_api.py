@@ -215,6 +215,13 @@ def test_external_data_series_data_endpoints_return_rows(tmp_path, monkeypatch) 
 
 
 def test_external_data_watermark_endpoint_returns_catalog_freshness(tmp_path, monkeypatch) -> None:
+    class MockDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 4, 21)
+
+    monkeypatch.setattr("backend.app.repositories.external_data_catalog_repo.date", MockDate)
+
     db_path = tmp_path / "watermark-api.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db_path.resolve()))
     _grant_external_data_read_scope(tmp_path, monkeypatch)
@@ -251,9 +258,7 @@ def test_external_data_watermark_endpoint_returns_catalog_freshness(tmp_path, mo
         conn.close()
 
     client = TestClient(app)
-    request_day_before = date.today()
     response = client.get("/api/external-data/watermarks")
-    request_day_after = date.today()
 
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -265,9 +270,7 @@ def test_external_data_watermark_endpoint_returns_catalog_freshness(tmp_path, mo
     # age_days 由服务端在请求时刻计算：用请求前后窗口断言，避免跨午夜双读翻车。
     assert len(payload["entries"]) == 1
     observed_age_days = payload["entries"][0]["age_days"]
-    assert observed_age_days in {
-        (day - date(2026, 4, 20)).days for day in (request_day_before, request_day_after)
-    }
+    assert observed_age_days == 1
     assert payload["entries"] == [
         {
             "series_id": "api.watermark.series",

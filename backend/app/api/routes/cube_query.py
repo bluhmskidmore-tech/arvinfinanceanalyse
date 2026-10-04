@@ -4,8 +4,9 @@ These routes now delegate to ``AnalyticalBridgeService`` which handles
 ``formal``, ``analytical``, and ``ledger`` bases.  The previous stub
 (``_raise_cube_query_not_promoted``) is replaced by the real service path.
 
-Auth is required via ``AuthContext`` (header X-User-Id / X-User-Role or
-env-based fallback).
+Endpoints enforce RBAC scope checks via ``AuthContext``; the application
+does not perform authentication, and caller identity must be established at
+the deployment boundary (e.g., API gateway).
 """
 from __future__ import annotations
 

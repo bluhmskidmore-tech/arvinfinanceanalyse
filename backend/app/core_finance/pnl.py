@@ -234,8 +234,19 @@ def compute_pnl_by_business_yield_and_ftp(
     avg_balance: Decimal,
     calendar_days: int,
     ftp_rate_pct: Decimal,
+    manual_adjustment_only: bool = False,
 ) -> PnlByBusinessYieldAndFtp:
     normalized_ftp_rate_pct = _quantize_yield_pct(ftp_rate_pct)
+    # The caller must establish that this group has only approved adjustments
+    # and no average or closing balance. Ordinary zero-balance assets stay null.
+    if manual_adjustment_only and avg_balance == ZERO and calendar_days > 0:
+        return PnlByBusinessYieldAndFtp(
+            annualized_yield_pct=None,
+            ftp_rate_pct=normalized_ftp_rate_pct,
+            ftp_cost=_quantize_amount(ZERO),
+            ftp_net_pnl=_quantize_amount(total_pnl),
+            ftp_net_annualized_yield_pct=None,
+        )
     if avg_balance <= ZERO or calendar_days <= 0:
         return PnlByBusinessYieldAndFtp(
             annualized_yield_pct=None,
@@ -297,10 +308,8 @@ def build_formal_pnl_fi_fact_rows(
     unrecognized_517_dates: set[date] = set()
     for row in fi_records:
         recognized = _recognized_pnl_components(row)
-        # 2026-08 B8 fail-loud 披露：FI 源被标记为 517 累计事件、标准化金额非零，
-        # 却未获正式认定（典型场景：report_date 在 2026H1 增值税窗口之外，
-        # normalize_fi_pnl_records 不派生 realized_flag/event_semantics）。
-        # 数值行为保持不变（正式 capital_gain_517 归零），但归零不再是静默的。
+        # FI 源被标记为 517 累计事件、标准化金额非零，却未获正式认定时，
+        # 保持 fail-loud：正式 capital_gain_517 归零，但归零不得静默。
         if (
             row.event_type == FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
             and row.capital_gain_517 != ZERO
@@ -335,13 +344,11 @@ def build_formal_pnl_fi_fact_rows(
         logger.warning(
             "[formal-pnl-517] %d FI row(s) carry event_type=%s with nonzero standardized "
             "capital_gain_517 but fail formal recognition (realized_flag/event_semantics "
-            "not derived; the 2026H1 VAT window is %s..%s). Their capital_gain_517 is "
+            "not derived by source normalization). Their capital_gain_517 is "
             "zeroed in formal facts: report_dates=%s, excluded_517_total=%s. Recognition "
-            "rules for post-window cumulative 517 events await a governance decision.",
+            "outside the automatic source contract requires explicit governed semantics.",
             unrecognized_517_rows,
             FI_CUMULATIVE_REALIZED_517_EVENT_TYPE,
-            PNL_514_VAT_EFFECTIVE_START_DATE.isoformat(),
-            PNL_514_VAT_EFFECTIVE_END_DATE.isoformat(),
             sorted(item.isoformat() for item in unrecognized_517_dates),
             unrecognized_517_total,
         )
@@ -483,13 +490,11 @@ def normalize_fi_pnl_records(
         ) * fx_rate
         fair_value_change_516 = _coerce_decimal(row.get("fair_value_change_516", ZERO)) * fx_rate
         event_type = _coerce_optional_text(row.get("event_type"))
-        is_cumulative_realized_517 = (
-            event_type == FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
-            and _is_pnl_514_vat_effective(report_date)
-        )
+        # FI 源表口径覆盖所有报告日期；已实现认定不依赖年度或半年窗口。
+        is_cumulative_realized_517 = event_type == FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
         raw_capital_gain_517 = _coerce_decimal(row.get("capital_gain_517", ZERO))
         capital_gain_517 = (
-            _normalize_2026h1_cumulative_fi_517(raw_capital_gain_517)
+            _normalize_cumulative_fi_517(raw_capital_gain_517)
             if is_cumulative_realized_517
             else raw_capital_gain_517
         ) * fx_rate
@@ -637,7 +642,7 @@ def _divide_vat_inclusive_514_amount(amount: Decimal) -> Decimal:
     return Decimal(format(amount / FI_514_VAT_DIVISOR, "f"))
 
 
-def _normalize_2026h1_cumulative_fi_517(amount: Decimal) -> Decimal:
+def _normalize_cumulative_fi_517(amount: Decimal) -> Decimal:
     return Decimal(format((amount * Decimal("-1")) / FI_514_VAT_DIVISOR, "f"))
 
 

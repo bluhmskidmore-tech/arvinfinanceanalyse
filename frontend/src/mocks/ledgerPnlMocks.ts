@@ -146,6 +146,7 @@ export const mockLedgerPnlDataByBasis: Record<MockLedgerPnlCurrencyBasis, Ledger
         monthly_pnl: mockLedgerMoney("2120000"),
         daily_avg_balance: mockLedgerMoney("104100000"),
         days_in_period: 31,
+        source_presence: "ledger",
       },
       {
         account_code: "516100",
@@ -156,6 +157,7 @@ export const mockLedgerPnlDataByBasis: Record<MockLedgerPnlCurrencyBasis, Ledger
         monthly_pnl: mockLedgerMoney("880000"),
         daily_avg_balance: mockLedgerMoney("10600000"),
         days_in_period: 31,
+        source_presence: "ledger",
       },
       {
         account_code: "517100",
@@ -166,6 +168,7 @@ export const mockLedgerPnlDataByBasis: Record<MockLedgerPnlCurrencyBasis, Ledger
         monthly_pnl: mockLedgerMoney("520000"),
         daily_avg_balance: mockLedgerMoney("22800000"),
         days_in_period: 31,
+        source_presence: "ledger",
       },
       {
         account_code: "519900",
@@ -176,6 +179,7 @@ export const mockLedgerPnlDataByBasis: Record<MockLedgerPnlCurrencyBasis, Ledger
         monthly_pnl: mockLedgerMoney("660000"),
         daily_avg_balance: mockLedgerMoney("4250000"),
         days_in_period: 31,
+        source_presence: "ledger",
       },
     ],
     summary: {
@@ -183,6 +187,9 @@ export const mockLedgerPnlDataByBasis: Record<MockLedgerPnlCurrencyBasis, Ledger
       total_pnl_cny: mockLedgerMoney("0"),
       total_pnl: mockLedgerMoney("4180000"),
       count: 4,
+      pnl_account_count: 4,
+      ledger_evidence_rows: 4,
+      average_only_row_count: 0,
     },
   },
   CNY: {
@@ -197,6 +204,7 @@ export const mockLedgerPnlDataByBasis: Record<MockLedgerPnlCurrencyBasis, Ledger
         monthly_pnl: mockLedgerMoney("1900000"),
         daily_avg_balance: mockLedgerMoney("94200000"),
         days_in_period: 31,
+        source_presence: "ledger",
       },
       {
         account_code: "516100",
@@ -207,6 +215,7 @@ export const mockLedgerPnlDataByBasis: Record<MockLedgerPnlCurrencyBasis, Ledger
         monthly_pnl: mockLedgerMoney("700000"),
         daily_avg_balance: mockLedgerMoney("8350000"),
         days_in_period: 31,
+        source_presence: "ledger",
       },
       {
         account_code: "517100",
@@ -217,6 +226,7 @@ export const mockLedgerPnlDataByBasis: Record<MockLedgerPnlCurrencyBasis, Ledger
         monthly_pnl: mockLedgerMoney("400000"),
         daily_avg_balance: mockLedgerMoney("18400000"),
         days_in_period: 31,
+        source_presence: "ledger",
       },
       {
         account_code: "519900",
@@ -227,6 +237,7 @@ export const mockLedgerPnlDataByBasis: Record<MockLedgerPnlCurrencyBasis, Ledger
         monthly_pnl: mockLedgerMoney("400000"),
         daily_avg_balance: mockLedgerMoney("3200000"),
         days_in_period: 31,
+        source_presence: "ledger",
       },
     ],
     summary: {
@@ -234,6 +245,9 @@ export const mockLedgerPnlDataByBasis: Record<MockLedgerPnlCurrencyBasis, Ledger
       total_pnl_cny: mockLedgerMoney("3400000"),
       total_pnl: mockLedgerMoney("3400000"),
       count: 4,
+      pnl_account_count: 4,
+      ledger_evidence_rows: 4,
+      average_only_row_count: 0,
     },
   },
 };
@@ -355,6 +369,9 @@ const mockLedgerPnlData202511ByBasis: Record<
       total_pnl_cny: mockLedgerMoney("0"),
       total_pnl: mockLedgerMoney("3700000"),
       count: 4,
+      pnl_account_count: 4,
+      ledger_evidence_rows: 4,
+      average_only_row_count: 0,
     },
   },
   CNY: {
@@ -398,6 +415,9 @@ const mockLedgerPnlData202511ByBasis: Record<
       total_pnl_cny: mockLedgerMoney("3150000"),
       total_pnl: mockLedgerMoney("3150000"),
       count: 4,
+      pnl_account_count: 4,
+      ledger_evidence_rows: 4,
+      average_only_row_count: 0,
     },
   },
 };
@@ -970,6 +990,8 @@ function buildMockLedgerPnlNoDataSnapshot(
         total_pnl_cny: zero,
         total_pnl: zero,
         count: 0,
+        ledger_evidence_rows: 0,
+        average_only_row_count: 0,
       },
     },
     analysis: buildMockLedgerPnlNoDataAnalysis(reportDate, currencyBasis),

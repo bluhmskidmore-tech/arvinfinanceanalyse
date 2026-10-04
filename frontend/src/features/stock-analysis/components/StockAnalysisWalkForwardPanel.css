@@ -35,7 +35,7 @@
 .stock-analysis-walk-forward__schedules button {
   padding: 2px 8px;
   border: 1px solid var(--dh-api-line);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   background: transparent;
   color: var(--dh-api-ink-muted);
   font-size: 12px;
@@ -51,7 +51,7 @@
 .stock-analysis-walk-forward__schedule-pill {
   padding: 2px 8px;
   border: 1px solid var(--dh-api-line);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   color: var(--dh-api-ink-muted);
   font-size: 12px;
   line-height: 1.4;
@@ -93,7 +93,7 @@
 .stock-analysis-walk-forward__verdict {
   padding: 1px 7px;
   border: 1px solid var(--dh-api-line);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   color: var(--dh-api-ink-muted);
   font-size: 12px;
   line-height: 1.5;

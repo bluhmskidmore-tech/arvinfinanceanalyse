@@ -29,8 +29,8 @@
 
 .tpl-market-chart__value {
   font-size: 24px;
-  font-weight: 700;
-  font-family: var(--moss-font-mono);
+  font-weight: 600;
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 
@@ -62,10 +62,6 @@
   color: var(--dh-api-ink);
 }
 
-.tpl-market-chart__section-title--spaced {
-  margin-bottom: var(--moss-space-4);
-}
-
 .tpl-market-chart__section-title--tight {
   margin-bottom: var(--moss-space-2);
 }
@@ -83,13 +79,6 @@
   color: var(--dh-api-muted);
 }
 
-.tpl-market-chart__caption {
-  margin: var(--moss-space-3) 0 0;
-  font-size: 12px;
-  color: var(--dh-api-muted);
-  text-align: center;
-}
-
 .tpl-market-chart__note {
   margin: 0 0 var(--moss-space-3);
   font-size: 12px;
@@ -104,10 +93,6 @@
   border: 1px solid var(--dh-api-amber);
   color: var(--dh-api-amber);
   font-size: 12px;
-}
-
-.tpl-market-chart__chart {
-  height: 360px;
 }
 
 .tpl-market-chart__table-wrap {
@@ -140,7 +125,7 @@
 .tpl-market-chart__table th[data-align="right"],
 .tpl-market-chart__table td[data-align="right"] {
   text-align: right;
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
 }
 

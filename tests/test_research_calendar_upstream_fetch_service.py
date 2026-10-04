@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import requests
+
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.services.research_calendar_upstream_fetch_service import (
     archive_mof_treasury_supply_auction_raw,
@@ -73,19 +75,76 @@ def test_fetch_mof_treasury_supply_auction_rows_parses_listing_and_detail(monkey
     assert rows[1]["amount_numeric"] == 1350.0
 
 
+def test_fetch_mof_rows_retries_three_times_and_reports_failed_source(monkeypatch, caplog) -> None:
+    attempts: list[str] = []
+
+    def _failing_get(url: str, timeout: int = 20, **kwargs):
+        attempts.append(url)
+        raise requests.ConnectionError("temporary outage")
+
+    monkeypatch.setattr(fetch_mof_treasury_supply_auction_rows.__globals__["requests"], "get", _failing_get)
+    monkeypatch.setitem(fetch_mof_treasury_supply_auction_rows.__globals__, "_sleep", lambda _: None)
+
+    result = fetch_mof_treasury_supply_auction_rows(page_count=1, max_items=10, include_status=True)
+
+    assert len(attempts) == 3
+    assert result["rows"] == []
+    assert result["status"] == "failed"
+    assert result["warnings"]
+    assert "MOF listing fetch failed" in caplog.text
+
+
+def test_fetch_mof_rows_retries_then_reports_success(monkeypatch) -> None:
+    attempts = 0
+
+    def _flaky_get(url: str, timeout: int = 20, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise requests.ConnectionError("temporary outage")
+        return _FakeResponse("<html><body></body></html>")
+
+    monkeypatch.setattr(fetch_mof_treasury_supply_auction_rows.__globals__["requests"], "get", _flaky_get)
+    monkeypatch.setitem(fetch_mof_treasury_supply_auction_rows.__globals__, "_sleep", lambda _: None)
+
+    result = fetch_mof_treasury_supply_auction_rows(page_count=1, max_items=10, include_status=True)
+
+    assert attempts == 2
+    assert result == {"rows": [], "status": "success", "warnings": []}
+
+
+def test_fetch_mof_rows_distinguishes_true_empty_listing_from_failure(monkeypatch) -> None:
+    monkeypatch.setattr(
+        fetch_mof_treasury_supply_auction_rows.__globals__["requests"],
+        "get",
+        lambda url, timeout=20, **kwargs: _FakeResponse("<html><body></body></html>"),
+    )
+    monkeypatch.setitem(fetch_mof_treasury_supply_auction_rows.__globals__, "_sleep", lambda _: None)
+
+    result = fetch_mof_treasury_supply_auction_rows(page_count=1, max_items=10, include_status=True)
+
+    assert result["rows"] == []
+    assert result["status"] == "success"
+    assert result["warnings"] == []
+
+
 def test_archive_mof_treasury_supply_auction_raw_writes_raw_zone(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setitem(
         archive_mof_treasury_supply_auction_raw.__globals__,
         "fetch_mof_treasury_supply_auction_rows",
-        lambda page_count=2, max_items=20: [
-            {
-                "event_id": "evt-1",
-                "event_date": "2026-01-19",
-                "event_kind": "supply",
-                "title": "关于2026年记账式附息（三期）国债发行工作有关事宜的通知",
-                "severity": "high",
-            }
-        ],
+        lambda page_count=2, max_items=20, include_status=False: {
+            "rows": [
+                {
+                    "event_id": "evt-1",
+                    "event_date": "2026-01-19",
+                    "event_kind": "supply",
+                    "title": "关于2026年记账式附息（三期）国债发行工作有关事宜的通知",
+                    "severity": "high",
+                }
+            ],
+            "status": "success",
+            "warnings": [],
+        },
     )
     raw = RawZoneRepository(local_raw_path=str(tmp_path / "raw"))
 
@@ -96,7 +155,10 @@ def test_archive_mof_treasury_supply_auction_raw_writes_raw_zone(tmp_path: Path,
 
     payload = json.loads(Path(result["raw_zone_path"]).read_text(encoding="utf-8"))
     assert result["row_count"] == 1
+    assert result["status"] == "success"
+    assert result["warnings"] == []
     assert payload["source"] == "mof_treasury"
+    assert payload["status"] == "success"
     assert payload["rows"][0]["event_id"] == "evt-1"
 
 
@@ -200,44 +262,56 @@ def test_archive_research_calendar_supply_auction_raw_merges_multiple_sources(
     monkeypatch.setitem(
         archive_research_calendar_supply_auction_raw.__globals__,
         "fetch_mof_treasury_supply_auction_rows",
-        lambda page_count=2, max_items=20: [
-            {
-                "event_id": "mof-evt-1",
-                "event_date": "2026-04-17",
-                "event_kind": "supply",
-                "title": "财政部公告",
-                "severity": "high",
-                "vendor_name": "mof_treasury",
-            }
-        ],
+        lambda page_count=2, max_items=20, include_status=False: {
+            "rows": [
+                {
+                    "event_id": "mof-evt-1",
+                    "event_date": "2026-04-17",
+                    "event_kind": "supply",
+                    "title": "财政部公告",
+                    "severity": "high",
+                    "vendor_name": "mof_treasury",
+                }
+            ],
+            "status": "success",
+            "warnings": [],
+        },
     )
     monkeypatch.setitem(
         archive_research_calendar_supply_auction_raw.__globals__,
         "fetch_adbc_policy_bank_supply_auction_rows",
-        lambda page_count=1, max_items=20: [
-            {
-                "event_id": "adbc-evt-1",
-                "event_date": "2026-04-13",
-                "event_kind": "auction",
-                "title": "农发行绿色债券",
-                "severity": "low",
-                "vendor_name": "adbc_policy_bank",
-            }
-        ],
+        lambda page_count=1, max_items=20, include_status=False: {
+            "rows": [
+                {
+                    "event_id": "adbc-evt-1",
+                    "event_date": "2026-04-13",
+                    "event_kind": "auction",
+                    "title": "农发行绿色债券",
+                    "severity": "low",
+                    "vendor_name": "adbc_policy_bank",
+                }
+            ],
+            "status": "success",
+            "warnings": [],
+        },
     )
     monkeypatch.setitem(
         archive_research_calendar_supply_auction_raw.__globals__,
         "fetch_chinabond_policy_bank_supply_auction_rows",
-        lambda max_items=20: [
-            {
-                "event_id": "chinabond-evt-1",
-                "event_date": "2026-04-23",
-                "event_kind": "supply",
-                "title": "国家开发银行金融债券招投标书",
-                "severity": "medium",
-                "vendor_name": "chinabond_policy_bank",
-            }
-        ],
+        lambda max_items=20, include_status=False: {
+            "rows": [
+                {
+                    "event_id": "chinabond-evt-1",
+                    "event_date": "2026-04-23",
+                    "event_kind": "supply",
+                    "title": "国家开发银行金融债券招投标书",
+                    "severity": "medium",
+                    "vendor_name": "chinabond_policy_bank",
+                }
+            ],
+            "status": "success",
+            "warnings": [],
+        },
     )
     raw = RawZoneRepository(local_raw_path=str(tmp_path / "raw"))
 
@@ -248,8 +322,17 @@ def test_archive_research_calendar_supply_auction_raw_merges_multiple_sources(
 
     payload = json.loads(Path(result["raw_zone_path"]).read_text(encoding="utf-8"))
     assert result["row_count"] == 3
+    assert result["status"] == "success"
+    assert result["warnings"] == []
     assert payload["source"] == "research_calendar_upstream"
     assert payload["sources"] == ["mof_treasury", "adbc_policy_bank", "chinabond_policy_bank"]
+    assert payload["status"] == "success"
+    assert payload["warnings"] == []
+    assert set(payload["source_statuses"]) == {
+        "mof_treasury",
+        "adbc_policy_bank",
+        "chinabond_policy_bank",
+    }
     assert {row["event_id"] for row in payload["rows"]} == {
         "mof-evt-1",
         "adbc-evt-1",

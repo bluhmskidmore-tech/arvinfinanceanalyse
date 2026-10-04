@@ -17,9 +17,12 @@ from fastapi.testclient import TestClient
 
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
+    AgentCard,
     AgentEnvelope,
     AgentEvidence,
     AgentResultMeta,
+    AgentSemanticContext,
+    AgentSemanticReference,
 )
 from backend.app.agent.schemas.agent_run import AgentRunRecord, AgentRunStatusResponse
 from tests.helpers import load_module
@@ -115,6 +118,43 @@ def _local_envelope() -> AgentEnvelope:
                     "result_kind": "agent.duration_risk",
                     "tables_used": ["fact_formal_bond_analytics_daily"],
                 }
+            ),
+        }
+    )
+
+
+def _semantic_local_envelope() -> AgentEnvelope:
+    sample = _local_envelope()
+    return sample.model_copy(
+        update={
+            "cards": [
+                AgentCard(
+                    type="metric",
+                    title="正式总损益",
+                    value="123.45",
+                    metric_id="MTR-PNL-005",
+                )
+            ],
+            "semantic_context": AgentSemanticContext(
+                status="resolved",
+                result_check="matched",
+                references=[
+                    AgentSemanticReference(
+                        entity_id="MTR-PNL-005",
+                        name="正式总损益",
+                        business_definition="正式损益汇总口径。",
+                        status="approved",
+                        unit="元",
+                        basis="formal",
+                        time_semantics="report_date",
+                        authority=["docs/metric_dictionary.md"],
+                    )
+                ],
+                ontology_revision="sha256:test-ontology",
+                binding_revision="ontology-pnl-bindings-v1",
+                reason_code="metric_value_resolved",
+                upstream_result_kind="pnl.overview",
+                upstream_trace_id="tr_pnl_upstream_test",
             ),
         }
     )
@@ -259,6 +299,105 @@ def test_agent_run_events_sends_terminal_snapshot_and_closes(monkeypatch, tmp_pa
     data_line = response.text.splitlines()[1]
     assert data_line.startswith("data: ")
     assert json.loads(data_line.removeprefix("data: ")) == completed
+
+
+def test_completed_semantic_run_round_trips_through_get_list_and_sse(
+    monkeypatch,
+    tmp_path,
+):
+    def execute_semantic(*_args, **_kwargs):
+        return _semantic_local_envelope()
+
+    client, _settings_value = _client(monkeypatch, tmp_path, execute_semantic)
+    route_module = importlib.import_module("backend.app.api.routes.agent")
+    monkeypatch.setattr(route_module, "execute_agent_query", execute_semantic)
+    created = client.post(
+        "/api/agent/runs",
+        json={"question": "2026-03-31 正式总损益是多少"},
+    ).json()
+
+    completed = _wait_for_terminal(client, created["run_id"])
+    listed = client.get("/api/agent/runs").json()["items"]
+    listed_run = next(item for item in listed if item["run_id"] == created["run_id"])
+    event_response = client.get(f"/api/agent/runs/{created['run_id']}/events")
+    event_payload = json.loads(
+        next(
+            line.removeprefix("data: ")
+            for line in event_response.text.splitlines()
+            if line.startswith("data: ")
+        )
+    )
+
+    assert completed["result"]["semantic_context"] == listed_run["result"]["semantic_context"]
+    assert event_payload["result"]["semantic_context"] == completed["result"]["semantic_context"]
+    assert completed["result"]["cards"][0]["metric_id"] == "MTR-PNL-005"
+    assert listed_run["result"]["cards"][0]["metric_id"] == "MTR-PNL-005"
+    assert event_payload["result"]["cards"][0]["metric_id"] == "MTR-PNL-005"
+
+
+def test_legacy_completed_run_without_semantic_fields_remains_readable(
+    monkeypatch,
+    tmp_path,
+):
+    client, settings = _client(
+        monkeypatch,
+        tmp_path,
+        lambda *_args, **_kwargs: _sample_envelope(),
+    )
+    run_id = "agent_run:legacy-no-semantic-fields"
+    owner_headers = {"X-User-Id": "legacy-owner", "X-User-Role": "reviewer"}
+    legacy_result = _local_envelope().model_dump(mode="json", exclude_none=True)
+    legacy_result["cards"] = [
+        {"type": "metric", "title": "Legacy total", "value": "1.00"}
+    ]
+    governance_dir = Path(settings.governance_path)
+    governance_dir.mkdir(parents=True)
+    (governance_dir / "agent_run.jsonl").write_text(
+        json.dumps(
+            {
+                "job_name": "agent_run",
+                "run_id": run_id,
+                "status": "completed",
+                "question": "legacy completed run",
+                "request": {
+                    "question": "legacy completed run",
+                    "context": {"user_id": "legacy-owner"},
+                },
+                "provider": "local",
+                "model": "default",
+                "transport": "inline",
+                "toolsets": "evidence,query,research",
+                "queued_at": "2026-09-01T08:00:00+00:00",
+                "started_at": "2026-09-01T08:00:01+00:00",
+                "finished_at": "2026-09-01T08:00:02+00:00",
+                "result": legacy_result,
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    status_response = client.get(f"/api/agent/runs/{run_id}", headers=owner_headers)
+    listed_response = client.get("/api/agent/runs", headers=owner_headers)
+    event_response = client.get(
+        f"/api/agent/runs/{run_id}/events",
+        headers=owner_headers,
+    )
+
+    assert status_response.status_code == 200
+    status_result = status_response.json()["result"]
+    listed_result = listed_response.json()["items"][0]["result"]
+    event_result = json.loads(
+        next(
+            line.removeprefix("data: ")
+            for line in event_response.text.splitlines()
+            if line.startswith("data: ")
+        )
+    )["result"]
+    for result in (status_result, listed_result, event_result):
+        assert "semantic_context" not in result
+        assert "metric_id" not in result["cards"][0]
 
 
 def test_agent_run_event_iterator_orders_updates_and_suppresses_duplicates(monkeypatch, tmp_path):
@@ -426,13 +565,15 @@ def test_shared_agent_runs_strip_client_stream_flags(monkeypatch, tmp_path):
     assert "agent_stream_surface" not in context
 
 
-def test_agent_lab_runs_persist_server_stream_flags(monkeypatch, tmp_path):
+@pytest.mark.parametrize("surface, endpoint", [("lab", "/api/agent/lab/runs"), ("workbench", "/api/agent/runs")])
+def test_agent_lab_runs_persist_server_stream_flags(monkeypatch, tmp_path, surface, endpoint):
     client, settings = _client(monkeypatch, tmp_path, lambda *_args, **_kwargs: _sample_envelope())
 
     created = client.post(
-        "/api/agent/lab/runs",
+        endpoint,
         json={
-            "question": "ping",
+            "question": "Explain rainbows",
+            "routing_surface": "standalone_workbench",
             "context": {
                 "agent_ui_experiment": "assistant-ui-external-store",
             },
@@ -448,7 +589,7 @@ def test_agent_lab_runs_persist_server_stream_flags(monkeypatch, tmp_path):
     context = latest["request"]["context"]
     assert context["agent_ui_experiment"] == "assistant-ui-external-store"
     assert context["agent_stream_protocol"] == "run_delta_v1"
-    assert context["agent_stream_surface"] == "lab"
+    assert context["agent_stream_surface"] == surface
 
 
 def test_agent_lab_runs_reject_non_hermes_provider(monkeypatch, tmp_path):
@@ -496,6 +637,55 @@ def test_agent_lab_run_retry_rejects_provider_change(monkeypatch, tmp_path):
         response.json()["detail"]
         == "Agent Lab streaming is only available when the configured provider is Hermes."
     )
+
+
+def test_agent_lab_retry_keeps_hermes_for_ontology_shaped_question(monkeypatch, tmp_path):
+    from backend.app.agent.runtime.local_request_resolution import (
+        SEMANTIC_EXECUTION_CONTEXT_KEY,
+    )
+
+    def fail_provider(*_args, **_kwargs):
+        raise RuntimeError("provider failed")
+
+    client, settings = _client(monkeypatch, tmp_path, fail_provider)
+    created = client.post(
+        "/api/agent/lab/runs",
+        json={"question": "2026-03-31 正式总损益是多少"},
+    ).json()
+    assert _wait_for_terminal(client, created["run_id"])["status"] == "failed"
+    route_module = importlib.import_module("backend.app.api.routes.agent")
+
+    checked_requests = []
+    resource_gate = route_module._ensure_agent_intent_resources_allowed
+
+    def checked_resource_gate(request, *args, **kwargs):
+        checked_requests.append(request)
+        return resource_gate(request, *args, **kwargs)
+
+    monkeypatch.setattr(
+        route_module,
+        "_ensure_agent_intent_resources_allowed",
+        checked_resource_gate,
+    )
+
+    response = client.post(f"/api/agent/runs/{created['run_id']}/retry")
+
+    assert response.status_code == 200
+    assert len(checked_requests) == 1
+    assert SEMANTIC_EXECUTION_CONTEXT_KEY not in checked_requests[0].context
+    retried = response.json()
+    assert retried["provider"] == "hermes"
+    records = [
+        json.loads(line)
+        for line in (Path(settings.governance_path) / "agent_run.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    retry_records = [record for record in records if record["run_id"] == retried["run_id"]]
+    context = retry_records[-1]["request"]["context"]
+    assert context["agent_stream_protocol"] == "run_delta_v1"
+    assert context["agent_stream_surface"] == "lab"
+    assert SEMANTIC_EXECUTION_CONTEXT_KEY not in context
 
 
 def test_agent_lab_runs_openapi_documents_fail_closed_responses():
@@ -559,11 +749,17 @@ def test_agent_run_lifecycle_endpoints_fail_closed_when_agent_disabled(monkeypat
     monkeypatch.setattr(route_module, "_ensure_agent_read_allowed", unexpected_service)
     monkeypatch.setattr(route_module, "_ensure_agent_execute_allowed", unexpected_service)
     monkeypatch.setattr(route_module, "get_agent_run_owner", unexpected_service)
-    monkeypatch.setattr(route_module, "get_agent_run_status", unexpected_service)
+    monkeypatch.setattr(
+        route_module,
+        "get_agent_run_owner_and_status",
+        unexpected_service,
+    )
     monkeypatch.setattr(route_module, "list_agent_runs", unexpected_service)
     monkeypatch.setattr(route_module, "iter_agent_run_events", unexpected_service)
     monkeypatch.setattr(route_module, "cancel_agent_run", unexpected_service)
-    monkeypatch.setattr(route_module, "retry_agent_run", unexpected_service)
+    monkeypatch.setattr(route_module, "build_agent_run_retry_request", unexpected_service)
+    monkeypatch.setattr(route_module, "stage_agent_run_retry", unexpected_service)
+    monkeypatch.setattr(route_module, "complete_agent_run_creation", unexpected_service)
 
     app = FastAPI()
     app.include_router(route_module.router)
@@ -608,6 +804,11 @@ def test_agent_run_mutations_require_execute_scope_before_owner_lookup(
         "get_agent_run_owner",
         unexpected_owner_lookup,
     )
+    monkeypatch.setattr(
+        route_module,
+        "get_agent_run_owner_and_status",
+        unexpected_owner_lookup,
+    )
     run_id = "agent_run:execute-scope-required"
 
     responses = [
@@ -623,6 +824,38 @@ def test_agent_run_mutations_require_execute_scope_before_owner_lookup(
     assert owner_lookups == []
 
 
+def test_agent_lab_runs_require_execute_scope_before_dispatch(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    client, _settings_value = _client(
+        monkeypatch,
+        tmp_path,
+        lambda *_args, **_kwargs: _sample_envelope(),
+        grant_execute=False,
+        grant_write=True,
+        raise_server_exceptions=False,
+    )
+    route_module = __import__(
+        "backend.app.api.routes.agent",
+        fromlist=["create_agent_run"],
+    )
+    dispatches: list[str] = []
+
+    def unexpected_dispatch(*_args, **_kwargs):
+        dispatches.append("called")
+        raise AssertionError("lab run reached dispatch without agent/execute")
+
+    monkeypatch.setattr(route_module, "create_agent_run", unexpected_dispatch)
+    monkeypatch.setattr(route_module, "stage_agent_run_creation", unexpected_dispatch)
+
+    response = client.post("/api/agent/lab/runs", json={"question": "ping"})
+
+    assert response.status_code == 403
+    assert "execute agent" in response.json()["detail"]
+    assert dispatches == []
+
+
 def test_agent_run_create_returns_queued_and_status_completes(monkeypatch, tmp_path):
     calls = []
 
@@ -632,7 +865,13 @@ def test_agent_run_create_returns_queued_and_status_completes(monkeypatch, tmp_p
 
     client, settings = _client(monkeypatch, tmp_path, fake_execute)
 
-    response = client.post("/api/agent/runs", json={"question": "ping"})
+    response = client.post(
+        "/api/agent/runs",
+        json={
+            "question": "ping",
+            "routing_surface": "standalone_workbench",
+        },
+    )
 
     assert response.status_code == 200
     created = response.json()
@@ -641,22 +880,27 @@ def test_agent_run_create_returns_queued_and_status_completes(monkeypatch, tmp_p
 
     completed = _wait_for_terminal(client, created["run_id"])
     assert completed["status"] == "completed"
+    assert completed["stop_reason"] == "completed"
     assert completed["result"]["answer"] == "Hermes managed answer."
     assert completed["provider"] == "hermes"
     assert completed["model"] == "gpt-test"
     assert completed["transport"] == "bridge"
     assert calls and calls[0][2] == "gpt-test"
+    assert calls[0][0].routing_surface == "standalone_workbench"
 
     records = [
         json.loads(line)
         for line in (tmp_path / "governance" / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert [record["status"] for record in records if record["run_id"] == created["run_id"]] == [
+    matching = [record for record in records if record["run_id"] == created["run_id"]]
+    assert [record["status"] for record in matching] == [
         "queued",
         "starting",
         "running",
         "completed",
     ]
+    assert matching[-1]["request"]["routing_surface"] == "standalone_workbench"
+    assert matching[-1]["stop_reason"] == "completed"
 
 
 def test_agent_run_injects_run_id_into_executor_context(monkeypatch, tmp_path):
@@ -912,6 +1156,336 @@ def test_auth_context_strips_client_supplied_run_id():
     assert "run_id" not in request.context
     assert request.context["page"] == "agent-workbench"
     assert request.context["user_id"] == "u_trusted"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "/api/agent/query",
+        "/api/agent/runs",
+        "/api/agent/lab/runs",
+        "/api/agent/runs/agent_run:spoofed/retry",
+    ],
+)
+def test_agent_request_endpoints_reject_client_semantic_execution_snapshot(
+    endpoint,
+    monkeypatch,
+    tmp_path,
+):
+    from backend.app.agent.runtime.local_request_resolution import (
+        SEMANTIC_EXECUTION_CONTEXT_KEY,
+    )
+
+    calls: list[str] = []
+
+    def unexpected_execute(*_args, **_kwargs):
+        calls.append("execute")
+        raise AssertionError("client semantic snapshot reached execution")
+
+    client, _settings_value = _client(monkeypatch, tmp_path, unexpected_execute)
+
+    response = client.post(
+        endpoint,
+        json={
+            "question": "2026-03-31 正式总损益是多少",
+            "context": {
+                SEMANTIC_EXECUTION_CONTEXT_KEY: {
+                    "intent": "pnl_summary",
+                    "required_resources": [],
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        f"context.{SEMANTIC_EXECUTION_CONTEXT_KEY} is reserved for server use."
+    )
+    assert calls == []
+
+
+def test_sync_and_async_semantic_execution_authorize_and_execute_same_pin(
+    monkeypatch,
+    tmp_path,
+):
+    from backend.app.agent.runtime.local_request_resolution import (
+        SEMANTIC_EXECUTION_CONTEXT_KEY,
+    )
+
+    events: list[tuple[str, dict[str, object]]] = []
+
+    def capture_execute(*args, **kwargs):
+        request = kwargs.get("request") or args[0]
+        snapshot = request.context[SEMANTIC_EXECUTION_CONTEXT_KEY]
+        events.append(("execute", json.loads(json.dumps(snapshot))))
+        return _local_envelope()
+
+    client, _settings_value = _client(monkeypatch, tmp_path, capture_execute)
+    route_module = importlib.import_module("backend.app.api.routes.agent")
+    monkeypatch.setattr(route_module, "execute_agent_query", capture_execute)
+    original_authorize = route_module._ensure_agent_intent_resources_allowed
+
+    def capture_authorize(request, *args, **kwargs):
+        snapshot = request.context[SEMANTIC_EXECUTION_CONTEXT_KEY]
+        events.append(("authorize", json.loads(json.dumps(snapshot))))
+        return original_authorize(request, *args, **kwargs)
+
+    monkeypatch.setattr(
+        route_module,
+        "_ensure_agent_intent_resources_allowed",
+        capture_authorize,
+    )
+    body = {
+        "question": "2026-03-31 正式总损益是多少",
+        "currency_basis": "CNY",
+    }
+
+    query_response = client.post("/api/agent/query", json=body)
+    create_response = client.post("/api/agent/runs", json=body)
+
+    assert query_response.status_code == 200
+    assert create_response.status_code == 200
+    assert create_response.json()["provider"] == "local"
+    assert [kind for kind, _snapshot in events] == [
+        "authorize",
+        "execute",
+        "authorize",
+        "execute",
+    ]
+    assert events[0][1] == events[1][1]
+    assert events[2][1] == events[3][1]
+    assert events[0][1]["metric_id"] == "MTR-PNL-005"
+    assert events[0][1]["required_resources"] == ["pnl"]
+
+
+def test_workbench_semantic_run_ignores_model_selection_after_server_pin(
+    monkeypatch,
+    tmp_path,
+):
+    from backend.app.agent.runtime.local_request_resolution import (
+        SEMANTIC_EXECUTION_CONTEXT_KEY,
+    )
+
+    executed_requests: list[AgentQueryRequest] = []
+
+    def capture_execute(request, *_args, **_kwargs):
+        executed_requests.append(request)
+        return _local_envelope()
+
+    client, _settings_value = _client(monkeypatch, tmp_path, capture_execute)
+
+    response = client.post(
+        "/api/agent/runs",
+        json={
+            "question": "2026-03-31 正式总损益是多少",
+            "currency_basis": "CNY",
+            "routing_surface": "standalone_workbench",
+            "model": "gpt-test",
+            "reasoning_effort": "high",
+        },
+    )
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["provider"] == "local"
+    completed = _wait_for_terminal(client, created["run_id"])
+    assert completed["status"] == "completed"
+    assert completed["provider"] == "local"
+    assert len(executed_requests) == 1
+    executed_request = executed_requests[0]
+    assert executed_request.currency_basis == "CNY"
+    assert executed_request.routing_surface == "standalone_workbench"
+    assert executed_request.model is None
+    assert executed_request.reasoning_effort is None
+    assert SEMANTIC_EXECUTION_CONTEXT_KEY in executed_request.context
+
+
+def test_workbench_non_semantic_local_run_still_rejects_model_selection(
+    monkeypatch,
+    tmp_path,
+):
+    executed_requests: list[AgentQueryRequest] = []
+
+    def unexpected_execute(request, *_args, **_kwargs):
+        executed_requests.append(request)
+        raise AssertionError("invalid local model selection reached execution")
+
+    client, _settings_value = _client(monkeypatch, tmp_path, unexpected_execute)
+
+    response = client.post(
+        "/api/agent/runs",
+        json={
+            "question": "show duration risk",
+            "routing_surface": "standalone_workbench",
+            "model": "gpt-test",
+            "reasoning_effort": "high",
+            "context": {"intent": "duration_risk"},
+        },
+    )
+
+    assert response.status_code == 422
+    assert executed_requests == []
+
+
+def test_workbench_semantic_retry_ignores_source_model_selection_after_repin(
+    monkeypatch,
+    tmp_path,
+):
+    from backend.app.agent.runtime.local_request_resolution import (
+        SEMANTIC_EXECUTION_CONTEXT_KEY,
+    )
+
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    executed_requests: list[AgentQueryRequest] = []
+
+    def capture_execute(request, *_args, **_kwargs):
+        executed_requests.append(request)
+        return _local_envelope()
+
+    client, settings = _client(monkeypatch, tmp_path, capture_execute)
+    source_run_id = "agent_run:legacy-workbench-semantic-model"
+    source_request = AgentQueryRequest(
+        question="2026-03-31 正式总损益是多少",
+        currency_basis="CNY",
+        routing_surface="standalone_workbench",
+        model="gpt-test",
+        reasoning_effort="high",
+        context={
+            "user_id": "run-owner",
+            "user_role": "reviewer",
+            "identity_source": "trusted_headers",
+        },
+    )
+    governance_dir = Path(settings.governance_path)
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    (governance_dir / "agent_run.jsonl").write_text(
+        json.dumps(
+            {
+                "job_name": "agent_run",
+                "run_id": source_run_id,
+                "status": "failed",
+                "question": source_request.question,
+                "request": source_request.model_dump(mode="json"),
+                "provider": "hermes",
+                "model": "gpt-test",
+                "transport": "bridge",
+                "toolsets": "evidence,query,research",
+                "queued_at": "2026-09-18T01:00:00+00:00",
+                "finished_at": "2026-09-18T01:00:01+00:00",
+                "error_message": "legacy provider failure",
+                "stop_reason": "provider_error",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        f"/api/agent/runs/{source_run_id}/retry",
+        headers={"X-User-Id": "run-owner", "X-User-Role": "reviewer"},
+    )
+
+    assert response.status_code == 200
+    retried = response.json()
+    assert retried["provider"] == "local"
+    assert retried["retry_of_run_id"] == source_run_id
+    assert len(executed_requests) == 1
+    executed_request = executed_requests[0]
+    assert executed_request.model is None
+    assert executed_request.reasoning_effort is None
+    assert SEMANTIC_EXECUTION_CONTEXT_KEY in executed_request.context
+    records = [
+        json.loads(line)
+        for line in (governance_dir / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    queued_retry = next(
+        record
+        for record in records
+        if record["run_id"] == retried["run_id"] and record["status"] == "queued"
+    )
+    assert queued_retry["provider"] == "local"
+    assert queued_retry["request"]["model"] is None
+    assert queued_retry["request"]["reasoning_effort"] is None
+
+
+def test_semantic_retry_repins_and_reauthorizes_before_staging(
+    monkeypatch,
+    tmp_path,
+):
+    from backend.app.agent.runtime.local_request_resolution import (
+        SEMANTIC_EXECUTION_CONTEXT_KEY,
+    )
+
+    # Earlier load_module tests may replace sys.modules while leaving the
+    # runtime package attribute pointing at the old module instance.
+    local_request_resolution = importlib.import_module(
+        "backend.app.agent.runtime.local_request_resolution"
+    )
+
+    def fail_execute(*_args, **_kwargs):
+        raise RuntimeError("provider failed")
+
+    client, _settings_value = _client(monkeypatch, tmp_path, fail_execute)
+    route_module = importlib.import_module("backend.app.api.routes.agent")
+    monkeypatch.setattr(route_module, "execute_agent_query", fail_execute)
+    original_resource_gate = route_module._ensure_agent_intent_resources_allowed
+    authorized_snapshots: list[dict[str, object]] = []
+
+    def capture_resource_gate(request, *args, **kwargs):
+        snapshot = request.context[SEMANTIC_EXECUTION_CONTEXT_KEY]
+        authorized_snapshots.append(json.loads(json.dumps(snapshot)))
+        return original_resource_gate(request, *args, **kwargs)
+
+    monkeypatch.setattr(
+        route_module,
+        "_ensure_agent_intent_resources_allowed",
+        capture_resource_gate,
+    )
+    created = client.post(
+        "/api/agent/runs",
+        json={
+            "question": "2026-03-31 正式总损益是多少",
+            "currency_basis": "CNY",
+        },
+    ).json()
+    assert _wait_for_terminal(client, created["run_id"])["status"] == "failed"
+
+    retry_revision = "sha256:retry-repinned"
+    monkeypatch.setattr(
+        local_request_resolution,
+        "ontology_content_revision",
+        lambda: retry_revision,
+    )
+    original_authorize = route_module.ensure_user_allowed
+
+    def deny_revoked_pnl(*, auth, settings, resource, action):
+        if resource == "pnl":
+            raise PermissionError("pnl read scope was revoked")
+        return original_authorize(
+            auth=auth,
+            settings=settings,
+            resource=resource,
+            action=action,
+        )
+
+    monkeypatch.setattr(route_module, "ensure_user_allowed", deny_revoked_pnl)
+    staged: list[str] = []
+
+    def unexpected_stage(*_args, **_kwargs):
+        staged.append("called")
+        raise AssertionError("retry staged after resource authorization failed")
+
+    monkeypatch.setattr(route_module, "stage_agent_run_retry", unexpected_stage)
+
+    response = client.post(f"/api/agent/runs/{created['run_id']}/retry")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "pnl read scope was revoked"
+    assert staged == []
+    assert len(authorized_snapshots) == 2
+    assert authorized_snapshots[0]["ontology_revision"] != retry_revision
+    assert authorized_snapshots[1]["ontology_revision"] == retry_revision
 
 
 def test_agent_run_create_queues_cli_transport_without_blocking(monkeypatch, tmp_path):
@@ -1718,6 +2292,7 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path, caplog):
 
     assert failed["status"] == "failed"
     assert failed["error_message"] == "Agent provider execution failed."
+    assert failed["stop_reason"] == "provider_error"
     assert "result" not in failed
 
     records = [
@@ -1727,6 +2302,7 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path, caplog):
     latest = [record for record in records if record["run_id"] == created["run_id"]][-1]
     assert latest["status"] == "failed"
     assert latest["error_message"] == "Agent provider execution failed."
+    assert latest["stop_reason"] == "provider_error"
     audit_rows = [
         json.loads(line)
         for line in (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1744,6 +2320,54 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path, caplog):
     assert "error_code=AGENT_RUN_EXECUTION_FAILED" in caplog.text
     assert "error_type=RuntimeError" in caplog.text
     assert "detail=" not in caplog.text
+
+
+def test_local_agent_run_failure_does_not_expose_exception_payload(monkeypatch, tmp_path, caplog):
+    sensitive_marker = "synthetic-local-private-source-payload"
+    calls = []
+
+    def fail_execute(*_args):
+        calls.append("execute")
+        raise RuntimeError(sensitive_marker)
+
+    client, _ = _local_client(monkeypatch, tmp_path, fail_execute)
+    created = client.post("/api/agent/runs", json={"question": "ping"}).json()
+    failed = _wait_for_terminal(client, created["run_id"])
+    assert failed["status"] == "failed"
+    assert failed["error_message"] == "Agent run failed."
+    assert failed.get("stop_reason") is None
+    assert "result" not in failed
+    events = client.get(f"/api/agent/runs/{created['run_id']}/events")
+    assert events.status_code == 200
+    event_payloads = [
+        json.loads(line.removeprefix("data: "))
+        for line in events.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    assert event_payloads
+    assert all(payload["status"] == "failed" for payload in event_payloads)
+    assert sensitive_marker not in events.text
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "governance" / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    latest = [row for row in records if row["run_id"] == created["run_id"]][-1]
+    audits = [
+        json.loads(line)
+        for line in (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    audit = audits[-1]
+    assert latest["status"] == "failed"
+    assert latest["error_message"] == "Agent run failed."
+    assert audit["result_meta"]["error_type"] == "RuntimeError"
+    assert audit["result_meta"]["error_code"] == "AGENT_RUN_EXECUTION_FAILED"
+    assert audit["run_id"] == created["run_id"]
+    assert calls == ["execute"]
+    assert all(row["status"] != "completed" for row in records)
+    assert sensitive_marker not in json.dumps([failed, latest, audit])
+    assert sensitive_marker not in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
 
 
 def test_agent_run_accepts_local_provider_and_completes_lifecycle(monkeypatch, tmp_path):
@@ -1766,6 +2390,7 @@ def test_agent_run_accepts_local_provider_and_completes_lifecycle(monkeypatch, t
     completed = _wait_for_terminal(client, created["run_id"])
     assert completed["status"] == "completed"
     assert completed["provider"] == "local"
+    assert "stop_reason" not in completed
     assert completed["result"]["answer"] == "Local managed answer."
     assert completed["result"]["evidence"]["sql_executed"] == [
         "select * from fact_formal_bond_analytics_daily where report_date = ?"
@@ -1786,6 +2411,7 @@ def test_agent_run_accepts_local_provider_and_completes_lifecycle(monkeypatch, t
         "completed",
     ]
     assert all(record["provider"] == "local" for record in matching)
+    assert "stop_reason" not in matching[-1]
 
 
 def test_agent_run_local_failure_records_failed_status(monkeypatch, tmp_path):
@@ -1799,7 +2425,8 @@ def test_agent_run_local_failure_records_failed_status(monkeypatch, tmp_path):
 
     assert failed["status"] == "failed"
     assert failed["provider"] == "local"
-    assert failed["error_message"] == "local toolchain failed"
+    assert failed["error_message"] == "Agent run failed."
+    assert "stop_reason" not in failed
     assert "result" not in failed
 
 
@@ -2155,6 +2782,48 @@ def test_actual_dexter_success_omits_provider_output_from_query_run_and_audit(
     )
     for marker in sensitive_markers:
         assert marker not in public_material
+
+
+def test_external_provider_claims_cannot_set_formal_semantic_fields():
+    from backend.app.services.dexter_agent_service import build_dexter_envelope
+    from backend.app.services.hermes_agent_service import build_hermes_envelope
+
+    request = AgentQueryRequest(question="external provider diagnostics")
+    provider_claims = {
+        "answer": "Provider claims a formally checked metric.",
+        "model": "provider-test",
+        "toolsets": "research",
+        "transport": "sidecar",
+        "tables_used": ["provider_runtime"],
+        "metric_id": "MTR-PNL-005",
+        "semantic_context": {
+            "status": "resolved",
+            "result_check": "matched",
+        },
+        "formal_use_allowed": True,
+        "cards": [
+            {
+                "type": "metric",
+                "title": "Spoofed formal metric",
+                "value": "999.00",
+                "metric_id": "MTR-PNL-005",
+            }
+        ],
+    }
+
+    envelopes = [
+        build_hermes_envelope(request=request, result=provider_claims),
+        build_dexter_envelope(
+            request=request,
+            result=provider_claims,
+            research_context=None,
+        ),
+    ]
+
+    for envelope in envelopes:
+        assert envelope.semantic_context is None
+        assert envelope.result_meta.formal_use_allowed is False
+        assert all(card.metric_id is None for card in envelope.cards)
 
 
 def test_agent_run_local_owner_isolation(monkeypatch, tmp_path):

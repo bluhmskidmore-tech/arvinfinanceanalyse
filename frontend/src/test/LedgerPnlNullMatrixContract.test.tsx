@@ -23,8 +23,9 @@
  *   已改为 EM_DASH（Page.tsx 的同名重复实现一并修复），对应断言已解除 skip 转为常规契约测试。
  * - [缺陷B·已修复] Workbench/Page/Drawer 的 formatMoney 曾对非空 yi 串直接透传（yi="NaN" 会渲染
  *   "NaN 亿元"）。契约内不可达（后端 fmt_yi 经 to_decimal 把 NaN/Inf 归 0），已补前端二次防御：
- *   三处 formatMoney 对非有限数值串按缺失处理（Workbench/Drawer → EM_DASH；Page → 走 yuan 回退链），
- *   对应断言已解除 skip。
+ *   三处 formatMoney 对非有限数值串按缺失处理均直接返回 EM_DASH，对应断言已解除 skip。
+ * - [缺陷D·已修复] Page.formatMoney 曾在 yi 缺失/非法时回退到 yuan/1e8 前端自算（与全页
+ *   ROUND_HALF_UP 口径不一致，且未测）；已删除该回退路径，Page 与 Workbench/Drawer 行为一致。
  * - [缺陷C·已修复] LedgerPnlDataTable 单元格兜底曾为 `render(row) ?? EM_DASH`，render 返回原始 NaN
  *   数字（非 nullish）会经 React 渲染出 "NaN"。契约内不可达（页面各列均走 formatMoney），已补共享
  *   表格组件二次防御：非有限数字（NaN/±Infinity）同样渲染 EM_DASH，对应断言已解除 skip。
@@ -180,7 +181,7 @@ describe("LedgerPnlNullMatrixContract / LedgerMoneyValue 渲染层（AnalysisWor
 
   it("契约违规的空 yi 串按缺失处理（EM_DASH），不回退为 0；Workbench 不消费 yuan 字段", async () => {
     const envelope = await loadReadyAnalysisEnvelope();
-    // yuan 有值但 yi 为空串：Workbench.formatMoney 只信 yi，缺失即占位（与 Page.formatMoney 的 yuan 回退不同，见报告）。
+    // yuan 有值但 yi 为空串：Workbench.formatMoney 只信 yi，缺失即占位（Page.formatMoney 已同口径，不再回退 yuan）。
     envelope.result.pnl_bridge.total = { yuan: "418000000", yi: "" };
 
     render(

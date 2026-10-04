@@ -1,7 +1,9 @@
 /*
  * /positions Nocturne 标准包（参照 LedgerPnlPage.css 配方）：
- * 页头 + 工具条 + 编号章节 + KPI 横带 + 表格密度 + 五态。
- * 颜色一律走 --dh-api-* 链；圆角制度 var(--dh-api-radius)（Shape Lock 6px）。
+ * 页头 + 工具条 + KPI 横带 + 主表 + 可展开证据。
+ * 颜色一律走 --dh-api-* 链；圆角制度 var(--dh-api-radius)（Shape Lock 8px）。
+ * 字阶：页题 20/600 · 面板题 13/600 · 标签与表头 12/500 · 正文 12/400 · 小注 11/400；
+ * 数字一律 --moss-font-tabular + tabular-nums（不用等宽代码栈）。
  */
 
 /*
@@ -21,8 +23,7 @@
 
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--moss-space-5);
-  counter-reset: pos-section;
+  gap: var(--moss-space-4);
 }
 
 /* ---------------------------------------------------------------- 页头 */
@@ -42,69 +43,61 @@
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
 }
 
-.positions-view__subtitle {
-  max-width: 720px;
-  margin: 4px 0 0;
+.positions-view__mode-note {
   color: var(--dh-api-muted);
   font-size: 12px;
   line-height: 1.5;
 }
 
-/* 模式徽标：无大写宽字距，radius 走圆角制度（旧 999px 胶囊废弃）。 */
-.positions-view__mode-badge {
-  flex: 0 0 auto;
-  padding: 4px 8px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  white-space: nowrap;
-}
-
-.positions-view__mode-badge--real {
-  background: var(--dh-api-green-soft);
-  color: var(--dh-api-green);
-}
-
-.positions-view__mode-badge--mock {
-  background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
-}
-
 /* -------------------------------------------------------------- 工具条 */
 
 .positions-view__filters.moss-filter-bar {
-  align-items: end;
-  gap: var(--moss-space-3);
+  align-items: center;
+  gap: var(--moss-space-4);
+  padding: 0;
 }
 
 .positions-view__filters > label {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  gap: var(--moss-space-2);
 }
 
 .positions-view__filters-label {
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
+/* 原生控件与同页 antd Select/Input 同规格：36px（controlHeight）、13px、8px 圆角、
+   底色同 antd colorBgContainer（panel），hover/focus 走 accent；日期与报告日是数字，走 tabular 栈。 */
 .positions-view__filters-control {
   min-width: 160px;
-  min-height: 32px;
-  padding: 5px 9px;
+  min-height: 36px;
+  padding: 0 11px;
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  background-color: var(--dh-api-panel);
   color: var(--dh-api-ink);
-  font-size: 12px;
+  font-family: var(--moss-font-tabular);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
   color-scheme: dark;
+}
+
+.positions-view__filters-control:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line));
+}
+
+.positions-view__filters-control:focus-visible {
+  border-color: var(--dh-api-blue);
+  outline: 2px solid color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
+  outline-offset: 0;
 }
 
 .positions-view__filters-control:disabled {
@@ -112,19 +105,33 @@
   cursor: not-allowed;
 }
 
-/* 刷新钮：32px 深色描边，hover 走 accent（bond-dashboard 工具条同配方），
+/* 原生下拉去系统箭头，换成与 antd Select 同色的细折角（两段渐变斜线，不引图标资源）。 */
+select.positions-view__filters-control {
+  padding-right: 30px;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent calc(50% - 0.75px), var(--dh-api-muted) calc(50% - 0.75px), var(--dh-api-muted) calc(50% + 0.75px), transparent calc(50% + 0.75px)),
+    linear-gradient(-45deg, transparent calc(50% - 0.75px), var(--dh-api-muted) calc(50% - 0.75px), var(--dh-api-muted) calc(50% + 0.75px), transparent calc(50% + 0.75px));
+  background-position:
+    calc(100% - 17px) 50%,
+    calc(100% - 12px) 50%;
+  background-repeat: no-repeat;
+  background-size: 5px 5px;
+}
+
+/* 刷新钮：与 antd 默认按钮同高同字号（36px/13px/500），hover 走 accent，
    贴托盘右端与控件行基线对齐。 */
 .positions-view__refresh {
   align-self: end;
-  min-height: 32px;
+  min-height: 36px;
   margin-left: auto;
-  padding: 5px 14px;
+  padding: 0 15px;
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   background: transparent;
   color: var(--dh-api-soft);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -133,180 +140,45 @@
   color: var(--dh-api-blue);
 }
 
+.positions-view__refresh:focus-visible {
+  border-color: var(--dh-api-blue);
+  outline: 2px solid color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
+  outline-offset: 0;
+}
+
 /* 报告日回退说明放控件行尾，避免塞进 label 错开基线。 */
 .positions-view__filters-note {
   display: flex;
   align-items: center;
-  min-height: 32px;
+  min-height: 36px;
   margin: 0;
   color: var(--dh-api-muted);
   font-size: 11px;
   line-height: 1.45;
 }
 
-/* ------------------------------------------------------- 编号分区骨架 */
+.positions-view__range-error {
+  margin: var(--moss-space-2) 0 0;
+  color: var(--dh-api-amber);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ----------------------------------------------------------- 分区骨架 */
 
 .positions-view__section {
   display: grid;
   gap: var(--moss-space-3);
   min-width: 0;
-  counter-increment: pos-section;
   /* 分区锚点跳转时给粘顶导航留出余量。 */
   scroll-margin-top: 52px;
 }
 
-.positions-view__section-lead {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 28px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--dh-api-line-soft);
+.positions-view__section + .positions-view__section {
+  margin-top: var(--moss-space-2);
 }
 
-.positions-view__section-lead::before {
-  content: counter(pos-section, decimal-leading-zero);
-  color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.positions-view__section-lead h2 {
-  margin: 0;
-  overflow: hidden;
-  color: var(--dh-api-ink);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.positions-view__section-note,
-.positions-view__section-state {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-
-.positions-view__section-state[data-state="error"] {
-  color: var(--dh-api-red);
-}
-
-.positions-view__section-state[data-state="empty"] {
-  color: var(--dh-api-amber);
-}
-
-.positions-view__section-actions {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-/* ------------------------------------------------------- KPI 横带（01） */
-
-.positions-view__kpi-band {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
-}
-
-.positions-view__kpi-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  min-height: 132px;
-  padding: 12px 14px;
-  border-right: 1px solid var(--dh-api-line);
-}
-
-.positions-view__kpi-band > :last-child {
-  border-right: 0;
-}
-
-/* 标签 2 行 clamp + 固定 min-height，防同排数值错位（DESIGN.md §3）。 */
-.positions-view__kpi-label {
-  display: -webkit-box;
-  overflow: hidden;
-  min-height: 34px;
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.4;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-/* 主值下限 20px（§3；1280 断点不降号，risk-overview 先例）。 */
-.positions-view__kpi-value {
-  color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
-  font-size: clamp(20px, 1.5vw, 22px);
-  font-weight: 700;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-  /* keep-all：长数值只在数字与单位间的空格处折行，禁止把「亿元」拆成两行。 */
-  overflow-wrap: normal;
-  word-break: keep-all;
-}
-
-.positions-view__kpi-cell[data-status="loading"] .positions-view__kpi-value {
-  color: var(--dh-api-muted);
-}
-
-.positions-view__kpi-note {
-  display: -webkit-box;
-  overflow: hidden;
-  margin-top: auto;
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.4;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-@media (max-width: 1280px) {
-  .positions-view__kpi-band {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .positions-view__kpi-band > :nth-child(3n) {
-    border-right: 0;
-  }
-
-  .positions-view__kpi-band > :nth-child(-n + 3) {
-    border-bottom: 1px solid var(--dh-api-line);
-  }
-}
-
-@media (max-width: 720px) {
-  .positions-view__kpi-band {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .positions-view__kpi-cell {
-    min-height: 0;
-    border-right: 0;
-    border-bottom: 1px solid var(--dh-api-line);
-  }
-
-  .positions-view__kpi-band > :last-child {
-    border-bottom: 0;
-  }
-}
-
-/* -------------------------------------------------------- 口径行（01） */
+/* ---------------------------------------------------------- 证据口径行 */
 
 .positions-view__caliber {
   display: flex;
@@ -327,20 +199,16 @@
   border-left: 0;
 }
 
-/* 指标边界属证据层：治理必显，视觉降权为一行说明（琥珀细左线示口径警示）。 */
+/* 业务使用限制始终可见；原始治理标识在证据展开层。 */
 .positions-view__candidate-boundary {
   margin: 0;
-  padding: 2px 0 2px 10px;
-  border-left: 2px solid var(--dh-api-amber);
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  line-height: 1.6;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-.positions-view__candidate-boundary strong {
-  margin-right: 8px;
-  color: var(--dh-api-soft);
-  font-weight: 600;
+.positions-view__candidate-boundary a {
+  margin-left: var(--moss-space-2);
 }
 
 .positions-view .ant-alert {
@@ -358,8 +226,14 @@
 .positions-view__workspace-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  align-items: end;
+  gap: var(--moss-space-3);
+  align-items: center;
+}
+
+.positions-view__workspace-toolbar > .positions-view__field {
+  display: flex;
+  align-items: center;
+  gap: var(--moss-space-2);
 }
 
 .positions-view__field {
@@ -375,8 +249,8 @@
 
 .positions-view__field-label {
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .positions-view__scope-select {
@@ -389,27 +263,24 @@
 
 .positions-view__panel {
   display: grid;
-  gap: 10px;
+  gap: var(--moss-space-3);
   align-content: start;
   min-width: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
 }
 
 .positions-view__panel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--moss-space-2) var(--moss-space-3);
 }
 
 .positions-view__panel-title {
   margin: 0;
   color: var(--dh-api-ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -437,36 +308,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.positions-view__dist-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--moss-space-3);
-  align-items: start;
-}
-
 /* ------------------------------------------------------ 五态与分页条 */
-
-/* 空/错/阻断收缩到一句话（min-height ≤ 120px），不占满等高格。 */
-.positions-view__table-state {
-  display: grid;
-  place-items: center;
-  min-height: 96px;
-  margin: 0;
-  padding: 12px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
-  color: var(--dh-api-muted);
-  font-size: 12px;
-  line-height: 1.5;
-  text-align: center;
-}
-
-/* loading 占位带背板 + 接近真实表高，防内容到达时 1px 重排。 */
-.positions-view__table-state--loading {
-  min-height: 240px;
-  background: var(--dh-api-panel-2);
-}
 
 .positions-view__pager {
   display: flex;
@@ -493,31 +335,34 @@
 .positions-view__quality-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0;
 }
 
 .positions-view__quality-item {
   min-width: 0;
   min-height: 64px;
-  padding: 8px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  padding: 0 var(--moss-space-3);
+  border-left: 1px solid var(--dh-api-line-soft);
+}
+
+.positions-view__quality-item:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .positions-view__quality-label {
   display: block;
   margin-bottom: 4px;
   color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .positions-view__quality-value {
   display: block;
   color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
-  font-size: 12px;
+  font-family: var(--moss-font-tabular);
+  font-size: 13px;
   font-weight: 600;
   /* keep-all：覆盖率长句在空格/标点处折行，不把「亿元」等 CJK 词组拆散。 */
   word-break: keep-all;
@@ -553,19 +398,22 @@
 
 .positions-view__side-metric {
   min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
+  padding: var(--moss-space-2) var(--moss-space-3);
+  border-left: 1px solid var(--dh-api-line-soft);
+}
+
+.positions-view__side-metric:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .positions-view__side-value {
   display: block;
   overflow-wrap: normal;
   word-break: keep-all;
-  font-family: var(--moss-font-mono);
-  font-size: 16px;
-  font-weight: 700;
+  font-family: var(--moss-font-tabular);
+  font-size: 20px;
+  font-weight: 600;
   line-height: 1.25;
   font-variant-numeric: tabular-nums;
 }
@@ -590,17 +438,20 @@
   font-size: 12px;
 }
 
+/* 表头与 DataTable 原语同规格：12px/500 soft + panel-2 底，无列间竖线（主题 headerSplitColor）。 */
 .positions-view .ant-table-thead > tr > th {
+  height: var(--moss-table-row-h);
   padding: 6px 10px;
   border-bottom: 1px solid var(--dh-api-line-soft);
   background: var(--dh-api-panel-2);
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 600;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.35;
 }
 
 .positions-view .ant-table-tbody > tr > td {
+  height: var(--moss-table-row-h);
   padding: 5px 10px;
   border-bottom: 1px solid var(--dh-api-line-soft);
   font-size: 12px;
@@ -609,26 +460,64 @@
 
 /* 行 hover 用 accent 比例混色，禁止硬编码 rgba。 */
 .positions-view .ant-table-tbody > tr > td.ant-table-cell-row-hover,
-.positions-view .ant-table-tbody > tr:hover > td {
+.positions-view .ant-table-tbody > tr:hover > td,
+.positions-view__table--clickable .ant-table-tbody > tr:focus-within > td {
   background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
 }
 
-/* 数值列：右对齐由列定义出 align，字体走等宽栈 + tabular。 */
-.positions-view .positions-view__num-cell {
-  font-family: var(--moss-font-mono);
+/* 数值/代码列：右对齐由列定义出 align；只给数据格换 tabular 栈，列头仍与其它列头同字体。 */
+.positions-view td.positions-view__num-cell {
+  font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.positions-view th.positions-view__num-cell {
+  white-space: nowrap;
 }
 
 .positions-view__table--clickable .ant-table-tbody > tr {
   cursor: pointer;
 }
 
+/* 24px 内联操作留在 32px 数据行内；不套独立 36px 控件的密度。 */
+.positions-view .ant-table-tbody > tr > td.positions-view__customer-cell {
+  padding-block: 0;
+}
+
+.positions-view__customer-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: calc(var(--moss-table-row-h) - var(--moss-space-2));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dh-api-ink);
+  font: inherit;
+  font-weight: 400;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--dh-api-muted);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.positions-view__customer-link:hover {
+  color: var(--dh-api-blue);
+  text-decoration-color: currentColor;
+}
+
+.positions-view__customer-link:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
 /* ---------------------------------------------------- antd Tabs 重皮 */
 
 /*
  * 全局 antdOverrides.css 给 .workbench-main-column .ant-tabs-nav-wrap 设了
- * contain: inline-size（防 Tabs 撑宽主列）。本页 Tabs 放在分区头的内容
- * 自适应 auto 列里，inline-size containment 把 wrap 的内在宽度算成 0，
+ * contain: inline-size（防 Tabs 撑宽主列）。本页 Tabs 放在主表工具栏，
+ * inline-size containment 会把 wrap 的内在宽度算成 0，
  * rc-tabs 量到 wrap=0 便把全部 tab 收进「更多」溢出菜单（1440 宽也只剩
  * … 按钮，tab 不可点）。页内恢复内在尺寸：本页 tab 固定两枚（约 144px），
  * 不会撑宽主列；三连类保证覆盖与导入顺序无关。
@@ -647,11 +536,12 @@
 
 .positions-view__tabs .ant-tabs-tab {
   padding: 4px 2px;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .positions-view__tabs .ant-tabs-tab-btn {
   color: var(--dh-api-soft);
+  font-weight: 500;
 }
 
 .positions-view__tabs .ant-tabs-tab:hover .ant-tabs-tab-btn {
@@ -660,12 +550,7 @@
 
 .positions-view__tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
   color: var(--dh-api-blue);
-  font-weight: 600;
-}
-
-/* 去下划线蓝：激活态靠文字色表达，不用 ink-bar。 */
-.positions-view__tabs .ant-tabs-ink-bar {
-  display: none;
+  font-weight: 500;
 }
 
 /* -------------------------------------------- antd Card（分布卡收敛） */
@@ -682,38 +567,7 @@
 
 .positions-view .ant-card-head-title {
   font-size: 13px;
-  font-weight: 700;
-}
-
-/* --------------------------------------- FormalResultMetaPanel 收敛 */
-
-.positions-view .formal-result-meta-panel {
-  --formal-result-meta-border-soft: var(--dh-api-line-soft);
-  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
-  --formal-meta-badge-ok-ink: var(--dh-api-green);
-  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
-  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
-  --formal-meta-badge-warn-ink: var(--dh-api-amber);
-  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
-  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
-  --formal-meta-badge-danger-ink: var(--dh-api-red);
-  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
-
-  margin-top: 0;
-  padding: 14px;
-  border-color: var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-}
-
-.positions-view .formal-result-meta-panel__card,
-.positions-view .formal-result-meta-panel__badge {
-  border-radius: var(--dh-api-radius);
-}
-
-.positions-view .formal-result-meta-panel__list {
-  grid-template-columns: minmax(88px, 108px) minmax(0, 1fr);
-  font-size: 12px;
-  line-height: 1.5;
+  font-weight: 600;
 }
 
 /* ---------------------------------------------------------- 响应式 */
@@ -721,13 +575,18 @@
 @media (max-width: 1280px) {
   .positions-view__quality-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: var(--moss-space-3);
+  }
+
+  .positions-view__quality-item:nth-child(3n + 1) {
+    padding-left: 0;
+    border-left: 0;
   }
 }
 
 @media (max-width: 1024px) {
   .positions-view__split-grid,
-  .positions-view__split-grid--even,
-  .positions-view__dist-grid {
+  .positions-view__split-grid--even {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -735,6 +594,16 @@
 @media (max-width: 720px) {
   .positions-view__quality-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .positions-view__quality-item:nth-child(3n + 1) {
+    padding-left: var(--moss-space-3);
+    border-left: 1px solid var(--dh-api-line-soft);
+  }
+
+  .positions-view__quality-item:nth-child(2n + 1) {
+    padding-left: 0;
+    border-left: 0;
   }
 }
 
@@ -745,22 +614,34 @@
   }
 
   .positions-view__filters.moss-filter-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: stretch;
   }
 
   .positions-view__filters > label {
     width: 100%;
+    display: grid;
   }
 
   .positions-view__filters-control {
+    min-width: 0;
     width: 100%;
   }
 
-  .positions-view__section-lead {
-    grid-template-columns: 22px minmax(0, 1fr);
+  .positions-view__filters-note {
+    grid-column: 1 / -1;
+    order: 1;
+    min-height: 0;
   }
 
-  .positions-view__section-actions {
-    grid-column: 1 / -1;
+  .positions-view__refresh {
+    justify-self: end;
+  }
+}
+
+@media (max-width: 560px) {
+  .positions-view__filters.moss-filter-bar {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

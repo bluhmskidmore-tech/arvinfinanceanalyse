@@ -1037,6 +1037,169 @@ def test_moss_launcher_handshake_is_cwd_independent() -> None:
     assert response["result"]["serverInfo"]["name"] == "moss-metric-contracts"
 
 
+@pytest.fixture
+def isolated_mcp_launcher_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "launcher-workspace"
+    launchers = repo / "scripts" / "mcp"
+    launchers.mkdir(parents=True)
+    for name in (
+        "moss_mcp_launcher.py",
+        "moss_lineage.cmd",
+        "moss_catalog.cmd",
+        "moss_data_quality.cmd",
+    ):
+        (launchers / name).write_bytes((REPO_ROOT / "scripts" / "mcp" / name).read_bytes())
+
+    settings_dir = repo / "backend" / "app" / "governance"
+    settings_dir.mkdir(parents=True)
+    for package in (repo / "backend", repo / "backend" / "app", settings_dir):
+        (package / "__init__.py").write_text("", encoding="utf-8")
+    (settings_dir / "settings.py").write_bytes(
+        (REPO_ROOT / "backend" / "app" / "governance" / "settings.py").read_bytes()
+    )
+    (launchers / "moss_project_mcp.py").write_text(
+        "import json, os, sys\n"
+        "def main():\n"
+        "    print(json.dumps({\n"
+        "        'cwd': os.getcwd(),\n"
+        "        'mode': sys.argv[1],\n"
+        "        'governance_path': os.environ.get('MOSS_GOVERNANCE_PATH'),\n"
+        "        'duckdb_path': os.environ.get('MOSS_DUCKDB_PATH'),\n"
+        "    }))\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+    return repo
+
+
+def _probe_isolated_mcp_launcher(
+    repo: Path,
+    launcher_name: str,
+    mode: str,
+    entrypoint: str,
+    *,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    process_env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith("MOSS_") and key.upper() != "RAW_FILES_DIR"
+    }
+    process_env.update(env or {})
+    process_env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + process_env.get("PATH", "")
+    launchers = repo / "scripts" / "mcp"
+    if entrypoint == "cmd":
+        if os.name != "nt":
+            pytest.skip("Windows cmd launcher")
+        command = ["cmd.exe", "/d", "/s", "/c", str(launchers / launcher_name)]
+    else:
+        command = [sys.executable, str(launchers / "moss_mcp_launcher.py"), mode]
+    completed = subprocess.run(
+        command,
+        cwd=repo.parent,
+        env=process_env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
+    payload = json.loads(completed.stdout)
+    assert Path(payload["cwd"]) == repo
+    assert payload["mode"] == mode
+    return payload
+
+
+@pytest.mark.parametrize("entrypoint", ["cmd", "python"])
+@pytest.mark.parametrize(
+    ("launcher_name", "mode"),
+    [
+        ("moss_lineage.cmd", "lineage-evidence"),
+        ("moss_catalog.cmd", "data-catalog"),
+        ("moss_data_quality.cmd", "data-quality"),
+    ],
+)
+def test_moss_launcher_preserves_explicit_runtime_paths(
+    isolated_mcp_launcher_repo: Path,
+    launcher_name: str,
+    mode: str,
+    entrypoint: str,
+) -> None:
+    repo = isolated_mcp_launcher_repo
+    (repo / ".env").write_text(
+        "MOSS_GOVERNANCE_PATH=dotenv/governance\n"
+        "MOSS_DUCKDB_PATH=dotenv/moss.duckdb\n",
+        encoding="utf-8",
+    )
+    expected = {
+        "MOSS_GOVERNANCE_PATH": str(repo.parent / "external-governance"),
+        "MOSS_DUCKDB_PATH": str(repo.parent / "external.duckdb"),
+    }
+    payload = _probe_isolated_mcp_launcher(
+        repo, launcher_name, mode, entrypoint, env=expected
+    )
+    assert payload["governance_path"] == expected["MOSS_GOVERNANCE_PATH"]
+    assert payload["duckdb_path"] == expected["MOSS_DUCKDB_PATH"]
+
+
+@pytest.mark.parametrize("entrypoint", ["cmd", "python"])
+@pytest.mark.parametrize("root_env_override", [False, True])
+@pytest.mark.parametrize(
+    ("launcher_name", "mode"),
+    [
+        ("moss_lineage.cmd", "lineage-evidence"),
+        ("moss_catalog.cmd", "data-catalog"),
+        ("moss_data_quality.cmd", "data-quality"),
+    ],
+)
+def test_moss_launcher_uses_dotenv_runtime_paths(
+    isolated_mcp_launcher_repo: Path,
+    launcher_name: str,
+    mode: str,
+    entrypoint: str,
+    root_env_override: bool,
+) -> None:
+    repo = isolated_mcp_launcher_repo
+    config = repo / "config"
+    config.mkdir()
+    (config / ".env").write_text(
+        "MOSS_GOVERNANCE_PATH=configured/governance\n"
+        "MOSS_DUCKDB_PATH=configured/moss.duckdb\n",
+        encoding="utf-8",
+    )
+    selected_root = repo / "configured"
+    if root_env_override:
+        selected_root = repo.parent / "external-storage"
+        (repo / ".env").write_text(
+            f"MOSS_GOVERNANCE_PATH={selected_root.as_posix()}/governance\n"
+            f"MOSS_DUCKDB_PATH={selected_root.as_posix()}/moss.duckdb\n",
+            encoding="utf-8",
+        )
+    payload = _probe_isolated_mcp_launcher(repo, launcher_name, mode, entrypoint)
+    assert Path(payload["governance_path"]) == selected_root / "governance"
+    assert Path(payload["duckdb_path"]) == selected_root / "moss.duckdb"
+
+
+@pytest.mark.parametrize("entrypoint", ["cmd", "python"])
+@pytest.mark.parametrize(
+    ("launcher_name", "mode"),
+    [
+        ("moss_lineage.cmd", "lineage-evidence"),
+        ("moss_catalog.cmd", "data-catalog"),
+        ("moss_data_quality.cmd", "data-quality"),
+    ],
+)
+def test_moss_launcher_defaults_runtime_paths(
+    isolated_mcp_launcher_repo: Path,
+    launcher_name: str,
+    mode: str,
+    entrypoint: str,
+) -> None:
+    repo = isolated_mcp_launcher_repo
+    payload = _probe_isolated_mcp_launcher(repo, launcher_name, mode, entrypoint)
+    assert Path(payload["governance_path"]) == repo / "data" / "governance"
+    assert Path(payload["duckdb_path"]) == repo / "data" / "moss.duckdb"
+
+
 def test_metric_contracts_mcp_exposes_contract_docs() -> None:
     server = McpProcess("metric-contracts")
     try:
@@ -1093,8 +1256,8 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "/ui/home/snapshot",
             "home_snapshot_envelope",
             "backend/app/services/executive_service.py",
-            "frontend/src/features/workbench/pages/DashboardPage.tsx",
-            "tests/test_home_snapshot_endpoint.py",
+            "frontend/src/features/workbench/dashboard-home/DashboardHomePage.tsx",
+            "frontend/src/test/DashboardHomePage.test.tsx",
             "tests/golden_samples/GS-EXEC-OVERVIEW-A",
             "formal metric truth",
             "/dashboard",
@@ -1165,8 +1328,8 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "/ui/macro/toolkit/analysis",
             "read-only macro observation",
             "backend/app/api/routes/macro_toolkit.py",
-            "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx",
-            "frontend/src/test/MacroToolkitPage.test.tsx",
+            "frontend/src/features/macro-observation/pages/MacroObservationPage.tsx",
+            "frontend/src/test/MacroObservationPage.test.tsx",
             "NO_DEDICATED_GOLDEN_SAMPLE",
             "read-only",
             "PAGE-MACRO-OBS-001",
@@ -2099,12 +2262,14 @@ def test_market_data_trace_bundle_preserves_mixed_source_candidate_boundaries() 
         assert any("MTR-MKT-001" in item for item in payload["truth_chain"])
         assert any("GAP-MKT-DATA" in item for item in payload["truth_chain"])
         assert any("formal rates fragment" in item for item in payload["truth_chain"])
+        assert any("derived_spreads" in item and "same-day legs" in item for item in payload["truth_chain"])
         assert any("ncd-funding-proxy" in item for item in payload["truth_chain"])
         assert any("Livermore" in item for item in payload["truth_chain"])
         assert any("source-pending" in item for item in payload["truth_chain"])
         assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
         assert any("full-page formal truth" in item for item in payload["guardrails"])
         assert any("static demo" in item for item in payload["guardrails"])
+        assert any("derived_spreads" in item and "null" in item for item in payload["guardrails"])
         assert any("NCD" in item and "proxy" in item for item in payload["guardrails"])
         assert any("Livermore" in item and "risk_exit" in item for item in payload["guardrails"])
         assert any("MTR-" in item and "promote" in item for item in payload["guardrails"])
@@ -3139,6 +3304,8 @@ def test_macro_toolkit_trace_bundle_preserves_tooling_non_metric_boundaries() ->
         assert "POST /ui/macro/toolkit/cffex-member-rank/refresh" in payload["supporting_apis"]
         assert "POST /ui/macro/toolkit/choice-stock/refresh" in payload["supporting_apis"]
         assert "GET /ui/macro/toolkit/choice-stock/refresh-status" in payload["supporting_apis"]
+        assert "POST /ui/macro/toolkit/commodity-futures/refresh" in payload["supporting_apis"]
+        assert "GET /ui/macro/toolkit/commodity-futures/refresh-status?run_id={run_id}" in payload["supporting_apis"]
         assert payload["golden_samples"] == []
         assert any("PAGE-MACRO-TOOLKIT-001" in item for item in payload["truth_chain"])
         assert any("macro_toolkit.analysis" in item for item in payload["truth_chain"])
@@ -3147,11 +3314,16 @@ def test_macro_toolkit_trace_bundle_preserves_tooling_non_metric_boundaries() ->
         assert any("source/version/run_id" in item for item in payload["truth_chain"])
         assert any("MacroToolkitContractBoundary" in item for item in payload["truth_chain"])
         assert any("operation/script outputs" in item for item in payload["truth_chain"])
+        assert any("normalizes the products set into the same fingerprint" in item and "cannot bypass in-flight/retry dedupe" in item and "may refresh again after terminal" in item for item in payload["truth_chain"])
+        assert any("queued run_id/before_status without after_status/summary" in item for item in payload["truth_chain"]); assert any("persisted run-level terminal after_status/summary" in item for item in payload["truth_chain"])
+        assert any("without recomputing current database state" in item for item in payload["truth_chain"])
+        assert any("AuthContext.user_id matches raw requested_by_user_id as the sole owner source of truth" in item and "non-owner, ownerless, and nonexistent runs share fail-closed 404" in item and "public output omits requested_by_user_id, permission.user_id, raw failure_reason, and raw error_message while exposing only stable failure_category/failure_message" in item for item in payload["truth_chain"])
         assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
         assert any("formal metric truth" in item for item in payload["guardrails"])
         assert any("investment" in item and "trade signal" in item for item in payload["guardrails"])
         assert any("static demo" in item for item in payload["guardrails"])
         assert any("fallback" in item and "stale" in item and "source gaps" in item for item in payload["guardrails"])
+        assert any("run-owner scoped from raw requested_by_user_id" in item and "uniform 404" in item and "never expose requested_by_user_id, permission.user_id, raw failure_reason, or raw error_message" in item and "normalize the products set into the same fingerprint" in item and "cannot bypass in-flight/retry dedupe" in item for item in payload["guardrails"])
         assert any("frontend" in item and "recompute" in item for item in payload["guardrails"])
     finally:
         server.close()

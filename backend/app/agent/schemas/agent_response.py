@@ -1,9 +1,18 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from backend.app.schemas.result_meta import ResultMeta
 from pydantic import BaseModel, Field, model_validator
+
+AgentSemanticStatus = Literal[
+    "resolved",
+    "clarification_required",
+    "unsupported",
+    "unavailable",
+]
+AgentSemanticResultCheck = Literal["matched", "blocked", "not_applicable"]
+AgentOntologyEntityStatus = Literal["approved", "gap", "candidate", "deprecated"]
 
 
 class AgentDrill(BaseModel):
@@ -19,12 +28,35 @@ class AgentSuggestedAction(BaseModel):
     confirmation_token: str | None = None
 
 
+class AgentSemanticReference(BaseModel):
+    entity_id: str
+    name: str
+    business_definition: str
+    status: AgentOntologyEntityStatus
+    unit: str | None = None
+    basis: str | None = None
+    time_semantics: str | None = None
+    authority: list[str] = Field(default_factory=list)
+
+
+class AgentSemanticContext(BaseModel):
+    status: AgentSemanticStatus
+    result_check: AgentSemanticResultCheck
+    references: list[AgentSemanticReference] = Field(default_factory=list)
+    ontology_revision: str | None = None
+    binding_revision: str | None = None
+    reason_code: str | None = None
+    upstream_result_kind: str | None = None
+    upstream_trace_id: str | None = None
+
+
 class AgentCard(BaseModel):
     type: str
     title: str
     value: str | None = None
     data: dict[str, Any] | list[dict[str, Any]] | None = None
     spec: dict[str, Any] | None = None
+    metric_id: str | None = None
 
 
 class AgentEvidence(BaseModel):
@@ -70,6 +102,7 @@ class AgentEnvelope(BaseModel):
     result_meta: AgentResultMeta
     next_drill: list[AgentDrill] = Field(default_factory=list)
     suggested_actions: list[AgentSuggestedAction] = Field(default_factory=list)
+    semantic_context: AgentSemanticContext | None = None
 
 
 class AgentDisabledResponse(BaseModel):

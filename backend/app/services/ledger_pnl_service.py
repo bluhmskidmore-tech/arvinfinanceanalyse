@@ -45,6 +45,7 @@ from backend.app.services.product_category_source_service import (
     build_ledger_only_facts,
     discover_source_pairs,
 )
+from backend.app.services.source_file_hash import sha256_file
 
 CACHE_VERSION = "cv_ledger_pnl_v2"
 RULE_VERSION = "rv_ledger_pnl_v2"
@@ -60,6 +61,11 @@ SUPPORTED_CURRENCIES = {"CNX", "CNY"}
 DEFAULT_CURRENCY_BASIS = "CNX"
 CURRENCY_BASIS_NOTE = "CNX=综本；CNY=人民币账"
 LEDGER_PNL_TOTAL_ACCOUNT_PREFIXES = ("5",)
+EVIDENCE_ROWS_BASIS_NOTE = (
+    "count/evidence_rows 为总账∪日均并集口径行数；ledger_evidence_rows 仅统计"
+    "总账工作簿真实观测行；average_only_row_count 为仅日均侧存在、总账侧填 0 "
+    "的合成行数"
+)
 
 
 class LedgerPnlRequestError(ValueError):
@@ -171,12 +177,20 @@ def _require_exact_month_end(report_date: date) -> None:
         )
 
 
+def _fmt_display_money(amount: Decimal) -> dict:
+    """展示层金额序列化：yi 量化后为 0 时归一化为 "0.00"（消除 "-0.00"）。
+
+    yuan 原值字符串保留来源符号不动；金额数值本身不受影响。
+    """
+    money = fmt_money(amount)
+    if Decimal(money["yi"]) == Decimal("0"):
+        money["yi"] = "0.00"
+    return money
+
+
 def _serialize_analysis_money(value: Any) -> Any:
     if isinstance(value, Decimal):
-        money = fmt_money(value)
-        if Decimal(money["yi"]) == Decimal("0"):
-            money["yi"] = "0.00"
-        return money
+        return _fmt_display_money(value)
     if isinstance(value, list):
         return [_serialize_analysis_money(item) for item in value]
     if isinstance(value, dict):
@@ -238,10 +252,14 @@ def get_ledger_pnl_by_date(
             "source_version": source_version,
             "items": [],
             "summary": {
-                "total_pnl_cnx": fmt_money(Decimal("0")),
-                "total_pnl_cny": fmt_money(Decimal("0")),
-                "total_pnl": fmt_money(Decimal("0")),
+                "total_pnl_cnx": _fmt_display_money(Decimal("0")),
+                "total_pnl_cny": _fmt_display_money(Decimal("0")),
+                "total_pnl": _fmt_display_money(Decimal("0")),
                 "count": 0,
+                "pnl_account_count": 0,
+                "ledger_evidence_rows": 0,
+                "average_only_row_count": 0,
+                "evidence_rows_basis": EVIDENCE_ROWS_BASIS_NOTE,
             },
         }
 
@@ -256,21 +274,30 @@ def get_ledger_pnl_by_date(
     )
     total_pnl_cnx = total_pnl if currency_basis == "CNX" else Decimal("0")
     total_pnl_cny = total_pnl if currency_basis == "CNY" else Decimal("0")
+    pnl_account_count = len(_pnl_total_facts(filtered))
     items: list[dict[str, Any]] = []
+
+    ledger_evidence_rows = 0
 
     for row in filtered:
         # strict: CanonicalFactRow 金额字段本就非空 Decimal；若上游语义变化引入
         # None，明细端点必须 fail loud，而不是把"无数据"静默序列化成 "0.00"。
         pnl = to_decimal_strict(row.monthly_pnl)
+        # 来源标记由 build_canonical_facts 构建端打标；缺失属性的旧事实行按
+        # 总账真实观测处理（禁止在此用"三金额全 0"反推）。
+        source_presence = str(getattr(row, "source_presence", "ledger"))
+        if source_presence == "ledger":
+            ledger_evidence_rows += 1
         items.append({
             "account_code": row.account_code,
             "account_name": row.account_name,
             "currency": row.currency,
-            "beginning_balance": fmt_money(to_decimal_strict(row.beginning_balance)),
-            "ending_balance": fmt_money(to_decimal_strict(row.ending_balance)),
-            "monthly_pnl": fmt_money(pnl),
-            "daily_avg_balance": fmt_money(to_decimal_strict(row.daily_avg_balance)),
+            "beginning_balance": _fmt_display_money(to_decimal_strict(row.beginning_balance)),
+            "ending_balance": _fmt_display_money(to_decimal_strict(row.ending_balance)),
+            "monthly_pnl": _fmt_display_money(pnl),
+            "daily_avg_balance": _fmt_display_money(to_decimal_strict(row.daily_avg_balance)),
             "days_in_period": row.days_in_period,
+            "source_presence": source_presence,
         })
 
     items.sort(key=lambda x: abs(to_decimal_strict(x["monthly_pnl"]["yuan"])), reverse=True)
@@ -281,10 +308,14 @@ def get_ledger_pnl_by_date(
         "source_version": source_version,
         "items": items,
         "summary": {
-            "total_pnl_cnx": fmt_money(total_pnl_cnx),
-            "total_pnl_cny": fmt_money(total_pnl_cny),
-            "total_pnl": fmt_money(total_pnl),
+            "total_pnl_cnx": _fmt_display_money(total_pnl_cnx),
+            "total_pnl_cny": _fmt_display_money(total_pnl_cny),
+            "total_pnl": _fmt_display_money(total_pnl),
             "count": len(items),
+            "pnl_account_count": pnl_account_count,
+            "ledger_evidence_rows": ledger_evidence_rows,
+            "average_only_row_count": len(items) - ledger_evidence_rows,
+            "evidence_rows_basis": EVIDENCE_ROWS_BASIS_NOTE,
         },
     }
 
@@ -346,20 +377,20 @@ def get_ledger_pnl_summary(
         "data_status": "ready",
         "report_date": report_date.isoformat(),
         "source_version": source_version,
-        "ledger_total_assets": fmt_money(ledger_assets),
-        "ledger_total_liabilities": fmt_money(ledger_liabilities),
-        "ledger_net_assets": fmt_money(ledger_net),
-        "ledger_monthly_pnl_core": fmt_money(pnl_core),
-        "ledger_monthly_pnl_all": fmt_money(pnl_all),
+        "ledger_total_assets": _fmt_display_money(ledger_assets),
+        "ledger_total_liabilities": _fmt_display_money(ledger_liabilities),
+        "ledger_net_assets": _fmt_display_money(ledger_net),
+        "ledger_monthly_pnl_core": _fmt_display_money(pnl_core),
+        "ledger_monthly_pnl_all": _fmt_display_money(pnl_all),
         "by_currency": [
-            {"currency": k, "total_pnl": fmt_money(v)}
+            {"currency": k, "total_pnl": _fmt_display_money(v)}
             for k, v in sorted(by_currency.items())
         ],
         "by_account": [
             {
                 "account_code": v["account_code"],
                 "account_name": v["account_name"],
-                "total_pnl": fmt_money(v["total_pnl"]),
+                "total_pnl": _fmt_display_money(v["total_pnl"]),
                 "count": v["count"],
             }
             for v in sorted(
@@ -372,7 +403,7 @@ def get_ledger_pnl_summary(
 
 
 def _empty_summary(report_date: date, source_version: str) -> dict[str, Any]:
-    zero = fmt_money(Decimal("0"))
+    zero = _fmt_display_money(Decimal("0"))
     return {
         "data_status": "no_data",
         "report_date": report_date.isoformat(),
@@ -684,7 +715,14 @@ def _file_fingerprint(path: Path) -> tuple[str, int, int]:
 
 
 def _cached_ledger_only_facts(pair: Any) -> list[Any]:
-    cache_key = _file_fingerprint(Path(pair.ledger_path))
+    ledger_path = Path(pair.ledger_path)
+    cache_key: tuple[Any, ...] = (*_file_fingerprint(ledger_path), sha256_file(ledger_path))
+    dependencies = getattr(pair, "ledger_dependencies", ())
+    if dependencies:
+        cache_key += tuple(
+            (*_file_fingerprint(Path(path)), sha256_file(Path(path)))
+            for path in dependencies
+        )
     cached = _FACTS_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -759,9 +797,10 @@ def ledger_pnl_financial_indicator_summary_envelope(
         current_pair.source_version if current_pair is not None
         else "sv_ledger_pnl_empty"
     )
+    # 当月源缺失时回退到该月自然月末，与全页"报告月解析为月末"口径一致（R9）。
     resolved_report_date = (
         current_pair.report_date.isoformat() if current_pair is not None
-        else f"{year}-{month:02d}-01"
+        else date(year, month, monthrange(year, month)[1]).isoformat()
     )
     evidence_rows = sum(len(rows) for rows in balances_by_month.values())
     quality_ok = payload["data_status"] == "ready" and all(
