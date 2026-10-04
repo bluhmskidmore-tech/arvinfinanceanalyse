@@ -202,5 +202,3 @@ def test_moss_launcher_defaults_runtime_paths(
     payload = _probe_isolated_mcp_launcher(repo, launcher_name, mode, entrypoint)
     assert Path(payload["governance_path"]) == repo / "data" / "governance"
     assert Path(payload["duckdb_path"]) == repo / "data" / "moss.duckdb"
-
-
