@@ -185,4 +185,3 @@ def _pnl_v1_data_cache_key(
         archived_fingerprint,
         input_fingerprint,
     )
-

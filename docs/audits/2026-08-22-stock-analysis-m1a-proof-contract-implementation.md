@@ -70,4 +70,3 @@
 - D6a schema 自动迁移：`NOT AUTHORIZED`
 - D6b 数据写入：`NOT AUTHORIZED`
 - `/stock-analysis` 生产数据认证闭环：`NO-GO`
-

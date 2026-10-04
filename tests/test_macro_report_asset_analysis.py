@@ -408,4 +408,3 @@ def test_core_and_full_analysis_share_conclusion_without_hiding_full_signal_card
     assert blocked["conclusion"]["basis"]["refresh_receipt"]["ready"] is False
     assert blocked["data_health"]["refresh_receipt"]["status"] == "blocked"
     assert any("方向性结论已关闭" in warning for warning in blocked["warnings"])
-

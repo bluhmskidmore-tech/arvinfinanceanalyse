@@ -330,4 +330,3 @@ export function buildCashflowDetailSections(cashflow: CashflowProjectionPayload)
   }
   return sections;
 }
-

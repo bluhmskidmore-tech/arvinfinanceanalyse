@@ -500,5 +500,3 @@ def build_macro_toolkit_full_analysis_blocks(
             capability_results_future.result(),
             strategy_summaries_future.result(),
         )
-
-

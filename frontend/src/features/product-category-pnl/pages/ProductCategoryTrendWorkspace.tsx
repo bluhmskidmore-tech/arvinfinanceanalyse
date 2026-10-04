@@ -439,4 +439,3 @@ export function ProductCategoryTrendWorkspace({
     </details>
   );
 }
-

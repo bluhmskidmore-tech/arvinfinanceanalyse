@@ -1170,4 +1170,3 @@ def _parse_utc_timestamp(value: str) -> datetime:
     if parsed.tzinfo is None:
         raise FinancialPublicationInvalid("Financial publication expiry timestamp must include a timezone.")
     return parsed.astimezone(UTC)
-

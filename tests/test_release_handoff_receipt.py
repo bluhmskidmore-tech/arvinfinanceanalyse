@@ -787,4 +787,3 @@ def test_home_cli_preserves_launch_and_timeout_diagnostics(
     assert diagnostic.is_file()
     if error_kind == "TimeoutExpired":
         assert diagnostic.read_bytes() == b"synthetic timeout diagnostic"
-

@@ -127,4 +127,3 @@ def _overview_coverage_dates(manifest: Mapping[str, object]) -> set[str]:
             "Committed balance-analysis publication has no overview coverage."
         )
     return {str(item) for item in raw_dates}
-

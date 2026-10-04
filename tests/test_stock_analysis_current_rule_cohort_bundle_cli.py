@@ -129,7 +129,7 @@ def test_cli_runs_ready_path_and_renames_pending_batch(
     monkeypatch.setattr(module.producer_task, "_sha256_text", lambda value, field_name: str(value))
     monkeypatch.setattr(module.producer_task, "_canonical_sha256", lambda payload: "S" * 64)
     monkeypatch.setattr(module.producer_task, "derive_expected_stock_analysis_current_rule_governed_run_id", lambda **kwargs: "governed-123")
-    
+
     def fake_build_dry_run_receipt(duckdb_path, bundle_path, receipt_path, created_at):
         payload = {
             "bundle_path": str(Path(bundle_path).resolve()),

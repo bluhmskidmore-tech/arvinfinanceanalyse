@@ -541,4 +541,3 @@ export function useProductCategoryTrendCharts({
 export type ProductCategoryTrendCharts = ReturnType<
   typeof useProductCategoryTrendCharts
 >;
-

@@ -354,4 +354,3 @@ if ($null -ne $primaryFailure -or $recoveryFailures.Count -gt 0) {
     exit $refreshExitCode
 }
 exit 0
-

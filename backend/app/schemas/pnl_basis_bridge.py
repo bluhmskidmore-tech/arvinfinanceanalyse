@@ -72,4 +72,3 @@ class PnlBasisBridgePayload(BaseModel):
     arithmetic_status: Literal["closed"] = "closed"
     mapping_status: Literal["pending_crosswalk"] = "pending_crosswalk"
     pending_mapping: list[str] = Field(default_factory=list)
-

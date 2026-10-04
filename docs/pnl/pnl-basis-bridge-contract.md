@@ -55,4 +55,3 @@ Every arithmetic closure residual must be within `0.01` yuan. A breach raises an
 
 - `tests/test_pnl_basis_bridge_contract.py`
 - `tests/test_pnl_api_contract.py` and product-category tests remain the upstream source contracts.
-

@@ -17,4 +17,3 @@ class AgentModelCatalog(BaseModel):
     default_model: str
     models: list[AgentModelOption] = Field(default_factory=list, max_length=100)
     source: Literal["live", "cache", "configured"] = "configured"
-

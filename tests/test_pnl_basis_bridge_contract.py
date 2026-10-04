@@ -169,4 +169,3 @@ def test_pnl_basis_bridge_closes_monthly_and_ytd_without_hiding_mapping_residual
     assert ytd["system_to_formal_gross"]["closure_residual"] == "0"
     assert ytd["system_to_product_ftp_net"]["end_value"] == "100"
     assert ytd["system_to_product_ftp_net"]["closure_residual"] == "0"
-

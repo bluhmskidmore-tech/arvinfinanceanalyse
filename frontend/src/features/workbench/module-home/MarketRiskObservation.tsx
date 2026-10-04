@@ -89,7 +89,7 @@ export function MarketRiskObservation({ snapshot, chartPalette }: { snapshot?: M
         <p className={styles.muted}>报告日 {crisis?.report_date ?? EM_DASH}</p>
         <div className={styles.current}><strong data-testid="market-risk-current-score">{current ? localeOrDash(crisis?.score, "zh-CN", SCORE_OPTIONS) : EM_DASH}</strong><span className={!current ? styles.warning : undefined}>{current ? crisis?.regime ?? "级别未返回" : "当前待核验"}</span></div>
         <p className={styles.description}>{current ? `历史分位 ${localeOrDash(crisis?.percentile, "zh-CN", NUMBER_OPTIONS)}${crisis?.percentile == null ? "" : "%"}；分位不代表危机发生概率。` : <><DataValue value={crisis?.available_component_count} /> / <DataValue value={crisis?.component_count} /> 项可用；{reason}</>}</p>
-        
+
         <div className={styles.history}><ChartCard flat height={160} option={option} chartRenderer={props => <RiskHistoryChart {...props} />} legend="none" emptyMessage="暂无可用历史序列" ariaLabel="Crisis Score 近 60 期历史" /></div>
         <p className={styles.caption}>近 {history.length} 期历史；虚线为部分输入或待核验结果</p>
         <div className={styles.trends}>{[20, 60].map(window => {

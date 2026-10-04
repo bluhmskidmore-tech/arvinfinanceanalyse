@@ -32,4 +32,3 @@ def system_read_publication_status(
         generation=context.generation,
         coverage_dates={name: list(dates) for name, dates in context.coverage_dates.items()},
     )
-

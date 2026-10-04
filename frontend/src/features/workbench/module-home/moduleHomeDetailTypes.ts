@@ -48,4 +48,3 @@ export type ModuleHomeDetailPanel = {
   tone: ModuleHomeTone;
   chart?: ModuleHomeDetailChart;
 };
-

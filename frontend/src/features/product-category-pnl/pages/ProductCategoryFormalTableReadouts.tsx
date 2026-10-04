@@ -231,4 +231,3 @@ export function ProductCategoryFormalSelectionContext(props: {
     </section>
   );
 }
-
