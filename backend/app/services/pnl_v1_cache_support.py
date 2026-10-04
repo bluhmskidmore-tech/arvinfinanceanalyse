@@ -1,7 +1,8 @@
-"""V1 PnL envelope cache identities, separate from service orchestration."""
+"""V1 PnL envelope cache helpers, separate from service orchestration."""
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 from backend.app.repositories.duckdb_read_context import (
     DuckDBReadSelectionError,
@@ -33,6 +34,20 @@ _PNL_V1_DATA_INPUT_FAMILIES: tuple[tuple[str, str], ...] = (
     ("pnl_517", "*.xlsx"),
     ("pnl_517/processed", "*.xlsx"),
 )
+
+
+def _pnl_v1_data_envelope_with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
+    """Shallow-copy the cached envelope and refresh trace_id in place.
+
+    The result payload can be sizeable; deep-copying on every hit would reintroduce
+    the GIL contention this cache is designed to remove. Downstream callers must
+    not mutate nested cached structures.
+    """
+    response = dict(envelope)
+    meta = envelope.get("result_meta")
+    if isinstance(meta, dict):
+        response["result_meta"] = {**meta, "trace_id": f"tr_pnl_v1_data_{uuid4().hex[:12]}"}
+    return response
 
 
 def _pnl_v1_data_duckdb_identity(duckdb_path: str) -> tuple[str, int, int] | None:

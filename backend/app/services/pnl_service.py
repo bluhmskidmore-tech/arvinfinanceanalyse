@@ -178,7 +178,10 @@ from backend.app.services.pnl_task_dispatch import (
 from backend.app.services.pnl_task_dispatch import (
     rebuild_pnl_by_business_precompute as rebuild_pnl_by_business_precompute,
 )
-from backend.app.services.pnl_v1_cache_support import _pnl_v1_data_cache_key
+from backend.app.services.pnl_v1_cache_support import (
+    _pnl_v1_data_cache_key,
+    _pnl_v1_data_envelope_with_fresh_trace,
+)
 from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 logger = logging.getLogger(__name__)
@@ -202,20 +205,6 @@ _PNL_V1_DATA_ENVELOPE_CACHE: InMemoryTTLCache[tuple[object, ...], dict[str, obje
     "pnl_service.v1_data_envelope",
     ttl_seconds=_PNL_V1_DATA_ENVELOPE_CACHE_TTL_SECONDS,
 )
-
-
-def _pnl_v1_data_envelope_with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
-    """Shallow-copy the cached envelope and refresh trace_id in place.
-
-    The result payload can be sizeable; deep-copying on every hit would reintroduce
-    the GIL contention this cache is designed to remove. Downstream callers must
-    not mutate nested cached structures.
-    """
-    response = dict(envelope)
-    meta = envelope.get("result_meta")
-    if isinstance(meta, dict):
-        response["result_meta"] = {**meta, "trace_id": f"tr_pnl_v1_data_{uuid4().hex[:12]}"}
-    return response
 
 
 def clear_pnl_v1_data_runtime_cache() -> None:
