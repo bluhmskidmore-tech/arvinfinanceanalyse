@@ -80,7 +80,10 @@ RELEASE_SUITE_TESTS = [
     "tests/test_caliber_rule_accounting_basis.py",
 ]
 GOVERNANCE_MCP_FAST_SUITE_TESTS = ["tests/test_project_mcp_fast_contracts.py"]
-GOVERNANCE_MCP_FULL_SUITE_TESTS = ["tests/test_project_mcp_servers.py"]
+GOVERNANCE_MCP_FULL_SUITE_TESTS = [
+    "tests/test_project_mcp_servers.py",
+    "tests/test_project_mcp_launcher_runtime.py",
+]
 
 
 def _release_suite_env() -> dict[str, str]:

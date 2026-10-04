@@ -757,8 +757,7 @@
     {
       "file": "tests/test_project_mcp_servers.py",
       "expected_counts": {
-        "importorskip": 4,
-        "skip_call": 1
+        "importorskip": 4
       },
       "occurrences": [
         {
@@ -772,7 +771,15 @@
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "CI 恒定安装 duckdb，实际不触发"
-        },
+        }
+      ]
+    },
+    {
+      "file": "tests/test_project_mcp_launcher_runtime.py",
+      "expected_counts": {
+        "skip_call": 1
+      },
+      "occurrences": [
         {
           "kind": "skip_call",
           "count": 1,

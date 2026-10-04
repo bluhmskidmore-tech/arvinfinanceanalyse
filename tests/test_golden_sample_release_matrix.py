@@ -45,4 +45,7 @@ def test_release_suite_gates_page_finance_and_references_mcp_boundary_checks():
     assert module.GOVERNANCE_MCP_FAST_SUITE_TESTS == [
         "tests/test_project_mcp_fast_contracts.py"
     ]
-    assert module.GOVERNANCE_MCP_FULL_SUITE_TESTS == ["tests/test_project_mcp_servers.py"]
+    assert module.GOVERNANCE_MCP_FULL_SUITE_TESTS == [
+        "tests/test_project_mcp_servers.py",
+        "tests/test_project_mcp_launcher_runtime.py",
+    ]

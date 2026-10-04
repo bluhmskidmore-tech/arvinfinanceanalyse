@@ -189,7 +189,10 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
     assert module.GOVERNANCE_MCP_FAST_SUITE_TESTS == [
         "tests/test_project_mcp_fast_contracts.py"
     ]
-    assert module.GOVERNANCE_MCP_FULL_SUITE_TESTS == ["tests/test_project_mcp_servers.py"]
+    assert module.GOVERNANCE_MCP_FULL_SUITE_TESTS == [
+        "tests/test_project_mcp_servers.py",
+        "tests/test_project_mcp_launcher_runtime.py",
+    ]
     assert module.EXECUTIVE_RELEASE_SAMPLE_IDS == [
         "GS-EXEC-OVERVIEW-A",
         "GS-EXEC-PNL-ATTR-A",
