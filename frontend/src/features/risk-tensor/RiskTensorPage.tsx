@@ -1,925 +1,181 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useRiskTensorDiagnostics } from "./useRiskTensorDiagnostics";
+import { useRiskTensorQualityEvidence } from "./useRiskTensorQualityEvidence";
+import { useRiskTensorQueries } from "./useRiskTensorQueries";
+import { useRiskTensorCharts } from "./useRiskTensorCharts";
 
-import InteractiveEChart, { type EChartsOption } from "../../lib/echarts";
+import InteractiveEChart from "../../lib/echarts";
 import { ChartCard } from "../../components/charts/ChartCard";
 import { CHART_CARD_HEIGHTS } from "../../components/charts/chartCardScale";
-import { useApiClient } from "../../api/clientContext";
+
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { PageAsyncSection } from "../../components/page/PageAsyncSection";
-import { nocturneChartTheme } from "../../components/charts/chartTheme";
+
 import { KpiCard } from "../../components/KpiCard";
 import { SectionHead } from "../../components/layout";
-import type {
-  ResultMeta,
-  RiskScenarioStressPayload,
-  RiskScenarioStressRow,
-  RiskTensorPayload,
-} from "../../api/contracts";
-import {
-  toneFromSignedDisplayString,
-} from "../workbench/components/kpiFormat";
-import {
-  bondNumericDisplay,
-  bondNumericRawOrNull,
-} from "../bond-analytics/adapters/bondAnalyticsAdapter";
-import { numericRaw } from "../../pageModel";
+
+import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
+
 import { EM_DASH } from "../../utils/format";
 import {
   durationExclusionTone,
   liquidityGapLabel,
   liquidityGapTone,
   projectionQualityTone,
-  riskTensorExactScaledAmountDisplayOrNull,
-  scenarioStressTone,
-  selectDominantRiskTensorRow,
 } from "./riskTensorPageModel";
 import "./RiskTensorPage.css";
-import { describeRiskTensorWarning } from "./riskTensorPresentation";
-
-/** 雷达轴顺序与后端字段一一对应；max 仅用于可视化比例，不做前端金融重算。 */
-const RADAR_META = [
-  { key: "duration" as const, name: "久期", max: 10 },
-  { key: "dv01" as const, name: "面值DV01", max: "dynamic_dv01" as const },
-  { key: "convexity" as const, name: "凸性", max: 200 },
-  { key: "cs01" as const, name: "CS01", max: "dynamic_cs01" as const },
-  { key: "hhi" as const, name: "集中度", max: 1 },
-  { key: "liq_ratio" as const, name: "流动性缺口", max: 1 },
-] as const;
-
-type RadarKey = (typeof RADAR_META)[number]["key"];
-
-const RADAR_NAVIGATION_TARGETS: Record<RadarKey, string> = {
-  duration: "risk-tensor-duration-scope",
-  dv01: "risk-tensor-regulatory-dv01-kpi",
-  convexity: "risk-tensor-convexity-kpi",
-  cs01: "risk-tensor-cs01-kpi",
-  hhi: "risk-tensor-issuer-concentration-detail",
-  liq_ratio: "risk-tensor-liquidity-gap-detail",
-};
-
-const KPI_RADAR_ISSUE_KEYS = new Set(["portfolio_modified_duration", "portfolio_dv01", "portfolio_convexity", "cs01"]);
-const SCENARIO_SOURCE_LABELS: Record<string, string> = {
-  regulatory_dv01: "监管口径 DV01",
-  cs01: "CS01",
-  "asset_cashflow_30d/liability_cashflow_30d/liquidity_gap_30d": "30 日现金流",
-  fx_exposure: "汇率敞口",
-};
-
-function displayStr(value: Parameters<typeof bondNumericDisplay>[0]) {
-  return bondNumericDisplay(value);
-}
-
-type RiskTensorDisplayValue = Parameters<typeof bondNumericDisplay>[0];
-type KrdChartClickParams = { name?: unknown };
-
-const YUAN_PER_WAN = 10_000;
-const YUAN_PER_YI = 100_000_000;
-const WAN_YUAN_UNIT = "\u4e07\u5143";
-const YI_YUAN_UNIT = "\u4ebf\u5143";
-const RADAR_SPLIT_NUMBER = 5;
-const MAIN_PAYLOAD_NUMERIC_FIELDS = [
-  { key: "portfolio_dv01", label: "portfolio_dv01" },
-  { key: "krd_1y", label: "krd_1y" },
-  { key: "krd_3y", label: "krd_3y" },
-  { key: "krd_5y", label: "krd_5y" },
-  { key: "krd_7y", label: "krd_7y" },
-  { key: "krd_10y", label: "krd_10y" },
-  { key: "krd_30y", label: "krd_30y" },
-  { key: "cs01", label: "cs01" },
-  { key: "portfolio_convexity", label: "portfolio_convexity" },
-  { key: "portfolio_modified_duration", label: "portfolio_modified_duration" },
-  { key: "issuer_concentration_hhi", label: "issuer_concentration_hhi" },
-  { key: "issuer_top5_weight", label: "issuer_top5_weight" },
-  { key: "asset_cashflow_30d", label: "asset_cashflow_30d" },
-  { key: "asset_cashflow_90d", label: "asset_cashflow_90d" },
-  { key: "liability_cashflow_30d", label: "liability_cashflow_30d" },
-  { key: "liability_cashflow_90d", label: "liability_cashflow_90d" },
-  { key: "liquidity_gap_30d", label: "liquidity_gap_30d" },
-  { key: "liquidity_gap_90d", label: "liquidity_gap_90d" },
-  { key: "liquidity_gap_30d_ratio", label: "liquidity_gap_30d_ratio" },
-  { key: "total_market_value", label: "total_market_value" },
-] as const;
-const REQUIRED_DURATION_SCOPE_FIELDS = [
-  { key: "rate_risk_market_value", label: "rate_risk_market_value" },
-  { key: "rate_risk_dv01", label: "rate_risk_dv01" },
-  { key: "rate_risk_modified_duration", label: "rate_risk_modified_duration" },
-  { key: "duration_excluded_market_value", label: "duration_excluded_market_value" },
-] as const;
-const PROJECTION_QUALITY_FIELDS = [
-  {
-    title: "未列到期日（现金流排除）",
-    marketValueKey: "missing_maturity_market_value",
-    countKey: "missing_maturity_count",
-    detail: "兼容字段含基金等未列日期资产；产品属性见久期排除拆分，不并入合同到期现金流。",
-  },
-  {
-    title: "浮息债代理",
-    marketValueKey: "floating_rate_proxy_market_value",
-    countKey: "floating_rate_proxy_count",
-    detail: "浮息票息按代理口径冻结展示，未模拟后续 reset。",
-  },
-  {
-    title: "付息频率代理",
-    marketValueKey: "payment_frequency_fallback_market_value",
-    countKey: "payment_frequency_fallback_count",
-    detail: "年付息频率为代理口径，不代表合同字段已确认。",
-  },
-  {
-    title: "起息日缺失代理",
-    marketValueKey: "bullet_value_date_fallback_market_value",
-    countKey: "bullet_value_date_fallback_count",
-    detail: "起息日缺失时按一年利息代理估算，仅用于投影质量披露。",
-  },
-] as const;
-const KRD_FIELDS = [
-  { key: "krd_1y", tenor: "1Y" },
-  { key: "krd_3y", tenor: "3Y" },
-  { key: "krd_5y", tenor: "5Y" },
-  { key: "krd_7y", tenor: "7Y" },
-  { key: "krd_10y", tenor: "10Y" },
-  { key: "krd_30y", tenor: "30Y" },
-] as const;
-
-function scrollRiskTensorTargetIntoView(target: HTMLElement | null | undefined) {
-  // Reveal the requested evidence before scrolling, including nested disclosures.
-  let disclosure = target?.closest("details");
-  while (disclosure) {
-    disclosure.open = true;
-    disclosure = disclosure.parentElement?.closest("details") ?? null;
-  }
-  const scrollIntoView = target?.scrollIntoView;
-  if (typeof scrollIntoView === "function") {
-    scrollIntoView.call(target, { behavior: "smooth", block: "center" });
-  }
-}
-
-function riskTensorRawOrNull(value: RiskTensorDisplayValue): number | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().replace(/,/g, "");
-    if (!normalized) {
-      return null;
-    }
-    const raw = Number(normalized);
-    return Number.isFinite(raw) ? raw : null;
-  }
-  return numericRaw(value);
-}
-
-function riskTensorScalarIssue(value: RiskTensorDisplayValue | null | undefined) {
-  if (value === null || value === undefined) {
-    return "缺失";
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim();
-    if (!normalized || normalized === "undefined") {
-      return "缺失";
-    }
-    return riskTensorRawOrNull(value) === null ? "不可解析" : null;
-  }
-  if (value.raw === null) {
-    return "缺失";
-  }
-  return Number.isFinite(value.raw) ? null : "不可解析";
-}
-
-function riskTensorPayloadQualityIssues(result: RiskTensorPayload) {
-  const mainIssues = MAIN_PAYLOAD_NUMERIC_FIELDS.flatMap((field) => {
-    const issue = riskTensorScalarIssue(result[field.key]);
-    return issue ? [{ ...field, issue }] : [];
-  });
-  const durationCoverageIssues = REQUIRED_DURATION_SCOPE_FIELDS.flatMap((field) => {
-    const issue = riskTensorScalarIssue(result[field.key]);
-    return issue ? [{ ...field, issue }] : [];
-  });
-  const excludedCountIssue =
-    typeof result.duration_excluded_count !== "number" ||
-    !Number.isFinite(result.duration_excluded_count) ||
-    result.duration_excluded_count < 0 ||
-    !Number.isInteger(result.duration_excluded_count)
-      ? [{ key: "duration_excluded_count", label: "duration_excluded_count", issue: "缺失或无效" }]
-      : [];
-  return [...mainIssues, ...durationCoverageIssues, ...excludedCountIssue];
-}
-
-function amountUnit(value: RiskTensorDisplayValue, unit: string) {
-  return riskTensorDecisionAmountAvailable(value) ? unit : undefined;
-}
-
-function riskTensorDecisionAmountAvailable(value: RiskTensorDisplayValue) {
-  return riskTensorExactScaledAmountDisplayOrNull(value, 1) !== null || riskTensorRawOrNull(value) !== null;
-}
-
-function shouldPrefixPositiveAmount(value: RiskTensorDisplayValue) {
-  if (typeof value === "string") {
-    return value.trim().startsWith("+");
-  }
-  return Boolean(value?.sign_aware);
-}
-
-function formatYuanAmount(value: RiskTensorDisplayValue, divisor: number) {
-  const exactDisplay = riskTensorExactScaledAmountDisplayOrNull(
-    value,
-    divisor,
-    shouldPrefixPositiveAmount(value),
-  );
-  if (exactDisplay !== null) {
-    return exactDisplay;
-  }
-
-  const raw = riskTensorRawOrNull(value);
-  if (raw === null) {
-    return displayStr(value);
-  }
-  const scaled = raw / divisor;
-  const formatted = Math.abs(scaled).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  if (scaled < 0) {
-    return `-${formatted}`;
-  }
-  return `${shouldPrefixPositiveAmount(value) && scaled > 0 ? "+" : ""}${formatted}`;
-}
-
-function yuanAsWanDisplay(value: RiskTensorDisplayValue) {
-  return formatYuanAmount(value, YUAN_PER_WAN);
-}
-
-function yuanAsYiDisplay(value: RiskTensorDisplayValue) {
-  return formatYuanAmount(value, YUAN_PER_YI);
-}
-
-function yuanAsWanWithUnit(value: RiskTensorDisplayValue) {
-  const display = yuanAsWanDisplay(value);
-  return riskTensorRawOrNull(value) === null ? display : `${display} ${WAN_YUAN_UNIT}`;
-}
-
-function yuanAsYiWithUnit(value: RiskTensorDisplayValue) {
-  const display = yuanAsYiDisplay(value);
-  return riskTensorRawOrNull(value) === null ? display : `${display} ${YI_YUAN_UNIT}`;
-}
-
-function yuanAsWanMagnitudeOrNull(value: RiskTensorDisplayValue) {
-  const raw = riskTensorRawOrNull(value);
-  return raw === null ? null : raw / YUAN_PER_WAN;
-}
-
-function chartMagnitudeOrNull(value: RiskTensorDisplayValue) {
-  const raw = riskTensorRawOrNull(value);
-  return raw === null ? null : raw;
-}
-
-function ratioPercentDisplay(value: Parameters<typeof bondNumericRawOrNull>[0]) {
-  const display = displayStr(value);
-  if (display.includes("%")) {
-    return display;
-  }
-  const raw = bondNumericRawOrNull(value);
-  if (raw === null) {
-    return display;
-  }
-  if (value !== null && typeof value === "object" && value.unit === "ratio") {
-    return `${(raw * 100).toFixed(1)}%`;
-  }
-  const abs = Math.abs(raw);
-  if (abs <= 1) {
-    return `${(raw * 100).toFixed(1)}%`;
-  }
-  if (abs <= 100) {
-    return `${raw.toFixed(1)}%`;
-  }
-  return display;
-}
-
-function ratioTone(value: Parameters<typeof bondNumericRawOrNull>[0]) {
-  return toneFromSignedDisplayString(ratioPercentDisplay(value));
-}
-
-function hasRiskTensorValue(value: RiskTensorDisplayValue | null | undefined) {
-  return value !== null && value !== undefined;
-}
-
-function countDisplay(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return EM_DASH;
-  }
-  return value.toLocaleString("zh-CN");
-}
-
-function projectionQualityStatusLabel(status: RiskTensorPayload["projection_quality_status"]) {
-  if (status === "available") {
-    return "可用";
-  }
-  if (status === "unavailable_legacy") {
-    return "历史版本未提供投影质量字段/待重算";
-  }
-  return "不可用/待重算";
-}
-
-function projectionQualityAmountDisplay(value: RiskTensorDisplayValue | null | undefined) {
-  return riskTensorRawOrNull(value) === null ? "不可用/待重算" : yuanAsYiDisplay(value);
-}
-
-function projectionQualityAmountUnit(value: RiskTensorDisplayValue | null | undefined) {
-  return riskTensorRawOrNull(value) === null ? undefined : YI_YUAN_UNIT;
-}
-
-function projectionQualityCountDisplay(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
-    return "笔数不可用";
-  }
-  return `${value.toLocaleString("zh-CN")} 笔`;
-}
-
-function excludedLiabilityCountDisplay(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
-    return "条数不可用";
-  }
-  return `${value.toLocaleString("zh-CN")} 条`;
-}
-
-function hasDurationScopeDisclosure(result: RiskTensorPayload) {
-  return (
-    hasRiskTensorValue(result.rate_risk_market_value) ||
-    hasRiskTensorValue(result.rate_risk_dv01) ||
-    hasRiskTensorValue(result.rate_risk_modified_duration) ||
-    hasRiskTensorValue(result.duration_excluded_market_value) ||
-    (result.duration_excluded_count !== null && result.duration_excluded_count !== undefined)
-  );
-}
-
-function qualityFlagLabel(flag: string | undefined) {
-  if (flag === "ok") {
-    return "正常";
-  }
-  if (flag === "warning") {
-    return "预警";
-  }
-  if (flag === "error") {
-    return "错误";
-  }
-  if (flag === "stale") {
-    return "陈旧";
-  }
-  if (flag === "missing") {
-    return "缺失";
-  }
-  return flag || EM_DASH;
-}
-
-function qualityTone(flag: string | undefined) {
-  if (flag === "error" || flag === "stale") {
-    return "danger";
-  }
-  if (flag === "warning") {
-    return "warning";
-  }
-  if (flag === "ok") {
-    return "ok";
-  }
-  return "neutral";
-}
-
-function fallbackModeLabel(mode: ResultMeta["fallback_mode"] | string | undefined) {
-  if (mode === "none") {
-    return "未降级";
-  }
-  if (mode === "latest" || mode === "latest_snapshot") {
-    return "latest snapshot fallback";
-  }
-  if (mode === "mock") {
-    return "mock fallback";
-  }
-  if (mode === "degraded") {
-    return "降级";
-  }
-  return mode || EM_DASH;
-}
-
-/**
- * 后端 generated_at 为带微秒/时区的 ISO 串，展示层收敛为 YYYY-MM-DD HH:mm:ss
- * （纯字符串归一，不做时区换算，保持后端时钟读数）；原值由调用方收进 title。
- */
-function formatTimestampDisplay(value: string | undefined) {
-  if (!value) {
-    return EM_DASH;
-  }
-  const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/.exec(value);
-  if (!match) {
-    return value;
-  }
-  return `${match[1]} ${match[2]}`;
-}
-
-function compactVersion(value: string | undefined) {
-  if (!value) {
-    return EM_DASH;
-  }
-  if (value.length <= 42) {
-    return value;
-  }
-  return `${value.slice(0, 22)}...${value.slice(-12)}`;
-}
-
-function metaValueLabel(value: unknown) {
-  if (value === null) {
-    return "null";
-  }
-  if (value === undefined) {
-    return "未提供";
-  }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function filtersAppliedLabel(filters: ResultMeta["filters_applied"] | undefined) {
-  const entries = Object.entries(filters ?? {});
-  return entries.map(([key, value]) => `${key}=${metaValueLabel(value)}`).join("；");
-}
-
-function errorStatusCode(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  const match = message.match(/\((\d{3})\)/);
-  return match ? match[1] : "";
-}
-
-function errorEvidenceMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error ?? "");
-}
-
-function riskTensorErrorMessage(statusCode: string) {
-  if (statusCode === "404") {
-    return "当前报告日无风险张量数据";
-  }
-  if (statusCode === "503") {
-    return "风险张量治理前置缺失";
-  }
-  return "风险张量主读面加载失败";
-}
-
-function dynamicAxisMax(raw: number, fallback: number) {
-  const base = Math.abs(raw) * 1.5;
-  if (!Number.isFinite(base) || base === 0) {
-    return fallback;
-  }
-  return readableRadarAxisMax(base);
-}
-
-function readableRadarAxisMax(max: number) {
-  const intervalBase = max / RADAR_SPLIT_NUMBER;
-  if (!Number.isFinite(intervalBase) || intervalBase <= 0) {
-    return max;
-  }
-  const magnitude = 10 ** Math.floor(Math.log10(intervalBase));
-  const normalized = intervalBase / magnitude;
-  const niceNormalized = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 3 ? 3 : normalized <= 5 ? 5 : 10;
-  return niceNormalized * magnitude * RADAR_SPLIT_NUMBER;
-}
-
-function radarIndicator(name: string, max: number) {
-  const readableMax = readableRadarAxisMax(max);
-  return { name, min: 0, max: readableMax, interval: readableMax / RADAR_SPLIT_NUMBER };
-}
-
-function regulatoryDv01Display(value: RiskTensorPayload["regulatory_dv01"]) {
-  if (value === null || value === undefined) {
-    return "待接入";
-  }
-  return yuanAsWanDisplay(value);
-}
-
-function regulatoryDv01DisplayWithUnit(value: RiskTensorPayload["regulatory_dv01"]) {
-  if (value === null || value === undefined) {
-    return regulatoryDv01Display(value);
-  }
-  return `${regulatoryDv01Display(value)} ${WAN_YUAN_UNIT}`;
-}
-
-function regulatoryDv01Tone(value: RiskTensorPayload["regulatory_dv01"]) {
-  if (value === null || value === undefined) {
-    return "warning";
-  }
-  return toneFromSignedDisplayString(regulatoryDv01Display(value));
-}
-
-function scenarioStressCategoryLabel(category: RiskScenarioStressRow["category"]) {
-  if (category === "rate") return "利率";
-  if (category === "credit") return "信用";
-  if (category === "liquidity") return "流动性";
-  if (category === "fx") return "汇率";
-  return category;
-}
-
-function scenarioStressDataStatusLabel(
-  status: RiskScenarioStressRow["data_status"],
-  amountDisplayAllowed: boolean,
-) {
-  if (status !== "available") return "待接入";
-  return amountDisplayAllowed ? "已估算" : "金额待核验";
-}
-
-function scenarioAmountGateReason(payload: RiskScenarioStressPayload) {
-  const evidence = payload.evidence;
-  if (!evidence) {
-    return "后端未返回监管 DV01 覆盖证据。";
-  }
-
-  const reasons: string[] = [];
-  if (evidence.date_status !== "verified") {
-    reasons.push("风险日期尚未完成核验");
-  }
-  if (evidence.fallback_status !== "none") {
-    reasons.push(evidence.fallback_date ? `风险来源使用回退数据 ${evidence.fallback_date}` : "风险来源存在回退");
-  }
-  if (evidence.coverage.status !== "complete") {
-    const missingCount = evidence.coverage.missing_risk_position_count;
-    reasons.push(
-      `监管 DV01 覆盖${evidence.coverage.status === "incomplete" ? "不完整" : "状态待核验"}${
-        typeof missingCount === "number" ? `，缺少风险输入 ${missingCount.toLocaleString("zh-CN")} 条` : ""
-      }`,
-    );
-  }
-  reasons.push(
-    ...evidence.coverage.reasons
-      .map((reason) => reason.trim().replace(/[。；]+$/u, ""))
-      .filter(Boolean),
-  );
-  const reasonText = Array.from(new Set(reasons)).join("；");
-  return reasonText ? `${reasonText}。` : "金额展示条件未通过。";
-}
-
-function RiskScenarioStressPanel({
-  payload,
-  meta,
-  isLoading,
-  error,
-  reportDate,
-  onRetry,
-  onMetaJump,
-}: {
-  payload?: RiskScenarioStressPayload;
-  meta?: ResultMeta;
-  isLoading: boolean;
-  error: unknown;
-  reportDate: string;
-  onRetry: () => void;
-  onMetaJump: () => void;
-}) {
-  const errorMessage = error ? errorEvidenceMessage(error) : "";
-  const amountDisplayAllowed = payload?.evidence?.amount_display_allowed === true;
-  const worstScenario = payload?.summary.worst_scenario_key
-    ? payload.scenarios.find((row) => row.scenario_key === payload.summary.worst_scenario_key)
-    : undefined;
-  const worstImpactAvailable = riskTensorRawOrNull(payload?.summary.worst_estimated_impact) !== null;
-  const comparisonMeasureVerified =
-    Boolean(payload?.summary.comparison_measure) &&
-    payload?.summary.comparison_measure === worstScenario?.measure;
-  const showWorstImpact =
-    amountDisplayAllowed && worstImpactAvailable && Boolean(worstScenario) && comparisonMeasureVerified;
-  const worstEstimateTitle =
-    payload?.summary.comparison_measure === "estimated_pnl_impact" ? "最不利损益估算" : "最不利可比估算";
-
-  return (
-    <section className="risk-tensor-scenario-stress" data-testid="risk-tensor-scenario-stress">
-      <div className="risk-tensor-scenario-stress__header">
-        <div>
-          <span>情景压力</span>
-          <h2>多情景压力测试</h2>
-          <p>估算利率、信用、流动性和汇率变化的影响，仅供复核，不代表实际损益或限额判定。</p>
-        </div>
-        <strong title={meta?.basis ?? payload?.basis ?? "scenario"}>情景估算</strong>
-      </div>
-
-      {isLoading ? (
-        <div className="risk-tensor-scenario-stress__empty">
-          <span>正在读取压力测试</span>
-          <p>正在准备 {reportDate || "所选报告日"} 的情景估算。</p>
-        </div>
-      ) : error ? (
-        <div className="risk-tensor-scenario-stress__empty" data-testid="risk-tensor-scenario-stress-error">
-          <span>压力测试暂不可用</span>
-          <p>{errorMessage || "后端未返回压力测试结果。"}</p>
-          <div className="risk-tensor-quality-detail__trace-actions">
-            <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={onRetry}>
-              重试压力测试
-            </button>
-            <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={onMetaJump}>
-              定位元数据
-            </button>
-          </div>
-        </div>
-      ) : payload ? (
-        <>
-          <div className="risk-tensor-scenario-stress__summary">
-            <div>
-              <span>情景数量</span>
-              <strong>{payload.summary.scenario_count}</strong>
-              <p>{payload.summary.review_required_count} 个需要人工复核</p>
-            </div>
-            <div>
-              <span>可估算情景</span>
-              <strong>{payload.summary.available_count}</strong>
-              <p>汇率等缺口会单独显示待接入</p>
-            </div>
-            <div data-testid="risk-tensor-scenario-worst-estimate">
-              <span>{worstEstimateTitle}</span>
-              <strong>
-                {showWorstImpact ? yuanAsWanWithUnit(payload.summary.worst_estimated_impact) : "暂不展示"}
-              </strong>
-              <p>
-                {amountDisplayAllowed
-                  ? comparisonMeasureVerified
-                    ? worstScenario?.label
-                    : "后端未返回可比口径"
-                  : "覆盖证据未通过，摘要金额已隐藏"}
-              </p>
-            </div>
-          </div>
-
-          {!amountDisplayAllowed ? (
-            <div className="risk-tensor-scenario-stress__warning" data-testid="risk-tensor-scenario-amount-gate">
-              情景金额暂不展示：{scenarioAmountGateReason(payload)}
-            </div>
-          ) : null}
-
-          {payload.warnings.length > 0 ? (
-            <div className="risk-tensor-scenario-stress__warning">{payload.warnings.map(describeRiskTensorWarning).join(" / ")}</div>
-          ) : null}
-
-          <div className="risk-tensor-scenario-stress__grid">
-            {payload.scenarios.map((row) => (
-              <article
-                className="risk-tensor-scenario-stress__card"
-                data-tone={amountDisplayAllowed ? scenarioStressTone(row) : "warning"}
-                data-testid={`risk-scenario-stress-row-${row.scenario_key}`}
-                key={row.scenario_key}
-              >
-                <div className="risk-tensor-scenario-stress__card-head">
-                  <span>{scenarioStressCategoryLabel(row.category)}</span>
-                  <strong>{scenarioStressDataStatusLabel(row.data_status, amountDisplayAllowed)}</strong>
-                </div>
-                <h3>{row.label}</h3>
-                <div className="risk-tensor-scenario-stress__impact">
-                  {row.data_status === "available"
-                    ? amountDisplayAllowed
-                      ? yuanAsWanWithUnit(row.estimated_impact)
-                      : "暂不展示"
-                    : displayStr(row.estimated_impact)}
-                </div>
-                <p>{row.interpretation}</p>
-                <dl>
-                  <div>
-                    <dt>冲击</dt>
-                    <dd>{displayStr(row.shock)}</dd>
-                  </div>
-                  <div>
-                    <dt>计算依据</dt>
-                    <dd title={row.source_field}>{SCENARIO_SOURCE_LABELS[row.source_field] ?? row.source_field}</dd>
-                  </div>
-                  {amountDisplayAllowed && row.baseline_value && row.stressed_value ? (
-                    <div>
-                      <dt>压力后</dt>
-                      <dd>{yuanAsWanWithUnit(row.stressed_value)}</dd>
-                    </div>
-                  ) : null}
-                </dl>
-                {row.human_review_required ? <small>需人工复核</small> : null}
-              </article>
-            ))}
-          </div>
-
-          <details className="risk-tensor-disclosure" data-testid="risk-tensor-scenario-evidence">
-            <summary>情景计算说明与来源</summary>
-            <div className="risk-tensor-scenario-stress__footer">
-            <span>scenario_set_id {payload.scenario_set_id}</span>
-            <span>rule_version {payload.rule_version}</span>
-            <span>source_trace_id {payload.source.trace_id ?? EM_DASH}</span>
-            <span>amount_display_allowed {String(amountDisplayAllowed)}</span>
-            {payload.evidence ? (
-              <>
-                <span>风险日期 {payload.evidence.actual_risk_date ?? EM_DASH}</span>
-                <span>监管 DV01 覆盖状态 {payload.evidence.coverage.status}</span>
-                <span>
-                  持仓记录 {countDisplay(payload.evidence.coverage.total_position_count)}；纳入范围 {countDisplay(payload.evidence.coverage.included_position_count)}；
-                  排除范围 {countDisplay(payload.evidence.coverage.excluded_position_count)}；缺少风险输入 {countDisplay(payload.evidence.coverage.missing_risk_position_count)}
-                </span>
-                {payload.evidence.coverage.reasons.map((reason, index) => <p key={`coverage-reason-${index}`}>{reason}</p>)}
-              </>
-            ) : <p>未返回监管 DV01 覆盖证据。</p>}
-            {payload.scenarios.map((row) => <span key={row.scenario_key}>{row.label}：{row.source_field}；human_review_required={String(row.human_review_required)}</span>)}
-            {payload.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
-            </div>
-          </details>
-        </>
-      ) : (
-        <div className="risk-tensor-scenario-stress__empty">
-          <span>暂无压力测试结果</span>
-          <p>风险数据就绪后可查看情景估算。</p>
-        </div>
-      )}
-    </section>
-  );
-}
+import {
+  describeRiskTensorWarning,
+  qualityFlagLabel,
+  qualityTone,
+  formatTimestampDisplay,
+  compactVersion,
+  riskTensorErrorMessage,
+} from "./riskTensorPresentation";
+import {
+  WAN_YUAN_UNIT,
+  YI_YUAN_UNIT,
+  displayStr,
+  amountUnit,
+  yuanAsWanDisplay,
+  yuanAsYiDisplay,
+  yuanAsWanWithUnit,
+  yuanAsYiWithUnit,
+  ratioPercentDisplay,
+  ratioTone,
+  countDisplay,
+  projectionQualityStatusLabel,
+  projectionQualityAmountDisplay,
+  projectionQualityAmountUnit,
+  projectionQualityCountDisplay,
+  excludedLiabilityCountDisplay,
+  regulatoryDv01Display,
+  regulatoryDv01DisplayWithUnit,
+  regulatoryDv01Tone,
+} from "./riskTensorDisplay";
+import { PROJECTION_QUALITY_FIELDS, riskTensorScalarIssue } from "./riskTensorQuality";
+import { scrollRiskTensorTargetIntoView } from "./riskTensorNavigation";
+import { RiskScenarioStressPanel } from "./RiskScenarioStressPanel";
 
 export default function RiskTensorPage() {
-  const client = useApiClient();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const explicitReportDate = searchParams.get("report_date")?.trim() || "";
-  const [selectedTenor, setSelectedTenor] = useState<string>("");
-  const [qualityEvidenceCopyStatus, setQualityEvidenceCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
-  const [qualityEvidenceCopiedStateKey, setQualityEvidenceCopiedStateKey] = useState("");
-  const [qualityEvidenceReviewConfirmed, setQualityEvidenceReviewConfirmed] = useState(false);
-  const [qualityEvidenceReviewRecordCopyStatus, setQualityEvidenceReviewRecordCopyStatus] = useState<
-    "idle" | "copied" | "failed"
-  >("idle");
-  const [qualityEvidenceReviewRecordCopiedStateKey, setQualityEvidenceReviewRecordCopiedStateKey] = useState("");
-  const [qualityEvidenceRequestCopyStatus, setQualityEvidenceRequestCopyStatus] = useState<"idle" | "copied" | "failed">(
-    "idle",
-  );
-  const [qualityEvidenceRequestCopiedStateKey, setQualityEvidenceRequestCopiedStateKey] = useState("");
-  const [payloadQualityRequestCopyStatus, setPayloadQualityRequestCopyStatus] = useState<"idle" | "copied" | "failed">(
-    "idle",
-  );
-  const [payloadQualityRequestCopiedStateKey, setPayloadQualityRequestCopiedStateKey] = useState("");
-  const [combinedQualityRequestCopyStatus, setCombinedQualityRequestCopyStatus] = useState<
-    "idle" | "copied" | "failed"
-  >("idle");
-  const [combinedQualityRequestCopiedStateKey, setCombinedQualityRequestCopiedStateKey] = useState("");
-  const [qualityWarningsCopyStatus, setQualityWarningsCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
-  const [qualityWarningsCopiedStateKey, setQualityWarningsCopiedStateKey] = useState("");
-  const [tensorErrorCopyStatus, setTensorErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
-  const [tensorErrorCopiedStateKey, setTensorErrorCopiedStateKey] = useState("");
-  const tensorErrorCopyRequestKeyRef = useRef("");
-  const [blockedDateCopyStatus, setBlockedDateCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
-  const [blockedDateCopiedStateKey, setBlockedDateCopiedStateKey] = useState("");
-  const blockedDateCopyRequestKeyRef = useRef("");
-  const [datesErrorCopyStatus, setDatesErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
-  const [datesErrorCopiedStateKey, setDatesErrorCopiedStateKey] = useState("");
-  const datesErrorCopyRequestKeyRef = useRef("");
-  const [datesEmptyCopyStatus, setDatesEmptyCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
-  const [datesEmptyCopiedStateKey, setDatesEmptyCopiedStateKey] = useState("");
-  const datesEmptyCopyRequestKeyRef = useRef("");
-  const [emptyPositionCopyStatus, setEmptyPositionCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
-  const [emptyPositionCopiedStateKey, setEmptyPositionCopiedStateKey] = useState("");
-  const emptyPositionCopyStateKeyRef = useRef("");
-  const datesQuery = useQuery({
-    queryKey: ["risk-tensor", "dates", client.mode],
-    queryFn: () => client.getRiskTensorDates(),
-    retry: false,
-  });
-
-  const blockedReportDates = datesQuery.data?.result.blocked_report_dates ?? [];
-  const selectedBlockedReportDate = explicitReportDate
-    ? blockedReportDates.find((entry) => entry.report_date === explicitReportDate)
-    : undefined;
-  const latestBlockedReportDate = [...blockedReportDates].sort((a, b) => b.report_date.localeCompare(a.report_date))[0];
-  const highlightedBlockedReportDate = selectedBlockedReportDate ?? latestBlockedReportDate;
-  const latestAvailableReportDate = datesQuery.data?.result.report_dates[0] ?? "";
-
-  const reportDate = useMemo(() => {
-    if (explicitReportDate) {
-      return explicitReportDate;
-    }
-    return datesQuery.data?.result.report_dates[0] ?? "";
-  }, [datesQuery.data?.result.report_dates, explicitReportDate]);
-  const reportDateOptions = useMemo(() => {
-    const dates = datesQuery.data?.result.report_dates ?? [];
-    if (!reportDate || dates.includes(reportDate)) {
-      return dates;
-    }
-    return [reportDate, ...dates];
-  }, [datesQuery.data?.result.report_dates, reportDate]);
-
-  const datesBlockingError = datesQuery.isError;
-  const datesEmpty =
-    !explicitReportDate &&
-    !datesQuery.isLoading &&
-    !datesBlockingError &&
-    (datesQuery.data?.result.report_dates.length ?? 0) === 0;
-  const tensorBlockedByReportDate = Boolean(selectedBlockedReportDate);
-  const tensorQueryEnabled = Boolean(reportDate) && datesQuery.isSuccess && !tensorBlockedByReportDate;
-
-  const tensorQuery = useQuery({
-    queryKey: ["risk-tensor", reportDate],
-    queryFn: () => client.getRiskTensor(reportDate),
-    enabled: tensorQueryEnabled,
-    retry: false,
-  });
-
-  const scenarioStressQuery = useQuery({
-    queryKey: ["risk-tensor", "scenario-stress", reportDate],
-    queryFn: () => client.getRiskScenarioStress(reportDate),
-    enabled: tensorQueryEnabled && tensorQuery.isSuccess,
-    retry: false,
-  });
-
-  const envelope = datesBlockingError || tensorBlockedByReportDate ? undefined : tensorQuery.data;
-  const result = envelope?.result;
-  const isEmpty =
-    !tensorQuery.isLoading &&
-    !tensorQuery.isError &&
-    result !== undefined &&
-    result.bond_count === 0;
-  const tensorErrorStatusCode = errorStatusCode(tensorQuery.error);
-  const datesErrorStatusCode = errorStatusCode(datesQuery.error);
-  const tensorErrorReportDate = reportDate || explicitReportDate || "未选择";
-  const datesErrorReportDate = explicitReportDate || "未选择";
-  const datesGovernanceMeta = datesQuery.data?.result_meta;
-  const datesEmptyTraceId = datesGovernanceMeta?.trace_id ?? EM_DASH;
-
-  const krdChartOption = useMemo((): EChartsOption | null => {
-    if (!result) {
-      return null;
-    }
-    const labels = KRD_FIELDS.map((item) => item.tenor);
-    const data = KRD_FIELDS.map((item) => yuanAsWanMagnitudeOrNull(result[item.key]));
-    return nocturneChartTheme.createBarChartOption({
-      grid: { left: 52, right: 16, top: 36 },
-      xAxis: {
-        type: "category",
-        data: labels,
-      },
-      yAxis: {
-        type: "value",
-      },
-      series: [
-        {
-          type: "bar",
-          data,
-          itemStyle: { color: nocturneChartTheme.palette[0] },
-        },
-      ],
-    });
-  }, [result]);
-
-  const tenorRows = useMemo(() => {
-    if (!result) {
-      return [];
-    }
-    return KRD_FIELDS.map((item) => ({
-      key: item.key,
-      tenor: item.tenor,
-      value: result[item.key],
-      magnitude: yuanAsWanMagnitudeOrNull(result[item.key]),
-    }));
-  }, [result]);
-
-  const invalidKrdRows = useMemo(() => tenorRows.filter((row) => row.magnitude === null), [tenorRows]);
-  const invalidRadarRows = useMemo(() => {
-    if (!result) {
-      return [];
-    }
-    return [
-      { key: "portfolio_modified_duration", issue: riskTensorScalarIssue(result.portfolio_modified_duration) },
-      { key: "portfolio_dv01", issue: riskTensorScalarIssue(result.portfolio_dv01) },
-      { key: "portfolio_convexity", issue: riskTensorScalarIssue(result.portfolio_convexity) },
-      { key: "cs01", issue: riskTensorScalarIssue(result.cs01) },
-      { key: "issuer_concentration_hhi", issue: riskTensorScalarIssue(result.issuer_concentration_hhi) },
-      { key: "liquidity_gap_30d_ratio", issue: riskTensorScalarIssue(result.liquidity_gap_30d_ratio) },
-    ].filter((item): item is { key: string; issue: string } => Boolean(item.issue));
-  }, [result]);
-  const issuerConcentrationIssue = result ? riskTensorScalarIssue(result.issuer_concentration_hhi) : null;
-  const liquidityGapRatioIssue = result ? riskTensorScalarIssue(result.liquidity_gap_30d_ratio) : null;
-  const durationRadarIssue = result ? riskTensorScalarIssue(result.portfolio_modified_duration) : null;
-  const kpiRadarIssues = invalidRadarRows.filter((row) => KPI_RADAR_ISSUE_KEYS.has(row.key));
-
-  const dominantTenorRow = useMemo(() => {
-    return selectDominantRiskTensorRow(tenorRows);
-  }, [tenorRows]);
-
-  useEffect(() => {
-    if (tenorRows.length === 0) {
-      setSelectedTenor("");
-      return;
-    }
-    const defaultTenor = dominantTenorRow?.tenor ?? tenorRows.find((row) => row.magnitude !== null)?.tenor ?? "";
-    const selectedRow = tenorRows.find((row) => row.tenor === selectedTenor);
-    if (!selectedTenor || !selectedRow || selectedRow.magnitude === null) {
-      setSelectedTenor(defaultTenor);
-    }
-  }, [dominantTenorRow?.tenor, selectedTenor, tenorRows]);
-
-  const selectedTenorRow =
-    tenorRows.find((row) => row.tenor === selectedTenor && row.magnitude !== null) ??
-    dominantTenorRow ??
-    tenorRows.find((row) => row.magnitude !== null);
+  const queries = useRiskTensorQueries();
+  const {
+    setSearchParams,
+    datesQuery,
+    blockedReportDates,
+    selectedBlockedReportDate,
+    highlightedBlockedReportDate,
+    latestAvailableReportDate,
+    reportDate,
+    reportDateOptions,
+    datesBlockingError,
+    datesEmpty,
+    tensorBlockedByReportDate,
+    tensorQueryEnabled,
+    tensorQuery,
+    scenarioStressQuery,
+    envelope,
+    result,
+    isEmpty,
+    tensorErrorStatusCode,
+    datesErrorStatusCode,
+    tensorErrorReportDate,
+    datesGovernanceMeta,
+    datesEmptyTraceId,
+    handleUseLatestAvailableReportDate,
+  } = queries;
+  const {
+    selectedTenor,
+    krdChartOption,
+    tenorRows,
+    invalidKrdRows,
+    invalidRadarRows,
+    issuerConcentrationIssue,
+    liquidityGapRatioIssue,
+    durationRadarIssue,
+    kpiRadarIssues,
+    dominantTenorRow,
+    selectedTenorRow,
+    showDurationScope,
+    radarNavigationItems,
+    handlePrimaryTenorDrill,
+    handleKrdTenorSelect,
+    handleKrdChartClick,
+    radarChartOption,
+  } = useRiskTensorCharts(result);
   const tensorMeta = envelope?.result_meta;
-
-  const fallbackStatus = fallbackModeLabel(tensorMeta?.fallback_mode);
-  const blockedReportDateSummary = `${blockedReportDates.length} 个陈旧日期已拦截`;
-  const metadataTablesUsed = tensorMeta?.tables_used?.filter(Boolean).join(" / ") ?? "";
-  const metadataFiltersApplied = filtersAppliedLabel(tensorMeta?.filters_applied);
+  const evidence = useRiskTensorQualityEvidence({ result, tensorMeta, reportDate, blockedReportDates, highlightedBlockedReportDate });
+  const {
+    fallbackStatus,
+    blockedReportDateSummary,
+    metadataTablesUsed,
+    metadataFiltersApplied,
+    qualityReviewReasonSummary,
+    qualityTraceFallbackDetail,
+    qualityTraceBlockedDetail,
+    qualityTraceWarningDetail,
+    qualityTraceMetadataDetail,
+    payloadQualityIssues,
+    durationCoverageQualityIssues,
+    payloadQualityIssueSummary,
+    qualityStateKey,
+    qualityEvidenceReviewItems,
+    hasMissingQualityEvidence,
+    missingQualityEvidenceLabels,
+    qualityTraceCopyText,
+    qualityEvidenceRequestCopyText,
+    payloadQualityRequestCopyText,
+    combinedQualityRequestCopyText,
+    qualityWarningsCopyText,
+    qualityEvidenceReviewRecordCopyText,
+    qualityEvidenceReviewConfirmed,
+    qualityEvidenceReviewRecordCopiedStateKey,
+    qualityEvidenceReviewRecordCopyStatus,
+    qualityWarningsCopiedStateKey,
+    qualityWarningsCopyStatus,
+    qualityEvidenceCopyStatusForCurrentState,
+    canConfirmQualityEvidenceReview,
+    qualityReviewStateLabel,
+    qualityEvidenceCopyMessage,
+    qualityEvidenceRequestCopyStatusForCurrentState,
+    qualityEvidenceRequestCopyMessage,
+    qualityEvidenceReviewRecordCopyMessage,
+    payloadQualityRequestCopyStatusForCurrentState,
+    payloadQualityRequestCopyMessage,
+    combinedQualityRequestCopyStatusForCurrentState,
+    combinedQualityRequestCopyMessage,
+    qualityWarningsCopyMessage,
+    handleCopyQualityEvidence,
+    handleCopyQualityEvidenceRequest,
+    handleCopyPayloadQualityRequest,
+    handleCopyCombinedQualityRequest,
+    handleCopyQualityWarnings,
+    handleConfirmQualityEvidenceReview,
+    handleCopyQualityEvidenceReviewRecord,
+  } = evidence;
+  const {
+    tensorErrorCopyText,
+    tensorErrorCopyStatusForCurrentState,
+    tensorErrorCopyMessage,
+    blockedDateCopyText,
+    blockedDateCopyStatusForCurrentState,
+    blockedDateCopyMessage,
+    datesErrorCopyText,
+    datesErrorCopyStatusForCurrentState,
+    datesErrorCopyMessage,
+    datesEmptyCopyText,
+    datesEmptyCopyStatusForCurrentState,
+    datesEmptyCopyMessage,
+    emptyPositionCopyText,
+    emptyPositionCopyStatusForCurrentState,
+    emptyPositionCopyMessage,
+    handleCopyTensorError,
+    handleCopyBlockedDate,
+    handleRetryDatesGovernance,
+    handleRetryTensorMainRead,
+    handleCopyDatesError,
+    handleCopyDatesEmpty,
+    handleCopyEmptyPosition,
+  } = useRiskTensorDiagnostics(queries, evidence);
   const primaryTenor = dominantTenorRow?.tenor ?? EM_DASH;
   const primaryTenorValue = dominantTenorRow ? yuanAsWanWithUnit(dominantTenorRow.value) : EM_DASH;
   const liquidity30dValue = result?.liquidity_gap_30d;
@@ -931,20 +187,6 @@ export default function RiskTensorPage() {
   const actionTileCanJump = Boolean(result?.warnings.length);
   const actionTileTone = (result?.warnings.length ?? 0) > 0 ? "warning" : "ok";
   const actionTileSummary = result?.warnings.length ? `${result.warnings.length} 条需核对` : "暂无待补项";
-  const showDurationScope = result ? hasDurationScopeDisclosure(result) : false;
-  const radarNavigationItems = result
-    ? RADAR_META.map((item) => {
-        const targetTestId =
-          item.key === "duration" && !showDurationScope
-            ? "risk-tensor-duration-kpi"
-            : RADAR_NAVIGATION_TARGETS[item.key];
-        return {
-          key: item.key,
-          name: item.name,
-          targetTestId,
-        };
-      })
-    : [];
   const topLineSummary = result
     ? [
         `主风险桶 ${primaryTenor}`,
@@ -953,405 +195,6 @@ export default function RiskTensorPage() {
       ].join(" / ")
     : "";
   const conclusionNeedsQualityReview = result?.quality_flag === "stale" || result?.quality_flag === "error";
-  const qualityReviewReasons = [
-    tensorMeta?.fallback_date ? `fallback_date ${tensorMeta.fallback_date}` : null,
-    blockedReportDates.length > 0 ? blockedReportDateSummary : null,
-    result?.warnings[0] ? describeRiskTensorWarning(result.warnings[0]) : null,
-  ].filter((item): item is string => Boolean(item));
-  const qualityReviewReasonSummary =
-    qualityReviewReasons.length > 0 ? qualityReviewReasons.join("；") : "查看质量证据";
-  const qualityTraceFallbackDetail = tensorMeta?.fallback_date
-    ? `${fallbackStatus}；fallback_date ${tensorMeta.fallback_date}`
-    : fallbackStatus;
-  const qualityTraceBlockedDetail = highlightedBlockedReportDate
-    ? `${blockedReportDateSummary}；${highlightedBlockedReportDate.report_date}${
-        highlightedBlockedReportDate.reason ? ` ${highlightedBlockedReportDate.reason}` : ""
-      }`
-    : blockedReportDateSummary;
-  const qualityTraceWarningDetail = result?.warnings.filter(Boolean).join(" / ") || "无预警";
-  const qualityTraceMetadataDetail = `trace_id ${tensorMeta?.trace_id ?? EM_DASH}；evidence_rows ${
-    typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : EM_DASH
-  }；tables_used ${metadataTablesUsed || EM_DASH}；filters_applied ${metadataFiltersApplied || EM_DASH}`;
-  const payloadQualityIssues = result ? riskTensorPayloadQualityIssues(result) : [];
-  const durationCoverageQualityIssues = payloadQualityIssues.filter((item) =>
-    item.key === "duration_excluded_count" || REQUIRED_DURATION_SCOPE_FIELDS.some((field) => field.key === item.key),
-  );
-  const payloadQualityIssueLabels = payloadQualityIssues.map((item) => `${item.label} ${item.issue}`);
-  const payloadQualityIssueSummary = payloadQualityIssueLabels.join(" / ");
-  const qualityEvidenceStateKey = [
-    `evidence_rows:${typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "missing"}`,
-    `tables_used:${metadataTablesUsed || "missing"}`,
-    `filters_applied:${metadataFiltersApplied || "missing"}`,
-  ].join("|");
-  const qualityLineageStateKey = [
-    `source_version:${tensorMeta?.source_version ?? "missing"}`,
-    `rule_version:${tensorMeta?.rule_version ?? "missing"}`,
-  ].join("|");
-  const qualityFallbackStateKey = [
-    `fallback_mode:${tensorMeta?.fallback_mode ?? "missing"}`,
-    `fallback_date:${tensorMeta?.fallback_date ?? "missing"}`,
-  ].join("|");
-  const qualityIssuanceStateKey = [
-    `basis:${tensorMeta?.basis ?? "missing"}`,
-    `cache_version:${tensorMeta?.cache_version ?? "missing"}`,
-    `generated_at:${tensorMeta?.generated_at ?? "missing"}`,
-  ].join("|");
-  const qualityWarningStateKey = `warning:${qualityTraceWarningDetail}`;
-  const qualityBlockedDateStateKey = `blocked:${qualityTraceBlockedDetail}`;
-  const qualityFlagStateKey = `quality_flag:${result?.quality_flag ?? tensorMeta?.quality_flag ?? "missing"}`;
-  const qualityResultKindStateKey = `result_kind:${tensorMeta?.result_kind ?? "missing"}`;
-  const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}|${qualityLineageStateKey}|${qualityFallbackStateKey}|${qualityIssuanceStateKey}|${qualityWarningStateKey}|${qualityBlockedDateStateKey}|${qualityFlagStateKey}|${qualityResultKindStateKey}`;
-
-  useEffect(() => {
-    setQualityEvidenceCopyStatus("idle");
-    setQualityEvidenceCopiedStateKey("");
-  }, [qualityStateKey]);
-
-  useEffect(() => {
-    setQualityEvidenceReviewConfirmed(false);
-    setQualityEvidenceReviewRecordCopyStatus("idle");
-    setQualityEvidenceReviewRecordCopiedStateKey("");
-    setQualityEvidenceRequestCopyStatus("idle");
-    setQualityEvidenceRequestCopiedStateKey("");
-    setPayloadQualityRequestCopyStatus("idle");
-    setPayloadQualityRequestCopiedStateKey("");
-    setCombinedQualityRequestCopyStatus("idle");
-    setCombinedQualityRequestCopiedStateKey("");
-    setQualityWarningsCopyStatus("idle");
-    setQualityWarningsCopiedStateKey("");
-  }, [qualityStateKey]);
-  const qualityEvidenceReviewItems = [
-    {
-      key: "evidence_rows",
-      label: "evidence_rows",
-      status: typeof tensorMeta?.evidence_rows === "number" ? "已提供" : "未提供",
-    },
-    {
-      key: "tables_used",
-      label: "tables_used",
-      status: metadataTablesUsed ? "已提供" : "未提供",
-    },
-    {
-      key: "filters_applied",
-      label: "filters_applied",
-      status: metadataFiltersApplied ? "已提供" : "未提供",
-    },
-  ];
-  const hasMissingQualityEvidence = qualityEvidenceReviewItems.some((item) => item.status === "未提供");
-  const missingQualityEvidenceLabels = qualityEvidenceReviewItems
-    .filter((item) => item.status === "未提供")
-    .map((item) => item.label);
-  const qualityEvidenceCopyStatusForCurrentState =
-    qualityEvidenceCopiedStateKey === qualityStateKey ? qualityEvidenceCopyStatus : "idle";
-  const canConfirmQualityEvidenceReview =
-    !hasMissingQualityEvidence &&
-    qualityEvidenceCopyStatusForCurrentState === "copied" &&
-    !qualityEvidenceReviewConfirmed;
-  const qualityReviewStateLabel =
-    hasMissingQualityEvidence
-      ? "证据不完整，待补证"
-      : qualityEvidenceReviewConfirmed
-        ? "业务已确认"
-      : qualityEvidenceCopyStatusForCurrentState === "copied"
-        ? "证据已复制，待业务确认"
-        : qualityEvidenceCopyStatusForCurrentState === "failed"
-          ? "复制失败，需手动选择证据"
-          : "待复核";
-  const qualityIssuanceCopyLines = [
-    `basis ${tensorMeta?.basis ?? "未提供"}`,
-    `cache_version ${tensorMeta?.cache_version ?? "未提供"}`,
-    `generated_at ${tensorMeta?.generated_at ?? "未提供"}`,
-  ];
-  const qualityTraceCopyText = [
-    "风险张量质量证据",
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
-    `复核状态 ${qualityReviewStateLabel}`,
-    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
-    ...qualityIssuanceCopyLines,
-    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
-    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
-    `fallback ${qualityTraceFallbackDetail}`,
-    `陈旧日期 ${qualityTraceBlockedDetail}`,
-    `warning ${qualityTraceWarningDetail}`,
-    `主读 payload 字段 ${payloadQualityIssueSummary || "全部可解析"}`,
-    `证据范围 ${qualityTraceMetadataDetail}`,
-    "证据字段复核",
-    ...qualityEvidenceReviewItems.map((item) => `${item.label} ${item.status}`),
-  ].join("\n");
-  const qualityEvidenceRequestCopyText = [
-    "风险张量质量证据补证请求",
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
-    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
-    ...qualityIssuanceCopyLines,
-    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
-    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
-    `缺失字段 ${missingQualityEvidenceLabels.join(" / ") || "无"}`,
-    "请在 result_meta 补充 evidence_rows、tables_used、filters_applied 后重新出具",
-  ].join("\n");
-  const payloadQualityRequestCopyText = [
-    "风险张量主读 payload 补证请求",
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
-    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
-    ...qualityIssuanceCopyLines,
-    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
-    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
-    `异常字段 ${payloadQualityIssueSummary || "无"}`,
-    "后端主读字段缺失或不可解析时，页面只保留后端原始展示/占位，不会在前端补算正式指标",
-    "请核对风险张量物化任务、字段序列化、result_meta 证据和来源 lineage 后重新出具",
-  ].join("\n");
-  const combinedQualityRequestCopyText = [
-    "风险张量首屏补证包",
-    payloadQualityRequestCopyText,
-    "",
-    qualityEvidenceRequestCopyText,
-  ].join("\n");
-  const qualityWarningsCopyText = [
-    "风险张量质量预警清单",
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
-    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
-    ...qualityIssuanceCopyLines,
-    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
-    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
-    ...(result?.warnings ?? []).map((warning, index) => `warning[${index + 1}] ${warning}`),
-  ].join("\n");
-  const qualityEvidenceReviewRecordCopyText = [
-    "风险张量质量证据确认记录",
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
-    "确认状态 业务已确认",
-    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
-    ...qualityIssuanceCopyLines,
-    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
-    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
-    `quality_flag ${result?.quality_flag ?? tensorMeta?.quality_flag ?? "未提供"}`,
-    `fallback ${qualityTraceFallbackDetail}`,
-    `陈旧日期 ${qualityTraceBlockedDetail}`,
-    `warning ${qualityTraceWarningDetail}`,
-    `证据范围 ${qualityTraceMetadataDetail}`,
-    `主读 payload 字段 ${payloadQualityIssueSummary || "全部可解析"}`,
-    "证据字段复核",
-    ...qualityEvidenceReviewItems.map((item) => `${item.label} ${item.status}`),
-  ].join("\n");
-  const qualityEvidenceCopyMessage =
-    qualityEvidenceCopyStatusForCurrentState === "copied"
-      ? "已复制证据摘要"
-      : qualityEvidenceCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择证据"
-        : "";
-  const qualityEvidenceRequestCopyStatusForCurrentState =
-    qualityEvidenceRequestCopiedStateKey === qualityStateKey ? qualityEvidenceRequestCopyStatus : "idle";
-  const qualityEvidenceRequestCopyMessage =
-    qualityEvidenceRequestCopyStatusForCurrentState === "copied"
-      ? "已复制补证请求"
-      : qualityEvidenceRequestCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择补证请求"
-        : "";
-  const qualityEvidenceReviewRecordCopyMessage =
-    qualityEvidenceReviewRecordCopiedStateKey === qualityStateKey && qualityEvidenceReviewRecordCopyStatus === "copied"
-      ? "已复制确认记录"
-      : qualityEvidenceReviewRecordCopiedStateKey === qualityStateKey &&
-          qualityEvidenceReviewRecordCopyStatus === "failed"
-        ? "复制失败，请手动选择确认记录"
-        : "";
-  const payloadQualityRequestCopyStatusForCurrentState =
-    payloadQualityRequestCopiedStateKey === qualityStateKey ? payloadQualityRequestCopyStatus : "idle";
-  const payloadQualityRequestCopyMessage =
-    payloadQualityRequestCopyStatusForCurrentState === "copied"
-      ? "已复制字段补证请求"
-      : payloadQualityRequestCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择字段补证请求"
-        : "";
-  const combinedQualityRequestCopyStatusForCurrentState =
-    combinedQualityRequestCopiedStateKey === qualityStateKey ? combinedQualityRequestCopyStatus : "idle";
-  const combinedQualityRequestCopyMessage =
-    combinedQualityRequestCopyStatusForCurrentState === "copied"
-      ? "已复制完整补证包"
-      : combinedQualityRequestCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择完整补证包"
-        : "";
-  const qualityWarningsCopyMessage =
-    qualityWarningsCopiedStateKey === qualityStateKey && qualityWarningsCopyStatus === "copied"
-      ? "已复制预警清单"
-      : qualityWarningsCopiedStateKey === qualityStateKey && qualityWarningsCopyStatus === "failed"
-        ? "复制失败，请手动选择预警清单"
-        : "";
-  const tensorErrorCopyText = [
-    "风险张量主读面加载失败排查信息",
-    `报告日 ${tensorErrorReportDate}`,
-    `HTTP 状态 ${tensorErrorStatusCode || "未知"}`,
-    `日期治理 trace_id ${datesGovernanceMeta?.trace_id ?? "未提供"}`,
-    `basis ${datesGovernanceMeta?.basis ?? "未提供"}`,
-    `cache_version ${datesGovernanceMeta?.cache_version ?? "未提供"}`,
-    `generated_at ${datesGovernanceMeta?.generated_at ?? "未提供"}`,
-    `source_version ${datesGovernanceMeta?.source_version ?? "未提供"}`,
-    `rule_version ${datesGovernanceMeta?.rule_version ?? "未提供"}`,
-    "主读面 trace_id 未提供",
-    "请先核对正式风险张量物化和 lineage 新鲜度",
-    "页面不会使用缓存或前端补算替代正式主读结果",
-  ].join("\n");
-  const tensorErrorCopyStateKey = [
-    `report_date:${tensorErrorReportDate}`,
-    `status:${tensorErrorStatusCode || "unknown"}`,
-    `dates_trace_id:${datesGovernanceMeta?.trace_id ?? "missing"}`,
-    `basis:${datesGovernanceMeta?.basis ?? "missing"}`,
-    `cache_version:${datesGovernanceMeta?.cache_version ?? "missing"}`,
-    `generated_at:${datesGovernanceMeta?.generated_at ?? "missing"}`,
-    `source_version:${datesGovernanceMeta?.source_version ?? "missing"}`,
-    `rule_version:${datesGovernanceMeta?.rule_version ?? "missing"}`,
-  ].join("|");
-  const tensorErrorCopyStatusForCurrentState =
-    tensorErrorCopiedStateKey === tensorErrorCopyStateKey ? tensorErrorCopyStatus : "idle";
-  const tensorErrorCopyMessage =
-    tensorErrorCopyStatusForCurrentState === "copied"
-      ? "已复制排查信息"
-      : tensorErrorCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择排查信息"
-        : "";
-  const blockedDateCopyText = [
-    "风险张量报告日拦截排查信息",
-    `报告日 ${selectedBlockedReportDate?.report_date ?? (explicitReportDate || "未选择")}`,
-    `reason ${selectedBlockedReportDate?.reason || "后端未返回原因"}`,
-    `日期治理 trace_id ${datesGovernanceMeta?.trace_id ?? "未提供"}`,
-    "主读面未读取",
-    "请切换到可用报告日",
-  ].join("\n");
-  const blockedDateCopyStateKey = [
-    `report_date:${selectedBlockedReportDate?.report_date ?? (explicitReportDate || "missing")}`,
-    `reason:${selectedBlockedReportDate?.reason || "missing"}`,
-    `explicit_report_date:${explicitReportDate || "missing"}`,
-    `trace_id:${datesGovernanceMeta?.trace_id ?? "missing"}`,
-    `basis:${datesGovernanceMeta?.basis ?? "missing"}`,
-    `cache_version:${datesGovernanceMeta?.cache_version ?? "missing"}`,
-    `generated_at:${datesGovernanceMeta?.generated_at ?? "missing"}`,
-    `source_version:${datesGovernanceMeta?.source_version ?? "missing"}`,
-    `rule_version:${datesGovernanceMeta?.rule_version ?? "missing"}`,
-  ].join("|");
-  const blockedDateCopyStatusForCurrentState =
-    blockedDateCopiedStateKey === blockedDateCopyStateKey ? blockedDateCopyStatus : "idle";
-  const blockedDateCopyMessage =
-    blockedDateCopyStatusForCurrentState === "copied"
-      ? "已复制拦截信息"
-      : blockedDateCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择拦截信息"
-        : "";
-  const datesErrorCopyText = [
-    "风险张量报告日列表加载失败排查信息",
-    `HTTP 状态 ${datesErrorStatusCode || "未知"}`,
-    `错误 ${errorEvidenceMessage(datesQuery.error) || "未提供"}`,
-    "请求 /api/risk/tensor/dates",
-    `报告日参数 ${datesErrorReportDate}`,
-    "页面不会回退到硬编码报告日",
-    "主读面未读取",
-    "请核对风险张量报告日物化任务和日期治理接口",
-  ].join("\n");
-  const datesErrorCopyStateKey = [
-    `report_date_param:${datesErrorReportDate}`,
-    `status:${datesErrorStatusCode || "unknown"}`,
-    `error:${errorEvidenceMessage(datesQuery.error) || "missing"}`,
-  ].join("|");
-  const datesErrorCopyStatusForCurrentState =
-    datesErrorCopiedStateKey === datesErrorCopyStateKey ? datesErrorCopyStatus : "idle";
-  const datesErrorCopyMessage =
-    datesErrorCopyStatusForCurrentState === "copied"
-      ? "已复制日期排查信息"
-      : datesErrorCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择日期排查信息"
-        : "";
-  const datesEmptyCopyStateKey = [
-    `trace_id:${datesEmptyTraceId}`,
-    `report_date_param:${datesErrorReportDate}`,
-    `available_count:${datesQuery.data?.result.report_dates.length ?? "missing"}`,
-  ].join("|");
-  const datesEmptyCopyText = [
-    "风险张量报告日列表为空排查信息",
-    `trace_id ${datesEmptyTraceId}`,
-    "可用报告日 0 个",
-    `报告日参数 ${datesErrorReportDate}`,
-    "页面不会回退到硬编码报告日",
-    "主读面未读取",
-    "请核对风险张量报告日物化任务和日期治理结果",
-  ].join("\n");
-  const datesEmptyCopyStatusForCurrentState =
-    datesEmptyCopiedStateKey === datesEmptyCopyStateKey ? datesEmptyCopyStatus : "idle";
-  const datesEmptyCopyMessage =
-    datesEmptyCopyStatusForCurrentState === "copied"
-      ? "已复制空日期排查信息"
-      : datesEmptyCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择空日期排查信息"
-        : "";
-  const emptyPositionCopyStateKey = [
-    `report_date:${result?.report_date ?? (reportDate || "missing")}`,
-    `bond_count:${result?.bond_count ?? "missing"}`,
-    `quality_flag:${result?.quality_flag ?? tensorMeta?.quality_flag ?? "missing"}`,
-    `trace_id:${tensorMeta?.trace_id ?? "missing"}`,
-    `meta_quality_flag:${tensorMeta?.quality_flag ?? "missing"}`,
-    `evidence_rows:${typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "missing"}`,
-    `tables_used:${metadataTablesUsed || "missing"}`,
-    `filters_applied:${metadataFiltersApplied || "missing"}`,
-  ].join("|");
-  const emptyPositionCopyText = [
-    "风险张量空持仓排查信息",
-    `报告日 ${result?.report_date ?? (reportDate || "未选择")}`,
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `bond_count ${result?.bond_count ?? "未提供"}`,
-    `quality_flag ${result?.quality_flag ?? tensorMeta?.quality_flag ?? "未提供"}`,
-    `evidence_rows ${typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"}`,
-    `tables_used ${metadataTablesUsed || "未提供"}`,
-    `filters_applied ${metadataFiltersApplied || "未提供"}`,
-    "页面不会在前端补算正式指标",
-    "请核对持仓快照、风险张量物化任务和元数据证据",
-  ].join("\n");
-  const emptyPositionCopyStatusForCurrentState =
-    emptyPositionCopiedStateKey === emptyPositionCopyStateKey ? emptyPositionCopyStatus : "idle";
-  const emptyPositionCopyMessage =
-    emptyPositionCopyStatusForCurrentState === "copied"
-      ? "已复制空持仓排查信息"
-      : emptyPositionCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择空持仓排查信息"
-        : "";
-
-  useEffect(() => {
-    setTensorErrorCopyStatus("idle");
-    setTensorErrorCopiedStateKey("");
-  }, [tensorErrorCopyStateKey]);
-
-  useEffect(() => {
-    setBlockedDateCopyStatus("idle");
-    setBlockedDateCopiedStateKey("");
-  }, [blockedDateCopyStateKey]);
-
-  useEffect(() => {
-    setDatesErrorCopyStatus("idle");
-    setDatesErrorCopiedStateKey("");
-  }, [datesErrorCopyStateKey]);
-
-  useEffect(() => {
-    setDatesEmptyCopyStatus("idle");
-    setDatesEmptyCopiedStateKey("");
-  }, [datesEmptyCopyStateKey]);
-
-  useEffect(() => {
-    emptyPositionCopyStateKeyRef.current = emptyPositionCopyStateKey;
-    setEmptyPositionCopyStatus("idle");
-    setEmptyPositionCopiedStateKey("");
-  }, [emptyPositionCopyStateKey]);
-
-  const handlePrimaryTenorDrill = () => {
-    if (!dominantTenorRow) {
-      scrollRiskTensorTargetIntoView(
-        document.querySelector<HTMLElement>('[data-testid="risk-tensor-krd-quality-note"]'),
-      );
-      return;
-    }
-    setSelectedTenor(dominantTenorRow.tenor);
-    scrollRiskTensorTargetIntoView(
-      document.querySelector<HTMLElement>('[data-testid="risk-tensor-tenor-drill"]'),
-    );
-  };
 
   const handleQualityDetailJump = () => {
     scrollRiskTensorTargetIntoView(
@@ -1382,388 +225,12 @@ export default function RiskTensorPage() {
     scrollRiskTensorTargetIntoView(document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`));
   };
 
-  const handleCopyQualityEvidence = () => {
-    const copiedStateKey = qualityStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setQualityEvidenceCopiedStateKey(copiedStateKey);
-      setQualityEvidenceCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(qualityTraceCopyText)
-      .then(() => {
-        setQualityEvidenceCopiedStateKey(copiedStateKey);
-        setQualityEvidenceCopyStatus("copied");
-      })
-      .catch(() => {
-        setQualityEvidenceCopiedStateKey(copiedStateKey);
-        setQualityEvidenceCopyStatus("failed");
-      });
-  };
-
-  const handleCopyQualityEvidenceRequest = () => {
-    const copiedStateKey = qualityStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setQualityEvidenceRequestCopiedStateKey(copiedStateKey);
-      setQualityEvidenceRequestCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(qualityEvidenceRequestCopyText)
-      .then(() => {
-        setQualityEvidenceRequestCopiedStateKey(copiedStateKey);
-        setQualityEvidenceRequestCopyStatus("copied");
-      })
-      .catch(() => {
-        setQualityEvidenceRequestCopiedStateKey(copiedStateKey);
-        setQualityEvidenceRequestCopyStatus("failed");
-      });
-  };
-
-  const handleCopyPayloadQualityRequest = () => {
-    const copiedStateKey = qualityStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setPayloadQualityRequestCopiedStateKey(copiedStateKey);
-      setPayloadQualityRequestCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(payloadQualityRequestCopyText)
-      .then(() => {
-        setPayloadQualityRequestCopiedStateKey(copiedStateKey);
-        setPayloadQualityRequestCopyStatus("copied");
-      })
-      .catch(() => {
-        setPayloadQualityRequestCopiedStateKey(copiedStateKey);
-        setPayloadQualityRequestCopyStatus("failed");
-      });
-  };
-
-  const handleCopyCombinedQualityRequest = () => {
-    const copiedStateKey = qualityStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setCombinedQualityRequestCopiedStateKey(copiedStateKey);
-      setCombinedQualityRequestCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(combinedQualityRequestCopyText)
-      .then(() => {
-        setCombinedQualityRequestCopiedStateKey(copiedStateKey);
-        setCombinedQualityRequestCopyStatus("copied");
-      })
-      .catch(() => {
-        setCombinedQualityRequestCopiedStateKey(copiedStateKey);
-        setCombinedQualityRequestCopyStatus("failed");
-      });
-  };
-
-  const handleCopyQualityWarnings = () => {
-    const copiedStateKey = qualityStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setQualityWarningsCopiedStateKey(copiedStateKey);
-      setQualityWarningsCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(qualityWarningsCopyText)
-      .then(() => {
-        setQualityWarningsCopiedStateKey(copiedStateKey);
-        setQualityWarningsCopyStatus("copied");
-      })
-      .catch(() => {
-        setQualityWarningsCopiedStateKey(copiedStateKey);
-        setQualityWarningsCopyStatus("failed");
-      });
-  };
-
-  const handleConfirmQualityEvidenceReview = () => {
-    setQualityEvidenceReviewConfirmed(true);
-  };
-
-  const handleCopyQualityEvidenceReviewRecord = () => {
-    const copiedStateKey = qualityStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setQualityEvidenceReviewRecordCopiedStateKey(copiedStateKey);
-      setQualityEvidenceReviewRecordCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(qualityEvidenceReviewRecordCopyText)
-      .then(() => {
-        setQualityEvidenceReviewRecordCopiedStateKey(copiedStateKey);
-        setQualityEvidenceReviewRecordCopyStatus("copied");
-      })
-      .catch(() => {
-        setQualityEvidenceReviewRecordCopiedStateKey(copiedStateKey);
-        setQualityEvidenceReviewRecordCopyStatus("failed");
-      });
-  };
-
-  const handleCopyTensorError = () => {
-    const copiedStateKey = tensorErrorCopyStateKey;
-    tensorErrorCopyRequestKeyRef.current = copiedStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setTensorErrorCopiedStateKey(copiedStateKey);
-      setTensorErrorCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(tensorErrorCopyText)
-      .then(() => {
-        if (tensorErrorCopyRequestKeyRef.current !== copiedStateKey) {
-          return;
-        }
-        setTensorErrorCopiedStateKey(copiedStateKey);
-        setTensorErrorCopyStatus("copied");
-      })
-      .catch(() => {
-        if (tensorErrorCopyRequestKeyRef.current !== copiedStateKey) {
-          return;
-        }
-        setTensorErrorCopiedStateKey(copiedStateKey);
-        setTensorErrorCopyStatus("failed");
-      });
-  };
-
-  const handleCopyBlockedDate = () => {
-    const copiedStateKey = blockedDateCopyStateKey;
-    blockedDateCopyRequestKeyRef.current = copiedStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setBlockedDateCopiedStateKey(copiedStateKey);
-      setBlockedDateCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(blockedDateCopyText)
-      .then(() => {
-        if (blockedDateCopyRequestKeyRef.current !== copiedStateKey) {
-          return;
-        }
-        setBlockedDateCopiedStateKey(copiedStateKey);
-        setBlockedDateCopyStatus("copied");
-      })
-      .catch(() => {
-        if (blockedDateCopyRequestKeyRef.current !== copiedStateKey) {
-          return;
-        }
-        setBlockedDateCopiedStateKey(copiedStateKey);
-        setBlockedDateCopyStatus("failed");
-      });
-  };
-
-  const handleUseLatestAvailableReportDate = () => {
-    if (!latestAvailableReportDate) {
-      return;
-    }
-    setSearchParams((previous) => {
-      const next = new URLSearchParams(previous);
-      next.set("report_date", latestAvailableReportDate);
-      return next;
-    });
-  };
-
-  const clearDatesGovernanceCopyFeedback = () => {
-    setBlockedDateCopyStatus("idle");
-    setBlockedDateCopiedStateKey("");
-    blockedDateCopyRequestKeyRef.current = "";
-    setDatesErrorCopyStatus("idle");
-    setDatesErrorCopiedStateKey("");
-    datesErrorCopyRequestKeyRef.current = "";
-    setDatesEmptyCopyStatus("idle");
-    setDatesEmptyCopiedStateKey("");
-    datesEmptyCopyRequestKeyRef.current = "";
-  };
-
-  const handleRetryDatesGovernance = () => {
-    clearDatesGovernanceCopyFeedback();
-    void datesQuery.refetch();
-  };
-
-  const handleRetryTensorMainRead = () => {
-    setTensorErrorCopyStatus("idle");
-    setTensorErrorCopiedStateKey("");
-    tensorErrorCopyRequestKeyRef.current = "";
-    void tensorQuery.refetch();
-  };
-
-  const handleCopyDatesError = () => {
-    const copiedStateKey = datesErrorCopyStateKey;
-    datesErrorCopyRequestKeyRef.current = copiedStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setDatesErrorCopiedStateKey(copiedStateKey);
-      setDatesErrorCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(datesErrorCopyText)
-      .then(() => {
-        if (datesErrorCopyRequestKeyRef.current !== copiedStateKey) {
-          return;
-        }
-        setDatesErrorCopiedStateKey(copiedStateKey);
-        setDatesErrorCopyStatus("copied");
-      })
-      .catch(() => {
-        if (datesErrorCopyRequestKeyRef.current !== copiedStateKey) {
-          return;
-        }
-        setDatesErrorCopiedStateKey(copiedStateKey);
-        setDatesErrorCopyStatus("failed");
-      });
-  };
-
-  const handleCopyDatesEmpty = () => {
-    const copiedStateKey = datesEmptyCopyStateKey;
-    datesEmptyCopyRequestKeyRef.current = copiedStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setDatesEmptyCopiedStateKey(copiedStateKey);
-      setDatesEmptyCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(datesEmptyCopyText)
-      .then(() => {
-        if (datesEmptyCopyRequestKeyRef.current !== copiedStateKey) {
-          return;
-        }
-        setDatesEmptyCopiedStateKey(copiedStateKey);
-        setDatesEmptyCopyStatus("copied");
-      })
-      .catch(() => {
-        if (datesEmptyCopyRequestKeyRef.current !== copiedStateKey) {
-          return;
-        }
-        setDatesEmptyCopiedStateKey(copiedStateKey);
-        setDatesEmptyCopyStatus("failed");
-      });
-  };
-
-  const handleCopyEmptyPosition = () => {
-    const copiedStateKey = emptyPositionCopyStateKey;
-    emptyPositionCopyStateKeyRef.current = copiedStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setEmptyPositionCopiedStateKey(copiedStateKey);
-      setEmptyPositionCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(emptyPositionCopyText)
-      .then(() => {
-        if (emptyPositionCopyStateKeyRef.current !== copiedStateKey) {
-          return;
-        }
-        setEmptyPositionCopiedStateKey(copiedStateKey);
-        setEmptyPositionCopyStatus("copied");
-      })
-      .catch(() => {
-        if (emptyPositionCopyStateKeyRef.current !== copiedStateKey) {
-          return;
-        }
-        setEmptyPositionCopiedStateKey(copiedStateKey);
-        setEmptyPositionCopyStatus("failed");
-      });
-  };
-
-  const handleKrdTenorSelect = (row: (typeof tenorRows)[number], options?: { scrollToDrill?: boolean }) => {
-    if (row.magnitude === null) {
-      scrollRiskTensorTargetIntoView(
-        document.querySelector<HTMLElement>('[data-testid="risk-tensor-krd-quality-note"]'),
-      );
-      return;
-    }
-    setSelectedTenor(row.tenor);
-    if (options?.scrollToDrill) {
-      scrollRiskTensorTargetIntoView(
-        document.querySelector<HTMLElement>('[data-testid="risk-tensor-tenor-drill"]'),
-      );
-    }
-  };
-
-  const handleKrdChartClick = (params: KrdChartClickParams) => {
-    const tenor = typeof params.name === "string" ? params.name : "";
-    const row = tenorRows.find((item) => item.tenor === tenor);
-    if (!row) {
-      return;
-    }
-    handleKrdTenorSelect(row, { scrollToDrill: true });
-  };
-
   const handleRequiredInformationJump = () => {
     if (!result?.warnings.length) {
       return;
     }
     handleQualityDetailJump();
   };
-
-  const radarChartOption = useMemo((): EChartsOption | null => {
-    if (!result) {
-      return null;
-    }
-    const duration = chartMagnitudeOrNull(result.portfolio_modified_duration);
-    const dv01 = yuanAsWanMagnitudeOrNull(result.portfolio_dv01);
-    const convexity = chartMagnitudeOrNull(result.portfolio_convexity);
-    const cs01 = yuanAsWanMagnitudeOrNull(result.cs01);
-    const hhi = chartMagnitudeOrNull(result.issuer_concentration_hhi);
-    const liqRatio = chartMagnitudeOrNull(result.liquidity_gap_30d_ratio);
-
-    const dv01Max = dynamicAxisMax(dv01 ?? 0, 1);
-    const cs01Max = dynamicAxisMax(cs01 ?? 0, 1);
-
-    const indicator = RADAR_META.map((m) => {
-      if (m.max === "dynamic_dv01") {
-        return radarIndicator(m.name, dv01Max);
-      }
-      if (m.max === "dynamic_cs01") {
-        return radarIndicator(m.name, cs01Max);
-      }
-      return radarIndicator(m.name, m.max);
-    });
-
-    const radarValues = [duration, dv01, convexity, cs01, hhi, liqRatio];
-
-    return nocturneChartTheme.createBaseChartOption({
-      grid: undefined,
-      tooltip: {
-        trigger: "item",
-      },
-      radar: {
-        indicator,
-        radius: "66%",
-        center: ["50%", "54%"],
-        axisName: {
-          color: nocturneChartTheme.axisLabel.color,
-          fontSize: 12,
-        },
-        splitLine: {
-          lineStyle: { color: nocturneChartTheme.splitLine.lineStyle.color },
-        },
-        splitArea: { show: false },
-        axisLine: { lineStyle: { color: nocturneChartTheme.axisLine.lineStyle.color } },
-      },
-      series: [
-        {
-          type: "radar",
-          symbolSize: 5,
-          lineStyle: { width: 1.5, color: nocturneChartTheme.palette[0] },
-          areaStyle: {
-            color: nocturneChartTheme.palette[0],
-            opacity: 0.15,
-          },
-          itemStyle: {
-            color: nocturneChartTheme.palette[0],
-            borderColor: nocturneChartTheme.palette[0],
-          },
-          data: [
-            {
-              value: radarValues,
-              name: "组合",
-            },
-          ],
-        },
-      ],
-    });
-  }, [result]);
 
   const krdQualityNote =
     invalidKrdRows.length > 0 ? (
