@@ -48,6 +48,66 @@ DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS = (
 )
 
 DISPLAY_ONLY_FILE_SNIPPETS = {
+    "features/workbench/module-home/PortfolioHomeLayout.tsx": (
+        # Known backend field names and evidence-copy translation only.
+        '"weighted_convexity", "total_spread_dv01", "reinvestment_ratio_1y",',
+        '.replace(/直接展示 headline \\/ risk-indicators 字段，不以前端估算监管 DV01。/g, "风险指标口径见债券分析；监管 DV01 以已核验数据为准。")',
+    ),
+    "features/workbench/module-home/portfolioHomeViewModel.ts": (
+        # These readouts format backend KPI values; the comment describes MoM display units.
+        "* 收益率/票息/利差用 bp 差，未实现损益用亿元差，规模/久期/DV01 用相对百分比。",
+        'label: "DV01 合计",',
+        '''? `久期 ${formatBondHeadlineKpi("weighted_duration", formalBondKpis.weighted_duration)}，DV01 ${formatBondHeadlineKpi(
+                "total_dv01",
+                formalBondKpis.total_dv01,
+              )}，${creditTone}（信用占比 ${formatRatePercent(formalRisk.credit_ratio)}%）。`''',
+        '''? `久期 ${formatBondHeadlineKpi("weighted_duration", bondKpis.weighted_duration)}，DV01 ${formatBondHeadlineKpi(
+                  "total_dv01",
+                  bondKpis.total_dv01,
+                )}，${creditTone}（信用占比 ${formatRatePercent(risk.credit_ratio)}%，仅分析/复核）。`''',
+        '? `久期 ${formatYears(formalRisk.weighted_duration)} 年，DV01 ${formatDv01Wan(formalRisk.total_dv01)} 万元，${creditTone}。`',
+        '''? `久期 ${formatYears(risk.weighted_duration)} 年，DV01 ${formatDv01Wan(
+                    risk.total_dv01,
+                  )} 万元，${creditTone}（仅分析/复核）。`''',
+        'evidence: "直接展示 headline / risk-indicators 字段，不以前端估算监管 DV01。",',
+    ),
+    "features/workbench/module-home/riskHomeDetailModel.ts": (
+        # Static field definitions and unit formatting for backend risk-tensor values.
+        'const RISK_KRD_FIELDS: ReadonlyArray<{ key: keyof RiskTensorPayload; label: string }> = [',
+        '{ key: "krd_1y", label: "KRD 1Y" },',
+        '{ key: "krd_3y", label: "KRD 3Y" },',
+        '{ key: "krd_5y", label: "KRD 5Y" },',
+        '{ key: "krd_7y", label: "KRD 7Y" },',
+        '{ key: "krd_10y", label: "KRD 10Y" },',
+        '{ key: "krd_30y", label: "KRD 30Y" },',
+        'const RISK_ACCOUNTING_DV01_FIELDS: ReadonlyArray<{ key: RiskAccountingDv01FieldKey; label: string }> = [',
+        '{ key: "ac_dv01", label: "AC DV01（摊余成本）" },',
+        '{ key: "oci_dv01", label: "OCI DV01（其他综合收益）" },',
+        '{ key: "tpl_dv01", label: "TPL DV01（交易性）" },',
+        '{ key: "other_dv01", label: "未分类 DV01" },',
+        "// 保留正负号：负缺口/空头 KRD 的方向有业务含义，与风险张量页保持一致。",
+        'subtitle: "监管 / 估值 / 利率风险 / CS01 / 凸性",',
+        '{ key: "regulatory_dv01", label: "监管口径 DV01", format: "wan" },',
+        '{ key: "portfolio_dv01", label: "估值 DV01", format: "wan" },',
+        '{ key: "rate_risk_dv01", label: "利率风险 DV01", format: "wan" },',
+        '{ key: "cs01", label: "CS01", format: "wan" },',
+        '{ key: "portfolio_convexity", label: "组合凸性", format: "display" },',
+        'title: "会计分类 DV01",',
+        'fields: RISK_ACCOUNTING_DV01_FIELDS.map((field) => ({ ...field, format: "wan" as const })),',
+        'title: "KRD 明细",',
+        'fields: RISK_KRD_FIELDS.map((field) => ({ ...field, format: "wan" as const })),',
+    ),
+    "features/workbench/module-home/riskHomeViewModel.ts": (
+        # Labels, disclosure copy, and readouts of already-computed tensor fields.
+        '"监管 DV01 待接入，不能判定限额状态。"',
+        'label: "监管 DV01",',
+        'detail: "来自 regulatory_dv01；缺失时不使用组合 DV01 替代。",',
+        'label: "组合 DV01",',
+        'title: "久期与 DV01",',
+        '? `DV01 ${riskTensorWanWithUnit(tensor.portfolio_dv01)}，修正久期 ${riskTensorDisplay(tensor.portfolio_modified_duration)}。`',
+        '? `CS01 ${riskTensorWanWithUnit(tensor.cs01)}，前五大权重 ${riskTensorRatioPercent(tensor.issuer_top5_weight)}。`',
+        'evidence: "CS01 是信用债 DV01 代理；首页只提供字段摘要，不在前端重算。",',
+    ),
     "features/workbench/module-home/MarketPortfolioScenarioPanel.tsx": (
         # The amount is the API's estimated_impact; only explanatory copy is removed.
         "监管口径 DV01；估算需人工复核。",
@@ -386,6 +446,26 @@ def test_frontend_source_does_not_contain_formal_finance_logic_tokens():
             "features/workbench/module-home/riskHomeAdapter.ts",
             'const caption = { caption: "信用债 DV01 代理 · 每 bp", };',
             "const derivedDV01 = amount * duration * 0.0001;",
+        ),
+        (
+            "features/workbench/module-home/PortfolioHomeLayout.tsx",
+            'const fields = ["weighted_convexity", "total_spread_dv01", "reinvestment_ratio_1y",];',
+            "const convexity = amount * duration * duration;",
+        ),
+        (
+            "features/workbench/module-home/portfolioHomeViewModel.ts",
+            'const metric = { label: "DV01 合计", };',
+            "const derivedDV01 = amount * duration * 0.0001;",
+        ),
+        (
+            "features/workbench/module-home/riskHomeDetailModel.ts",
+            'const fields = [{ key: "krd_1y", label: "KRD 1Y" },];',
+            "const derivedKRD = amount * duration * 0.0001;",
+        ),
+        (
+            "features/workbench/module-home/riskHomeViewModel.ts",
+            'const detail = { evidence: "CS01 是信用债 DV01 代理；首页只提供字段摘要，不在前端重算。", };',
+            "const derivedCS01 = amount * spreadDuration * 0.0001;",
         ),
     ],
 )

@@ -336,6 +336,10 @@ def test_safe_output_path_is_exclusive_and_confined(tmp_path: Path) -> None:
         module.write_report_exclusive(
             output=repo / "docs" / "pilot.json", report=report, repo_root=repo
         )
+    with pytest.raises(ValueError, match="output parent must already exist"):
+        module.write_report_exclusive(
+            output=repo / ".tmp" / "missing" / "pilot.json", report=report, repo_root=repo
+        )
 
 
 def test_safe_output_path_rejects_symlink_parent_deterministically(
@@ -382,6 +386,7 @@ def test_cli_can_read_packet_and_write_safe_output(tmp_path: Path) -> None:
     repo = module.ROOT
     packet_path = tmp_path / "packet.json"
     output_path = repo / ".tmp" / f"wp7-preflight-{tmp_path.name}.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     _write_json(packet_path, _ready_packet(module))
     script = module.ROOT / "scripts" / "wp7_fixed_income_pilot_preflight.py"
     if output_path.exists():

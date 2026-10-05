@@ -28,3 +28,7 @@
 ## Technical recapture — 2026-09-27
 
 The monthly PnL window now discloses missing exact beginning balance and a mismatch warning; frozen bridge amounts did not change. This is a deterministic technical recapture only; business-owner approval and formal-use permissions remain unchanged. Evidence: output/audits/2026-09-27/release-repair/backend/golden-diffs/ and golden-semantic-review/REPORT.md.
+
+## Cache metadata synchronization — 2026-10-05
+
+The deterministic bridge API now reports `cv_pnl_bridge_formal_monthly_v6` and the yield-curve lineage suffix `cv_source_nodes_v2`. Only `result_meta.cache_version` is synchronized with the current service contract. All financial values, warning text, quality flags, and approval fields remain unchanged. The capture-ready test in `tests/test_golden_samples_capture_ready.py` verifies the current fixture response; this record does not grant business-owner approval.

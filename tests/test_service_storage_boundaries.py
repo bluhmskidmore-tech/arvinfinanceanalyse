@@ -25,6 +25,7 @@ PNL_MATERIALIZE_TASK = ROOT / "backend" / "app" / "tasks" / "pnl_materialize.py"
 ADB_ANALYSIS_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "adb_analysis.py"
 EXTERNAL_DATA_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "external_data.py"
 MACRO_TOOLKIT_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "macro_toolkit.py"
+MACRO_TOOLKIT_ROUTE_SUPPORT = ROOT / "backend" / "app" / "services" / "macro_toolkit_route_support.py"
 MARKET_DATA_LIVERMORE_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "market_data_livermore.py"
 CHOICE_NEWS_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "choice_news.py"
 HEALTH_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "health.py"
@@ -426,24 +427,30 @@ def test_market_data_livermore_route_keeps_duckdb_errors_in_service_layer():
 
 
 def test_macro_toolkit_commodity_status_keeps_duckdb_reads_in_service_layer():
-    body = _function_source(MACRO_TOOLKIT_ROUTE, "_commodity_futures_status")
+    body = _function_source(MACRO_TOOLKIT_ROUTE_SUPPORT, "_commodity_futures_status")
     assert "macro_toolkit_service.commodity_futures_status(duckdb_path)" in body
     assert "duckdb.connect" not in body
 
 
 def test_macro_toolkit_equity_strategy_context_keeps_duckdb_reads_in_service_layer():
     expectations = {
-        "_load_equity_strategy_price_context": "macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)",
-        "_load_equity_strategy_factor_snapshot": "macro_toolkit_service.load_equity_strategy_factor_snapshot(",
+        "_load_equity_strategy_price_context": (
+            MACRO_TOOLKIT_ROUTE_SUPPORT,
+            "macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)",
+        ),
+        "_load_equity_strategy_factor_snapshot": (
+            MACRO_TOOLKIT_ROUTE,
+            "macro_toolkit_service.load_equity_strategy_factor_snapshot(",
+        ),
     }
-    for function_name, delegated_call in expectations.items():
-        body = _function_source(MACRO_TOOLKIT_ROUTE, function_name)
+    for function_name, (source_path, delegated_call) in expectations.items():
+        body = _function_source(source_path, function_name)
         assert delegated_call in body
         assert "duckdb.connect" not in body
 
 
 def test_macro_toolkit_a_share_risk_context_keeps_duckdb_reads_in_service_layer():
-    body = _function_source(MACRO_TOOLKIT_ROUTE, "_load_a_share_stampede_risk_context")
+    body = _function_source(MACRO_TOOLKIT_ROUTE_SUPPORT, "_load_a_share_stampede_risk_context")
     assert "macro_toolkit_service.load_a_share_stampede_risk_context(duckdb_path)" in body
     assert "duckdb.connect" not in body
 

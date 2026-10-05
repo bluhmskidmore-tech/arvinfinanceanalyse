@@ -7389,9 +7389,9 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v7"
     assert "start_pack" not in payload["result_meta"]["cache_version"]
     assert payload["result_meta"]["cache_version"] == (
-        "cv_pnl_bridge_formal_monthly_v5__cv_pnl_formal__rv_pnl_phase2_materialize_v7__"
+        "cv_pnl_bridge_formal_monthly_v6__cv_pnl_formal__rv_pnl_phase2_materialize_v7__"
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
-        "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
+        "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1__cv_source_nodes_v2"
     )
     assert payload["result"]["report_date"] == "2025-12-31"
     assert len(payload["result"]["rows"]) == 1
@@ -7606,9 +7606,9 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
     assert payload["result_meta"]["rule_version"] == "rv-z-current__rv-z-prior__rv_pnl_phase2_materialize_v7"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
     assert payload["result_meta"]["cache_version"] == (
-        "cv_pnl_bridge_formal_monthly_v5__cv_pnl_formal__rv_pnl_phase2_materialize_v7__"
+        "cv_pnl_bridge_formal_monthly_v6__cv_pnl_formal__rv_pnl_phase2_materialize_v7__"
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
-        "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
+        "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1__cv_source_nodes_v2"
     )
     row = payload["result"]["rows"][0]
     assert row["instrument_code"] == "240001.IB"
@@ -7616,8 +7616,22 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
     assert row["ending_dirty_mv"]["raw"] == 102.0
     assert row["current_balance_found"] is True
     assert row["prior_balance_found"] is True
-    assert row["balance_diagnostics"] == []
+    assert row["balance_diagnostics"] == [
+        "SENSITIVITY_INPUT_UNAVAILABLE: remaining tenor or modified duration is missing or unconfirmed; "
+        "curve effects cannot be treated as a complete observed explanation."
+    ]
+    assert row["roll_down_availability"] == "unavailable"
+    assert row["roll_down_availability_reason"] == "sensitivity_input_unavailable"
+    assert row["treasury_curve_availability"] == "unavailable"
+    assert row["treasury_curve_availability_reason"] == "sensitivity_input_unavailable"
     summary = payload["result"]["summary"]
+    assert summary["roll_down_availability"] == {
+        "status": "unavailable",
+        "unavailable_rows": 1,
+        "applicable_rows": 1,
+        "reasons": ["sensitivity_input_unavailable"],
+    }
+    assert summary["treasury_curve_availability"] == summary["roll_down_availability"]
     assert summary["total_beginning_dirty_mv"]["raw"] == 91.0
     assert summary["total_ending_dirty_mv"]["raw"] == 102.0
     assert summary["total_carry"]["raw"] == 12.5
@@ -9807,6 +9821,7 @@ def _configure_refresh_sources(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
     monkeypatch.setenv("MOSS_FORMAL_PNL_ENABLED", "true")
     monkeypatch.setenv("MOSS_FORMAL_PNL_SCOPE_JSON", '["*"]')
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'auth-scope.db').as_posix()}")

@@ -31,3 +31,7 @@
 ## Technical recapture — 2026-09-27
 
 The available 2025-10-31 balance is not the required 2025-11-30 baseline; the new mismatch warning and filters preserve frozen amounts. This is a deterministic technical recapture only; business-owner approval and formal-use permissions remain unchanged. Evidence: output/audits/2026-09-27/release-repair/backend/golden-diffs/ and golden-semantic-review/REPORT.md.
+
+## Cache and availability disclosure synchronization — 2026-10-05
+
+The unchanged fixture lacks maturity and duration inputs. The existing `_sensitivity_input_missing_diagnostic` guard correctly reports `SENSITIVITY_INPUT_UNAVAILABLE`, so roll-down and treasury-curve availability now disclose `unavailable` rather than `no_curve_sensitivity`; the corresponding coverage counts each report one unavailable row. These diagnostic and availability fields, plus `result_meta.cache_version` (`cv_pnl_bridge_formal_monthly_v6` and `cv_source_nodes_v2`), are synchronized with the actual API response. Financial values, top-level warnings, quality flags, source lineage, and approval fields remain unchanged. The API regression test explicitly preserves missing inputs and asserts this disclosure; this record does not grant business-owner approval.
