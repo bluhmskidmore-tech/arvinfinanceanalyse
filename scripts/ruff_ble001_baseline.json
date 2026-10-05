@@ -5,98 +5,10 @@
     "command": "python -m ruff check backend --select BLE001 --output-format json",
     "ruff_version": "ruff 0.15.7",
     "python_version": "3.11",
-    "generated_at": "2026-09-05T07:36:33Z",
-    "total_violations": 149
+    "generated_at": "2026-10-05T06:59:42Z",
+    "total_violations": 52
   },
   "violations": [
-    {
-      "id": "1001a908bcc531dfb51635ac9bb7a7beccfdf12a628314f9987e97fac21f2dea",
-      "path": "backend/app/agent/runtime/action_token.py",
-      "scope": "function:_warn_production_process_local_secret_once#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "dd3fb7d19d8cf7a2bc3490e98f2c00f22f4e974a62eb8776ce34fc1669a9784d",
-      "handler_ast_sha256": "5bede646fb7b27e145c977c1bab84a99a8545a71240c39362a785737ad3e9a36",
-      "row": 151,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "39560e8eff30ff0c0f81aadf2bd53adcb3b4d78a9bb756c03fda73218d951b08",
-      "path": "backend/app/agent/runtime/action_token.py",
-      "scope": "function:_configured_action_token_secret#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "6647344126e04a496e002a12c5f326245cda1bc045969da165dd805a5fce5b8b",
-      "handler_ast_sha256": "79bf21ce640105dba92010597627362bbe13b6bada4f0124957de5c3db80c57c",
-      "row": 168,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "8d15b5f69eb47e51ec6012e776c6126d2fffeddd6f9401748a7535cde05f62a5",
-      "path": "backend/app/agent/tools/analysis_view_tool.py",
-      "scope": "class:AnalysisViewTool#1/function:execute#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "b7dc271b60edab28083ebb15fb18a4551da83bd09bebb7ce68f21da259f0c314",
-      "handler_ast_sha256": "7c30123fd14961a8c03d3f1f30b4d9d8c7f0d25320a4d471116672ba06ec3ad6",
-      "row": 196,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "e46ef357b15d3516a07d3162e34354c86987e31767d6d8c0e1b3f3f7a56d6fe7",
-      "path": "backend/app/agent/tools/analysis_view_tool.py",
-      "scope": "class:AnalysisViewTool#1/function:_execute_workflow_envelope#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "45d75cc35a014fd95d1fc6653ca1783d15e8db735204636baacfbae93e92918a",
-      "handler_ast_sha256": "fb8f11069378229655b51f5aa7c67b90a7bd10f54ded8bdd6519b72f1df361be",
-      "row": 364,
-      "column": 20,
-      "source": "            except Exception as exc:"
-    },
-    {
-      "id": "719a9239192863ba9d4aa24a342a0362f982f4623cbfc7b5f8b19a209e78e9af",
-      "path": "backend/app/agent/tools/analysis_view_tool.py",
-      "scope": "class:AnalysisViewTool#1/function:_execute_research_workflow#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "06da51b5d5a289a948102047da626ec8794c8996e62d5d69cb4e1d74741c68e5",
-      "handler_ast_sha256": "7eb56f5cab81c859d49499a3e7e6546021a04926ff09504d5f0d32974c6c60be",
-      "row": 560,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "765ca1ad8a8c8aa30075beae4b9ef2528b284f67e2f0b480222e996d2907954e",
-      "path": "backend/app/api/routes/adb_analysis.py",
-      "scope": "function:adb_backfill#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "17061b3efec59dd0c6da70ad4184fd0f3e2939a74ca55a54b54489956fcdeadf",
-      "handler_ast_sha256": "59c6a743bf9556d49a19c847df7d48ae17e2dbe88006a02badb863f9f12fa0f3",
-      "row": 248,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "59ee565ebd332d157dc72dcb5afc677ce6414a8b338918041264b1137d03bce4",
-      "path": "backend/app/api/routes/macro_toolkit.py",
-      "scope": "function:_equity_strategy_summaries_with_context#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "8cc52d3bb45ec23272bac6875fd170c8f05619f003e2d2488bde188c67e9bd9b",
-      "handler_ast_sha256": "a607ac115accfc5fb4c2471c509fddf9857215609df7550b30f69f34b46095c9",
-      "row": 1540,
-      "column": 12,
-      "source": "    except Exception as exc:  # pragma: no cover - displayed as unavailable strategy evidence"
-    },
-    {
-      "id": "a122e538af59d33001144403d34c4f4cfe8c2336af4df9b1fbfdd49dc897bbf3",
-      "path": "backend/app/api/routes/macro_toolkit.py",
-      "scope": "function:_equity_strategy_summaries#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "7e91a77e8ffdd5216a54991d0f3397f94f66202455e234191644110e5ae955f1",
-      "handler_ast_sha256": "85efa275c686b20d2af4fa6d526241d7ce6a2f1d03f4ac4040c470813812f843",
-      "row": 1555,
-      "column": 12,
-      "source": "    except Exception as exc:  # pragma: no cover - displayed as unavailable strategy evidence"
-    },
     {
       "id": "365f214596ee58da1a22a8254e694daafe57486b02d397647dc4c035b59394f6",
       "path": "backend/app/config/choice_runtime.py",
@@ -126,42 +38,9 @@
       "occurrence": 1,
       "try_body_ast_sha256": "b6081a4f495387f1c3ffeecae5a7605e5cef59aa10272c474f7769d70443d889",
       "handler_ast_sha256": "f403ad2d21fb8985b7cc0823689f0b9877618d45287d949c087151868c98f585",
-      "row": 118,
+      "row": 123,
       "column": 12,
       "source": "    except Exception as e:"
-    },
-    {
-      "id": "5d36f8654799ab3a74dbf8c137ef2d79981ded1989664575d1701a44c427f6d1",
-      "path": "backend/app/core_finance/macro/toolkit/scripts/backtest_cn.py",
-      "scope": "function:load_prices#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "d9540350f8f236c240d4c6dac8a280ab2733f70304e12ec7e68ba49e2eba30ab",
-      "handler_ast_sha256": "ea53fadd3982e3696b003aa2b219b8ded48cf44883ceb8d23bb6d26c07078d1e",
-      "row": 155,
-      "column": 12,
-      "source": "    except Exception as e:"
-    },
-    {
-      "id": "5f7026b7c5e9e467d0074f084019c7b19eaa94456ad468154cdb0f74af5b481c",
-      "path": "backend/app/core_finance/macro/toolkit/scripts/backtest_cn.py",
-      "scope": "function:load_prices#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "1d006a764ea7a781d0f70fb9074e226344b4cbf771d804aa10dbf3c5aac978d2",
-      "handler_ast_sha256": "c29eee3804c574a490579adbe1214ffe6f2fc95be0d0543be183ab12de8f8b5c",
-      "row": 173,
-      "column": 16,
-      "source": "        except Exception:"
-    },
-    {
-      "id": "08a70a46339dfbfc0115ef10bccf669d0e4f14608324813d3a9e49f99df98816",
-      "path": "backend/app/core_finance/macro/toolkit/scripts/credit_bond_data.py",
-      "scope": "<module>",
-      "occurrence": 1,
-      "try_body_ast_sha256": "d91af48722714ae15d870b6cf5355f1354bdb80deb86a961a5e96d86d3b41586",
-      "handler_ast_sha256": "7b2059b6c3011ae5af6377f171846f89722a81f5edf0a3f3bbe6708a4bb06030",
-      "row": 25,
-      "column": 8,
-      "source": "except Exception:"
     },
     {
       "id": "47dd016d6bffaf0859220d47f016aa3bbeedca6ff7eeca0d34535f9ae7403e3c",
@@ -241,35 +120,13 @@
       "source": "        except Exception as e:"
     },
     {
-      "id": "babbe9e81489e4ffacc46e8f500ca00b795762814b0de9e0fb074aa735cbfc61",
-      "path": "backend/app/core_finance/macro/toolkit/scripts/garch_multi_asset.py",
-      "scope": "function:fit_single_asset#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "9d1c0dab314f71d0792e111d1543a7c7ddd3a1b0234e2d2437c6c1a977dfff46",
-      "handler_ast_sha256": "8e7b1ed8f690a9d36ad90fef15cd89d966c372ba41fcbedd66f1ddf99332a6ce",
-      "row": 219,
-      "column": 20,
-      "source": "            except Exception:  # noqa: S110  # 模型选择扫描：单个(模型,分布)组合不收敛属预期，按 BIC 取存活组合最优；全失败时下方显式报告"
-    },
-    {
-      "id": "f49789489da401abaadde433d6c880b123acbb0c800d75abbdb55e6e98be8567",
-      "path": "backend/app/core_finance/macro/toolkit/scripts/garch_multi_asset.py",
-      "scope": "function:out_of_sample_test#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "91373c5e6f1481af856cbc8db626d3e601face62de61cef241a4f4c05c4f7e24",
-      "handler_ast_sha256": "8e7b1ed8f690a9d36ad90fef15cd89d966c372ba41fcbedd66f1ddf99332a6ce",
-      "row": 285,
-      "column": 20,
-      "source": "            except Exception:  # noqa: S110  # 滚动重估失败沿用上次 cached_params（下方分支），从未成功则该日输出 NaN，失败在结果中可见"
-    },
-    {
       "id": "e4b7eb655eac524cedf140239b962ee9eaa6ddead3d15509dc6071ea1f7572c9",
       "path": "backend/app/core_finance/macro/toolkit/scripts/garch_multi_asset.py",
       "scope": "function:current_forecast#1",
       "occurrence": 1,
       "try_body_ast_sha256": "e74fde1db868473227277b49b853b6ae71e57d7a8746f277a9aeaa08bb114f0a",
       "handler_ast_sha256": "ee3026086e8f6b7cda28c60bd001de72b168e620a1184d45d1047fbe5e35aa7b",
-      "row": 336,
+      "row": 337,
       "column": 12,
       "source": "    except Exception:"
     },
@@ -281,17 +138,6 @@
       "try_body_ast_sha256": "34fc1bac31f1a7ca35df48f0d468d12ddb8f19116e44873813822d95625146b1",
       "handler_ast_sha256": "e36c0e456557d8dc29670515e1440e81792c73e474c71a522cfc30eb66bb3cae",
       "row": 71,
-      "column": 12,
-      "source": "    except Exception as e:"
-    },
-    {
-      "id": "a7b6d9099bbc2028ba5386ece244de13cd45a751057276c8920f9bd744da8832",
-      "path": "backend/app/core_finance/macro/toolkit/scripts/performance_metrics_cn.py",
-      "scope": "function:load_risk_parity_weights#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "7b204f73073cc3e11d09a5a7764b39b3ceb21710411add107c5bd27071f65e46",
-      "handler_ast_sha256": "a4a28fba98519dac4dfdb14cdc9ad81ec9244d662c7230b1e50ff5b2fb586ed5",
-      "row": 185,
       "column": 12,
       "source": "    except Exception as e:"
     },
@@ -373,17 +219,6 @@
       "source": "        except Exception:"
     },
     {
-      "id": "aec8689a4c9e4bd7e958f9c98cf55afa1068a5e9c8dc73bff8be1268ad29b3b3",
-      "path": "backend/app/core_finance/macro/toolkit/scripts/risk_monitor.py",
-      "scope": "function:_load_output_csv#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "818da41216cc66144fa8cecad75059c9f93257cef81b10a2d91c43f75d5ee3c4",
-      "handler_ast_sha256": "b7cc6b5611931c87647fecf306c5fcc6fafaaf021b3b3e42bdec84b954ee1200",
-      "row": 490,
-      "column": 12,
-      "source": "    except Exception as e:"
-    },
-    {
       "id": "f164debd3c54fecdfa2091483e4e49309a6049232987f35c380158c945b37a21",
       "path": "backend/app/core_finance/macro/toolkit/scripts/risk_parity_cn.py",
       "scope": "function:fetch_data#1",
@@ -406,138 +241,6 @@
       "source": "    except Exception as e:"
     },
     {
-      "id": "b9c5c6645da1d09b0432700169f537674de061b6742e148ec4322f70d9d9a8a7",
-      "path": "backend/app/duckdb_schema_bootstrap.py",
-      "scope": "function:assert_duckdb_schema_current#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "d4642022d585cd782f28a953bf27a13d190fa9839463c03b7a950a537067db9e",
-      "handler_ast_sha256": "e0602ac5c1c7e1738ea8d132c3286ea15e53d61e46ebfb19b48c1ee3961c668f",
-      "row": 300,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "ef9bc98099131141d1555d6b3611118e5109c524ca853210ccf1ac4c88df3eb5",
-      "path": "backend/app/duckdb_schema_bootstrap.py",
-      "scope": "function:assert_duckdb_schema_current#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "ec164dc45248439fc226843da172e290824b6b90cadfc183270a5d553128e527",
-      "handler_ast_sha256": "e6bd96c3ece2923a483d26a9c3bf87e26a65b3e721fc949c4aa4ee9d383e0b60",
-      "row": 322,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "08ebf25eaf03feb036aa97163e8cd910d33f86fcbf585432b028559b1f201bd0",
-      "path": "backend/app/duckdb_schema_bootstrap.py",
-      "scope": "function:assert_duckdb_schema_current#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "1fc870e2290ed27e231623abd0a7bbe6818def38a856f3513c403e035f4bb2ad",
-      "handler_ast_sha256": "1a35b8fa16e4748218f9ffd45773fe94e6dc3dedc15b0af4464f2b19749973d0",
-      "row": 333,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "7ab44bdfb13ac98c66ea89f30bdc1dcb2edc63888f6d233fac82dba0d577ba02",
-      "path": "backend/app/duckdb_schema_bootstrap.py",
-      "scope": "function:assert_duckdb_schema_current#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "4d03c24d0ea7b6af481eb7dc43c21d36b1aa43d2ae7966d632bc04b41597e9c0",
-      "handler_ast_sha256": "c464073189c4d3972cf952d708971da2283aeef331f66ff7f277e462c66caeb8",
-      "row": 345,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "202444baea474924d26903f393f17fb120af1fabcdd322134cf5629a1eb0bcbe",
-      "path": "backend/app/duckdb_schema_bootstrap.py",
-      "scope": "function:assert_duckdb_schema_current#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "5d8016110c2810f2ced18422cdf34d19ba1801c349ae2e8ad8134e0aaaf310f8",
-      "handler_ast_sha256": "b4b4990e864e4c9356ccff160573ef8a72c132546ea92069bf474acf6b2f6b15",
-      "row": 417,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "39addad355ffebf03bf4345331b35857a1e11fb1a91b62a2cc26bc33ba13bc3d",
-      "path": "backend/app/postgres_migrations.py",
-      "scope": "function:assert_postgres_schema_current#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "9ae2f2906f2d67238d6af808cc88062c18060acdf8fcfa84ebf47e70e34f4d31",
-      "handler_ast_sha256": "8f54ab4ee7812b382cc8b19a70cb281e7bb27694ab6ed5caed94083c3a0c056d",
-      "row": 144,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "f50a23c84b3b15e7008f5ae99a14d9e8dfbf628c31739fe359cb929f5a3b55dd",
-      "path": "backend/app/postgres_migrations.py",
-      "scope": "function:assert_postgres_schema_current#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "eea8e07531bc2a0df7703bd6be3aa15c16c6df42bd719c77336c3093f5848319",
-      "handler_ast_sha256": "6d703f41263c9b5905dd855c86026e748eed39f78e387f758310c58003c551a1",
-      "row": 185,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "457b1dac38d27ef7af24ba51dab4f5705482375a6598254a679e80e0aeafe78f",
-      "path": "backend/app/postgres_migrations.py",
-      "scope": "function:assert_postgres_schema_current#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "922795e683dc323d009d3184b8a0034939d115972733d3980c5310177bd001d0",
-      "handler_ast_sha256": "1a33ea0208f3970f0157b1e3486c54dec781c0539d15cfec4d157353fd49f94e",
-      "row": 191,
-      "column": 20,
-      "source": "            except Exception:"
-    },
-    {
-      "id": "ed5e85e0a6b1736216c41f62c6bcbc69d97264ede6eb30290fb59c4cee91cd29",
-      "path": "backend/app/repositories/balance_analysis_repo.py",
-      "scope": "class:BalanceAnalysisRepository#1/function:replace_formal_balance_rows#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "28fdd43eef99a8ec8903b5ebc60e184719c6966b8ad562748476d73425830ae6",
-      "handler_ast_sha256": "8e7b1ed8f690a9d36ad90fef15cd89d966c372ba41fcbedd66f1ddf99332a6ce",
-      "row": 582,
-      "column": 24,
-      "source": "                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常"
-    },
-    {
-      "id": "e16a1504b224eba712acb903c20b2a98b6e78363042cfaace82ee3c49fb446f9",
-      "path": "backend/app/repositories/bond_analytics_repo.py",
-      "scope": "class:BondAnalyticsRepository#1/function:replace_bond_analytics_rows#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "28fdd43eef99a8ec8903b5ebc60e184719c6966b8ad562748476d73425830ae6",
-      "handler_ast_sha256": "8e7b1ed8f690a9d36ad90fef15cd89d966c372ba41fcbedd66f1ddf99332a6ce",
-      "row": 442,
-      "column": 24,
-      "source": "                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常"
-    },
-    {
-      "id": "0c2c910cab94736b4b1dbe4624b58e162529a9a7352c58cd57f195833ece741f",
-      "path": "backend/app/repositories/bond_analytics_repo.py",
-      "scope": "class:BondAnalyticsRepository#1/function:invalidate_report_date_facts#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "28fdd43eef99a8ec8903b5ebc60e184719c6966b8ad562748476d73425830ae6",
-      "handler_ast_sha256": "8e7b1ed8f690a9d36ad90fef15cd89d966c372ba41fcbedd66f1ddf99332a6ce",
-      "row": 473,
-      "column": 24,
-      "source": "                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常"
-    },
-    {
-      "id": "b262a988feca611b41faa7b81d21dc928ed365f0910b7fe6ff73282e090efcf5",
-      "path": "backend/app/repositories/cffex_member_rank_repo.py",
-      "scope": "function:replace_member_rank_rows#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "28fdd43eef99a8ec8903b5ebc60e184719c6966b8ad562748476d73425830ae6",
-      "handler_ast_sha256": "8e7b1ed8f690a9d36ad90fef15cd89d966c372ba41fcbedd66f1ddf99332a6ce",
-      "row": 174,
-      "column": 20,
-      "source": "            except Exception:  # noqa: S110 - rollback failure must not mask the insert error"
-    },
-    {
       "id": "1e5253d3f9d2f8fa29a9ce068b73e5217c2fd126d0fbcf5f5fa76dbdd6eab2ff",
       "path": "backend/app/repositories/postgres_repo.py",
       "scope": "class:PostgresRepository#1/function:healthcheck#1",
@@ -549,147 +252,15 @@
       "source": "        except Exception as exc:"
     },
     {
-      "id": "50eb40b3bdba2519556407a120820a2fc5cbba586290ac3015c741df44e62ce4",
-      "path": "backend/app/repositories/risk_tensor_repo.py",
-      "scope": "class:RiskTensorRepository#1/function:replace_risk_tensor_row#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "28fdd43eef99a8ec8903b5ebc60e184719c6966b8ad562748476d73425830ae6",
-      "handler_ast_sha256": "8e7b1ed8f690a9d36ad90fef15cd89d966c372ba41fcbedd66f1ddf99332a6ce",
-      "row": 284,
-      "column": 24,
-      "source": "                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常"
-    },
-    {
       "id": "40ef3fa0fac3979e569b30850509ea0d05010ad6b01a27cc9874c1c5d6ab1f76",
       "path": "backend/app/repositories/source_preview_repo.py",
       "scope": "function:_write_preview_tables#1",
       "occurrence": 1,
       "try_body_ast_sha256": "28fdd43eef99a8ec8903b5ebc60e184719c6966b8ad562748476d73425830ae6",
       "handler_ast_sha256": "8e7b1ed8f690a9d36ad90fef15cd89d966c372ba41fcbedd66f1ddf99332a6ce",
-      "row": 1057,
+      "row": 1100,
       "column": 20,
       "source": "            except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常"
-    },
-    {
-      "id": "3e800372bac7b0d1f76c537d7ecd17d9e6ccd86fd9c81d03632fbde673b1bfef",
-      "path": "backend/app/repositories/stock_analysis_theme_overlay_reader.py",
-      "scope": "class:StockAnalysisThemeOverlayReader#1/function:fingerprint#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "2728c6c448082e13b095d8116eda9472e6facb9987db292d9bfea71d982103b7",
-      "handler_ast_sha256": "5718a9ed856fdd3dc86d0835103275c7f19fa964ae0b3f8c3f8d97dc984f8366",
-      "row": 256,
-      "column": 16,
-      "source": "        except Exception as exc:  # Fail-closed fingerprint boundary."
-    },
-    {
-      "id": "295e7127d29cab38a168138a04fb6b270e1329c2257df460b099fecd01ce0fd4",
-      "path": "backend/app/services/adb_analysis_service.py",
-      "scope": "function:dispatch_adb_backfill#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "f4e8791bfb8766cc82b9db80e2276c774d9562eb7498228db8fa7568488d9208",
-      "handler_ast_sha256": "49d41a0118335f691db28a7a3f4b112b4a9c368e26bcdaeb7a15c7ebf54f85ce",
-      "row": 2510,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "61208352ed32ad4c987b6740efedd28ebdc6036177d1449905ad162d954b053a",
-      "path": "backend/app/services/advanced_attribution_service.py",
-      "scope": "function:_build_upstream_summaries#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "a7896652066bff4a429cb64ca8528ec4200b2bdb4457387eed98bf1b8bad340b",
-      "handler_ast_sha256": "1599386e6ee80fb8711cdc1baa8ffbf9aa17e0642dbfb5ad5184d7d409270967",
-      "row": 197,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "c85259617891ffe2692b97e0945c4f2d22ac20312f343f33df0ab67bccdd915b",
-      "path": "backend/app/services/advanced_attribution_service.py",
-      "scope": "function:_build_upstream_summaries#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "c0177dba44a6860a18a59f55786b198135e088291044d033a4f6024bca264737",
-      "handler_ast_sha256": "bbf6e72f8a9959f39d2e6e0b4e80252fd96771d6d0fa043cc52fa0f0dd869dbd",
-      "row": 221,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "5e9e26fab800cadf037bf236cc02102fa1b12953fbc22877407caf3327bfc38e",
-      "path": "backend/app/services/agent_run_service.py",
-      "scope": "function:complete_agent_run_creation#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "9cde710fe91eecd39a87ceecf012572f4d630a8208ef1d1e79537ec595d3519b",
-      "handler_ast_sha256": "14eb3b50f6d48c7b0a4efa7bfb79b8786f5e47551ef1f09dc1906d83c879bc6c",
-      "row": 430,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "cd43ea6e9f89faf6ac2b4ac75a76edda3fec185b143280c4a9b70b97f629dbf4",
-      "path": "backend/app/services/agent_run_service.py",
-      "scope": "function:_execute_agent_run#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "303178f6c57eb19de5b32abc87e8ce279b47b0559d096bc8474b1f17c95634ff",
-      "handler_ast_sha256": "ae5b39843d8e55dce8d962e3e9edef5014c790aad7f18ed0b50211007516cc95",
-      "row": 1390,
-      "column": 16,
-      "source": "        except Exception:"
-    },
-    {
-      "id": "1f15fab3dc418131004ee8771dc1a99d48d31691e16d4449e4a07fcf1539eb8d",
-      "path": "backend/app/services/agent_run_service.py",
-      "scope": "function:_run_executor_until_run_is_terminal#1/function:_invoke#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "884c1cd48a1f89f30f7e6eb6e85c92acff8a2372b136225c4202c77ab8bc6cb7",
-      "handler_ast_sha256": "704f2ca896412fc14ed8ca8e074d07c5a209b8fa378920e6cc5c87ca0b508e1a",
-      "row": 1446,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "079b9785dc15b76289ed71d613e3c28cff69912f0c57ff21756ac67134faaa77",
-      "path": "backend/app/services/agent_run_service.py",
-      "scope": "function:_run_executor_until_run_is_terminal#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "cc1a96f75c77900c3e6334546d64187d637955b07254d730c0ab2f0c9c19fa53",
-      "handler_ast_sha256": "809f8953ad0a6774927489756c16a3e242a78e5a0f47448869307e50c2ff1968",
-      "row": 1461,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "78c5b5cb4a71ef4849d57b9e1fff9c35159310bfcd50c71799b4f281cb22de0f",
-      "path": "backend/app/services/analytical_bridge_service.py",
-      "scope": "class:AnalyticalBridgeService#1/function:_execute_ledger#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "7636b04140e67fca49834ea76e9fcc302fb207bf76d9b3c7cd4e3d168cf9bce7",
-      "handler_ast_sha256": "1fa1b8eec3ca360f5e1d150e406ffef301073390917e3622c442e590373b04cc",
-      "row": 188,
-      "column": 16,
-      "source": "        except Exception:"
-    },
-    {
-      "id": "5cc02b55b8dbbef7c80bb6d0b0d57b8d61857483660be1c14723085bc14deaa7",
-      "path": "backend/app/services/bond_dashboard_service.py",
-      "scope": "function:_safe_bond_dashboard_bundle_section_envelope#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "1c1303ce583f5bada5c57ae8a243880084210af40f60dbc27a017c790ed047af",
-      "handler_ast_sha256": "c951b65cbaf4e9ba7b0d4f4909af1a258363d4eb5e07552133fd20828b960239",
-      "row": 1091,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "144367c4c9920467d355e314ba171d114766b5b32b1c27027bcbbfce95fd6001",
-      "path": "backend/app/services/campisi_attribution_service.py",
-      "scope": "function:_fetch_formal_closure#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "2a0216c6f189d7bd08ee6e4dcc480ea6e5ea0c1b22205fbfbaeed04ff35c9e65",
-      "handler_ast_sha256": "68279cb88122daf128eaf486d1383e6d028dbf87ca72b4fe352a69c6e66f7018",
-      "row": 1598,
-      "column": 12,
-      "source": "    except Exception as exc:  # pragma: no cover - formal bridge availability is data/runtime dependent."
     },
     {
       "id": "d3fe0dc7569b495895986a5d8263af016a2e4b5fb163191612e8d9c98c3737c4",
@@ -714,50 +285,6 @@
       "source": "        except Exception:  # noqa: S112  # 按 CFFEX/CFE/空 逐个探测 exchange 参数，单个组合被 vendor 拒绝属预期，继续下一组合"
     },
     {
-      "id": "5d485211ef7b52e351e34e47a4f9d7f2cb14a7873c0a6f50b2bde5b9496ed68a",
-      "path": "backend/app/services/executive_service.py",
-      "scope": "function:_executive_overview_runtime_cache_enabled#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "c36f73b2e805b5317a44eb04d5709740f9dd7fa97041a4fae736c919236455ee",
-      "handler_ast_sha256": "b7cdae0b33a8d0098fe7f18915c3ea0fc165b1aa5e68e47ca28b15167eb4230d",
-      "row": 1425,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "d2c0a6b6f0ccf231d93dd350c4a8f2d6f6b25f03f6cb61bedb8c820fb11eb0dc",
-      "path": "backend/app/services/executive_service.py",
-      "scope": "function:_fetch_product_category_home_headline_values#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "0be55cefa23e62d11842928778f46e38edf45cd8eff6750528cc88ac78a5e25c",
-      "handler_ast_sha256": "1e13c9905d365efd2660e9b1401e4ab9371959a2195e70f99e0ef3dfa720f171",
-      "row": 2668,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "c47786b6b41137316b2d5803241732dad8af2a6fa83fd9af172fd4e7e132bdd3",
-      "path": "backend/app/services/executive_service.py",
-      "scope": "function:_build_product_category_ytd_headline#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "72432cd60b68651da66127c842acc7df9445b5be3e1ceefb22ace031e951a01e",
-      "handler_ast_sha256": "cbc420ac8a43babc723a68ee8206c4b11eef97a4a077fddb6361eb33f2cdc2f4",
-      "row": 2700,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "a07407c114e068722c776cfc0e9c225ecc05328bdd01d03e489662a1099968cc",
-      "path": "backend/app/services/executive_service.py",
-      "scope": "function:_build_product_category_monthly_headline#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "95aa837ab2304ccec432eb57e8f58a74c4fec7781339733bce28d01ff2356d36",
-      "handler_ast_sha256": "906e1ef1034b79bb6e2772b26ae39d7a517bc00947e0982f0d2930149deab9d4",
-      "row": 2777,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
       "id": "933ad56607b9ceec355d8a5c97b9acc67664d202b63ce9406a9d8002343f90f0",
       "path": "backend/app/services/gitnexus_service.py",
       "scope": "function:build_gitnexus_status_payload#1",
@@ -775,18 +302,7 @@
       "occurrence": 1,
       "try_body_ast_sha256": "af7f8df7fec3c71a8f2ebdd5cbc0e4dd931d4b2210c21ba393d90283ba3a3a9d",
       "handler_ast_sha256": "5bede646fb7b27e145c977c1bab84a99a8545a71240c39362a785737ad3e9a36",
-      "row": 428,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "008b478ffeb1480455fccb4d371b3b8c4f468c7e2ad003fda30ace6278616ac7",
-      "path": "backend/app/services/hermes_agent_service.py",
-      "scope": "function:_hermes_bridge_authorized#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "e7f24cfeff6dc81eb7956029aa264d22fc8b3672eb1d5ac34e4b579678a62272",
-      "handler_ast_sha256": "c3fde88d2b8da1fb938e77ffdf783cb7109a6d092274d4066207eac4498aaaf5",
-      "row": 1079,
+      "row": 467,
       "column": 12,
       "source": "    except Exception:"
     },
@@ -797,73 +313,7 @@
       "occurrence": 1,
       "try_body_ast_sha256": "5a08de37010d430ab03ee48ce6ad82474441f2716f3e2323e8b70787d3ab75db",
       "handler_ast_sha256": "b7cdae0b33a8d0098fe7f18915c3ea0fc165b1aa5e68e47ca28b15167eb4230d",
-      "row": 1091,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "4bea5b7840659d0775316f2f3212fd3c27d92effbfc849c8959f6704416a328f",
-      "path": "backend/app/services/hermes_agent_service.py",
-      "scope": "function:_warm_managed_hermes_stream_quietly#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "58ee9c172ca7ce027c7a4557b90a1394b1142d3d26ddd57b088db5f619d019e3",
-      "handler_ast_sha256": "5bede646fb7b27e145c977c1bab84a99a8545a71240c39362a785737ad3e9a36",
-      "row": 1706,
-      "column": 16,
-      "source": "        except Exception:"
-    },
-    {
-      "id": "a9fe68af208ee169f697998b6752d19ae4fa32fd8856840fda7771c117fb2453",
-      "path": "backend/app/services/hermes_agent_service.py",
-      "scope": "function:_build_ontology_context_block#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "816c13e27090fb6bb28f85291d541df8d49dde9e9d48379d786a26603cb2ef5f",
-      "handler_ast_sha256": "79bf21ce640105dba92010597627362bbe13b6bada4f0124957de5c3db80c57c",
-      "row": 1835,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "09b555b213ccb7707e047ed4a2232ea50e482ad70a5293a7df06b311656f0e57",
-      "path": "backend/app/services/hermes_agent_service.py",
-      "scope": "function:_build_ontology_context_block#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "a2437a6c4fa6c9b964986a00dd427366ae07eb9854109905ef370d9a0f35c69d",
-      "handler_ast_sha256": "32d2dd090d40a0907533c5bdd906b638bc71e8280a6b69dee721eea5b258fb75",
-      "row": 1841,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "99529bd9273ed14a8abd983c4db0d9a8e3d007810131492b4ccbe5fff9c9bfcd",
-      "path": "backend/app/services/knowledge_index_service.py",
-      "scope": "function:knowledge_summaries_for_entities#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "9ff8c5babe7c4dbec5efd1c05777622b54be1433c39f0df7309da6fbebcab7e7",
-      "handler_ast_sha256": "ab441b493f68997cd1d1c8c7130c2cc41d45d144836795ce286a09a13b9f6815",
-      "row": 145,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "d26472a1d9c855bc91649320023969c9a742f482305b5e46a442240e878501e7",
-      "path": "backend/app/services/knowledge_index_service.py",
-      "scope": "function:knowledge_vault_available#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "6d8b75e6ed069ea3bb01c316588972350ba6e2779e11d436b856e699416800ca",
-      "handler_ast_sha256": "b7cdae0b33a8d0098fe7f18915c3ea0fc165b1aa5e68e47ca28b15167eb4230d",
-      "row": 175,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "5a2bc71e748b94b91d5d2658eb87988f3808fa5dcf0614bc211d6b8955e0fb3d",
-      "path": "backend/app/services/knowledge_index_service.py",
-      "scope": "function:_known_entity_ids#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "e5ba5ee576f0e36a54d0e7d70bfa0b61c46ea6facd6c76a0a70b4774557130d3",
-      "handler_ast_sha256": "c3fde88d2b8da1fb938e77ffdf783cb7109a6d092274d4066207eac4498aaaf5",
-      "row": 185,
+      "row": 1311,
       "column": 12,
       "source": "    except Exception:"
     },
@@ -879,79 +329,13 @@
       "source": "    except Exception as exc:"
     },
     {
-      "id": "03576301a5e728d68db669c361839214a2feb49551130666ea9f5942bd52d318",
-      "path": "backend/app/services/ledger_import_run_service.py",
-      "scope": "function:_mirror_job_state#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "425bd31db67be8c831d360d8bee9cf06ef0d0082e92e47e002633860ab2e86a3",
-      "handler_ast_sha256": "f09f94ebc7919ffa8ebeccc8f024fcb7f9356e2b91bca6b373da5c693928c348",
-      "row": 251,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "565ed0f27e5607e51b7eaa7e9e3a7448d2d2fbd2182bbe5af3918d9d0ff15637",
-      "path": "backend/app/services/livermore_gate_supplement_compute_service.py",
-      "scope": "function:_try_market_breadth_payload#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "4964b993f3d29ac51ba4578f596632d05e08890edea9bf4ca5e5484244759219",
-      "handler_ast_sha256": "80c7d3b5523d5722f94a031ed2091e28a0407d6ce852e3e3714dd62c79c1f29e",
-      "row": 884,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "77ffab03f0ad2366f7ead9f7c8ba8ec76c2fab07e708304f1f1b3855eb5c87cf",
-      "path": "backend/app/services/macro_etf_strategy_service.py",
-      "scope": "function:_build_dual_frequency_candidate#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "49e34ccd182e588d9c54441eed3365a008f2b02ad7f5cff25127fb10c304eac0",
-      "handler_ast_sha256": "4503ce69f9b024d3e3d29a66bf158967da81f5df6282fcc16d12b3606bda2036",
-      "row": 174,
-      "column": 12,
-      "source": "    except Exception as exc:  # defensive: candidate analytics must not block the base snapshot"
-    },
-    {
-      "id": "d8794ebd1cae1c506023b1315eb393ed396244c84af0316b54da79e538d8cbf3",
-      "path": "backend/app/services/macro_etf_strategy_service.py",
-      "scope": "function:_load_dual_frequency_history#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "255b65394b9a7f0215d2049bf989323a5a2119c1d08d4cac509a39a34058309f",
-      "handler_ast_sha256": "8862ff1a78711952567b724d8c47896d4f294167a3dbfdfb096ebafb963f48f6",
-      "row": 197,
-      "column": 12,
-      "source": "    except Exception as exc:  # defensive: read-only candidate data must degrade locally"
-    },
-    {
-      "id": "886537f345ef51c8ca0441acebc911fd2b6cff56a1774fce014e5e11fd23f52d",
-      "path": "backend/app/services/macro_toolkit_route_support.py",
-      "scope": "function:_macro_etf_strategy_snapshot_for_toolkit#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "7a14647866d474c5fdc2d85d379cbef47ca373d8273935487182ce9743085e41",
-      "handler_ast_sha256": "c291ab1092bc845c3e4645d28081939c85f9299eb94e915937f06eaa9899db7b",
-      "row": 398,
-      "column": 12,
-      "source": "    except Exception as exc:  # pragma: no cover - defensive isolation for optional warmup surface"
-    },
-    {
-      "id": "1115ebc07249228fa3c385176fd241e62f4f10d4bf96daccdca9c3b4fb381673",
-      "path": "backend/app/services/macro_toolkit_route_support.py",
-      "scope": "function:_run_capability#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "62c805a46e780fff6f154daf80063a81c90ffed09a656cb33471145973003220",
-      "handler_ast_sha256": "a12f380279f23352a5cbd414ad74391cb2619fc66499b06b0323f0b000b88a22",
-      "row": 1497,
-      "column": 12,
-      "source": "    except Exception as exc:  # pragma: no cover - surfaced as degraded UI evidence"
-    },
-    {
       "id": "9254b6c1fa69916324a2941a608fbd0545dc1cf5c0ee7d8651d148d1805f0057",
       "path": "backend/app/services/macro_toolkit_service.py",
       "scope": "function:_run_toolkit_script_inline#1",
       "occurrence": 1,
       "try_body_ast_sha256": "e338a5b650f63d8e9402d134af8159be3367d151d6e58584c9703464aa14f7bd",
       "handler_ast_sha256": "c7172c0305072dfc828570a80fc8a30611ab97fa531f998a0a54bbc1e2163a5b",
-      "row": 3201,
+      "row": 3290,
       "column": 12,
       "source": "    except Exception as exc:  # pragma: no cover - returned to UI as script stderr"
     },
@@ -962,42 +346,9 @@
       "occurrence": 1,
       "try_body_ast_sha256": "2bf5843647e1332fb46b763bcbd97ade8457be38ee248b6faf710a37c2ffad93",
       "handler_ast_sha256": "ab441b493f68997cd1d1c8c7130c2cc41d45d144836795ce286a09a13b9f6815",
-      "row": 3419,
+      "row": 3508,
       "column": 12,
       "source": "    except Exception:"
-    },
-    {
-      "id": "3c0cffb32997f3cd4d592a897a42dc45babc7beaecc4eb6e704342640e689ba5",
-      "path": "backend/app/services/market_data_livermore_service.py",
-      "scope": "function:theme_overlay_reader_from_settings#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "342efd7589ac4eb01ec5d0dba638a39981694977ad4f08df5dedaee67fb12922",
-      "handler_ast_sha256": "d504154dc2bec6e99477ad82bc9958d2a05486d8ee967eae4fc906428338d03a",
-      "row": 300,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "bbd55834a1985f08c14c8c57feb0c555f871c22b8ce990e41b1725957569b9b0",
-      "path": "backend/app/services/pnl_attribution_service.py",
-      "scope": "function:_pnl_attribution_runtime_cache_enabled#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "195edf370c9c92bfad2343fb53c220931c28de280b33ceba9c9cd39eeee8e012",
-      "handler_ast_sha256": "b7cdae0b33a8d0098fe7f18915c3ea0fc165b1aa5e68e47ca28b15167eb4230d",
-      "row": 112,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "8cf7cf0c12d76e97552e0596a8d77a895aba017cda428af214bd23fae50b7e76",
-      "path": "backend/app/services/product_category_pnl_service.py",
-      "scope": "function:resolve_product_category_ytd_payload_for_home_snapshot#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "b6de31f59868c863ba9ea46f064ebe5770b80c8738ced7086ad45ddd0a6b23a9",
-      "handler_ast_sha256": "a8e4469794a9bbb9a1a04b50e22066f82e806ecc922fb3acc97c2b71f665a15e",
-      "row": 900,
-      "column": 16,
-      "source": "        except Exception:"
     },
     {
       "id": "c5f8e74a60089aadb34f37f0ad0f67c954cd9b50d9271867fea9f4974e2edbd7",
@@ -1022,17 +373,6 @@
       "source": "        except Exception as exc:"
     },
     {
-      "id": "42707d15df16b80f0144abf95245fcd247760290eaa08955282f0751a0104c9c",
-      "path": "backend/app/services/tushare_macro_ingest_service.py",
-      "scope": "class:TushareMacroIngestService#1/function:ingest_all_seed_series_with_summary#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "9910ae8cd3dd2ad58d42108c88a35d1d9cfa1947e33a42ae26562899c4ef60a2",
-      "handler_ast_sha256": "076ab57c91935a3c0fd30b05c1765910ab73695d88427a9e3fd8d773f977b959",
-      "row": 261,
-      "column": 20,
-      "source": "            except Exception as exc:"
-    },
-    {
       "id": "dd88450e7f0b69d58e9f3d568a3b440171bcae0aac00b13ba71c0b23498db6a4",
       "path": "backend/app/services/tushare_news_ingest_service.py",
       "scope": "function:_resolve_tushare_token#1",
@@ -1055,92 +395,15 @@
       "source": "    except Exception:"
     },
     {
-      "id": "900ebe5bcab91cfc0893fc370f774652267e79b01a9b110aa4f4996938265fd5",
-      "path": "backend/app/tasks/agent_run.py",
-      "scope": "function:_execute_agent_run_task#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "ac5ba604a320f102da4cb06d4b20389ad84747ba6b6129b2ebe47944c21ae999",
-      "handler_ast_sha256": "44847befbd8137189a83cb3b4780b95b0179ed3a64f9b1903a1534b8f4258e56",
-      "row": 94,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "f71dabea336eb7e7114df14319300d1e76750cc065f695d01aec27bb7d936ce4",
-      "path": "backend/app/tasks/bond_analytics_materialize.py",
-      "scope": "function:_invalidate_bond_analytics_worker_caches#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "8f5ddc2d2a3e6f6fe17f8a667db5e27cb6d0ac28619ea06c132a857c2f573d01",
-      "handler_ast_sha256": "c2ea5d0c3a0591e696506d45eee982017203f6b9b8ec3c44d28ad893e530e796",
-      "row": 168,
-      "column": 16,
-      "source": "        except Exception as exc:  # pragma: no cover - cache clearing must not fail materialization"
-    },
-    {
-      "id": "ca4044696d4185cfb85830d734e6d2b906ca0186e5d639e6953f707d3eb95055",
-      "path": "backend/app/tasks/choice_macro.py",
-      "scope": "function:_refresh_choice_macro_snapshot#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "b6c2e1a9c19f2be1f13e092d310fbee780756d3147953fc95646cb4f7b3986f1",
-      "handler_ast_sha256": "755996d0dd8abaf48ef1aab2c0d78df270be9b2ffaa11ce0a5d2263d9a755bbb",
-      "row": 707,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "52561e819fdb2467efcdc25854de17b264fccf812f0ae8b74a47be96e8c22aa4",
-      "path": "backend/app/tasks/choice_macro.py",
-      "scope": "function:_append_choice_macro_governance_state#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "4939078d6c3f4878ba8e2c8701e77c52fdcc76e674c0eaec0fe3e137126dbd5c",
-      "handler_ast_sha256": "ae3f34bad9cae5d9684503b5afaf5dd034921b92535ad5354bee605abbf9fed1",
-      "row": 1146,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "390e37cc31f75a9dfc8ca7902b4cbdd1829df19be869a6c12e00749cdbe350f6",
-      "path": "backend/app/tasks/choice_macro.py",
-      "scope": "function:_load_public_cross_asset_history_rows#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "dd984fdabf3b9c66f91c5a715142434d830122782c66d4c6ee2a4143e5450d6a",
-      "handler_ast_sha256": "06d51f811dac5f35de8d5f4eb050ad4ee889f86f6546c46f811ba0b1ee7c055f",
-      "row": 2031,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "ac3994ee3c9bd161a73e1b82b6d6118fc9838d54ae908705656df5f7f6e874ae",
-      "path": "backend/app/tasks/choice_stock_materialize.py",
-      "scope": "function:materialize_choice_stock_inputs#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "02ab1a6cc2b47c25111b382d1bb505f308bbddb4cc57357e2c67f185cc8e7ada",
-      "handler_ast_sha256": "eaa0a6446c71a51a4582168400fe5d810b64487e494ba934267aa4affd8fa0bd",
-      "row": 280,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
       "id": "887665b6672a7462dd3f60be5ebe05affd4a3b98a6d2d7aaccb9edd0669258ab",
       "path": "backend/app/tasks/choice_stock_materialize.py",
       "scope": "function:materialize_choice_stock_inputs#1",
       "occurrence": 1,
       "try_body_ast_sha256": "2ae6e0146a529033f89363fe969add7d7b02f658f05bd8ec24b82e36d3a80e15",
       "handler_ast_sha256": "0a0cd327d214e75e70638cc42987d682ed8d352b64216f51a9655fcd0d27fd0a",
-      "row": 490,
+      "row": 569,
       "column": 20,
       "source": "            except Exception as exc:"
-    },
-    {
-      "id": "1a618015f022457f7bd3a81e7281613d2f4f4e8d21951731ab2d32149e5d9051",
-      "path": "backend/app/tasks/choice_stock_materialize.py",
-      "scope": "function:_load_choice_css_financial_factors#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "4c7b0542e9f8978d3257c3fdb6698cb9c57e3cf4cfa84c68b268e233055d25b5",
-      "handler_ast_sha256": "45b87a724106715cb62e974b074d001267d1baba545eaa095c79ddd312fef224",
-      "row": 1194,
-      "column": 12,
-      "source": "    except Exception as exc:"
     },
     {
       "id": "9632e5247071d75082a379381fbfe3658e133a42c8f595ce0a197ab0916b87fa",
@@ -1149,7 +412,7 @@
       "occurrence": 1,
       "try_body_ast_sha256": "5b577a3f675c81813d9d16020e72fcbaa702cbbbc8a742937773209211e2b3b1",
       "handler_ast_sha256": "864d83ccc95d0f55c191c92deffbc22ddf87b8aed5f64c2f9c62b5517675088f",
-      "row": 1259,
+      "row": 1375,
       "column": 12,
       "source": "    except Exception:"
     },
@@ -1160,130 +423,9 @@
       "occurrence": 1,
       "try_body_ast_sha256": "ea1da7bc9845f29a5b88a63ceb05bd02ee388e2f2fba5df6e9112cdbcf853fc5",
       "handler_ast_sha256": "864d83ccc95d0f55c191c92deffbc22ddf87b8aed5f64c2f9c62b5517675088f",
-      "row": 1283,
+      "row": 1399,
       "column": 16,
       "source": "        except Exception:"
-    },
-    {
-      "id": "d574f2a2f7be08f2e1625f730981063512b7a81c82ff9675c5b7c614822015eb",
-      "path": "backend/app/tasks/choice_stock_materialize.py",
-      "scope": "function:_load_tushare_financial_factors#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "29898efb309afceb004a3bb500aa001e8bdecf7aaeb6fdf5622093c339c86b37",
-      "handler_ast_sha256": "f831cad71924ff1d60f4988d9c34ce466826c48f2e70632355139993e2eb5bd4",
-      "row": 1304,
-      "column": 20,
-      "source": "            except Exception as exc:"
-    },
-    {
-      "id": "bd356f512e3d72dd0beb30b5f6216857753cfa72d6481ee5aec6efd2ce5c8c23",
-      "path": "backend/app/tasks/choice_stock_theme_overlay_refresh.py",
-      "scope": "function:refresh_choice_stock_theme_overlay#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "56811f1a18d2fa458e53a01520be4fca683c874cc4a063eebe616c1c144c4853",
-      "handler_ast_sha256": "3ab7009e154af15be7e50fe0b3c59fedac9036bfc95cf0d0cd1389810edfb482",
-      "row": 92,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "861fe737a27812125244abf735736b5284fc4284db8d4ea3b403bc7204b24308",
-      "path": "backend/app/tasks/choice_stock_theme_overlay_refresh.py",
-      "scope": "function:refresh_choice_stock_theme_overlay#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "c1c2c06d79ac7c507810df1b774e709a82ca593df17418425f09a7e04178e3a0",
-      "handler_ast_sha256": "b2aedb37c31c5e9629de2f2cb01803bb9f0a89499f0d04b91839d2936d677e57",
-      "row": 123,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "6f085c52ac6fa08b67a27b16e6864ef7e9d530a8d51fc089ff90bb13a0da374b",
-      "path": "backend/app/tasks/choice_stock_theme_overlay_refresh.py",
-      "scope": "function:refresh_choice_stock_theme_overlay#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "3220786414262224131f3bfa05b007f7159c65d436366aa3ddf377c1002ac478",
-      "handler_ast_sha256": "49e2415ab28b073a6450ba212f8907920b22229a627129c5f106c2681cc48c94",
-      "row": 145,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "781309ef2afa0bdbc92cfce5e1f3532be265bed1b71dbb7b949fce21eef5481d",
-      "path": "backend/app/tasks/fx_mid_materialize.py",
-      "scope": "function:_materialize_fx_mid_for_report_date#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "5b660a9775003c50afb4b46b2c7c16e1a4cebeb61d33f62f80575f3c0953df38",
-      "handler_ast_sha256": "4d1716dd0ff93ea180af7549d140437e73ad37bc39d8d7d9586e2c923379808b",
-      "row": 662,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "7fa35c653e83a4ab95415e6d4425afe4549f6d6cc232e7ba7cfd97ded5c96f49",
-      "path": "backend/app/tasks/fx_mid_materialize.py",
-      "scope": "function:_materialize_fx_mid_for_report_date#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "2f79b6588cc3351b3bc1fd14e5d6f38f068379c070260692b779dca2ec03a371",
-      "handler_ast_sha256": "0dad8891604ea3b01a270e2b0fc8a75a2ed448a5e8668f0c6e2ce463bb9b9b54",
-      "row": 693,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "ba024c239b0a89623b7c2800d5dbb29b43962d5620eb394e8b79d9805b5c42f7",
-      "path": "backend/app/tasks/fx_mid_materialize.py",
-      "scope": "function:_materialize_fx_mid_for_report_date#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "143051ee2b4b63c9995943ce787d0628986c070e75e7bbe450284c92c5d0efd6",
-      "handler_ast_sha256": "a4ca9a1841500181bd5007e514a7d643ff54b3478ab6dd9591664c2ec4b1d028",
-      "row": 725,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "1b32821baf54b3b526d6cd55ed8a0fb80c7de59fab1016d21bef9b34b273cb26",
-      "path": "backend/app/tasks/home_macro_release_refresh.py",
-      "scope": "function:refresh_home_macro_release_sources#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "3c44f274f0962da4d5cff44309ebed9e3bfa1e43d1dfafc53cd3441f5b874700",
-      "handler_ast_sha256": "b64ed4afb82e806aefff427b4f662753fcdf6e464e5113d0a090bb083c012893",
-      "row": 204,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "b4bcc67201567cf6c7b2f853ed833e1a9ec72a06e5eec34246eecea582095f80",
-      "path": "backend/app/tasks/home_macro_release_refresh.py",
-      "scope": "function:refresh_home_macro_release_sources#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "3115ab16cf9e20ff8feb399070f9b7a672e6c423c656672d5ee04f6f77b2bb5b",
-      "handler_ast_sha256": "be56f364e3891f4d4f08534d5a26b6ab91c5a77e1f723a3b111a1da315c69d44",
-      "row": 210,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "91421a873b724e2f1cc021f6140d58fe8616cd4ced7988d97996421c9f590503",
-      "path": "backend/app/tasks/home_macro_release_refresh.py",
-      "scope": "function:refresh_home_macro_release_sources#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "5e92cb281192f8f37cb927bfce77b5e94101e73bc794a5fab7884e455781f2cd",
-      "handler_ast_sha256": "4f23fe97134eb385c0225aa4dbc4750af833e075650df161ce5fa27c3917783e",
-      "row": 216,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "f43a36ba11286ecf0576530df925906659ce5ca9ec0e719afbf9f573e94aad5d",
-      "path": "backend/app/tasks/livermore_gate_history_materialize.py",
-      "scope": "function:persist_livermore_gate_history_for_run#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "23e82075be82c8dd74e486e2bb18a227a5c658e10be58770b565941ef1802e4b",
-      "handler_ast_sha256": "afd2200de02ba1b99ddaf190d96fc72f58a70433070c2c99ae52a54d33f0725e",
-      "row": 110,
-      "column": 12,
-      "source": "    except Exception as exc:"
     },
     {
       "id": "e2f80a3c53f822195ba4e8d0c41fb023d83283672bdacec77d4dd9c3a935052c",
@@ -1308,57 +450,13 @@
       "source": "    except Exception:"
     },
     {
-      "id": "0ecd83a89f7a4b3b0c427743e9d48e18f140563ad40091b8c51ea1095320143c",
-      "path": "backend/app/tasks/macro_toolkit_write_refresh.py",
-      "scope": "function:_commodity_futures_terminal_snapshot#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "029e211ebedd813238107a152ee9e7929abd7fa3d66402bd35c0483c1a356300",
-      "handler_ast_sha256": "f9c5e9fa992643114ce1fb62fc9762bac9dfd6d703f8ca65560417a80528abf7",
-      "row": 82,
-      "column": 16,
-      "source": "        except Exception as exc:  # Snapshot failure must not replace the task's business terminal state."
-    },
-    {
-      "id": "c2d699b0577e4e272780640de5e648bff1a1a15a98c201c83c955793947b98e5",
-      "path": "backend/app/tasks/market_breadth_materialize.py",
-      "scope": "function:_cross_check_latest_limit_prices#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "b4b219e9f78aa6fa65faf042ea59e4a588841e1ea87c247d90ac6013325099d1",
-      "handler_ast_sha256": "fa0103faf22519152115f7656a965bb7dff362d191b16ef44d4340f96c4a8eed",
-      "row": 587,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "4b99e490b024906218783c612ff1de856ce7473152c2dff91caa0214eba300f1",
-      "path": "backend/app/tasks/nbs_gdp_release_ingest.py",
-      "scope": "function:run_nbs_gdp_release_ingest_once#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "5b3a6af9aa4848fb5c7d722404e3f80e725c2c6d4fbacff956dc6b36d54db240",
-      "handler_ast_sha256": "4324b0505d80b084302f9e55b7c34559bbc4c1cb4ce61eaf6b9ba832a859902f",
-      "row": 77,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "8da25821be303f3d50a76db1024d161aba3d02849a1f02ef9793744d61212d8c",
-      "path": "backend/app/tasks/pnl_materialize.py",
-      "scope": "function:_clear_pnl_page_runtime_caches#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "cbb3c6a9de6f4de570b557f220e470accf7d635ec662de7bee86bece5fc482d7",
-      "handler_ast_sha256": "0bce05454e492a44854a95498567b985be1474bf874a3f78e1a3d07f47847498",
-      "row": 666,
-      "column": 12,
-      "source": "    except Exception as exc:  # pragma: no cover - cache invalidation must not fail materialization"
-    },
-    {
       "id": "b59d8b03f6358d16103e3b34db710c390d41f12dd8cfbff5ec5c8af5ccd00343",
       "path": "backend/app/tasks/source_preview_refresh.py",
       "scope": "function:_refresh_source_preview_cache#1",
       "occurrence": 1,
       "try_body_ast_sha256": "9e3303b3ff3df2a1b6cd8ce01c0d529725203e86ae02e4d80365fb29d89bd421",
       "handler_ast_sha256": "924e3e779b9ebaa3d7e3cae2be89412c997e583ed852aff5954ab2ba00775487",
-      "row": 128,
+      "row": 188,
       "column": 32,
       "source": "                        except Exception:"
     },
@@ -1369,108 +467,9 @@
       "occurrence": 1,
       "try_body_ast_sha256": "9e3303b3ff3df2a1b6cd8ce01c0d529725203e86ae02e4d80365fb29d89bd421",
       "handler_ast_sha256": "490062d62315133fb8253990c806647c3d66fc6414f342419ad9224a21a81919",
-      "row": 133,
-      "column": 20,
-      "source": "            except Exception:"
-    },
-    {
-      "id": "118b9b42849f95abf8348b75eec4ca668d19e6446246f790d375b22e9da29334",
-      "path": "backend/app/tasks/stock_analysis_current_rule_cohort_evidence.py",
-      "scope": "function:_reload_signal_items#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "ac8ac7e59663d725b63d299d9966e259b64c3c0f4310aa2df374a88af0cf5ca1",
-      "handler_ast_sha256": "2f2f90507f3d9356f72871929189ed979cba72b03e1ce9d6117bad56a4afcb22",
-      "row": 547,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "4db318f96d39beef823e742cb96211f56f08ad38e156289596493504640d04ef",
-      "path": "backend/app/tasks/stock_analysis_current_rule_cohort_evidence.py",
-      "scope": "function:_validate_zero_signal_runner_result#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "4a680a610ae24852e1c811bdaea954255188d088221ffbe7bd3bbdefaf612f91",
-      "handler_ast_sha256": "3ef8815847fc2348d9ea7cf9b6e0ae24cc2756c10b757beff37910741ddba385",
-      "row": 731,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "9fed05ccff4f6545ffc2ba214f327578e10c61d33abcb4ce8154d786f66b6099",
-      "path": "backend/app/tasks/stock_analysis_current_rule_factor_manifest.py",
-      "scope": "function:build_stock_analysis_current_rule_factor_manifest#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "fb7b4b99ac07177bf5e0b5b0db79139b5c304ef01b82333ce856128085187975",
-      "handler_ast_sha256": "2208d41af6ec726c95c23d105eea341df37bdeb846dba05a8852b8aabf93b048",
-      "row": 139,
-      "column": 28,
-      "source": "                    except Exception as exc:  # pragma: no cover - defensive vendor-shape boundary"
-    },
-    {
-      "id": "e0cc4846da151344f9cf5d0359b1e0f85d84738789518bc54cb22d89356a8488",
-      "path": "backend/app/tasks/stock_analysis_current_rule_factor_write.py",
-      "scope": "function:_rollback_quietly#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "28fdd43eef99a8ec8903b5ebc60e184719c6966b8ad562748476d73425830ae6",
-      "handler_ast_sha256": "32cbe6664e3f1275a0372b50a94926c6573c20bf1b1d0d8a3da940ca207be37e",
-      "row": 1596,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "e441c6d43977da5316aed44f833b3a50771361aed844fe75adc52959c006bee3",
-      "path": "backend/app/tasks/stock_analysis_page_gap_factor_manifest.py",
-      "scope": "function:build_stock_analysis_page_gap_factor_manifest#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "48e106984634ce18c21a9ecd1b0cf0f4e4fb1bad6aa210fe4e0da37648cbdeba",
-      "handler_ast_sha256": "f56f8460c7b48893c67a50019cdac29291635b31ae62bc736e19fe8d1f44bf61",
-      "row": 87,
-      "column": 16,
-      "source": "        except Exception as exc:  # validator failure is a closed authority boundary"
-    },
-    {
-      "id": "7a056820fbad418d3249b94c293ba289dc206666cd55b22774f4f097e5d7ff35",
-      "path": "backend/app/tasks/stock_analysis_theme_overlay_archive.py",
-      "scope": "function:archive_tushare_ths_current_overlay#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "0408317a27d3554fb690cfc6f35653411236185442e777e75fe573f50a281319",
-      "handler_ast_sha256": "55a5d8535a00a12fb4e62132331970ba4efa07e1a2c1ff09e5ddb7ceb01f424f",
-      "row": 126,
-      "column": 12,
-      "source": "    except Exception as exc:"
-    },
-    {
-      "id": "57d2fdc6ffd755b2478b91502694074126d8a48aa6f8677a64fc00e24d53721f",
-      "path": "backend/app/tasks/stock_limit_price_ingest.py",
-      "scope": "function:ingest_stock_limit_prices#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "49a17a59907921f32863b4de644f0527bd942e35c1d3d1ced8ba4580083c81c9",
-      "handler_ast_sha256": "6c6517cbe33edfe4376d5f2fffe3b07332ca2760ea5d52f741d9c9c31c34bab8",
-      "row": 192,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "a2e95a2a1644c77263b16a5aa9917d49b8eb1c7e7b185277a96b08fef210fcb2",
-      "path": "backend/app/tasks/stock_limit_price_ingest.py",
-      "scope": "function:_fetch_stk_limit_with_retry#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "41be576f90fe41fa3a2406a90ce7d4695467449fcf83120a91bf924c42899907",
-      "handler_ast_sha256": "62d7058788c1e89b70cd8b71741613cd4343c23b5d72cc096339eed87fd5b1fe",
-      "row": 430,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "a952c78f386fd91b328cb80e74abf4384876b62a69c2960efc511f9db443e7dc",
-      "path": "backend/app/tasks/stock_limit_price_ingest.py",
-      "scope": "function:safe_error_message#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "f19f2962f2ba83c9b621e86a2658ade9b0671553fcd58600802ee81bb48f57ab",
-      "handler_ast_sha256": "6cefdae6f9698a293614df6056d5f59f02e19d71337fd84f25ddb1028bbfb287",
-      "row": 707,
-      "column": 12,
-      "source": "    except Exception:  # pragma: no cover - defensive masking must never hide root errors"
+      "row": 194,
+      "column": 24,
+      "source": "                except Exception:"
     },
     {
       "id": "9a975028df880b7489526ef909e0af648fd578824452eaca92078529511cd588",
@@ -1479,7 +478,7 @@
       "occurrence": 1,
       "try_body_ast_sha256": "164fd8097b29247bbb1abf193349afc26e3675a5b95dca86588f664532009783",
       "handler_ast_sha256": "ed7f3a1f2cee968035e473410963b3cb0200a7f2d34d22d85abfa73eaa51fdca",
-      "row": 138,
+      "row": 141,
       "column": 24,
       "source": "                except Exception:"
     },
@@ -1490,31 +489,9 @@
       "occurrence": 1,
       "try_body_ast_sha256": "382d64044210e11ce631918c07db7588d5f6af9d74efed6bf853cf0562e477a2",
       "handler_ast_sha256": "36f82dfd7ddee2d582741f06a1b4baeba90d4436b118e53032d5ebcc6f94c5c0",
-      "row": 143,
+      "row": 146,
       "column": 24,
       "source": "                except Exception:"
-    },
-    {
-      "id": "a8edb408d20cdfe4d76d3e5ba373a7beea6dfd240d6c9c26eca8f00c32ba3540",
-      "path": "backend/app/tasks/tushare_stock_disclosure.py",
-      "scope": "function:sync_stock_official_disclosures#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "d68cc41ddf06f1ba31b57cac0b6380703c75b676a8d6fb789c3fc3269e4de0c5",
-      "handler_ast_sha256": "3e40e4d12066fed1516226a29ca7245c783a7edc0819dad0e44c36c618b3ef5a",
-      "row": 173,
-      "column": 28,
-      "source": "                    except Exception as exc:"
-    },
-    {
-      "id": "5694a1000fa0b4ee1418e757ecf3846b4e87294508559f3c77f87ae98c79b733",
-      "path": "backend/app/tasks/tushare_stock_disclosure.py",
-      "scope": "function:_safe_error_message#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "405d8c5817a126b9c399faa6f715dfa501a5ca10a966c71ace08dc321f9a0ddf",
-      "handler_ast_sha256": "8e7b1ed8f690a9d36ad90fef15cd89d966c372ba41fcbedd66f1ddf99332a6ce",
-      "row": 585,
-      "column": 12,
-      "source": "    except Exception:  # noqa: S110  # 脱敏辅助不得因 settings 读取失败中断错误上报；env token 兜底已覆盖"
     },
     {
       "id": "27ce5652d9cecc5ec72cf3ba29f62cddbbffb6fa61958c10e4569b52320c5293",
@@ -1523,7 +500,7 @@
       "occurrence": 1,
       "try_body_ast_sha256": "291db0a0bee53af97352fd2e85f314e16283b0bd99dbb1f226cda374923eeac5",
       "handler_ast_sha256": "b2b1ee4ca163e5b7068b056194115c29f3cf825a2f948b36e7b0dfb7dbf38b8f",
-      "row": 259,
+      "row": 286,
       "column": 20,
       "source": "            except Exception as exc:"
     },
@@ -1534,7 +511,7 @@
       "occurrence": 1,
       "try_body_ast_sha256": "199deef3d15791f40fce407c382d57f7b03160e33ac119e5898abf35474b4921",
       "handler_ast_sha256": "e1824372c4639b149099917dc95d611a2327af7d3bb753f7ac4c057f8cee54a0",
-      "row": 421,
+      "row": 448,
       "column": 16,
       "source": "        except Exception as exc:"
     },
@@ -1545,7 +522,7 @@
       "occurrence": 1,
       "try_body_ast_sha256": "fb015f0cc6190b94e83ce7e4803670fdfcb516c58f22959af7baec82740ea0fe",
       "handler_ast_sha256": "93e671163938e09bf61a9d8e27c51f04046d864f278af3661f1eadd6528be376",
-      "row": 542,
+      "row": 569,
       "column": 16,
       "source": "        except Exception as exc:"
     },
@@ -1556,40 +533,7 @@
       "occurrence": 1,
       "try_body_ast_sha256": "8483015db3980407e7539e77f3eef402385c245a3554881ad3fef7332dcf74fb",
       "handler_ast_sha256": "065df336a93265fc70ed061f277887da8ca3a592512847883196e8283d1d7931",
-      "row": 549,
-      "column": 16,
-      "source": "        except Exception as exc:"
-    },
-    {
-      "id": "cd9d8e000d34746409725408a04d7de954fe3767e551cf41f6a37b7e0738bd18",
-      "path": "backend/scripts/archive/adb-recon-2026-05/diagnose_adb_coverage.py",
-      "scope": "function:_resolve_duckdb_path#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "30b46cd92fda5c00a08b6641b12400d38ac32520f252c779a6e5824e4ce50387",
-      "handler_ast_sha256": "73940c6a1a5cafa88211d19637394271908826e83a8653fe2f3e0430cc4a5ec3",
-      "row": 29,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "1b993484df42da878d875bf51899f22e4b67dd1129c8a41563473445b8cf78de",
-      "path": "backend/scripts/archive/adb-recon-2026-05/diagnose_balance_diff.py",
-      "scope": "function:_resolve_duckdb_path#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "30b46cd92fda5c00a08b6641b12400d38ac32520f252c779a6e5824e4ce50387",
-      "handler_ast_sha256": "c62ce55388da1edf23b8662b46bc370ba8f5889d6ec32f38b16e7f85fb9ba7b1",
-      "row": 28,
-      "column": 12,
-      "source": "    except Exception:"
-    },
-    {
-      "id": "c7dab28eb9344802544b8fe2d11f4066c416e72dd529a4a56735115df44b3429",
-      "path": "backend/scripts/backfill_crisis_score_inputs.py",
-      "scope": "function:backfill_crisis_score_inputs#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "52da3df4e398517f5ce5dd35dafc21772a7192820247ad8d8ed8b723c93616a1",
-      "handler_ast_sha256": "ac333875642b8774476c652497a0e2c99edf8a4e2f76c0dc25cad7e55d8cfbf2",
-      "row": 221,
+      "row": 576,
       "column": 16,
       "source": "        except Exception as exc:"
     },
@@ -1603,17 +547,6 @@
       "row": 36,
       "column": 12,
       "source": "    except Exception:"
-    },
-    {
-      "id": "0c5323a5281c0a6834e08ad88e9b251f09961a20b11c790e524cf184097fda04",
-      "path": "backend/scripts/backfill_formal_balance.py",
-      "scope": "function:main#1",
-      "occurrence": 1,
-      "try_body_ast_sha256": "a261fedb8f9cf4a272810abadda490d43c80d7f216a33f8a15d5fd15604c1d3a",
-      "handler_ast_sha256": "df542bc26660d272275995642bee0a594e2a93ccf8322c08f7a68b3c315f5971",
-      "row": 183,
-      "column": 16,
-      "source": "        except Exception as exc:"
     },
     {
       "id": "64aa78021e9706847da6f5b9bc59d4c9c295c5741f51c8f95a3b61d11363098f",
