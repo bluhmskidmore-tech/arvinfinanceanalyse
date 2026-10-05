@@ -152,14 +152,26 @@ def test_release_suite_documentation_has_no_missing_or_stale_test_targets():
 
 def test_ci_workflow_runs_its_configuration_and_path_gate_checks():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    backend_job = workflow.split("\n  release-control-structure:", 1)[0].split(
+    backend_job = workflow.split("\n  backend-caliber:", 1)[0].split(
         "\n  backend:", 1
     )[1]
+    caliber_job = workflow.split("\n  backend-caliber:", 1)[1].split(
+        "\n  release-control-structure:", 1
+    )[0]
 
     assert "tests/test_ci_workflow_contents.py" in backend_job
     assert "tests/test_caliber_gate_mapping.py" in backend_job
-    assert "fetch-depth: 0" in backend_job
-    assert 'python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"' in backend_job
+    assert "scripts/check_caliber_gate.py" not in backend_job
+    assert "timeout-minutes: 20" in backend_job
+    assert "if: github.event_name == 'pull_request'" in caliber_job
+    assert "timeout-minutes: 20" in caliber_job
+    assert "needs:" not in caliber_job
+    assert "continue-on-error:" not in caliber_job
+    assert "fetch-depth: 0" in caliber_job
+    assert "uv lock --check --project backend" in caliber_job
+    assert "uv sync --frozen --project backend --extra dev --python 3.11" in caliber_job
+    assert 'git fetch origin "${{ github.base_ref }}"' in caliber_job
+    assert 'python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"' in caliber_job
 
 
 def test_ci_workflow_uses_repo_typecheck_entrypoint():

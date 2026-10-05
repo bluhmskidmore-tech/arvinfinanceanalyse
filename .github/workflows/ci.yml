@@ -20,7 +20,6 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      # fetch-depth: 0：Caliber path-trigger gate 需要完整历史做 base-ref diff
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -73,10 +72,43 @@ jobs:
           tests/test_ci_workflow_contents.py
           tests/test_mcp_config_consistency.py
 
+  # 路径检查独立计时，避免前置 release suite 与 harness 用尽同一 job 的预算。
+  backend-caliber:
+    name: Caliber Path Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+
+    steps:
+      # fetch-depth: 0：Caliber path-trigger gate 需要完整历史做 base-ref diff
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Check backend uv.lock consistency
+        run: uv lock --check --project backend
+
+      - name: Install backend dependencies from backend/uv.lock
+        run: |
+          uv sync --frozen --project backend --extra dev --python 3.11
+          echo "VIRTUAL_ENV=${GITHUB_WORKSPACE}/backend/.venv" >> "$GITHUB_ENV"
+          echo "${GITHUB_WORKSPACE}/backend/.venv/bin" >> "$GITHUB_PATH"
+
       # PR diff 触及已映射的口径与正式计算路径时运行相应检查；
       # 映射表与 fail-closed 语义见 scripts/check_caliber_gate.py
       - name: Caliber path-trigger gate
-        if: github.event_name == 'pull_request'
         run: |
           git fetch origin "${{ github.base_ref }}"
           python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"
