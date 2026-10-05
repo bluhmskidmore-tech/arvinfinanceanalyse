@@ -89,7 +89,7 @@ export function useRiskTensorQualityEvidence(input: RiskTensorQualityEvidenceInp
           ? "复制失败，需手动选择证据"
           : "待复核";
 
-  
+
   const texts = buildRiskTensorQualityCopyTexts(evidence, qualityReviewStateLabel);
   const { qualityTraceCopyText, qualityEvidenceRequestCopyText, payloadQualityRequestCopyText, combinedQualityRequestCopyText, qualityWarningsCopyText, qualityEvidenceReviewRecordCopyText } = texts;
   const qualityEvidenceCopyMessage =
