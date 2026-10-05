@@ -13,17 +13,14 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.request import urlopen
 
 import pytest
 
 from tests.test_dev_frontend_source_entry import NODE, ROOT, _close, _environment, _interrupt, _pid_is_running, _process_options
-from tests.test_positions_api_contract import _seed_positions_db
 
-pytestmark = [
-    pytest.mark.governance_meta,
-    pytest.mark.skipif(os.environ.get("MOSS_TEST_FULL_APP") != "1", reason="Opt in to real application services"),
-]
+pytestmark = pytest.mark.governance_meta
 
 
 def _port() -> int:
@@ -74,14 +71,67 @@ def _vite_pid(wrapper_pid: int) -> int:
             if isinstance(records, dict):
                 records = [records]
         else:
-            children = Path(f"/proc/{parent}/task/{parent}/children").read_text().split()
-            records = [{"ProcessId": int(pid), "CommandLine": Path(f"/proc/{pid}/cmdline").read_bytes().decode().replace("\0", " ")}
-                       for pid in children]
+            result = subprocess.run(
+                ["ps", "-A", "-ww", "-o", "pid=", "-o", "ppid=", "-o", "command="],
+                capture_output=True, text=True, timeout=10, check=True,
+            )
+            rows = (line.split(None, 2) for line in result.stdout.splitlines() if line.strip())
+            records = [{"ProcessId": int(pid), "CommandLine": command}
+                       for pid, ppid, command in rows if int(ppid) == parent]
         for record in records:
             if "vite/bin/vite.js" in (record["CommandLine"] or "").replace("\\", "/"):
                 return record["ProcessId"]
             pending.append(record["ProcessId"])
     pytest.fail("npm source process did not own a Vite child")
+
+
+def _isolated_posix_query(monkeypatch, output: str, error: Exception | None = None) -> list[list[str]]:
+    queries = []
+
+    def query(argv, **_kwargs):
+        queries.append(argv)
+        if error is not None:
+            raise error
+        return SimpleNamespace(stdout=output)
+
+    def no_proc(path):
+        pytest.fail(f"Process discovery must not depend on Linux procfs: {path}")
+
+    monkeypatch.setitem(_vite_pid.__globals__, "os", SimpleNamespace(name="posix"))
+    monkeypatch.setitem(_vite_pid.__globals__, "subprocess", SimpleNamespace(run=query))
+    monkeypatch.setitem(_vite_pid.__globals__, "Path", no_proc)
+    return queries
+
+
+def test_vite_pid_posix_without_proc_finds_only_owned_nested_child(monkeypatch) -> None:
+    queries = _isolated_posix_query(monkeypatch, "\n".join([
+        '900 800 node /other/frontend/node_modules/vite/bin/vite.js',
+        '100 1 npm run dev:source',
+        '101 100 /bin/sh -c node ../scripts/dev-frontend-source.mjs',
+        '102 101 python /workspace with spaces/源码/scripts/dev_runtime_control.py run',
+        '103 102 node /workspace with spaces/源码/frontend/node_modules/vite/bin/vite.js --host 127.0.0.1',
+    ]))
+
+    assert _vite_pid(100) == 103
+    assert queries
+    assert queries[0] == ["ps", "-A", "-ww", "-o", "pid=", "-o", "ppid=", "-o", "command="]
+
+
+def test_vite_pid_posix_without_proc_rejects_unrelated_vite(monkeypatch) -> None:
+    _isolated_posix_query(monkeypatch, "\n".join([
+        '900 800 node /other/frontend/node_modules/vite/bin/vite.js',
+        '101 100 /bin/sh -c npm run another-script',
+    ]))
+
+    with pytest.raises(pytest.fail.Exception, match="npm source process did not own a Vite child"):
+        _vite_pid(100)
+
+
+def test_vite_pid_posix_query_failure_is_not_accepted(monkeypatch) -> None:
+    _isolated_posix_query(monkeypatch, "", error=OSError("process inspection unavailable"))
+
+    with pytest.raises(OSError, match="process inspection unavailable"):
+        _vite_pid(100)
 
 
 def _stage_frontend(root: Path, dependencies: Path) -> dict[str, str]:
@@ -120,13 +170,14 @@ def _stage_frontend(root: Path, dependencies: Path) -> dict[str, str]:
     for name in files:
         hashes[name] = _digest(frontend / name)
         assert hashes[name] == _digest(ROOT / "frontend" / name)
-    calendar = Path("config/dashboard_macro_release_calendar_2026.json")
-    target_calendar = root / calendar
-    if not target_calendar.exists():
-        target_calendar.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / calendar, target_calendar)
-    hashes[calendar.as_posix()] = _digest(target_calendar)
-    assert hashes[calendar.as_posix()] == _digest(ROOT / calendar)
+    for config in (Path("config/dashboard_macro_release_calendar_2026.json"),
+                   Path("config/macro_decision_observation_keys.json")):
+        target_config = root / config
+        if not target_config.exists():
+            target_config.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / config, target_config)
+        hashes[config.as_posix()] = _digest(target_config)
+        assert hashes[config.as_posix()] == _digest(ROOT / config)
     link = frontend / "node_modules"
     if link.exists():
         assert link.resolve() == dependencies
@@ -141,7 +192,47 @@ def _stage_frontend(root: Path, dependencies: Path) -> dict[str, str]:
     return hashes
 
 
+def test_stage_frontend_prepares_required_static_config_without_overwriting_local_config(tmp_path, monkeypatch) -> None:
+    source, staged = tmp_path / "source", tmp_path / "staged"
+    for tree in ("src", "public", "scripts"):
+        (source / "frontend" / tree).mkdir(parents=True)
+    (source / "frontend/src/mocks").mkdir()
+    (source / "frontend/src/mocks/probe.js").write_text(
+        "import keys from '../../../config/macro_decision_observation_keys.json';\n", encoding="utf-8",
+    )
+    for name in ("index.html", "vite.config.ts", "package.json", "tsconfig.json", "tsconfig.app.json", "tsconfig.node.json"):
+        (source / "frontend" / name).write_text("synthetic source\n", encoding="utf-8")
+    calendar = Path("config/dashboard_macro_release_calendar_2026.json")
+    keys = Path("config/macro_decision_observation_keys.json")
+    (source / "config").mkdir()
+    (source / calendar).write_text('{"calendar": []}\n', encoding="utf-8")
+    (source / keys).write_text('{"excluded": ["synthetic"]}\n', encoding="utf-8")
+    (staged / "config").mkdir(parents=True)
+    shutil.copy2(source / calendar, staged / calendar)
+    extra = staged / "config/local-only.json"
+    extra.write_text('{"owner": "synthetic fixture"}\n', encoding="utf-8")
+    preserved = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in (staged / calendar, extra)}
+    dependencies = staged / "frontend/node_modules"
+    dependencies.mkdir(parents=True)
+    monkeypatch.setitem(_stage_frontend.__globals__, "ROOT", source)
+
+    hashes = _stage_frontend(staged, dependencies.resolve())
+
+    assert (staged / keys).read_bytes() == (source / keys).read_bytes()
+    assert hashes[keys.as_posix()] == _digest(source / keys)
+    for path, identity in preserved.items():
+        assert (path.read_bytes(), path.stat().st_mtime_ns) == identity
+    changed = b'{"excluded": ["local synthetic override"]}\n'
+    (staged / keys).write_bytes(changed)
+    with pytest.raises(AssertionError):
+        _stage_frontend(staged, dependencies.resolve())
+    assert (staged / keys).read_bytes() == changed
+
+
+@pytest.mark.skipif(os.environ.get("MOSS_TEST_FULL_APP") != "1", reason="Opt in to real application services")
 def test_real_application_source_proxy_reads_isolated_positions_and_stops(tmp_path: Path) -> None:
+    from tests.test_positions_api_contract import _seed_positions_db
+
     assert sys.version_info[:2] == (3, 11)
     assert NODE is not None
     npm_candidates = [Path(NODE).parent / "node_modules/npm/bin/npm-cli.js",
