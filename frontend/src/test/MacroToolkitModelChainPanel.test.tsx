@@ -238,9 +238,17 @@ describe("MacroToolkitModelChainPanel", () => {
     const garchCard = screen.getByTestId("macro-toolkit-model-chain-model-garch");
     // 数据日是业务口径日期，留在卡面；生成时间是系统运行时间戳，改由 title 留痕（含原始 ISO）。
     const asOf = within(garchCard).getByText("数据日 未知");
+    const generatedAt = "2026-08-12T01:04:59+00:00";
+    // The UI deliberately uses the viewer's local timezone, including UTC CI.
+    const localParts = new Map(
+      new Intl.DateTimeFormat("en", {
+        month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+      }).formatToParts(new Date(generatedAt)).map((part) => [part.type, part.value]),
+    );
+    const localTimestamp = `${localParts.get("month")}-${localParts.get("day")} ${localParts.get("hour")}:${localParts.get("minute")}`;
     expect(asOf).toHaveAttribute(
       "title",
-      "数据日 未知 · 生成时间 08-12 09:04 · 2026-08-12T01:04:59+00:00",
+      `数据日 未知 · 生成时间 ${localTimestamp} · ${generatedAt}`,
     );
     expect(garchCard).not.toHaveTextContent("生成时间");
   });

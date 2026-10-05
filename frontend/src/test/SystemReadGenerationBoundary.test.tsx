@@ -339,7 +339,7 @@ describe("SystemReadGenerationBoundary", () => {
           return jsonResponse({ enabled: true, generation: "full-gen-a", coverage_dates: {} }, "full-gen-a");
         }
         reads += 1;
-        return jsonResponse(envelope({ dates: [], generation: "full-gen-a" }), "full-gen-a");
+        return jsonResponse(envelope({ dates: [], report_dates: [], generation: "full-gen-a" }), "full-gen-a");
       });
       const options = { defaultOptions: { queries: { retry: false, staleTime: 60_000 } } };
       const client = createApiClient({ mode: "real", fetchImpl });
@@ -372,14 +372,19 @@ describe("SystemReadGenerationBoundary", () => {
         return jsonResponse({ enabled: true, generation, coverage_dates: {} }, generation);
       }
       reads += 1;
-      return jsonResponse(envelope({ dates: [], generation }), generation);
+      return jsonResponse(envelope({ dates: [], report_dates: [], generation }), generation);
     });
     const client = createApiClient({ mode: "real", fetchImpl });
     const parent = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
     render(<MemoryRouter><ApiClientProvider client={client}><QueryClientProvider client={parent}>
       <SystemReadGenerationBoundary><ReturnNavigationProbe /></SystemReadGenerationBoundary>
     </QueryClientProvider></ApiClientProvider></MemoryRouter>);
-    await waitFor(() => expect(screen.getByTestId("risk-generation")).toHaveTextContent("full-gen-a"));
+    // Both concurrent reads must be fresh before leaving the route. A risk
+    // response alone does not mean the balance read has reached the cache.
+    await waitFor(() => {
+      expect(screen.getByTestId("risk-generation")).toHaveTextContent("full-gen-a");
+      expect(screen.getByTestId("balance-generation")).toHaveTextContent("full-gen-a");
+    });
     expect(reads).toBe(2);
     fireEvent.click(screen.getByRole("button", { name: "切换页面" }));
     await waitFor(() => expect(handshakes).toBe(2));
@@ -411,7 +416,7 @@ describe("SystemReadGenerationBoundary", () => {
         if (handshakes > 1) return nextHandshake.promise;
         return jsonResponse({ enabled: true, generation: "full-gen-a", coverage_dates: {} }, "full-gen-a");
       }
-      return jsonResponse(envelope({ dates: [] }), "full-gen-a");
+      return jsonResponse(envelope({ dates: [], report_dates: [] }), "full-gen-a");
     });
     render(
       <MemoryRouter>
@@ -458,7 +463,7 @@ describe("SystemReadGenerationBoundary", () => {
         return pending.promise;
       }
       return jsonResponse(
-        envelope({ dates: [], generation: publishedGeneration }),
+        envelope({ dates: [], report_dates: [], generation: publishedGeneration }),
         publishedGeneration,
       );
     });
@@ -490,12 +495,15 @@ describe("SystemReadGenerationBoundary", () => {
         { path: "/base/ui/balance-analysis/dates", generation: "full-gen-b" },
       ]),
     );
-    expect(await screen.findByTestId("risk-generation")).toHaveTextContent("full-gen-b");
-    expect(await screen.findByTestId("balance-generation")).toHaveTextContent("full-gen-b");
+    // The output elements exist while their reads are still loading.
+    await waitFor(() => {
+      expect(screen.getByTestId("risk-generation")).toHaveTextContent("full-gen-b");
+      expect(screen.getByTestId("balance-generation")).toHaveTextContent("full-gen-b");
+    });
 
     for (const pending of oldResponses) {
       pending.resolve(
-        jsonResponse(envelope({ dates: [], generation: "full-gen-a" }), "full-gen-a"),
+        jsonResponse(envelope({ dates: [], report_dates: [], generation: "full-gen-a" }), "full-gen-a"),
       );
     }
     await waitFor(() => {
@@ -515,7 +523,7 @@ describe("SystemReadGenerationBoundary", () => {
             "full-gen-a",
           );
         }
-        return jsonResponse(envelope({ dates: [] }), responseGeneration);
+        return jsonResponse(envelope({ dates: [], report_dates: [] }), responseGeneration);
       });
       const client = createApiClient({ mode: "real", fetchImpl });
 
@@ -530,7 +538,7 @@ describe("SystemReadGenerationBoundary", () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input) => {
       const path = new URL(String(input), "http://moss.local").pathname;
       if (path === "/api/system-read-publication") return handshake.promise;
-      return jsonResponse(envelope({ dates: [], generation: "full-gen-a" }), "full-gen-a");
+      return jsonResponse(envelope({ dates: [], report_dates: [], generation: "full-gen-a" }), "full-gen-a");
     });
     renderBoundary(createApiClient({ mode: "real", fetchImpl }));
 
@@ -558,7 +566,7 @@ describe("SystemReadGenerationBoundary", () => {
       });
       const requestGeneration = new Headers(init?.headers).get(SYSTEM_READ_GENERATION_HEADER);
       return jsonResponse(
-        path === "/base/api/risk/tensor/dates" ? envelope({ dates: [] }) : {},
+        path === "/base/api/risk/tensor/dates" ? envelope({ dates: [], report_dates: [] }) : {},
         requestGeneration ?? undefined,
       );
     });
@@ -646,7 +654,7 @@ describe("SystemReadGenerationBoundary", () => {
         return jsonResponse({ enabled: false, generation: null, coverage_dates: {} });
       }
       expect(new Headers(init?.headers).has(SYSTEM_READ_GENERATION_HEADER)).toBe(false);
-      return jsonResponse(envelope({ dates: [], generation: "live" }));
+      return jsonResponse(envelope({ dates: [], report_dates: [], generation: "live" }));
     });
     const first = renderBoundary(createApiClient({ mode: "real", fetchImpl: realFetch }));
     expect(await screen.findByTestId("interaction-generation")).toHaveTextContent("disabled");

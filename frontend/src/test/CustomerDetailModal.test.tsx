@@ -125,7 +125,7 @@ describe("CustomerDetailModal", () => {
     expect(bond1Cells).toEqual([
       "BOND-1",
       "信用债",
-      "credit",
+      "信用债",
       "AAA",
       "金融",
       "1.00",
@@ -153,9 +153,9 @@ describe("CustomerDetailModal", () => {
     ]);
     expect(bond2Row!.querySelector(".positions-customer-detail__rating")).toBeNull();
 
-    // 后端已返回未用字段补展示：资产分类列（枚举值原样透出，null→EM_DASH）。
+    // 已登记资产分类使用中文标签，未登记 token（rates）原样保留。
     expect(screen.getAllByText("资产分类").length).toBeGreaterThan(0);
-    expect(screen.getByText("credit")).toBeInTheDocument();
+    expect(screen.queryByText("credit")).not.toBeInTheDocument();
 
     // portal 主题逃逸修复：modalRender 包的 Nocturne scope 容器必须罩住弹窗内容。
     const scopeHost = screen.getByTestId("positions-customer-detail-scope");

@@ -818,7 +818,9 @@ describe("LedgerDashboardPage", () => {
     await user.upload(await screen.findByLabelText("台账文件"), file);
     await user.click(screen.getByRole("button", { name: "开始导入" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("正在校验并导入");
+    await waitFor(() =>
+      expect(screen.getByTestId("ledger-import-status")).toHaveTextContent("正在校验并导入"),
+    );
     expect(screen.getByRole("button", { name: "正在导入" })).toBeDisabled();
     expect(await screen.findByText("导入完成", {}, { timeout: 3_000 })).toBeInTheDocument();
     expect(screen.getByTestId("ledger-import-status")).toHaveTextContent("batch_id 12");

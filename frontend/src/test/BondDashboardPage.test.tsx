@@ -697,9 +697,9 @@ describe("BondDashboardPage", () => {
     // 降级字段要等 bundle 信封落地后再断言。
     const metaPanel = await screen.findByTestId("bond-dashboard-first-screen-result-meta");
     await waitFor(() => {
-      expect(metaPanel).toHaveTextContent("供应商陈旧");
+      expect(metaPanel).toHaveTextContent("数据源更新延迟");
     });
-    expect(metaPanel).toHaveTextContent("最新快照降级");
+    expect(metaPanel).toHaveTextContent("使用最近可用数据");
     expect(metaPanel).toHaveTextContent("2026-04-29");
   });
 

@@ -203,7 +203,7 @@ describe("buildBondAnalyticsOverviewModel", () => {
 
     expect(model.truthStrip.items).toEqual([
       { key: "basis", label: "口径", value: "加载中", tone: "neutral" },
-      { key: "freshness", label: "新鲜度", value: "加载中", tone: "neutral" },
+      { key: "freshness", label: "更新时间", value: "加载中", tone: "neutral" },
       { key: "quality", label: "质量", value: "加载中", tone: "neutral" },
       { key: "coverage", label: "覆盖", value: "总览收窄", tone: "neutral" },
     ]);

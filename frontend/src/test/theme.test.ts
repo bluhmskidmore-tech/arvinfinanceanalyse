@@ -952,11 +952,10 @@ describe("globalCss design token bridge (:root)", () => {
       workbenchDeferredChromeCss,
       "box-shadow: none !important",
     );
-    const terminalChromeReportDate = nocturneScopeSet(
-      workbenchDeferredChromeCss,
-      "color: var(--dh-api-soft)",
-      ".workbench-shell-report-chip",
-    );
+    // The report chip now inherits the shared secondary text token; its
+    // Nocturne remap lives in tokens.css instead of a duplicated scope list.
+    const terminalChromeReportDate =
+      workbenchDeferredChromeCss.match(/\.workbench-shell-report-chip\s*\{([^}]*)\}/)?.[1] ?? "";
     const terminalChromeNavlink = nocturneScopeSet(
       workbenchDeferredChromeCss,
       "border-bottom-color: var(--dh-api-blue)",
@@ -1069,7 +1068,8 @@ describe("globalCss design token bridge (:root)", () => {
     expect(terminalVars).toEqual(terminalBackgroundExpected);
     expect(terminalOverride).toEqual(terminalExpected);
     expect(terminalChromeShadow).toEqual(terminalExpected);
-    expect(terminalChromeReportDate).toEqual(terminalExpected);
+    expect(terminalChromeReportDate).toContain("color: var(--moss-color-text-secondary)");
+    expect(tokensCss).toContain("--moss-color-text-secondary: var(--dh-api-soft)");
     expect(terminalChromeNavlink).toEqual(terminalExpected);
     expect(terminalChromeTicker).toEqual(terminalExpected);
     // 子导航三组＝组内子导航渲染分支推导（market-data 抑制子导航、

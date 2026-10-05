@@ -175,7 +175,10 @@ export const liveRouteReadinessContracts = {
     verificationFiles: ["src/test/BondDashboardPage.test.tsx"],
   },
   "/positions": {
-    sourceFiles: ["src/features/positions/components/PositionsView.tsx"],
+    sourceFiles: [
+      "src/features/positions/components/PositionsView.tsx",
+      "src/features/positions/components/PositionsEvidenceSection.tsx",
+    ],
     sourceAnchors: ["positions-page", "positions-list-candidate-boundary"],
     verificationFiles: ["src/test/PositionsView.test.tsx"],
   },

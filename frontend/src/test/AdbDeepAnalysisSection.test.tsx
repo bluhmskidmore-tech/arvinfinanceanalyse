@@ -208,7 +208,7 @@ describe("AdbDeepAnalysisSection", () => {
     const evidence = within(screen.getByTestId("adb-insights-result-meta-insights"));
     expect(evidence.getByText("adb.insights")).toBeInTheDocument();
     expect(evidence.getByText("sv-adb-insights-fallback")).toBeInTheDocument();
-    expect(evidence.getAllByText("最新快照降级").length).toBeGreaterThan(0);
+    expect(evidence.getAllByText("使用最近可用数据").length).toBeGreaterThan(0);
   });
 
   it("renders EM_DASH for null values instead of zero", () => {

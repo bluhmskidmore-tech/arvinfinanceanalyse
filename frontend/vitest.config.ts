@@ -10,7 +10,15 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     globals: true,
-    exclude: ["tests/playwright/**", "node_modules/**", "dist/**"],
+    exclude: [
+      "tests/playwright/**",
+      "node_modules/**",
+      "dist/**",
+      // These suites use node:test and run in CI's native Node test lane.
+      "scripts/homeRuntimeAcceptance.test.mjs",
+      "scripts/startupBundleParsing.test.mjs",
+      "scripts/visual-compliance-audit.test.mjs",
+    ],
     testTimeout: 15000,
     // Cap workers to avoid Windows/thread-pool thrash on large page tests.
     maxWorkers,

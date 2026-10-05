@@ -261,7 +261,7 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     const listAsyncRegion = await screen.findByTestId("product-category-audit-list-timeline-async");
     const retryButton = await within(listAsyncRegion).findByRole("button", { name: "重试" });
     expect(within(listAsyncRegion).getByText(/数据载入失败/)).toBeInTheDocument();
-    expect(within(listAsyncRegion).getByText(/当前页面保留重试入口/)).toBeInTheDocument();
+    expect(within(listAsyncRegion).getByText(/暂时无法获取数据，请重试/)).toBeInTheDocument();
     expect(within(listAsyncRegion).queryByTestId("audit-current-state")).not.toBeInTheDocument();
     expect(within(listAsyncRegion).queryByTestId("audit-event-list")).not.toBeInTheDocument();
 
