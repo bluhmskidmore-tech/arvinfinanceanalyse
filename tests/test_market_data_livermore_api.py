@@ -6696,6 +6696,39 @@ def test_theme_overlay_reader_construction_does_not_create_missing_jsonl_paths(
     assert not archive_path.exists()
 
 
+@pytest.mark.parametrize("error_type", [TypeError, ValueError])
+def test_theme_overlay_reader_rejects_invalid_setting_text(tmp_path, error_type):
+    from backend.app.services import market_data_livermore_service as service
+
+    class InvalidSetting:
+        def __str__(self):
+            raise error_type("invalid setting text")
+
+    reader = service.theme_overlay_reader_from_settings(SimpleNamespace(
+        governance_path=tmp_path / "governance",
+        local_archive_path=tmp_path / "archive",
+        governance_sql_dsn=InvalidSetting(),
+    ))
+
+    assert reader is None
+    assert not (tmp_path / "governance").exists()
+    assert not (tmp_path / "archive").exists()
+
+
+def test_theme_overlay_reader_does_not_hide_unexpected_constructor_failure(tmp_path, monkeypatch):
+    from backend.app.services import market_data_livermore_service as service
+
+    def broken_accessor(**_kwargs):
+        raise RuntimeError("unexpected accessor implementation failure")
+
+    monkeypatch.setattr(service, "ThemeOverlayManifestAccessor", broken_accessor)
+    with pytest.raises(RuntimeError, match="unexpected accessor implementation failure"):
+        service.theme_overlay_reader_from_settings(SimpleNamespace(
+            governance_path=tmp_path / "governance",
+            local_archive_path=tmp_path / "archive",
+        ))
+
+
 def test_theme_overlay_reader_sql_authority_does_not_create_governance_tables(
     tmp_path,
 ) -> None:

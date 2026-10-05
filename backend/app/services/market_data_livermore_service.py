@@ -300,7 +300,7 @@ def theme_overlay_reader_from_settings(settings: object) -> StockAnalysisThemeOv
             sql_dsn=str(getattr(settings, "governance_sql_dsn", "") or ""),
             backend_mode=str(getattr(settings, "governance_backend", "jsonl") or "jsonl"),
         )
-    except Exception as exc:
+    except (TypeError, ValueError) as exc:
         logger.warning(
             "livermore_theme_overlay_reader_unavailable error=%s",
             str(exc).strip().replace("\n", " ")[:300] or exc.__class__.__name__,
