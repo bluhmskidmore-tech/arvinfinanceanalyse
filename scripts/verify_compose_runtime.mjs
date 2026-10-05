@@ -26,7 +26,7 @@ const hostEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
   /^(PATH|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|SystemRoot|WINDIR|COMSPEC|PATHEXT|TEMP|TMP|ProgramData|ProgramFiles|ProgramFiles\(x86\)|ProgramW6432)$/i.test(key)));
 const receipt = { schemaVersion: 1, project, mode, observedAt: new Date().toISOString(),
   codeRoot: root, configurationValid: false, runtimeExecuted: false, readinessPassed: false,
-  workerHeartbeatPassed: false, shutdownPassed: false, cleanupPassed: false,
+  workerHeartbeatPassed: false, shutdownPassed: false, cleanupExecuted: false, cleanupPassed: false,
   scope: 'Six original Compose services; synthetic development storage, local object store, disabled business prewarm; MinIO infrastructure health only.' };
 let dockerPrefix = [];
 let composePrefix = [];
@@ -183,7 +183,8 @@ try {
     api: { environment: { ...syntheticSettings, MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS: '0', MOSS_SKIP_POSTGRES_MIGRATIONS: '0' }, volumes: [runtimeMount] },
     worker: { environment: syntheticSettings, volumes: [runtimeMount] },
     postgres: { volumes: ['smoke_postgres:/var/lib/postgresql/data'] },
-    redis: { volumes: ['smoke_redis:/data'] }, minio: { volumes: ['smoke_minio:/data'] },
+    redis: { volumes: ['smoke_redis:/data'] },
+    minio: { image: `${project}-minio:smoke`, volumes: ['smoke_minio:/data'], pull_policy: 'never' },
     frontend: { environment: { VITE_DATA_SOURCE: 'real', VITE_API_BASE_URL: '' } },
   }, volumes: { smoke_postgres: {}, smoke_redis: {}, smoke_minio: {} } };
   await save('override.json', overlay);
@@ -202,8 +203,20 @@ try {
     if (existing.containers.length || existing.volumes.length || existing.networks.length || Object.values(configuration.volumes).some(v => allVolumeNames.includes(v.name))) {
       throw new Error('Refusing to reuse existing containers or volumes.');
     }
+    const minioBuild = configuration.services.minio.build;
+    if (path.resolve(minioBuild?.context || '') !== path.join(root, 'docker', 'minio')) throw new Error('Unexpected MinIO build context.');
+    const sourceCommit = (await fs.readFile(path.join(minioBuild.context, 'Dockerfile'), 'utf8')).match(/^ARG MINIO_COMMIT=([a-f0-9]{40})$/m)?.[1];
+    if (!sourceCommit) throw new Error('MinIO official source commit is not pinned.');
+    receipt.minioBuild = { attempted: true, passed: false, sourceCommit, image: configuration.services.minio.image };
+    try {
+      const build = await compose(['--progress', 'plain', 'build', 'minio'], 1200000);
+      await save('build.log', build.stdout + build.stderr);
+    } catch (error) { await save('build.log', (error.stdout || '') + (error.stderr || '')); throw error; }
+    const [minioImage] = JSON.parse((await docker('image', 'inspect', configuration.services.minio.image)).stdout);
+    if (minioImage.Config.Labels?.['org.opencontainers.image.revision'] !== sourceCommit) throw new Error('Built MinIO revision does not match the fixed official source.');
+    receipt.minioBuild.passed = true;
     startupAttempted = true;
-    await compose(['up', '-d', '--wait', '--wait-timeout', '600'], 660000);
+    await compose(['up', '--no-build', '-d', '--wait', '--wait-timeout', '600'], 660000);
     receipt.runtimeExecuted = true;
     const origin = `http://127.0.0.1:${ports.FRONTEND}`;
     await probe(origin, body => body.includes('id="root"'));
@@ -235,7 +248,8 @@ try {
 } finally {
   if (startupAttempted) {
     try {
-      await ownedResources();
+      const created = await ownedResources();
+      receipt.cleanupExecuted = Boolean(created.containers.length || created.volumes.length || created.networks.length);
       let stopSucceeded = true;
       try { await compose(['stop', '--timeout', '30'], 90000); }
       catch (error) { stopSucceeded = false; receipt.shutdownStopError = error.message; }
@@ -256,7 +270,8 @@ try {
         socket.once('error', error => resolve(error.code === 'ECONNREFUSED'));
       })));
       receipt.portsReleased = released.every(Boolean);
-      receipt.cleanupPassed = !remaining.containers.length && !remaining.volumes.length && !remaining.networks.length && receipt.portsReleased;
+      receipt.resourcesAbsentAfterDown = !remaining.containers.length && !remaining.volumes.length && !remaining.networks.length;
+      receipt.cleanupPassed = receipt.cleanupExecuted && receipt.resourcesAbsentAfterDown && receipt.portsReleased;
       if (!receipt.shutdownPassed || !receipt.cleanupPassed) throw new Error('Normal shutdown or owned-resource cleanup did not pass.');
     } catch (error) { receipt.cleanupError = error.message; process.exitCode = 1; }
   }

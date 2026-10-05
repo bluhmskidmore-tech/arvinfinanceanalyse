@@ -95,6 +95,8 @@ docker compose up api worker frontend postgres redis minio
 启动前必须提供 `MOSS_POSTGRES_PASSWORD`、`MOSS_MINIO_ROOT_USER`、`MOSS_MINIO_ROOT_PASSWORD`
 （compose 文件用 `${VAR:?...}` 声明为必填，没有写死的凭据）。
 
+MinIO 社区版已改为[仅源码分发](https://github.com/minio/minio/tree/7aac2a2c5b7c882e68c1ce017d8256be2feea27f)。Compose 首次启动会从固定官方提交构建 `moss-minio:7aac2a2c5b7c`，需要访问 GitHub、Go 模块代理及官方 Go/Alpine 镜像仓库；构建上下文仅为 `docker/minio`，不会把应用源码、`.env` 或业务数据发送给构建器。
+
 `docker-compose.yml` 中的容器端口基线是：
 
 - API: `8000`（仅容器内端口，`api` 服务没有 `ports:` 映射，宿主机不能直接访问；由 `frontend` 容器代理）

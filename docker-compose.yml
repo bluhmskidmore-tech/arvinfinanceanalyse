@@ -84,7 +84,10 @@ services:
       - "127.0.0.1:${MOSS_REDIS_PORT:-6379}:6379"
 
   minio:
-    image: minio/minio:latest
+    image: moss-minio:7aac2a2c5b7c
+    build:
+      context: ./docker/minio
+    pull_policy: build
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MOSS_MINIO_ROOT_USER:?Set MOSS_MINIO_ROOT_USER for docker compose}

@@ -153,6 +153,8 @@
 
 可选覆盖（有默认值）：`MOSS_POSTGRES_USER`（默认 `moss`）、`MOSS_POSTGRES_DB`（默认 `moss`），以及宿主机端口映射 `MOSS_POSTGRES_PORT`、`MOSS_REDIS_PORT`、`MOSS_MINIO_PORT`、`MOSS_MINIO_CONSOLE_PORT`、`MOSS_FRONTEND_PORT`。
 
+MinIO 使用 `docker/minio/Dockerfile` 从官方提交 `7aac2a2c5b7c882e68c1ce017d8256be2feea27f` 构建，编译阶段为 `golang:1.27.1-alpine3.24`，运行阶段为 `alpine:3.24.2`。首次启动需要下载公开源码和编译依赖；镜像保留上游 entrypoint、LICENSE 和提交标签。构建上下文只包含 Dockerfile 与 `.dockerignore`，不读取应用 `.env` 或业务数据。API/worker 默认仍使用本地对象存储模式，MinIO 容器健康通过不能代表应用的 MinIO 读写功能已经实现。
+
 据此，`api` / `worker` 容器内得到的配置为：
 
 - `MOSS_POSTGRES_DSN=postgresql://${MOSS_POSTGRES_USER}:${MOSS_POSTGRES_PASSWORD}@postgres:5432/${MOSS_POSTGRES_DB}`
