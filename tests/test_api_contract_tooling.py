@@ -150,7 +150,8 @@ def test_ci_runs_api_contract_export_lint_and_breaking_change_gate() -> None:
     assert "node frontend/scripts/lintOpenApi.mjs .codex-tmp/openapi.json -r .spectral.yaml" in workflow
     assert "node --test frontend/scripts/lintOpenApi.node-test.mjs" in workflow
     # The gate must read the baseline from the base branch, not from the pull request.
-    assert 'python scripts/api_contract_check.py baseline-check \\\n            --baseline-ref "origin/${{ github.base_ref }}"' in workflow
+    assert 'python scripts/api_contract_check.py baseline-check \\\n            --baseline-ref "${{ github.event.pull_request.base.sha }}"' in workflow
+    assert "--derive-missing-baseline .codex-tmp/trusted-pr-base" in workflow
     assert "--json .codex-tmp/openapi-contract-gate.json" in workflow
     assert "name: openapi-contract-gate" in workflow
     assert "path: .codex-tmp/openapi-contract-gate.json" in workflow

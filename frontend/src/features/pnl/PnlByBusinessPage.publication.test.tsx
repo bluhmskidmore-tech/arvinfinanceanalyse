@@ -337,7 +337,11 @@ describe("PnlByBusinessPage published insights boundary", () => {
     const insights = vi.fn(async () => {
       throw new Error("409 published generation revoked");
     });
-    const { queryClient } = renderPage(buildClient(status, insights));
+    const client = buildClient(status, insights);
+    const ytdResponse = deferred<Awaited<ReturnType<ApiClient["getPnlByBusinessYtd"]>>>();
+    const readYtd = client.getPnlByBusinessYtd;
+    client.getPnlByBusinessYtd = vi.fn(() => ytdResponse.promise);
+    const { queryClient } = renderPage(client);
     await openYtdView();
 
     await waitFor(() => expect(insights).toHaveBeenCalledTimes(1));
@@ -356,9 +360,17 @@ describe("PnlByBusinessPage published insights boundary", () => {
         "generation-revoked",
       ])?.status).toBe("error");
     });
-    expect(screen.getByTestId("pnl-by-business-insights-leadership-panel")).toHaveTextContent(
+    expect(queryClient.getQueryState([
+      "pnl-by-business", "ytd", "mock", 2026, REPORT_DATES[0],
+    ])?.status).toBe("pending");
+    expect(screen.queryByTestId("pnl-by-business-insights-leadership-panel")).not.toBeInTheDocument();
+    // Insights can fail before the YTD payload allows the panel to mount.
+    ytdResponse.resolve(await readYtd(2026, REPORT_DATES[0]));
+    const panel = await screen.findByTestId("pnl-by-business-insights-leadership-panel");
+    expect(panel).toHaveTextContent(
       "masked",
     );
+    expect(insights).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a deferred rebuild receipt and status reread on the submitted report date", async () => {

@@ -30,6 +30,17 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.trusted_base_source import (  # noqa: E402
+    BaseSourceError,
+    isolated_backend_source,
+    read_committed_blob,
+    resolve_commit,
+    run_source_python,
+)
+
 BASELINE_PATH = REPO_ROOT / "scripts" / "ruff_ble001_baseline.json"
 RUFF_TARGET = "backend"
 EXPECTED_RUFF_VERSION = "ruff 0.15.7"
@@ -40,6 +51,10 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 class EvidenceError(RuntimeError):
     """The gate could not obtain or validate complete Ruff evidence."""
+
+
+class MissingBaselineError(EvidenceError):
+    """A resolved base commit has no baseline file."""
 
 
 @dataclass(frozen=True)
@@ -121,6 +136,10 @@ def run_ruff() -> list[dict[str, Any]]:
             "json",
         ]
     )
+    return _parse_ruff_output(proc)
+
+
+def _parse_ruff_output(proc: subprocess.CompletedProcess[str]) -> list[dict[str, Any]]:
     if proc.returncode not in (0, 1):
         detail = (proc.stderr or proc.stdout).strip()
         raise EvidenceError(
@@ -137,6 +156,29 @@ def run_ruff() -> list[dict[str, Any]]:
     if proc.returncode == 0 and payload:
         raise EvidenceError("Ruff returned diagnostics with a successful exit code")
     return payload
+
+
+def derive_trusted_baseline(baseline_ref: str, source_parent: Path) -> list[Violation]:
+    """Fingerprint only exact base source when the committed baseline is absent."""
+    try:
+        commit = resolve_commit(REPO_ROOT, baseline_ref)
+        with isolated_backend_source(REPO_ROOT, commit, source_parent) as source:
+            proc = run_source_python(
+                source,
+                "import runpy,sys;sys.argv=['ruff','check','backend','--select','BLE001',"
+                "'--output-format','json'];runpy.run_module('ruff',run_name='__main__')",
+                [],
+            )
+            trusted = build_violations(_parse_ruff_output(proc), source.root)
+            provenance = source.provenance() | {
+                "ruff_version": EXPECTED_RUFF_VERSION,
+                "python_version": ".".join(map(str, sys.version_info[:3])),
+                "command": "python -m ruff check backend --select BLE001 --output-format json",
+            }
+            print(f"[ruff-ble001] derived trusted base: {json.dumps(provenance, sort_keys=True)}")
+            return trusted
+    except BaseSourceError as error:
+        raise EvidenceError("cannot derive BLE001 evidence from exact trusted base source") from error
 
 
 def _repo_path(filename: object, repo_root: Path) -> tuple[str, Path]:
@@ -311,10 +353,14 @@ def load_baseline(
     path = path or BASELINE_PATH
     if baseline_ref is not None:
         relative = path.relative_to(REPO_ROOT).as_posix()
-        proc = _run(["git", "show", f"{baseline_ref}:{relative}"])
-        if proc.returncode != 0:
-            raise EvidenceError(f"cannot read trusted BLE001 baseline at {baseline_ref}: {proc.stderr.strip()}")
-        raw = proc.stdout
+        try:
+            commit = resolve_commit(REPO_ROOT, baseline_ref)
+            blob = read_committed_blob(REPO_ROOT, commit, relative)
+            if blob is None:
+                raise MissingBaselineError(f"trusted BLE001 baseline is absent at {commit}")
+            raw = blob.decode("utf-8")
+        except (BaseSourceError, UnicodeError) as error:
+            raise EvidenceError("cannot read trusted BLE001 baseline") from error
     else:
         try:
             raw = path.read_text(encoding="utf-8")
@@ -454,17 +500,34 @@ def main(argv: list[str] | None = None) -> int:
         help="rewrite the baseline only after reviewed debt removal",
     )
     parser.add_argument("--baseline-ref", help="trusted PR base commit used to reject baseline expansion")
+    parser.add_argument(
+        "--derive-missing-baseline", metavar="SOURCE_PARENT", type=Path,
+        help="if the trusted commit has no baseline, compare against its isolated source under .codex-tmp",
+    )
     args = parser.parse_args(argv)
+    if args.derive_missing_baseline and not args.baseline_ref:
+        parser.error("--derive-missing-baseline requires --baseline-ref")
     try:
         require_python_version()
         require_ruff_version()
         current = build_violations(run_ruff())
         baseline = load_baseline()
         if args.baseline_ref:
-            trusted = load_baseline(baseline_ref=args.baseline_ref)
+            try:
+                trusted_commit = resolve_commit(REPO_ROOT, args.baseline_ref)
+            except BaseSourceError as error:
+                raise EvidenceError("cannot resolve trusted BLE001 baseline ref") from error
+            try:
+                trusted = load_baseline(baseline_ref=trusted_commit)
+            except MissingBaselineError:
+                if not args.derive_missing_baseline:
+                    raise
+                trusted = derive_trusted_baseline(trusted_commit, args.derive_missing_baseline)
             expanded, _ = compare(trusted, baseline)
             if expanded:
                 print("[ruff-ble001] REFUSED: working baseline adds identities absent from the trusted PR base.", file=sys.stderr)
+                for item in expanded:
+                    print(f"  {item.path}:{item.row}:{item.column}: {item.identity}", file=sys.stderr)
                 return 1
     except EvidenceError as exc:
         print(f"[ruff-ble001] FATAL: {exc}", file=sys.stderr)

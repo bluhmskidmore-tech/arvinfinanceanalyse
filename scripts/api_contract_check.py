@@ -32,6 +32,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.api_surface import SURFACE_CHOICES, SURFACE_HELP, surface_environment  # noqa: E402
+from scripts.trusted_base_source import (  # noqa: E402
+    BaseSourceError,
+    isolated_backend_source,
+    read_committed_blob,
+    run_source_python,
+    source_environment,
+)
 
 BASELINE_DIR_NAME = "contracts/openapi"
 BASELINE_DIR = ROOT / "contracts" / "openapi"
@@ -885,27 +892,20 @@ def _read_baseline_from_ref(resolved_commit: str, relative_path: str) -> dict[st
     ``git ls-tree`` distinguishes a legitimately absent first baseline from a
     lower-level git failure without exposing stderr or local filesystem paths.
     """
-    listed = _run_git(
-        ["git", "ls-tree", "-r", "--name-only", resolved_commit, "--", relative_path],
-        failure_message="baseline could not be read from resolved commit",
-    )
-    if listed.returncode != 0:
-        raise BaselineGitError("baseline could not be read from resolved commit")
-    if relative_path not in {line.strip() for line in listed.stdout.splitlines()}:
-        return None
-
-    completed = _run_git(
-        ["git", "show", f"{resolved_commit}:{relative_path}"],
-        failure_message="baseline could not be read from resolved commit",
-    )
-    if completed.returncode != 0:
-        raise BaselineGitError("baseline could not be read from resolved commit")
     try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
+        raw = read_committed_blob(ROOT, resolved_commit, relative_path)
+    except BaseSourceError as error:
+        raise BaselineGitError("baseline could not be read from resolved commit") from error
+    if raw is None:
+        return None
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeError) as error:
         raise BaselineGitError("baseline at resolved commit is not valid JSON") from error
     if not isinstance(payload, dict):
         raise BaselineGitError("baseline at resolved commit is not a JSON object")
+    if not isinstance(payload.get("openapi"), str) or not payload["openapi"].startswith("3.") or not isinstance(payload.get("paths"), dict):
+        raise BaselineGitError("baseline at resolved commit is not a valid OpenAPI snapshot")
     return payload
 
 
@@ -914,6 +914,51 @@ def _read_baseline_from_disk(surface: str) -> dict[str, Any] | None:
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _derive_openapi_baselines(
+    commit: str, surfaces: tuple[str, ...], source_parent: Path,
+) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
+    """Render missing snapshots from exact base code without importing PR code."""
+    code = """
+import json
+import importlib.metadata
+root = Path(sys.argv[1]).resolve()
+sys.path[:0] = [str(root), str(root / 'backend')]
+from backend.app.main import app
+for name, module in tuple(sys.modules.items()):
+    if name in {'backend', 'app'} or name.startswith(('backend.', 'app.')):
+        locations = [getattr(module, '__file__', None), *getattr(module, '__path__', [])]
+        if any(location and not Path(location).resolve().is_relative_to(root) for location in locations):
+            raise RuntimeError('backend import escaped isolated base source')
+print(json.dumps({'spec': app.openapi(), 'runtime': {
+    'python': '.'.join(map(str, sys.version_info[:3])),
+    'fastapi': importlib.metadata.version('fastapi'),
+    'pydantic': importlib.metadata.version('pydantic'),
+    'pydantic-settings': importlib.metadata.version('pydantic-settings'),
+}}))
+"""
+    derived = {}
+    try:
+        with isolated_backend_source(ROOT, commit, source_parent) as source:
+            for surface in surfaces:
+                environment = source_environment(source.root)
+                environment["MOSS_AGENT_ENABLED"] = "true" if surface == "full" else "false"
+                completed = run_source_python(source, code, [], environment=environment)
+                if completed.returncode != 0:
+                    raise BaseSourceError("trusted base OpenAPI export failed")
+                payload = json.loads(completed.stdout)
+                spec, runtime = payload["spec"], payload["runtime"]
+                if not isinstance(spec, dict) or not isinstance(spec.get("paths"), dict) or not isinstance(runtime, dict):
+                    raise BaseSourceError("trusted base OpenAPI export is invalid")
+                derived[surface] = (spec, source.provenance() | {
+                    "runtime": runtime,
+                    "surface_flags": {"MOSS_AGENT_ENABLED": environment["MOSS_AGENT_ENABLED"]},
+                    "command": "import exact-base backend.app.main; app.openapi() without lifespan",
+                })
+    except (BaseSourceError, ValueError, KeyError, TypeError) as error:
+        raise BaselineGitError("missing baseline could not be derived from exact base source") from error
+    return derived
 
 
 def acknowledgement_candidate_ids(finding: dict[str, str]) -> tuple[str, str]:
@@ -1129,6 +1174,7 @@ def _baseline_check(
     allow_bootstrap_baseline: bool = False,
     *,
     today: date | None = None,
+    derive_missing_baseline: Path | None = None,
 ) -> int:
     acknowledgements, acknowledgement_problems = load_acknowledgements()
     acknowledgement_digest = _acknowledgements_sha256()
@@ -1138,6 +1184,8 @@ def _baseline_check(
     evaluation_date = today or datetime.now(timezone.utc).date()
     baseline_problems: list[dict[str, str]] = []
     surface_reports: list[dict[str, Any]] = []
+    derived_baselines: dict[str, tuple[dict[str, Any], dict[str, Any]]] | None = None
+    derivation_failed = False
 
     resolved_baseline_commit: str | None = None
     if baseline_ref:
@@ -1152,6 +1200,7 @@ def _baseline_check(
         head_text = _canonical_json(head_spec)
         relative_path = baseline_relative_path(surface)
         baseline_error: str | None = None
+        baseline_provenance: dict[str, Any] | None = None
 
         if baseline_ref:
             if resolved_baseline_commit is None:
@@ -1160,6 +1209,25 @@ def _baseline_check(
             else:
                 try:
                     base_spec = _read_baseline_from_ref(resolved_baseline_commit, relative_path)
+                    if base_spec is None and derive_missing_baseline is not None:
+                        if derived_baselines is None and not derivation_failed:
+                            missing_surfaces = []
+                            for candidate in surfaces:
+                                try:
+                                    if _read_baseline_from_ref(resolved_baseline_commit, baseline_relative_path(candidate)) is None:
+                                        missing_surfaces.append(candidate)
+                                except BaselineGitError:
+                                    # Corrupt or unreadable snapshots never use source fallback.
+                                    continue
+                            try:
+                                derived_baselines = _derive_openapi_baselines(
+                                    resolved_baseline_commit, tuple(missing_surfaces), derive_missing_baseline,
+                                )
+                            except BaselineGitError:
+                                derivation_failed = True
+                        if derivation_failed or surface not in (derived_baselines or {}):
+                            raise BaselineGitError("exact base source derivation failed")
+                        base_spec, baseline_provenance = derived_baselines[surface]
                 except BaselineGitError:
                     base_spec = None
                     baseline_error = "baseline_read_failed"
@@ -1216,6 +1284,8 @@ def _baseline_check(
                 "baseline_error": baseline_error,
                 "stale_baseline": stale_baseline,
                 "baseline_sha256": _spec_sha256(base_spec) if base_spec is not None else None,
+                "baseline_origin": "derived_source" if baseline_provenance is not None else "committed_snapshot",
+                "baseline_provenance": baseline_provenance,
                 "head_sha256": _spec_sha256(head_spec),
                 "counts": {
                     "breaking": len(unacknowledged),
@@ -1343,6 +1413,10 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     check_parser.add_argument("--json", dest="json_output", default=None, help="Write the machine-readable report here.")
+    check_parser.add_argument(
+        "--derive-missing-baseline", metavar="SOURCE_PARENT", type=Path,
+        help="derive absent trusted snapshots from exact base source in an isolated .codex-tmp directory",
+    )
 
     subparsers.add_parser(
         "schemathesis-command",
@@ -1360,12 +1434,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "baseline-update":
         return _baseline_update(tuple(args.surfaces or BASELINE_SURFACES))
     if args.command == "baseline-check":
+        if args.derive_missing_baseline and (not args.baseline_ref or args.allow_bootstrap_baseline):
+            parser.error("--derive-missing-baseline requires --baseline-ref and cannot use diagnostic bootstrap")
         return _baseline_check(
             tuple(args.surfaces or BASELINE_SURFACES),
             args.baseline_ref,
             args.allow_stale_baseline,
             args.json_output,
             args.allow_bootstrap_baseline,
+            derive_missing_baseline=args.derive_missing_baseline,
         )
     if args.command == "schemathesis-command":
         return _print_schemathesis_command()

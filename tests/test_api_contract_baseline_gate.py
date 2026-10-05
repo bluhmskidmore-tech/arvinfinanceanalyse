@@ -470,6 +470,7 @@ def _run_receipt(
     resolve_error: str | None = None,
     allow_bootstrap_baseline: bool = False,
     allow_stale_baseline: bool = False,
+    derive_missing_baseline: Path | None = None,
     output_name: str = "receipt.json",
 ) -> tuple[int, dict[str, Any], str]:
     disk_baseline = tmp_path / "openapi.default.json"
@@ -505,6 +506,7 @@ def _run_receipt(
         str(output),
         allow_bootstrap_baseline,
         today=date(2026, 8, 31),
+        derive_missing_baseline=derive_missing_baseline,
     )
     serialized = output.read_text(encoding="utf-8")
     return exit_code, json.loads(serialized), serialized
@@ -573,6 +575,13 @@ def test_valid_commit_with_no_baseline_path_is_reported_as_missing() -> None:
     )
 
 
+@pytest.mark.parametrize("raw", [b"{", b"[]", b"{}", b'{"openapi":"3.1.0","paths":[]}'])
+def test_invalid_committed_snapshot_is_not_a_missing_baseline(monkeypatch, raw):
+    monkeypatch.setattr(contract_module, "read_committed_blob", lambda *args: raw)
+    with pytest.raises(contract_module.BaselineGitError):
+        contract_module._read_baseline_from_ref("b" * 40, "contracts/openapi/openapi.default.json")
+
+
 def test_missing_baseline_on_valid_ref_fails_by_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -612,6 +621,101 @@ def test_explicit_bootstrap_is_diagnostic_but_never_release_eligible(
     assert report["release_gate_eligible"] is False
     assert "RESULT: DIAGNOSTIC" in console
     assert "RESULT: PASS" not in console
+
+
+def test_exact_base_source_derivation_can_compare_first_baseline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    head = _probe_spec(include_operation=True)
+    provenance = {"method": "exact_git_base_backend_source", "commit": "b" * 40}
+    monkeypatch.setattr(
+        contract_module, "_derive_openapi_baselines",
+        lambda commit, surfaces, parent: {"default": (copy.deepcopy(head), provenance)},
+    )
+    exit_code, report, _ = _run_receipt(
+        monkeypatch, tmp_path, base_spec=None, head_spec=head, derive_missing_baseline=tmp_path,
+    )
+    assert exit_code == 0
+    assert report["release_gate_eligible"] is True
+    surface = report["surfaces"][0]
+    assert surface["baseline_origin"] == "derived_source"
+    assert surface["baseline_provenance"] == provenance
+    assert surface["baseline_sha256"] == contract_module._spec_sha256(head)
+    assert surface["baseline_missing"] is False
+    assert report["baseline_problems"] == []
+
+
+def test_derived_base_preserves_breaking_change_failure_after_pr_snapshot_rewrite(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    base = _probe_spec(include_operation=True)
+    head = _probe_spec(include_operation=False)
+    monkeypatch.setattr(
+        contract_module, "_derive_openapi_baselines",
+        lambda commit, surfaces, parent: {"default": (base, {"commit": commit})},
+    )
+    exit_code, report, _ = _run_receipt(
+        monkeypatch, tmp_path, base_spec=None, head_spec=head, derive_missing_baseline=tmp_path,
+    )
+    assert exit_code == 1
+    assert report["release_gate_eligible"] is False
+    assert report["surfaces"][0]["counts"]["breaking"] == 1
+    assert report["surfaces"][0]["stale_baseline"] is False
+
+
+def test_existing_committed_snapshot_never_uses_derivation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    head = _probe_spec(include_operation=True)
+    monkeypatch.setattr(
+        contract_module, "_derive_openapi_baselines",
+        lambda *args: pytest.fail("existing snapshot was replaced by derived evidence"),
+    )
+    exit_code, report, _ = _run_receipt(
+        monkeypatch, tmp_path, base_spec=head, head_spec=head, derive_missing_baseline=tmp_path,
+    )
+    assert exit_code == 0
+    assert report["surfaces"][0]["baseline_origin"] == "committed_snapshot"
+
+
+def test_corrupt_committed_snapshot_never_uses_derivation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    head = _probe_spec(include_operation=True)
+    disk = tmp_path / "openapi.default.json"
+    disk.write_text(contract_module._canonical_json(head), encoding="utf-8")
+    monkeypatch.setattr(contract_module, "_load_openapi", lambda surface: head)
+    monkeypatch.setattr(contract_module, "baseline_path", lambda surface: disk)
+    monkeypatch.setattr(contract_module, "_resolve_baseline_ref", lambda ref: "b" * 40)
+
+    def corrupt(*args):
+        raise contract_module.BaselineGitError("corrupt baseline")
+
+    monkeypatch.setattr(contract_module, "_read_baseline_from_ref", corrupt)
+    monkeypatch.setattr(contract_module, "_derive_openapi_baselines", lambda *args: pytest.fail("corrupt snapshot fell back"))
+    output = tmp_path / "receipt.json"
+    assert contract_module._baseline_check(
+        ("default",), "exact-base", False, str(output), derive_missing_baseline=tmp_path,
+    ) == 1
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["baseline_problems"] == [{"code": "baseline_read_failed", "surface": "default"}]
+    assert report["release_gate_eligible"] is False
+
+
+def test_source_derivation_failure_remains_ineligible(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    def failed(*args):
+        raise contract_module.BaselineGitError("source export failed")
+
+    monkeypatch.setattr(contract_module, "_derive_openapi_baselines", failed)
+    exit_code, report, _ = _run_receipt(
+        monkeypatch, tmp_path, base_spec=None, head_spec=_probe_spec(include_operation=True),
+        derive_missing_baseline=tmp_path,
+    )
+    assert exit_code == 1
+    assert report["release_gate_eligible"] is False
+    assert report["baseline_problems"] == [{"code": "baseline_read_failed", "surface": "default"}]
 
 
 def test_same_pr_snapshot_rewrite_cannot_clear_base_ref_breaking_finding(

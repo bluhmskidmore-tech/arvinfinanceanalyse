@@ -463,7 +463,9 @@ jobs:
 
       - name: Ruff BLE001 trusted PR baseline ratchet
         if: github.event_name == 'pull_request'
-        run: python scripts/check_ruff_ble001_baseline.py --baseline-ref "${{ github.event.pull_request.base.sha }}"
+        run: >-
+          python scripts/check_ruff_ble001_baseline.py --baseline-ref "${{ github.event.pull_request.base.sha }}"
+          --derive-missing-baseline .codex-tmp/trusted-pr-base
 
   mypy-ratchet:
     name: Backend Mypy Ratchet
@@ -564,6 +566,10 @@ jobs:
         if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
         run: npm run debt:audit
 
+      - name: Install Chromium for runtime boundary checks
+        if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
+        run: npx playwright install --with-deps chromium
+
       - name: Test production mock bundle boundary
         if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
         run: >-
@@ -646,7 +652,7 @@ jobs:
   compose-runtime-acceptance:
     name: Compose Runtime Acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
 
     steps:
       - uses: actions/checkout@v4
@@ -668,6 +674,7 @@ jobs:
             .codex-tmp/compose-runtime-ci/acceptance.json
             .codex-tmp/compose-runtime-ci/readiness.json
             .codex-tmp/compose-runtime-ci/compose.log
+            .codex-tmp/compose-runtime-ci/build.log
           retention-days: 7
           if-no-files-found: warn
 
@@ -877,7 +884,8 @@ jobs:
         run: |
           git fetch origin "${{ github.base_ref }}"
           python scripts/api_contract_check.py baseline-check \
-            --baseline-ref "origin/${{ github.base_ref }}" \
+            --baseline-ref "${{ github.event.pull_request.base.sha }}" \
+            --derive-missing-baseline .codex-tmp/trusted-pr-base \
             --json .codex-tmp/openapi-contract-gate.json
 
       # 非 PR 事件没有 base 分支可比：退化成"提交的快照是否还等于当前代码"。

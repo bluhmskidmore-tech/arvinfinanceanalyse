@@ -4,6 +4,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+from contextlib import contextmanager
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -47,6 +48,7 @@ def test_existing_ble001_debt_is_accepted(tmp_path: Path):
 @pytest.mark.parametrize("change, expected", [("add", 1), ("replace", 1), ("remove", 0)])
 def test_pr_baseline_cannot_expand_trusted_identities(tmp_path, monkeypatch, change, expected):
     checker = _load_checker()
+    monkeypatch.setattr(checker, "resolve_commit", lambda repo, ref: "a" * 40)
     source = tmp_path / "backend" / "debt.py"
     source.parent.mkdir()
     source.write_text("try:\n    old()\nexcept Exception:\n    recover()\n", encoding="utf-8")
@@ -67,6 +69,160 @@ def test_pr_baseline_read_failure_is_closed(monkeypatch):
     monkeypatch.setattr(checker, "_run", lambda command: subprocess.CompletedProcess(command, 128, "", "missing ref"))
     with pytest.raises(checker.EvidenceError, match="trusted BLE001"):
         checker.load_baseline(baseline_ref="missing-base")
+
+
+@pytest.mark.parametrize("derive, expected", [(False, 2), (True, 0)])
+def test_first_pr_derives_only_an_absent_baseline(tmp_path, monkeypatch, derive, expected):
+    checker = _load_checker()
+    monkeypatch.setattr(checker, "resolve_commit", lambda repo, ref: "a" * 40)
+    source = tmp_path / "backend" / "existing.py"
+    source.parent.mkdir()
+    source.write_text("try:\n    run()\nexcept Exception:\n    recover()\n", encoding="utf-8")
+    existing = checker.build_violations([_diagnostic(source, 3)], tmp_path)
+    monkeypatch.setattr(checker, "require_python_version", lambda: None)
+    monkeypatch.setattr(checker, "require_ruff_version", lambda: None)
+    monkeypatch.setattr(checker, "run_ruff", lambda: [])
+    monkeypatch.setattr(checker, "build_violations", lambda diagnostics: existing)
+
+    def load(**kwargs):
+        if kwargs.get("baseline_ref"):
+            raise checker.MissingBaselineError("confirmed missing")
+        return existing
+
+    monkeypatch.setattr(checker, "load_baseline", load)
+    calls = []
+    monkeypatch.setattr(checker, "derive_trusted_baseline", lambda ref, parent: calls.append((ref, parent)) or existing)
+    argv = ["--baseline-ref", "exact-base"]
+    if derive:
+        argv.extend(["--derive-missing-baseline", str(tmp_path)])
+    assert checker.main(argv) == expected
+    assert calls == ([("a" * 40, tmp_path)] if derive else [])
+
+
+def test_derived_base_does_not_accept_a_pr_rewritten_baseline(tmp_path, monkeypatch):
+    checker = _load_checker()
+    monkeypatch.setattr(checker, "resolve_commit", lambda repo, ref: "a" * 40)
+    source = tmp_path / "backend" / "debt.py"
+    source.parent.mkdir()
+    source.write_text("try:\n    new()\nexcept Exception:\n    recover()\n", encoding="utf-8")
+    new = checker.build_violations([_diagnostic(source, 3)], tmp_path)
+    monkeypatch.setattr(checker, "require_python_version", lambda: None)
+    monkeypatch.setattr(checker, "require_ruff_version", lambda: None)
+    monkeypatch.setattr(checker, "run_ruff", lambda: [])
+    monkeypatch.setattr(checker, "build_violations", lambda diagnostics: new)
+
+    def load(**kwargs):
+        if kwargs.get("baseline_ref"):
+            raise checker.MissingBaselineError("confirmed missing")
+        return new
+
+    monkeypatch.setattr(checker, "load_baseline", load)
+    monkeypatch.setattr(checker, "derive_trusted_baseline", lambda ref, parent: [])
+    assert checker.main(["--baseline-ref", "exact-base", "--derive-missing-baseline", str(tmp_path)]) == 1
+
+
+def test_corrupt_trusted_baseline_never_uses_source_fallback(tmp_path, monkeypatch):
+    checker = _load_checker()
+    monkeypatch.setattr(checker, "resolve_commit", lambda repo, ref: "a" * 40)
+    monkeypatch.setattr(checker, "require_python_version", lambda: None)
+    monkeypatch.setattr(checker, "require_ruff_version", lambda: None)
+    monkeypatch.setattr(checker, "run_ruff", lambda: [])
+
+    def load(**kwargs):
+        if kwargs.get("baseline_ref"):
+            raise checker.EvidenceError("corrupt existing baseline")
+        return []
+
+    monkeypatch.setattr(checker, "load_baseline", load)
+    monkeypatch.setattr(checker, "derive_trusted_baseline", lambda *args: pytest.fail("corrupt baseline fell back"))
+    assert checker.main(["--baseline-ref", "exact-base", "--derive-missing-baseline", str(tmp_path)]) == 2
+
+
+def test_committed_trusted_baseline_takes_precedence_over_derivation(tmp_path, monkeypatch):
+    checker = _load_checker()
+    monkeypatch.setattr(checker, "resolve_commit", lambda repo, ref: "a" * 40)
+    monkeypatch.setattr(checker, "require_python_version", lambda: None)
+    monkeypatch.setattr(checker, "require_ruff_version", lambda: None)
+    monkeypatch.setattr(checker, "run_ruff", lambda: [])
+    monkeypatch.setattr(checker, "load_baseline", lambda **kwargs: [])
+    monkeypatch.setattr(checker, "derive_trusted_baseline", lambda *args: pytest.fail("existing baseline was ignored"))
+    assert checker.main(["--baseline-ref", "exact-base", "--derive-missing-baseline", str(tmp_path)]) == 0
+
+
+def test_moving_ref_cannot_change_missing_baseline_source(tmp_path, monkeypatch):
+    checker = _load_checker()
+    first_commit, moved_commit = "a" * 40, "b" * 40
+    source = tmp_path / "backend" / "new.py"
+    source.parent.mkdir()
+    source.write_text("try:\n    new()\nexcept Exception:\n    recover()\n", encoding="utf-8")
+    diagnostic = _diagnostic(source, 3)
+    current = checker.build_violations([diagnostic], tmp_path)
+    baseline_path = tmp_path / "scripts" / "ruff_ble001_baseline.json"
+    baseline_path.parent.mkdir()
+    checker.save_baseline(current, baseline_path)
+    baseline_bytes = baseline_path.read_bytes()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(checker, "BASELINE_PATH", baseline_path)
+    monkeypatch.setattr(checker, "require_python_version", lambda: None)
+    monkeypatch.setattr(checker, "require_ruff_version", lambda: None)
+    monkeypatch.setattr(checker, "run_ruff", lambda: [diagnostic])
+    build_violations = checker.build_violations
+    monkeypatch.setattr(
+        checker, "build_violations",
+        lambda diagnostics, repo_root=tmp_path: build_violations(diagnostics, repo_root),
+    )
+    resolutions, baseline_commits, source_commits = [], [], []
+
+    def resolve(repo, ref):
+        resolutions.append(ref)
+        if ref == "moving-base":
+            return first_commit if resolutions.count(ref) == 1 else moved_commit
+        return ref
+
+    def read_blob(repo, commit, path):
+        baseline_commits.append(commit)
+        return None if commit == first_commit else baseline_bytes
+
+    @contextmanager
+    def isolate(repo, commit, parent):
+        source_commits.append(commit)
+        yield SimpleNamespace(root=tmp_path, commit=commit, provenance=lambda: {"commit": commit})
+
+    def source_run(source, code, arguments):
+        diagnostics = [] if source.commit == first_commit else [diagnostic]
+        return subprocess.CompletedProcess([], int(bool(diagnostics)), json.dumps(diagnostics), "")
+
+    monkeypatch.setattr(checker, "resolve_commit", resolve)
+    monkeypatch.setattr(checker, "read_committed_blob", read_blob)
+    monkeypatch.setattr(checker, "isolated_backend_source", isolate)
+    monkeypatch.setattr(checker, "run_source_python", source_run)
+
+    assert checker.main([
+        "--baseline-ref", "moving-base", "--derive-missing-baseline", str(tmp_path / ".codex-tmp"),
+    ]) == 1
+    assert resolutions.count("moving-base") == 1
+    assert baseline_commits == source_commits == [first_commit]
+    assert baseline_path.read_bytes() == baseline_bytes
+
+
+def test_unresolved_cli_ref_never_uses_source_fallback(tmp_path, monkeypatch, capsys):
+    checker = _load_checker()
+    monkeypatch.setattr(checker, "require_python_version", lambda: None)
+    monkeypatch.setattr(checker, "require_ruff_version", lambda: None)
+    monkeypatch.setattr(checker, "run_ruff", lambda: [])
+    monkeypatch.setattr(checker, "load_baseline", lambda: [])
+
+    def unresolved(repo, ref):
+        raise checker.BaseSourceError("private git failure details")
+
+    monkeypatch.setattr(checker, "resolve_commit", unresolved)
+    monkeypatch.setattr(checker, "derive_trusted_baseline", lambda *args: pytest.fail("unresolved ref fell back"))
+    assert checker.main([
+        "--baseline-ref", "missing-base", "--derive-missing-baseline", str(tmp_path),
+    ]) == 2
+    error = capsys.readouterr().err
+    assert "cannot resolve trusted BLE001 baseline ref" in error
+    assert "private git failure details" not in error
 
 
 def test_one_new_ble001_diagnostic_fails_the_ratchet(
