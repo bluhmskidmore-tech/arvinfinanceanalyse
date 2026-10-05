@@ -447,7 +447,7 @@ describe("RiskTensorPage", () => {
     });
 
     const panel = await screen.findByTestId("risk-tensor-scenario-stress");
-    const gate = within(panel).getByTestId("risk-tensor-scenario-amount-gate");
+    const gate = await within(panel).findByTestId("risk-tensor-scenario-amount-gate");
     const worstEstimate = within(panel).getByTestId("risk-tensor-scenario-worst-estimate");
     const rateScenario = within(panel).getByTestId("risk-scenario-stress-row-parallel_rate_up_10bp");
     const creditScenario = within(panel).getByTestId("risk-scenario-stress-row-credit_spread_up_10bp");
@@ -491,7 +491,7 @@ describe("RiskTensorPage", () => {
     });
 
     const panel = await screen.findByTestId("risk-tensor-scenario-stress");
-    expect(within(panel).getByTestId("risk-tensor-scenario-amount-gate")).toHaveTextContent(
+    expect(await within(panel).findByTestId("risk-tensor-scenario-amount-gate")).toHaveTextContent(
       "后端未返回监管 DV01 覆盖证据",
     );
     expect(within(panel).getByTestId("risk-tensor-scenario-worst-estimate")).toHaveTextContent("暂不展示");
