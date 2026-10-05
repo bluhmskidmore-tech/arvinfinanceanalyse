@@ -1,23 +1,15 @@
-import { useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Collapse } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
-import type { ColDef, ValueFormatterParams } from "ag-grid-community";
 import "./BalanceAnalysisPage.css";
 
 import { useApiClient } from "../../../api/clientContext";
 import type {
   BalanceAnalysisBasisBreakdownRow,
   BalanceAnalysisDecisionItemStatusRow,
-  BalanceAnalysisEventCalendarRow,
-  BalanceAnalysisRiskAlertRow,
   BalanceAnalysisSeverity,
   BalanceAnalysisTableRow,
-  BalanceAnalysisWorkbookColumn,
-  BalanceAnalysisWorkbookOperationalSection,
-  BalanceAnalysisWorkbookTable,
 } from "../../../api/contracts";
-import { runPollingTask } from "../../../app/jobs/polling";
-import { SystemReadInteractionContext } from "../../../router/systemReadInteractionContext";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import {
   AnalysisGrid,
@@ -32,36 +24,47 @@ import { BalanceAnalysisToolbar } from "../cockpit/BalanceAnalysisToolbar";
 import { SectionHead } from "../../../components/layout";
 import { BALANCE_SECTION_NUMBERING } from "../components/balanceSectionNumbering";
 import { DeferredBalanceAnalysisGrid } from "../components/DeferredBalanceAnalysisGrid";
+import {
+  renderDistributionEvidence,
+  renderWorkbookEmptyState,
+  renderWorkbookPrimaryPanel,
+  renderWorkbookSecondaryPanel,
+} from "../components/BalanceWorkbookAnalysisPanels";
+import {
+  renderDecisionItemsPanel,
+  renderEventCalendarPanel,
+  renderRiskAlertsPanel,
+  renderWorkbookRightRailPanel,
+} from "../components/BalanceWorkbookGovernancePanels";
+import { renderBalanceReconciliationLinkPanel } from "../components/BalanceReconciliationLinkPanel";
 import { useBalanceAnalysisData } from "../hooks/useBalanceAnalysisData";
-import { tabularNumsStyle } from "../../../theme/designSystem";
+import {
+  formatOperationIssueDisplay,
+  useBalanceAnalysisActions,
+} from "../hooks/useBalanceAnalysisActions";
 import { actionButtonStyle } from "./BalanceAnalysisPage.styles";
 import {
   type BalanceStateSentinel,
   buildBalanceAnalysisPageModel,
   buildBalanceCockpitViewModel,
-  distributionChartBarWidthPercent,
-  formatBalanceAmountToYiFromWan,
-  formatBalanceAmountToYiFromYuan,
   formatBalanceBusinessTextDisplay,
-  formatBalanceGridThousandsValue,
-  formatBalanceWorkbookCellDisplay,
   formatBalanceDecisionWorkflowStatusDisplay,
   formatBalanceGovernedSeverityDisplay,
-  formatBalanceWorkbookMetricTwoDecimals,
   formatBalanceWorkbookOperationalSectionKeyDisplay,
-  formatBalanceWorkbookWanAmountDisplay,
-  formatBalanceWorkbookWanTextDisplay,
   buildBalanceReconciliationLinkModel,
-  gapChartBarWidthPercent,
-  maxAbsFiniteChartScale,
-  maxFiniteChartScale,
-  parseBalanceChartMagnitude,
 } from "./balanceAnalysisPageModel";
 import {
   getBalanceSummaryGridRowId,
   type BalanceAnalysisDetailGridRow,
   type BalanceAnalysisSummaryGridRow,
 } from "./balanceAnalysisGridRows";
+import {
+  balanceBasisBreakdownColDefs,
+  balanceDetailColDefs,
+  balanceDetailSummaryColDefs,
+  balanceSummaryColDefs,
+  buildWorkbookGridColumnDefs,
+} from "./balanceAnalysisGridColumns";
 
 import { EM_DASH } from "../../../utils/format";
 const primaryWorkbookTableKeys = [
@@ -151,27 +154,6 @@ function formatEvidenceTraceDisplay(value: string): string {
   return "已记录";
 }
 
-function formatRefreshStatusDisplay(status: string | undefined): string {
-  if (status === "queued") return "刷新任务已排队";
-  if (status === "running") return "刷新任务进行中";
-  if (status === "completed") return "计算任务已完成";
-  if (status === "failed") return "刷新暂未完成";
-  return "刷新任务已有反馈";
-}
-
-function formatOperationIssueDisplay(action: "refresh" | "decision" | "summary-export" | "workbook-export"): string {
-  if (action === "decision") {
-    return "治理处理结果暂未写入，请稍后重试或联系数据负责人。";
-  }
-  if (action === "summary-export") {
-    return "汇总表暂未导出，请稍后重试。";
-  }
-  if (action === "workbook-export") {
-    return "工作簿暂未导出，请稍后重试。";
-  }
-  return "正式结果暂未刷新，请稍后重试。";
-}
-
 function formatCurrentUserRoleDisplay(role: string | undefined): string {
   if (role === "viewer") return "查看者";
   if (role === "reviewer") return "复核人";
@@ -220,988 +202,9 @@ function formatAdvancedAttributionWarningDisplay(warning: string): string {
   return "补充提示已记录。";
 }
 
-// 评级块色板走 Nocturne 链（DOM 内联消费用 var；--nct-accent-* 亮阶在
-// balance-analysis scope 的外壳块恒有定义），六档保持绿/紫/琥珀/亮紫/红/浅紫
-// 的评级区分度。
-const ratingBlockPalette = [
-  "var(--dh-api-green)",
-  "var(--dh-api-blue)",
-  "var(--dh-api-amber)",
-  "var(--nct-accent-400)",
-  "var(--dh-api-red)",
-  "var(--nct-accent-300)",
-] as const;
-
-function downloadBlobFile(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
-}
-
-function downloadCsvFile(filename: string, content: string) {
-  downloadBlobFile(filename, new Blob([content], { type: "text/csv;charset=utf-8;" }));
-}
-
-function thousandsValueFormatter(params: ValueFormatterParams) {
-  return formatBalanceGridThousandsValue(params.value);
-}
-
-function yuanAmountValueFormatter(params: ValueFormatterParams) {
-  return formatBalanceAmountToYiFromYuan(params.value);
-}
-
-const workbookWanAmountFieldKeys = new Set([
-  "asset_amount",
-  "asset_total_amount",
-  "balance_amount",
-  "bond_amount",
-  "bond_assets_amount",
-  "bond_maturity_amount",
-  "book_value_amount",
-  "coupon_income_amount",
-  "cumulative_gap_amount",
-  "cumulative_net_cashflow_amount",
-  "face_value_amount",
-  "floating_pnl_amount",
-  "full_scope_gap_amount",
-  "full_scope_liability_amount",
-  "gap_amount",
-  "hqla_amount",
-  "interbank_asset_amount",
-  "interbank_asset_maturity_amount",
-  "interbank_assets_amount",
-  "interbank_liability_amount",
-  "interbank_liability_maturity_amount",
-  "interbank_liabilities_amount",
-  "issuance_amount",
-  "issuance_maturity_amount",
-  "liability_amount",
-  "market_value_amount",
-  "net_cashflow_amount",
-  "net_position_amount",
-  "notional_amount",
-  "price_return_amount",
-  "spread_income_amount",
-  "total_amount",
-  "amortized_cost_amount",
-]);
-
-function isWorkbookWanAmountField(field: unknown): field is string {
-  return typeof field === "string" && workbookWanAmountFieldKeys.has(field);
-}
-
-function workbookCellFormatter(params: ValueFormatterParams): string {
-  if (isWorkbookWanAmountField(params.colDef.field)) {
-    return formatBalanceWorkbookWanAmountDisplay(params.value);
-  }
-  if (typeof params.value === "string" && /(?:wan yuan|万元)/i.test(params.value)) {
-    return formatBalanceWorkbookWanTextDisplay(params.value);
-  }
-  const formattedValue = formatBalanceGridThousandsValue(params.value);
-  return typeof params.value === "string" && formattedValue === params.value
-    ? formatBalanceBusinessTextDisplay(params.value)
-    : formattedValue;
-}
-
-function businessTextValueFormatter(params: ValueFormatterParams): string {
-  return formatBalanceBusinessTextDisplay(params.value);
-}
-
-function formatInvestAccountingDisplay(data: {
-  invest_type_std?: unknown;
-  accounting_basis?: unknown;
-} | null | undefined): string {
-  if (!data) {
-    return "";
-  }
-  const investType = data.invest_type_std == null ? "" : formatBalanceBusinessTextDisplay(data.invest_type_std);
-  const accountingBasis =
-    data.accounting_basis == null ? "" : formatBalanceBusinessTextDisplay(data.accounting_basis);
-  const parts = [investType, accountingBasis].filter((part) => part && part !== EM_DASH);
-  return parts.length > 0 ? parts.join(" / ") : EM_DASH;
-}
-
-const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
-  {
-    field: "source_family",
-    headerName: "来源",
-    valueFormatter: businessTextValueFormatter,
-  },
-  { field: "display_name", headerName: "展示名" },
-  { field: "owner_name", headerName: "组合名称" },
-  { field: "category_name", headerName: "分类" },
-  { field: "position_scope", headerName: "头寸范围", valueFormatter: businessTextValueFormatter },
-  { field: "currency_basis", headerName: "币种口径", valueFormatter: businessTextValueFormatter },
-  {
-    field: "market_value_amount",
-    headerName: "规模(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-  {
-    field: "amortized_cost_amount",
-    headerName: "摊余成本(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-  {
-    field: "accrued_interest_amount",
-    headerName: "应计利息(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-  {
-    field: "detail_row_count",
-    headerName: "明细行数",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
-  },
-  {
-    colId: "invest_accounting",
-    headerName: "会计口径",
-    valueGetter: (p) => formatInvestAccountingDisplay(p.data),
-  },
-];
-
-const balanceDetailColDefs: ColDef<BalanceAnalysisDetailGridRow>[] = [
-  {
-    field: "source_family",
-    headerName: "来源",
-    valueFormatter: businessTextValueFormatter,
-  },
-  { field: "display_name", headerName: "标识" },
-  { field: "report_date", headerName: "报告日" },
-  { field: "position_scope", headerName: "范围", valueFormatter: businessTextValueFormatter },
-  {
-    colId: "invest_accounting",
-    headerName: "会计口径",
-    valueGetter: (p) => formatInvestAccountingDisplay(p.data),
-  },
-  {
-    field: "market_value_amount",
-    headerName: "规模(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-  {
-    field: "amortized_cost_amount",
-    headerName: "摊余成本(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-  {
-    field: "accrued_interest_amount",
-    headerName: "应计利息(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-  {
-    field: "is_issuance_like",
-    headerName: "发行类",
-    valueFormatter: (p) =>
-      p.value === null || p.value === undefined ? EM_DASH : p.value ? "是" : "否",
-  },
-];
-
-const balanceDetailSummaryColDefs: ColDef<BalanceAnalysisSummaryGridRow>[] = [
-  {
-    field: "source_family",
-    headerName: "来源",
-    valueFormatter: businessTextValueFormatter,
-  },
-  { field: "position_scope", headerName: "头寸范围", valueFormatter: businessTextValueFormatter },
-  { field: "currency_basis", headerName: "币种口径", valueFormatter: businessTextValueFormatter },
-  {
-    field: "row_count",
-    headerName: "行数",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
-  },
-  {
-    field: "market_value_amount",
-    headerName: "市值(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-  {
-    field: "amortized_cost_amount",
-    headerName: "摊余成本(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-  {
-    field: "accrued_interest_amount",
-    headerName: "应计利息(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-];
-
-const balanceBasisBreakdownColDefs: ColDef<BalanceAnalysisBasisBreakdownRow>[] = [
-  {
-    field: "source_family",
-    headerName: "来源",
-    valueFormatter: businessTextValueFormatter,
-  },
-  { field: "invest_type_std", headerName: "投资类型", valueFormatter: businessTextValueFormatter },
-  { field: "accounting_basis", headerName: "会计口径", valueFormatter: businessTextValueFormatter },
-  { field: "position_scope", headerName: "头寸范围", valueFormatter: businessTextValueFormatter },
-  { field: "currency_basis", headerName: "币种口径", valueFormatter: businessTextValueFormatter },
-  {
-    field: "detail_row_count",
-    headerName: "明细行数",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
-  },
-  {
-    field: "market_value_amount",
-    headerName: "市值(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-  {
-    field: "amortized_cost_amount",
-    headerName: "摊余成本(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-  {
-    field: "accrued_interest_amount",
-    headerName: "应计利息(亿元)",
-    headerClass: "ag-right-aligned-header",
-    cellClass: "ag-right-aligned-cell",
-    valueFormatter: yuanAmountValueFormatter,
-  },
-];
-
-const workbookColumnLabelDisplay: Record<string, string> = {
-  Month: "月份",
-  "Bond Maturity Amount": "债券到期金额",
-  "Bond Maturity Count": "债券到期笔数",
-  "Interbank Asset Maturity Amount": "同业资产到期金额",
-  "Interbank Asset Maturity Count": "同业资产到期笔数",
-  "Interbank Liability Maturity Amount": "同业负债到期金额",
-  "Interbank Liability Maturity Count": "同业负债到期笔数",
-  "Issuance Maturity Amount": "发行类到期金额",
-  "Issuance Maturity Count": "发行类到期笔数",
-  "Net Cashflow Amount": "净现金流金额",
-  "Cumulative Net Cashflow Amount": "累计净现金流金额",
-  Cumulative: "累计值",
-  指标键: "指标",
-  指标名称: "指标名称",
-  参考阈值: "参考线",
-  状态: "判断",
-  口径说明: "口径",
-};
-
-function formatWorkbookColumnLabelDisplay(label: string): string {
-  return workbookColumnLabelDisplay[label] ?? formatBalanceBusinessTextDisplay(label);
-}
-
-function buildWorkbookGridColumnDefs(columns: BalanceAnalysisWorkbookColumn[]): ColDef[] {
-  return columns.map((col) => ({
-    field: col.key,
-    headerName: formatWorkbookColumnLabelDisplay(col.label),
-    valueFormatter: workbookCellFormatter,
-    cellStyle: { ...tabularNumsStyle },
-  }));
-}
-
-function renderWorkbookContractMismatch(
-  table: Pick<BalanceAnalysisWorkbookTable, "key"> | Pick<BalanceAnalysisWorkbookOperationalSection, "key">,
-  message: string,
-) {
-  return (
-    <div
-      data-testid={`balance-analysis-workbook-table-${table.key}`}
-      className="balance-analysis-workbook-alert balance-analysis-workbook-alert--warning"
-    >
-      {message}
-    </div>
-  );
-}
-
-function renderWorkbookEmptyState(message: string) {
-  return (
-    <div className="balance-analysis-workbook-alert balance-analysis-workbook-alert--empty">
-      {message}
-    </div>
-  );
-}
-
-function hasWorkbookFields(rows: Array<Record<string, unknown>>, requiredKeys: string[]) {
-  if (rows.length === 0) {
-    return true;
-  }
-  return rows.every((row) => requiredKeys.every((key) => row[key] !== undefined && row[key] !== null));
-}
-
-function renderDistributionPanel(
-  table: BalanceAnalysisWorkbookTable,
-  {
-    labelKey,
-    valueKey,
-    color,
-  }: {
-    labelKey: string;
-    valueKey: string;
-    color: string;
-  },
-) {
-  const rows = table.rows.slice(0, 6);
-  if (!hasWorkbookFields(rows, [labelKey, valueKey])) {
-    return renderWorkbookContractMismatch(table, "Workbook contract mismatch：缺少主分布图所需字段。");
-  }
-  const maxAmong = maxFiniteChartScale(rows.map((row) => row[valueKey]));
-  return (
-    <div data-testid={`balance-analysis-workbook-table-${table.key}`} className="balance-analysis-mini-list">
-      {rows.map((row, index) => {
-        const mag = parseBalanceChartMagnitude(row[valueKey]);
-        const widthPct = distributionChartBarWidthPercent(mag, maxAmong);
-        const width = widthPct == null ? "0%" : `${widthPct}%`;
-        return (
-          <div key={`${table.key}-${index}`} className="balance-analysis-mini-row">
-            <div className="balance-analysis-mini-topline">
-              <span className="balance-analysis-mini-label">
-                {formatBalanceWorkbookCellDisplay(row[labelKey])}
-              </span>
-              <span className="balance-analysis-mini-value">
-                {formatBalanceWorkbookWanAmountDisplay(row[valueKey])}
-              </span>
-            </div>
-            <div className="balance-analysis-mini-bar-track">
-              <div
-                data-testid={`balance-analysis-distribution-bar-${table.key}-${index}`}
-                style={{
-                  width,
-                  background: color,
-                }}
-                className="balance-analysis-mini-bar-fill"
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function renderRatingPanel(table: BalanceAnalysisWorkbookTable) {
-  const rows = table.rows.slice(0, 6);
-  if (!hasWorkbookFields(rows, ["rating", "balance_amount"])) {
-    return renderWorkbookContractMismatch(table, "Workbook contract mismatch：评级分布字段不完整。");
-  }
-  const maxValue = maxFiniteChartScale(rows.map((row) => row.balance_amount));
-  let hasFiniteTotal = false;
-  let totalWan = 0;
-  for (const row of table.rows) {
-    const mag = parseBalanceChartMagnitude(row.balance_amount);
-    if (mag.kind === "finite") {
-      hasFiniteTotal = true;
-      totalWan += mag.value;
-    }
-  }
-  return (
-    <div
-      data-testid={`balance-analysis-workbook-table-${table.key}`}
-      className="balance-analysis-rating-panel"
-    >
-      <div className="balance-analysis-rating-panel__grid">
-        {rows.map((row, index) => {
-          const mag = parseBalanceChartMagnitude(row.balance_amount);
-          const ratio = mag.kind === "finite" ? Math.max(0.35, mag.value / maxValue) : 0.35;
-          return (
-            <article
-              key={`${table.key}-${index}`}
-              className="balance-analysis-rating-card"
-              style={{
-                background: ratingBlockPalette[index % ratingBlockPalette.length],
-                opacity: 0.55 + ratio * 0.45,
-              }}
-            >
-              <div className="balance-analysis-rating-card__label">{formatBalanceWorkbookCellDisplay(row.rating)}</div>
-              <div className="balance-analysis-rating-card__value">
-                {formatBalanceWorkbookWanAmountDisplay(row.balance_amount)}
-              </div>
-            </article>
-          );
-        })}
-      </div>
-      <div className="balance-analysis-rating-reconciliation">
-        <span className="balance-analysis-rating-reconciliation__total">
-          评级合计 {hasFiniteTotal ? formatBalanceWorkbookWanAmountDisplay(totalWan) : "未取到"}
-        </span>
-        <span className="balance-analysis-rating-reconciliation__note">
-          Workbook 原币面值口径，合计对齐债券资产卡片；不等同于页面 CNY 市值或 CNX 总账控制数。
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function renderMaturityGapPanel(table: BalanceAnalysisWorkbookTable) {
-  const rows = table.rows.slice(0, 6);
-  if (!hasWorkbookFields(rows, ["bucket", "gap_amount"])) {
-    return renderWorkbookContractMismatch(table, "Workbook contract mismatch：期限缺口字段不完整。");
-  }
-  const maxAbs = maxAbsFiniteChartScale(rows.map((row) => row.gap_amount));
-  return (
-    <div data-testid={`balance-analysis-workbook-table-${table.key}`} className="balance-analysis-mini-list balance-analysis-mini-list--tight">
-      {rows.map((row, index) => {
-        const mag = parseBalanceChartMagnitude(row.gap_amount);
-        const widthPct = gapChartBarWidthPercent(mag, maxAbs);
-        const width = widthPct == null ? "0%" : `${widthPct}%`;
-        const positive = mag.kind === "finite" ? mag.value >= 0 : true;
-        return (
-          <article
-            key={`${table.key}-${index}`}
-            className="balance-analysis-gap-card"
-            data-direction={positive ? "positive" : "negative"}
-          >
-            <div className="balance-analysis-mini-topline">
-              <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">
-                {formatBalanceWorkbookCellDisplay(row.bucket)}
-              </div>
-              <div
-                className={`balance-analysis-mini-value balance-analysis-mini-value--${positive ? "info" : "warning"}`}
-              >
-                {formatBalanceWorkbookWanAmountDisplay(row.gap_amount)}
-              </div>
-            </div>
-            <div className="balance-analysis-mini-bar-track">
-              <div
-                data-testid={`balance-analysis-maturity-gap-bar-${table.key}-${index}`}
-                style={{
-                  width,
-                  background: positive ? "var(--ib-accent)" : "var(--ib-warn)",
-                }}
-                className="balance-analysis-mini-bar-fill"
-              />
-            </div>
-            {!positive ? (
-              <div className="balance-analysis-gap-note">
-                负缺口，应优先结合右侧治理信号处理。
-              </div>
-            ) : null}
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-function renderIssuancePanel(table: BalanceAnalysisWorkbookTable) {
-  const rows = table.rows.slice(0, 4);
-  if (!hasWorkbookFields(rows, ["bond_type", "balance_amount"])) {
-    return renderWorkbookContractMismatch(table, "Workbook contract mismatch：发行类分析字段不完整。");
-  }
-  return (
-    <div data-testid={`balance-analysis-workbook-table-${table.key}`} className="balance-analysis-mini-list">
-      {rows.map((row, index) => (
-        <article
-          key={`${table.key}-${index}`}
-          className="balance-analysis-ledger-card"
-        >
-          <div className="balance-analysis-mini-topline">
-            <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">{formatBalanceWorkbookCellDisplay(row.bond_type)}</div>
-            <div className="balance-analysis-mini-value balance-analysis-mini-value--info">
-              {formatBalanceWorkbookWanAmountDisplay(row.balance_amount)}
-            </div>
-          </div>
-          <div className="balance-analysis-ledger-meta-row">
-            <span>笔数 {formatBalanceWorkbookCellDisplay(row.count)}</span>
-            <span>利率 {formatBalanceWorkbookMetricTwoDecimals(row.weighted_rate_pct)}</span>
-            <span>期限 {formatBalanceWorkbookMetricTwoDecimals(row.weighted_term_years)}</span>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function withYiUnit(value: string): string {
-  return value === EM_DASH ? value : `${value} 亿`;
-}
-
-function formatSignedBalanceYuanToYi(value: number | null): string {
-  if (value === null) {
-    return EM_DASH;
-  }
-  const formatted = formatBalanceAmountToYiFromYuan(value);
-  return value > 0 ? `+${formatted}` : formatted;
-}
-
-function renderReconciliationMetricTile({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="balance-analysis-reconciliation__tile">
-      <span className="balance-analysis-reconciliation__tile-label">{label}</span>
-      <strong className="balance-analysis-reconciliation__tile-value">
-        {value}
-      </strong>
-      <span className="balance-analysis-reconciliation__tile-detail">{detail}</span>
-    </div>
-  );
-}
-
-function renderBalanceReconciliationLinkPanel(
-  model: ReturnType<typeof buildBalanceReconciliationLinkModel>,
-) {
-  const failedInternalCheck = model.internalChecks.find((check) => !check.aligned);
-  const bridgeDetail = model.bridgeComponents
-    .map((component) => `${component.label} ${withYiUnit(formatBalanceAmountToYiFromYuan(component.amountYuan))}`)
-    .join(" · ");
-
-  return (
-    <section data-testid="balance-analysis-reconciliation-link" className="balance-analysis-reconciliation">
-      <div className="balance-analysis-reconciliation__header">
-        <div>
-          <h3 className="balance-analysis-reconciliation__title">口径联动核对</h3>
-          <p className="balance-analysis-reconciliation__copy">
-            从 workbook 原币面值出发，桥接到 Formal CNY 的 AC/OCI/TPL，再落到余额变动 CNX 控制数。
-          </p>
-        </div>
-        <span className={`balance-analysis-reconciliation__status balance-analysis-reconciliation__status--${model.status}`}>
-          {model.statusLabel}
-        </span>
-      </div>
-      <div className="balance-analysis-reconciliation__grid">
-        {renderReconciliationMetricTile({
-          label: "工作簿自校验",
-          value: model.allInternalChecksAligned ? "已对齐" : "待复核",
-          detail: failedInternalCheck
-            ? `${failedInternalCheck.label}：${failedInternalCheck.leftLabel} 与 ${failedInternalCheck.rightLabel} 不一致`
-            : "债券业务、评级、期限债券和发行类切片已回到同一组卡片值。",
-        })}
-        {renderReconciliationMetricTile({
-          label: "Workbook 原币资产",
-          value: withYiUnit(formatBalanceAmountToYiFromWan(model.workbookAssetTotalWan)),
-          detail: `债券资产 ${withYiUnit(formatBalanceAmountToYiFromWan(model.workbookBondWan))}，期限缺口 ${withYiUnit(formatBalanceAmountToYiFromWan(model.workbookGapWan))}`,
-        })}
-        {renderReconciliationMetricTile({
-          label: "Formal CNY 桥",
-          value: withYiUnit(formatBalanceAmountToYiFromYuan(model.formalBridgeYuan)),
-          detail: bridgeDetail || "等待口径拆解返回 AC/OCI/TPL 分桶。",
-        })}
-        {renderReconciliationMetricTile({
-          label: "余额变动 CNX",
-          value: withYiUnit(formatBalanceAmountToYiFromYuan(model.movementControlYuan)),
-          detail: `残差 ${withYiUnit(formatSignedBalanceYuanToYi(model.residualYuan))}；${model.statusDetail}`,
-        })}
-      </div>
-      <div className="balance-analysis-reconciliation__footer">
-        <a href={model.movementHref} className="balance-analysis-reconciliation__link">
-          打开余额变动核对
-        </a>
-        <span className="balance-analysis-reconciliation__footnote">
-          全口径缺口 {withYiUnit(formatBalanceAmountToYiFromWan(model.workbookFullScopeGapWan))}
-        </span>
-      </div>
-    </section>
-  );
-}
-
-function renderWorkbookPrimaryPanel(table: BalanceAnalysisWorkbookTable) {
-  if (table.key === "bond_business_types") {
-    return renderDistributionPanel(table, {
-      labelKey: "bond_type",
-      valueKey: "balance_amount",
-      color: "var(--ib-accent)",
-    });
-  }
-  if (table.key === "rating_analysis") {
-    return renderRatingPanel(table);
-  }
-  if (table.key === "maturity_gap") {
-    return renderMaturityGapPanel(table);
-  }
-  if (table.key === "issuance_business_types") {
-    return renderIssuancePanel(table);
-  }
-  return null;
-}
-
-function renderIndustryPanel(table: BalanceAnalysisWorkbookTable) {
-  return renderDistributionPanel(table, {
-    labelKey: "industry_name",
-    valueKey: "balance_amount",
-    color: "var(--ib-accent)",
-  });
-}
-
-function renderRateDistributionPanel(table: BalanceAnalysisWorkbookTable) {
-  const rows = table.rows.slice(0, 5);
-  if (!hasWorkbookFields(rows, [
-    "bucket",
-    "bond_amount",
-    "interbank_asset_amount",
-    "interbank_liability_amount",
-  ])) {
-    return renderWorkbookContractMismatch(table, "Workbook contract mismatch：利率分布字段不完整。");
-  }
-
-  return (
-    <div data-testid={`balance-analysis-workbook-table-${table.key}`} className="balance-analysis-mini-list">
-      {rows.map((row, index) => (
-        <article
-          key={`${table.key}-${index}`}
-          className="balance-analysis-ledger-card"
-        >
-          <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">{formatBalanceWorkbookCellDisplay(row.bucket)}</div>
-          <div className="balance-analysis-rate-grid">
-            <div>
-              <div className="balance-analysis-rate-grid__label">债券</div>
-              <div className="balance-analysis-mini-value balance-analysis-mini-value--info">
-                {formatBalanceWorkbookWanAmountDisplay(row.bond_amount)}
-              </div>
-            </div>
-            <div>
-              <div className="balance-analysis-rate-grid__label">同业资产</div>
-              <div className="balance-analysis-mini-value balance-analysis-mini-value--success">
-                {formatBalanceWorkbookWanAmountDisplay(row.interbank_asset_amount)}
-              </div>
-            </div>
-            <div>
-              <div className="balance-analysis-rate-grid__label">同业负债</div>
-              <div className="balance-analysis-mini-value balance-analysis-mini-value--warning-soft">
-                {formatBalanceWorkbookWanAmountDisplay(row.interbank_liability_amount)}
-              </div>
-            </div>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function renderCounterpartyPanel(table: BalanceAnalysisWorkbookTable) {
-  const rows = table.rows.slice(0, 4);
-  if (!hasWorkbookFields(rows, [
-    "counterparty_type",
-    "asset_amount",
-    "liability_amount",
-    "net_position_amount",
-  ])) {
-    return renderWorkbookContractMismatch(table, "Workbook contract mismatch：对手方类型字段不完整。");
-  }
-
-  return (
-    <div data-testid={`balance-analysis-workbook-table-${table.key}`} className="balance-analysis-mini-list">
-      {rows.map((row, index) => (
-        <article
-          key={`${table.key}-${index}`}
-          className="balance-analysis-ledger-card"
-        >
-          <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">{formatBalanceWorkbookCellDisplay(row.counterparty_type)}</div>
-          <div className="balance-analysis-ledger-meta-row">
-            <span className="balance-analysis-mini-value--info">
-              资产 {formatBalanceWorkbookWanAmountDisplay(row.asset_amount)}
-            </span>
-            <span className="balance-analysis-mini-value--warning-soft">
-              负债 {formatBalanceWorkbookWanAmountDisplay(row.liability_amount)}
-            </span>
-            <span className="balance-analysis-mini-value--net">
-              净头寸 {formatBalanceWorkbookWanAmountDisplay(row.net_position_amount)}
-            </span>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function renderDecisionItemsPanel(
-  rows: BalanceAnalysisDecisionItemStatusRow[],
-  {
-    selectedKey,
-    updatingKey,
-    onSelect,
-    onUpdateStatus,
-  }: {
-    selectedKey: string | null;
-    updatingKey: string | null;
-    onSelect: (row: BalanceAnalysisDecisionItemStatusRow) => void;
-    onUpdateStatus: (
-      row: BalanceAnalysisDecisionItemStatusRow,
-      status: "confirmed" | "dismissed",
-    ) => void;
-  },
-) {
-  if (rows.length === 0) {
-    return renderWorkbookEmptyState("暂无治理事项。");
-  }
-  const hasRequiredFields = rows.every(
-    (row) =>
-      row.decision_key &&
-      row.title &&
-      row.action_label &&
-      row.severity &&
-      row.reason &&
-      row.source_section &&
-      row.rule_id &&
-      row.rule_version &&
-      row.latest_status &&
-      row.latest_status.decision_key &&
-      row.latest_status.status,
-  );
-  if (!hasRequiredFields) {
-    return renderWorkbookContractMismatch(
-      { key: "decision_items" },
-      "Workbook contract mismatch：决策事项字段不完整。",
-    );
-  }
-
-  return (
-    <div data-testid="balance-analysis-workbook-table-decision_items" className="balance-analysis-mini-list">
-      {rows.map((row, index) => (
-        <article
-          key={row.decision_key}
-          className="balance-analysis-ledger-card"
-          data-selected={selectedKey === row.decision_key ? "true" : "false"}
-        >
-          <div className="balance-analysis-mini-topline">
-            <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">
-              {formatBalanceBusinessTextDisplay(row.title)}
-            </div>
-            <span className="balance-analysis-panel-badge">{formatBalanceGovernedSeverityDisplay(row.severity)}</span>
-          </div>
-          <div className="balance-analysis-ledger-copy-text">
-            {formatBalanceBusinessTextDisplay(row.reason)}
-          </div>
-          <div className="balance-analysis-ledger-meta-row">
-            <span>{formatBalanceBusinessTextDisplay(row.action_label)}</span>
-            <span>{formatBalanceDecisionWorkflowStatusDisplay(row.latest_status.status)}</span>
-            <span>
-              更新人：{row.latest_status.updated_by ? row.latest_status.updated_by : "未更新"}
-            </span>
-          </div>
-          <div className="balance-analysis-action-row">
-            <button
-              data-testid={`balance-analysis-decision-confirm-${index}`}
-              type="button"
-              disabled={updatingKey === row.decision_key}
-              className="balance-analysis-mini-button"
-              onClick={() => onUpdateStatus(row, "confirmed")}
-            >
-              确认
-            </button>
-            <button
-              data-testid={`balance-analysis-decision-dismiss-${index}`}
-              type="button"
-              disabled={updatingKey === row.decision_key}
-              className="balance-analysis-mini-button"
-              onClick={() => onUpdateStatus(row, "dismissed")}
-            >
-              忽略
-            </button>
-            <button
-              data-testid={`balance-analysis-decision-view-status-${index}`}
-              type="button"
-              className="balance-analysis-mini-button"
-              onClick={() => onSelect(row)}
-            >
-              详情
-            </button>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function renderEventCalendarPanel(
-  table: Extract<BalanceAnalysisWorkbookOperationalSection, { section_kind: "event_calendar" }>,
-  {
-    onSelect,
-    selectedKey,
-  }: {
-    onSelect: (row: BalanceAnalysisEventCalendarRow) => void;
-    selectedKey: string | null;
-  },
-) {
-  if (table.rows.length === 0) {
-    return renderWorkbookEmptyState("暂无治理事项。");
-  }
-  if (
-    !hasWorkbookFields(table.rows, [
-      "event_date",
-      "event_type",
-      "title",
-      "source",
-      "impact_hint",
-      "source_section",
-    ])
-  ) {
-    return renderWorkbookContractMismatch(table, "Workbook contract mismatch：事件日历字段不完整。");
-  }
-
-  return (
-    <div data-testid={`balance-analysis-workbook-table-${table.key}`} className="balance-analysis-mini-list">
-      {table.rows.map((row, index) => (
-        <button
-          key={`${table.key}-${index}`}
-          type="button"
-          onClick={() => onSelect(row)}
-          className="balance-analysis-right-rail-button"
-        >
-          <article
-            className="balance-analysis-ledger-card"
-            data-selected={selectedKey === `${row.event_date}:${row.title}` ? "true" : "false"}
-          >
-            <div className="balance-analysis-mini-topline">
-              <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">
-                {formatBalanceBusinessTextDisplay(row.title)}
-              </div>
-              <div className="balance-analysis-mini-value--info">{formatBalanceWorkbookCellDisplay(row.event_date)}</div>
-            </div>
-            <div className="balance-analysis-ledger-copy-text">
-              {formatBalanceBusinessTextDisplay(row.impact_hint)}
-            </div>
-            <div className="balance-analysis-ledger-meta-row">
-              <span>{formatBalanceBusinessTextDisplay(row.event_type)}</span>
-              <span>{formatBalanceBusinessTextDisplay(row.source)}</span>
-            </div>
-          </article>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function renderRiskAlertsPanel(
-  table: Extract<BalanceAnalysisWorkbookOperationalSection, { section_kind: "risk_alerts" }>,
-  {
-    onSelect,
-    selectedKey,
-  }: {
-    onSelect: (row: BalanceAnalysisRiskAlertRow) => void;
-    selectedKey: string | null;
-  },
-) {
-  if (table.rows.length === 0) {
-    return renderWorkbookEmptyState("暂无治理事项。");
-  }
-  if (
-    !hasWorkbookFields(table.rows, [
-      "title",
-      "severity",
-      "reason",
-      "source_section",
-      "rule_id",
-      "rule_version",
-    ])
-  ) {
-    return renderWorkbookContractMismatch(table, "Workbook contract mismatch：风险预警字段不完整。");
-  }
-
-  return (
-    <div data-testid={`balance-analysis-workbook-table-${table.key}`} className="balance-analysis-mini-list">
-      {table.rows.map((row, index) => (
-        <button
-          key={`${table.key}-${index}`}
-          type="button"
-          onClick={() => onSelect(row)}
-          className="balance-analysis-right-rail-button"
-        >
-          <article
-            className="balance-analysis-ledger-card balance-analysis-ledger-card--warning"
-            data-selected={selectedKey === `${row.severity}:${row.title}` ? "true" : "false"}
-          >
-            <div className="balance-analysis-mini-topline">
-              <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">
-                {formatBalanceBusinessTextDisplay(row.title)}
-              </div>
-              <span className="balance-analysis-panel-badge balance-analysis-panel-badge--warning">
-                {formatBalanceGovernedSeverityDisplay(row.severity)}
-              </span>
-            </div>
-            {/* title 保留后端原文（含源字段名），正文走显示层中文化。 */}
-            <div
-              className="balance-analysis-ledger-copy-text balance-analysis-ledger-copy-text--warning"
-              title={row.reason}
-            >
-              {formatBalanceBusinessTextDisplay(row.reason)}
-            </div>
-            <div className="balance-analysis-ledger-meta-row balance-analysis-ledger-meta-row--warning">
-              <span>{formatBalanceWorkbookOperationalSectionKeyDisplay(row.source_section)}</span>
-            </div>
-          </article>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function renderWorkbookSecondaryPanel(table: BalanceAnalysisWorkbookTable) {
-  if (table.key === "industry_distribution") {
-    return renderIndustryPanel(table);
-  }
-  if (table.key === "rate_distribution") {
-    return renderRateDistributionPanel(table);
-  }
-  if (table.key === "counterparty_types") {
-    return renderCounterpartyPanel(table);
-  }
-  return null;
-}
-
-function renderWorkbookRightRailPanel(table: BalanceAnalysisWorkbookOperationalSection) {
-  void table;
-  return null;
-}
-
-function renderDistributionEvidence(
-  evidence: ReturnType<typeof useBalanceAnalysisData>["distributionEvidence"]["bond_business_types"],
-  tableKey: string,
-) {
-  return (
-    <div data-testid={`balance-analysis-distribution-evidence-${tableKey}`}>
-      <p className="balance-analysis-workbook-panel__note" title={`来源版本：${evidence.meta?.source_version ?? EM_DASH}`}>
-        来源：{evidence.source} · 实际报告日：{evidence.reportDate}
-      </p>
-      {evidence.stateSurfaces.map((state) => (
-        <PageStateSurface key={state.key} variant={state.variant} title={state.title} description={state.description} />
-      ))}
-    </div>
-  );
-}
-
 export default function BalanceAnalysisPage() {
   const client = useApiClient();
-  const systemReadInteraction = useContext(SystemReadInteractionContext);
   const [summaryOffset, setSummaryOffset] = useState(0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isExportingCsv, setIsExportingCsv] = useState(false);
-  const [isExportingWorkbook, setIsExportingWorkbook] = useState(false);
-  const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [refreshAwaitingPublication, setRefreshAwaitingPublication] = useState(false);
   const [decisionActionError, setDecisionActionError] = useState<string | null>(null);
   const [updatingDecisionKey, setUpdatingDecisionKey] = useState<string | null>(null);
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
@@ -1275,6 +278,34 @@ export default function BalanceAnalysisPage() {
     selectedEventCalendarKey,
     selectedRiskAlertKey,
   });
+
+  const {
+    isRefreshing,
+    isExportingCsv,
+    isExportingWorkbook,
+    refreshStatus,
+    refreshError,
+    refreshAwaitingPublication,
+    handleRefresh,
+    handleExport,
+    handleWorkbookExport,
+  } = useBalanceAnalysisActions(
+    { selectedReportDate, positionScope, currencyBasis },
+    () =>
+      Promise.all([
+        datesQuery.refetch(),
+        overviewQuery.refetch(),
+        decisionItemsQuery.refetch(),
+        workbookQuery.refetch(),
+        detailQuery.refetch(),
+        summaryQuery.refetch(),
+        basisBreakdownQuery.refetch(),
+        movementDatesQuery.refetch(),
+        movementDateAvailable ? movementLinkQuery.refetch() : Promise.resolve(),
+        adbComparisonQuery.refetch(),
+        advancedAttributionQuery.refetch(),
+      ]),
+  );
 
   useEffect(() => {
     setSummaryOffset(0);
@@ -1557,49 +588,6 @@ export default function BalanceAnalysisPage() {
     },
   ];
 
-  async function handleRefresh() {
-    if (!selectedReportDate) {
-      return;
-    }
-    setIsRefreshing(true);
-    setRefreshError(null);
-    setRefreshAwaitingPublication(false);
-    try {
-      const payload = await runPollingTask({
-        start: () => client.refreshBalanceAnalysis(selectedReportDate),
-        getStatus: (runId) => client.getBalanceAnalysisRefreshStatus(runId),
-        onUpdate: (nextPayload) => {
-          setRefreshStatus(formatRefreshStatusDisplay(nextPayload.status));
-        },
-      });
-      setRefreshStatus(formatRefreshStatusDisplay(payload.status));
-      if (payload.status !== "completed") {
-        throw new Error(payload.error_message ?? payload.detail ?? `刷新未完成：${payload.status}`);
-      }
-      if (systemReadInteraction?.generation) {
-        setRefreshAwaitingPublication(true);
-        return;
-      }
-      await Promise.all([
-        datesQuery.refetch(),
-        overviewQuery.refetch(),
-        decisionItemsQuery.refetch(),
-        workbookQuery.refetch(),
-        detailQuery.refetch(),
-        summaryQuery.refetch(),
-        basisBreakdownQuery.refetch(),
-        movementDatesQuery.refetch(),
-        movementDateAvailable ? movementLinkQuery.refetch() : Promise.resolve(),
-        adbComparisonQuery.refetch(),
-        advancedAttributionQuery.refetch(),
-      ]);
-    } catch {
-      setRefreshError(formatOperationIssueDisplay("refresh"));
-    } finally {
-      setIsRefreshing(false);
-    }
-  }
-
   async function handleDecisionStatusUpdate(
     row: BalanceAnalysisDecisionItemStatusRow,
     status: "confirmed" | "dismissed",
@@ -1626,46 +614,6 @@ export default function BalanceAnalysisPage() {
       setDecisionActionError(formatOperationIssueDisplay("decision"));
     } finally {
       setUpdatingDecisionKey(null);
-    }
-  }
-
-  async function handleExport() {
-    if (!selectedReportDate) {
-      return;
-    }
-    setIsExportingCsv(true);
-    setRefreshError(null);
-    try {
-      const payload = await client.exportBalanceAnalysisSummaryCsv({
-        reportDate: selectedReportDate,
-        positionScope,
-        currencyBasis,
-      });
-      downloadCsvFile(payload.filename, payload.content);
-    } catch {
-      setRefreshError(formatOperationIssueDisplay("summary-export"));
-    } finally {
-      setIsExportingCsv(false);
-    }
-  }
-
-  async function handleWorkbookExport() {
-    if (!selectedReportDate) {
-      return;
-    }
-    setIsExportingWorkbook(true);
-    setRefreshError(null);
-    try {
-      const payload = await client.exportBalanceAnalysisWorkbookXlsx({
-        reportDate: selectedReportDate,
-        positionScope: "all",
-        currencyBasis,
-      });
-      downloadBlobFile(payload.filename, payload.content);
-    } catch {
-      setRefreshError(formatOperationIssueDisplay("workbook-export"));
-    } finally {
-      setIsExportingWorkbook(false);
     }
   }
 
