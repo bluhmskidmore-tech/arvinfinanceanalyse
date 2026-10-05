@@ -298,7 +298,7 @@ def assert_duckdb_schema_current(
     controlled_expectation_invalid = False
     try:
         requested_controlled_versions = tuple(expected_controlled_versions)
-    except Exception:
+    except Exception:  # noqa: BLE001 - caller-provided iterators must fail readiness with a sanitized finding.
         controlled_expectation_invalid = True
     if controlled_expectation_invalid:
         receipt = _base_receipt(expected_controlled_versions=())
@@ -320,7 +320,7 @@ def assert_duckdb_schema_current(
             expected_controlled_versions=requested_controlled_versions,
         )
         controlled_declarations = declared_controlled_migrations()
-    except Exception:
+    except Exception:  # noqa: BLE001 - registry loading failures must block readiness without exposing source paths.
         registry_contract_invalid = True
     if registry_contract_invalid or catalog_contract is None:
         _append_finding(receipt, "registry_contract_invalid")
@@ -331,7 +331,7 @@ def assert_duckdb_schema_current(
     try:
         resolved_path = duckdb_path if duckdb_path is not None else get_settings().duckdb_path
         path = Path(resolved_path).expanduser()
-    except Exception:
+    except Exception:  # noqa: BLE001 - configuration failures must produce a blocked receipt without leaking settings.
         database_target_invalid = True
     if database_target_invalid or path is None:
         _append_finding(receipt, "database_target_invalid")
@@ -343,7 +343,7 @@ def assert_duckdb_schema_current(
         registry = DuckDBSchemaRegistry(db_path=str(path))
         register_all(registry)
         ordinary_declarations = registry.declared_migrations
-    except Exception:
+    except Exception:  # noqa: BLE001 - migration registration failures must block the read-only readiness boundary.
         ordinary_registry_invalid = True
     if ordinary_registry_invalid or ordinary_declarations is None:
         _append_finding(receipt, "ordinary_registry_invalid")
@@ -415,7 +415,7 @@ def assert_duckdb_schema_current(
         )
         phase = "catalog_read"
         actual_catalog = capture_main_catalog(conn)
-    except Exception:
+    except Exception:  # noqa: BLE001 - driver and catalog failures become sanitized phase failures, never readiness success.
         phase_failure = f"{phase}_failed"
     finally:
         if conn is not None:

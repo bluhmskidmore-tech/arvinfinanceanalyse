@@ -141,7 +141,7 @@ def assert_postgres_schema_current(
     script_configuration_failed = False
     try:
         expected_heads = _normalize_heads(_load_script_heads(backend_root=backend_root))
-    except Exception:
+    except Exception:  # noqa: BLE001 - Alembic loads migration modules; any failure must block readiness before database access.
         script_configuration_failed = True
     if script_configuration_failed or not expected_heads:
         receipt = _build_schema_receipt(
@@ -182,13 +182,13 @@ def assert_postgres_schema_current(
             applied_heads = _normalize_heads(
                 MigrationContext.configure(connection).get_current_heads()
             )
-    except Exception:
+    except Exception:  # noqa: BLE001 - dialect and driver failures must return a blocked receipt without leaking the DSN.
         failure_reason = "database_unreachable" if not connected else "inspection_failed"
     finally:
         if engine is not None:
             try:
                 engine.dispose()
-            except Exception:
+            except Exception:  # noqa: BLE001 - cleanup failure must invalidate readiness without exposing driver credentials.
                 failure_reason = "inspection_failed"
 
     if failure_reason is not None:

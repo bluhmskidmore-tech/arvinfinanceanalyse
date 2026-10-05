@@ -426,7 +426,7 @@ def _invalidate_bond_analytics_worker_caches(report_date: str) -> None:
     for cache_name, clear_cache in cache_clearers:
         try:
             clear_cache()
-        except Exception as exc:  # pragma: no cover - cache clearing must not fail materialization
+        except Exception as exc:  # noqa: BLE001 - A failed post-write cache hook must not invalidate materialized bond facts.  # pragma: no cover
             logger.warning("failed to clear %s runtime cache: %s", cache_name, exc)
 
 

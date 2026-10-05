@@ -457,7 +457,7 @@ def complete_agent_run_creation(
     _append_dispatch_request(repo=repo, run_id=queued_record.run_id)
     try:
         execute_agent_run_task.send(run_id=queued_record.run_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- any broker-send failure must persist sanitized failed-run and audit receipts
         finished_at = _utc_now()
         error_message = _safe_run_error_message(
             _DISPATCH_FAILURE_CODE,
@@ -1651,7 +1651,7 @@ def _run_executor_until_run_is_terminal(
     while not done.wait(timeout=AGENT_RUN_CANCEL_POLL_SECONDS):
         try:
             latest = _latest_run_record(run_id=run_id, settings=settings)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- governance read failures must not abandon cancellation supervision of an in-flight provider
             # A transient governance read failure (e.g. lock contention) must not
             # abort supervision of an in-flight provider call, but while it lasts
             # the run cannot observe an external cancel. Report the start of each

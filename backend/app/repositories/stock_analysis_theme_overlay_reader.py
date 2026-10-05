@@ -253,7 +253,7 @@ class StockAnalysisThemeOverlayReader:
             observation, overlay = self._latest_manifests()
             if overlay is not None:
                 raw = self._read_archive_bytes(overlay)
-        except Exception as exc:  # Fail-closed fingerprint boundary.
+        except Exception as exc:  # noqa: BLE001 - any failed manifest/archive read must change the cache fingerprint; no stale success reuse.
             return _theme_overlay_fingerprint(
                 observation=observation,
                 overlay=overlay,

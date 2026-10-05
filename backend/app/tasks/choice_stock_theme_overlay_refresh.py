@@ -89,7 +89,7 @@ def refresh_choice_stock_theme_overlay(
                 publish=False,
             )
             observation_status = "validated_in_memory"
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Observation or manifest failures close the refresh as source_unavailable before overlay work.
         return {
             "mode": mode,
             "status": "source_unavailable",
@@ -120,7 +120,7 @@ def refresh_choice_stock_theme_overlay(
                 if probe_codes
                 else ()
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Preserve any injected/vendor member-loader failure for the archive's explicit source_failed result.
         source_failure = exc
 
     def captured_members() -> Sequence[Mapping[str, object]]:
@@ -142,7 +142,7 @@ def refresh_choice_stock_theme_overlay(
             observation_manifest_override=(observation_manifest if mode == "dry_run" else None),
             expected_observation_manifest=(observation_manifest if mode == "archive" else None),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Archive task failures must return archive_failed or dry_run_failed without invalidating the committed observation.
         failure_status = "archive_failed" if mode == "archive" else "dry_run_failed"
         return {
             "mode": mode,

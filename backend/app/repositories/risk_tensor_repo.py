@@ -351,7 +351,7 @@ class RiskTensorRepository:
             if transaction_started:
                 try:
                     conn.execute("rollback")
-                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
+                except Exception:  # noqa: BLE001, S110 - rollback failure must preserve the original write exception raised below.
                     pass
             raise
         finally:

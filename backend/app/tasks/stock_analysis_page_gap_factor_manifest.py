@@ -84,7 +84,7 @@ def build_stock_analysis_page_gap_factor_manifest(
     if page_loaded:
         try:
             valid, validation_errors = page_manifest_task.validate_stock_analysis_page_gap_manifest(page_payload)
-        except Exception as exc:  # validator failure is a closed authority boundary
+        except Exception as exc:  # noqa: BLE001 - Any formal-page validator failure adds an authority blocker before candidate target cells can be accepted.
             blockers.append(f"page_manifest_validator_failed:{type(exc).__name__}")
         else:
             if not valid:

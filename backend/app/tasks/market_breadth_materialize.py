@@ -748,7 +748,7 @@ def _cross_check_latest_limit_prices(
             trade_date=date.fromisoformat(trade_date_text),
             limit_prices=prices,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - An optional injected price cross-check may fail arbitrarily; report unavailable without changing landed flag counts.
         logger.info(
             "Limit-price cross-check unavailable for %s; the flag basis is unaffected.",
             trade_date_text,

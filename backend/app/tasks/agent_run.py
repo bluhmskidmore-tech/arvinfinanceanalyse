@@ -116,7 +116,7 @@ def _execute_agent_run_task(*, run_id: str) -> None:
             settings=settings,
             executor=executor,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- no-retry actor failures must converge active runs through sanitized fail_agent_run
         # The actor has max_retries=0: without this the run would stay queued
         # forever after a preparation failure (e.g. unsupported provider or an
         # unrecoverable persisted request payload).

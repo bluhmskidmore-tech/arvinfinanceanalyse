@@ -74,7 +74,7 @@ def run_nbs_gdp_release_ingest_once(
             "error": f"{type(exc).__name__}: {exc}",
             "elapsed_seconds": round(time.monotonic() - started, 3),
         }
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - The actor boundary returns an error receipt for unexpected ingest/storage failures after closing the connection.
         return {
             "status": "error",
             "ingest_batch_id": batch,

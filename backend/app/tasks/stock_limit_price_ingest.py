@@ -196,7 +196,7 @@ def ingest_stock_limit_prices(
                 retry_attempts=retry_attempts,
                 retry_sleep_seconds=retry_sleep_seconds,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Exhausted SDK failures mark the date fetch_failed; all failed dates still reject the ingest.
             failed_dates.append(trade_date_text)
             date_results.append(
                 {
@@ -438,7 +438,7 @@ def _fetch_stk_limit_with_retry(
                 trade_date=trade_date_compact,
                 fields=TUSHARE_STK_LIMIT_FIELDS,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - The vendor SDK has no fixed exception family; bounded retries re-raise the original final failure.
             last_exc = exc
             logger.warning(
                 "stk_limit fetch failed trade_date=%s attempt=%s/%s: %s",
@@ -715,7 +715,7 @@ def safe_error_message(exc: BaseException) -> str:
     tokens = [str(os.getenv(TUSHARE_TOKEN_ENV, "") or "").strip()]
     try:
         settings_token = str(getattr(get_settings(), "tushare_token", "") or "").strip()
-    except Exception:  # pragma: no cover - defensive masking must never hide root errors
+    except Exception:  # noqa: BLE001 - Settings lookup failures must not replace the vendor error; environment-token masking remains active.  # pragma: no cover
         settings_token = ""
     tokens.append(settings_token)
     for token in tokens:

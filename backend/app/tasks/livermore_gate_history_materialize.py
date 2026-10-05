@@ -107,7 +107,7 @@ def persist_livermore_gate_history_for_run(
             reference_date=reference_date or date.today(),
             drift_scan_limit=drift_scan_limit,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - This optional history task promises a failed receipt and rollback for any failure without jeopardizing the primary supplement.
         logger.warning(
             "Livermore gate-history persistence failed; the supplement write is unaffected.",
             exc_info=True,

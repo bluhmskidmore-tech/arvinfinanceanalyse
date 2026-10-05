@@ -713,7 +713,7 @@ def _refresh_choice_macro_snapshot(
                 duckdb_path=str(duckdb_file),
                 lookback_days=max(backfill_days, STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Supplement worker failures become explicit warnings after the primary macro refresh has committed.
             logger.warning(
                 "livermore gate supplement refresh failed after choice_macro refresh: %s",
                 exc,
@@ -1233,7 +1233,7 @@ def _append_choice_macro_governance_state(
         try:
             repo.append(CACHE_BUILD_RUN_STREAM, payload)
             return
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Any governance append failure must exhaust bounded retries and then fail with its original cause.
             last_error = exc
             logger.warning(
                 "choice macro governance append failed: run_id=%s status=%s attempt=%s/%s",
@@ -2118,7 +2118,7 @@ def _load_public_cross_asset_history_rows(
                     lookback_days=lookback_days,
                 )
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Independent public-source loaders have different SDK errors; retain each source failure instead of fabricating rows.
             failure = _public_source_failure(loader.__name__, exc)
             source_failures.append(failure)
             warnings.append(

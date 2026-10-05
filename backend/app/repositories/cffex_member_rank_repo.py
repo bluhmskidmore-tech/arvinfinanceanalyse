@@ -237,7 +237,7 @@ def replace_member_rank_rows(conn: duckdb.DuckDBPyConnection, rows: list[CffexMe
         if transaction_started:
             try:
                 conn.execute("rollback")
-            except Exception:  # noqa: S110 - rollback failure must not mask the insert error
+            except Exception:  # noqa: BLE001, S110 - rollback failure must not mask the insert error re-raised below.
                 pass
         raise
     return len(rows)

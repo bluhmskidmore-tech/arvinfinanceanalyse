@@ -88,7 +88,7 @@ def _commodity_futures_terminal_snapshot(
     for attempt in range(_COMMODITY_FUTURES_SNAPSHOT_RETRY_ATTEMPTS):
         try:
             candidate = commodity_futures_status(duckdb_path)
-        except Exception as exc:  # Snapshot failure must not replace the task's business terminal state.
+        except Exception as exc:  # noqa: BLE001 - Diagnostic snapshot failures must report snapshot_unavailable without replacing the task's business terminal state.
             after_status = _snapshot_unavailable_status()
             snapshot_status = "unavailable"
             snapshot_error = type(exc).__name__

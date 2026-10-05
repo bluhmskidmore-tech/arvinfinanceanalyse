@@ -1606,7 +1606,7 @@ def _is_forbidden_link_component(path: Path) -> bool:
 def _rollback_quietly(conn: duckdb.DuckDBPyConnection) -> None:
     try:
         conn.execute("rollback")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Best-effort transaction cleanup must preserve the original write failure even if rollback itself fails.
         _ = exc
 
 

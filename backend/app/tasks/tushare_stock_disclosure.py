@@ -170,7 +170,7 @@ def sync_stock_official_disclosures(
                                 "vendor_version": vendor_version,
                             }
                         )
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - Each SDK/transaction failure rolls back and records failed coverage without extending the last successful interval.
                         _rollback_quietly(conn)
                         failures += 1
                         error_message = _safe_error_message(exc)
@@ -582,7 +582,7 @@ def _safe_error_message(exc: BaseException) -> str:
     tokens = {os.getenv(TUSHARE_TOKEN_ENV, "").strip()}
     try:
         tokens.add(str(getattr(get_settings(), "tushare_token", "") or "").strip())
-    except Exception:  # noqa: S110  # 脱敏辅助不得因 settings 读取失败中断错误上报；env token 兜底已覆盖
+    except Exception:  # noqa: S110, BLE001  # 脱敏辅助不得因 settings 读取失败中断错误上报；env token 兜底已覆盖
         pass
     for token in tokens:
         if token:

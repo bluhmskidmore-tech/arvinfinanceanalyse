@@ -559,7 +559,7 @@ def _reload_signal_items(
         )
         payload = dict(loaded_payload) if isinstance(loaded_payload, dict) else {}
         meta = dict(loaded_meta) if isinstance(loaded_meta, dict) else {}
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Any strategy-loader failure becomes a sanitized blocker and no signal evidence, never cohort authority.
         meta = {"loader_error": _loader_error_blocker(exc)}
         payload = None
     finally:
@@ -743,7 +743,7 @@ def _validate_zero_signal_runner_result(
             trade_date=trade_date,
             version_tuple=version_tuple,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Certificate-validator failures must invalidate zero-signal evidence instead of granting authority or aborting blocker assembly.
         return f"zero_signal_runner_invalid:{type(exc).__name__}:{exc}"
     return None
 

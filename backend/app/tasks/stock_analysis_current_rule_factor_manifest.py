@@ -136,7 +136,7 @@ def build_stock_analysis_current_rule_factor_manifest(
                             stock_code=stock_code,
                             snapshot_as_of_date=signal_date,
                         )
-                    except Exception as exc:  # pragma: no cover - defensive vendor-shape boundary
+                    except Exception as exc:  # noqa: BLE001 - An execution probe failure blocks this candidate manifest before any factor authority is granted.  # pragma: no cover
                         blockers.append(
                             "execution_probe_failed:"
                             f"{signal_date}:{stock_code}:{type(exc).__name__}"

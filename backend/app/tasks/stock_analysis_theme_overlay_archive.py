@@ -123,7 +123,7 @@ def archive_tushare_ths_current_overlay(
 
     try:
         members = _canonical_members(load_members())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Arbitrary member-loader or canonicalization failures return source_failed before publishing archive objects.
         return _result(
             status="source_failed",
             run_id=run_id,

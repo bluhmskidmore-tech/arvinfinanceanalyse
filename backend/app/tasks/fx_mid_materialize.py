@@ -707,7 +707,7 @@ def _materialize_fx_mid_for_report_date(
             report_date,
             candidates=candidates,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Choice SDK failures enter the existing governed FX source fallback; no failed-source rows are written.
         logger.warning(
             "Choice FX source unavailable; trying ChinaMoney fallback: %s",
             exc,
@@ -738,7 +738,7 @@ def _materialize_fx_mid_for_report_date(
             report_date,
             candidates=candidates,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - ChinaMoney transport or payload failures enter the existing AkShare fallback with the cause retained.
         logger.warning(
             "ChinaMoney FX source unavailable; trying AkShare fallback: %s",
             exc,
@@ -770,7 +770,7 @@ def _materialize_fx_mid_for_report_date(
             report_date,
             candidates=candidates,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Retain the last SDK/payload failure so exhaustion of all live FX sources fails closed.
         logger.warning(
             "AkShare FX source unavailable; no live fallback remains: %s",
             exc,

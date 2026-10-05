@@ -327,7 +327,7 @@ def materialize_choice_stock_inputs(
         try:
             universe_result = _call_choice(choice_client, universe_request, stock_codes=[], as_of_date=resolved_date)
             universe_rows = _normalize_sector_universe(universe_result, universe_request)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Choice SDK or payload failure switches to the existing audited Tushare universe fallback.
             choice_front_layer_error = exc
             fallback_client = tushare_client or _DefaultTushareStockClient()
             universe_rows = _load_tushare_stock_universe_rows(
@@ -1307,7 +1307,7 @@ def _load_choice_css_financial_factors(
                 getattr(bulk_result, "ErrorMsg", ""),
             )
             incomplete_codes = requested_codes
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - A failed full-market SDK response requires chunk retries; unresolved financial fields stay missing.
         logger.warning(
             "Choice css full-market financial request or parsing raised; falling back to chunks: %s",
             exc,
@@ -1417,7 +1417,7 @@ def _load_tushare_financial_factors(
                     "roe": _percent_points_to_ratio(_record_float(selected, "roe")),
                     "gross_margin": _percent_points_to_ratio(_record_float(selected, "grossprofit_margin")),
                 }
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - Isolate arbitrary per-stock vendor failures without filling failed stocks with financial values.
                 logger.warning("fina_indicator per-stock fallback failed for %s: %s; skipping", stock_code, exc)
                 continue
 

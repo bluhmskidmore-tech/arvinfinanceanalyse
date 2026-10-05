@@ -970,7 +970,7 @@ def _clear_pnl_page_runtime_caches() -> None:
         pnl_service.clear_pnl_by_business_ytd_cache()
         adb_analysis_service.clear_adb_comparison_cache()
         adb_analysis_service.clear_adb_insights_cache()
-    except Exception as exc:  # pragma: no cover - cache invalidation must not fail materialization
+    except Exception as exc:  # noqa: BLE001 - Post-write cache imports/hooks must not turn committed PnL materialization into a failed write.  # pragma: no cover
         logger.warning("failed to clear pnl page runtime caches: %s", exc)
 
 
