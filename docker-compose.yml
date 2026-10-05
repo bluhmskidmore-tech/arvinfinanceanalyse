@@ -9,7 +9,7 @@ services:
       uv export --frozen --project backend --extra dev --no-hashes --no-emit-project -o /tmp/backend-requirements.txt &&
       uv pip install --system --no-deps -r /tmp/backend-requirements.txt &&
       uv pip install --system --no-deps -e ./backend &&
-      python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+      exec python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
     volumes:
       - ./:/workspace
     environment:
@@ -45,7 +45,7 @@ services:
       uv export --frozen --project backend --extra dev --no-hashes --no-emit-project -o /tmp/backend-requirements.txt &&
       uv pip install --system --no-deps -r /tmp/backend-requirements.txt &&
       uv pip install --system --no-deps -e ./backend &&
-      python -m dramatiq --processes 1 --threads 8 backend.app.tasks.worker_bootstrap"
+      exec python -m dramatiq --processes 1 --threads 8 backend.app.tasks.worker_bootstrap"
     volumes:
       - ./:/workspace
     environment:
