@@ -89,15 +89,28 @@ def test_pnl_fact_commits_persist_revision_for_rerun_history_and_deletion(
 ) -> None:
     duckdb_path = tmp_path / "pnl-invalidation.duckdb"
     governance_dir = tmp_path / "governance"
-    monkeypatch.setattr(
-        pnl_materialize,
+    precompute_dates: list[str] = []
+    insight_dependency_dates: list[str] = []
+
+    def precompute(**kwargs):
+        precompute_dates.append(kwargs["as_of_date"])
+        return {"records": 0}
+
+    def materialize_insight_dependencies(**kwargs):
+        insight_dependency_dates.append(kwargs["report_date"])
+        return []
+
+    # Actor registration keeps its identity but may replace fn after a module reload.
+    actor_globals = pnl_materialize.materialize_pnl_facts.fn.__globals__
+    monkeypatch.setitem(
+        actor_globals,
         "precompute_pnl_by_business_payloads",
-        lambda **_kwargs: {"records": 0},
+        precompute,
     )
-    monkeypatch.setattr(
-        pnl_materialize,
+    monkeypatch.setitem(
+        actor_globals,
         "_materialize_pnl_by_business_insight_dependencies",
-        lambda **_kwargs: [],
+        materialize_insight_dependencies,
     )
 
     _materialize_pnl(
@@ -142,6 +155,15 @@ def test_pnl_fact_commits_persist_revision_for_rerun_history_and_deletion(
         include_rows=False,
     )
     assert _event_revision(duckdb_path) == 7
+    expected_dates = [
+        "2025-12-31",
+        "2025-12-31",
+        "2026-01-31",
+        "2025-06-30",
+        "2025-06-30",
+    ]
+    assert precompute_dates == expected_dates
+    assert insight_dependency_dates == expected_dates
     with duckdb.connect(str(duckdb_path), read_only=True) as conn:
         assert (
             conn.execute(

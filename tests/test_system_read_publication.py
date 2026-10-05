@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import struct
 import subprocess
 import sys
 from contextlib import nullcontext
@@ -70,7 +71,6 @@ from backend.app.services.pretrade_qualification import (
     unavailable_pretrade_qualification,
 )
 from scripts.run_global_data_refresh import GlobalDataRefreshFailed
-from tests.helpers import ROOT
 
 
 def _create_source(path: Path, *, external_csv: Path | None = None) -> None:
@@ -285,6 +285,54 @@ def _append_lineage(
                 else {}
             ),
         },
+    )
+
+
+def _synthetic_source_preview_xls(headers: list[str], values: list[str]) -> bytes:
+    """Build a BIFF8 fixture with a title, headers, and one synthetic data row."""
+
+    def record(kind: int, payload: bytes = b"") -> bytes:
+        return struct.pack("<HH", kind, len(payload)) + payload
+
+    def bof(kind: int) -> bytes:
+        return record(
+            0x0809, struct.pack("<HHHHII", 0x0600, kind, 0x0DBB, 1997, 1, 6)
+        )
+
+    sheet_name = b"Synthetic"
+    # Workbook globals: BIFF8 BOF, UTF-16 code page, and the cell format.
+    prefix = (
+        bof(0x0005)
+        + record(0x0042, struct.pack("<H", 1200))
+        + record(0x00E0, bytes(20))
+    )
+    sheet_offset = len(prefix) + 4 + 8 + len(sheet_name) + 4
+    boundsheet = record(
+        0x0085,
+        struct.pack("<IBBBB", sheet_offset, 0, 0, len(sheet_name), 0) + sheet_name,
+    )
+    cells = []
+    for row, texts in (
+        (0, ["Synthetic source preview fixture"]),
+        (1, headers),
+        (2, values),
+    ):
+        for column, text in enumerate(texts):
+            cells.append(
+                record(
+                    0x0204,
+                    struct.pack("<HHHHB", row, column, 0, len(text), 1)
+                    + text.encode("utf-16-le"),
+                )
+            )
+    return (
+        prefix
+        + boundsheet
+        + record(0x000A)
+        + bof(0x0010)
+        + record(0x0200, struct.pack("<IIHHH", 0, 3, 0, len(headers), 0))
+        + b"".join(cells)
+        + record(0x000A)
     )
 
 
@@ -2458,12 +2506,28 @@ def test_preserved_publication_rejects_new_balance_manifests_until_preview_is_re
     archive_root = Path(settings.local_archive_path)
     repo = GovernanceRepository(base_dir=settings.governance_path, backend_mode="jsonl")
     rows = []
-    for family, fixture_name, source_file in (
-        ("zqtz", "ZQTZSHOW-20251231.xls", "ZQTZSHOW-20260916.xls"),
-        ("tyw", "TYWLSHOW-20251231.xls", "TYWLSHOW-20260916.xls"),
+    for family, source_file, headers, values in (
+        (
+            "zqtz",
+            "ZQTZSHOW-20260916.xls",
+            ["日期", "债券代号", "债券名称", "业务种类1", "账户类别"],
+            [
+                "2026-09-16",
+                "SYNTHETIC-BOND",
+                "Synthetic Bond",
+                "国债",
+                "交易性金融资产",
+            ],
+        ),
+        (
+            "tyw",
+            "TYWLSHOW-20260916.xls",
+            ["产品类型", "对手方名称", "投资组合"],
+            ["拆放同业", "Synthetic Counterparty", "Synthetic Portfolio"],
+        ),
     ):
         archived = archive_root / source_file
-        archived.write_bytes((ROOT / "data_input" / fixture_name).read_bytes())
+        archived.write_bytes(_synthetic_source_preview_xls(headers, values))
         rows.append(
             (
                 SOURCE_MANIFEST_STREAM,
@@ -2538,6 +2602,15 @@ def test_preserved_publication_rejects_new_balance_manifests_until_preview_is_re
     )
     assert preview_result["status"] == "completed"
     assert preview_result["refresh_mode"] == "existing_manifests"
+    with duckdb.connect(str(source), read_only=True) as conn:
+        assert conn.execute(
+            "select instrument_code, source_version from phase1_zqtz_preview_rows "
+            "where ingest_batch_id = 'balance-batch-new'"
+        ).fetchall() == [("SYNTHETIC-BOND", "zqtz-source-new")]
+        assert conn.execute(
+            "select counterparty_name, source_version from phase1_tyw_preview_rows "
+            "where ingest_batch_id = 'balance-batch-new'"
+        ).fetchall() == [("Synthetic Counterparty", "tyw-source-new")]
     publication = publish_preserved_system_read_generation(
         settings,
         writer_run_id="market-aggregate-run",

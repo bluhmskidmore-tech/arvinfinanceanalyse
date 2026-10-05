@@ -777,10 +777,12 @@ def test_august_selected_manifest_change_during_stage_rejects_same_version_sourc
 def test_august_manifest_append_waits_for_pointer_commit_then_revokes_pinned_generations(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from backend.app.repositories import source_manifest_repo as manifest_module
     from backend.app.tasks import balance_analysis_overview_publication as publication_task
 
     settings = _materialized_aug31_settings(tmp_path, monkeypatch)
+    # Seeding reloads this module, so the lock spy and repository must use that copy.
+    from backend.app.repositories import source_manifest_repo as manifest_module
+
     first = publish_balance_analysis_overview(
         settings,
         report_date="2026-08-31",
@@ -804,7 +806,7 @@ def test_august_manifest_append_waits_for_pointer_commit_then_revokes_pinned_gen
 
     def append_manifest() -> None:
         try:
-            SourceManifestRepository(
+            manifest_module.SourceManifestRepository(
                 governance_repo=GovernanceRepository(base_dir=settings.governance_path)
             ).add_many(
                 [

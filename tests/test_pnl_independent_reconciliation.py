@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
-import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -39,12 +37,6 @@ from backend.app.services.product_category_source_service import discover_source
 from backend.app.tasks.pnl_materialize import materialize_pnl_facts
 
 
-RUNTIME_REPLAY_ROOT = (
-    Path(tempfile.gettempdir())
-    / "moss-runtime-integration-20260913"
-    / "sol-independent-reconciliation"
-    / "pytest-replay"
-)
 REPORT_DATES = ("2026-07-31", "2026-08-31")
 MONTH_BY_DATE = {"2026-07-31": "202607", "2026-08-31": "202608"}
 LEDGER_COMPONENT_VALUES = {
@@ -64,15 +56,10 @@ ADJUSTMENT_VERSIONS = {
 }
 
 
-def _fresh_replay_root(name: str) -> Path:
-    resolved = (RUNTIME_REPLAY_ROOT / name).resolve()
-    allowed = (Path(tempfile.gettempdir()) / "moss-runtime-integration-20260913").resolve()
-    if allowed not in resolved.parents:
-        raise AssertionError(f"Unsafe replay root: {resolved}")
-    if resolved.exists():
-        shutil.rmtree(resolved)
-    resolved.mkdir(parents=True)
-    return resolved
+def _fresh_replay_root(tmp_path: Path, name: str) -> Path:
+    root = tmp_path / name
+    root.mkdir()
+    return root
 
 
 def _write_ledger_workbook(
@@ -423,8 +410,10 @@ def test_zero_dependency_revision_is_valid_for_a_current_protocol_reference() ->
     assert at_tolerance["status"] == "pass"
 
 
-def test_corrupt_latest_prepared_reference_raises_instead_of_falling_back() -> None:
-    root = _fresh_replay_root("corrupt-prepared-reference")
+def test_corrupt_latest_prepared_reference_raises_instead_of_falling_back(
+    tmp_path: Path,
+) -> None:
+    root = _fresh_replay_root(tmp_path, "corrupt-prepared-reference")
     source_dir = root / "source"
     governance_dir = root / "governance"
     _write_source_workbooks(source_dir)
@@ -448,8 +437,10 @@ def test_corrupt_latest_prepared_reference_raises_instead_of_falling_back() -> N
         )
 
 
-def test_empty_ledger_match_requires_dedicated_zero_observation_evidence() -> None:
-    root = _fresh_replay_root("empty-ledger-scope")
+def test_empty_ledger_match_requires_dedicated_zero_observation_evidence(
+    tmp_path: Path,
+) -> None:
+    root = _fresh_replay_root(tmp_path, "empty-ledger-scope")
     source_dir = root / "source"
     _write_source_workbooks(source_dir)
     pair = next(item for item in discover_source_pairs(source_dir) if item.month_key == "202608")
@@ -569,8 +560,10 @@ def test_daily_average_is_hand_calculated_from_complete_cny_and_usd_calendar_day
     assert missing["missing_dates"] == ["2026-07-31"]
 
 
-def test_two_month_real_materialization_roundtrip_and_single_ledger_cell_mismatch() -> None:
-    root = _fresh_replay_root("baseline-and-mismatch")
+def test_two_month_real_materialization_roundtrip_and_single_ledger_cell_mismatch(
+    tmp_path: Path,
+) -> None:
+    root = _fresh_replay_root(tmp_path, "baseline-and-mismatch")
     source_dir = root / "source"
     duckdb_path = root / "moss.duckdb"
     governance_dir = root / "governance"
@@ -698,8 +691,10 @@ def _formal_rows(duckdb_path: Path) -> dict[str, list[tuple]]:
         }
 
 
-def test_historical_correction_delete_repeat_and_revoke_match_clean_full_replay() -> None:
-    root = _fresh_replay_root("incremental-full")
+def test_historical_correction_delete_repeat_and_revoke_match_clean_full_replay(
+    tmp_path: Path,
+) -> None:
+    root = _fresh_replay_root(tmp_path, "incremental-full")
     incremental_db = root / "incremental.duckdb"
     clean_db = root / "clean-full.duckdb"
     incremental_governance = root / "incremental-governance"

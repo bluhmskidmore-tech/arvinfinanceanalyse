@@ -1528,6 +1528,7 @@ def test_actual_page_prepare_builder_and_publisher_use_ready_dependency_cutoffs(
     from backend.app.tasks import pnl_by_business_page_publication as page_publication
     from backend.app.tasks import pnl_by_business_resource_scope as resource_scope_module
 
+    monkeypatch.setattr(resource_scope_module.os, "cpu_count", lambda: 16)
     source = tmp_path / "source.duckdb"
     root = tmp_path / "published"
     governance = tmp_path / "governance"
