@@ -170,6 +170,8 @@ def _linux_process_tree_rss_bytes(root_pid: int) -> tuple[int, tuple[int, ...]]:
 
 
 def _windows_process_tree_rss_bytes(root_pid: int) -> tuple[int, tuple[int, ...]]:
+    if sys.platform != "win32":
+        raise RuntimeError("Windows process-tree RSS sampling requires win32.")
     th32cs_snapprocess = 0x00000002
     process_query_information = 0x0400
     process_vm_read = 0x0010

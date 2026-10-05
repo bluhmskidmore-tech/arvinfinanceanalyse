@@ -11,7 +11,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-if os.name == "nt":
+if sys.platform == "win32":
     import msvcrt
 else:
     import fcntl
@@ -90,7 +90,7 @@ def acquire_lock(
         # immediately instead of spinning until the timeout masks them.
         handle = open(lock_path, "a+b")
         try:
-            if os.name == "nt":
+            if sys.platform == "win32":
                 handle.seek(0)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
             else:
@@ -126,7 +126,7 @@ def acquire_lock(
     finally:
         if handle is not None:
             try:
-                if os.name == "nt":
+                if sys.platform == "win32":
                     handle.seek(0)
                     msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
                 else:

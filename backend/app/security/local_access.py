@@ -87,12 +87,12 @@ class LocalDevelopmentAccessMiddleware:
             for name in headers
         )
         allowed = (
-            bool(client) and is_loopback_address(client[0])
-            and bool(server) and is_loopback_address(server[0])
+            client is not None and bool(client) and is_loopback_address(client[0])
+            and server is not None and bool(server) and is_loopback_address(server[0])
             and not proxy_identity
             and len(headers.get(b"host", [])) == 1
         )
-        if allowed:
+        if allowed and server is not None:
             host = headers[b"host"][0].decode("latin-1")
             allowed = _local_host(host, server_port=server[1], scheme=str(scope.get("scheme") or "http"))
         for name in (b"origin", b"referer"):

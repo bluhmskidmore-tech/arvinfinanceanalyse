@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import shutil
+import subprocess
 import sys
 import threading
 from contextlib import contextmanager
@@ -106,6 +107,29 @@ def test_wrong_owner_cannot_leave_maintenance(runtime_root: tuple[ModuleType, Pa
 
     assert (module.control_dir(root) / "maintenance.json").exists()
     module.leave_maintenance(root, state["owner_token"])
+
+
+def test_contained_path_rejects_directory_link_with_target_inside_root(
+    runtime_root: tuple[ModuleType, Path],
+) -> None:
+    module, root = runtime_root
+    target = root / "assets"
+    target.mkdir()
+    link = root / "linked assets"
+    if sys.platform == "win32":
+        subprocess.run(
+            ["cmd.exe", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            check=True,
+        )
+        assert not link.is_symlink()
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(module.RuntimeControlError, match="links or junctions"):
+        module.contained_path(root, link.relative_to(root).as_posix())
 
 
 @pytest.mark.parametrize("kind", ["malformed", "directory"])

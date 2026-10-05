@@ -216,11 +216,14 @@ def run_dexter_agent(
 def _run_dexter_cli_with_cancel(
     *, args: list[str], timeout_seconds: float, cancel_event: threading.Event,
 ) -> subprocess.CompletedProcess[str]:
+    creationflags = 0
+    if sys.platform == "win32":
+        creationflags = subprocess.CREATE_NO_WINDOW
     process = subprocess.Popen(
         args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=sys.platform != "win32",
         encoding="utf-8" if sys.platform != "win32" else None,
         errors="replace" if sys.platform != "win32" else None, env=build_agent_subprocess_env(),
-        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        creationflags=creationflags,
         start_new_session=sys.platform != "win32",
     )
     try:
@@ -263,6 +266,8 @@ def _run_dexter_cli_with_cancel(
 
 
 def _read_dexter_windows_pipe(pipe: BinaryIO) -> bytes | None:
+    if sys.platform != "win32":
+        raise RuntimeError("Windows pipe reading requires win32.")
     import ctypes
     import msvcrt
     from ctypes import wintypes

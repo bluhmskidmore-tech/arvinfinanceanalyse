@@ -121,7 +121,9 @@ def contained_path(root: Path, value: str) -> Path:
     current = root
     for part in lexical.relative_to(root).parts:
         current = current / part
-        attributes = current.lstat().st_file_attributes if os.name == "nt" and current.exists() else 0
+        attributes = 0
+        if sys.platform == "win32" and current.exists():
+            attributes = current.lstat().st_file_attributes
         if current.is_symlink() or attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
             raise RuntimeControlError("runtime paths must not traverse links or junctions")
     return lexical

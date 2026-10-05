@@ -73,6 +73,18 @@ def test_development_rejects_remote_peer_or_bound_server_before_handler(local_ap
     assert reached == []
 
 
+@pytest.mark.parametrize("missing_addresses", [("client",), ("server",), ("client", "server")])
+def test_development_rejects_missing_socket_addresses_before_handler(local_app, missing_addresses):
+    app, reached = local_app
+
+    async def missing_socket_app(scope, receive, send):
+        await app({**scope, **dict.fromkeys(missing_addresses)}, receive, send)
+
+    response = _client(missing_socket_app).get("/__local_boundary_probe__")
+    assert response.status_code == 403
+    assert reached == []
+
+
 def test_non_loopback_server_is_rejected_even_with_local_host_header(local_app):
     app, reached = local_app
     response = _client(app, server="10.0.0.5").get("/__local_boundary_probe__", headers={"Host": "127.0.0.1:7888"})

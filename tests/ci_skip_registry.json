@@ -1445,7 +1445,8 @@
     {
       "file": "tests/test_dev_frontend_source_entry.py",
       "expected_counts": {
-        "skip_call": 2
+        "skip_call": 2,
+        "skipif": 1
       },
       "occurrences": [
         {
@@ -1471,6 +1472,18 @@
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        },
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "other",
+          "reason": "The inherited Ctrl+C-ignore regression requires a real Windows console. Linux and macOS exercise their own process-group signal forwarding in the same source-entry suite.",
+          "depends_on": [
+            "Windows console control handling"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "Executed by the Windows source-development-entry CI job. Non-Windows skips do not count as Windows verification."
         }
       ]
     },

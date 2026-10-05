@@ -106,6 +106,9 @@ def fetch_curve_snapshot_with_timeout(
     }
     with TemporaryDirectory(prefix="moss-yield-curve-", ignore_cleanup_errors=True) as temporary_dir:
         result_path = Path(temporary_dir) / "result.json"
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = subprocess.CREATE_NO_WINDOW
         try:
             process = subprocess.Popen(
                 [sys.executable, "-m", "backend.app.tasks.yield_curve_fetch", "--result-path", str(result_path)],
@@ -117,8 +120,8 @@ def fetch_curve_snapshot_with_timeout(
                 errors="replace",
                 cwd=str(_REPO_ROOT),
                 env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                start_new_session=os.name != "nt",
+                creationflags=creationflags,
+                start_new_session=sys.platform != "win32",
             )
         except OSError as exc:
             raise CurveFetchProcessError("Could not start the yield-curve vendor process.") from exc
