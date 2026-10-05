@@ -9,8 +9,15 @@ from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BeforeValidator
 
 router = APIRouter(prefix="/api/positions", tags=["positions"])
+
+
+def _normalize_query_date(value: object) -> object:
+    if isinstance(value, str):
+        return value.strip() or None
+    return value
 
 
 def _bad_date(detail: str) -> HTTPException:
@@ -42,7 +49,7 @@ def _ensure_positions_read_allowed(auth: AuthContext) -> None:
 @router.get("/bonds/sub_types")
 def bonds_sub_types(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-    report_date: date | None = Query(None),
+    report_date: Annotated[date | None, BeforeValidator(_normalize_query_date), Query()] = None,
 ):
     _ensure_positions_read_allowed(auth)
     return positions_service.bond_sub_types_envelope(_date_string(report_date))
@@ -51,7 +58,7 @@ def bonds_sub_types(
 @router.get("/bonds")
 def bonds_list(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-    report_date: date = Query(..., description="YYYY-MM-DD"),
+    report_date: Annotated[date, BeforeValidator(_normalize_query_date), Query(description="YYYY-MM-DD")],
     sub_type: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
@@ -70,8 +77,8 @@ def bonds_list(
 @router.get("/counterparty/bonds")
 def counterparty_bonds(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-    start_date: date = Query(..., description="YYYY-MM-DD"),
-    end_date: date = Query(..., description="YYYY-MM-DD"),
+    start_date: Annotated[date, BeforeValidator(_normalize_query_date), Query(description="YYYY-MM-DD")],
+    end_date: Annotated[date, BeforeValidator(_normalize_query_date), Query(description="YYYY-MM-DD")],
     sub_type: str | None = Query(None),
     top_n: int | None = Query(None, ge=1, le=5000),
     page: int = Query(1, ge=1),
@@ -92,7 +99,7 @@ def counterparty_bonds(
 @router.get("/interbank/product_types")
 def interbank_product_types(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-    report_date: date | None = Query(None),
+    report_date: Annotated[date | None, BeforeValidator(_normalize_query_date), Query()] = None,
 ):
     _ensure_positions_read_allowed(auth)
     return positions_service.interbank_product_types_envelope(_date_string(report_date))
@@ -101,7 +108,7 @@ def interbank_product_types(
 @router.get("/interbank")
 def interbank_list(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-    report_date: date = Query(..., description="YYYY-MM-DD"),
+    report_date: Annotated[date, BeforeValidator(_normalize_query_date), Query(description="YYYY-MM-DD")],
     product_type: str | None = Query(None),
     direction: str | None = Query(None, description="Asset | Liability | ALL"),
     page: int = Query(1, ge=1),
@@ -122,8 +129,8 @@ def interbank_list(
 @router.get("/counterparty/interbank/split")
 def counterparty_interbank_split(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-    start_date: date = Query(...),
-    end_date: date = Query(...),
+    start_date: Annotated[date, BeforeValidator(_normalize_query_date), Query()],
+    end_date: Annotated[date, BeforeValidator(_normalize_query_date), Query()],
     product_type: str | None = Query(None),
     top_n: int | None = Query(None, ge=1, le=5000),
 ):
@@ -140,8 +147,8 @@ def counterparty_interbank_split(
 @router.get("/stats/rating")
 def stats_rating(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-    start_date: date = Query(...),
-    end_date: date = Query(...),
+    start_date: Annotated[date, BeforeValidator(_normalize_query_date), Query()],
+    end_date: Annotated[date, BeforeValidator(_normalize_query_date), Query()],
     sub_type: str | None = Query(None),
 ):
     _ensure_positions_read_allowed(auth)
@@ -156,8 +163,8 @@ def stats_rating(
 @router.get("/stats/industry")
 def stats_industry(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-    start_date: date = Query(...),
-    end_date: date = Query(...),
+    start_date: Annotated[date, BeforeValidator(_normalize_query_date), Query()],
+    end_date: Annotated[date, BeforeValidator(_normalize_query_date), Query()],
     sub_type: str | None = Query(None),
     top_n: int | None = Query(None, ge=1, le=500),
 ):
@@ -175,7 +182,7 @@ def stats_industry(
 def customer_details(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     customer_name: str = Query(...),
-    report_date: date | None = Query(None),
+    report_date: Annotated[date | None, BeforeValidator(_normalize_query_date), Query()] = None,
 ):
     _ensure_positions_read_allowed(auth)
     name = customer_name.strip()
@@ -191,7 +198,7 @@ def customer_details(
 def customer_trend(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     customer_name: str = Query(...),
-    end_date: date | None = Query(None),
+    end_date: Annotated[date | None, BeforeValidator(_normalize_query_date), Query()] = None,
     days: int = Query(30, ge=1, le=3660),
 ):
     _ensure_positions_read_allowed(auth)

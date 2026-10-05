@@ -280,6 +280,53 @@ def test_pnl_by_business_analysis_logs_api_perf(monkeypatch, caplog):
 
 
 @pytest.mark.parametrize(
+    ("path", "service_name"),
+    [
+        ("/api/pnl/by-business-ytd", "pnl_by_business_ytd_envelope"),
+        ("/api/pnl/by-business-monthly", "pnl_by_business_monthly_envelope"),
+        ("/api/pnl/by-business-analysis", "pnl_by_business_analysis_envelope"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("raw_date", "expected"),
+    [
+        ("2026-02-28", "2026-02-28"),
+        (" \t2026-02-28 ", "2026-02-28"),
+        (None, None),
+        ("", None),
+        (" \t ", None),
+    ],
+    ids=["canonical", "padded", "omitted", "empty", "whitespace"],
+)
+def test_pnl_by_business_date_queries_normalize_optional_dates(path, service_name, raw_date, expected, monkeypatch):
+    route_module = load_module(
+        f"tests._pnl_routes.date_query_{service_name}_{id(monkeypatch)}",
+        "backend/app/api/routes/pnl.py",
+    )
+    calls: list[dict[str, object]] = []
+
+    def fake_service(**kwargs):
+        calls.append(kwargs)
+        return {"result_meta": {}, "result": {}}
+
+    monkeypatch.setattr(route_module, "_pnl_service", lambda: SimpleNamespace(**{service_name: fake_service}))
+    monkeypatch.setattr(route_module, "_ensure_pnl_read_allowed", lambda _auth, _settings: None)
+    app = FastAPI()
+    app.dependency_overrides[route_module.get_auth_context] = lambda: None
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    params = {"year": 2026}
+    if raw_date is not None:
+        params["as_of_date"] = raw_date
+
+    response = client.get(path, params=params)
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+    assert calls[0]["as_of_date"] == expected
+
+
+@pytest.mark.parametrize(
     "path",
     [
         "/api/pnl/by-business-ytd",
@@ -287,7 +334,8 @@ def test_pnl_by_business_analysis_logs_api_perf(monkeypatch, caplog):
         "/api/pnl/by-business-analysis",
     ],
 )
-def test_pnl_by_business_analytical_routes_reject_invalid_calendar_date_before_service(path, monkeypatch):
+@pytest.mark.parametrize("raw_date", ["2026-02-30", " 2026-02-30 ", "2026-2-3"])
+def test_pnl_by_business_analytical_routes_reject_invalid_calendar_date_before_service(path, raw_date, monkeypatch):
     route_module = load_module(
         f"tests._pnl_routes.invalid_date_{path.rsplit('/', 1)[-1]}_{id(monkeypatch)}",
         "backend/app/api/routes/pnl.py",
@@ -317,7 +365,7 @@ def test_pnl_by_business_analytical_routes_reject_invalid_calendar_date_before_s
 
     response = client.get(
         path,
-        params={"year": 2026, "as_of_date": "2026-02-30"},
+        params={"year": 2026, "as_of_date": raw_date},
         headers=PNL_READ_HEADERS,
     )
 

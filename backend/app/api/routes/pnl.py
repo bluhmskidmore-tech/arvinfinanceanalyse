@@ -9,8 +9,15 @@ from backend.app.schemas.pnl import PnlByBusinessAnalysisDimension, PnlByBusines
 from backend.app.schemas.result_meta import ResultEnvelope
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from pydantic import BeforeValidator
 
 router = APIRouter(prefix="/api")
+
+
+def _normalize_query_date(value: object) -> object:
+    if isinstance(value, str):
+        return value.strip() or None
+    return value
 
 
 def _pnl_service():
@@ -183,10 +190,11 @@ def by_business(
 def by_business_ytd(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for V1-compatible PnL by business type."),
-    as_of_date: date | None = Query(
-        None,
-        description="Optional report-date cutoff for V1-compatible YTD PnL.",
-    ),
+    as_of_date: Annotated[
+        date | None,
+        BeforeValidator(_normalize_query_date),
+        Query(description="Optional report-date cutoff for V1-compatible YTD PnL."),
+    ] = None,
 ) -> dict[str, object]:
     settings = get_settings()
     _ensure_pnl_read_allowed(auth, settings)
@@ -207,10 +215,11 @@ def by_business_ytd(
 def by_business_monthly(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for monthly PnL by business type."),
-    as_of_date: date | None = Query(
-        None,
-        description="Optional report-date cutoff for monthly PnL by business type.",
-    ),
+    as_of_date: Annotated[
+        date | None,
+        BeforeValidator(_normalize_query_date),
+        Query(description="Optional report-date cutoff for monthly PnL by business type."),
+    ] = None,
 ) -> dict[str, object]:
     settings = get_settings()
     _ensure_pnl_read_allowed(auth, settings)
@@ -231,10 +240,11 @@ def by_business_monthly(
 def by_business_analysis(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for PnL by business analysis."),
-    as_of_date: date | None = Query(
-        None,
-        description="Optional report-date cutoff for PnL by business analysis.",
-    ),
+    as_of_date: Annotated[
+        date | None,
+        BeforeValidator(_normalize_query_date),
+        Query(description="Optional report-date cutoff for PnL by business analysis."),
+    ] = None,
     business_key: str | None = Query(
         None,
         description="Optional ZQTZ_ASSET_BOND_ROWS row_key selected from /api/pnl/by-business-ytd.",

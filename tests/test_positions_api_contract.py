@@ -1,8 +1,10 @@
 """Contract tests for positions HTTP API (envelope + snapshot read behaviors)."""
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import duckdb
@@ -1293,6 +1295,126 @@ def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date
     assert details.status_code == 200
     assert details.json()["result"]["report_date"] == "2026-01-12"
     assert details.json()["result"]["bond_count"] == 1
+
+
+_POSITIONS_DATE_QUERY_CASES = [
+    ("/api/positions/bonds/sub_types", "bond_sub_types_envelope", {"report_date": "2026-01-31"}),
+    ("/api/positions/bonds", "bonds_list_envelope", {"report_date": "2026-01-31"}),
+    ("/api/positions/interbank/product_types", "interbank_product_types_envelope", {"report_date": "2026-01-31"}),
+    ("/api/positions/interbank", "interbank_list_envelope", {"report_date": "2026-01-31"}),
+    ("/api/positions/counterparty/bonds", "counterparty_bonds_envelope", {"start_date": "2026-01-01", "end_date": "2026-01-31"}),
+    ("/api/positions/counterparty/interbank/split", "counterparty_interbank_split_envelope", {"start_date": "2026-01-01", "end_date": "2026-01-31"}),
+    ("/api/positions/stats/rating", "stats_rating_envelope", {"start_date": "2026-01-01", "end_date": "2026-01-31"}),
+    ("/api/positions/stats/industry", "stats_industry_envelope", {"start_date": "2026-01-01", "end_date": "2026-01-31"}),
+    ("/api/positions/customer/details", "customer_details_envelope", {"customer_name": "customer", "report_date": "2026-01-31"}),
+    ("/api/positions/customer/trend", "customer_trend_envelope", {"customer_name": "customer", "end_date": "2026-01-31"}),
+]
+_POSITIONS_OPTIONAL_DATE_QUERY_CASES = [
+    case for case in _POSITIONS_DATE_QUERY_CASES
+    if case[1] in {
+        "bond_sub_types_envelope",
+        "interbank_product_types_envelope",
+        "customer_details_envelope",
+        "customer_trend_envelope",
+    }
+]
+_POSITIONS_REQUIRED_DATE_QUERY_CASES = [
+    case for case in _POSITIONS_DATE_QUERY_CASES if case not in _POSITIONS_OPTIONAL_DATE_QUERY_CASES
+]
+
+
+def _mock_positions_date_query_client(monkeypatch, service_name):
+    route_module = load_module(
+        f"tests._positions_routes.date_query_{service_name}_{id(monkeypatch)}",
+        "backend/app/api/routes/positions.py",
+    )
+    calls: list[dict[str, object]] = []
+
+    def fake_service(*args, **kwargs):
+        calls.append({"report_date": args[0]} if args else kwargs)
+        return {"result_meta": {}, "result": {}}
+
+    monkeypatch.setattr(route_module, "positions_service", SimpleNamespace(**{service_name: fake_service}))
+    monkeypatch.setattr(route_module, "_ensure_positions_read_allowed", lambda _auth: None)
+    app = FastAPI()
+    app.dependency_overrides[route_module.get_auth_context] = lambda: None
+    app.include_router(route_module.router)
+    return TestClient(app), calls
+
+
+@pytest.mark.parametrize(("path", "service_name", "params"), _POSITIONS_DATE_QUERY_CASES)
+@pytest.mark.parametrize("padded", [False, True], ids=["canonical", "padded"])
+def test_positions_date_queries_normalize_valid_dates(path, service_name, params, padded, monkeypatch):
+    client, calls = _mock_positions_date_query_client(monkeypatch, service_name)
+    requested = {
+        key: f" \t{value} " if padded and key.endswith("_date") else value
+        for key, value in params.items()
+    }
+
+    response = client.get(path, params=requested)
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+    assert {key: calls[0][key] for key in params} == params
+
+
+@pytest.mark.parametrize(("path", "service_name", "params"), _POSITIONS_OPTIONAL_DATE_QUERY_CASES)
+@pytest.mark.parametrize("raw_date", [None, "", " \t "], ids=["omitted", "empty", "whitespace"])
+def test_positions_optional_date_queries_treat_blank_as_omitted(path, service_name, params, raw_date, monkeypatch):
+    client, calls = _mock_positions_date_query_client(monkeypatch, service_name)
+    date_key = next(key for key in params if key.endswith("_date"))
+    requested = {key: value for key, value in params.items() if key != date_key}
+    if raw_date is not None:
+        requested[date_key] = raw_date
+
+    response = client.get(path, params=requested)
+
+    assert response.status_code == 200
+    expected = date.today().isoformat() if service_name == "customer_trend_envelope" else ""
+    assert len(calls) == 1
+    assert calls[0][date_key] == expected
+
+
+@pytest.mark.parametrize(("path", "service_name", "params"), _POSITIONS_REQUIRED_DATE_QUERY_CASES)
+@pytest.mark.parametrize("raw_date", ["", " \t "], ids=["empty", "whitespace"])
+def test_positions_required_date_queries_reject_blank_before_service(path, service_name, params, raw_date, monkeypatch):
+    client, calls = _mock_positions_date_query_client(monkeypatch, service_name)
+    date_keys = {key for key in params if key.endswith("_date")}
+    requested = {key: raw_date if key in date_keys else value for key, value in params.items()}
+
+    response = client.get(path, params=requested)
+
+    assert response.status_code == 422
+    assert {error["loc"][-1] for error in response.json()["detail"]} == date_keys
+    assert calls == []
+
+
+@pytest.mark.parametrize(("path", "service_name", "params"), _POSITIONS_DATE_QUERY_CASES)
+@pytest.mark.parametrize("raw_date", [" 2026-02-30 ", "2026-2-3"], ids=["invalid_calendar", "noncanonical"])
+def test_positions_date_queries_reject_invalid_dates_before_service(path, service_name, params, raw_date, monkeypatch):
+    client, calls = _mock_positions_date_query_client(monkeypatch, service_name)
+    date_keys = {key for key in params if key.endswith("_date")}
+    requested = {key: raw_date if key in date_keys else value for key, value in params.items()}
+
+    response = client.get(path, params=requested)
+
+    assert response.status_code == 422
+    assert {error["loc"][-1] for error in response.json()["detail"]} == date_keys
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("path", "service_name", "_params"),
+    [case for case in _POSITIONS_REQUIRED_DATE_QUERY_CASES if "start_date" in case[2]],
+)
+def test_positions_date_queries_reject_padded_reverse_ranges_before_service(path, service_name, _params, monkeypatch):
+    client, calls = _mock_positions_date_query_client(monkeypatch, service_name)
+
+    response = client.get(path, params={"start_date": " 2026-02-01 ", "end_date": " 2026-01-31 "})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "start_date must be on or before end_date."
+    assert calls == []
 
 
 @pytest.mark.parametrize(
