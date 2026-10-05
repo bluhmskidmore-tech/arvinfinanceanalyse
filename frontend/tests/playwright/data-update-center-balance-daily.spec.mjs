@@ -93,6 +93,10 @@ async function installIsolatedResponses(page, status, reportDates) {
   await page.route("**/api/data-updates", (route) =>
     route.fulfill({ json: updateOverview(status) }),
   );
+  await page.route("**/api/system-read-publication", (route) => {
+    expect(route.request().method()).toBe("GET");
+    return route.fulfill({ json: { enabled: false, generation: null, coverage_dates: {} } });
+  });
   await page.route("**/ui/balance-analysis/dates", (route) => {
     datesReadCount += 1;
     return route.fulfill({ json: balanceDatesEnvelope(reportDates) });

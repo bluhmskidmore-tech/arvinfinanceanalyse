@@ -622,7 +622,6 @@
     grid-column: 3 / 4;
     justify-self: end;
     font-family: var(--sa-font-tabular), var(--moss-font-tabular), monospace;
-    font-variant-numeric: tabular-nums;
   }
   .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td:nth-child(3)::before {
     content: "板块";

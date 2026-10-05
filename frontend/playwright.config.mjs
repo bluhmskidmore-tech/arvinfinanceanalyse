@@ -31,6 +31,7 @@ export default defineConfig({
             env: {
               ...process.env,
               VITE_DATA_SOURCE: process.env.VITE_DATA_SOURCE ?? "mock",
+              VITE_MOSS_AGENT_FRONTEND_ENABLED: "true",
             },
           },
           {
@@ -42,6 +43,7 @@ export default defineConfig({
             env: {
               ...process.env,
               VITE_DATA_SOURCE: "real",
+              VITE_MOSS_AGENT_FRONTEND_ENABLED: "true",
             },
           },
         ]

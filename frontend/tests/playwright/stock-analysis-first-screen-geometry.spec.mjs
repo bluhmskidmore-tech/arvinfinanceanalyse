@@ -11,9 +11,10 @@ test.beforeEach(async ({ context, baseURL }) => {
 /**
  * Real-browser geometry guard for the stock-analysis research desk.
  *
- * The selected desktop composition is a dense three-window terminal: a 309px
- * candidate ledger, a flexible dossier, a 247px action rail, and a full-width
- * audit ledger below. Narrow viewports deliberately collapse that relationship.
+ * The dossier keeps the primary reading space. The candidate ledger and action
+ * rail sit alongside it when the content container has room; with the workbench
+ * sidebar present they share the left column, then stack on narrow screens.
+ * The audit ledger always spans the available content width.
  */
 
 const BASE_URL = process.env.MOSS_PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5888";
@@ -135,30 +136,67 @@ function assertToolbarLayout(geometry, viewport) {
 }
 
 test.describe("stock-analysis research-desk geometry", () => {
-  test("matches the selected three-window desktop geometry at the reference width", async ({ page }) => {
-    await openResearchDesk(page, { width: 1487, height: 1058 });
-    const rects = await collectDeskRects(page);
+  test("adapts the research panels to the available content width", async ({ page }) => {
+    for (const viewport of [
+      GEOMETRY_VIEWPORTS[1],
+      { width: 1487, height: 1058 },
+      GEOMETRY_VIEWPORTS[5],
+    ]) {
+      await openResearchDesk(page, viewport);
+      const rects = await collectDeskRects(page);
 
-    expect(rects.pool.w).toBeGreaterThanOrEqual(305);
-    expect(rects.pool.w).toBeLessThanOrEqual(312);
-    expect(rects.dossier.w).toBeGreaterThanOrEqual(732);
-    expect(rects.dossier.w).toBeLessThanOrEqual(744);
-    expect(rects.rail.w).toBeGreaterThanOrEqual(244);
-    expect(rects.rail.w).toBeLessThanOrEqual(250);
-    expect(Math.abs(rects.pool.y - rects.dossier.y)).toBeLessThanOrEqual(1);
-    expect(Math.abs(rects.dossier.y - rects.rail.y)).toBeLessThanOrEqual(1);
-    expect(rects.audit.y).toBeGreaterThanOrEqual(rects.pool.bottom + 8);
-    expect(rects.audit.w).toBeGreaterThan(rects.desk.w * 0.98);
+      if (viewport.width === 1920) {
+        expect(rects.pool.right).toBeLessThan(rects.dossier.x);
+        expect(rects.dossier.right).toBeLessThan(rects.rail.x);
+        expect(Math.abs(rects.pool.y - rects.dossier.y)).toBeLessThanOrEqual(1);
+        expect(Math.abs(rects.dossier.y - rects.rail.y)).toBeLessThanOrEqual(1);
+        expect(rects.dossier.w).toBeGreaterThan(Math.max(rects.pool.w, rects.rail.w));
+      } else if (viewport.width === 1487) {
+        expect(rects.pool.right).toBeLessThan(rects.dossier.x);
+        expect(Math.abs(rects.pool.y - rects.dossier.y)).toBeLessThanOrEqual(1);
+        expect(Math.abs(rects.pool.x - rects.rail.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(rects.pool.w - rects.rail.w)).toBeLessThanOrEqual(1);
+        expect(rects.rail.y).toBeGreaterThan(rects.pool.bottom);
+        expect(rects.rail.right).toBeLessThan(rects.dossier.x);
+        expect(rects.dossier.w).toBeGreaterThan(rects.pool.w);
+      } else {
+        expect(Math.abs(rects.pool.x - rects.dossier.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(rects.dossier.x - rects.rail.x)).toBeLessThanOrEqual(1);
+        expect(rects.dossier.y).toBeGreaterThan(rects.pool.bottom);
+        expect(rects.rail.y).toBeGreaterThan(rects.dossier.bottom);
+        for (const panel of [rects.pool, rects.dossier, rects.rail]) {
+          expect(panel.w).toBeGreaterThan(rects.desk.w * 0.98);
+        }
+      }
+
+      expect(rects.audit.y).toBeGreaterThanOrEqual(Math.max(rects.pool.bottom, rects.dossier.bottom, rects.rail.bottom) + 8);
+      expect(rects.audit.w).toBeGreaterThan(rects.desk.w * 0.98);
+    }
   });
 
-  test("keeps the candidate ledger dense and free of nested controls", async ({ page }) => {
+  test("keeps candidate identities and signals readable without nested controls", async ({ page }) => {
     await openResearchDesk(page, { width: 1487, height: 1058 });
     const rows = page.locator('[data-testid="stock-analysis-review-queue"] [class*="poolRow"]');
     const rowCount = await rows.count();
     expect(rowCount).toBeGreaterThan(0);
     expect(rowCount).toBeLessThanOrEqual(11);
     for (let index = 0; index < rowCount; index += 1) {
-      expect((await rectOf(rows.nth(index))).h).toBeLessThanOrEqual(42);
+      const row = rows.nth(index);
+      await expect(row.getByRole("button")).toHaveCount(1);
+      for (const selector of [
+        '[class*="poolIdentity"] strong',
+        '[class*="poolIdentity"] strong span',
+        '[class*="poolScore"]',
+        '[class*="poolChange"]',
+        '[class*="poolSignal"]',
+      ]) {
+        const field = row.locator(selector);
+        await expect(field).toBeVisible();
+        expect((await field.textContent()).trim()).not.toBe("");
+        expect(await field.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+      }
+      const signal = row.locator('[class*="poolSignal"]');
+      await expect(signal).toHaveAttribute("title", (await signal.textContent()).trim());
     }
     expect(await page.locator("button button, a button, button a").count()).toBe(0);
   });
@@ -202,16 +240,34 @@ test.describe("stock-analysis research-desk geometry", () => {
     });
   }
 
-  test("keeps the three-window relationship across desktop widths", async ({ page }) => {
-    await openResearchDesk(page, GEOMETRY_VIEWPORTS[1]);
-    const wide = await collectDeskRects(page);
-    expect(wide.rail.x).toBeGreaterThan(wide.dossier.x);
-    expect(Math.abs(wide.rail.y - wide.dossier.y)).toBeLessThanOrEqual(1);
-
+  test("keeps candidate selection and research notes reachable on compact desktops", async ({ page }) => {
     await openResearchDesk(page, GEOMETRY_VIEWPORTS[3]);
     const compact = await collectDeskRects(page);
-    expect(compact.rail.x).toBeGreaterThan(compact.dossier.x);
-    expect(Math.abs(compact.rail.y - compact.dossier.y)).toBeLessThanOrEqual(1);
-    expect(compact.rail.w).toBeGreaterThanOrEqual(200);
+    expect(compact.pool.right).toBeLessThan(compact.dossier.x);
+    expect(compact.rail.y).toBeGreaterThan(compact.pool.bottom);
+    expect(compact.rail.right).toBeLessThan(compact.dossier.x);
+
+    const rows = page.getByTestId("stock-analysis-review-queue").locator('[class*="poolRow"]');
+    const candidate = rows.nth(1);
+    const identity = await candidate.locator('[class*="poolIdentity"] strong').evaluate((element) => ({
+      code: element.firstChild.textContent.trim(),
+      name: element.querySelector("span").textContent.trim(),
+    }));
+    await candidate.getByRole("button").click();
+    await expect(candidate).toHaveAttribute("data-active", "true");
+    const dossier = page.getByTestId("stock-analysis-research-dossier");
+    await expect(dossier.getByRole("heading", { name: `${identity.name} ${identity.code}`, exact: true })).toBeVisible();
+
+    const rail = page.getByTestId("stock-analysis-action-rail");
+    const note = rail.getByRole("textbox", { name: "研究备注", exact: true });
+    await note.scrollIntoViewIfNeeded();
+    await expect(note).toBeInViewport();
+    await expect(note).toBeEnabled();
+    await note.fill("小屏复核备注：保留来源与边界");
+    const save = rail.getByRole("button", { name: "保存", exact: true });
+    await save.scrollIntoViewIfNeeded();
+    await expect(save).toBeInViewport();
+    await save.click();
+    await expect(rail.locator('[class*="noteMeta"] span')).toHaveText(`${identity.name} ${identity.code}：小屏复核备注：保留来源与边界`);
   });
 });

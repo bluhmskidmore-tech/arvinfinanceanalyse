@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 const baseURL = process.env.MOSS_PLAYWRIGHT_STATE_BASE_URL
-  ?? process.env.MOSS_PLAYWRIGHT_BASE_URL
-  ?? "http://127.0.0.1:5889";
+  ?? (process.env.MOSS_PLAYWRIGHT_USE_WEB_SERVER === "1"
+    ? `http://127.0.0.1:${process.env.MOSS_PLAYWRIGHT_STATE_PORT ?? "5889"}`
+    : process.env.MOSS_PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5889");
 
 // All service traffic is fulfilled locally; these tests never submit real updates.
 async function installServices(page, responses) {

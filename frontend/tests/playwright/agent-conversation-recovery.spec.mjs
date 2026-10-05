@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
 
+const realStateBaseURL = process.env.MOSS_PLAYWRIGHT_STATE_BASE_URL
+  ?? (process.env.MOSS_PLAYWRIGHT_USE_WEB_SERVER === "1"
+    ? `http://127.0.0.1:${process.env.MOSS_PLAYWRIGHT_STATE_PORT ?? "5889"}`
+    : process.env.MOSS_PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5889");
+test.use({ baseURL: realStateBaseURL });
+
 // Synthetic conversation only; all API requests are intercepted in the browser.
 const firstQuestion = "帮我整理这段会议记录，提炼需要跟进的事项";
 const secondQuestion = "把刚才的事项整理为一段简短说明";
