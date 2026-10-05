@@ -221,7 +221,7 @@ def test_settings_core_storage_paths_resolve_relative_to_repo_root(monkeypatch):
     _clear_moss_env(monkeypatch)
     repo_root = Path(__file__).resolve().parents[1]
 
-    s = Settings()
+    s = Settings(_env_file=None)
 
     assert s.duckdb_path == str((repo_root / "data" / "moss.duckdb").resolve())
     assert s.choice_stock_catalog_file == str((repo_root / "config" / "choice_stock_catalog.json").resolve())

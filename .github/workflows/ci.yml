@@ -111,7 +111,43 @@ jobs:
       - name: Caliber path-trigger gate
         run: |
           git fetch origin "${{ github.base_ref }}"
+          mkdir -p .codex-tmp
+          python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}" --dry-run > .codex-tmp/caliber-selection.json
           python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"
+
+      - name: Report caliber selection scope
+        if: always()
+        run: |
+          python - <<'PY'
+          import html
+          import json
+          import os
+          from pathlib import Path
+
+          lines = ["### Caliber path selection", ""]
+          try:
+              report = json.loads(Path(".codex-tmp/caliber-selection.json").read_text(encoding="utf-8"))
+              for key in ("mapped_files", "unmapped_files", "matched_tests"):
+                  if not isinstance(report[key], list) or not all(isinstance(path, str) for path in report[key]):
+                      raise ValueError(f"invalid {key}")
+              for key in ("selection_scope", "selection_note"):
+                  if not isinstance(report[key], str):
+                      raise ValueError(f"invalid {key}")
+              lines.extend([
+                  html.escape(report["selection_scope"]), "",
+                  html.escape(report["selection_note"]), "",
+                  "Full backend pytest has its separate schedule/main-push job; this selection report does not record that job or any test result.", "",
+              ])
+              for key, label in (("mapped_files", "Mapped changed paths"), ("matched_tests", "Selected test files"), ("unmapped_files", "Paths not mapped by this gate")):
+                  paths = report[key]
+                  lines.extend([f"<details><summary>{label}: {len(paths)}</summary>", "<ul>"])
+                  lines.extend(f"<li><code>{html.escape(path)}</code></li>" for path in paths)
+                  lines.extend(["</ul></details>", ""])
+          except (OSError, ValueError, KeyError, TypeError) as exc:
+              lines.append(f"Selection report unavailable or invalid: {html.escape(str(exc))}. No empty-selection or coverage conclusion can be drawn.")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("\n".join(lines) + "\n")
+          PY
 
   release-control-structure:
     name: Release Control Structure (not approval)

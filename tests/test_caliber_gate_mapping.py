@@ -804,6 +804,42 @@ def test_dry_run_reports_no_tests_for_unrelated_change(
     assert exit_code == 0
     assert payload["changed_files"] == ["unrelated.txt"]
     assert payload["matched_tests"] == []
+    assert payload["mapped_files"] == []
+    assert payload["unmapped_files"] == ["unrelated.txt"]
+    assert payload["unmapped_file_count"] == 1
+    assert "not a complete backend" in payload["selection_scope"]
+    assert "does not mean untested or verified" in payload["selection_note"]
+
+
+def test_selection_report_lists_unmapped_paths_even_when_other_files_match(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(gate, "CALIBER_GATE_MAP", {"src/gated.py": ("tests/test_gated.py",)})
+    monkeypatch.setattr(gate, "list_changed_files", lambda _base_ref, *, cwd: [
+        "src\\gated.py", "src/gated.py", "src/unmapped.py", "docs/readme.md",
+    ])
+    assert gate.main(["--base-ref", "base", "--dry-run"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["matched_tests"] == ["tests/test_gated.py"]
+    assert payload["mapped_files"] == ["src/gated.py"]
+    assert payload["unmapped_files"] == ["docs/readme.md", "src/unmapped.py"]
+    assert payload["changed_file_count"] == 3
+    assert payload["mapped_file_count"] == 1
+    assert payload["unmapped_file_count"] == 2
+
+
+def test_unmapped_normal_execution_discloses_selection_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(gate, "list_changed_files", lambda _base_ref, *, cwd: ["backend/app/unknown.py"])
+    monkeypatch.setattr(gate.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not invent a test selection"))
+    assert gate.main(["--base-ref", "base"]) == 0
+    output = capsys.readouterr().out
+    assert "0 mapped changed path(s), 1 unmapped path(s), 0 selected test file(s)" in output
+    assert "does not mean untested or verified" in output
+    assert "complete path lists" in output
 
 
 def test_invalid_base_ref_fails_closed(

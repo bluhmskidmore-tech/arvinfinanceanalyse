@@ -1,5 +1,9 @@
+import json
 import re
+import textwrap
 from pathlib import Path
+
+import pytest
 
 from scripts import backend_release_suite
 
@@ -172,6 +176,56 @@ def test_ci_workflow_runs_its_configuration_and_path_gate_checks():
     assert "uv sync --frozen --project backend --extra dev --python 3.11" in caliber_job
     assert 'git fetch origin "${{ github.base_ref }}"' in caliber_job
     assert 'python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"' in caliber_job
+    assert '--base-ref "origin/${{ github.base_ref }}" --dry-run > .codex-tmp/caliber-selection.json' in caliber_job
+    assert "- name: Report caliber selection scope\n        if: always()" in caliber_job
+    assert "html.escape(path)" in caliber_job
+    assert "Selection report unavailable or invalid:" in caliber_job
+    assert "this selection report does not record that job or any test result" in caliber_job
+
+
+@pytest.mark.parametrize("report_content", [None, "{bad-json", '{"mapped_files": null}', '{"mapped_files": [], "unmapped_files": [], "matched_tests": [], "selection_scope": 42, "selection_note": "note"}'])
+def test_caliber_ci_summary_discloses_missing_or_invalid_report(tmp_path, monkeypatch, report_content):
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    step = _workflow_step(workflow, "Report caliber selection scope")
+    source = textwrap.dedent(step.split("python - <<'PY'\n", 1)[1].rsplit("          PY", 1)[0])
+    monkeypatch.chdir(tmp_path)
+    summary = tmp_path / "summary.md"
+    summary.write_text("Original gate failed.\n", encoding="utf-8")
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    if report_content is not None:
+        (tmp_path / ".codex-tmp").mkdir()
+        (tmp_path / ".codex-tmp/caliber-selection.json").write_text(report_content, encoding="utf-8")
+    exec(compile(source, "<caliber-ci-summary>", "exec"), {})
+    output = summary.read_text(encoding="utf-8")
+    assert output.startswith("Original gate failed.\n")
+    assert "Selection report unavailable or invalid:" in output
+    assert "No empty-selection or coverage conclusion can be drawn" in output
+    assert "Paths not mapped by this gate: 0" not in output
+
+
+def test_caliber_ci_summary_escapes_paths_and_keeps_selection_distinct_from_execution(tmp_path, monkeypatch):
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    step = _workflow_step(workflow, "Report caliber selection scope")
+    source = textwrap.dedent(step.split("python - <<'PY'\n", 1)[1].rsplit("          PY", 1)[0])
+    monkeypatch.chdir(tmp_path)
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    (tmp_path / ".codex-tmp").mkdir()
+    report = {
+        "mapped_files": ["backend/app/mapped.py"],
+        "unmapped_files": ["backend/app/<script>&unknown.py"],
+        "matched_tests": ["tests/test_mapped.py"],
+        "selection_scope": "Registered financial scope only.",
+        "selection_note": "Unmapped does not mean untested or verified.",
+    }
+    (tmp_path / ".codex-tmp/caliber-selection.json").write_text(json.dumps(report), encoding="utf-8")
+    exec(compile(source, "<caliber-ci-summary>", "exec"), {})
+    output = summary.read_text(encoding="utf-8")
+    assert "Paths not mapped by this gate: 1" in output
+    assert "<code>backend/app/&lt;script&gt;&amp;unknown.py</code>" in output
+    assert "<script>" not in output
+    assert "Unmapped does not mean untested or verified" in output
+    assert "this selection report does not record that job or any test result" in output
 
 
 def test_ci_workflow_uses_repo_typecheck_entrypoint():

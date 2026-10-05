@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -200,12 +201,14 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
     ]
 
 
-def test_backend_release_suite_dry_run_emits_expected_plan(capsys):
+def test_backend_release_suite_dry_run_emits_expected_plan(capsys, monkeypatch):
     module = load_module(
         "scripts.backend_release_suite",
         "scripts/backend_release_suite.py",
     )
 
+    monkeypatch.setattr(module.os, "cpu_count", lambda: 4)
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-p _pytest_duckdb_guard")
     exit_code = module.main(["--dry-run"])
 
     assert exit_code == 0
@@ -220,6 +223,8 @@ def test_backend_release_suite_dry_run_emits_expected_plan(capsys):
         "-m",
         "pytest",
         "-q",
+        "-n",
+        "4",
         "-m",
         "not excluded_surface_acceptance",
         *module.RELEASE_SUITE_TESTS,
@@ -263,6 +268,56 @@ def test_backend_release_suite_dry_run_can_include_excluded_surfaces(capsys):
         "mcp_fast",
         *module.GOVERNANCE_MCP_FAST_SUITE_TESTS,
     ]
+
+
+@pytest.mark.parametrize(("cpu_count", "expected_workers"), [(None, "0"), (1, "0"), (2, "2"), (16, "4")])
+def test_bounded_worker_default_caps_available_cpus_without_changing_selection(
+    monkeypatch, cpu_count, expected_workers,
+):
+    module = load_module("scripts.backend_release_suite", "scripts/backend_release_suite.py")
+    monkeypatch.setattr(module.os, "cpu_count", lambda: cpu_count)
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-p _pytest_duckdb_guard")
+    assert module._pytest_args() == [
+        "-m", "pytest", "-q", "-n", expected_workers,
+        "-m", "not excluded_surface_acceptance", *module.RELEASE_SUITE_TESTS,
+    ]
+
+
+@pytest.mark.parametrize("worker_option", ["-n 2", "-n2", "--numprocesses 2", "--numprocesses=2"])
+def test_bounded_workers_preserve_existing_pytest_choice_and_allow_serial_override(
+    monkeypatch, worker_option,
+):
+    module = load_module("scripts.backend_release_suite", "scripts/backend_release_suite.py")
+    addopts = f"-p _pytest_duckdb_guard {worker_option}"
+    monkeypatch.setenv("PYTEST_ADDOPTS", addopts)
+    assert module._pytest_args() == [
+        "-m", "pytest", "-q", "-m", "not excluded_surface_acceptance", *module.RELEASE_SUITE_TESTS,
+    ]
+    assert module._pytest_args(workers=1) == [
+        "-m", "pytest", "-q", "-n", "0", "-m", "not excluded_surface_acceptance", *module.RELEASE_SUITE_TESTS,
+    ]
+    assert os.environ["PYTEST_ADDOPTS"] == addopts
+
+
+def test_release_worker_cli_keeps_mcp_serial_and_forwards_explicit_choice(capsys, monkeypatch):
+    module = load_module("scripts.backend_release_suite", "scripts/backend_release_suite.py")
+    assert module.main(["--dry-run", "--workers", "1"]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["pytest_args"][3:5] == ["-n", "0"]
+    assert "-n" not in plan["governance_mcp_suite"]["pytest_args"]
+    calls = []
+    monkeypatch.setattr(module, "run_release_suite", lambda **kwargs: calls.append(kwargs) or 7)
+    assert module.main(["--workers", "2"]) == 7
+    assert calls[0]["workers"] == 2
+
+
+@pytest.mark.parametrize("workers", ["0", "-1", "invalid"])
+def test_release_worker_cli_rejects_invalid_values_before_running(monkeypatch, workers):
+    module = load_module("scripts.backend_release_suite", "scripts/backend_release_suite.py")
+    monkeypatch.setattr(module, "run_release_suite", lambda **kwargs: pytest.fail("must not run"))
+    with pytest.raises(SystemExit) as exc:
+        module.main(["--workers", workers])
+    assert exc.value.code == 2
 
 
 def test_backend_release_suite_dry_run_preserves_governance_audit_output_arg(capsys):
@@ -434,6 +489,8 @@ def test_backend_release_suite_runs_bounded_then_governance_mcp_pytest_when_clea
         raise AssertionError("default release suite must not inspect local live governance")
 
     monkeypatch.setattr(module, "audit_governance_lineage", _unexpected_live_audit)
+    monkeypatch.setattr(module.os, "cpu_count", lambda: 4)
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-p _pytest_duckdb_guard")
 
     calls: list[dict[str, object]] = []
 
@@ -458,6 +515,8 @@ def test_backend_release_suite_runs_bounded_then_governance_mcp_pytest_when_clea
         "-m",
         "pytest",
         "-q",
+        "-n",
+        "4",
         "-m",
         "not excluded_surface_acceptance",
         *module.RELEASE_SUITE_TESTS,
@@ -607,6 +666,8 @@ def test_backend_release_suite_still_runs_governance_mcp_when_bounded_pytest_fai
         "scripts.backend_release_suite",
         "scripts/backend_release_suite.py",
     )
+    monkeypatch.setattr(module.os, "cpu_count", lambda: 4)
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-p _pytest_duckdb_guard")
     monkeypatch.setattr(
         module,
         "audit_governance_lineage",
@@ -627,6 +688,8 @@ def test_backend_release_suite_still_runs_governance_mcp_when_bounded_pytest_fai
             "-m",
             "pytest",
             "-q",
+            "-n",
+            "4",
             "-m",
             "not excluded_surface_acceptance",
             *module.RELEASE_SUITE_TESTS,
@@ -676,6 +739,8 @@ def test_backend_release_suite_returns_governance_mcp_failure(monkeypatch):
         "scripts.backend_release_suite",
         "scripts/backend_release_suite.py",
     )
+    monkeypatch.setattr(module.os, "cpu_count", lambda: 4)
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-p _pytest_duckdb_guard")
     monkeypatch.setattr(
         module,
         "audit_governance_lineage",
@@ -696,6 +761,8 @@ def test_backend_release_suite_returns_governance_mcp_failure(monkeypatch):
             "-m",
             "pytest",
             "-q",
+            "-n",
+            "4",
             "-m",
             "not excluded_surface_acceptance",
             *module.RELEASE_SUITE_TESTS,

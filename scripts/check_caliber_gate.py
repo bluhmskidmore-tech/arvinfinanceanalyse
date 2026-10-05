@@ -829,6 +829,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(str(selects_formal_release_scope(changed_files)).lower())
         return 0
 
+    normalized_files = sorted({
+        changed.replace("\\", "/").strip() for changed in changed_files
+        if changed.strip()
+    })
+    mapped_files = [
+        changed for changed in normalized_files
+        if any(_matches(changed, source) for source in CALIBER_GATE_MAP)
+    ]
+    unmapped_files = sorted(set(normalized_files) - set(mapped_files))
+    selection_scope = (
+        "Registered caliber, formal-compute and balance-update dependencies; "
+        "not a complete backend or repository impact selector."
+    )
+    selection_note = (
+        "Unmapped paths are not selected by this gate. Other jobs may test them; "
+        "unmapped does not mean untested or verified. Selection is not an execution result."
+    )
+
     if args.dry_run:
         print(
             json.dumps(
@@ -836,6 +854,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "base_ref": args.base_ref,
                     "changed_files": changed_files,
                     "matched_tests": matched_tests,
+                    "selection_scope": selection_scope,
+                    "selection_note": selection_note,
+                    "mapped_files": mapped_files,
+                    "unmapped_files": unmapped_files,
+                    "changed_file_count": len(normalized_files),
+                    "mapped_file_count": len(mapped_files),
+                    "unmapped_file_count": len(unmapped_files),
                     "frontend_scope_selected": selects_frontend_first_scope(changed_files),
                     "data_update_browser_scope_selected": selects_data_update_browser_scope(changed_files),
                     "scheduler_windows_scope_selected": selects_scheduler_windows_scope(changed_files),
@@ -846,6 +871,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
         return 0
+
+    print(
+        f"caliber-gate: {len(mapped_files)} mapped changed path(s), "
+        f"{len(unmapped_files)} unmapped path(s), {len(matched_tests)} selected test file(s)."
+    )
+    print(f"caliber-gate: {selection_note} Use --dry-run for the complete path lists.")
 
     if not matched_tests:
         print(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import tempfile
 import sys
@@ -116,12 +117,37 @@ def _marker_selection(
     return [] if marker_expr is None else ["-m", marker_expr]
 
 
-def _pytest_args(*, include_excluded_surfaces: bool = False) -> list[str]:
+def _worker_args(workers: int | None, *, include_excluded_surfaces: bool) -> list[str]:
+    if workers is not None and workers < 1:
+        raise ValueError("workers must be at least 1")
+    if workers is None:
+        # Preserve an existing developer choice in PYTEST_ADDOPTS. The bounded
+        # mainline suites isolate storage per test; other surfaces stay serial
+        # unless their caller explicitly selects workers.
+        existing_args = shlex.split(os.environ.get("PYTEST_ADDOPTS", ""))
+        if include_excluded_surfaces or any(
+            arg == "-n" or arg.startswith("-n") or arg.startswith("--numprocesses")
+            for arg in existing_args
+        ):
+            return []
+        workers = max(1, min(4, os.cpu_count() or 1))
+    # xdist's zero disables distribution, including a choice inherited through
+    # PYTEST_ADDOPTS, so an explicit --workers 1 really restores serial pytest.
+    return ["-n", "0" if workers == 1 else str(workers)]
+
+
+def _pytest_args(
+    *, include_excluded_surfaces: bool = False, workers: int | None = None,
+) -> list[str]:
     selection = _marker_selection(
         None,
         include_excluded_surfaces=include_excluded_surfaces,
     )
-    return ["-m", "pytest", "-q", *selection, *RELEASE_SUITE_TESTS]
+    return [
+        "-m", "pytest", "-q",
+        *_worker_args(workers, include_excluded_surfaces=include_excluded_surfaces),
+        *selection, *RELEASE_SUITE_TESTS,
+    ]
 
 
 def _governance_mcp_pytest_args(
@@ -162,6 +188,7 @@ def build_release_suite_plan(
     governance_audit_output: str | None = None,
     mcp_profile: str = "fast",
     include_excluded_surfaces: bool = False,
+    workers: int | None = None,
 ) -> dict[str, object]:
     return {
         "suite_name": RELEASE_SUITE_NAME,
@@ -172,7 +199,9 @@ def build_release_suite_plan(
         },
         "governance_audit_output": governance_audit_output,
         "executive_release_sample_ids": EXECUTIVE_RELEASE_SAMPLE_IDS,
-        "pytest_args": _pytest_args(include_excluded_surfaces=include_excluded_surfaces),
+        "pytest_args": _pytest_args(
+            include_excluded_surfaces=include_excluded_surfaces, workers=workers,
+        ),
         "governance_mcp_suite": {
             "suite_name": GOVERNANCE_MCP_SUITE_NAME,
             "profile": mcp_profile,
@@ -192,6 +221,7 @@ def run_release_suite(
     governance_audit_output: str | Path | None = None,
     mcp_profile: str = "fast",
     include_excluded_surfaces: bool = False,
+    workers: int | None = None,
 ) -> int:
     if live_governance_dir is not None:
         summary = audit_governance_lineage(root / live_governance_dir)
@@ -216,7 +246,9 @@ def run_release_suite(
         bounded_completed = subprocess.run(
             [
                 sys.executable,
-                *_pytest_args(include_excluded_surfaces=include_excluded_surfaces),
+                *_pytest_args(
+                    include_excluded_surfaces=include_excluded_surfaces, workers=workers,
+                ),
             ],
             cwd=root,
             env=env,
@@ -257,6 +289,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--governance-audit-output")
     parser.add_argument("--mcp-profile", choices=("fast", "full"), default="fast")
     parser.add_argument(
+        "--workers", type=int,
+        help=("Bounded-suite workers; defaults to available CPUs capped at 4. "
+              "Use 1 for serial execution; an existing PYTEST_ADDOPTS worker choice is preserved."),
+    )
+    parser.add_argument(
         "--include-excluded-surfaces",
         action="store_true",
         help=(
@@ -266,6 +303,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.workers is not None and args.workers < 1:
+        parser.error("--workers must be at least 1")
 
     if args.governance_audit_output and args.live_governance_dir is None:
         parser.error(
@@ -281,6 +321,7 @@ def main(argv: list[str] | None = None) -> int:
                     governance_audit_output=args.governance_audit_output,
                     mcp_profile=args.mcp_profile,
                     include_excluded_surfaces=args.include_excluded_surfaces,
+                    workers=args.workers,
                 ),
                 ensure_ascii=False,
             )
@@ -292,6 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         governance_audit_output=args.governance_audit_output,
         mcp_profile=args.mcp_profile,
         include_excluded_surfaces=args.include_excluded_surfaces,
+        workers=args.workers,
     )
 
 
