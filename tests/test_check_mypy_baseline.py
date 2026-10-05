@@ -4,6 +4,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tomllib
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -248,6 +249,61 @@ def test_reviewed_inputs_match_worktree_without_rewriting_historical_origin():
             ("backend/uv.lock", checker.REVIEWED_CHECK_INPUT_SHA256["backend/uv.lock"], "lock_sha256"),
         )
     )
+
+
+def test_reviewed_security_dependency_transition_preserves_mypy_configuration_and_stubs():
+    config = tomllib.loads((ROOT / "backend/pyproject.toml").read_text(encoding="utf-8"))
+    lock = tomllib.loads((ROOT / "backend/uv.lock").read_text(encoding="utf-8"))
+    versions = {package["name"]: package["version"] for package in lock["package"]}
+
+    assert config["tool"]["mypy"] == {
+        "python_version": "3.11",
+        "ignore_missing_imports": True,
+        "warn_return_any": False,
+        "warn_unused_ignores": True,
+    }
+    assert config["project"]["requires-python"] == ">=3.11"
+    assert "types-requests==2.33.0.20260503" in config["project"]["optional-dependencies"]["dev"]
+    assert versions["types-requests"] == "2.33.0.20260503"
+    assert "anyio>=4.14.2,<5" in config["project"]["dependencies"]
+    assert versions["anyio"] == "4.14.2"
+    assert versions["soupsieve"] == "2.9"
+    assert versions["urllib3"] == "2.8.0"
+
+
+@pytest.mark.parametrize(
+    "changed_input,reviewed,unreviewed",
+    [
+        ("backend/pyproject.toml", b"anyio>=4.14.2,<5", b"anyio>=4.0,<5"),
+        ("backend/uv.lock", b'name = "anyio"\nversion = "4.14.2"', b'name = "anyio"\nversion = "4.13.0"'),
+        ("backend/uv.lock", b'name = "urllib3"\nversion = "2.8.0"', b'name = "urllib3"\nversion = "2.7.0"'),
+    ],
+)
+@pytest.mark.parametrize("update", [False, True])
+def test_unreviewed_dependency_rollback_cannot_clear_baseline(
+    tmp_path, monkeypatch, changed_input, reviewed, unreviewed, update, capsys
+):
+    checker = _checker()
+    for path in checker.REVIEWED_CHECK_INPUT_SHA256:
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((ROOT / path).read_bytes())
+    diagnostics = checker.build_diagnostics(_source(tmp_path, "def run():\n    return value\n"), tmp_path)
+    baseline_path = _identity_baseline(checker, tmp_path, diagnostics)
+    original = baseline_path.read_bytes()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(checker, "BASELINE_PATH", baseline_path)
+    checker.require_check_inputs()
+    target = tmp_path / changed_input
+    reviewed_bytes = target.read_bytes()
+    assert reviewed_bytes.count(reviewed) == 1
+    target.write_bytes(reviewed_bytes.replace(reviewed, unreviewed))
+    monkeypatch.setattr(checker, "require_tool_versions", lambda: pytest.fail("unreviewed input must fail before tooling"))
+    monkeypatch.setattr(checker, "run_mypy", lambda: pytest.fail("unreviewed input must fail before mypy"))
+
+    assert checker.main(["--update-baseline"] if update else []) == 2
+    assert changed_input in capsys.readouterr().err
+    assert baseline_path.read_bytes() == original
 
 
 @pytest.mark.parametrize("observed_version", [None, "2.33.0.20260502"])

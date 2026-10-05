@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import tomllib
@@ -67,6 +68,38 @@ def test_gitleaks_config_extends_defaults_without_tracked_source_snapshot_allowl
 
 def test_legacy_source_snapshot_is_removed_from_the_repository():
     assert not (ROOT / "audit_pack" / "source_snapshot").exists()
+
+
+def test_mypy_source_digest_allowlist_requires_exact_file_rule_and_field_format():
+    config = tomllib.loads((ROOT / ".gitleaks.toml").read_text(encoding="utf-8"))
+    allowlist = next(
+        entry
+        for entry in config["allowlists"]
+        if entry.get("targetRules") == ["generic-api-key"]
+    )
+    assert allowlist["condition"] == "AND"
+    assert allowlist["regexTarget"] == "line"
+    assert len(allowlist["paths"]) == 1
+    assert len(allowlist["regexes"]) == 14
+    path_pattern = re.compile(allowlist["paths"][0])
+    field_patterns = [re.compile(pattern) for pattern in allowlist["regexes"]]
+
+    def matches_field(line):
+        return any(pattern.fullmatch(line) for pattern in field_patterns)
+
+    assert path_pattern.fullmatch("scripts/mypy_baseline.json")
+    assert path_pattern.fullmatch(r"scripts\mypy_baseline.json")
+    assert not path_pattern.fullmatch("scripts/other.json")
+    baseline = json.loads((ROOT / "scripts/mypy_baseline.json").read_text(encoding="utf-8"))
+    source = "backend/app/agent/runtime/action_token.py"
+    historical_digest = baseline["_meta"]["origin"]["sources_sha256"][source]
+    assert matches_field(f'        "{source}": "{historical_digest}",\n')
+    digest = "0123456789abcdef" * 4
+    for field in ("api_key", "token", "scripts/api_key.py", f"{source}.bak"):
+        assert not matches_field(f'        "{field}": "{digest}",\n')
+    for value in (digest[:-1], f"synthetic_{digest}"):
+        assert not matches_field(f'        "{source}": "{value}",\n')
+    assert not matches_field(f'        "{source}": "{digest}",\n')
 
 
 def test_supply_chain_scan_dry_run_emits_expected_plan(capsys):
