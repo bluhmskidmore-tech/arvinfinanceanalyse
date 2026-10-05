@@ -1439,7 +1439,7 @@ def _executive_overview_runtime_cache_enabled() -> bool:
                 _CanonicalBondAnalyticsRepository,
             )
         )
-    except Exception:
+    except (OSError, TypeError, ValueError):
         return False
 
 

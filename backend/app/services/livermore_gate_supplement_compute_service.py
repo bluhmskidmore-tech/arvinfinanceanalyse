@@ -881,7 +881,7 @@ def _try_market_breadth_payload(
                 lookback_days=lookback_days,
                 min_observations_per_day=int(min_observations_per_day),
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - materializer failures need fallback; lock conflicts return storage_busy and the proxy path guards existing real rows.
         if _is_duckdb_lock_conflict(exc):
             # Transient writer-lock contention, not a data-missing condition:
             # skip this refresh attempt and leave whatever is already landed

@@ -258,7 +258,7 @@ class TushareMacroIngestService:
                     max_retries=max_retries,
                     retry_sleep_seconds=retry_sleep_seconds,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - provider/storage failures after retry exhaustion must enter failed[] and partial/error batch status.
                 failed.append({"series_id": series_id, "error": _error_summary(exc)})
                 continue
             results.append(result)

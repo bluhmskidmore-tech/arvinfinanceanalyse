@@ -248,7 +248,7 @@ def _mirror_job_state(payload: dict[str, object], *, job_state_dsn: str) -> None
             started_at=str(payload.get("started_at") or "") or None,
             finished_at=str(payload.get("finished_at") or "") or None,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - SQL mirror failures must not erase or abort the governance transition already persisted above.
         logger.warning(
             "Ledger import JobState mirror failed error_type=%s.",
             type(exc).__name__,

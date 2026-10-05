@@ -115,7 +115,7 @@ def _pnl_attribution_runtime_cache_enabled() -> bool:
             and isinstance(_bond_repo(), BondAnalyticsRepository)
             and isinstance(_curve_repo(), YieldCurveRepository)
         )
-    except Exception:
+    except (OSError, TypeError, ValueError):
         return False
 
 

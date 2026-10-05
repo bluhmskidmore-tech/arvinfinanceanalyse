@@ -1294,7 +1294,7 @@ def _hermes_bridge_authorized(bridge_url: str) -> bool | None:
     try:
         with urllib.request.urlopen(request, timeout=1.0) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except Exception:
+    except Exception:  # noqa: BLE001 - any health transport/response failure leaves authorization unknown; configured-token callers reject that verdict before querying.
         return None
     if not isinstance(payload, dict) or "authorized" not in payload:
         if os.environ.get("HERMES_BRIDGE_TOKEN", "").strip():
@@ -1931,7 +1931,7 @@ def _warm_managed_hermes_stream_quietly(
                 model=model,
                 max_turns=max(max_turns, 1),
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - background provider warmup is best effort; foreground requests retry startup and use their structured fallback.
             return
 
 

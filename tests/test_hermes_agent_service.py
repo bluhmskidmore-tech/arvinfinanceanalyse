@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import io
 import json
@@ -2392,6 +2393,82 @@ def test_ensure_hermes_bridge_rejects_missing_authorized_when_token_configured(m
 
     with pytest.raises(RuntimeError, match="rejects this process's token"):
         service._ensure_hermes_bridge(**_bridge_kwargs())
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("probe unavailable"), http.client.IncompleteRead(b"partial", 20)],
+)
+def test_hermes_authorization_probe_known_transport_errors_fail_closed(monkeypatch, failure):
+    _reset_hermes_bridge_state()
+    monkeypatch.setattr(service, "_CONFIGURED_BRIDGE_TOKEN", True)
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+
+    def failed_probe(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(service.urllib.request, "urlopen", failed_probe)
+    assert service._hermes_bridge_authorized("http://127.0.0.1:7891") is None
+    with pytest.raises(service.HermesRuntimeError) as exc_info:
+        service._ensure_hermes_bridge(**_bridge_kwargs())
+    assert exc_info.value.error_code == "hermes_bridge_unauthorized"
+    assert service._HERMES_BRIDGE_PROCESS is None
+
+
+@pytest.mark.parametrize("body", [b"{invalid", b"\xff"])
+def test_hermes_authorization_probe_invalid_response_fails_closed(monkeypatch, body):
+    class InvalidResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return body
+
+    _reset_hermes_bridge_state()
+    monkeypatch.setattr(service, "_CONFIGURED_BRIDGE_TOKEN", True)
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(service.urllib.request, "urlopen", lambda *_args, **_kwargs: InvalidResponse())
+    assert service._hermes_bridge_authorized("http://127.0.0.1:7891") is None
+    with pytest.raises(service.HermesRuntimeError) as exc_info:
+        service._ensure_hermes_bridge(**_bridge_kwargs())
+    assert exc_info.value.error_code == "hermes_bridge_unauthorized"
+    assert service._HERMES_BRIDGE_PROCESS is None
+
+
+def test_hermes_authorization_probe_unexpected_transport_error_falls_back_safely(
+    monkeypatch, tmp_path, caplog,
+):
+    class UnexpectedAuthorizationProbeError(Exception):
+        pass
+
+    def failed_probe(*_args, **_kwargs):
+        raise UnexpectedAuthorizationProbeError("private transport detail")
+
+    _reset_hermes_bridge_state()
+    monkeypatch.setattr(service, "_CONFIGURED_BRIDGE_TOKEN", True)
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(service.urllib.request, "urlopen", failed_probe)
+    monkeypatch.setattr(service, "_build_hermes_prompt", lambda _request: "test prompt")
+    monkeypatch.setattr(service, "build_local_recovery_envelope", lambda **_kwargs: None)
+    monkeypatch.setattr(service, "_append_hermes_audit", lambda *_args: None)
+    monkeypatch.setattr(service, "_append_hermes_prompt", lambda *_args: None)
+
+    envelope = service.execute_hermes_agent_query(
+        request=AgentQueryRequest(question="summarize this open ended question"),
+        governance_dir=str(tmp_path / "governance"),
+        settings=_hermes_settings(agent_hermes_transport="bridge"),
+    )
+
+    assert envelope.result_meta.result_kind == "agent.hermes_fallback"
+    assert envelope.result_meta.vendor_status == "vendor_unavailable"
+    assert envelope.evidence.filters_applied["fallback_reason"] == "hermes_runtime_unavailable"
+    assert "error_code=hermes_bridge_unauthorized" in caplog.text
+    assert "private transport detail" not in caplog.text
+    assert "private transport detail" not in envelope.model_dump_json()
+    assert service._HERMES_BRIDGE_PROCESS is None
 
 
 def test_ensure_hermes_bridge_clears_config_when_managed_process_exits(monkeypatch):

@@ -171,7 +171,7 @@ def _build_dual_frequency_candidate(
             ),
             config=dict(dual_config) if isinstance(dual_config, Mapping) else None,
         )
-    except Exception as exc:  # defensive: candidate analytics must not block the base snapshot
+    except Exception as exc:  # noqa: BLE001 - any optional candidate compute failure withholds target weights and marks the candidate degraded.
         snapshot = _degraded_dual_frequency_snapshot(
             as_of_date=as_of_date,
             reason=f"dual_frequency_calculation_failed:{exc.__class__.__name__}",
@@ -194,7 +194,7 @@ def _load_dual_frequency_history(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
         )
-    except Exception as exc:  # defensive: read-only candidate data must degrade locally
+    except Exception as exc:  # noqa: BLE001 - any optional history read failure must yield unavailable rows and explicit history_load_failed evidence.
         return _unavailable_dual_frequency_history(
             as_of_date=as_of_date,
             warning=f"history_load_failed:{exc.__class__.__name__}",

@@ -402,7 +402,7 @@ def _macro_etf_strategy_snapshot_for_toolkit(
         result = envelope.get("result")
         if isinstance(result, Mapping):
             return dict(result)
-    except Exception as exc:  # pragma: no cover - defensive isolation for optional warmup surface
+    except Exception as exc:  # noqa: BLE001 - isolate optional ETF observation failures with degraded status, no target weights, and execution disabled.
         failure_reason = exc.__class__.__name__
     else:
         failure_reason = "invalid_result_payload"
@@ -1501,7 +1501,7 @@ def _run_capability(
 ) -> dict[str, object]:
     try:
         return compute()
-    except Exception as exc:  # pragma: no cover - surfaced as degraded UI evidence
+    except Exception as exc:  # noqa: BLE001 - each independent capability must expose arbitrary compute failures as unavailable without aborting the other cards.
         return {
             "data_status": "unavailable",
             "headline": f"{key} 计算失败",

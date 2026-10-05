@@ -1172,7 +1172,7 @@ def _safe_bond_dashboard_bundle_section_envelope(
             curve_types=curve_types,
             shared_reads=shared_reads,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - isolate arbitrary section read/compute failures as an explicit error and failed_sections entry.
         return None, {
             "status": "error",
             "message": str(exc) or exc.__class__.__name__,

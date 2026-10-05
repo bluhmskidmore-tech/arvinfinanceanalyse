@@ -11,6 +11,7 @@ from backend.app.repositories.duckdb_read_context import (
     resolve_effective_read_path,
 )
 from backend.app.services import balance_analysis_service as balance_service
+from backend.app.services import executive_service
 from backend.app.services import pnl_attribution_service as attribution_service
 
 
@@ -87,3 +88,64 @@ def test_read_model_cache_isolates_snapshots_and_rejects_missing_warm_snapshot(
         assert builds == ["generation-1", "generation-2"]
     finally:
         cache.clear()
+
+
+@pytest.mark.parametrize(
+    "service, probe",
+    [
+        (attribution_service, "_pnl_attribution_runtime_cache_enabled"),
+        pytest.param(
+            executive_service, "_executive_overview_runtime_cache_enabled",
+            marks=[pytest.mark.excluded_surface_regression, pytest.mark.surface_executive],
+        ),
+    ],
+)
+@pytest.mark.parametrize("failure_type", [OSError, TypeError, ValueError])
+def test_optional_cache_probes_disable_cache_for_configuration_errors(
+    monkeypatch, service, probe, failure_type,
+):
+    def invalid_settings():
+        raise failure_type("settings are unavailable")
+
+    monkeypatch.setattr(service, "get_settings", invalid_settings)
+    assert getattr(service, probe)() is False
+
+
+@pytest.mark.parametrize(
+    "service, probe",
+    [
+        (attribution_service, "_pnl_attribution_runtime_cache_enabled"),
+        pytest.param(
+            executive_service, "_executive_overview_runtime_cache_enabled",
+            marks=[pytest.mark.excluded_surface_regression, pytest.mark.surface_executive],
+        ),
+    ],
+)
+def test_optional_cache_probes_disable_cache_for_invalid_settings_value(monkeypatch, service, probe):
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", "invalid-boolean")
+    service.get_settings.cache_clear()
+    with pytest.raises(ValueError, match="agent_enabled"):
+        service.get_settings()
+    assert getattr(service, probe)() is False
+
+
+@pytest.mark.parametrize(
+    "service, probe",
+    [
+        (attribution_service, "_pnl_attribution_runtime_cache_enabled"),
+        pytest.param(
+            executive_service, "_executive_overview_runtime_cache_enabled",
+            marks=[pytest.mark.excluded_surface_regression, pytest.mark.surface_executive],
+        ),
+    ],
+)
+def test_optional_cache_probes_propagate_unexpected_internal_errors(monkeypatch, service, probe):
+    class UnexpectedCacheProbeError(Exception):
+        pass
+
+    def broken_settings():
+        raise UnexpectedCacheProbeError("internal settings defect")
+
+    monkeypatch.setattr(service, "get_settings", broken_settings)
+    with pytest.raises(UnexpectedCacheProbeError, match="internal settings defect"):
+        getattr(service, probe)()

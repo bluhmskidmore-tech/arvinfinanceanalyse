@@ -2507,7 +2507,7 @@ def dispatch_adb_backfill(start_date: str, end_date: str) -> dict[str, Any]:
             )
             logger.info("Queued ADB formal balance backfill %s", report_date)
             queued += 1
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - actor/broker dispatch failures must be recorded per date without aborting other backfills.
             logger.warning(
                 "Queue ADB backfill %s failed error_type=%s: %s",
                 report_date,

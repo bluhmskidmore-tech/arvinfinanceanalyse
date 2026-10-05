@@ -142,7 +142,7 @@ def knowledge_summaries_for_entities(
 ) -> list[str]:
     try:
         index = load_knowledge_index()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
         return []
     if not index.available:
         return []
@@ -172,7 +172,7 @@ def knowledge_summaries_for_entities(
 def knowledge_vault_available() -> bool:
     try:
         vault_path = resolve_obsidian_vault_path()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
         return False
     return vault_path is not None and vault_path.is_dir()
 
@@ -182,7 +182,7 @@ def _known_entity_ids() -> frozenset[str] | None:
         from backend.app.ontology.loader import load_ontology_index
 
         return load_ontology_index().entity_ids()
-    except Exception:
+    except (ImportError, OSError, ValueError):
         return None
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -335,3 +336,85 @@ def test_scan_truncation_stops_after_sorted_scan_cap(
 
     assert [note.note_id for note in payload.notes] == ["a-first", "b-second"]
     assert payload.status_note == "obsidian-local; scan-truncated"
+
+
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        [],
+        {"vaults": {"main": {"path": "vault", "ts": "invalid"}}},
+        {"vaults": {"main": {"path": "vault", "ts": {"invalid": True}}}},
+    ],
+)
+def test_optional_vault_probes_degrade_for_malformed_legacy_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, configuration: object,
+) -> None:
+    config_dir = tmp_path / "appdata" / "Obsidian"
+    config_dir.mkdir(parents=True)
+    (config_dir / "obsidian.json").write_text(json.dumps(configuration), encoding="utf-8")
+    monkeypatch.setenv("MOSS_OBSIDIAN_VAULT_PATH", "")
+    monkeypatch.setenv("APPDATA", str(config_dir.parent))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    assert service.knowledge_vault_available() is False
+    assert service.knowledge_summaries_for_entities(["MTR-PNL-001"]) == []
+
+
+def test_optional_summaries_degrade_for_unreadable_note(
+    vault: Path, fake_ontology: None, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_note(vault, "unreadable.md", "moss_entities: [MTR-PNL-001]")
+
+    def unreadable(_path: Path) -> str:
+        raise PermissionError("note is unavailable")
+
+    monkeypatch.setattr(service, "read_note_text", unreadable)
+    assert service.knowledge_summaries_for_entities(["MTR-PNL-001"]) == []
+
+
+@pytest.mark.parametrize("ontology_text", [None, "{invalid", '{"entities": []}'])
+def test_optional_ontology_probe_degrades_for_invalid_document(
+    vault: Path, monkeypatch: pytest.MonkeyPatch, ontology_text: str | None,
+) -> None:
+    from backend.app.ontology import loader
+
+    ontology_path = vault / "ontology.json"
+    if ontology_text is not None:
+        ontology_path.write_text(ontology_text, encoding="utf-8")
+    monkeypatch.setattr(loader, "_DEFAULT_ONTOLOGY_PATH", ontology_path)
+    loader.load_ontology_index.cache_clear()
+    write_note(vault, "bound.md", "moss_entities: [MTR-PNL-001]")
+    try:
+        payload = service.load_knowledge_index()
+        assert payload.notes[0].warnings == ["ontology-index-unavailable"]
+        assert service.knowledge_summaries_for_entities(["MTR-PNL-001"]) == []
+    finally:
+        loader.load_ontology_index.cache_clear()
+
+
+@pytest.mark.parametrize("probe", ["summaries", "vault", "ontology"])
+def test_optional_knowledge_probes_propagate_unexpected_internal_errors(
+    monkeypatch: pytest.MonkeyPatch, probe: str,
+) -> None:
+    class UnexpectedKnowledgeError(Exception):
+        pass
+
+    def fail() -> None:
+        raise UnexpectedKnowledgeError("internal defect")
+
+    if probe == "ontology":
+        from backend.app.ontology import loader
+
+        monkeypatch.setattr(loader, "load_ontology_index", fail)
+        call = service._known_entity_ids
+    elif probe == "vault":
+        monkeypatch.setattr(service, "resolve_obsidian_vault_path", fail)
+        call = service.knowledge_vault_available
+    else:
+        monkeypatch.setattr(service, "load_knowledge_index", fail)
+
+        def call() -> list[str]:
+            return service.knowledge_summaries_for_entities(["MTR-PNL-001"])
+
+    with pytest.raises(UnexpectedKnowledgeError, match="internal defect"):
+        call()
