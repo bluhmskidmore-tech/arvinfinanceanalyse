@@ -361,6 +361,10 @@ describe("RiskTensorPage", () => {
 
   it("renders scenario-basis stress tests from the selected risk tensor date", async () => {
     const base = createApiClient({ mode: "mock" });
+    let resolveScenarioStress: (() => void) | undefined;
+    const scenarioStressReady = new Promise<void>((resolve) => {
+      resolveScenarioStress = resolve;
+    });
     const getRiskTensorDates = vi.fn(async () => ({
       result_meta: buildMeta("risk.tensor.dates", "tr_tensor_stress_dates"),
       result: { report_dates: ["2026-02-28"] },
@@ -369,10 +373,13 @@ describe("RiskTensorPage", () => {
       result_meta: buildMeta("risk.tensor", `tr_tensor_stress_${reportDate}`),
       result: tensorResult(reportDate),
     }));
-    const getRiskScenarioStress = vi.fn(async (reportDate: string) => ({
-      result_meta: buildScenarioMeta("risk.tensor.scenario_stress", `tr_scenario_stress_${reportDate}`),
-      result: scenarioStressResult(reportDate),
-    }));
+    const getRiskScenarioStress = vi.fn(async (reportDate: string) => {
+      await scenarioStressReady;
+      return {
+        result_meta: buildScenarioMeta("risk.tensor.scenario_stress", `tr_scenario_stress_${reportDate}`),
+        result: scenarioStressResult(reportDate),
+      };
+    });
 
     renderRiskTensorRoute("/risk-tensor", {
       ...base,
@@ -382,14 +389,22 @@ describe("RiskTensorPage", () => {
     });
 
     const panel = await screen.findByTestId("risk-tensor-scenario-stress");
-    expect(getRiskScenarioStress).toHaveBeenCalledWith("2026-02-28");
+    await waitFor(() => {
+      expect(getRiskScenarioStress).toHaveBeenCalledWith("2026-02-28");
+    });
+    expect(panel).toHaveTextContent("正在读取压力测试");
+    expect(panel).toHaveTextContent("正在准备 2026-02-28 的情景估算。");
     expect(panel).toHaveTextContent("多情景压力测试");
+    await act(async () => {
+      resolveScenarioStress?.();
+    });
+    const rateScenario = await within(panel).findByTestId("risk-scenario-stress-row-parallel_rate_up_10bp");
     expect(panel).toHaveTextContent("利率平行上行 10bp");
     expect(panel).toHaveTextContent("信用利差走阔 10bp");
     expect(panel).toHaveTextContent("30天现金流压力 10%");
     expect(panel).toHaveTextContent("汇率波动情景");
     expect(panel).toHaveTextContent("已估算");
-    expect(within(panel).getByTestId("risk-scenario-stress-row-parallel_rate_up_10bp")).toHaveTextContent(
+    expect(rateScenario).toHaveTextContent(
       new RegExp(`-120\\.00\\s*${WAN_YUAN_UNIT}`),
     );
     const worstEstimate = within(panel).getByTestId("risk-tensor-scenario-worst-estimate");
