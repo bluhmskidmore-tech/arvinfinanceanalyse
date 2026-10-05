@@ -251,11 +251,15 @@ def test_source_entry_invalid_explicit_environment_never_falls_back(source_root:
 
 
 @pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM])
-def test_source_entry_interrupt_waits_for_controller_to_remove_child(source_root: Path, stop_signal: int) -> None:
+@pytest.mark.parametrize("stalls", [False, True])
+def test_source_entry_interrupt_waits_for_controller_to_remove_child(
+    source_root: Path, stop_signal: int, stalls: bool,
+) -> None:
     if os.name == "nt" and stop_signal == signal.SIGTERM:
         pytest.skip("POSIX SIGTERM forwarding; Windows uses console Ctrl+C")
     capture = source_root / "child-pid.json"
-    _vite(source_root, "require('fs').writeFileSync(process.env.TEST_SOURCE_CAPTURE, JSON.stringify(process.pid));"
+    shutdown = "process.on('SIGINT', () => {}); process.on('SIGTERM', () => {});" if stalls else ""
+    _vite(source_root, shutdown + "require('fs').writeFileSync(process.env.TEST_SOURCE_CAPTURE, JSON.stringify(process.pid));"
           "setInterval(() => {}, 1000);\n")
     process = subprocess.Popen(
         [NODE, str(source_root / "scripts" / "dev-frontend-source.mjs")], cwd=source_root,
@@ -288,7 +292,7 @@ def test_source_entry_interrupt_when_parent_ignores_ctrl_c(tmp_path: Path) -> No
         "import ctypes, sys, pytest; kernel=ctypes.WinDLL('kernel32', use_last_error=True); "
         "assert kernel.SetConsoleCtrlHandler(None, True), ctypes.get_last_error(); "
         "raise SystemExit(pytest.main(["
-        "'tests/test_dev_frontend_source_entry.py::test_source_entry_interrupt_waits_for_controller_to_remove_child[2]', "
+        "'tests/test_dev_frontend_source_entry.py::test_source_entry_interrupt_waits_for_controller_to_remove_child[False-2]', "
         "'-q', '--basetemp='+sys.argv[1], '-o', 'cache_dir='+sys.argv[1]+'-cache']))"
     )
     completed = subprocess.run(

@@ -83,7 +83,8 @@ async function main(args) {
   console.log('Vite development .env files also apply. The accepted frontend selection is unchanged.');
   return new Promise((resolve, reject) => {
     const child = spawn(python.executable,
-      ['-X', 'utf8', controller, '--repo-root', repoRoot, 'run', '--command-base64', command],
+      ['-X', 'utf8', controller, '--repo-root', repoRoot, 'run', '--command-base64', command,
+        '--interrupt-grace-seconds', '5'],
       { cwd: repoRoot, env: environment, stdio: 'inherit', windowsHide: true });
     // Windows sends Ctrl+C to all attached console processes. Killing the Python
     // controller there would bypass its child cleanup; POSIX also supports an

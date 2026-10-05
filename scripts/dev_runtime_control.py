@@ -9,9 +9,11 @@ import argparse
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -220,7 +222,17 @@ def select_frontend(root: Path, selection: dict, token: str) -> None:
         write_object(control_dir(root) / "frontend.json", selection)
 
 
-def run_child(root: Path, command: dict | None, *, node: str | None = None) -> int:
+def run_child(
+    root: Path, command: dict | None, *, node: str | None = None,
+    interrupt_grace_seconds: float | None = None,
+) -> int:
+    if interrupt_grace_seconds is not None and (
+        isinstance(interrupt_grace_seconds, bool)
+        or not isinstance(interrupt_grace_seconds, (int, float))
+        or not math.isfinite(interrupt_grace_seconds)
+        or interrupt_grace_seconds <= 0
+    ):
+        raise RuntimeControlError("interrupt grace must be a finite positive number of seconds")
     with operation_lock(root):
         assert_start_allowed(root)
         if node is not None:
@@ -234,10 +246,33 @@ def run_child(root: Path, command: dict | None, *, node: str | None = None) -> i
             env.update(VITE_DATA_SOURCE="real", MOSS_VITE_API_PROXY="http://127.0.0.1:7888")
         child = subprocess.Popen(command["argv"], cwd=cwd, env=env)
     try:
-        return child.wait()
+        if interrupt_grace_seconds is None:
+            return child.wait()
+        # Windows' infinite process wait can defer Python's Ctrl+C handler
+        # until the child exits. Poll only for this explicitly bounded caller.
+        while True:
+            try:
+                return child.wait(timeout=0.1)
+            except subprocess.TimeoutExpired:
+                pass
     except KeyboardInterrupt:
-        child.terminate()
-        child.wait()
+        if interrupt_grace_seconds is None:
+            # API/worker callers retain their existing shutdown policy.
+            child.terminate()
+            child.wait()
+        else:
+            # npm, the wrapper and the terminal can each forward Ctrl+C.
+            # Further interrupts must not abandon this owned child's cleanup.
+            previous_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+            try:
+                child.terminate()
+                try:
+                    child.wait(timeout=interrupt_grace_seconds)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=5)
+            finally:
+                signal.signal(signal.SIGINT, previous_handler)
         return 130
 
 
@@ -267,6 +302,8 @@ def main(argv: list[str] | None = None) -> int:
     select.add_argument("--manifest-sha256", required=True)
     run = sub.add_parser("run")
     run.add_argument("--command-base64", required=True)
+    run.add_argument("--interrupt-grace-seconds", type=float,
+                     help="Opt in to bounded child cleanup after Ctrl+C; default keeps the existing shutdown policy")
     sub.add_parser("frontend-run").add_argument("--node", required=True)
     args = parser.parse_args(argv)
     root = args.repo_root.resolve()
@@ -279,7 +316,8 @@ def main(argv: list[str] | None = None) -> int:
             select_frontend(root, {"mode": "accepted", "data_source": "real", "build_root": args.build_root,
                                   "manifest_path": args.manifest, "manifest_sha256": args.manifest_sha256}, args.owner_token)
         elif args.action == "run":
-            return run_child(root, json.loads(base64.b64decode(args.command_base64, validate=True)))
+            return run_child(root, json.loads(base64.b64decode(args.command_base64, validate=True)),
+                             interrupt_grace_seconds=args.interrupt_grace_seconds)
         elif args.action == "frontend-run":
             return run_child(root, None, node=args.node)
         elif args.action == "frontend-probe":

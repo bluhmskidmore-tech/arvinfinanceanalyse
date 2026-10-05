@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib.util
 import json
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -332,6 +334,172 @@ def test_run_child_starts_under_lock_waits_outside_lock_and_returns_exit_code(
     assert module.run_child(root, {"argv": ["synthetic"], "cwd": str(root)}) == 23
     assert state["popen_called"] is True
     assert (module.control_dir(root) / "maintenance.json").exists()
+
+
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_run_child_bounded_wait_retries_timeout_until_exit_or_interrupt(
+    runtime_root: tuple[ModuleType, Path], monkeypatch: pytest.MonkeyPatch, interrupted: bool,
+) -> None:
+    module, root = runtime_root
+    calls = []
+
+    class Child:
+        def wait(self, timeout=None):
+            calls.append(("wait", timeout))
+            if len(calls) == 1:
+                raise subprocess.TimeoutExpired("owned synthetic child", timeout)
+            if len(calls) == 2 and interrupted:
+                raise KeyboardInterrupt
+            return 23
+
+        def terminate(self):
+            calls.append(("terminate",))
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: Child())
+
+    assert module.run_child(root, {"argv": ["synthetic"], "cwd": str(root)},
+                            interrupt_grace_seconds=0.2) == (130 if interrupted else 23)
+    expected = [("wait", 0.1), ("wait", 0.1)]
+    if interrupted:
+        expected += [("terminate",), ("wait", 0.2)]
+    assert calls == expected
+
+
+@pytest.mark.parametrize("stalls", [False, True])
+def test_run_child_bounded_interrupt_reaps_owned_child_and_restores_signal_handler(
+    runtime_root: tuple[ModuleType, Path], monkeypatch: pytest.MonkeyPatch, stalls: bool,
+) -> None:
+    module, root = runtime_root
+    calls = []
+    original_handler = signal.getsignal(signal.SIGINT)
+
+    class Child:
+        def wait(self, timeout=None):
+            calls.append(("wait", timeout))
+            if len(calls) == 1:
+                raise KeyboardInterrupt
+            assert signal.getsignal(signal.SIGINT) == signal.SIG_IGN
+            # A second terminal interrupt must not bypass child cleanup.
+            signal.raise_signal(signal.SIGINT)
+            if stalls and ("kill",) not in calls:
+                raise subprocess.TimeoutExpired("owned synthetic child", timeout)
+            return -9 if stalls else 0
+
+        def terminate(self):
+            calls.append(("terminate",))
+
+        def kill(self):
+            calls.append(("kill",))
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: Child())
+
+    assert module.run_child(root, {"argv": ["synthetic"], "cwd": str(root)},
+                            interrupt_grace_seconds=0.1) == 130
+    expected = [("wait", 0.1), ("terminate",), ("wait", 0.1)]
+    if stalls:
+        expected += [("kill",), ("wait", 5)]
+    assert calls == expected
+    assert signal.getsignal(signal.SIGINT) == original_handler
+
+
+def test_run_child_bounded_interrupt_reap_failure_is_not_success(
+    runtime_root: tuple[ModuleType, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, root = runtime_root
+    calls = []
+    original_handler = signal.getsignal(signal.SIGINT)
+
+    class Child:
+        def wait(self, timeout=None):
+            calls.append(("wait", timeout))
+            if len(calls) == 1:
+                raise KeyboardInterrupt
+            raise subprocess.TimeoutExpired("owned synthetic child", timeout)
+
+        def terminate(self):
+            calls.append(("terminate",))
+
+        def kill(self):
+            calls.append(("kill",))
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: Child())
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        module.run_child(root, {"argv": ["synthetic"], "cwd": str(root)}, interrupt_grace_seconds=0.1)
+    assert calls == [("wait", 0.1), ("terminate",), ("wait", 0.1), ("kill",), ("wait", 5)]
+    assert signal.getsignal(signal.SIGINT) == original_handler
+
+
+@pytest.mark.parametrize("grace", [0, -1, float("nan"), float("inf"), -float("inf"), True])
+def test_run_child_rejects_invalid_interrupt_grace_before_spawning(
+    runtime_root: tuple[ModuleType, Path], monkeypatch: pytest.MonkeyPatch, grace: float,
+) -> None:
+    module, root = runtime_root
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("Invalid grace spawned a child"))
+
+    with pytest.raises(module.RuntimeControlError, match="finite positive"):
+        module.run_child(root, {"argv": ["synthetic"], "cwd": str(root)}, interrupt_grace_seconds=grace)
+    assert not module.control_dir(root).exists()
+
+
+def test_run_child_default_interrupt_preserves_existing_shutdown_policy(
+    runtime_root: tuple[ModuleType, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, root = runtime_root
+    calls = []
+    original_handler = signal.getsignal(signal.SIGINT)
+
+    class Child:
+        def wait(self):
+            calls.append("wait")
+            if len(calls) == 1:
+                raise KeyboardInterrupt
+            assert signal.getsignal(signal.SIGINT) == original_handler
+            return 0
+
+        def terminate(self):
+            calls.append("terminate")
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: Child())
+
+    assert module.run_child(root, {"argv": ["synthetic"], "cwd": str(root)}) == 130
+    assert calls == ["wait", "terminate", "wait"]
+
+
+@pytest.mark.parametrize("grace", ["0", "-1", "nan", "inf", "-inf"])
+def test_run_cli_rejects_invalid_interrupt_grace_before_spawning(
+    runtime_root: tuple[ModuleType, Path], monkeypatch: pytest.MonkeyPatch, capsys, grace: str,
+) -> None:
+    module, root = runtime_root
+    command = base64.b64encode(json.dumps({"argv": ["synthetic"], "cwd": str(root)}).encode()).decode()
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("Invalid grace spawned a child"))
+
+    assert module.main(["--repo-root", str(root), "run", "--command-base64", command,
+                        "--interrupt-grace-seconds=" + grace]) == 73
+    assert "finite positive" in capsys.readouterr().err
+    assert not module.control_dir(root).exists()
+
+
+@pytest.mark.parametrize("grace", [None, 5.0])
+def test_run_cli_interrupt_cleanup_is_explicitly_opt_in(
+    runtime_root: tuple[ModuleType, Path], monkeypatch: pytest.MonkeyPatch, grace: float | None,
+) -> None:
+    module, root = runtime_root
+    command = {"argv": ["synthetic"], "cwd": str(root)}
+    encoded = base64.b64encode(json.dumps(command).encode()).decode()
+    observed = []
+
+    def run_child(caller_root, caller_command, *, interrupt_grace_seconds):
+        observed.append((caller_root, caller_command, interrupt_grace_seconds))
+        return 130
+
+    monkeypatch.setattr(module, "run_child", run_child)
+    args = ["--repo-root", str(root), "run", "--command-base64", encoded]
+    if grace is not None:
+        args += ["--interrupt-grace-seconds", str(grace)]
+
+    assert module.main(args) == 130
+    assert observed == [(root, command, grace)]
 
 
 def test_run_child_locks_accepted_frontend_to_real_data_and_proxy(

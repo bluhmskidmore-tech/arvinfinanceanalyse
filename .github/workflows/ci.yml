@@ -700,7 +700,7 @@ jobs:
           export MOSS_PYTHON
           export MOSS_TEST_FULL_APP=1
           mkdir -p .codex-tmp
-          "$MOSS_PYTHON" -m pytest tests/test_dev_frontend_source_entry.py tests/test_dev_frontend_source_live.py tests/test_dev_frontend_application_live.py tests/test_dev_python_resolution.py tests/test_codex_python_resolution.py -q --basetemp=.codex-tmp/source-entry-ci
+          "$MOSS_PYTHON" -m pytest tests/test_dev_frontend_source_entry.py tests/test_dev_frontend_source_live.py tests/test_dev_frontend_application_live.py tests/test_dev_python_resolution.py tests/test_codex_python_resolution.py tests/test_dev_runtime_control.py -q --basetemp=.codex-tmp/source-entry-ci
 
       - name: Retain isolated application acceptance evidence
         if: ${{ always() }}
