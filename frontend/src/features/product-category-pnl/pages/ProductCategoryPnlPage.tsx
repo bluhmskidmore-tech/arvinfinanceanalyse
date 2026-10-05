@@ -5,12 +5,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import { SectionHead } from "../../../components/layout";
-import type {
-  ProductCategoryAttributionPayload,
-  ProductCategoryManualAdjustmentRequest,
-  ProductCategoryPnlPayload,
-  ResultMeta,
-} from "../../../api/contracts";
+import type { ProductCategoryAttributionPayload } from "../../../api/contracts";
 import { prefetchReactEChartsWhenIdle } from "./lazyReactEChartsLoader";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import {
@@ -67,12 +62,15 @@ import {
   selectProductCategoryRootCauseSurface,
   selectProductCategoryScenarioExplanation,
   selectProductCategoryScenarioSensitivitySurface,
-  selectProductCategoryTwoYearInterestSpreadReportPoints,
-  selectProductCategoryTrendReportPoints,
   shouldRetryProductCategoryRead,
 } from "./productCategoryPnlPageModel";
+import {
+  uniqueProductCategoryReportDates,
+  useProductCategoryHistoryQueries,
+} from "./useProductCategoryHistoryQueries";
 import { useProductCategoryBacktestHistory } from "./useProductCategoryBacktestHistory";
 import { useProductCategoryManagementMonitoring } from "./useProductCategoryManagementMonitoring";
+import { useProductCategoryManualAdjustments } from "./useProductCategoryManualAdjustments";
 import { useProductCategoryRefresh } from "./useProductCategoryRefresh";
 import { useProductCategoryScenarioReview } from "./useProductCategoryScenarioReview";
 import { ProductCategoryManualAdjustmentForm } from "./ProductCategoryManualAdjustmentForm";
@@ -117,24 +115,6 @@ function formatProductCategoryRefreshStatusLine(
   const statusPart = snapshot ? `状态：${snapshot.status}` : "状态：启动中…";
   const runPart = snapshot?.run_id ? `；run_id：${snapshot.run_id}` : "";
   return `正在刷新产品分类损益数据。${statusPart}${runPart}。刷新期间「刷新损益数据」等部分控件将暂时不可用。`;
-}
-
-function buildAdjustmentDraft(
-  reportDate: string,
-): ProductCategoryManualAdjustmentRequest {
-  return {
-    report_date: reportDate,
-    operator: "DELTA",
-    approval_status: "approved",
-    account_code: "",
-    currency: "CNX",
-    account_name: "",
-    beginning_balance: null,
-    ending_balance: null,
-    monthly_pnl: null,
-    daily_avg_balance: null,
-    annual_avg_balance: null,
-  };
 }
 
 function SectionLead(props: {
@@ -203,28 +183,6 @@ function reportDateYearMonth(
   return { year, month };
 }
 
-function uniqueProductCategoryReportDates(
-  points: ReadonlyArray<{ reportDate: string }>,
-): string[] {
-  const seen = new Set<string>();
-  const reportDates: string[] = [];
-  points.forEach((point) => {
-    if (!point.reportDate || seen.has(point.reportDate)) {
-      return;
-    }
-    seen.add(point.reportDate);
-    reportDates.push(point.reportDate);
-  });
-  return reportDates;
-}
-
-/**
- * Measured against the live read model: a few medium chunks beat both per-period requests
- * (queue behind the browser's per-host connection limit) and one giant chunk (queues
- * behind the backend's bounded worker pool).
- */
-const PRODUCT_CATEGORY_HISTORY_BATCH_SIZE = 10;
-
 const PRODUCT_CATEGORY_TREND_WORKSPACE_STORAGE_KEY =
   "moss.product-category-pnl.trend-workspace-open";
 
@@ -254,17 +212,6 @@ function persistProductCategoryTrendWorkspacePreference(open: boolean): void {
   }
 }
 
-function chunkProductCategoryReportDates(
-  reportDates: string[],
-  size = PRODUCT_CATEGORY_HISTORY_BATCH_SIZE,
-): string[][] {
-  const chunks: string[][] = [];
-  for (let index = 0; index < reportDates.length; index += size) {
-    chunks.push(reportDates.slice(index, index + size));
-  }
-  return chunks;
-}
-
 function monthAnchoredInterestSpreadSelection(
   current: ProductCategoryInterestSpreadAttributionSelection,
   reportDate: string,
@@ -276,26 +223,6 @@ function monthAnchoredInterestSpreadSelection(
   return { ...current, month: parsed.month };
 }
 
-
-
-type ProductCategoryAdjustmentMutationKind =
-  "create" | "edit" | "revoke" | "restore";
-
-
-function downloadProductCategoryAdjustmentsCsv(
-  filename: string,
-  content: string,
-) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
-}
 
 
 export default function ProductCategoryPnlPage() {
@@ -336,7 +263,6 @@ export default function ProductCategoryPnlPage() {
     handleRefresh,
     runRefreshWorkflow,
   } = useProductCategoryRefresh(client);
-  const [showManualForm, setShowManualForm] = useState(false);
   const [diagnosticsWorkspaceOpen, setDiagnosticsWorkspaceOpen] =
     useState(false);
   const [trendWorkspaceOpen, setTrendWorkspaceOpen] = useState(
@@ -359,21 +285,6 @@ export default function ProductCategoryPnlPage() {
     handleResetScenarioReviewActions,
     handleScenarioActionClosureStatus,
   } = useProductCategoryScenarioReview();
-  const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(
-    null,
-  );
-  const [adjustmentMutationKind, setAdjustmentMutationKind] =
-    useState<ProductCategoryAdjustmentMutationKind | null>(null);
-  const isSubmittingAdjustment = adjustmentMutationKind !== null;
-  const [isExportingAdjustments, setIsExportingAdjustments] = useState(false);
-  const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
-  const [adjustmentExportError, setAdjustmentExportError] = useState<
-    string | null
-  >(null);
-  const [exportedAdjustmentFilename, setExportedAdjustmentFilename] = useState<
-    string | null
-  >(null);
-  const [lastAdjustmentId, setLastAdjustmentId] = useState<string | null>(null);
   const [
     interestSpreadAttributionSelection,
     setInterestSpreadAttributionSelection,
@@ -381,9 +292,6 @@ export default function ProductCategoryPnlPage() {
     basis: "weighted",
     month: 1,
   });
-  const [adjustmentDraft, setAdjustmentDraft] =
-    useState<ProductCategoryManualAdjustmentRequest>(buildAdjustmentDraft(""));
-
   const datesQuery = useQuery({
     queryKey: ["product-category-pnl", "dates", client.mode],
     queryFn: () => client.getProductCategoryDates(),
@@ -403,13 +311,6 @@ export default function ProductCategoryPnlPage() {
       );
     }
   }, [datesQuery.data, selectedDate]);
-
-  useEffect(() => {
-    setAdjustmentDraft((current) => ({
-      ...current,
-      report_date: selectedDate,
-    }));
-  }, [selectedDate]);
 
   useEffect(() => {
     prefetchReactEChartsWhenIdle();
@@ -499,17 +400,32 @@ export default function ProductCategoryPnlPage() {
     })),
   });
 
-  const adjustmentsQuery = useQuery({
-    queryKey: [
-      "product-category-pnl",
-      "adjustments",
-      client.mode,
-      selectedDate,
-    ],
-    queryFn: () => client.getProductCategoryManualAdjustments(selectedDate),
-    enabled: Boolean(selectedDate),
-    retry: false,
-  });
+  const {
+    adjustmentsQuery,
+    showManualForm,
+    editingAdjustmentId,
+    adjustmentMutationKind,
+    isSubmittingAdjustment,
+    isExportingAdjustments,
+    adjustmentError,
+    adjustmentExportError,
+    exportedAdjustmentFilename,
+    lastAdjustmentId,
+    adjustmentDraft,
+    updateAdjustmentField,
+    handleManualAdjustmentSubmit,
+    handleManualAdjustmentRevoke,
+    handleManualAdjustmentRestore,
+    handleManualAdjustmentsExport,
+    handleManualAdjustmentEdit,
+    handleManualAdjustmentToggle,
+    handleManualAdjustmentCancel,
+    handleManualAdjustmentCreate,
+  } = useProductCategoryManualAdjustments(
+    client,
+    selectedDate,
+    runRefreshWorkflow,
+  );
 
   const attributionQuery = useQuery({
     queryKey: [
@@ -799,28 +715,29 @@ export default function ProductCategoryPnlPage() {
       }),
     [baseline?.rows, baseline?.grand_total, formalMomAttribution],
   );
-  const trendReportPoints = useMemo(
-    () =>
-      selectProductCategoryTrendReportPoints(
-        selectedDate,
-        datesQuery.data?.result.report_dates,
-        selectedView,
-      ),
-    [datesQuery.data?.result.report_dates, selectedDate, selectedView],
-  );
-  const currentTrendPoint = useMemo(
-    () => trendReportPoints.find((point) => point.reportDate === selectedDate),
-    [selectedDate, trendReportPoints],
-  );
-  const trendHistoryPoints = useMemo(
-    () =>
-      trendReportPoints.filter((point) => point.reportDate !== selectedDate),
-    [selectedDate, trendReportPoints],
-  );
-  const trendHistoryReportDates = useMemo(
-    () => uniqueProductCategoryReportDates(trendHistoryPoints),
-    [trendHistoryPoints],
-  );
+  const {
+    trendReportPoints,
+    currentTrendPoint,
+    trendHistoryPoints,
+    trendHistoryReportDates,
+    trendHistoryBatches,
+    trendHistoryQueries,
+    trendHistoryAttributionQueries,
+    interestSpreadComparisonCurrentPoint,
+    interestSpreadComparisonHistoryPoints,
+    interestSpreadHistoryBatches,
+    interestSpreadHistoryQueries,
+    historyPayloadByReportDate,
+  } = useProductCategoryHistoryQueries({
+    client,
+    selectedDate,
+    reportDates: datesQuery.data?.result.report_dates,
+    selectedView,
+    appliedScenarioRate,
+    trendWorkspaceOpen,
+    trendHistoryConsumerOpen,
+    attributionHistoryConsumerOpen,
+  });
   const selectedLiabilityMatrixView: ProductCategoryLiabilityView =
     selectedView === "ytd" ? "ytd" : "monthly";
   const liabilityMatrixView =
@@ -862,33 +779,6 @@ export default function ProductCategoryPnlPage() {
     ),
     retry: false,
   });
-  const trendHistoryView = trendHistoryPoints[0]?.view ?? selectedView;
-  const trendHistoryBatches = useMemo(
-    () => chunkProductCategoryReportDates(trendHistoryReportDates),
-    [trendHistoryReportDates],
-  );
-  const trendHistoryQueries = useQueries({
-    queries: trendHistoryBatches.map((batchReportDates) => ({
-      queryKey: [
-        "product-category-pnl",
-        "trend-history-batch",
-        client.mode,
-        batchReportDates.join(","),
-        trendHistoryView,
-        appliedScenarioRate,
-      ],
-      queryFn: () =>
-        client.getProductCategoryHistory({
-          reportDates: batchReportDates,
-          view: trendHistoryView,
-          ...(appliedScenarioRate
-            ? { scenarioRatePct: appliedScenarioRate }
-            : {}),
-        }),
-      enabled: Boolean(trendHistoryConsumerOpen && trendDiagnosticsLoaded),
-      retry: false,
-    })),
-  });
   const {
     historyQueries: operatingActionBacktestHistoryQueries,
     payloads: operatingActionBacktestPayloads,
@@ -903,108 +793,6 @@ export default function ProductCategoryPnlPage() {
     selectedView,
     appliedScenarioRate,
   });
-  const trendHistoryAttributionQueries = useQueries({
-    queries: trendHistoryBatches.map((batchReportDates) => ({
-      queryKey: [
-        "product-category-pnl",
-        "trend-history-attribution-batch",
-        client.mode,
-        batchReportDates.join(","),
-        "mom",
-      ],
-      queryFn: () =>
-        client.getProductCategoryAttributionHistory({
-          reportDates: batchReportDates,
-          compare: "mom",
-        }),
-      enabled: Boolean(
-        attributionHistoryConsumerOpen &&
-        trendDiagnosticsLoaded &&
-        selectedView === "monthly",
-      ),
-      retry: false,
-    })),
-  });
-  const interestSpreadComparisonReportPoints = useMemo(
-    () =>
-      selectProductCategoryTwoYearInterestSpreadReportPoints(
-        selectedDate,
-        datesQuery.data?.result.report_dates,
-        selectedView,
-      ),
-    [datesQuery.data?.result.report_dates, selectedDate, selectedView],
-  );
-  const interestSpreadComparisonCurrentPoint = useMemo(
-    () =>
-      interestSpreadComparisonReportPoints.find(
-        (point) => point.reportDate === selectedDate,
-      ),
-    [interestSpreadComparisonReportPoints, selectedDate],
-  );
-  const interestSpreadComparisonHistoryPoints = useMemo(
-    () =>
-      interestSpreadComparisonReportPoints.filter(
-        (point) => point.reportDate !== selectedDate,
-      ),
-    [interestSpreadComparisonReportPoints, selectedDate],
-  );
-  // Only the months the trend batch does not already cover, so the two batches stay disjoint
-  // and opening the diagnostics workspace alone never pulls the wider comparison window.
-  const interestSpreadOnlyReportDates = useMemo(() => {
-    const covered = new Set(trendHistoryReportDates);
-    return uniqueProductCategoryReportDates(
-      interestSpreadComparisonHistoryPoints,
-    ).filter((reportDate) => !covered.has(reportDate));
-  }, [interestSpreadComparisonHistoryPoints, trendHistoryReportDates]);
-  const interestSpreadHistoryView =
-    interestSpreadComparisonHistoryPoints[0]?.view ?? selectedView;
-  const interestSpreadHistoryBatches = useMemo(
-    () => chunkProductCategoryReportDates(interestSpreadOnlyReportDates),
-    [interestSpreadOnlyReportDates],
-  );
-  const interestSpreadHistoryQueries = useQueries({
-    queries: interestSpreadHistoryBatches.map((batchReportDates) => ({
-      queryKey: [
-        "product-category-pnl",
-        "trend-history-batch",
-        client.mode,
-        batchReportDates.join(","),
-        interestSpreadHistoryView,
-        appliedScenarioRate,
-      ],
-      queryFn: () =>
-        client.getProductCategoryHistory({
-          reportDates: batchReportDates,
-          view: interestSpreadHistoryView,
-          ...(appliedScenarioRate
-            ? { scenarioRatePct: appliedScenarioRate }
-            : {}),
-        }),
-      enabled: Boolean(trendWorkspaceOpen && trendDiagnosticsLoaded),
-      retry: false,
-    })),
-  });
-  /** Merged period lookup so each consumer resolves its own points regardless of which batch carried them. */
-  const historyPayloadByReportDate = useMemo(() => {
-    const byReportDate = new Map<
-      string,
-      { payload: ProductCategoryPnlPayload; resultMeta: ResultMeta | undefined }
-    >();
-    [...trendHistoryQueries, ...interestSpreadHistoryQueries].forEach(
-      (query) => {
-        query.data?.result.items.forEach((item) => {
-          if (item.status !== "ok" || !item.result) {
-            return;
-          }
-          byReportDate.set(item.report_date, {
-            payload: item.result,
-            resultMeta: item.result_meta ?? undefined,
-          });
-        });
-      },
-    );
-    return byReportDate;
-  }, [interestSpreadHistoryQueries, trendHistoryQueries]);
   const trendSnapshots = useMemo(
     () =>
       trendDiagnosticsLoaded
@@ -1492,148 +1280,6 @@ export default function ProductCategoryPnlPage() {
     },
   ];
 
-  function updateAdjustmentField<
-    K extends keyof ProductCategoryManualAdjustmentRequest,
-  >(key: K, value: ProductCategoryManualAdjustmentRequest[K]) {
-    setAdjustmentDraft((current) => ({
-      ...current,
-      [key]: value,
-    }));
-  }
-
-  async function handleManualAdjustmentSubmit() {
-    setAdjustmentError(null);
-    if (!adjustmentDraft.report_date) {
-      setAdjustmentError("请选择报表月份。");
-      return;
-    }
-    if (!adjustmentDraft.account_code.trim()) {
-      setAdjustmentError("请输入科目代码。");
-      return;
-    }
-    if (
-      !adjustmentDraft.beginning_balance &&
-      !adjustmentDraft.ending_balance &&
-      !adjustmentDraft.monthly_pnl &&
-      !adjustmentDraft.daily_avg_balance &&
-      !adjustmentDraft.annual_avg_balance
-    ) {
-      setAdjustmentError("至少填写一个调整数值。");
-      return;
-    }
-
-    setAdjustmentMutationKind(editingAdjustmentId ? "edit" : "create");
-    try {
-      const payload = editingAdjustmentId
-        ? await client.updateProductCategoryManualAdjustment(
-            editingAdjustmentId,
-            adjustmentDraft,
-          )
-        : await client.createProductCategoryManualAdjustment(adjustmentDraft);
-      setLastAdjustmentId(payload.adjustment_id);
-      await runRefreshWorkflow();
-      setShowManualForm(false);
-      setEditingAdjustmentId(null);
-      setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
-    } catch (error) {
-      setAdjustmentError(
-        error instanceof Error ? error.message : "手工录入失败",
-      );
-    } finally {
-      setAdjustmentMutationKind(null);
-    }
-  }
-
-  async function handleManualAdjustmentRevoke(adjustmentId: string) {
-    if (
-      !window.confirm(
-        `Confirm revoke product-category adjustment ${adjustmentId}?`,
-      )
-    ) {
-      return;
-    }
-    setAdjustmentError(null);
-    setAdjustmentMutationKind("revoke");
-    try {
-      await client.revokeProductCategoryManualAdjustment(adjustmentId);
-      await runRefreshWorkflow();
-    } catch (error) {
-      setAdjustmentError(
-        error instanceof Error ? error.message : "撤销手工录入失败",
-      );
-    } finally {
-      setAdjustmentMutationKind(null);
-    }
-  }
-
-  async function handleManualAdjustmentRestore(adjustmentId: string) {
-    setAdjustmentError(null);
-    setAdjustmentMutationKind("restore");
-    try {
-      await client.restoreProductCategoryManualAdjustment(adjustmentId);
-      await runRefreshWorkflow();
-    } catch (error) {
-      setAdjustmentError(
-        error instanceof Error ? error.message : "恢复手工录入失败",
-      );
-    } finally {
-      setAdjustmentMutationKind(null);
-    }
-  }
-
-  async function handleManualAdjustmentsExport() {
-    setAdjustmentExportError(null);
-    if (!selectedDate) {
-      setAdjustmentExportError("请选择报表月份后再导出。");
-      return;
-    }
-    setIsExportingAdjustments(true);
-    try {
-      const payload =
-        await client.exportProductCategoryManualAdjustmentsCsv(selectedDate);
-      downloadProductCategoryAdjustmentsCsv(payload.filename, payload.content);
-      setExportedAdjustmentFilename(payload.filename);
-    } catch (error) {
-      setAdjustmentExportError(
-        error instanceof Error ? error.message : "导出手工调整失败",
-      );
-    } finally {
-      setIsExportingAdjustments(false);
-    }
-  }
-
-  function handleManualAdjustmentEdit(adjustment: {
-    adjustment_id: string;
-    report_date: string;
-    operator: "ADD" | "DELTA" | "OVERRIDE";
-    approval_status: "approved" | "pending" | "rejected";
-    account_code: string;
-    currency: "CNX" | "CNY";
-    account_name?: string;
-    beginning_balance?: string | null;
-    ending_balance?: string | null;
-    monthly_pnl?: string | null;
-    daily_avg_balance?: string | null;
-    annual_avg_balance?: string | null;
-  }) {
-    setEditingAdjustmentId(adjustment.adjustment_id);
-    setAdjustmentDraft({
-      report_date: adjustment.report_date,
-      operator: adjustment.operator,
-      approval_status: adjustment.approval_status,
-      account_code: adjustment.account_code,
-      currency: adjustment.currency,
-      account_name: adjustment.account_name ?? "",
-      beginning_balance: adjustment.beginning_balance ?? null,
-      ending_balance: adjustment.ending_balance ?? null,
-      monthly_pnl: adjustment.monthly_pnl ?? null,
-      daily_avg_balance: adjustment.daily_avg_balance ?? null,
-      annual_avg_balance: adjustment.annual_avg_balance ?? null,
-    });
-    setAdjustmentError(null);
-    setShowManualForm(true);
-  }
-
   const governanceNotices = collectProductCategoryGovernanceNotices(
     baselineQuery.data?.result_meta,
   );
@@ -1773,14 +1419,7 @@ export default function ProductCategoryPnlPage() {
               <button
                 type="button"
                 data-testid="product-category-manual-button"
-                onClick={() => {
-                  setShowManualForm((current) => !current);
-                  setEditingAdjustmentId(null);
-                  setAdjustmentError(null);
-                  if (showManualForm) {
-                    setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
-                  }
-                }}
+                onClick={handleManualAdjustmentToggle}
                 className="product-category-contract-hero__button"
               >
                 + 手工录入
@@ -2008,11 +1647,7 @@ export default function ProductCategoryPnlPage() {
           error={adjustmentError}
           onFieldChange={updateAdjustmentField}
           onSubmit={() => void handleManualAdjustmentSubmit()}
-          onCancel={() => {
-            setShowManualForm(false);
-            setEditingAdjustmentId(null);
-            setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
-          }}
+          onCancel={handleManualAdjustmentCancel}
         />
       ) : null}
 
@@ -2507,21 +2142,7 @@ export default function ProductCategoryPnlPage() {
         isExporting={isExportingAdjustments}
         exportError={adjustmentExportError}
         exportedFilename={exportedAdjustmentFilename}
-        onCreateAdjustment={() => {
-          setEditingAdjustmentId(null);
-          setAdjustmentError(null);
-          setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
-          setShowManualForm(true);
-          const scrollToForm = () =>
-            document
-              .getElementById("product-category-manual-adjustment-form")
-              ?.scrollIntoView?.({ block: "center" });
-          if (typeof requestAnimationFrame === "function") {
-            requestAnimationFrame(scrollToForm);
-          } else {
-            scrollToForm();
-          }
-        }}
+        onCreateAdjustment={handleManualAdjustmentCreate}
         onExport={() => void handleManualAdjustmentsExport()}
       />
     </section>
