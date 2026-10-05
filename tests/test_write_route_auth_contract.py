@@ -26,6 +26,8 @@ def _setup_scope_store(tmp_path, monkeypatch, *, grant: bool):
     get_settings = cast(_SettingsGetterWithCacheClear, get_settings)
     sqlite_path = tmp_path / "auth-scope-contract.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "auth-scope-source.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
     get_settings.cache_clear()
 
@@ -254,10 +256,16 @@ def _patch_commodity_futures_refresh(monkeypatch, calls: list[str]) -> str:
 
 def _patch_product_category_refresh(monkeypatch, calls: list[str]) -> str:
     import backend.app.api.routes.product_category_pnl as route_module
+    from backend.app.services.product_category_pnl_service import PRODUCT_CATEGORY_JOB_NAME
 
     def fake_refresh(_settings, **_kwargs):
         calls.append("called")
-        return {"status": "queued", "run_id": "product-category-refresh-test"}
+        return {
+            "status": "queued",
+            "run_id": "product-category-refresh-test",
+            "job_name": PRODUCT_CATEGORY_JOB_NAME,
+            "trigger_mode": "async",
+        }
 
     monkeypatch.setattr(route_module, "refresh_product_category_pnl", fake_refresh)
     return "product-category-refresh-test"
