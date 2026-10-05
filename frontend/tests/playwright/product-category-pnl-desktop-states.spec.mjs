@@ -204,7 +204,9 @@ async function installProductCategoryStateRoutes(page, state, options = {}) {
     if (isSelectedBaseline && baselineFailuresRemaining > 0) {
       baselineFailuresRemaining -= 1;
       await route.fulfill({
-        status: 503,
+        // A terminal read failure exercises the manual retry surface; 503 is
+        // transient and is retried automatically by the production read policy.
+        status: 500,
         contentType: "application/json",
         body: JSON.stringify({ detail: "desktop-state-smoke" }),
       });
@@ -334,7 +336,7 @@ async function installDatesFailureRoute(page) {
     }
     failuresRemaining -= 1;
     await route.fulfill({
-      status: 503,
+      status: 500,
       contentType: "application/json",
       body: JSON.stringify({ detail: "desktop-dates-state-smoke" }),
     });
@@ -500,7 +502,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       }
 
       const unexpectedConsoleErrors = consoleErrors.filter(
-        (message) => state !== "error" || !message.includes("503"),
+        (message) => state !== "error" || !message.includes("500"),
       );
       expect(unexpectedConsoleErrors).toEqual([]);
       expect(pageErrors).toEqual([]);
@@ -571,7 +573,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     await page.getByRole("button", { name: "重试报告月份" }).click();
     await expect(health).toHaveAttribute("data-health-state", "ready");
     await expect(page.locator('[data-testid="product-category-formal-readiness-band"]')).toBeVisible();
-    expect(consoleErrors.filter((message) => !message.includes("503"))).toEqual([]);
+    expect(consoleErrors.filter((message) => !message.includes("500"))).toEqual([]);
     expect(pageErrors).toEqual([]);
   });
 
@@ -606,10 +608,12 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       page.getByRole("combobox", { name: "选择报告月份" }).selectOption(PRIOR_REPORT_DATE),
     ]);
     await expectDesktopLoadingLayout(page, viewport, "正式基线加载中");
-    // slot 结构（DESIGN.md §7 单行 1 个 · 配额，提交 a97c282d）：`日期 · 口径 | 视图`。
-    await expect(page.locator('[data-testid="product-category-report-date-slot"]')).toContainText(
-      `${PRIOR_REPORT_DATE} · 口径待确认 | 月度视图`,
-    );
+    // The selected date remains in the date control; the hero slot only names
+    // the basis and view, and its title identifies the same requested date.
+    const dateSlot = page.locator('[data-testid="product-category-report-date-slot"]');
+    await expect(dateSlot).toHaveText("口径待确认 | 月度视图");
+    await expect(dateSlot).toHaveAttribute("title", `报告日期 ${PRIOR_REPORT_DATE}`);
+    await expect(page.getByRole("combobox", { name: "选择报告月份" })).toHaveValue(PRIOR_REPORT_DATE);
     await page.screenshot({
       path: testInfo.outputPath(`product-category-pnl-month-switch-loading-${viewport.name}.jpg`),
       type: "jpeg",
@@ -657,11 +661,10 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       page.getByRole("button", { name: "汇总视图" }).click(),
     ]);
     await expectDesktopLoadingLayout(page, viewport, "正式基线加载中");
-    // 旧断言 `口径待确认 · 汇总视图` 基于第二段仍用 · 的结构；提交 a97c282d 起视图段改用 |
-    // 分隔（DESIGN.md §7），此处锁定含日期前缀的完整 slot 结构。
-    await expect(page.locator('[data-testid="product-category-report-date-slot"]')).toContainText(
-      `${FIXED_REPORT_DATE} · 口径待确认 | 汇总视图`,
-    );
+    const dateSlot = page.locator('[data-testid="product-category-report-date-slot"]');
+    await expect(dateSlot).toHaveText("口径待确认 | 汇总视图");
+    await expect(dateSlot).toHaveAttribute("title", `报告日期 ${FIXED_REPORT_DATE}`);
+    await expect(page.getByRole("combobox", { name: "选择报告月份" })).toHaveValue(FIXED_REPORT_DATE);
     await page.screenshot({
       path: testInfo.outputPath(`product-category-pnl-view-switch-loading-${viewport.name}.jpg`),
       type: "jpeg",

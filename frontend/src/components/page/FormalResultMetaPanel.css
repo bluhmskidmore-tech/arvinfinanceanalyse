@@ -108,6 +108,7 @@
 }
 
 .formal-result-meta-panel__diagnostics > summary {
+  min-height: 24px;
   cursor: pointer;
   color: var(--dh-api-muted, var(--moss-color-neutral-500));
   font-size: 12px;

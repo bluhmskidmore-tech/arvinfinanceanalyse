@@ -1,9 +1,15 @@
 import { test, expect } from "@playwright/test";
+import { interceptDesignData } from "./fixtures/market-overview-figma.mjs";
+
+const REAL_STATE_BASE_URL = process.env.MOSS_PLAYWRIGHT_STATE_BASE_URL ??
+  `http://127.0.0.1:${process.env.MOSS_PLAYWRIGHT_STATE_PORT ?? "5889"}`;
+test.use({ baseURL: REAL_STATE_BASE_URL });
 
 const SUBPAGES = ["/market-overview", "/market-data", "/cross-asset", "/macro-observation", "/macro-toolkit", "/stock-analysis", "/news-events"];
 const CHAPTERS = ["#market-overview-judgment", "#market-overview-evidence", "#market-financial-charts-all", "#market-backend-data-all"];
 
 async function openMarketOverview(page, width) {
+  const reads = await interceptDesignData(page);
   const snapshots = [], writes = [], scenarioReads = [], errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
@@ -16,9 +22,35 @@ async function openMarketOverview(page, width) {
   });
   await page.setViewportSize({ width, height: 900 });
   await page.goto("/market-overview", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("market-funding-rates-observations")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('section[aria-labelledby="market-rates-title"]')).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => reads.snapshot).toBeGreaterThan(0);
+  await selectFundingView(page, "资金价格");
   await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
-  return { payload: (await Promise.all(snapshots)).at(-1)?.result, writes, scenarioReads, errors };
+  const payload = (await Promise.all(snapshots)).at(-1)?.result;
+  expect(payload).toBeTruthy();
+  expect(reads.paths).toContain("/ui/market-overview/snapshot");
+  return { payload, reads, writes, scenarioReads, errors };
+}
+
+function observationPanels(page) {
+  return {
+    funding: page.locator('section[aria-labelledby="market-funding-title"]'),
+    rates: page.locator('section[aria-labelledby="market-rates-title"]'),
+    trend: page.getByTestId("module-home-market-dense-chart-key-rate-trend"),
+    cross: page.getByTestId("module-home-market-dense-chart-cross-asset-move"),
+  };
+}
+
+async function selectFundingView(page, name) {
+  const group = page.getByRole("group", { name: "资金与利率图表", exact: true });
+  const button = group.getByRole("button", { name, exact: true });
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "true");
+  await expect(group.getByRole("button", { name: name === "资金价格" ? "关键利率" : "资金价格", exact: true })).toHaveAttribute("aria-pressed", "false");
+  const { funding, trend } = observationPanels(page);
+  await expect(name === "资金价格" ? funding.getByTestId("market-funding-chart") : trend).toBeVisible();
+  await expect(name === "资金价格" ? trend : funding.getByTestId("market-funding-chart")).not.toBeVisible();
+  await (name === "资金价格" ? funding : trend).scrollIntoViewIfNeeded();
 }
 
 function expectWithinViewport(box, width) {
@@ -54,33 +86,37 @@ async function verifyDrawer(page, kind, observation) {
 }
 
 test.describe("market overview browser smoke", () => {
-  test("places the quote tape before four peer charts in two rows while keeping restrictions visible", async ({ page }) => {
+  test("keeps the four chart subjects accessible after the quote tape with dates and restrictions", async ({ page }) => {
     const { payload, writes, scenarioReads, errors } = await openMarketOverview(page, 1440);
-    const main = page.getByTestId("market-funding-rates-observations");
-    const cards = main.locator(":scope > section, :scope > article");
-    await expect(cards).toHaveCount(4);
-    const funding = cards.nth(0), rates = cards.nth(1);
+    const { funding, rates, trend, cross } = observationPanels(page);
     await expect(funding.getByRole("heading", { name: "资金价格", exact: true })).toBeVisible();
     await expect(rates.getByRole("heading", { name: "国债收益率曲线", exact: true })).toBeVisible();
-    await expect(cards.nth(2)).toHaveAttribute("data-testid", "module-home-market-dense-chart-key-rate-trend");
-    await expect(cards.nth(3)).toHaveAttribute("data-testid", "module-home-market-dense-chart-cross-asset-move");
-    for (const card of await cards.all()) await expect(card.locator("canvas")).toHaveCount(1);
-    const boxes = await Promise.all((await cards.all()).map((card) => card.boundingBox()));
+    const cards = [rates, funding, cross];
+    for (const card of cards) {
+      await expect(card).toBeVisible();
+      await card.scrollIntoViewIfNeeded();
+      await expect(card.locator("canvas:visible")).toHaveCount(1);
+    }
+    const boxes = await Promise.all(cards.map((card) => card.boundingBox()));
     const tape = await page.getByRole("region", { name: "市场行情带", exact: true }).boundingBox();
     expect(tape.y + tape.height).toBeLessThanOrEqual(boxes[0].y);
-    expect(Math.abs(boxes[0].y - boxes[1].y)).toBeLessThan(2);
-    expect(Math.abs(boxes[2].y - boxes[3].y)).toBeLessThan(2);
-    expect(Math.abs(boxes[0].x - boxes[2].x)).toBeLessThan(2);
-    expect(Math.abs(boxes[1].x - boxes[3].x)).toBeLessThan(2);
-    expect(boxes[2].y).toBeGreaterThanOrEqual(Math.max(boxes[0].y + boxes[0].height, boxes[1].y + boxes[1].height));
+    // The delivered hierarchy gives the curve its own row, then places funding
+    // beside cross-asset evidence; key rates share an explicit funding switch.
+    expect(Math.abs(boxes[1].y - boxes[2].y)).toBeLessThan(2);
+    expect(boxes[1].y).toBeGreaterThanOrEqual(boxes[0].y + boxes[0].height);
+    expect(boxes[2].x).toBeGreaterThanOrEqual(boxes[1].x + boxes[1].width);
+    for (const box of boxes) expectWithinViewport(box, 1440);
     for (const card of [funding, rates]) {
-      const canvas = await card.locator("canvas").boundingBox();
+      await card.locator("canvas:visible").scrollIntoViewIfNeeded();
+      const canvas = await card.locator("canvas:visible").boundingBox();
       expect(canvas.y + canvas.height).toBeLessThanOrEqual(900);
-      await expect(card.locator("details")).not.toHaveAttribute("open");
+      await expect(card.locator("details:visible")).not.toHaveAttribute("open");
+      await expect(card.getByText(/^(资金|曲线)观察日/)).toBeVisible();
+      await expect(card.getByText(/^(资金|曲线)观察日/)).toHaveText(/观察日 \d{4}-\d{2}-\d{2}；比较日 \d{4}-\d{2}-\d{2}/);
     }
     for (const [card, observation] of [[funding, payload?.funding_observation], [rates, payload?.rates_observation]]) {
-      if (!observation) continue;
-      const dates = card.locator(":scope > p").first();
+      expect(observation).toBeTruthy();
+      const dates = card.getByText(/^(资金|曲线)观察日/);
       await expect(dates).toBeVisible();
       await expect(dates).toContainText(observation.observation_date ?? "—");
       await expect(dates).toContainText(observation.comparison_date ?? "—");
@@ -98,7 +134,14 @@ test.describe("market overview browser smoke", () => {
     if (payload?.funding_observation?.rows.find((row) => row.key === "dr007")?.is_proxy) await expect(funding.getByText("代理参考", { exact: true })).toBeVisible();
     if (payload?.funding_observation?.policy_reference.validity_status === "unverified") await expect(funding.getByText("政策基准待核验", { exact: true })).toBeVisible();
     if (payload?.rates_observation?.full_curve_comparison_allowed === false) await expect(rates.getByText("跨期比较待核验", { exact: true })).toBeVisible();
-    await expect(page.locator("#market-overview-judgment")).toContainText("关键利率近 20 期走势");
+    await selectFundingView(page, "关键利率");
+    await expect(trend.locator("canvas")).toHaveCount(1);
+    await expect(trend.locator("header > p")).toHaveText(/\d{4}-\d{2}-\d{2}–\d{4}-\d{2}-\d{2} · %/);
+    await expect(trend).toContainText("各序列按自身日期展示；缺口留空");
+    expectWithinViewport(await trend.boundingBox(), 1440);
+    await expect(cross).toContainText("各项比较日期见图中标签，非同日涨跌排名");
+    await selectFundingView(page, "资金价格");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
     expect(writes).toEqual([]);
     expect(scenarioReads).toEqual([]);
     expect(errors).toEqual([]);
@@ -129,10 +172,11 @@ test.describe("market overview browser smoke", () => {
   test("preserves all twelve original charts and resolves every duplicate reference to a visible original", async ({ page }) => {
     const { writes, scenarioReads, errors } = await openMarketOverview(page, 1440);
     const trend = page.getByTestId("module-home-market-dense-chart-key-rate-trend");
+    await selectFundingView(page, "关键利率");
     await expect(trend).toBeVisible();
     await expect(trend.locator("canvas")).toHaveCount(1);
     await expect(page.locator("#market-overview-judgment")).toContainText("关键利率近 20 期走势");
-    await expect(page.getByTestId("module-home-market-background-details")).not.toHaveAttribute("open");
+    await expect(page.getByTestId("module-home-market-background-details")).not.toBeVisible();
     await expect(page.getByTestId("module-home-market-dense-chart-news-density")).not.toBeVisible();
     const topics = page.locator("#market-financial-charts-all");
     await expect(topics).not.toHaveAttribute("open");
@@ -147,6 +191,7 @@ test.describe("market overview browser smoke", () => {
     for (const key of ["yield-curve"]) {
       const original = page.getByTestId(`module-home-market-chart-${key}`);
       await expect(original).toBeVisible();
+      await original.scrollIntoViewIfNeeded();
       await expect(page.getByTestId(`module-home-market-chart-ref-${key}`)).toHaveCount(0);
       await expect(page.getByTestId(`module-home-market-dense-chart-${key}`)).toHaveCount(0);
       await expect(original).not.toContainText("该图已在上方");
@@ -193,10 +238,10 @@ test.describe("market overview browser smoke", () => {
     await expect(root).not.toHaveText(/[\uFFFD]|\u93C3|\u9359|\u5BF0|\u9215/);
     await expect(root).toHaveAttribute("data-moss-theme-scope", "market-overview");
     expect(await root.evaluate((node) => getComputedStyle(node).getPropertyValue("--dh-api-bg").trim())).toBe("#161826");
-    const subpageNav = page.getByRole("navigation", { name: "当前工作台页面", exact: true });
+    const subpageNav = page.getByRole("navigation", { name: "市场工作台页面", exact: true });
     const chapters = page.getByTestId("module-home-market-chapter-nav");
     for (const href of SUBPAGES) await expect(subpageNav.locator(`a[href="${href}"]`)).toHaveCount(1);
-    for (const href of CHAPTERS) await expect(chapters.locator(`a[href="${href}"]`)).toHaveCount(1);
+    for (const href of CHAPTERS) await expect(chapters.locator(`:scope > a[href="${href}"]`)).toHaveCount(1);
     await expect(subpageNav.locator('a[aria-current="page"]')).toHaveCount(1);
     await expect(chapters.locator('a[aria-current="location"]')).toHaveCount(1);
     await expect(page.getByTestId("module-home-toolbar")).toBeVisible();
@@ -205,17 +250,15 @@ test.describe("market overview browser smoke", () => {
     await expect(page.locator("#market-overview-signals")).toHaveCount(0);
     await expect(page.getByTestId("module-home-market-dense-directional-coverage")).toHaveCount(0);
 
-    const main = page.getByTestId("market-funding-rates-observations");
-    const funding = main.locator('section[aria-labelledby="market-funding-title"]');
-    const rates = main.locator('section[aria-labelledby="market-rates-title"]');
-    expect((await main.boundingBox()).y).toBeLessThan(750);
-    const fundingDetails = funding.locator("details");
+    const { funding, rates } = observationPanels(page);
+    expect((await rates.boundingBox()).y).toBeLessThan(750);
+    const fundingDetails = funding.locator("details:visible");
     const ratesDetails = rates.locator("details");
     await expect(fundingDetails).not.toHaveAttribute("open");
     await expect(ratesDetails).not.toHaveAttribute("open");
-    await expect(funding.locator("canvas")).toBeVisible();
+    await expect(funding.locator("canvas:visible")).toBeVisible();
     await expect(rates.locator("canvas")).toBeVisible();
-    expect((await funding.locator("canvas").boundingBox()).y).toBeLessThan((await fundingDetails.boundingBox()).y);
+    expect((await funding.locator("canvas:visible").boundingBox()).y).toBeLessThan((await fundingDetails.boundingBox()).y);
     expect((await rates.locator("canvas").boundingBox()).y).toBeLessThan((await ratesDetails.boundingBox()).y);
     await fundingDetails.locator("summary").click();
     await ratesDetails.locator("summary").click();
@@ -223,7 +266,7 @@ test.describe("market overview browser smoke", () => {
     await expect(rates.getByRole("table", { name: "国债分期限变化" })).toBeVisible();
     await expect(rates.getByRole("table", { name: "国债期限利差变化" })).toBeVisible();
     for (const [panel, observation] of [[funding, payload?.funding_observation], [rates, payload?.rates_observation]]) {
-      if (!observation) continue; // Mock transport does not emit a network response.
+      expect(observation).toBeTruthy();
       await expect(panel).toContainText(observation.observation_date ?? "—");
       await expect(panel).toContainText(observation.comparison_date ?? "—");
       await expect(panel).toContainText(!observation.judgment_allowed ? observation.reason || observation.summary : observation.summary);
@@ -249,7 +292,7 @@ test.describe("market overview browser smoke", () => {
     await verification.locator("summary").click();
     await expect(page.locator("#market-financial-charts-all")).not.toHaveAttribute("open");
     await expect(page.locator("#market-backend-data-all")).not.toHaveAttribute("open");
-    await chapters.locator('a[href="#market-backend-data-all"]').click();
+    await chapters.locator(':scope > a[href="#market-backend-data-all"]').click();
     await expect(page.locator("#market-backend-data-all")).toHaveAttribute("open");
     await expect(page.locator("#market-backend-data-all").getByRole("table").first()).toBeVisible();
     expect(writes).toEqual([]);
@@ -259,24 +302,56 @@ test.describe("market overview browser smoke", () => {
 
   for (const width of [1024, 390]) {
     test(`keeps analysis and keyboard evidence inside ${width}px without page overflow`, async ({ page }) => {
-      const { payload, writes, scenarioReads, errors } = await openMarketOverview(page, width);
+      const { payload, reads, writes, scenarioReads, errors } = await openMarketOverview(page, width);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
-      for (const id of ["module-home-market-chapter-nav", "module-home-toolbar", "market-funding-rates-observations"]) expectWithinViewport(await page.getByTestId(id).boundingBox(), width);
+      for (const id of ["module-home-market-chapter-nav", "module-home-toolbar"]) expectWithinViewport(await page.getByTestId(id).boundingBox(), width);
+      const { funding, rates, trend, cross } = observationPanels(page);
+      for (const card of [rates, funding, cross]) expectWithinViewport(await card.boundingBox(), width);
       if (width === 390) {
         const tape = page.getByRole("region", { name: "市场行情带", exact: true });
-        await expect(tape.locator(":scope > article")).toHaveCount(8);
-        await tape.focus();
-        await expect(tape).toBeFocused();
-        await page.keyboard.press("ArrowRight");
-        await expect.poll(() => tape.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
-        const cards = page.getByTestId("market-funding-rates-observations").locator(":scope > section, :scope > article");
-        await expect(cards).toHaveCount(4);
-        const boxes = await Promise.all((await cards.all()).map((card) => card.boundingBox()));
+        // The delivered tape prioritizes four subjects. The full quote table
+        // remains separately accessible through the chapter navigation.
+        await expect(tape.locator(":scope > article")).toHaveCount(4);
+        for (const label of ["10Y国债", "DR007", "SHIBOR 3M", "USD/CNY"]) {
+          await expect(tape.locator(":scope > article").filter({ hasText: label })).toHaveCount(1);
+        }
+        for (const item of await tape.locator(":scope > article").all()) {
+          await expect(item.locator(":scope > span")).toBeVisible();
+          await expect(item.locator("strong")).toBeVisible();
+          expectWithinViewport(await item.boundingBox(), width);
+        }
+        const allQuotes = page.getByTestId("module-home-market-chapter-nav").getByRole("link", { name: "全部行情", exact: true });
+        await page.locator("#workbench-main-content").focus();
+        let quoteLinkReached = false;
+        for (let step = 0; step < 60; step += 1) {
+          await page.keyboard.press("Tab");
+          if (await allQuotes.evaluate(node => node === document.activeElement)) {
+            quoteLinkReached = true;
+            break;
+          }
+        }
+        expect(quoteLinkReached).toBe(true);
+        await expect(allQuotes).toBeFocused();
+        await expect(allQuotes).toBeInViewport();
+        await page.keyboard.press("Enter");
+        const quotes = page.locator("#market-backend-data-all");
+        await expect(quotes).toHaveAttribute("open");
+        await expect(quotes.getByRole("table").first()).toBeVisible();
+        for (const name of ["Brent spot price", "中证全债指数", "USD/CNY", "沪深300指数收盘价", "铜主力期货收盘价"]) {
+          await expect(quotes.getByRole("button", { name: `核验 ${name}`, exact: true })).toBeVisible();
+        }
+        expect(reads.paths).toContain("/ui/macro/choice-series/latest");
+        const boxes = await Promise.all([rates, funding, cross].map((card) => card.boundingBox()));
         for (let index = 0; index < boxes.length; index += 1) {
           expectWithinViewport(boxes[index], width);
           if (index > 0) expect(boxes[index].y).toBeGreaterThanOrEqual(boxes[index - 1].y + boxes[index - 1].height);
         }
       }
+      await selectFundingView(page, "关键利率");
+      await expect(trend.locator("canvas")).toHaveCount(1);
+      expectWithinViewport(await trend.boundingBox(), width);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
+      await selectFundingView(page, "资金价格");
       const search = page.getByTestId("module-home-market-dense-search").locator("input");
       await search.focus();
       await expect(search).toBeFocused();

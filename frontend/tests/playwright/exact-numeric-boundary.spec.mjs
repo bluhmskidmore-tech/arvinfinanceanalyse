@@ -1,10 +1,70 @@
 import { expect, test } from "@playwright/test";
+import { createDemoBalanceAnalysisClient } from "../../src/mocks/balanceAnalysisMockClient.ts";
+import { createDemoBondAnalyticsClient, createDemoBondDashboardClient } from "../../src/mocks/bondAnalyticsMockClient.ts";
+import { bondDashboardDemoEndpoints } from "../../src/mocks/bondDashboardWorkbenchMockEndpoints.ts";
+import { createDemoCashflowClient } from "../../src/mocks/cashflowMockClient.ts";
+import { buildMockApiEnvelope } from "../../src/mocks/mockApiEnvelope.ts";
+
+const REAL_STATE_BASE_URL = process.env.MOSS_PLAYWRIGHT_STATE_BASE_URL ??
+  `http://127.0.0.1:${process.env.MOSS_PLAYWRIGHT_STATE_PORT ?? "5889"}`;
+const delay = async () => {};
+const ensureBundle = async () => ({ buildMockApiEnvelope });
+const fixtureClient = {
+  ...createDemoBalanceAnalysisClient(delay, ensureBundle),
+  ...createDemoBondAnalyticsClient(delay, ensureBundle),
+  ...createDemoBondDashboardClient(delay, ensureBundle),
+  ...bondDashboardDemoEndpoints(delay, ensureBundle),
+  ...createDemoCashflowClient(delay),
+};
+test.use({ baseURL: REAL_STATE_BASE_URL });
+
+async function fixtureResponse(url) {
+  const options = {
+    reportDate: url.searchParams.get("report_date") ?? "2025-12-31",
+    positionScope: url.searchParams.get("position_scope") ?? "all",
+    currencyBasis: url.searchParams.get("currency_basis") ?? "CNY",
+  };
+  switch (url.pathname) {
+    case "/api/system-read-publication":
+      return { enabled: false, generation: null, coverage_dates: {} };
+    case "/api/bond-dashboard/dates": return fixtureClient.getBondDashboardDates();
+    case "/api/bond-dashboard/bundle": return fixtureClient.fetchBondDashboardBundle(
+      url.searchParams.get("report_date"), url.searchParams.get("sections").split(","),
+    );
+    case "/ui/balance-analysis/dates": return fixtureClient.getBalanceAnalysisDates();
+    case "/ui/balance-analysis/publication-status": return fixtureClient.getBalanceAnalysisPublicationStatus();
+    case "/ui/balance-analysis/current-user": return fixtureClient.getBalanceAnalysisCurrentUser();
+    case "/ui/balance-analysis/overview": return fixtureClient.getBalanceAnalysisOverview(options);
+    case "/ui/balance-analysis": return fixtureClient.getBalanceAnalysisDetail(options);
+    case "/ui/balance-analysis/summary": return fixtureClient.getBalanceAnalysisSummary({ ...options,
+      limit: Number(url.searchParams.get("limit") ?? 200), offset: Number(url.searchParams.get("offset") ?? 0),
+    });
+    case "/ui/balance-analysis/summary-by-basis": return fixtureClient.getBalanceAnalysisSummaryByBasis(options);
+    case "/ui/balance-analysis/workbook": return fixtureClient.getBalanceAnalysisWorkbook(options);
+    case "/ui/balance-analysis/decision-items": return fixtureClient.getBalanceAnalysisDecisionItems(options);
+    case "/api/cashflow-projection": return fixtureClient.getCashflowProjection(options.reportDate);
+    default: return undefined;
+  }
+}
+
+test.beforeEach(async ({ page }) => {
+  // Exercise the real HTTP adapter with synthetic responses. Mock-mode clients
+  // return locally and never reach page.route, so they cannot test this boundary.
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (!/^\/(api|ui|health)(\/|$)/.test(url.pathname)) return route.continue();
+    if (!["GET", "HEAD"].includes(route.request().method())) return route.abort();
+    const json = await fixtureResponse(url);
+    return json === undefined
+      ? route.fulfill({ status: 503, json: { detail: "Not part of the numeric browser fixture" } })
+      : route.fulfill({ json });
+  });
+});
 
 async function interceptJson(route, mutate) {
-  const response = await route.fetch();
-  const body = await response.json();
+  const body = await fixtureResponse(new URL(route.request().url()));
+  if (body === undefined) throw new Error(`No numeric fixture for ${route.request().url()}`);
   await route.fulfill({
-    response,
     json: mutate(body),
   });
 }
@@ -26,8 +86,12 @@ async function prepareBondDashboardExactNumeric(page) {
       const sections = next?.result?.sections ?? {};
       const headline = sections["headline-kpis"];
       const risk = sections["risk-indicators"];
+      if (sections.dates?.result) sections.dates.result.report_dates = ["2026-04-30"];
 
-      if (headline?.result?.kpis?.weighted_ytm && headline?.result?.prev_kpis?.weighted_ytm) {
+      if (headline?.result?.kpis?.weighted_ytm) {
+        // This boundary needs two periods even when the demo date has no prior
+        // period. Seed the comparison explicitly instead of silently skipping it.
+        headline.result.prev_kpis ??= structuredClone(headline.result.kpis);
         headline.result.prev_report_date = "2026-03-31";
         headline.result.kpis.weighted_ytm.raw = 0.025;
         headline.result.kpis.weighted_ytm.raw_text = "0.03100000";
@@ -212,6 +276,12 @@ async function prepareBalanceAnalysisExactDisplay(page) {
       );
       if (ratingAlert) {
         ratingAlert.reason = "Top rating bucket share reached 0.7550499999999999999.";
+      } else if (riskAlerts) {
+        riskAlerts.rows.push({
+          title: "最高评级桶占比触及预警", severity: "high", source_section: "评级分析",
+          rule_id: "bal_wb_risk_rating_001", rule_version: "v1",
+          reason: "Top rating bucket share reached 0.7550499999999999999.",
+        });
       }
       return next;
     });
@@ -352,7 +422,7 @@ test.describe("exact numeric browser boundaries", () => {
       "90,071,992.50",
     );
 
-    await page.getByText("工作簿结构与分布面板", { exact: true }).click();
+    await page.getByRole("heading", { name: "完整工作簿明细", exact: true }).click();
     await expect(page.getByTestId("balance-analysis-workbook-table-rating_analysis")).toContainText(
       "900,719,925,474.00 亿元",
     );

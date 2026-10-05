@@ -1,19 +1,15 @@
 import fs from "node:fs";
-import ts from "typescript";
+import { loadMock } from "./mock-module.mjs";
 
 // Only the browser test imports this module. Production never reads design fixtures.
 const root = new URL("../../../", import.meta.url);
 // Frozen copies of the approved synthetic design inputs keep clean checkouts reproducible.
 export const fixed = JSON.parse(fs.readFileSync(new URL("market-overview-fixed.json", import.meta.url), "utf8"));
 export const risk = JSON.parse(fs.readFileSync(new URL("market-overview-risk-v1.4.json", import.meta.url), "utf8"));
-function loadMock(url) {
-  const code = ts.transpileModule(fs.readFileSync(url, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const exports = {};
-  // Existing mock modules only import one another; no app/client runtime is loaded.
-  new Function("exports", "require", code)(exports, (name) => loadMock(new URL(`${name}.ts`, url)));
-  return exports;
-}
 const { buildMockMarketOverviewSnapshot } = loadMock(new URL("src/mocks/marketOverviewSnapshot.ts", root));
+const { createMockMacroToolkitClient } = loadMock(new URL("src/mocks/macroToolkitMockClient.ts", root));
+const macroClient = createMockMacroToolkitClient();
+const { buildMockChoiceNewsEnvelope } = loadMock(new URL("src/mocks/choiceNewsMocks.ts", root));
 const date = fixed.observationDate;
 const previous = fixed.comparisonDate;
 const points = (values) => fixed.dates.map((day, index) => ({ trade_date: `2026-${day}`, value_numeric: values[index] }));
@@ -28,7 +24,12 @@ export function buildDesignSnapshot() {
   Object.assign(p.rates_observation, { observation_date: date, comparison_date: previous, summary: "国债三期限下行，10Y 降幅较大", interpretation: "10Y 下行 1 bp；2Y、5Y 各下行 0.5 bp" });
   p.rates_observation.rows = p.rates_observation.rows.map((row, i) => ({ ...row, value: fixed.curve.current[i], previous_value: fixed.curve.previous[i], change_bp: i === 2 ? -1 : -0.5, observation_date: date, previous_date: previous, recent_points: points(i === 0 ? fixed.rates2Y : i === 2 ? fixed.rates10Y : fixed.rates2Y.map((v) => v + 0.17)) }));
   p.rates_observation.evidence = p.rates_observation.rows;
-  p.rates_observation.spreads = [];
+  p.rates_observation.spreads = p.rates_observation.spreads.map((spread) => {
+    const shortIndex = spread.key === "term_10y_2y" ? 0 : 1;
+    const current = Number(((fixed.curve.current[2] - fixed.curve.current[shortIndex]) * 100).toFixed(2));
+    const prior = Number(((fixed.curve.previous[2] - fixed.curve.previous[shortIndex]) * 100).toFixed(2));
+    return { ...spread, value_bp: current, previous_value_bp: prior, change_bp: Number((current - prior).toFixed(2)), observation_date: date, comparison_date: previous };
+  });
   p.tape.slots = [p.tape.slots[0], p.tape.slots[1], p.tape.slots[3], p.tape.slots[6]].map((slot, i) => ({ ...slot, value: [1.68, 1.37, null, 7.09][i], change: [-1, -2, null, -0.03][i], change_unit: i === 3 ? "%" : "bp", trade_date: date, label: i === 1 ? "FDR007（代理）" : slot.label, series_id: i === 1 ? "FDR007" : slot.series_id, status: i === 2 ? "unavailable" : "ok", reason: i === 2 ? "暂无有效报价" : null }));
   p.pulse.items = fixed.homeMacro.map((row, i) => ({ ...p.pulse.items[i], label: row.label, latest_value: row.current, previous_value: row.previous, change: Number((row.current - row.previous).toFixed(2)), latest_date: row.periodKey, published_at: row.publishedAt, source: "合成示例", series_id: ["M0000612", "M0001227", "M0017126", "M5525763"][i] }));
   Object.assign(p.crisis, risk.current, { status: "degraded", reason: "刷新回执待核验，商品波动窗口不完整", report_date: date, requested_report_date: date, rule_version: risk.rule_version, data_status: "degraded", score_history: risk.history, score_trends: risk.trends, score_trend: risk.trends[0], available_component_count: 4, component_count: 5, available_weight: 0.85, warnings: ["COMMODITY_VOL_UNAVAILABLE"], dependency_gate: { status: "blocked", blocked_by: [risk.current.dependency], reason_code: "required_refresh_step_not_ready" } });
@@ -43,7 +44,7 @@ export function buildDesignSnapshot() {
   p.charts.choice_latest.series = fixed.cross.map((row, i) => series(`synthetic-cross-${i}`, crossNames[i], "index", [...fixed.dates.slice(0, 6).map((day) => ({ trade_date: `2026-${day}`, value_numeric: 100 })), { trade_date: `2026-${row.from}`, value_numeric: 100 }, { trade_date: `2026-${row.to}`, value_numeric: 100 + row.value }]));
   p.dates.tape_span = { earliest: date, latest: date };
   p.dates.computed_on = date; p.dates.surfaces.forEach((row) => { row.latest = date; row.age_days = 0; });
-  Object.assign(p.gate, { human_reason: "宏观刷新回执与评分完整性待核验，已核验的资金和曲线观察可读。", recovery_action: "复核刷新回执并补齐商品波动窗口。" });
+  Object.assign(p.gate, { human_reason: "宏观更新结果与评分完整性待核验，已核验的资金和曲线观察可读。", recovery_action: "复核刷新回执并补齐商品波动窗口。" });
   return envelope;
 }
 
@@ -58,17 +59,45 @@ export function buildDesignScenario() {
 }
 
 export async function interceptDesignData(page) {
-  const reads = { snapshot: 0, full: 0, scenario: 0, writes: [], errors: [] };
+  const reads = { snapshot: 0, full: 0, scenario: 0, paths: [], writes: [], errors: [] };
   page.on("pageerror", (error) => reads.errors.push(error.message));
   await page.route("**/*", async (route) => {
     const req = route.request(); const path = new URL(req.url()).pathname;
+    if (/^\/(ui|api)\//.test(path)) reads.paths.push(path);
     if (/^\/(ui|api)\//.test(path) && !["GET", "HEAD", "OPTIONS"].includes(req.method())) reads.writes.push(path);
     let json;
+    if (path === "/api/system-read-publication") json = { enabled: false, generation: null, coverage_dates: {} };
     if (path === "/ui/market-overview/snapshot") { reads.snapshot++; json = buildDesignSnapshot(); }
-    if (path === "/ui/macro/toolkit/analysis") { reads.full++; json = buildDesignFullAnalysis(); }
+    if (path === "/ui/macro/choice-series/latest" || path === "/ui/market-data/rates") {
+      const snapshot = buildDesignSnapshot();
+      const formal = path.endsWith("/rates");
+      json = { ...snapshot, result: snapshot.result.charts[formal ? "market_rates" : "choice_latest"],
+        result_meta: { ...snapshot.result_meta, basis: formal ? "formal" : "analytical", formal_use_allowed: formal } };
+    }
+    if (path === "/ui/market-data/catalog") {
+      const snapshot = buildDesignSnapshot();
+      json = { ...snapshot, result: { series: [...snapshot.result.charts.choice_latest.series, ...snapshot.result.charts.market_rates.series] } };
+    }
+    if (path === "/ui/news/choice-events/latest") json = buildMockChoiceNewsEnvelope({ limit: 500, offset: 0, includePayloadJson: false });
+    if (path === "/ui/macro/toolkit/analysis") {
+      reads.full++;
+      json = await macroClient.getMacroToolkitAnalysis({ detail: new URL(req.url()).searchParams.get("detail") ?? "full" });
+      if (new URL(req.url()).searchParams.get("detail") !== "core") {
+        // The chart workbench also consumes full analysis. Keep the existing
+        // complete DTO and replace only the synthetic crisis drawer capability.
+        const crisis = buildDesignFullAnalysis().result.capability_results[0];
+        Object.assign(json.result, { report_date: date, as_of_date: date });
+        json.result.capability_results = json.result.capability_results.map(row => row.key === crisis.key
+          ? { ...row, ...crisis, result: { ...row.result, ...crisis.result } }
+          : row);
+      }
+    }
+    if (path === "/ui/macro/toolkit/analysis/strategy-summaries") json = await macroClient.getMacroToolkitStrategySummaries();
     if (path === "/api/risk/tensor/dates") json = { result_meta: { basis: "formal", formal_use_allowed: false, fallback_mode: "none", result_kind: "risk.tensor.dates" }, result: { report_dates: [date], blocked_report_dates: [] } };
     if (path === "/api/risk/scenario-stress") { reads.scenario++; json = buildDesignScenario(); }
-    return json ? route.fulfill({ status: 200, contentType: "application/json", json }) : route.continue();
+    if (json) return route.fulfill({ status: 200, contentType: "application/json", json });
+    if (/^\/(ui|api|health)(\/|$)/.test(path)) return route.fulfill({ status: 503, json: { detail: "Not part of the design browser fixture" } });
+    return route.continue();
   });
   return reads;
 }

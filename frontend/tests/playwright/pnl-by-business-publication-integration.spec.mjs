@@ -1,4 +1,4 @@
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -12,9 +12,16 @@ const FORMAL_STATE_BASE_URL =
 const FIXTURE_PORT = process.env.MOSS_PNL_PUBLICATION_FIXTURE_PORT ?? "15990";
 const FIXTURE_BASE_URL = `http://127.0.0.1:${FIXTURE_PORT}`;
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
+const pythonExecutable = process.platform === "win32" ? ["Scripts", "python.exe"] : ["bin", "python"];
 const FIXTURE_PYTHON =
   process.env.MOSS_PNL_PUBLICATION_FIXTURE_PYTHON ??
-  join(REPO_ROOT, ".venv", "Scripts", "python.exe");
+  process.env.MOSS_PYTHON ??
+  (process.env.VIRTUAL_ENV ? join(process.env.VIRTUAL_ENV, ...pythonExecutable) : undefined) ??
+  [join(REPO_ROOT, "backend", ".venv", ...pythonExecutable),
+    join(REPO_ROOT, ".venv", ...pythonExecutable)].find(existsSync);
+if (!FIXTURE_PYTHON || !existsSync(FIXTURE_PYTHON)) {
+  throw new Error("Prepare a repository Python environment or set MOSS_PNL_PUBLICATION_FIXTURE_PYTHON.");
+}
 const FIXTURE_SCRIPT = fileURLToPath(
   new URL("./fixtures/pnl-publication-backend.py", import.meta.url),
 );
@@ -28,7 +35,12 @@ test.describe.configure({ mode: "serial" });
 
 async function waitForFixture() {
   let lastError;
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  // Real router imports and publication materialization can take over 40 seconds
+  // on a cold mounted checkout; fail immediately if the owned child exits.
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    if (fixtureProcess.exitCode !== null) {
+      throw new Error(`publication fixture exited (${fixtureProcess.exitCode}): ${readFileSync(join(fixtureRoot, "backend.log"), "utf8")}`);
+    }
     try {
       const response = await fetch(`${FIXTURE_BASE_URL}/__fixture/health`);
       if (response.ok) return;
@@ -96,6 +108,7 @@ async function releaseSourceWriter() {
 }
 
 test.beforeAll(async () => {
+  test.setTimeout(70_000);
   const base = process.env.MOSS_PNL_PUBLICATION_FIXTURE_BASE ?? tmpdir();
   mkdirSync(base, { recursive: true });
   fixtureRoot = mkdtempSync(join(base, "pnl-publication-e2e-"));
@@ -117,6 +130,24 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await releaseSourceWriter();
   fixtureProcess?.kill();
+});
+
+test.beforeEach(async ({ page }) => {
+  // Use the isolated fixture's real router instead of Vite's live API proxy.
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/system-read-publication") {
+      return route.fulfill({ json: { enabled: false, generation: null, coverage_dates: {} } });
+    }
+    if (url.pathname.startsWith("/api/pnl/")) {
+      const response = await route.fetch({ url: `${FIXTURE_BASE_URL}${url.pathname}${url.search}` });
+      return route.fulfill({ response });
+    }
+    if (/^\/(api|ui|health)(\/|$)/.test(url.pathname)) {
+      return route.fulfill({ status: 503, json: { detail: "Not part of the publication browser fixture" } });
+    }
+    return route.continue();
+  });
 });
 
 test("reads a sealed database generation through the real PnL router and rejects it after revocation", async ({ page }) => {

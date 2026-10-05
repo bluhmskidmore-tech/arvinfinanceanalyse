@@ -2,6 +2,8 @@
  * landmark ID also keeps lazy page styles from changing this shared surface.
  * Position, drawer visibility and publication capture remain in workbenchShell.css. */
 #workbench-primary-navigation {
+  /* Page theme aliases must not recolor the shared navigation links. */
+  --moss-shell-rail-text: var(--moss-shell-navigation-text);
   box-sizing: border-box;
   padding: 18px 14px !important;
   gap: 14px !important;
@@ -104,6 +106,8 @@
   border-radius: var(--dh-api-radius) !important;
   background: transparent !important;
   box-shadow: none !important;
+  /* Non-cockpit links must inherit the same owner color as cockpit links. */
+  color: inherit;
   font-size: 13px;
   line-height: 18px !important;
   letter-spacing: normal !important;

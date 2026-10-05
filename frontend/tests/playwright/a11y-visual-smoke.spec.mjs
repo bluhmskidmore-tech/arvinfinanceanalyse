@@ -1,5 +1,6 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
+import { interceptStockAnalysisA11y } from "./fixtures/stock-analysis-a11y.mjs";
 
 const WORKBENCH_AXE_SHELL_SELECTOR =
   '[data-testid="workbench-group-nav"], [data-testid="workbench-main-content"]';
@@ -269,7 +270,7 @@ const gateHControlContextPages = [
       },
     ],
     stateCueSelector:
-      '[data-testid="cross-asset-trust-panel"], [data-testid="cross-asset-action-rail"], [data-testid="cross-asset-data-status-strip"]',
+      '[data-testid="cross-asset-status-strip"]',
   },
   {
     slug: "ledger-pnl",
@@ -482,6 +483,12 @@ async function collectMinimumControlCoverage(page, smokePage) {
 }
 
 async function expandStockAnalysisMinimumControlSurfaces(page) {
+  const factorDisclosure = page.getByTestId("stock-analysis-factor-disclosure");
+  if (await factorDisclosure.count()) {
+    const isOpen = await factorDisclosure.evaluate((element) => element.open);
+    if (!isOpen) await factorDisclosure.locator(":scope > summary").click();
+  }
+
   const deepResearchSummary = page.getByTestId("stock-analysis-deep-research-summary");
   if (
     (await deepResearchSummary.isVisible().catch(() => false)) &&
@@ -656,7 +663,22 @@ test.describe("frontend accessibility + visual smoke", () => {
       const serverCheck = await probeServer(testInfo.project.use.baseURL);
       expect(serverCheck.ok, serverCheck.reason).toBe(true);
 
-      await gotoVisiblePage(page, smokePage);
+      const stockFixture = smokePage.slug === "stock-analysis"
+        ? await interceptStockAnalysisA11y(page)
+        : null;
+      const target = stockFixture
+        ? { ...smokePage, path: `${process.env.MOSS_PLAYWRIGHT_STATE_BASE_URL ?? `http://127.0.0.1:${process.env.MOSS_PLAYWRIGHT_STATE_PORT ?? "5889"}`}${smokePage.path}` }
+        : smokePage;
+      await gotoVisiblePage(page, target);
+      if (stockFixture) {
+        await expect(page.getByTestId("stock-analysis-pretrade-qualification-boundary")).toBeVisible();
+        await expect(page.getByTestId("stock-analysis-factor-disclosure")).toHaveCount(0);
+        stockFixture.ready = true;
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await expect(page.locator(smokePage.readySelector)).toBeVisible();
+        await expect(page.getByTestId("stock-analysis-factor-disclosure")).toBeVisible();
+        expect(stockFixture.workbenchReads).toBe(2);
+      }
 
       let axeBuilder = new AxeBuilder({ page }).include(resolveAxeScopeSelector(smokePage));
       for (const selector of smokePage.excludeSelectors ?? []) {

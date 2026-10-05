@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { interceptDesignData } from "./fixtures/market-overview-figma.mjs";
 
 const design = fileURLToPath(new URL("../../../output/design/market-overview-figma-v1/", import.meta.url));
-const output = path.join(design, "implementation");
+const output = path.resolve(process.env.MOSS_PLAYWRIGHT_OUTPUT_DIR ?? "../.codex-tmp/playwright-results", "market-overview-figma");
+const REAL_STATE_BASE_URL = process.env.MOSS_PLAYWRIGHT_STATE_BASE_URL ??
+  `http://127.0.0.1:${process.env.MOSS_PLAYWRIGHT_STATE_PORT ?? "5889"}`;
+test.use({ baseURL: REAL_STATE_BASE_URL });
 fs.mkdirSync(output, { recursive: true });
 const pngSize = (filename) => {
   if (!fs.existsSync(filename)) return null;
@@ -24,9 +27,16 @@ test.describe("market overview Figma v1.4 browser acceptance", () => {
       await expect(page.getByTestId("workbench-terminal-bar")).toHaveCount(0);
       if (width === 1024) {
         const rail = page.locator("#workbench-primary-navigation");
+        const opener = page.getByRole("button", { name: "打开主导航", exact: true });
+        await expect(rail).not.toBeVisible();
+        await opener.focus();
+        await page.keyboard.press("Enter");
         await expect(rail).toBeVisible();
         const link = rail.locator('a[href="/market-overview"]').first();
         await link.click({ trial: true });
+        await page.keyboard.press("Escape");
+        await expect(rail).not.toBeVisible();
+        await expect(opener).toBeFocused();
       }
       await page.evaluate(() => document.fonts.ready);
       await expect(root).toContainText("资金价格小幅回落");
@@ -37,7 +47,7 @@ test.describe("market overview Figma v1.4 browser acceptance", () => {
       await expect(page.getByTestId("market-risk-current-score")).toHaveText("—");
       await expect(risk).toContainText("当前待核验");
       await expect(risk).toContainText("近 60 期历史");
-      await expect(page.getByRole("heading", { name: "公开市场操作公告", exact: true })).toBeVisible();
+      await expect(page.getByTestId("market-home-events-summary").getByText("公开市场操作公告", { exact: true })).toBeVisible();
       await expect(page.getByText("CPI 同比", { exact: true }).first()).toBeVisible();
       const before = path.join(output, `browser-${width}-unloaded.png`);
       await page.screenshot({ path: before, fullPage: true, animations: "disabled" });
@@ -102,7 +112,8 @@ test.describe("market overview Figma v1.4 browser acceptance", () => {
     });
   }
 
-  test("live API publication state and source return", async ({ page }) => {
+  test("real HTTP publication state and source return with synthetic responses", async ({ page }) => {
+    const reads = await interceptDesignData(page);
     await page.setViewportSize({ width: 1440, height: 1024 });
     const response = page.waitForResponse(r => new URL(r.url()).pathname === "/ui/market-overview/snapshot" && r.ok());
     await page.goto("/market-overview", { waitUntil: "domcontentloaded" });
@@ -117,9 +128,16 @@ test.describe("market overview Figma v1.4 browser acceptance", () => {
     await drawer.getByRole("link", { name: "进入宏观观察", exact: true }).click();
     await expect(page).toHaveURL(/\/macro-observation\?.*origin=market-overview/);
     await expect(page.getByRole("complementary", { name: "市场总览来源" })).toBeVisible();
+    await expect(page.getByTestId("macro-observation-page")).toBeVisible();
+    await expect(page.getByTestId("macro-observation-loading-note")).not.toBeVisible();
+    await expect(page.getByTestId("macro-observation-error-state")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "当日观察结论", exact: true })).toBeVisible();
+    expect(reads.paths).toContain("/ui/macro/toolkit/analysis");
     await page.getByRole("link", { name: "返回市场总览", exact: true }).click();
     await expect(page).toHaveURL(/\/market-overview#market-overview-evidence$/);
     await expect(page.getByTestId("market-home-macro-summary")).toBeVisible();
+    expect(reads.writes).toEqual([]);
+    expect(reads.errors).toEqual([]);
     await page.screenshot({ path: path.join(output, "live-return-1440.png"), fullPage: false, animations: "disabled" });
   });
 });

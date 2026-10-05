@@ -715,7 +715,7 @@ test("risk overview deterministically discloses warnings beyond the first three"
   await expect(remainingWarnings.first()).toBeVisible();
 });
 
-test("dashboard home retains its owner-only desktop shell", async ({ page }) => {
+test("dashboard home fits its toolbar without clipping the desktop content shell", async ({ page }) => {
   await page.setViewportSize(DESKTOP_VIEWPORT);
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
@@ -724,6 +724,10 @@ test("dashboard home retains its owner-only desktop shell", async ({ page }) => 
 
   await expect(dashboard).toBeVisible({ timeout: 60_000 });
   await expect(scrollRoot).toBeVisible({ timeout: 60_000 });
+  const toolbar = page.getByTestId("dashboard-home-toolbar");
+  await expect(toolbar).toBeVisible();
+  await expect(toolbar.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(toolbar.getByLabel("报告日", { exact: true })).toBeVisible();
 
   const geometry = await dashboard.evaluate((element) => {
     const layout = element.querySelector(
@@ -737,10 +741,28 @@ test("dashboard home retains its owner-only desktop shell", async ({ page }) => 
       pageOverflowY: pageStyle.overflowY,
       layoutOverflowY: layoutStyle?.overflowY ?? null,
       layoutClientHeight: layout?.clientHeight ?? 0,
+      toolbarHeight: element.querySelector('[data-testid="dashboard-home-toolbar"]')?.getBoundingClientRect().height ?? 0,
     };
   });
 
-  expect(geometry.gridTemplateRows).toMatch(/^42px\s/);
+  // The former 42px owner note explicitly accepted a clipped 54px toolbar.
+  // Preserve the delivered auto row and prove that its content is fully usable.
+  expect(Math.abs(Number.parseFloat(geometry.gridTemplateRows) - geometry.toolbarHeight)).toBeLessThan(1);
+  const toolbarBox = await toolbar.boundingBox();
+  const dashboardBox = await dashboard.boundingBox();
+  const contentBox = await scrollRoot.boundingBox();
+  expect(toolbarBox.x).toBeGreaterThanOrEqual(dashboardBox.x - 1);
+  expect(toolbarBox.x + toolbarBox.width).toBeLessThanOrEqual(dashboardBox.x + dashboardBox.width + 1);
+  expect(contentBox.y).toBeGreaterThanOrEqual(toolbarBox.y + toolbarBox.height - 1);
+  for (const control of await toolbar.locator('h1, button, a, input').all()) {
+    if (!(await control.isVisible())) continue;
+    const box = await control.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(toolbarBox.x - 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(toolbarBox.x + toolbarBox.width + 1);
+    expect(box.y).toBeGreaterThanOrEqual(toolbarBox.y - 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(toolbarBox.y + toolbarBox.height + 1);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
   expect(geometry.pageOverflowY).toBe("hidden");
   expect(geometry.layoutOverflowY).toBe("auto");
   expect(geometry.layoutClientHeight).toBeGreaterThan(

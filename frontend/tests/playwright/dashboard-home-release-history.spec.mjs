@@ -1,10 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-// 2026-08-09 4ef35b27 "restore confirmed option two" 之后，首页研究证据带（04 区块）
-// 按确认稿把发布历史披露、政策资金面分组、供给提示统一退役为 display:none
-// （dashboardHomeOptionTwo.module.css 顶层规则，全视口生效）。
-// 本 spec 断言该已提交契约：历史行仍完整驻留 DOM（数据可用、条数披露不缩水），
-// 但对首屏零布局占位——首页默认高度不随历史行数增长。
+// a97f0f3a restored the release-history disclosure on 2026-09-16. Its summary is
+// accessible, while the history stays collapsed so row count does not increase
+// the default research panel height.
 test.describe("dashboard home release history disclosure", () => {
   test("keeps every history row available without growing the homepage by default", async ({
     page,
@@ -27,17 +25,24 @@ test.describe("dashboard home release history disclosure", () => {
     await researchCalendar.scrollIntoViewIfNeeded();
     await expect(disclosure).toBeAttached({ timeout: 60_000 });
 
-    // 已提交的确认稿契约：披露元素被设计性退役（隐藏且零布局占位），
-    // 默认也不处于展开态。
-    await expect(disclosure).toBeHidden();
+    await expect(disclosure).toBeVisible();
     await expect(disclosure).not.toHaveAttribute("open");
     await expect(content).toBeHidden();
-    expect(await disclosure.boundingBox()).toBeNull();
+    const collapsed = await disclosure.boundingBox();
+    const summaryBox = await summary.boundingBox();
+    expect(collapsed.height).toBeLessThanOrEqual(summaryBox.height + 2);
 
     // 数据可用性不缩水：历史行完整驻留 DOM，summary 如实披露条数。
     await expect.poll(() => rows.count(), { timeout: 60_000 }).toBeGreaterThan(0);
     const rowCount = await rows.count();
     await expect(summary).toContainText(`共 ${rowCount} 项`);
+    await summary.focus();
+    await page.keyboard.press("Enter");
+    await expect(disclosure).toHaveAttribute("open", "");
+    await expect(rows.first()).toBeVisible();
+    await expect(rows).toHaveCount(rowCount);
+    await page.keyboard.press("Enter");
+    await expect(content).toBeHidden();
 
     // 同组退役面（政策资金面分组、供给提示）同样不得回流首屏。
     await expect(

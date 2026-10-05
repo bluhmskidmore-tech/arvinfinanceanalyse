@@ -41,7 +41,7 @@ async function readLayout(page) {
       '[data-testid="market-finance-data-status"]',
     );
     const deepContent = root?.querySelector(deepSelector);
-    const cards = [...(kpis?.querySelectorAll(".moss-page-v2-kpi-metric") ?? [])];
+    const cards = [...(kpis?.querySelectorAll('[data-testid^="market-finance-kpi-"]') ?? [])];
     const rect = (element) => {
       if (!element) {
         return null;

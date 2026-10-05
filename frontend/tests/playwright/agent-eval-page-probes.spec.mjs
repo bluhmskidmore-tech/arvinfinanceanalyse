@@ -53,7 +53,7 @@ async function awaitMockReadSettled(page, slug) {
       break;
     case "bond-analysis":
       await expect(page.getByTestId("bond-analysis-daily-judgment")).toContainText(
-        /核心读面 已返回.*核心读面可用/,
+        /报告日匹配.*核心指标可用/,
       );
       break;
     case "pnl-attribution":
