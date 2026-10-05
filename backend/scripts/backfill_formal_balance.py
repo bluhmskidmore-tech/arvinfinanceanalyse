@@ -180,7 +180,7 @@ def main():
             print(f"  [{i}/{len(missing_dates)}] {report_date} [OK] "
                   f"(zqtz={zqtz_rows}, tyw={tyw_rows}, {elapsed:.1f}s)")
             success += 1
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - per-date batch boundary reports FAIL and counts errors so one failed materialization cannot be reported as success
             elapsed = time.time() - t0
             print(f"  [{i}/{len(missing_dates)}] {report_date} [FAIL] {exc} ({elapsed:.1f}s)")
             errors += 1

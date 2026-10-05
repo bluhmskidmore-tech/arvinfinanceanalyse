@@ -182,7 +182,7 @@ def load_risk_parity_weights(rp_csv_path, asset_names, eq_w):
         rp_w = np.array([float(w_series[a]) for a in asset_names]) / 100.0
         print(f"  已读取风险平价权重：{dict(zip(asset_names, rp_w.round(4), strict=False))}")
         return rp_w, "风险平价组合"
-    except Exception as e:
+    except (OSError, UnicodeError, ValueError, TypeError) as e:
         print(f"  警告：读取 risk_parity_results.csv 失败（{e}），使用等权替代")
         return eq_w.copy(), "风险平价(等权替代)"
 

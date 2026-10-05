@@ -22,12 +22,9 @@ import duckdb
 
 
 def _resolve_duckdb_path() -> Path:
-    try:
-        from backend.app.governance.settings import get_settings
-        return Path(get_settings().duckdb_path)
-    except Exception:
-        repo_root = Path(__file__).resolve().parents[2]
-        return repo_root / "data" / "moss.duckdb"
+    from backend.app.governance.settings import get_settings
+
+    return Path(get_settings().duckdb_path)
 
 
 def _get_latest_formal_date(conn: duckdb.DuckDBPyConnection) -> str | None:

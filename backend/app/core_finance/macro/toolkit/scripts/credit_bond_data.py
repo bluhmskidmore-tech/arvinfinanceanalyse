@@ -22,7 +22,7 @@ try:
     else:
         from WindPy import w
     WIND_AVAILABLE = w.start() == 0
-except Exception:
+except ImportError:
     WIND_AVAILABLE = False
     print("[WARNING] Choice/Tushare system source not available; credit bond output will be empty")
 

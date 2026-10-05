@@ -220,7 +220,7 @@ def backfill_crisis_score_inputs(
                 end_date=resolved_end,
                 run_id=run_id,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - batch boundary records each failed input as error without inventing rows, then continues independent inputs
             errors[spec.alias] = str(exc)
             results[spec.alias] = {"status": "error", "error": str(exc)}
 

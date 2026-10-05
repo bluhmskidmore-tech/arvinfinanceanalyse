@@ -487,7 +487,7 @@ def _load_output_csv(filename: str, output_dir: Path):
         return None
     try:
         return pd.read_csv(path, encoding='utf-8-sig')
-    except Exception as e:
+    except (OSError, UnicodeError, pd.errors.ParserError, pd.errors.EmptyDataError) as e:
         print(f"  [WARN] 读取 {filename} 失败: {e}")
         return None
 

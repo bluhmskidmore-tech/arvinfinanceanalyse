@@ -15,6 +15,7 @@ import importlib.util
 import json
 import sys
 
+import duckdb
 import numpy as np
 import pandas as pd
 
@@ -156,7 +157,7 @@ def load_prices() -> pd.DataFrame:
                 print(f"  [警告] WindPy 兼容接口 wsd 返回错误码 {data.ErrorCode}，跳过债券ETF")
         else:
             print(f"  [警告] Choice/Tushare 系统源启动失败（ErrorCode={r.ErrorCode}），跳过债券ETF")
-    except Exception as e:
+    except (ImportError, OSError, duckdb.Error) as e:
         print(f"  [警告] Choice/Tushare 系统源不可用（{str(e)[:60]}），跳过债券ETF")
 
     if not wind_ok:
@@ -174,7 +175,7 @@ def load_prices() -> pd.DataFrame:
                     continue
                 series[name] = s
                 print(f"  {name}({symbol}) [akshare备用]: {len(series[name])} 条")
-        except Exception:
+        except (OSError, duckdb.Error):
             print("  [警告] 债券ETF备用接口也失败，将以5资产运行")
 
     prices = pd.concat(series.values(), axis=1)

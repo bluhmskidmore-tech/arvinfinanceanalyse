@@ -216,8 +216,8 @@ def fit_single_asset(returns: pd.Series, asset_name: str) -> dict:
                     best_bic = res.bic
                     best_result = row
 
-            except Exception:  # noqa: S110  # 模型选择扫描：单个(模型,分布)组合不收敛属预期，按 BIC 取存活组合最优；全失败时下方显式报告
-                pass
+            except (ValueError, np.linalg.LinAlgError) as exc:
+                print(f"  [WARN] {label} 拟合失败，排除该组合: {exc}")
 
     if best_result is None:
         print("  所有模型拟合失败!")
@@ -282,8 +282,9 @@ def out_of_sample_test(returns: pd.Series, best_result: dict,
             try:
                 m = _build_arch_model(data, vol_params, dist)
                 cached_params = m.fit(disp='off', show_warning=False).params
-            except Exception:  # noqa: S110  # 滚动重估失败沿用上次 cached_params（下方分支），从未成功则该日输出 NaN，失败在结果中可见
-                pass
+            except (ValueError, np.linalg.LinAlgError) as exc:
+                fallback = "沿用 cached_params" if cached_params is not None else "输出 NaN"
+                print(f"  [WARN] {asset_name} 样本外第 {i + 1} 日重估失败，{fallback}: {exc}")
 
         if cached_params is not None:
             fixed_res = _build_arch_model(data, vol_params, dist).fix(cached_params)

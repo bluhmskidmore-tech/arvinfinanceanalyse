@@ -23,11 +23,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
 def _resolve_duckdb_path() -> Path:
-    try:
-        from backend.app.governance.settings import get_settings
-        return Path(get_settings().duckdb_path)
-    except Exception:
-        return Path(__file__).resolve().parents[2] / "data" / "moss.duckdb"
+    from backend.app.governance.settings import get_settings
+
+    return Path(get_settings().duckdb_path)
 
 
 def _distinct_dates(conn, table: str) -> list[str]:
