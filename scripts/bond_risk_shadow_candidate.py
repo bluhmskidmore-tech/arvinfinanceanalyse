@@ -1841,7 +1841,7 @@ def _validate_governance_build_run_records(
     rule_version: str,
     descriptor: FormalComputeModuleDescriptor,
 ) -> dict[str, object]:
-    matching = [
+    run_records = [
         row
         for row in records
         if str(row.get("job_name") or "") == job_name
@@ -1849,17 +1849,54 @@ def _validate_governance_build_run_records(
         and str(row.get("report_date") or "") == report_date
         and str(row.get("cache_key") or "") == cache_key
     ]
+    for row in run_records:
+        if "phase" in row:
+            phase = row["phase"]
+            if not isinstance(phase, str) or not phase.strip():
+                raise ShadowCandidateError("governance_build_run_phase_invalid")
+        elif any(field_name.startswith("phase_") for field_name in row):
+            raise ShadowCandidateError("governance_build_run_phase_invalid")
+    matching = [row for row in run_records if "phase" not in row]
     if len(matching) != 3:
         raise ShadowCandidateError("governance_build_run_sequence_invalid")
     statuses = [str(row.get("status") or "") for row in matching]
     if statuses != ["queued", "running", "completed"]:
         raise ShadowCandidateError("governance_build_run_sequence_invalid")
-    for row in matching:
+    lifecycle_status: str | None = None
+    phase_records = []
+    for row in run_records:
         if str(row.get("cache_version") or "") != descriptor.stable_output_version:
             raise ShadowCandidateError("governance_build_run_cache_version_mismatch")
         if str(row.get("lock") or "") != descriptor.lock_key:
             raise ShadowCandidateError("governance_build_run_lock_mismatch")
-    for row in matching[:2]:
+        if "phase" not in row:
+            lifecycle_status = str(row.get("status") or "")
+            continue
+        phase = row["phase"]
+        # Bond phase diagnostics share the stream but are not lifecycle transitions.
+        if (
+            descriptor.module_name != "bond_analytics"
+            or lifecycle_status != "running"
+            or str(row.get("status") or "") != "running"
+            or phase not in (
+                "write_access", "curve_prepare", "source_read",
+                "curve_validation", "compute", "write",
+            )
+            or row.get("phase_status") not in ("running", "completed")
+            or any(
+                not str(row.get(field_name) or "").strip()
+                for field_name in ("queued_at", "started_at", "phase_started_at")
+            )
+            or (
+                row.get("phase_status") == "completed"
+                and not str(row.get("phase_finished_at") or "").strip()
+            )
+        ):
+            raise ShadowCandidateError("governance_build_run_phase_invalid")
+        if str(row.get("rule_version") or "") != descriptor.rule_version:
+            raise ShadowCandidateError("governance_build_run_phase_rule_version_mismatch")
+        phase_records.append(row)
+    for row in [*matching[:2], *phase_records]:
         if str(row.get("source_version") or "") != descriptor.running_source_version:
             raise ShadowCandidateError("governance_build_run_running_source_version_mismatch")
         if str(row.get("vendor_version") or "") != descriptor.vendor_version:

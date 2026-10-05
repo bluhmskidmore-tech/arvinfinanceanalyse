@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
+from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
 from backend.app.tasks.formal_compute_runtime import _manifest_min_lineage
 from tests.helpers import load_module
 from tests.test_bond_analytics_materialize_flow import (
@@ -597,12 +598,12 @@ def test_shadow_candidate_runs_on_isolated_copy_and_preserves_non_target_rows(
     )
     version_fragment = receipt["fixed_income_version_fragment"]
     assert version_fragment["version_state"] == "configured_current"
-    assert version_fragment["engine_rule_version"] == "rv_bond_analytics_engine_v2"
+    assert version_fragment["engine_rule_version"] == FIXED_INCOME_VERSION_SET.engine_rule_version
     assert version_fragment["bond_analytics"]["rule_version"] == (
-        "rv_bond_analytics_formal_materialize_v5"
+        FIXED_INCOME_VERSION_SET.bond_analytics.rule_version
     )
     assert version_fragment["risk_tensor"]["rule_version"] == (
-        "rv_risk_tensor_formal_materialize_v11"
+        FIXED_INCOME_VERSION_SET.risk_tensor.rule_version
     )
     assert version_fragment["runtime"]["bond_analytics"]["source_version"] == (
         "sv_bond_curve__sv_bond_holdings"
@@ -1950,6 +1951,142 @@ def test_validator_accepts_real_formal_runtime_governance_contract(
         "completed",
     ]
     assert validation["cache_manifest"]["record_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    [
+        ("valid", None),
+        ("missing_running", "governance_build_run_sequence_invalid"),
+        ("duplicate_running", "governance_build_run_sequence_invalid"),
+        ("out_of_order", "governance_build_run_sequence_invalid"),
+        ("unknown_phase", "governance_build_run_phase_invalid"),
+        ("unknown_phase_status", "governance_build_run_phase_invalid"),
+        ("failed_phase", "governance_build_run_phase_invalid"),
+        ("phase_before_running", "governance_build_run_phase_invalid"),
+        ("phase_after_completed", "governance_build_run_phase_invalid"),
+        ("running_disguised_as_phase", "governance_build_run_sequence_invalid"),
+        ("completed_disguised_as_phase", "governance_build_run_phase_invalid"),
+        ("missing_phase_started_at", "governance_build_run_phase_invalid"),
+        ("missing_phase_finished_at", "governance_build_run_phase_invalid"),
+        ("phase_cache_version", "governance_build_run_cache_version_mismatch"),
+        ("phase_lock", "governance_build_run_lock_mismatch"),
+        ("phase_source_version", "governance_build_run_running_source_version_mismatch"),
+        ("phase_vendor_version", "governance_build_run_running_vendor_version_mismatch"),
+        ("phase_rule_version", "governance_build_run_phase_rule_version_mismatch"),
+        ("invalid_phase_null", "governance_build_run_phase_invalid"),
+        ("invalid_phase_false", "governance_build_run_phase_invalid"),
+        ("invalid_phase_zero", "governance_build_run_phase_invalid"),
+        ("invalid_phase_empty_string", "governance_build_run_phase_invalid"),
+        ("invalid_phase_empty_list", "governance_build_run_phase_invalid"),
+        ("invalid_phase_empty_mapping", "governance_build_run_phase_invalid"),
+        ("orphan_phase_status", "governance_build_run_phase_invalid"),
+        ("orphan_phase_started_at", "governance_build_run_phase_invalid"),
+        ("orphan_phase_finished_at", "governance_build_run_phase_invalid"),
+        ("orphan_phase_elapsed_seconds", "governance_build_run_phase_invalid"),
+        ("orphan_phase_unknown", "governance_build_run_phase_invalid"),
+    ],
+)
+def test_governance_phase_records_preserve_strict_lifecycle_and_lineage_validation(
+    tmp_path: Path,
+    mutation: str,
+    expected_code: str | None,
+) -> None:
+    module = _load_module()
+    descriptor = module.BOND_ANALYTICS_MODULE
+    result = _governed_result(
+        module,
+        task_name="bond",
+        run_id="phase-contract-run",
+        report_date="2026-05-31",
+        governance_dir=tmp_path,
+        source_version="sv_bond_contract",
+        running_source_version=descriptor.running_source_version,
+    )
+    records = module._load_jsonl_records(
+        tmp_path / "cache_build_run.jsonl",
+        field_name="cache_build_run_stream",
+    )
+    queued, running, completed = records
+    phase = {
+        **running,
+        "rule_version": descriptor.rule_version,
+        "phase": "compute",
+        "phase_status": "completed",
+        "phase_started_at": running["started_at"],
+        "phase_finished_at": completed["finished_at"],
+    }
+    records = [queued, running, phase, completed]
+    if mutation == "missing_running":
+        records.remove(running)
+    elif mutation == "duplicate_running":
+        records.insert(2, dict(running))
+    elif mutation == "out_of_order":
+        records[0], records[1] = records[1], records[0]
+    elif mutation == "unknown_phase":
+        phase["phase"] = "forged_phase"
+    elif mutation == "unknown_phase_status":
+        phase["phase_status"] = "forged_status"
+    elif mutation == "failed_phase":
+        phase["phase_status"] = "failed"
+    elif mutation == "phase_before_running":
+        records = [queued, phase, running, completed]
+    elif mutation == "phase_after_completed":
+        records = [queued, running, completed, phase]
+    elif mutation == "running_disguised_as_phase":
+        running["phase"] = "compute"
+    elif mutation == "completed_disguised_as_phase":
+        records.insert(3, {**phase, "status": "completed"})
+    elif mutation.startswith("invalid_phase_"):
+        invalid_phase_values = {
+            "null": None,
+            "false": False,
+            "zero": 0,
+            "empty_string": "",
+            "empty_list": [],
+            "empty_mapping": {},
+        }
+        running.update({
+            "phase": invalid_phase_values[mutation.removeprefix("invalid_phase_")],
+            "phase_status": "completed",
+            "rule_version": "forged_rule",
+        })
+    elif mutation.startswith("orphan_phase_"):
+        running[mutation.removeprefix("orphan_")] = "forged"
+        running["rule_version"] = "forged_rule"
+    elif mutation.startswith("missing_phase_"):
+        phase.pop(mutation.removeprefix("missing_"))
+    elif mutation.startswith("phase_"):
+        phase[mutation.removeprefix("phase_")] = "forged"
+
+    summary, _ = module._validate_task_result(
+        "bond_analytics",
+        result,
+        descriptor=descriptor,
+        expected_job_name="bond_analytics_materialize",
+        expected_run_id="phase-contract-run",
+        expected_report_date="2026-05-31",
+    )
+    arguments = {
+        key: summary[key]
+        for key in (
+            "job_name", "run_id", "report_date", "cache_key", "cache_version",
+            "source_version", "vendor_version", "rule_version",
+        )
+    }
+    if expected_code is not None:
+        with pytest.raises(module.ShadowCandidateError, match=f"^{expected_code}$"):
+            module._validate_governance_build_run_records(
+                records, descriptor=descriptor, **arguments,
+            )
+    else:
+        validation = module._validate_governance_build_run_records(
+            records, descriptor=descriptor, **arguments,
+        )
+        assert validation == {
+            "record_count": 3,
+            "statuses": ["queued", "running", "completed"],
+        }
 
 
 def test_default_bond_and_risk_runners_bind_persisted_lineage_end_to_end(

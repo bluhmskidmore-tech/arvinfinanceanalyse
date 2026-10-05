@@ -73,7 +73,7 @@ def test_structure_gate_passes_while_operational_authority_remains_pending() -> 
     ("argv", "reason_prefix"),
     [
         (
-            ["F:/outside/check.py", "--require-captured"],
+            [(ROOT.parent / "outside" / "check.py").as_posix(), "--require-captured"],
             "registry_command_path_not_repository_relative",
         ),
         (
