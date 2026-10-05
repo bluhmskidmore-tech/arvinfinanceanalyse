@@ -2,7 +2,7 @@
 
 - 权威来源：`scripts/backend_release_suite.py` 的常量 `RELEASE_SUITE_TESTS`、`GOVERNANCE_MCP_FAST_SUITE_TESTS`、`GOVERNANCE_MCP_FULL_SUITE_TESTS`、`EXECUTIVE_RELEASE_SAMPLE_IDS`
 - 本文档性质：上述常量的**受控静态镜像**（供评审与检索，不是第二事实源）
-- 快照日期：2026-10-01（suite_name：`governed-phase2-backend-release-suite`）
+- 快照日期：2026-10-05（suite_name：`governed-phase2-backend-release-suite`）
 - 门禁分层背景与盲区分析：见 `docs/plans/tech-debt-remediation/B0-ci-gate-layering.md`
 
 ## 1. 在 CI 中的位置
@@ -29,7 +29,7 @@ CLI 表面（`python scripts/backend_release_suite.py --help`）：
 | 参数 | 用途 |
 | --- | --- |
 | `--dry-run` | 打印套件执行计划 JSON（含 pytest 参数与环境），是再生成本清单的依据 |
-| `--mcp-profile fast\|full` | fast 为 CI 默认；full 跑 `tests/test_project_mcp_servers.py`，仅在共享 MCP 行为变更或发布检查时手动使用 |
+| `--mcp-profile fast\|full` | fast 为 CI 默认；full 跑 `tests/test_project_mcp_servers.py` 和 `tests/test_project_mcp_launcher_runtime.py`，仅在共享 MCP 行为变更或发布检查时手动使用 |
 | `--include-excluded-surfaces` | 解除两个阶段的 `not excluded_surface_acceptance` 过滤，一并运行排除面验收；CI 不使用，仅供本地排查排除面回归 |
 | `--live-governance-dir` | 对指定运行时治理目录做血缘审计，空输入 fail-closed |
 | `--governance-audit-output` | 审计摘要输出路径（须与 `--live-governance-dir` 同用） |
@@ -95,6 +95,7 @@ CLI 表面（`python scripts/backend_release_suite.py --help`）：
 | --- | --- | --- | --- |
 | fast（默认，CI 在用） | `tests/test_project_mcp_fast_contracts.py` | `-q -m mcp_fast` | PR / push 门禁；本地默认 MCP 反馈环 |
 | full（手动） | `tests/test_project_mcp_servers.py` | `-q` | 共享 MCP 行为变更、发布检查（`--mcp-profile full`）；nightly 全量 pytest 也会收集 |
+| full（手动） | `tests/test_project_mcp_launcher_runtime.py` | `-q` | MCP 启动器解释器解析与实际启动行为；与上一行同属 full profile |
 
 ## 4. 再生成方法
 

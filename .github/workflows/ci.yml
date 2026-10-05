@@ -566,7 +566,12 @@ jobs:
 
       - name: Test production mock bundle boundary
         if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
-        run: node --test scripts/productionMockBoundary.node-test.mjs
+        run: >-
+          node --test
+          scripts/productionMockBoundary.node-test.mjs
+          scripts/homeRuntimeAcceptance.test.mjs
+          scripts/startupBundleParsing.test.mjs
+          scripts/visual-compliance-audit.test.mjs
 
       - name: Production build
         if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
@@ -620,6 +625,7 @@ jobs:
           fi
           export MOSS_PYTHON
           export MOSS_TEST_FULL_APP=1
+          mkdir -p .codex-tmp
           "$MOSS_PYTHON" -m pytest tests/test_dev_frontend_source_entry.py tests/test_dev_frontend_source_live.py tests/test_dev_frontend_application_live.py tests/test_dev_python_resolution.py tests/test_codex_python_resolution.py -q --basetemp=.codex-tmp/source-entry-ci
 
       - name: Retain isolated application acceptance evidence
@@ -634,6 +640,34 @@ jobs:
             .codex-tmp/source-entry-ci/**/real-application/positions.png
             .codex-tmp/source-entry-ci/**/real-application/api.log
             .codex-tmp/source-entry-ci/**/real-application/frontend.log
+          retention-days: 7
+          if-no-files-found: warn
+
+  compose-runtime-acceptance:
+    name: Compose Runtime Acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify isolated Compose runtime
+        run: node scripts/verify_compose_runtime.mjs --run --output .codex-tmp/compose-runtime-ci
+
+      - name: Retain isolated Compose acceptance evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-runtime-acceptance
+          include-hidden-files: true
+          path: |
+            .codex-tmp/compose-runtime-ci/acceptance.json
+            .codex-tmp/compose-runtime-ci/readiness.json
+            .codex-tmp/compose-runtime-ci/compose.log
           retention-days: 7
           if-no-files-found: warn
 
@@ -830,7 +864,10 @@ jobs:
         run: python scripts/api_contract_check.py export-openapi --surface default --output .codex-tmp/openapi.json
 
       - name: Lint OpenAPI contract
-        run: npx --prefix frontend spectral lint .codex-tmp/openapi.json -r .spectral.yaml
+        run: node frontend/scripts/lintOpenApi.mjs .codex-tmp/openapi.json -r .spectral.yaml
+
+      - name: Test OpenAPI lint command semantics
+        run: node --test frontend/scripts/lintOpenApi.node-test.mjs
 
       # 对 base 分支上的基线做 diff，而不是对本 PR 工作树里的基线：
       # 同一个 PR 里重跑 baseline-update 覆盖快照因此清不掉破坏性发现，

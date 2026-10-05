@@ -56,6 +56,15 @@ def _vite(root: Path, content: str) -> Path:
 def _process_options() -> dict:
     if os.name != "nt":
         return {"start_new_session": True}
+    import ctypes
+
+    # Git Bash can give pytest an inheritable Ctrl+C ignore attribute. Clear it
+    # before starting an owned console so the interrupt reaches its whole tree.
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    if not kernel.SetConsoleCtrlHandler(None, False):
+        error = ctypes.get_last_error()
+        if error != 6:  # ERROR_INVALID_HANDLE: pytest has no attached console.
+            raise ctypes.WinError(error)
     startup = subprocess.STARTUPINFO()
     startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startup.wShowWindow = subprocess.SW_HIDE
@@ -269,3 +278,22 @@ def test_source_entry_interrupt_waits_for_controller_to_remove_child(source_root
         assert not _pid_is_running(child_pid), "Synthetic Vite process survived Ctrl+C"
     finally:
         _close(process, child_pid)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows inherits the console Ctrl+C ignore attribute")
+def test_source_entry_interrupt_when_parent_ignores_ctrl_c(tmp_path: Path) -> None:
+    # Git Bash may disable Ctrl+C in the pytest parent. Reuse the original
+    # interrupt acceptance body inside an owned console with that exact state.
+    driver = (
+        "import ctypes, sys, pytest; kernel=ctypes.WinDLL('kernel32', use_last_error=True); "
+        "assert kernel.SetConsoleCtrlHandler(None, True), ctypes.get_last_error(); "
+        "raise SystemExit(pytest.main(["
+        "'tests/test_dev_frontend_source_entry.py::test_source_entry_interrupt_waits_for_controller_to_remove_child[2]', "
+        "'-q', '--basetemp='+sys.argv[1], '-o', 'cache_dir='+sys.argv[1]+'-cache']))"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", driver, str(tmp_path / "ignored-parent")], cwd=ROOT,
+        env=_environment(), capture_output=True, text=True, encoding="utf-8", timeout=40,
+        **_process_options(),
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
