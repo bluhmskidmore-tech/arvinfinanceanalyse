@@ -437,9 +437,16 @@ describe("CrossAssetPage", () => {
   it("mounts appendix panels across separate animation frames without resetting the manual draft", async () => {
     const observer = stubIntersectionObserver();
     const animationFrames = stubAnimationFrames();
+    const strategyReady = deferred<void>();
+    const client = createApiClient({ mode: "mock" });
+    const loadStrategy = client.getLivermoreStrategy.bind(client);
+    vi.spyOn(client, "getLivermoreStrategy").mockImplementation(async (options) => {
+      await strategyReady.promise;
+      return loadStrategy(options);
+    });
 
     try {
-      renderPage(createApiClient({ mode: "mock" }));
+      renderPage(client);
 
       await screen.findByTestId("cross-asset-evidence-tape");
       await act(async () => {
@@ -486,7 +493,13 @@ describe("CrossAssetPage", () => {
       });
 
       const statusPanel = await screen.findByTestId("cross-asset-livermore-status");
-      const stockCodeInput = within(statusPanel).getByLabelText("股票代码");
+      // The first frame mounts the panel shell before its query-backed form is ready.
+      expect(within(statusPanel).queryByLabelText("股票代码")).not.toBeInTheDocument();
+      const stockCodeInputReady = within(statusPanel).findByLabelText("股票代码");
+      await act(async () => {
+        strategyReady.resolve();
+      });
+      const stockCodeInput = await stockCodeInputReady;
       fireEvent.change(stockCodeInput, { target: { value: "000001.SZ" } });
       expect(stockCodeInput).toHaveValue("000001.SZ");
       expect(screen.queryByTestId("cross-asset-livermore-confluence")).not.toBeInTheDocument();
@@ -523,6 +536,7 @@ describe("CrossAssetPage", () => {
       expect(stockCodeInput).toHaveValue("000001.SZ");
       expect(animationFrames.pendingCount()).toBe(0);
     } finally {
+      strategyReady.resolve();
       vi.unstubAllGlobals();
     }
   });
