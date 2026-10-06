@@ -11,10 +11,12 @@ from backend.app.schemas.data_updates import (
     ChoiceStockPitHistoryRequest,
     ChoiceStockPitPreflightRequest,
     CoreDataUpdateRequest,
+    ProductCategoryRefreshScope,
 )
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import data_update_service as service
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from pydantic import ValidationError
 
 router = APIRouter(prefix="/api/data-updates", tags=["data-updates"])
 CORE_RESOURCES = (
@@ -147,6 +149,7 @@ def _public_run(run: dict[str, object], *, input_directory: str) -> dict[str, ob
             {
                 **{key: value for key, value in step.items() if key in _PUBLIC_STEP_FIELDS},
                 **({"error_message": "该步骤未完成，请检查后台回执。"} if step.get("status") == "failed" else {}),
+                **_public_step_scope(step),
             }
             for step in steps
             if isinstance(step, dict)
@@ -160,6 +163,18 @@ def _public_run(run: dict[str, object], *, input_directory: str) -> dict[str, ob
             key: value for key, value in failure_receipt.items() if key in _PUBLIC_FAILURE_FIELDS
         }
     return public
+
+
+def _public_step_scope(step: dict[str, object]) -> dict[str, object]:
+    if step.get("key") != "product_category_pnl" or step.get("status") != "completed":
+        return {}
+    scope = step.get("refresh_scope")
+    if not isinstance(scope, dict):
+        return {}
+    try:
+        return {"refresh_scope": ProductCategoryRefreshScope.model_validate(scope).model_dump(mode="json")}
+    except ValidationError:
+        return {}
 
 
 def _authorize(auth: AuthContext, *, market: bool = False, workflow: str = "core_financial") -> None:

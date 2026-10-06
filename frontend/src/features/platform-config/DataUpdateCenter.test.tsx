@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DataUpdateRun, DataUpdatesClient, DataUpdatesOverview, UpdatePreflight } from "../../api/dataUpdatesClient";
+import { createDataUpdatesClient } from "../../api/dataUpdatesClient";
 import DataUpdateCenter from "./DataUpdateCenter";
 import { buildDataUpdateCenterModel } from "./dataUpdateCenterModel";
 
@@ -37,6 +38,44 @@ function mount(api: DataUpdatesClient, mode: "real" | "mock" = "real") {
 }
 
 describe("DataUpdateCenter", () => {
+  it("renders the API receipt's scanned, rebuilt, reused and removed scopes independently of its requested date", async () => {
+    const scope = {
+      scanned_report_dates: ["2025-01-31", "2026-01-31", "2026-02-28"], scanned_years: ["2025", "2026"], scanned_date_count: 3,
+      rebuilt_report_dates: ["2026-01-31", "2026-02-28"], rebuilt_years: ["2026"], rebuilt_date_count: 2,
+      reused_report_dates: ["2025-01-31"], reused_years: ["2025"], reused_date_count: 1,
+      removed_report_dates: ["2024-12-31"], removed_years: ["2024"], removed_date_count: 1,
+    };
+    const payload = { ...overview, runs: [{ ...run, status: "failed", message: "后续步骤未完成。", steps: [
+      { key: "product_category_pnl", label: "产品损益", status: "completed", refresh_scope: scope },
+    ] }] };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(payload)));
+    mount(createDataUpdatesClient({ baseUrl: "http://fixture", fetchImpl }));
+    fireEvent.click(await screen.findByText("查看步骤与结果"));
+    const displayed = screen.getByLabelText("产品损益实际处理范围");
+    expect(displayed).toBeVisible();
+    expect(displayed).toHaveTextContent("扫描来源：3 个报告日；来源年份：2025、2026");
+    expect(displayed).toHaveTextContent("实际重建：2 个报告日；重建年份：2026");
+    expect(displayed).toHaveTextContent("沿用结果：1 个报告日；复用年份：2025");
+    expect(displayed).toHaveTextContent("移除结果：1 个报告日；完整移除年份：2024");
+    expect(displayed).toHaveTextContent("2024-12-31");
+    expect(displayed).toHaveTextContent("本请求的结果日期核验按所选报告日执行");
+    expect(displayed).not.toHaveTextContent(reportDate);
+    expect(screen.getByText(`报告日 ${reportDate}`).parentElement).toHaveTextContent("更新未完成");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps legacy product-category receipts readable without inventing a zero scope", async () => {
+    const api = makeApi();
+    vi.mocked(api.overview).mockResolvedValue({ ...overview, runs: [{ ...run, status: "completed", steps: [
+      { key: "product_category_pnl", label: "产品损益", status: "completed" },
+    ] }] });
+    mount(api);
+    fireEvent.click(await screen.findByText("查看步骤与结果"));
+    expect(screen.getByText("产品损益")).toBeVisible();
+    expect(screen.queryByLabelText("产品损益实际处理范围")).not.toBeInTheDocument();
+    expect(screen.queryByText(/实际重建：0/)).not.toBeInTheDocument();
+  });
+
   it("allows waiting for missing files without allowing an immediate update", async () => {
     const api = makeApi();
     mount(api);

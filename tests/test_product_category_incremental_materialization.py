@@ -159,6 +159,19 @@ def test_unchanged_input_skips_parsing_calculation_and_preserves_all_values(refr
     assert refresh.calculated == []
     assert repeated["month_count"] == initial["month_count"] == 3
     assert repeated["report_dates"] == initial["report_dates"]
+    scope = repeated["refresh_scope"]
+    assert scope["scanned_report_dates"] == initial["report_dates"]
+    assert scope["scanned_years"] == ["2025", "2026"]
+    assert scope["scanned_date_count"] == 3
+    assert scope["rebuilt_report_dates"] == []
+    assert scope["rebuilt_years"] == []
+    assert scope["rebuilt_date_count"] == 0
+    assert scope["reused_report_dates"] == initial["report_dates"]
+    assert scope["reused_years"] == ["2025", "2026"]
+    assert scope["reused_date_count"] == 3
+    assert scope["removed_report_dates"] == []
+    assert scope["removed_years"] == []
+    assert scope["removed_date_count"] == 0
     assert refresh.rows() == before
     assert refresh.state()["rebuilt_years"] == []
     assert refresh.state()["reused_years"] == ["2025", "2026"]
@@ -176,11 +189,16 @@ def test_revision_rebuilds_only_affected_year_and_equals_clean_full_with_origina
     refresh.calculated.clear()
     refresh.write(changed_month, "900.987654321")
 
-    refresh.run()
+    receipt = refresh.run()
 
     assert refresh.parsed == ["202601", "202602"]
     assert len(refresh.calculated) == 8
     assert refresh.state()["rebuilt_years"] == ["2026"]
+    assert receipt["refresh_scope"]["rebuilt_report_dates"] == ["2026-01-31", "2026-02-28"]
+    assert receipt["refresh_scope"]["rebuilt_years"] == ["2026"]
+    assert receipt["refresh_scope"]["rebuilt_date_count"] == 2
+    assert receipt["refresh_scope"]["reused_report_dates"] == ["2025-01-31"]
+    assert receipt["refresh_scope"]["reused_years"] == ["2025"]
     after = refresh.rows()
     assert {table: [row for row in rows if row[0].startswith("2025")] for table, rows in after.items()} == {
         table: [row for row in rows if row[0].startswith("2025")] for table, rows in before.items()
@@ -254,6 +272,12 @@ def test_deleted_month_or_entire_year_is_removed_and_remaining_outputs_equal_ful
     receipt = refresh.run()
 
     assert receipt["month_count"] == 2
+    scope = receipt["refresh_scope"]
+    assert scope["scanned_date_count"] == 2
+    assert scope["removed_report_dates"] == ["2025-01-31" if month == "202501" else "2026-01-31"]
+    assert scope["removed_date_count"] == 1
+    assert scope["removed_years"] == (["2025"] if month == "202501" else [])
+    assert scope["rebuilt_report_dates"] == ([] if month == "202501" else ["2026-02-28"])
     assert all(not row[0].replace("-", "").startswith(month) for rows in refresh.rows().values() for row in rows)
     assert refresh.rows() == refresh.clean_reference()
 
@@ -379,6 +403,7 @@ def test_inputs_changed_during_parse_abort_without_certifying_mixed_inputs(
     with pytest.raises(ValueError, match="inputs changed during materialization"):
         refresh.run()
     assert refresh.rows() == before
+    assert GovernanceRepository(base_dir=refresh.governance).read_all(CACHE_BUILD_RUN_STREAM)[-1]["status"] == "failed"
 
 
 def test_worker_rejects_files_changed_after_import_without_new_manifest(

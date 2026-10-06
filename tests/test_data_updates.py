@@ -2328,6 +2328,87 @@ def test_http_post_queue_get_uses_same_durable_receipt(settings, monkeypatch):
     execute.assert_called_once()
 
 
+def product_category_scope():
+    return {
+        "scanned_report_dates": ["2025-01-31", "2026-01-31", "2026-02-28"],
+        "scanned_years": ["2025", "2026"], "scanned_date_count": 3,
+        "rebuilt_report_dates": ["2026-01-31", "2026-02-28"],
+        "rebuilt_years": ["2026"], "rebuilt_date_count": 2,
+        "reused_report_dates": ["2025-01-31"], "reused_years": ["2025"], "reused_date_count": 1,
+        "removed_report_dates": ["2024-12-31"], "removed_years": ["2024"], "removed_date_count": 1,
+    }
+
+
+def test_product_category_scope_survives_worker_and_public_api_without_private_fields(settings, monkeypatch):
+    ready_files(settings)
+    request(settings, monkeypatch, wait=False)
+    scope = product_category_scope()
+    def execute(_settings, _report_date, progress):
+        progress({"run_id": "global-scope", "steps": [{
+            "name": "product_category_pnl", "status": "completed",
+            "result": {"status": "completed", "refresh_scope": {**scope, "source_path": "F:/private-source"},
+                       "operator": "private-operator", "error_message": "private-exception"},
+        }]})
+        return {"status": "completed"}
+
+    monkeypatch.setattr(worker, "_execute_core", execute)
+    assert worker.drain_updates(settings) == 0
+    stored = repo.latest_runs(settings.governance_path)[0]
+    assert stored["steps"][0]["refresh_scope"]["rebuilt_date_count"] == 2
+    assert "result" not in stored["steps"][0]
+
+    app = FastAPI()
+    app.include_router(routes.router)
+    app.dependency_overrides[routes.get_auth_context] = lambda: AuthContext(user_id="viewer", role="viewer")
+    monkeypatch.setattr(routes, "get_settings", lambda: settings)
+    monkeypatch.setattr(routes, "_ensure_data_health_read_allowed", lambda _auth: None)
+    monkeypatch.setattr(routes, "_authorize", Mock(side_effect=routes.HTTPException(status_code=403)))
+    monkeypatch.setattr(service, "scheduled_updates", lambda: {"status": "available", "tasks": []})
+    response = TestClient(app).get("/api/data-updates")
+    assert response.status_code == 200
+    public = next(row for row in response.json()["runs"] if row["run_id"] == stored["run_id"])
+    assert public["steps"][0]["refresh_scope"] == scope
+    assert all(value not in response.text for value in ("private-source", "private-operator", "private-exception"))
+
+
+@pytest.mark.parametrize("change", [
+    {"key": "formal_balance"}, {"status": "failed"},
+    {"refresh_scope": {"scanned_report_dates": ["F:/private-source"]}},
+])
+def test_public_scope_ignores_other_steps_failed_steps_and_invalid_metadata(change):
+    step = {"key": "product_category_pnl", "status": "completed", "refresh_scope": product_category_scope(), **change}
+    public = routes._public_run({"steps": [step]}, input_directory="F:/fixture")
+    assert "refresh_scope" not in public["steps"][0]
+
+
+@pytest.mark.parametrize("override", [
+    {"scanned_report_dates": ["F:/private-source"]},
+    {"scanned_report_dates": ["2026-13-31"]},
+    {"scanned_years": ["private-operator"]},
+    {"scanned_date_count": -1}, {"scanned_date_count": True}, {"scanned_date_count": 99},
+])
+def test_public_scope_rejects_invalid_values_without_exposing_them(override):
+    scope = {**product_category_scope(), **override}
+    public = routes._public_run({"steps": [{
+        "key": "product_category_pnl", "status": "completed", "refresh_scope": scope,
+    }]}, input_directory="F:/fixture")
+    assert "refresh_scope" not in public["steps"][0]
+
+
+@pytest.mark.parametrize("scope_name", ["scanned", "rebuilt", "reused", "removed"])
+def test_public_scope_omits_non_ascii_years_without_losing_legacy_receipt(scope_name):
+    scope = {**product_category_scope(), f"{scope_name}_years": ["٢٠٢٦"]}
+    public = routes._public_run({
+        "run_id": "legacy-scope", "report_date": REPORT_DATE, "status": "completed",
+        "steps": [{"key": "product_category_pnl", "label": "产品损益", "status": "completed", "refresh_scope": scope}],
+    }, input_directory="F:/fixture")
+    assert "refresh_scope" not in public["steps"][0]
+    assert public["run_id"] == "legacy-scope"
+    assert public["report_date"] == REPORT_DATE
+    assert public["status"] == "completed"
+    assert public["steps"][0] == {"key": "product_category_pnl", "label": "产品损益", "status": "completed"}
+
+
 
 def test_http_preflight_only_exposes_approved_fields(settings, monkeypatch):
     app = FastAPI()

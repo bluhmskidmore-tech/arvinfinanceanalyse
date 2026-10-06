@@ -3,6 +3,31 @@ import { describe, expect, it, vi } from "vitest";
 import { createDataUpdatesClient } from "./dataUpdatesClient";
 
 describe("data update client", () => {
+  const scope = {
+    scanned_report_dates: ["2025-01-31", "2026-01-31"], scanned_years: ["2025", "2026"], scanned_date_count: 2,
+    rebuilt_report_dates: ["2026-01-31"], rebuilt_years: ["2026"], rebuilt_date_count: 1,
+    reused_report_dates: ["2025-01-31"], reused_years: ["2025"], reused_date_count: 1,
+    removed_report_dates: [], removed_years: [], removed_date_count: 0,
+  };
+
+  it.each([
+    { refresh_scope: { ...scope, scanned_date_count: -1 } },
+    { refresh_scope: { ...scope, scanned_date_count: 99 } },
+    { refresh_scope: { ...scope, scanned_report_dates: [null] } },
+    { refresh_scope: { ...scope, scanned_years: ["F:/private-source"] } },
+    { refresh_scope: { ...scope, removed_report_dates: undefined } },
+    { refresh_scope: scope, status: "failed" },
+    { refresh_scope: scope, key: "formal_balance" },
+  ])("rejects malformed or misplaced product-category scope (%j)", async (override) => {
+    const receipt = { run_id: "scope-run", report_date: "2026-08-31", status: "completed",
+      updated_at: "2026-09-01T00:00:00Z", message: "已完成。", steps: [
+        { key: "product_category_pnl", label: "产品损益", status: "completed", ...override },
+      ] };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(receipt), { status: 202 }));
+    const api = createDataUpdatesClient({ fetchImpl });
+    await expect(api.requestCore("2026-08-31", false, "scope-key")).rejects.toThrow(/refresh_scope|处理范围/);
+  });
+
   it("sends an explicit date and idempotency key without accepting a command", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       run_id: "run-1", report_date: "2026-08-31", workflow: "core_financial", status: "queued", message: "已受理。",

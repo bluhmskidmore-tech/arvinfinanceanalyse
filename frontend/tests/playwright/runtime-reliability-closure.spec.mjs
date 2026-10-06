@@ -54,7 +54,8 @@ function overview(canManage = true) {
     financial_dates: [], steps: [{ key: "verify", label: "结果日期核验" }],
     runs: [
       { ...run, run_id: "browser-publish-failed", failure_receipt: { failed_step: "publish" },
-        steps: [{ key: "verify", label: "结果日期核验", status: "completed" },
+        steps: [{ key: "product_category_pnl", label: "产品损益", status: "completed" },
+          { key: "verify", label: "结果日期核验", status: "completed" },
           { key: "publish", label: "财务发布", status: "failed", error_message: "合成发布连接失败" }] },
       { ...run, run_id: "browser-compute-failed", report_date: "2026-07-31",
         failure_receipt: { failed_step: "balance" },
@@ -80,9 +81,76 @@ test("publication failures expose the receipt without the full-update retry shor
   await published.getByText("查看失败回执与已完成步骤", { exact: true }).click();
   await expect(published).toContainText("browser-publish-failed");
   await expect(published.getByText("合成发布连接失败")).toBeVisible();
+  await expect(published.getByText("产品损益", { exact: true })).toBeVisible();
+  await expect(published.getByLabel("产品损益实际处理范围", { exact: true })).toHaveCount(0);
+  await expect(published.getByText(/实际重建：0/)).toHaveCount(0);
   await center.getByRole("button", { name: "重新提交此日期" }).click();
   await expect(center.getByLabel("报告日期", { exact: true })).toHaveValue("2026-07-31");
   expect(writes).toEqual([]);
+});
+
+test("a completed product step exposes its actual scope while the request remains publication-failed", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const data = overview(false);
+  data.runs = [{
+    ...data.runs[0],
+    run_id: "browser-product-scope-publish-failed",
+    message: "产品损益已完成，后续发布未完成。",
+    publication_recovery: {
+      available: false, failed_step: "publish",
+      reason: "合成发布连接失败，当前请求尚不能确认可恢复发布。",
+    },
+    steps: [
+      { key: "product_category_pnl", label: "产品损益", status: "completed", refresh_scope: {
+        scanned_report_dates: ["2025-01-31", "2026-01-31", "2026-02-28"],
+        scanned_years: ["2025", "2026"], scanned_date_count: 3,
+        rebuilt_report_dates: ["2026-01-31", "2026-02-28"],
+        rebuilt_years: ["2026"], rebuilt_date_count: 2,
+        reused_report_dates: ["2025-01-31"], reused_years: ["2025"], reused_date_count: 1,
+        removed_report_dates: ["2024-12-31"], removed_years: ["2024"], removed_date_count: 1,
+      } },
+      { key: "verify", label: "结果日期核验", status: "completed" },
+      { key: "publish", label: "财务发布", status: "failed", error_message: "合成发布连接失败" },
+    ],
+  }];
+  const writes = await installServices(page, { "/api/data-updates": data });
+  await page.goto(`${baseURL}/platform-config`);
+  const center = page.getByTestId("data-update-center");
+  const published = center.locator("li").filter({ hasText: "财务计算已完成，发布待处理" });
+  await expect(published).toHaveCount(1);
+  const scope = published.getByLabel("产品损益实际处理范围", { exact: true });
+  await expect(scope).toBeHidden();
+  await published.getByText("查看失败回执与已完成步骤", { exact: true }).click();
+  await expect(scope).toBeVisible();
+  for (const [summary, reportDates] of [
+    ["扫描来源：3 个报告日；来源年份：2025、2026", "2025-01-31、2026-01-31、2026-02-28"],
+    ["实际重建：2 个报告日；重建年份：2026", "2026-01-31、2026-02-28"],
+    ["沿用结果：1 个报告日；复用年份：2025", "2025-01-31"],
+    ["移除结果：1 个报告日；完整移除年份：2024", "2024-12-31"],
+  ]) {
+    const row = scope.locator("p").filter({ hasText: summary });
+    await expect(row).toBeVisible();
+    await expect(row).toContainText(`报告日：${reportDates}`);
+  }
+  await expect(scope).toContainText("以上记录产品损益步骤的处理范围；本请求的结果日期核验按所选报告日执行。");
+  await expect(scope).not.toContainText("2026-08-31");
+  const requestHeading = published.getByText("报告日 2026-08-31", { exact: true }).locator("..");
+  await expect(requestHeading.getByText("更新未完成", { exact: true })).toBeVisible();
+  await expect(requestHeading.locator('[data-status="completed"]')).toHaveCount(0);
+  await expect(published.getByText("合成发布连接失败", { exact: true })).toBeVisible();
+  await expect(center.getByRole("button", { name: "立即更新", exact: true })).toBeDisabled();
+  const scopeWidth = await scope.evaluate((element) => ({
+    content: element.scrollWidth, available: element.clientWidth,
+  }));
+  expect(scopeWidth.content).toBeLessThanOrEqual(scopeWidth.available + 1);
+  expect(errors).toEqual([]);
+  expect(writes).toEqual([]);
+  await page.screenshot({
+    path: testInfo.outputPath("product-scope-publication-failed-1440x900.png"),
+    fullPage: true,
+  });
 });
 
 test("viewers can inspect publication failures without receiving write controls", async ({ page }) => {

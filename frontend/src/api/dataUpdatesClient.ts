@@ -16,6 +16,21 @@ export type UpdatePreflight = {
   checks: UpdateInputCheck[];
 };
 
+export type ProductCategoryRefreshScope = {
+  scanned_report_dates: string[];
+  scanned_years: string[];
+  scanned_date_count: number;
+  rebuilt_report_dates: string[];
+  rebuilt_years: string[];
+  rebuilt_date_count: number;
+  reused_report_dates: string[];
+  reused_years: string[];
+  reused_date_count: number;
+  removed_report_dates: string[];
+  removed_years: string[];
+  removed_date_count: number;
+};
+
 export type DataUpdateRun = {
   workflow?: UpdateWorkflow | "choice_stock_pit_history";
   run_id: string;
@@ -30,7 +45,8 @@ export type DataUpdateRun = {
   recovery_of_run_id?: string | null;
   publication_recovery?: { available: boolean; reason: string | null; failed_step: string | null };
   failure_receipt?: { failed_step?: string; business_body_status?: string } | null;
-  steps: { key: string; label: string; status: string; error_message?: string | null; elapsed_seconds?: number | null }[];
+  steps: { key: string; label: string; status: string; error_message?: string | null;
+    elapsed_seconds?: number | null; refresh_scope?: ProductCategoryRefreshScope | null }[];
   preflight?: UpdatePreflight | {
     workflow: "choice_stock_pit_history";
     report_date: string;
@@ -69,10 +85,32 @@ function assertUpdateRun(run: DataUpdateRun, path: string): void {
     { path: "updated_at", type: "string" }, { path: "message", type: "string" },
     { path: "steps", type: "array" },
   ]);
-  run.steps.forEach((step, index) => assertShape(step, `${path}.steps[${index}]`, [
-    { path: "key", type: "string" }, { path: "label", type: "string" },
-    { path: "status", type: "string" },
-  ]));
+  run.steps.forEach((step, index) => {
+    const stepPath = `${path}.steps[${index}]`;
+    assertShape(step, stepPath, [
+      { path: "key", type: "string" }, { path: "label", type: "string" },
+      { path: "status", type: "string" }, { path: "refresh_scope", type: "object", optional: true },
+    ]);
+    const scope = step.refresh_scope;
+    if (!scope) return;
+    if (step.key !== "product_category_pnl" || step.status !== "completed") {
+      throw new Error(`产品损益处理范围与步骤状态不一致：${stepPath}`);
+    }
+    for (const name of ["scanned", "rebuilt", "reused", "removed"] as const) {
+      assertShape(scope, `${stepPath}.refresh_scope`, [
+        { path: `${name}_report_dates`, type: "array" }, { path: `${name}_years`, type: "array" },
+        { path: `${name}_date_count`, type: "number" },
+      ]);
+      const dates = scope[`${name}_report_dates`];
+      const years = scope[`${name}_years`];
+      const count = scope[`${name}_date_count`];
+      if (dates.some((value) => typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+        || years.some((value) => typeof value !== "string" || !/^\d{4}$/.test(value))
+        || !Number.isInteger(count) || count < 0 || count !== dates.length || new Set(dates).size !== dates.length) {
+        throw new Error(`产品损益处理范围格式无效：${stepPath}.refresh_scope.${name}`);
+      }
+    }
+  });
 }
 
 export function createDataUpdatesClient(options?: { baseUrl?: string; fetchImpl?: typeof fetch }) {

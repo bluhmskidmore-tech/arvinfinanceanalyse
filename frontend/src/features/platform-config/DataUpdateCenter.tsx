@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createDataUpdatesClient, type DataUpdateRun, type DataUpdatesClient, type UpdateWorkflow } from "../../api/dataUpdatesClient";
+import { createDataUpdatesClient, type DataUpdateRun, type DataUpdatesClient, type ProductCategoryRefreshScope, type UpdateWorkflow } from "../../api/dataUpdatesClient";
 import { PageStateSurface } from "../../components/page/PagePrimitives";
 import { EM_DASH } from "../../pageModel";
 import { buildDataUpdateCenterModel, requiresPublicationReview, updateStatusLabel } from "./dataUpdateCenterModel";
@@ -19,6 +19,22 @@ function formatStepElapsedSeconds(step: DataUpdateRun["steps"][number]): string 
   if (!["completed", "failed"].includes(step.status)
     || typeof elapsed !== "number" || !Number.isFinite(elapsed) || elapsed < 0) return null;
   return `耗时 ${elapsed.toFixed(3)} 秒`;
+}
+
+function ProductCategoryScope({ scope }: { scope: ProductCategoryRefreshScope }) {
+  const rows = [
+    { key: "scanned", label: "扫描来源", yearsLabel: "来源年份" },
+    { key: "rebuilt", label: "实际重建", yearsLabel: "重建年份" },
+    { key: "reused", label: "沿用结果", yearsLabel: "复用年份" },
+    { key: "removed", label: "移除结果", yearsLabel: "完整移除年份" },
+  ] as const;
+  return <div aria-label="产品损益实际处理范围">
+    {rows.map(({ key, label, yearsLabel }) => <p key={key}>
+      {label}：{scope[`${key}_date_count`]} 个报告日；{yearsLabel}：{scope[`${key}_years`].join("、") || "无"}。
+      报告日：{scope[`${key}_report_dates`].join("、") || "无"}。
+    </p>)}
+    <p className={styles.muted}>以上记录产品损益步骤的处理范围；本请求的结果日期核验按所选报告日执行。</p>
+  </div>;
 }
 
 export default function DataUpdateCenter({ mode, api = defaultApi }: { mode: "real" | "mock"; api?: DataUpdatesClient }) {
@@ -97,6 +113,7 @@ export default function DataUpdateCenter({ mode, api = defaultApi }: { mode: "re
           <section className={styles.request} aria-label="安排财务更新">
             <h3>安排财务更新</h3>
             <p>按所选报告日和更新范围执行，完成后核验结果日期。</p>
+            {workflow === "core_financial" && <p className={styles.muted}>产品损益会扫描历史来源并复用未变化年份，实际处理范围见更新回执。</p>}
             <label className={styles.dateLabel}>更新范围
               <select value={workflow} onChange={(event) => { setWorkflow(event.target.value as UpdateWorkflow); setRequestKey(crypto.randomUUID()); submit.reset(); }}>
                 <option value="balance_daily">每日余额、持仓与风险</option>
@@ -193,6 +210,8 @@ export default function DataUpdateCenter({ mode, api = defaultApi }: { mode: "re
                   const elapsed = formatStepElapsedSeconds(step);
                   return <li key={step.key}><span>{step.label}</span><Status value={step.status} />
                     {elapsed && <small>{elapsed}</small>}
+                    {step.key === "product_category_pnl" && step.status === "completed" && step.refresh_scope
+                      && <ProductCategoryScope scope={step.refresh_scope} />}
                     {step.error_message && <p className={styles.error}>{step.error_message}</p>}</li>;
                 })}
               </ol></details>}

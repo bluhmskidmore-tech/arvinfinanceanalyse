@@ -965,6 +965,11 @@ def _drain_updates_active(settings=None) -> int:
                                 if key in item
                             },
                         }
+                        if item["name"] == "product_category_pnl" and item["status"] == "completed":
+                            step_result = item.get("result")
+                            scope = step_result.get("refresh_scope") if isinstance(step_result, dict) else None
+                            if isinstance(scope, dict):
+                                step["refresh_scope"] = dict(scope)
                         if item["name"] in {
                             "daily_balance_and_risk",
                             "pnl_by_business_page_prepare",

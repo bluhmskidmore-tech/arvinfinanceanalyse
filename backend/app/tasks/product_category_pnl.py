@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import cast
 
 import duckdb
-
 from backend.app.config.product_category_mapping import build_product_category_config_for_report_date
 from backend.app.core_finance.product_category_pnl import (
     apply_manual_adjustments,
@@ -147,6 +146,13 @@ def _materialize_product_category_pnl(
                 for year in years
             }
             before = stored_state(conn, years)
+            previous_report_dates = {
+                str(row[0]) for row in conn.execute(" union ".join(
+                    f"select cast(try_cast(report_date as date) as varchar) from {table} "
+                    "where try_cast(report_date as date) is not null"
+                    for table in PRODUCT_CATEGORY_TABLES
+                )).fetchall()
+            }
             reused = reusable_years(
                 manifest=previous_manifest, previous_run=previous_run,
                 inputs=inputs, stored=before, implementation=implementation, rule_version=RULE_VERSION,
@@ -218,6 +224,22 @@ def _materialize_product_category_pnl(
                 or implementation_signature() != implementation
             ):
                 raise ValueError("Product-category inputs changed during materialization; retry the refresh.")
+            scanned_dates = {pair.report_date.isoformat() for pair in pairs}
+            scope_dates = {
+                "scanned": sorted(scanned_dates),
+                "rebuilt": sorted(pair.report_date.isoformat() for pair in rebuilt_pairs),
+                "reused": sorted(pair.report_date.isoformat() for pair in pairs if str(pair.report_date.year) in reused),
+                "removed": sorted(previous_report_dates - scanned_dates),
+            }
+            scope_years = {
+                "scanned": years, "rebuilt": sorted(rebuilt), "reused": sorted(reused),
+                "removed": sorted(year for year in removed if len(year) == 4 and year.isdigit()),
+            }
+            refresh_scope: dict[str, object] = {}
+            for name, report_dates in scope_dates.items():
+                refresh_scope[f"{name}_report_dates"] = report_dates
+                refresh_scope[f"{name}_years"] = scope_years[name]
+                refresh_scope[f"{name}_date_count"] = len(report_dates)
             after = stored_state(conn, years) if rebuilt or removed else before
             joined_source_version = "__".join(pair.source_version for pair in pairs)
             manifest = CacheManifestRecord(
@@ -290,6 +312,7 @@ def _materialize_product_category_pnl(
         "report_dates": [pair.report_date.isoformat() for pair in pairs],
         "rule_version": RULE_VERSION,
         "source_version": joined_source_version,
+        "refresh_scope": refresh_scope,
     }
 
 
