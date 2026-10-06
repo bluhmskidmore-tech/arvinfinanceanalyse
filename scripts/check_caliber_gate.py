@@ -31,6 +31,7 @@ silently passing.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import subprocess
 import sys
@@ -38,6 +39,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 _TEST_ACCOUNTING_BASIS = "tests/test_caliber_rule_accounting_basis.py"
 _TEST_FORMAL_SCENARIO_GATE = "tests/test_caliber_rule_formal_scenario_gate.py"
@@ -760,6 +763,24 @@ def list_changed_files(base_ref: str, *, cwd: Path) -> list[str]:
     return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
 
 
+def _pytest_worker_args(workers: int | None) -> list[str]:
+    # Keep diff/scope queries stdlib-only. Reuse the bounded gate's worker
+    # policy only when executing tests; this does not apply its marker filter.
+    from scripts.backend_release_suite import _worker_args
+
+    try:
+        worker_args = _worker_args(workers, include_excluded_surfaces=False)
+    except ValueError as exc:
+        raise CaliberGateError(f"invalid worker option or PYTEST_ADDOPTS: {exc}") from exc
+    if importlib.util.find_spec("xdist") is None:
+        raise CaliberGateError(
+            f"pytest-xdist is unavailable in {sys.executable}; install locked "
+            "dev dependencies with uv sync --frozen --project backend --extra dev "
+            "--python 3.11 before executing this gate"
+        )
+    return worker_args
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -771,6 +792,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--base-ref",
         required=True,
         help="Git ref the PR diff is compared against, e.g. origin/main.",
+    )
+    parser.add_argument(
+        "--workers", type=int,
+        help=(
+            "Pytest workers; defaults to available CPUs capped at 4. "
+            "Use 1 for serial execution; an existing PYTEST_ADDOPTS worker choice is preserved."
+        ),
     )
     output_mode = parser.add_mutually_exclusive_group()
     output_mode.add_argument(
@@ -799,6 +827,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Print true/false for the canonical backend release suite; do not run pytest.",
     )
     args = parser.parse_args(argv)
+    if args.workers is not None and args.workers < 1:
+        parser.error("--workers must be at least 1")
 
     try:
         changed_files = list_changed_files(args.base_ref, cwd=ROOT)
@@ -891,8 +921,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     for test_file in matched_tests:
         print(f"  - {test_file}")
+    try:
+        worker_args = _pytest_worker_args(args.workers)
+    except CaliberGateError as exc:
+        print(f"caliber-gate: FAIL-CLOSED: {exc}", file=sys.stderr)
+        return 2
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", *matched_tests, "-q"],
+        [sys.executable, "-m", "pytest", *matched_tests, "-q", *worker_args],
         cwd=ROOT,
         check=False,
     )

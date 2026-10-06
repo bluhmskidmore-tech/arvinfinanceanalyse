@@ -18,11 +18,12 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from importlib import util
 from pathlib import Path
 
 import pytest
 
-from scripts import check_caliber_gate as gate
+from scripts import backend_release_suite, check_caliber_gate as gate
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -686,7 +687,7 @@ def test_cli_runs_selected_numeric_checks_and_propagates_failure(
         return subprocess.CompletedProcess(command, 1)
 
     monkeypatch.setattr(gate.subprocess, "run", failed_pytest)
-    assert gate.main(["--base-ref", "base"]) == 1
+    assert gate.main(["--base-ref", "base", "--workers", "1"]) == 1
     assert calls == [[
         gate.sys.executable,
         "-m",
@@ -697,7 +698,74 @@ def test_cli_runs_selected_numeric_checks_and_propagates_failure(
         "tests/test_decimal_first_batch_lock.py",
         "tests/test_krd_golden.py",
         "-q",
+        "-n",
+        "0",
     ]]
+
+
+@pytest.mark.parametrize(("cpu_count", "expected"), [(None, "0"), (1, "0"), (2, "2"), (16, "4")])
+def test_caliber_workers_default_caps_without_changing_selection(monkeypatch, cpu_count, expected):
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    monkeypatch.setattr(backend_release_suite.os, "cpu_count", lambda: cpu_count)
+    monkeypatch.setattr(gate, "list_changed_files", lambda _base_ref, *, cwd: ["backend/app/core_finance/credit_spread.py"])
+    calls = []
+    monkeypatch.setattr(gate.subprocess, "run", lambda command, **kwargs: calls.append((command, kwargs)) or subprocess.CompletedProcess(command, 0))
+
+    assert gate.main(["--base-ref", "base"]) == 0
+    assert calls == [([
+        gate.sys.executable, "-m", "pytest", "tests/test_credit_spread.py", "-q", "-n", expected,
+    ], {"cwd": REPO_ROOT, "check": False})]
+
+
+@pytest.mark.parametrize("option", ["-n 2", "-n2", "-n auto", "--numprocesses 2", "--numprocesses=2"])
+def test_caliber_workers_preserve_addopts_and_allow_serial_override(monkeypatch, option):
+    addopts = f"-p _pytest_duckdb_guard -m integration {option}"
+    monkeypatch.setenv("PYTEST_ADDOPTS", addopts)
+    monkeypatch.setattr(gate, "list_changed_files", lambda _base_ref, *, cwd: ["backend/app/core_finance/credit_spread.py"])
+    calls = []
+    monkeypatch.setattr(gate.subprocess, "run", lambda command, **kwargs: calls.append(command) or subprocess.CompletedProcess(command, 0))
+
+    assert gate.main(["--base-ref", "base"]) == 0
+    assert calls[-1] == [gate.sys.executable, "-m", "pytest", "tests/test_credit_spread.py", "-q"]
+    assert gate.main(["--base-ref", "base", "--workers", "1"]) == 0
+    assert calls[-1] == [gate.sys.executable, "-m", "pytest", "tests/test_credit_spread.py", "-q", "-n", "0"]
+    assert os.environ["PYTEST_ADDOPTS"] == addopts
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "invalid"])
+def test_caliber_workers_reject_invalid_cli_before_diff(monkeypatch, value):
+    monkeypatch.setattr(gate, "list_changed_files", lambda *args, **kwargs: pytest.fail("must not compute diff"))
+    with pytest.raises(SystemExit) as exc:
+        gate.main(["--base-ref", "base", "--workers", value])
+    assert exc.value.code == 2
+
+
+def test_caliber_workers_missing_xdist_fails_clearly_before_execution(monkeypatch, capsys):
+    monkeypatch.setattr(gate, "list_changed_files", lambda _base_ref, *, cwd: ["backend/app/core_finance/credit_spread.py"])
+    real_find_spec = util.find_spec
+    monkeypatch.setattr(util, "find_spec", lambda name, *args, **kwargs: None if name == "xdist" else real_find_spec(name, *args, **kwargs))
+    monkeypatch.setattr(gate.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not execute pytest"))
+    assert gate.main(["--base-ref", "base"]) == 2
+    output = capsys.readouterr().err
+    assert "pytest-xdist" in output
+    assert gate.sys.executable in output
+    assert "uv sync --frozen --project backend --extra dev" in output
+
+
+def test_caliber_workers_bad_addopts_fails_clearly_before_execution(monkeypatch, capsys):
+    monkeypatch.setenv("PYTEST_ADDOPTS", '-n "unterminated')
+    monkeypatch.setattr(gate, "list_changed_files", lambda _base_ref, *, cwd: ["backend/app/core_finance/credit_spread.py"])
+    monkeypatch.setattr(gate.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not execute pytest"))
+    assert gate.main(["--base-ref", "base"]) == 2
+    assert "PYTEST_ADDOPTS" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("scope", ["--dry-run", "--frontend-scope", "--data-update-browser-scope", "--scheduler-scope", "--release-scope"])
+def test_caliber_workers_selection_modes_do_not_require_xdist(monkeypatch, scope):
+    monkeypatch.setattr(gate, "list_changed_files", lambda _base_ref, *, cwd: ["backend/app/core_finance/credit_spread.py"])
+    monkeypatch.setattr(util, "find_spec", lambda *args, **kwargs: pytest.fail("selection must stay stdlib-only"))
+    monkeypatch.setattr(gate.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not execute pytest"))
+    assert gate.main(["--base-ref", "base", scope]) == 0
 
 
 def _run_git(repo: Path, *args: str) -> None:
