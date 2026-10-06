@@ -37,6 +37,7 @@ import subprocess
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -206,6 +207,11 @@ CALIBER_GATE_MAP: dict[str, tuple[str, ...]] = {
     ),
     "backend/app/core_finance/attribution_daily.py": (
         "tests/test_attribution_daily.py", _TEST_CAMPISI_GOLDEN,
+    ),
+    # TTM flow/snapshot alignment and the service's query-cache version are
+    # exercised together by this existing synthetic repair regression.
+    "backend/app/core_finance/action_attribution.py": (
+        "tests/test_pnl_audit_repair.py",
     ),
     "backend/app/core_finance/credit_spread_analysis.py": (
         "backend/tests/core_finance/test_credit_spread_analysis.py",
@@ -661,7 +667,8 @@ CALIBER_GATE_MAP["backend/app/repositories/liability_analytics_repo.py"] = (
 CALIBER_GATE_MAP["backend/app/services/advanced_attribution_service.py"] = (
     "tests/test_advanced_attribution_contract.py",)
 CALIBER_GATE_MAP["backend/app/services/bond_analytics_service.py"] = (
-    "tests/test_bond_analytics_service.py", "tests/test_advanced_attribution_contract.py")
+    "tests/test_bond_analytics_service.py", "tests/test_advanced_attribution_contract.py",
+    "tests/test_pnl_audit_repair.py")
 
 # Self-selection uses the same map and resolver as source changes. Snapshot
 # values before adding test keys so the map is never mutated during iteration.
@@ -781,6 +788,122 @@ def _pytest_worker_args(workers: int | None) -> list[str]:
     return worker_args
 
 
+class _ShadowChange(TypedDict):
+    status: str
+    paths: list[str]
+
+
+def _list_shadow_changes(base_ref: str) -> list[_ShadowChange]:
+    """Read old and new rename paths without changing the mandatory selector."""
+    completed = subprocess.run(
+        ["git", "diff", "--name-status", "-z", "--find-renames", f"{base_ref}...HEAD"],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", check=False,
+    )
+    if completed.returncode != 0:
+        raise CaliberGateError(f"shadow git diff failed: {completed.stderr.strip()}")
+    tokens = completed.stdout.split("\0")
+    if tokens[-1] == "":
+        tokens.pop()
+    changes: list[_ShadowChange] = []
+    offset = 0
+    while offset < len(tokens):
+        status = tokens[offset]
+        path_count = 2 if status.startswith(("R", "C")) else 1
+        valid_status = (
+            status in {"A", "M", "D", "T", "U", "X", "B"}
+            or (status[:1] in {"R", "C"} and status[1:].isdigit())
+        )
+        if not valid_status or offset + path_count >= len(tokens):
+            raise CaliberGateError("invalid shadow name-status evidence")
+        paths = tokens[offset + 1:offset + 1 + path_count]
+        if any(not path for path in paths):
+            raise CaliberGateError("empty path in shadow name-status evidence")
+        changes.append({"status": status, "paths": paths})
+        offset += 1 + path_count
+    return changes
+
+
+def build_shadow_selection(
+    changed_files: Iterable[str],
+    changes: Sequence[_ShadowChange],
+    *,
+    evidence_error: str | None = None,
+) -> dict[str, object]:
+    """Suggest existing full jobs; never feed advice to the pytest command."""
+    original_paths = {path.replace("\\", "/").strip() for path in changed_files}
+    paths = original_paths | {
+        str(path).replace("\\", "/")
+        for change in changes for path in change["paths"]
+    }
+    mandatory = set(resolve_required_tests(original_paths))
+    extra_tests = sorted(set(resolve_required_tests(paths)) - mandatory)
+    jobs: set[str] = set()
+    reasons: dict[str, set[str]] = {}
+
+    def recommend(reason: str, path: str, *job_names: str) -> None:
+        reasons.setdefault(reason, set()).add(path)
+        jobs.update(job_names)
+
+    shared_backend_paths = {
+        "backend/app/main.py", "backend/app/api/__init__.py",
+        "backend/app/repositories/duckdb_repo.py",
+        "backend/app/repositories/duckdb_read_context.py",
+        "backend/app/governance/settings.py",
+        "backend/app/tasks/broker.py", "backend/app/tasks/worker_bootstrap.py",
+        "backend/app/tasks/worker_recovery.py",
+        "backend/app/repositories/financial_result_publication_repo.py",
+        "backend/app/tasks/financial_result_publication.py",
+    }
+    backend_config_paths = {
+        "pytest.ini", "_pytest_duckdb_guard.py", "backend/pyproject.toml", "backend/uv.lock",
+        "scripts/check_caliber_gate.py", "scripts/backend_release_suite.py",
+    }
+    frontend_config_paths = {
+        "frontend/package.json", "frontend/package-lock.json", "frontend/vitest.config.ts",
+        "frontend/src/api/transport.ts", "frontend/src/api/clientContext.ts",
+    }
+    for path in sorted(paths):
+        mapped = any(_matches(path, source) for source in CALIBER_GATE_MAP)
+        if path in shared_backend_paths or path.startswith("backend/app/core_finance/"):
+            recommend("Core finance and shared backend boundaries need all backend layers", path, "backend-full-pytest")
+        if path in backend_config_paths or path == "conftest.py" or path.endswith("/conftest.py"):
+            recommend("Test, dependency or gate configuration affects backend execution", path, "backend-full-pytest")
+        if path.startswith(("backend/app/api/", "backend/app/schemas/", "frontend/src/api/contracts/")):
+            recommend("Public contract changes need backend and frontend consumers", path,
+                      "backend-full-pytest", "frontend", "api-contract")
+        if path in frontend_config_paths or path.startswith("frontend/"):
+            recommend("Frontend consumers need the complete existing frontend job", path, "frontend")
+        if not mapped and path.startswith(("backend/", "tests/")):
+            recommend("Unmapped backend paths lack a verified domain-wide selector", path, "backend-full-pytest")
+        elif not mapped and path.startswith("scripts/") and path not in backend_config_paths:
+            recommend("Unmapped scripts lack a verified consumer set", path,
+                      "backend-full-pytest", "frontend", "api-contract")
+        elif not mapped and not path.startswith(("frontend/", "backend/", "tests/", "scripts/")) and path not in backend_config_paths:
+            recommend("Unmapped paths cannot establish absence of test impact", path,
+                      "backend-full-pytest", "frontend", "api-contract")
+    if evidence_error is not None:
+        recommend("Shadow change evidence is unavailable; related layers cannot be narrowed",
+                  "<change evidence unavailable>", "backend-full-pytest", "frontend", "api-contract")
+    return {
+        "mode": "advisory_only",
+        "status": "unavailable" if evidence_error is not None else "available",
+        "execution_note": "Recommendations were not executed. Mandatory test selection is unchanged.",
+        "evidence_error": evidence_error,
+        "mandatory_test_file_count": len(mandatory),
+        "additional_registered_test_count": len(extra_tests),
+        "additional_registered_test_examples": extra_tests[:5],
+        "recommended_jobs": sorted(jobs),
+        "reasons": [
+            {"reason": reason, "path_count": len(affected), "path_examples": sorted(affected)[:3]}
+            for reason, affected in sorted(reasons.items())
+        ],
+        "change_status_counts": {
+            status: sum(str(change["status"]).startswith(status) for change in changes)
+            for status in ("A", "M", "D", "R", "C")
+        },
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -799,6 +922,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Pytest workers; defaults to available CPUs capped at 4. "
             "Use 1 for serial execution; an existing PYTEST_ADDOPTS worker choice is preserved."
         ),
+    )
+    parser.add_argument(
+        "--shadow-selection", action="store_true",
+        help="Add advisory full-layer recommendations to --dry-run; never change required tests.",
     )
     output_mode = parser.add_mutually_exclusive_group()
     output_mode.add_argument(
@@ -829,6 +956,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.workers is not None and args.workers < 1:
         parser.error("--workers must be at least 1")
+    if args.shadow_selection and not args.dry_run:
+        parser.error("--shadow-selection requires --dry-run")
 
     try:
         changed_files = list_changed_files(args.base_ref, cwd=ROOT)
@@ -878,6 +1007,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     if args.dry_run:
+        shadow_fields: dict[str, object] = {}
+        if args.shadow_selection:
+            try:
+                shadow_changes = _list_shadow_changes(args.base_ref)
+                shadow = build_shadow_selection(changed_files, shadow_changes)
+            except (CaliberGateError, OSError) as exc:
+                shadow = build_shadow_selection(changed_files, (), evidence_error=str(exc))
+            shadow_fields["shadow_selection"] = shadow
         print(
             json.dumps(
                 {
@@ -895,6 +1032,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "data_update_browser_scope_selected": selects_data_update_browser_scope(changed_files),
                     "scheduler_windows_scope_selected": selects_scheduler_windows_scope(changed_files),
                     "release_scope_selected": selects_formal_release_scope(changed_files),
+                    **shadow_fields,
                 },
                 ensure_ascii=False,
                 indent=2,

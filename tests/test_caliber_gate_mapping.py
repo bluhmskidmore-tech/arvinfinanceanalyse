@@ -768,6 +768,105 @@ def test_caliber_workers_selection_modes_do_not_require_xdist(monkeypatch, scope
     assert gate.main(["--base-ref", "base", scope]) == 0
 
 
+@pytest.mark.parametrize(("path", "jobs"), [
+    ("backend/app/core_finance/credit_spread.py", ["backend-full-pytest"]),
+    ("backend/app/core_finance/new_module.py", ["backend-full-pytest"]),
+    ("backend/app/core_finance/rate_units.py", ["backend-full-pytest"]),
+    ("backend/app/tasks/broker.py", ["backend-full-pytest"]),
+    ("backend/app/new_domain/new_module.py", ["backend-full-pytest"]),
+    ("tests/new_unmarked_test.py", ["backend-full-pytest"]),
+    ("tests/new_domain/conftest.py", ["backend-full-pytest"]),
+    ("pytest.ini", ["backend-full-pytest"]),
+    ("backend/uv.lock", ["backend-full-pytest"]),
+    ("scripts/check_caliber_gate.py", ["backend-full-pytest"]),
+    ("scripts/backend_release_suite.py", ["backend-full-pytest"]),
+    ("frontend/package-lock.json", ["frontend"]),
+    ("frontend/src/shared/new_hook.ts", ["frontend"]),
+    ("scripts/new_runtime_probe.mjs", ["api-contract", "backend-full-pytest", "frontend"]),
+    ("backend/app/api/routes/balance_analysis.py", ["api-contract", "backend-full-pytest", "frontend"]),
+    ("backend/app/schemas/balance_analysis.py", ["api-contract", "backend-full-pytest", "frontend"]),
+    ("frontend/src/api/contracts/balanceLedger.ts", ["api-contract", "backend-full-pytest", "frontend"]),
+    ("docs/unmapped_metric.md", ["api-contract", "backend-full-pytest", "frontend"]),
+])
+def test_shadow_selection_suggests_full_layers_without_guessing_domain_tests(path, jobs):
+    required_before = gate.resolve_required_tests([path])
+    shadow = gate.build_shadow_selection([path], [{"status": "M", "paths": [path]}])
+    assert shadow["mode"] == "advisory_only"
+    assert shadow["recommended_jobs"] == jobs
+    assert shadow["mandatory_test_file_count"] == len(required_before)
+    assert gate.resolve_required_tests([path]) == required_before
+    assert "not executed" in shadow["execution_note"]
+
+
+@pytest.mark.parametrize("path", [
+    "backend/app/core_finance/pnl_constants.py",
+    "backend/app/core_finance/bond_analytics/read_models.py",
+])
+def test_shadow_core_finance_changes_require_full_backend_advice(path):
+    required_before = gate.resolve_required_tests([path])
+    assert required_before, "these mapped dependencies must retain their existing checks"
+    shadow = gate.build_shadow_selection([path], [{"status": "M", "paths": [path]}])
+    assert shadow["recommended_jobs"] == ["backend-full-pytest"]
+    assert gate.resolve_required_tests([path]) == required_before
+
+
+@pytest.mark.parametrize("path", [
+    "backend/app/core_finance/action_attribution.py",
+    "backend/app/services/bond_analytics_service.py",
+    "tests/test_pnl_audit_repair.py",
+])
+def test_ttm_repair_dependencies_select_its_registered_regression(path):
+    selected = set(gate.resolve_required_tests([path]))
+    assert "tests/test_pnl_audit_repair.py" in selected
+    if path == "backend/app/services/bond_analytics_service.py":
+        assert {"tests/test_bond_analytics_service.py", "tests/test_advanced_attribution_contract.py"} <= selected
+    elif path == "tests/test_pnl_audit_repair.py":
+        assert "tests/test_caliber_gate_mapping.py" in selected
+
+
+def test_shadow_report_never_changes_actual_pytest_selection_or_failure(monkeypatch, capsys):
+    path = "backend/app/core_finance/credit_spread.py"
+    monkeypatch.setattr(gate, "list_changed_files", lambda _base_ref, *, cwd: [path])
+    monkeypatch.setattr(gate, "_list_shadow_changes", lambda _base_ref: [
+        {"status": "R100", "paths": ["backend/app/new_domain/old.py", path]},
+    ])
+    assert gate.main(["--base-ref", "base", "--dry-run", "--shadow-selection"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["matched_tests"] == ["tests/test_credit_spread.py"]
+    assert report["shadow_selection"]["recommended_jobs"] == ["backend-full-pytest"]
+    monkeypatch.setattr(gate, "_list_shadow_changes", lambda *args: pytest.fail("actual execution must not read shadow advice"))
+    calls = []
+    monkeypatch.setattr(gate.subprocess, "run", lambda command, **kwargs: calls.append(command) or subprocess.CompletedProcess(command, 7))
+    assert gate.main(["--base-ref", "base", "--workers", "1"]) == 7
+    assert calls == [[gate.sys.executable, "-m", "pytest", "tests/test_credit_spread.py", "-q", "-n", "0"]]
+
+
+def test_shadow_mode_requires_dry_run_before_reading_diff(monkeypatch):
+    monkeypatch.setattr(gate, "list_changed_files", lambda *args, **kwargs: pytest.fail("must not read diff"))
+    with pytest.raises(SystemExit) as exc:
+        gate.main(["--base-ref", "base", "--shadow-selection"])
+    assert exc.value.code == 2
+
+
+def test_shadow_evidence_failure_discloses_full_advice_without_changing_mandatory_selection(monkeypatch, capsys):
+    monkeypatch.setattr(gate, "list_changed_files", lambda _base_ref, *, cwd: ["backend/app/core_finance/credit_spread.py"])
+    monkeypatch.setattr(gate, "_list_shadow_changes", lambda _base_ref: (_ for _ in ()).throw(gate.CaliberGateError("synthetic malformed rename evidence")))
+    assert gate.main(["--base-ref", "base", "--dry-run", "--shadow-selection"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["matched_tests"] == ["tests/test_credit_spread.py"]
+    shadow = report["shadow_selection"]
+    assert shadow["status"] == "unavailable"
+    assert "malformed rename" in shadow["evidence_error"]
+    assert shadow["recommended_jobs"] == ["api-contract", "backend-full-pytest", "frontend"]
+
+
+@pytest.mark.parametrize("output", ["R100\0only-one-path\0", "?\0path.py\0", "M\0\0"])
+def test_shadow_rejects_malformed_name_status_evidence(monkeypatch, output):
+    monkeypatch.setattr(gate.subprocess, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout=output, stderr=""))
+    with pytest.raises(gate.CaliberGateError):
+        gate._list_shadow_changes("base")
+
+
 def _run_git(repo: Path, *args: str) -> None:
     completed = subprocess.run(
         ["git", *args],
@@ -1015,3 +1114,43 @@ def test_selected_pytest_failure_propagates_nonzero(
     _run_git(gate_repo, "commit", "--quiet", "-m", "selected failing regression")
 
     assert gate.main(["--base-ref", "base"]) == 1
+
+
+def test_shadow_real_rename_checks_both_paths_without_expanding_mandatory_tests(gate_repo, monkeypatch, capsys):
+    old_path, new_path = "src/gated_module.py", "src/renamed_module.py"
+    (gate_repo / old_path).rename(gate_repo / new_path)
+    _run_git(gate_repo, "add", "-A")
+    _run_git(gate_repo, "commit", "--quiet", "-m", "rename source")
+    monkeypatch.setattr(gate, "CALIBER_GATE_MAP", {
+        old_path: ("tests/test_old_consumer.py",), new_path: ("tests/test_new_consumer.py",),
+    })
+    assert gate.main(["--base-ref", "base", "--dry-run", "--shadow-selection"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["matched_tests"] == ["tests/test_new_consumer.py"]
+    shadow = report["shadow_selection"]
+    assert shadow["change_status_counts"]["R"] == 1
+    assert shadow["additional_registered_test_count"] == 1
+    assert shadow["additional_registered_test_examples"] == ["tests/test_old_consumer.py"]
+
+
+def test_shadow_real_deletion_retains_existing_mandatory_checks(gate_repo, capsys):
+    (gate_repo / "src/gated_module.py").unlink()
+    _run_git(gate_repo, "commit", "--quiet", "-am", "delete source")
+    assert gate.main(["--base-ref", "base", "--dry-run", "--shadow-selection"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["matched_tests"] == ["tests/test_caliber_rule_hat_mapping.py"]
+    assert report["shadow_selection"]["change_status_counts"]["D"] == 1
+
+
+def test_shadow_invalid_base_still_fails_closed_before_advice(gate_repo, monkeypatch, capsys):
+    monkeypatch.setattr(gate, "_list_shadow_changes", lambda *args: pytest.fail("must not trust failed base diff"))
+    assert gate.main(["--base-ref", "missing-base", "--dry-run", "--shadow-selection"]) == 2
+    assert "FAIL-CLOSED" in capsys.readouterr().err
+
+
+def test_shadow_mapped_document_keeps_its_registered_tests(monkeypatch):
+    path = "docs/known_contract.md"
+    monkeypatch.setattr(gate, "CALIBER_GATE_MAP", {path: ("tests/test_known_contract.py",)})
+    shadow = gate.build_shadow_selection([path], [{"status": "M", "paths": [path]}])
+    assert shadow["mandatory_test_file_count"] == 1
+    assert gate.resolve_required_tests([path]) == ["tests/test_known_contract.py"]

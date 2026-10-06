@@ -112,7 +112,7 @@ jobs:
         run: |
           git fetch origin "${{ github.base_ref }}"
           mkdir -p .codex-tmp
-          python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}" --dry-run > .codex-tmp/caliber-selection.json
+          python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}" --dry-run --shadow-selection > .codex-tmp/caliber-selection.json
           python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"
 
       - name: Report caliber selection scope
@@ -125,6 +125,7 @@ jobs:
           from pathlib import Path
 
           lines = ["### Caliber path selection", ""]
+          report = None
           try:
               report = json.loads(Path(".codex-tmp/caliber-selection.json").read_text(encoding="utf-8"))
               for key in ("mapped_files", "unmapped_files", "matched_tests"):
@@ -145,6 +146,36 @@ jobs:
                   lines.extend(["</ul></details>", ""])
           except (OSError, ValueError, KeyError, TypeError) as exc:
               lines.append(f"Selection report unavailable or invalid: {html.escape(str(exc))}. No empty-selection or coverage conclusion can be drawn.")
+          lines.extend(["", "### Shadow regression advice (not executed)", ""])
+          try:
+              shadow = report["shadow_selection"]
+              if shadow["mode"] != "advisory_only" or shadow["status"] not in {"available", "unavailable"}:
+                  raise ValueError("invalid shadow mode or status")
+              for key in ("mandatory_test_file_count", "additional_registered_test_count"):
+                  if type(shadow[key]) is not int or shadow[key] < 0:
+                      raise ValueError(f"invalid shadow {key}")
+              if shadow["mandatory_test_file_count"] != len(report["matched_tests"]):
+                  raise ValueError("shadow and mandatory selection counts differ")
+              if not isinstance(shadow["recommended_jobs"], list) or not all(
+                  job in {"backend-full-pytest", "frontend", "api-contract"} for job in shadow["recommended_jobs"]
+              ):
+                  raise ValueError("invalid shadow job recommendations")
+              if not isinstance(shadow["reasons"], list):
+                  raise ValueError("invalid shadow reasons")
+              lines.extend([
+                  "Recommendations were not executed. Mandatory test selection and existing job conditions are unchanged.", "",
+                  f"Advice status: {shadow['status']}; recommended existing jobs: {', '.join(shadow['recommended_jobs']) or '(none)'}.", "",
+                  f"Additional registered checks suggested from rename/deletion evidence: {shadow['additional_registered_test_count']}.", "",
+              ])
+              for reason in shadow["reasons"]:
+                  if not isinstance(reason["reason"], str) or type(reason["path_count"]) is not int or reason["path_count"] < 0:
+                      raise ValueError("invalid shadow reason")
+                  if not isinstance(reason["path_examples"], list) or not all(isinstance(path, str) for path in reason["path_examples"]):
+                      raise ValueError("invalid shadow path examples")
+                  examples = ", ".join(html.escape(path) for path in reason["path_examples"][:3])
+                  lines.extend([f"{html.escape(reason['reason'])}: {reason['path_count']} paths. Examples: {examples}", ""])
+          except (ValueError, KeyError, TypeError) as exc:
+              lines.append(f"Shadow advice unavailable or invalid: {html.escape(str(exc))}. No narrowing or coverage conclusion can be drawn; the mandatory gate is unchanged.")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
               summary.write("\n".join(lines) + "\n")
           PY

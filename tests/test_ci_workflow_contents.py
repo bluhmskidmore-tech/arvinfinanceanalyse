@@ -176,7 +176,12 @@ def test_ci_workflow_runs_its_configuration_and_path_gate_checks():
     assert "uv sync --frozen --project backend --extra dev --python 3.11" in caliber_job
     assert 'git fetch origin "${{ github.base_ref }}"' in caliber_job
     assert 'python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"' in caliber_job
-    assert '--base-ref "origin/${{ github.base_ref }}" --dry-run > .codex-tmp/caliber-selection.json' in caliber_job
+    assert '--base-ref "origin/${{ github.base_ref }}" --dry-run --shadow-selection > .codex-tmp/caliber-selection.json' in caliber_job
+    gate_commands = [line.strip() for line in _workflow_step(workflow, "Caliber path-trigger gate").splitlines()
+                     if line.strip().startswith("python scripts/check_caliber_gate.py")]
+    assert len(gate_commands) == 2
+    assert "--shadow-selection" not in gate_commands[1]
+    assert "Recommendations were not executed" in caliber_job
     assert "- name: Report caliber selection scope\n        if: always()" in caliber_job
     assert "html.escape(path)" in caliber_job
     assert "Selection report unavailable or invalid:" in caliber_job
@@ -226,6 +231,57 @@ def test_caliber_ci_summary_escapes_paths_and_keeps_selection_distinct_from_exec
     assert "<script>" not in output
     assert "Unmapped does not mean untested or verified" in output
     assert "this selection report does not record that job or any test result" in output
+
+
+@pytest.mark.parametrize("shadow", [None, {}, {"mode": "enabled", "status": "available"}])
+def test_caliber_ci_summary_does_not_treat_missing_shadow_as_coverage(tmp_path, monkeypatch, shadow):
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    step = _workflow_step(workflow, "Report caliber selection scope")
+    source = textwrap.dedent(step.split("python - <<'PY'\n", 1)[1].rsplit("          PY", 1)[0])
+    monkeypatch.chdir(tmp_path)
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    (tmp_path / ".codex-tmp").mkdir()
+    report = {
+        "mapped_files": [], "unmapped_files": ["docs/new.md"], "matched_tests": [],
+        "selection_scope": "Registered financial scope only.", "selection_note": "Selection is not execution.",
+        "shadow_selection": shadow,
+    }
+    (tmp_path / ".codex-tmp/caliber-selection.json").write_text(json.dumps(report), encoding="utf-8")
+    exec(compile(source, "<caliber-ci-summary>", "exec"), {})
+    output = summary.read_text(encoding="utf-8")
+    assert "Paths not mapped by this gate: 1" in output
+    assert "Shadow advice unavailable or invalid" in output
+    assert "No narrowing or coverage conclusion can be drawn" in output
+
+
+def test_caliber_ci_summary_discloses_unexecuted_compact_shadow_advice(tmp_path, monkeypatch):
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    step = _workflow_step(workflow, "Report caliber selection scope")
+    source = textwrap.dedent(step.split("python - <<'PY'\n", 1)[1].rsplit("          PY", 1)[0])
+    monkeypatch.chdir(tmp_path)
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    (tmp_path / ".codex-tmp").mkdir()
+    report = {
+        "mapped_files": [], "unmapped_files": [], "matched_tests": ["tests/test_required.py"],
+        "selection_scope": "Registered scope.", "selection_note": "Selection is not execution.",
+        "shadow_selection": {
+            "mode": "advisory_only", "status": "available", "mandatory_test_file_count": 1,
+            "additional_registered_test_count": 2, "recommended_jobs": ["backend-full-pytest"],
+            "reasons": [{"reason": "Unknown <script> path", "path_count": 1072,
+                         "path_examples": ["backend/<script>&new.py", "one.py", "two.py", "hidden-fourth.py"]}],
+        },
+    }
+    (tmp_path / ".codex-tmp/caliber-selection.json").write_text(json.dumps(report), encoding="utf-8")
+    exec(compile(source, "<caliber-ci-summary>", "exec"), {})
+    output = summary.read_text(encoding="utf-8")
+    assert "Recommendations were not executed. Mandatory test selection" in output
+    assert "1072 paths" in output
+    assert "backend/&lt;script&gt;&amp;new.py" in output
+    assert "<script>" not in output
+    assert "hidden-fourth.py" not in output
+    assert "Additional registered checks suggested from rename/deletion evidence: 2" in output
 
 
 def test_ci_workflow_uses_repo_typecheck_entrypoint():
