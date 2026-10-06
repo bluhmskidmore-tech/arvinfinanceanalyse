@@ -5,7 +5,6 @@ import logging
 import threading
 import time
 import uuid
-from calendar import monthrange
 from collections.abc import Sequence
 from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
@@ -20,6 +19,7 @@ from backend.app.core_finance.action_attribution import (
     build_action_attribution_placeholder_payload,
     build_action_attribution_success_payload,
     compute_action_attribution_bonds,
+    resolve_action_attribution_flow_start,
     select_action_attribution_pnl_report_dates,
 )
 from backend.app.core_finance.bond_analytics import dv01 as dv01_core
@@ -175,8 +175,9 @@ from pydantic import BaseModel
 _BOND_ANALYTICS_VERSION = FIXED_INCOME_VERSION_SET.bond_analytics
 CACHE_KEY = _BOND_ANALYTICS_VERSION.cache_key
 CACHE_VERSION = _BOND_ANALYTICS_VERSION.cache_version
-ACTION_ATTRIBUTION_RULE_VERSION = "rv_action_attribution_calendar_coverage_v2"
-ACTION_ATTRIBUTION_CACHE_VERSION = "cv_action_attribution_calendar_coverage_v2"
+# Query-only calendar correction: isolate all v2 action results; formal facts are unchanged.
+ACTION_ATTRIBUTION_RULE_VERSION = "rv_action_attribution_calendar_coverage_v3"
+ACTION_ATTRIBUTION_CACHE_VERSION = "cv_action_attribution_calendar_coverage_v3"
 RETURN_PNL517_RULE_VERSION = "rv_return_pnl517_calendar_v2"
 
 
@@ -4671,8 +4672,9 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         _action_attribution_cache.invalidate(_cache_key)
 
     period_start, period_end = resolve_period(report_date, period_type)
-    if period_type == "TTM" and period_end.day == monthrange(period_end.year, period_end.month)[1]:
-        period_start += timedelta(days=1)
+    period_start = resolve_action_attribution_flow_start(
+        period_type=period_type, period_start=period_start, period_end=period_end,
+    )
     repo = _repo()
     rows_end, rows_start, prior_rd = _fetch_action_attribution_snapshots(
         repo=repo, period_start=period_start.isoformat(), period_end=period_end.isoformat()

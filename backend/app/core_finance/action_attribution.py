@@ -168,6 +168,19 @@ def build_action_attribution_placeholder_payload(
     }
 
 
+def resolve_action_attribution_flow_start(
+    *,
+    period_type: str,
+    period_start: date,
+    period_end: date,
+) -> date:
+    """Align month-end TTM snapshots with the twelve calendar months of PnL."""
+    if period_type == "TTM" and period_end.day == monthrange(period_end.year, period_end.month)[1]:
+        start_month = period_end.year * 12 + period_end.month - 1 - 11
+        return date(start_month // 12, start_month % 12 + 1, 1)
+    return period_start
+
+
 def select_action_attribution_pnl_report_dates(
     *,
     available_report_dates: list[str],
@@ -182,7 +195,10 @@ def select_action_attribution_pnl_report_dates(
     if period_type == "TTM" and period_end.day != monthrange(period_end.year, period_end.month)[1]:
         return [], ["ACTION_ATTRIBUTION_TTM_NON_MONTH_END_PENDING"]
     end_month = period_end.year * 12 + period_end.month - 1
-    start_month = end_month - 11 if period_type == "TTM" else period_start.year * 12 + period_start.month - 1
+    flow_start = resolve_action_attribution_flow_start(
+        period_type=period_type, period_start=period_start, period_end=period_end,
+    )
+    start_month = flow_start.year * 12 + flow_start.month - 1
     expected_months = [f"{m // 12:04d}-{m % 12 + 1:02d}" for m in range(start_month, end_month + 1)]
     by_month: dict[str, set[str]] = {}
     for raw in available_report_dates:

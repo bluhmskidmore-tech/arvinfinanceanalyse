@@ -23,7 +23,7 @@ def month_ends(year, month, count):
             for i in range(count)]
 
 
-@pytest.mark.parametrize("end", [date(2026, 3, 31), date(2024, 2, 29), date(2026, 1, 31)])
+@pytest.mark.parametrize("end", [date(2026, 3, 31), date(2024, 2, 29), date(2025, 2, 28), date(2026, 1, 31)])
 def test_ttm_is_twelve_calendar_months(end):
     start, _ = resolve_period(end, "TTM")
     available = month_ends(end.year - 1, end.month, 13)
@@ -103,6 +103,101 @@ def test_ytd_anchor_is_before_flow_start_not_latest_snapshot():
     _, start, actual = bonds._fetch_action_attribution_snapshots(repo=repo,
         period_start="2026-01-01", period_end="2026-03-31")
     assert actual == "2025-12-31" and start[0]["report_date"] == actual
+
+
+@pytest.fixture
+def ttm_action_service(monkeypatch):
+    from backend.app.schemas.result_meta import ResultMeta
+
+    row = {"instrument_code": "HOLD", "portfolio_name": "P", "cost_center": "C",
+           "market_value": D("1000000"), "modified_duration": D("2"), "accounting_class": "FVTPL"}
+    snapshots = {
+        "2024-02-28": [{**row, "instrument_code": "OUTSIDE"}],
+        "2024-02-29": [row],
+        "2025-02-28": [{**row, "modified_duration": D("4")}],
+    }
+    repo, pnl_repo = MagicMock(), MagicMock()
+    repo.list_report_dates.return_value = list(snapshots)
+    repo.fetch_bond_analytics_rows.side_effect = lambda *, report_date: snapshots[report_date]
+    pnl_repo.list_union_report_dates.return_value = month_ends(2024, 2, 13)
+    pnl_repo.merged_capital_gain_517_by_position_for_dates.side_effect = (
+        lambda dates: {"HOLD::P::C": D("100") * len(dates)}
+    )
+    build = {"run_id": "ttm-build", "source_version": "sv_ttm_synthetic",
+             "rule_version": bonds.RULE_VERSION, "cache_version": bonds.CACHE_VERSION}
+    cache = bonds._TTLCache()
+    monkeypatch.setattr(bonds, "_action_attribution_cache", cache)
+    monkeypatch.setattr(bonds, "_repo", lambda: repo)
+    monkeypatch.setattr(bonds, "PnlRepository", lambda *_: pnl_repo)
+    monkeypatch.setattr(bonds, "get_settings", lambda: SimpleNamespace(duckdb_path=":memory:"))
+    monkeypatch.setattr(bonds, "_require_latest_completed_bond_analytics_run", lambda *a, **kw: build)
+    monkeypatch.setattr(bonds, "_duckdb_cache_version_token", lambda: ("ttm-test",))
+    monkeypatch.setattr(bonds, "_meta", lambda kind, rd, rows: ResultMeta(
+        trace_id="ttm-synthetic", result_kind=kind, source_surface="bond_analytics",
+        source_version=build["source_version"], rule_version=build["rule_version"],
+        cache_version=build["cache_version"], as_of_date=rd.isoformat(), evidence_rows=len(rows),
+    ))
+    return repo, pnl_repo, cache, build
+
+
+def test_ttm_service_after_leap_year_aligns_snapshot_actions_and_monthly_flow(ttm_action_service):
+    repo, pnl_repo, _, _ = ttm_action_service
+    result = bonds.get_action_attribution(date(2025, 2, 28), "TTM")["result"]
+
+    assert result["period_start"] == "2024-03-01"
+    assert result["snapshot_window"]["requested_start"] == "2024-03-01"
+    assert result["snapshot_window"]["resolved_start"] == "2024-02-29"
+    assert result["snapshot_window"]["start_gap_days"] == 1
+    assert result["snapshot_window"]["staleness_limit_status"] == "PENDING"
+    assert [call.kwargs["report_date"] for call in repo.fetch_bond_analytics_rows.call_args_list] == [
+        "2025-02-28", "2024-02-29",
+    ]
+    pnl_repo.merged_capital_gain_517_by_position_for_dates.assert_called_once_with(month_ends(2024, 3, 12))
+    assert D(result["total_pnl_from_actions"]) == 1200
+    assert [row["action_type"] for row in result["action_details"]] == ["ADD_DURATION"]
+    assert D(result["action_details"][0]["pnl_economic"]) == 1200
+    assert sum(D(row["total_pnl_economic"]) for row in result["by_action_type"]) == 1200
+    assert result["pnl_coverage"]["identified_pnl"] == 1200
+    assert result["pnl_coverage"]["unallocated_pnl"] == 0
+    assert result["pnl_coverage"]["reconciliation_difference"] == 0
+
+
+def test_ttm_service_query_version_does_not_reuse_old_calendar_cache(ttm_action_service):
+    repo, pnl_repo, cache, build = ttm_action_service
+    old_key = ("2025-02-28", "TTM", "cv_action_attribution_calendar_coverage_v2",
+               "ttm-test", *bonds._completed_build_cache_token(build))
+    old_result = {"result_meta": {
+        "source_version": build["source_version"],
+        "rule_version": f"{bonds.RULE_VERSION}__rv_action_attribution_calendar_coverage_v2",
+        "cache_version": f"{bonds.CACHE_VERSION}__cv_action_attribution_calendar_coverage_v2",
+    }, "result": {"period_start": "2024-02-29"}}
+    cache.set(old_key, old_result)
+
+    result = bonds.get_action_attribution(date(2025, 2, 28), "TTM")
+    assert result is not old_result
+    assert result["result"]["period_start"] == "2024-03-01"
+    assert result["result_meta"]["rule_version"] == f"{bonds.RULE_VERSION}__rv_action_attribution_calendar_coverage_v3"
+    assert result["result_meta"]["cache_version"] == f"{bonds.CACHE_VERSION}__cv_action_attribution_calendar_coverage_v3"
+    assert result["result_meta"]["formal_use_allowed"] is False
+    assert bonds.get_action_attribution(date(2025, 2, 28), "TTM") is result
+    assert repo.fetch_bond_analytics_rows.call_count == 2
+    assert pnl_repo.merged_capital_gain_517_by_position_for_dates.call_count == 1
+
+
+@pytest.mark.parametrize("period_type,end,expected_start", [
+    ("TTM", date(2025, 2, 28), date(2024, 3, 1)),
+    ("TTM", date(2024, 2, 29), date(2023, 3, 1)),
+    ("TTM", date(2026, 1, 31), date(2025, 2, 1)),
+    ("TTM", date(2026, 3, 31), date(2025, 4, 1)),
+    ("TTM", date(2025, 2, 27), date(2024, 2, 27)),
+    ("MoM", date(2025, 2, 28), date(2025, 2, 1)),
+    ("YTD", date(2025, 2, 28), date(2025, 1, 1)),
+])
+def test_action_flow_start_keeps_calendar_and_compatibility_boundaries(period_type, end, expected_start):
+    start, period_end = resolve_period(end, period_type)
+    assert bonds.resolve_action_attribution_flow_start(
+        period_type=period_type, period_start=start, period_end=period_end,
+    ) == expected_start
 
 
 def decision_row(**changes):

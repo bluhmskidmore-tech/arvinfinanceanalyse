@@ -17,8 +17,8 @@
 - `result_meta.result_kind == "bond_analytics.action_attribution"`.
 - `result_meta.formal_use_allowed == false`.
 - `result_meta.source_version == "sv_bond_analysis_action_attr_gs_a"`.
-- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v6__rv_action_attribution_calendar_coverage_v2"`.
-- `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v6__cv_action_attribution_calendar_coverage_v2"`.
+- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v6__rv_action_attribution_calendar_coverage_v3"`.
+- `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v6__cv_action_attribution_calendar_coverage_v3"`.
 - `result_meta.quality_flag == "warning"`.
 - `result_meta.fallback_mode == "none"`.
 - `result_meta.source_surface == "bond_analytics"`.
@@ -57,3 +57,5 @@
 - `result.snapshot_window.staleness_limit_status == "PENDING"`; this capture does not approve a staleness threshold.
 - `result.pnl_coverage.status == "complete"`, `period_status == "complete"`, `missing_months == []`, and `reconciliation_difference == 0`.
 - `result.pnl_coverage.input_pnl == 1250000`, `identified_pnl == 1250000`, and `key_coverage_ratio == 1`; these coverage disclosures do not remove the existing independent-accounting-PnL limitation.
+
+The v3 action-query suffix aligns month-end TTM snapshot selection with its existing twelve-calendar-month PnL window, including `2025-02-28` after a leap year. It isolates all v2 action-query caches; formal materialization versions and historical facts are unchanged, and no historical recomputation is performed. This MoM sample retains every captured business value and does not replace the TTM service regressions in `tests/test_pnl_audit_repair.py`.

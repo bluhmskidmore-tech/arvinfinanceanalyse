@@ -37,3 +37,7 @@ Before SHA-256: `f377ab9035ddf0035e5cf1902b65f6433567b956b621f0c63ef84fca7eb2daa
 ## Technical recapture — 2026-09-27
 
 Bond materialization lineage v4 to v6; all frozen business values matched the synthetic replay. This is a deterministic technical recapture only; business-owner approval and formal-use permissions remain unchanged. Evidence: output/audits/2026-09-27/release-repair/backend/golden-diffs/ and golden-semantic-review/REPORT.md.
+
+## Query-version capture — 2026-10-06
+
+The existing deterministic MoM fixture was captured with action-query rule/cache suffix v3. Comparison against the prior capture found only those two version fields and volatile trace/assembly timestamps changed; every business field matched exactly. Only the two version fields are updated in this sample, retaining the prior assembly timestamps. Formal bond materialization lineage remains v6, and no historical facts were recomputed. Status stays `captured-awaiting-approval`, `formal_use_allowed=false`, and snapshot staleness approval remains PENDING. The isolated synthetic capture is retained locally under `.codex-tmp/development-debt-20261005/remaining-development/action-golden/response.json`.
