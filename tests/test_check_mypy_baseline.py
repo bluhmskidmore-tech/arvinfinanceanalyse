@@ -269,6 +269,7 @@ def test_reviewed_security_dependency_transition_preserves_mypy_configuration_an
     assert versions["anyio"] == "4.14.2"
     assert versions["soupsieve"] == "2.9"
     assert versions["urllib3"] == "2.8.0"
+    assert versions["mako"] == "1.4.2"
 
 
 @pytest.mark.parametrize(
@@ -277,6 +278,7 @@ def test_reviewed_security_dependency_transition_preserves_mypy_configuration_an
         ("backend/pyproject.toml", b"anyio>=4.14.2,<5", b"anyio>=4.0,<5"),
         ("backend/uv.lock", b'name = "anyio"\nversion = "4.14.2"', b'name = "anyio"\nversion = "4.13.0"'),
         ("backend/uv.lock", b'name = "urllib3"\nversion = "2.8.0"', b'name = "urllib3"\nversion = "2.7.0"'),
+        ("backend/uv.lock", b'name = "mako"\nversion = "1.4.2"', b'name = "mako"\nversion = "1.3.12"'),
     ],
 )
 @pytest.mark.parametrize("update", [False, True])

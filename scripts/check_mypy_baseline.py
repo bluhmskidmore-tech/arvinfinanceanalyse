@@ -50,12 +50,12 @@ EXPECTED_PYTHON_VERSION = (3, 11)
 EXPECTED_TYPES_REQUESTS_VERSION = "2.33.0.20260503"
 # Current reviewed verification inputs. Baseline _meta.origin records the
 # historical replay and must not be rewritten for a toolchain transition.
-# Reviewed security updates: AnyIO 4.14.2, SoupSieve 2.9 and urllib3 2.8.0.
+# Reviewed security updates: AnyIO 4.14.2, SoupSieve 2.9, urllib3 2.8.0 and Mako 1.4.2.
 # Mypy options and types-requests stay pinned; the diagnostic ratchet still
 # rejects every identity absent from the historical baseline.
 REVIEWED_CHECK_INPUT_SHA256 = {
     MYPY_CONFIG: "92dc7b4531fe8aee8ede35ae80f86429ae52c3d1098bfda142b08fb747522426",
-    "backend/uv.lock": "2f3b6272304e8a4960c7c0e50e8694ad9ea11a9d49aa2f5c26e7643186dbcb79",
+    "backend/uv.lock": "15caff1cde5b79d80326e139083d7ce5fa3cbba2523e796c17e0e34fe0201890",
 }
 BASELINE_SCHEMA_VERSION = 2
 # Keep the cache under .tmp/ (already gitignored) instead of ./.mypy_cache,
