@@ -106,7 +106,10 @@ async function main(args) {
     child.once('error', (error) => { release(); reject(error); });
     child.once('exit', (code, signal) => {
       release();
-      resolve(shutdownCode ?? code ?? (signal === 'SIGINT' ? 130 : 1));
+      // Cleanup failures must survive a pending wrapper interrupt.
+      const cleanInterrupt = code === 0 || code === 130 || (code === null && signal === 'SIGINT');
+      resolve(shutdownCode !== undefined && cleanInterrupt
+        ? shutdownCode : code ?? (signal === 'SIGINT' ? 130 : 1));
     });
   });
 }

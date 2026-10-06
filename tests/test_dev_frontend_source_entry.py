@@ -251,6 +251,132 @@ def test_source_entry_invalid_explicit_environment_never_falls_back(source_root:
 
 
 @pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM])
+@pytest.mark.parametrize("controller_code", [0, 1, 73, 130])
+def test_source_entry_interrupt_preserves_controller_failures(
+    source_root: Path, stop_signal: int, controller_code: int,
+) -> None:
+    if os.name == "nt" and stop_signal == signal.SIGTERM:
+        pytest.skip("POSIX SIGTERM forwarding; Windows uses console Ctrl+C")
+    # A synthetic controller can report cleanup failures without leaving a real
+    # Vite child behind or changing the shared runtime controller's policy.
+    ready = source_root / "controller-ready"
+    (source_root / "scripts" / "dev_runtime_control.py").write_text(
+        "import os, signal, sys, time\nfrom pathlib import Path\n"
+        "if 'check' in sys.argv:\n    raise SystemExit(0)\n"
+        "interrupted = False\n"
+        "def on_interrupt(*_args):\n    global interrupted\n    interrupted = True\n"
+        "signal.signal(signal.SIGINT, on_interrupt)\n"
+        "Path(os.environ['TEST_CONTROLLER_READY']).write_text('ready', encoding='utf-8')\n"
+        "while not interrupted:\n    time.sleep(0.02)\n"
+        "code = int(os.environ['TEST_CONTROLLER_EXIT'])\n"
+        "print(f'controller cleanup result: {code}', file=sys.stderr, flush=True)\n"
+        "raise SystemExit(code)\n",
+        encoding="utf-8",
+    )
+    _vite(source_root, "")
+    process = subprocess.Popen(
+        [NODE, str(source_root / "scripts" / "dev-frontend-source.mjs")], cwd=source_root,
+        env=_environment(TEST_CONTROLLER_READY=str(ready), TEST_CONTROLLER_EXIT=str(controller_code)),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", **_process_options(),
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert ready.exists(), "Synthetic controller never started"
+        if stop_signal == signal.SIGINT:
+            _interrupt(process)
+        else:
+            process.send_signal(stop_signal)
+        stdout, stderr = process.communicate(timeout=10)
+        expected = (130 if stop_signal == signal.SIGINT else 143) if controller_code in {0, 130} else controller_code
+        assert f"controller cleanup result: {controller_code}" in stderr, stdout + stderr
+        assert process.returncode == expected, stdout + stderr
+    finally:
+        _close(process)
+
+
+def test_source_entry_exit_status_contract_with_posix_signal_events(source_root: Path) -> None:
+    # Evaluate the real entry module with deterministic event ordering. This
+    # covers POSIX SIGTERM on Windows and signals/errors a clean controller
+    # cannot safely manufacture in the real-process tests above.
+    outcomes = [(0, None), (1, None), (17, None), (73, None), (130, None),
+                (None, "SIGINT"), (None, "SIGTERM"), (None, "SIGKILL"), (None, None), "error"]
+    cases = []
+    for stop_signal, expected_codes in [
+        (None, [0, 1, 17, 73, 130, 130, 1, 1, 1, 73]),
+        ("SIGINT", [130, 1, 17, 73, 130, 130, 1, 1, 1, 73]),
+        ("SIGTERM", [143, 1, 17, 73, 143, 143, 1, 1, 1, 73]),
+    ]:
+        cases.extend({"interrupt": stop_signal, "outcome": outcome, "expected": expected}
+                     for outcome, expected in zip(outcomes, expected_codes, strict=True))
+    harness = """
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { EventEmitter } from 'node:events';
+import { createContext, SourceTextModule, SyntheticModule } from 'node:vm';
+const source = readFileSync(process.argv[1], 'utf8');
+const results = [];
+for (const scenario of JSON.parse(process.env.TEST_SOURCE_EXIT_CASES)) {
+  const entryProcess = Object.assign(new EventEmitter(), {
+    argv: [process.execPath, process.argv[1]], execPath: process.execPath,
+    platform: 'linux', env: {},
+  });
+  const child = Object.assign(new EventEmitter(), { exitCode: null });
+  const forwarded = [];
+  const errors = [];
+  child.kill = signal => { forwarded.push(signal); return true; };
+  const context = createContext({ process: entryProcess, Buffer,
+    console: { log() {}, error(message) { errors.push(message); } },
+  });
+  const dependencies = {
+    'node:child_process': {
+      spawnSync: () => ({ status: 0, stdout: JSON.stringify({ path: 'synthetic-python', version: [3, 11, 9] }) }),
+      spawn: () => {
+        queueMicrotask(() => {
+          if (scenario.interrupt) entryProcess.emit(scenario.interrupt);
+          if (scenario.outcome === 'error') child.emit('error', new Error('synthetic spawn failure'));
+          else child.emit('exit', ...scenario.outcome);
+        });
+        return child;
+      },
+    },
+    'node:fs': { existsSync: () => true },
+    'node:path': { default: path },
+    'node:url': { fileURLToPath },
+  };
+  const entry = new SourceTextModule(source, { context,
+    initializeImportMeta(meta) { meta.url = pathToFileURL(process.argv[1]).href; },
+  });
+  await entry.link(specifier => {
+    const values = dependencies[specifier];
+    return new SyntheticModule(Object.keys(values), function () {
+      for (const [name, value] of Object.entries(values)) this.setExport(name, value);
+    }, { context });
+  });
+  await entry.evaluate();
+  results.push({ code: entryProcess.exitCode, forwarded, errors,
+    listeners: entryProcess.listenerCount('SIGINT') + entryProcess.listenerCount('SIGTERM') });
+}
+console.log(JSON.stringify(results));
+"""
+    completed = subprocess.run(
+        [NODE, "--experimental-vm-modules", "--input-type=module", "-e", harness,
+         str(source_root / "scripts" / "dev-frontend-source.mjs")], cwd=source_root,
+        env=_environment(TEST_SOURCE_EXIT_CASES=json.dumps(cases)), capture_output=True,
+        text=True, encoding="utf-8", timeout=20, check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    for scenario, result in zip(cases, json.loads(completed.stdout), strict=True):
+        assert result["code"] == scenario["expected"], (scenario, result)
+        assert result["forwarded"] == (["SIGINT"] if scenario["interrupt"] else []), (scenario, result)
+        assert result["listeners"] == 0, (scenario, result)
+        assert result["errors"] == (["Source development refused: synthetic spawn failure"]
+                                    if scenario["outcome"] == "error" else []), (scenario, result)
+
+
+@pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM])
 @pytest.mark.parametrize("stalls", [False, True])
 def test_source_entry_interrupt_waits_for_controller_to_remove_child(
     source_root: Path, stop_signal: int, stalls: bool,
