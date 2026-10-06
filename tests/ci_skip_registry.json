@@ -1445,7 +1445,7 @@
     {
       "file": "tests/test_dev_frontend_source_entry.py",
       "expected_counts": {
-        "skip_call": 2,
+        "skip_call": 3,
         "skipif": 1
       },
       "occurrences": [
@@ -1484,6 +1484,18 @@
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "Executed by the Windows source-development-entry CI job. Non-Windows skips do not count as Windows verification."
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "test_source_entry_interrupt_preserves_controller_failures requires native POSIX SIGTERM delivery for its SIGTERM cases; Windows exercises the controller failure-code regression with console Ctrl+C.",
+          "depends_on": [
+            "POSIX SIGTERM delivery to the real wrapper/controller subprocess"
+          ],
+          "has_synthetic_alternative": true,
+          "recommendation": "keep-controlled",
+          "note": "test_source_entry_exit_status_contract_with_posix_signal_events evaluates the actual Node entry source with deterministic SIGINT/SIGTERM and controller outcomes on all platforms with the project Node environment. It covers exit-code mapping when native POSIX SIGTERM is unavailable; Linux and macOS CI also execute the real SIGTERM cases. Skipped native signal cases do not count as passes."
         }
       ]
     },
