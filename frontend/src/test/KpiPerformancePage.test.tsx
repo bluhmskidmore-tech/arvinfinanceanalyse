@@ -101,6 +101,10 @@ describe("KpiPerformancePage", () => {
     renderWorkbenchApp(["/kpi"], { client: mockClient });
 
     const page = await screen.findByTestId("kpi-performance-page");
+    // The page shell appears before the asynchronous owner list is ready.
+    expect(
+      await within(page).findByRole("textbox", { name: "搜索考核部室" }),
+    ).toBeInTheDocument();
 
     expect(page).toHaveClass("kpi-performance-page");
     expect(page).toHaveClass("moss-page-v2-shell");
@@ -124,9 +128,6 @@ describe("KpiPerformancePage", () => {
     expect(within(page).getByRole("combobox", { name: "KPI assessment year" })).toBeInTheDocument();
     expect(within(page).getByRole("combobox", { name: "KPI period type" })).toBeInTheDocument();
     expect(within(page).getByLabelText("KPI as-of date")).toBeInTheDocument();
-    expect(
-      await within(page).findByRole("textbox", { name: "搜索考核部室" }),
-    ).toBeInTheDocument();
   });
 
   it("keeps populated detail and fetch-result layout surfaces local to /kpi", async () => {
