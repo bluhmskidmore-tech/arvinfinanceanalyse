@@ -5,7 +5,6 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import { SectionHead } from "../../../components/layout";
-import type { ProductCategoryAttributionPayload } from "../../../api/contracts";
 import { prefetchReactEChartsWhenIdle } from "./lazyReactEChartsLoader";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import {
@@ -22,7 +21,12 @@ import { ProductCategoryGovernanceStrip } from "./ProductCategoryGovernanceStrip
 import type { ProductCategoryLiabilityView } from "./ProductCategoryLiabilityViewToggle";
 import { ProductCategorySpreadReadout } from "./ProductCategorySpreadReadout";
 import { selectProductCategorySpreadReadoutSurface } from "./model/productCategoryPnlSpreadReadoutModel";
-import { countProductCategoryComparableReportMonths } from "./ProductCategoryComparisonCharts";
+import {
+  buildProductCategoryBacktestAttributions,
+  buildProductCategoryComparisonReadout,
+  buildProductCategoryHistoryBatchSnapshots,
+  buildProductCategoryHistorySnapshots,
+} from "./model/productCategoryHistoryReadoutModel";
 import {
   type ProductCategoryAttributionCompare,
   ProductCategoryAttributionBridge,
@@ -44,7 +48,6 @@ import {
   buildProductCategoryDiagnosticsSurface,
   buildProductCategoryDataHealth,
   buildProductCategoryLiabilitySideTrendSurface,
-  buildProductCategoryTrendSnapshot,
   buildLedgerPnlHrefForReportDate,
   collectProductCategoryGovernanceNotices,
   defaultProductCategoryScenarioRateForReportDate,
@@ -795,31 +798,14 @@ export default function ProductCategoryPnlPage() {
   });
   const trendSnapshots = useMemo(
     () =>
-      trendDiagnosticsLoaded
-        ? [
-            ...(currentSelectedPayload
-              ? [
-                  buildProductCategoryTrendSnapshot(
-                    currentSelectedPayload,
-                    currentTrendPoint?.label,
-                    currentSelectedResultMeta,
-                  ),
-                ]
-              : []),
-            ...trendHistoryPoints.flatMap((point) => {
-              const entry = historyPayloadByReportDate.get(point.reportDate);
-              return entry
-                ? [
-                    buildProductCategoryTrendSnapshot(
-                      entry.payload,
-                      point.label,
-                      entry.resultMeta,
-                    ),
-                  ]
-                : [];
-            }),
-          ]
-        : [],
+      buildProductCategoryHistorySnapshots({
+        enabled: trendDiagnosticsLoaded,
+        currentPayload: currentSelectedPayload,
+        currentLabel: currentTrendPoint?.label,
+        currentResultMeta: currentSelectedResultMeta,
+        historyPoints: trendHistoryPoints,
+        historyPayloadByReportDate,
+      }),
     [
       currentSelectedPayload,
       currentSelectedResultMeta,
@@ -831,43 +817,24 @@ export default function ProductCategoryPnlPage() {
   );
   const liabilityMatrixAlternateSnapshots = useMemo(
     () =>
-      liabilityMatrixAlternateQuery.data?.result.items.flatMap((item) =>
-        item.status === "ok" && item.result
-          ? [
-              buildProductCategoryTrendSnapshot(
-                item.result,
-                formatProductCategoryReportMonthLabel(item.report_date),
-                item.result_meta ?? undefined,
-              ),
-            ]
-          : [],
-      ) ?? [],
+      buildProductCategoryHistoryBatchSnapshots(
+        liabilityMatrixAlternateQuery.data?.result.items,
+      ),
     [liabilityMatrixAlternateQuery.data?.result.items],
   );
-  const operatingActionBacktestAttributions = useMemo(() => {
-    const byReportDate = new Map<
-      string,
-      ProductCategoryAttributionPayload | null
-    >();
-    if (attributionQuery.data?.result && attributionCompare === "mom") {
-      byReportDate.set(
-        attributionQuery.data.result.report_date,
-        attributionQuery.data.result,
-      );
-    }
-    trendHistoryAttributionQueries.forEach((query) => {
-      query.data?.result.items.forEach((item) => {
-        if (item.status === "ok" && item.result) {
-          byReportDate.set(item.result.report_date, item.result);
-        }
-      });
-    });
-    return byReportDate;
-  }, [
-    attributionCompare,
-    attributionQuery.data?.result,
-    trendHistoryAttributionQueries,
-  ]);
+  const operatingActionBacktestAttributions = useMemo(
+    () =>
+      buildProductCategoryBacktestAttributions({
+        compare: attributionCompare,
+        currentAttribution: attributionQuery.data?.result,
+        historyQueries: trendHistoryAttributionQueries,
+      }),
+    [
+      attributionCompare,
+      attributionQuery.data?.result,
+      trendHistoryAttributionQueries,
+    ],
+  );
   const operatingActionBacktestSurface = useMemo(
     () =>
       selectProductCategoryOperatingActionBacktestSurface({
@@ -889,31 +856,16 @@ export default function ProductCategoryPnlPage() {
   });
   const interestSpreadComparisonSnapshots = useMemo(
     () =>
-      trendDiagnosticsLoaded
-        ? [
-            ...(currentSelectedPayload && interestSpreadComparisonCurrentPoint
-              ? [
-                  buildProductCategoryTrendSnapshot(
-                    currentSelectedPayload,
-                    interestSpreadComparisonCurrentPoint.label,
-                    currentSelectedResultMeta,
-                  ),
-                ]
-              : []),
-            ...interestSpreadComparisonHistoryPoints.flatMap((point) => {
-              const entry = historyPayloadByReportDate.get(point.reportDate);
-              return entry
-                ? [
-                    buildProductCategoryTrendSnapshot(
-                      entry.payload,
-                      point.label,
-                      entry.resultMeta,
-                    ),
-                  ]
-                : [];
-            }),
-          ]
-        : [],
+      buildProductCategoryHistorySnapshots({
+        enabled: trendDiagnosticsLoaded,
+        currentPayload: interestSpreadComparisonCurrentPoint
+          ? currentSelectedPayload
+          : undefined,
+        currentLabel: interestSpreadComparisonCurrentPoint?.label,
+        currentResultMeta: currentSelectedResultMeta,
+        historyPoints: interestSpreadComparisonHistoryPoints,
+        historyPayloadByReportDate,
+      }),
     [
       currentSelectedPayload,
       currentSelectedResultMeta,
@@ -991,113 +943,45 @@ export default function ProductCategoryPnlPage() {
     },
     [],
   );
-  // Per-period load state is still reported one comparison month at a time; each month
-  // resolves against whichever batch carries it, and an unrequested batch counts as neither
-  // loaded nor failed (same as the previously disabled per-period query).
-  const comparisonHistoryStatus = useMemo(() => {
-    const ownerByReportDate = new Map<
-      string,
-      { isError: boolean; isFetching: boolean; hasData: boolean }
-    >();
-    const indexOwners = (
-      batches: string[][],
-      queries: Array<{ isError: boolean; isFetching: boolean; data?: unknown }>,
-    ) => {
-      batches.forEach((batchReportDates, index) => {
-        const query = queries[index];
-        if (!query) {
-          return;
-        }
-        batchReportDates.forEach((reportDate) => {
-          ownerByReportDate.set(reportDate, {
-            isError: query.isError,
-            isFetching: query.isFetching,
-            hasData: Boolean(query.data),
-          });
-        });
-      });
-    };
-    indexOwners(trendHistoryBatches, trendHistoryQueries);
-    indexOwners(interestSpreadHistoryBatches, interestSpreadHistoryQueries);
-
-    let loaded = 0;
-    let failed = 0;
-    let loading = 0;
-    interestSpreadComparisonHistoryPoints.forEach((point) => {
-      if (historyPayloadByReportDate.has(point.reportDate)) {
-        loaded += 1;
-        return;
-      }
-      const owner = ownerByReportDate.get(point.reportDate);
-      if (!owner) {
-        return;
-      }
-      if (owner.isError) {
-        failed += 1;
-      } else if (owner.isFetching) {
-        loading += 1;
-      } else if (owner.hasData) {
-        failed += 1;
-      }
-    });
-    return {
-      total: interestSpreadComparisonHistoryPoints.length,
-      loaded,
-      failed,
-      loading,
-    };
-  }, [
-    historyPayloadByReportDate,
-    interestSpreadComparisonHistoryPoints,
-    interestSpreadHistoryBatches,
-    interestSpreadHistoryQueries,
-    trendHistoryBatches,
-    trendHistoryQueries,
-  ]);
-  const comparisonHistoryTotal = comparisonHistoryStatus.total;
-  const comparisonHistoryLoaded = comparisonHistoryStatus.loaded;
-  const comparisonHistoryFailed = comparisonHistoryStatus.failed;
-  const comparisonHistoryLoading = comparisonHistoryStatus.loading;
-  const comparisonPeriodTotal = comparisonHistoryTotal + (selectedDate ? 1 : 0);
-  const comparisonPeriodLoaded =
-    comparisonHistoryLoaded + (baselineQuery.data?.result ? 1 : 0);
-  const comparisonPeriodFailed =
-    comparisonHistoryFailed + (baselineQuery.isError ? 1 : 0);
-  const comparisonPeriodLoading =
-    comparisonHistoryLoading + (baselineQuery.isFetching ? 1 : 0);
-  const comparisonLoadState: "loading" | "partial" | "complete" | "error" =
-    comparisonPeriodFailed > 0
-      ? comparisonPeriodLoaded > 0
-        ? "partial"
-        : "error"
-      : comparisonPeriodLoading > 0
-        ? "loading"
-        : comparisonPeriodLoaded < comparisonPeriodTotal
-          ? "partial"
-          : "complete";
-  const comparisonLoadLabel = [
-    `对比期载入 ${comparisonPeriodLoaded}/${comparisonPeriodTotal}`,
-    comparisonPeriodLoading > 0 ? `载入中 ${comparisonPeriodLoading}` : null,
-    comparisonPeriodFailed > 0
-      ? `失败 ${comparisonPeriodFailed}`
-      : comparisonLoadState === "partial"
-        ? "载入不全"
-        : null,
-  ]
-    .filter(Boolean)
-    .join("；");
-  const comparisonComparableMonthCount = selectedYearMonth
-    ? countProductCategoryComparableReportMonths(
-        interestSpreadComparisonSnapshots,
-        selectedYearMonth.year,
-      )
-    : 0;
-  const comparisonPriorPeriodLabel = selectedYearMonth
-    ? `${selectedYearMonth.year - 1}年全年`
-    : "上年全年待选";
-  const comparisonCurrentPeriodLabel = selectedYearMonth
-    ? `${selectedYearMonth.year}年截至${selectedYearMonth.month}月`
-    : "当前年截止月待选";
+  const {
+    loadState: comparisonLoadState,
+    loadLabel: comparisonLoadLabel,
+    comparableMonthCount: comparisonComparableMonthCount,
+    priorPeriodLabel: comparisonPriorPeriodLabel,
+    currentPeriodLabel: comparisonCurrentPeriodLabel,
+  } = useMemo(
+    () =>
+      buildProductCategoryComparisonReadout({
+        selectedDate,
+        selectedYearMonth,
+        comparisonSnapshots: interestSpreadComparisonSnapshots,
+        historyPoints: interestSpreadComparisonHistoryPoints,
+        historyPayloadByReportDate,
+        trendHistoryBatches,
+        trendHistoryQueries,
+        interestSpreadHistoryBatches,
+        interestSpreadHistoryQueries,
+        baseline: {
+          data: baselineQuery.data?.result,
+          isError: baselineQuery.isError,
+          isFetching: baselineQuery.isFetching,
+        },
+      }),
+    [
+      baselineQuery.data?.result,
+      baselineQuery.isError,
+      baselineQuery.isFetching,
+      historyPayloadByReportDate,
+      interestSpreadComparisonHistoryPoints,
+      interestSpreadComparisonSnapshots,
+      interestSpreadHistoryBatches,
+      interestSpreadHistoryQueries,
+      selectedDate,
+      selectedYearMonth,
+      trendHistoryBatches,
+      trendHistoryQueries,
+    ],
+  );
   const adjustmentCount =
     adjustmentsQuery.data?.adjustment_count ??
     adjustmentsQuery.data?.adjustments.length ??
