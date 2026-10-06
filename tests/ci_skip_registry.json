@@ -1425,7 +1425,7 @@
     {
       "file": "tests/test_dev_frontend_application_live.py",
       "expected_counts": {
-        "skipif": 1
+        "skipif": 2
       },
       "occurrences": [
         {
@@ -1439,6 +1439,18 @@
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "Registers existing source conditions only; no test or skip condition is added or weakened. A skipped platform or dependency check is not a pass."
+        },
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "other",
+          "reason": "The rejected startup-receipt cleanup regression exercises the Windows-only Vite PID probe using explicitly opted-in isolated real application services.",
+          "depends_on": [
+            "Windows host, MOSS_TEST_FULL_APP=1 and installed application dependencies"
+          ],
+          "has_synthetic_alternative": true,
+          "recommendation": "keep-controlled",
+          "note": "Cross-platform synthetic cases cover exact npm/Vite identity and malformed or mismatched receipts. Normal real-application acceptance remains cross-platform with its existing opt-in condition; this additional Windows cleanup case does not skip or weaken it."
         }
       ]
     },

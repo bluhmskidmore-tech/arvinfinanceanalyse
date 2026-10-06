@@ -12,6 +12,7 @@ import socket
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.request import urlopen
@@ -58,26 +59,72 @@ def _api_pid(log: Path) -> int:
     return int(match.group(1))
 
 
-def _vite_pid(wrapper_pid: int) -> int:
+def _prepare_vite_pid_probe(root: Path, npm_cli: Path, port: int) -> tuple[dict[str, str], Path, dict]:
+    """Observe this isolated npm tree without changing its entrypoints or config."""
+    receipt = root / "vite-pid.json"
+    receipt.unlink(missing_ok=True)
+    expected = {
+        "owner_token": uuid.uuid4().hex,
+        "node_executable": str(Path(NODE).resolve()),
+        "npm_entry": str(npm_cli.resolve()),
+        "entry": str(root / "frontend/node_modules/vite/bin/vite.js"),
+        "cwd": str(root / "frontend"),
+        "args": ["--host", "127.0.0.1", "--port", str(port), "--strictPort", "--clearScreen", "false"],
+        "npm_args": ["run", "dev:source", "--", "--port", str(port)],
+    }
+    probe = root / "vite-pid-probe.cjs"
+    probe.write_text(
+        "const fs = require('node:fs'); const path = require('node:path');\n"
+        f"const expected = {json.dumps(expected)}; const receipt = {json.dumps(str(receipt))};\n"
+        "const samePath = (a,b) => { const normalize = p => { const value = path.resolve(p); "
+        "return process.platform === 'win32' ? value.toLowerCase() : value; }; "
+        "return typeof a === 'string' && normalize(a) === normalize(b); };\n"
+        "const sameArgs = args => JSON.stringify(process.argv.slice(2)) === JSON.stringify(args);\n"
+        "const owned = process.env.MOSS_TEST_VITE_OWNER_TOKEN === expected.owner_token "
+        "&& samePath(process.execPath, expected.node_executable) && samePath(process.cwd(), expected.cwd);\n"
+        "if (owned && samePath(process.argv[1], expected.npm_entry) && sameArgs(expected.npm_args)) "
+        "process.env.MOSS_TEST_VITE_OWNER_PID = String(process.pid);\n"
+        "if (owned && samePath(process.argv[1], expected.entry) && sameArgs(expected.args) "
+        "&& process.env.npm_lifecycle_event === 'dev:source' "
+        "&& /^[1-9][0-9]*$/.test(process.env.MOSS_TEST_VITE_OWNER_PID || '') "
+        "&& Number(process.env.MOSS_TEST_VITE_OWNER_PID) !== process.pid) {\n"
+        "fs.writeFileSync(receipt, JSON.stringify({owner_token: expected.owner_token, "
+        "owner_pid: Number(process.env.MOSS_TEST_VITE_OWNER_PID), pid: process.pid, "
+        "node_executable: process.execPath, entry: process.argv[1], cwd: process.cwd(), "
+        "args: process.argv.slice(2), lifecycle_event: process.env.npm_lifecycle_event}), {flag: 'wx'});\n"
+        "}\n", encoding="utf-8",
+    )
+    return {
+        "NODE_OPTIONS": f"--require {json.dumps(probe.as_posix(), ensure_ascii=False)}",
+        "MOSS_TEST_VITE_OWNER_TOKEN": expected["owner_token"],
+        "MOSS_TEST_VITE_OWNER_PID": "",
+    }, receipt, expected
+
+
+def _vite_pid(wrapper_pid: int, *, receipt: Path | None = None, expected: dict | None = None) -> int:
+    if os.name == "nt":
+        assert receipt is not None and expected is not None, "Windows Vite identity requires the owned startup receipt"
+        observed = json.loads(receipt.read_text(encoding="utf-8"))
+        assert isinstance(observed, dict), "Invalid Vite startup receipt"
+        assert observed.get("owner_token") == expected["owner_token"], "Vite receipt owner token differs"
+        assert type(observed.get("owner_pid")) is int and observed["owner_pid"] == wrapper_pid, "Vite receipt belongs to another npm process"
+        assert type(observed.get("pid")) is int and observed["pid"] > 0 and observed["pid"] != wrapper_pid, "Vite receipt must identify a real child"
+        for key in ("node_executable", "entry", "cwd"):
+            assert isinstance(observed.get(key), str) and Path(observed[key]).absolute() == Path(expected[key]).absolute(), f"Vite receipt {key} differs"
+        assert observed.get("args") == expected["args"], "Vite receipt arguments differ"
+        assert observed.get("lifecycle_event") == "dev:source", "Vite receipt is not from the source npm task"
+        return observed["pid"]
     # npm may insert cmd.exe/sh before the Node entry, so inspect its real descendants.
     pending = [wrapper_pid]
     while pending:
         parent = pending.pop()
-        if os.name == "nt":
-            query = f"@(Get-CimInstance Win32_Process -Filter 'ParentProcessId = {parent}' | Select-Object ProcessId,CommandLine) | ConvertTo-Json -Compress"
-            result = subprocess.run(["powershell", "-NoProfile", "-Command", query], capture_output=True,
-                                    text=True, timeout=10, check=True)
-            records = json.loads(result.stdout) if result.stdout.strip() else []
-            if isinstance(records, dict):
-                records = [records]
-        else:
-            result = subprocess.run(
-                ["ps", "-A", "-ww", "-o", "pid=", "-o", "ppid=", "-o", "command="],
-                capture_output=True, text=True, timeout=10, check=True,
-            )
-            rows = (line.split(None, 2) for line in result.stdout.splitlines() if line.strip())
-            records = [{"ProcessId": int(pid), "CommandLine": command}
-                       for pid, ppid, command in rows if int(ppid) == parent]
+        result = subprocess.run(
+            ["ps", "-A", "-ww", "-o", "pid=", "-o", "ppid=", "-o", "command="],
+            capture_output=True, text=True, timeout=10, check=True,
+        )
+        rows = (line.split(None, 2) for line in result.stdout.splitlines() if line.strip())
+        records = [{"ProcessId": int(pid), "CommandLine": command}
+                   for pid, ppid, command in rows if int(ppid) == parent]
         for record in records:
             if "vite/bin/vite.js" in (record["CommandLine"] or "").replace("\\", "/"):
                 return record["ProcessId"]
@@ -132,6 +179,118 @@ def test_vite_pid_posix_query_failure_is_not_accepted(monkeypatch) -> None:
 
     with pytest.raises(OSError, match="process inspection unavailable"):
         _vite_pid(100)
+
+
+def _valid_vite_receipt(expected: dict) -> dict:
+    return {**{key: expected[key] for key in ("owner_token", "node_executable", "entry", "cwd", "args")},
+            "owner_pid": 100, "pid": 103, "lifecycle_event": "dev:source"}
+
+
+def test_vite_pid_windows_uses_owned_real_entry_receipt_without_process_query(tmp_path, monkeypatch) -> None:
+    _, receipt, expected = _prepare_vite_pid_probe(tmp_path, tmp_path / "npm-cli.js", 5891)
+    receipt.write_text(json.dumps(_valid_vite_receipt(expected)), encoding="utf-8")
+
+    def no_query(*_args, **_kwargs):
+        pytest.fail("Windows Vite discovery must not start a process query")
+
+    monkeypatch.setitem(_vite_pid.__globals__, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setitem(_vite_pid.__globals__, "subprocess", SimpleNamespace(run=no_query))
+
+    assert _vite_pid(100, receipt=receipt, expected=expected) == 103
+
+
+@pytest.mark.parametrize("key,value", [
+    ("owner_token", "other task"), ("owner_pid", 900), ("owner_pid", "100"),
+    ("pid", 100), ("pid", True), ("pid", 0),
+    ("node_executable", "unrelated-node.exe"), ("entry", "scripts/dev-frontend-source.mjs"),
+    ("cwd", "unrelated-frontend"), ("args", ["--port", "5891"]),
+    ("lifecycle_event", "another npm task"),
+])
+def test_vite_pid_windows_rejects_wrong_identity(tmp_path, monkeypatch, key, value) -> None:
+    _, receipt, expected = _prepare_vite_pid_probe(tmp_path, tmp_path / "npm-cli.js", 5891)
+    receipt.write_text(json.dumps({**_valid_vite_receipt(expected), key: value}), encoding="utf-8")
+    monkeypatch.setitem(_vite_pid.__globals__, "os", SimpleNamespace(name="nt"))
+
+    with pytest.raises(AssertionError, match="Vite receipt"):
+        _vite_pid(100, receipt=receipt, expected=expected)
+
+
+@pytest.mark.parametrize("contents,error", [(None, FileNotFoundError), ("{", json.JSONDecodeError),
+                                             ("[]", AssertionError)])
+def test_vite_pid_windows_missing_or_invalid_receipt_fails(tmp_path, monkeypatch, contents, error) -> None:
+    _, receipt, expected = _prepare_vite_pid_probe(tmp_path, tmp_path / "npm-cli.js", 5891)
+    if contents is not None:
+        receipt.write_text(contents, encoding="utf-8")
+    monkeypatch.setitem(_vite_pid.__globals__, "os", SimpleNamespace(name="nt"))
+
+    with pytest.raises(error):
+        _vite_pid(100, receipt=receipt, expected=expected)
+
+
+@pytest.mark.parametrize("mismatch", [None, "npm_entry", "npm_args", "entry", "args", "cwd",
+                                     "owner_token", "lifecycle_event", "duplicate_receipt"])
+def test_vite_startup_probe_requires_exact_owned_npm_and_vite_entries(tmp_path, mismatch) -> None:
+    assert NODE is not None
+    root = tmp_path / "源码 root with spaces"
+    frontend = root / "frontend"
+    frontend.mkdir(parents=True)
+    vite = frontend / "node_modules/vite/bin/vite.js"
+    vite.parent.mkdir(parents=True)
+    vite.write_text("// Synthetic entry exercises identity only, without serving a port.\n", encoding="utf-8")
+    npm_cli = root / "npm-cli.js"
+    probe_environment, receipt, expected = _prepare_vite_pid_probe(root, npm_cli, 5891)
+    argv = [str(vite), *expected["args"]]
+    cwd, lifecycle = str(frontend), "dev:source"
+    if mismatch == "entry":
+        wrapper = root / "dev-frontend-source.mjs"
+        wrapper.write_text("// A wrapper is never a Vite entry.\n", encoding="utf-8")
+        argv[0] = str(wrapper)
+    elif mismatch == "args":
+        argv[-1] = "true"
+    elif mismatch == "cwd":
+        cwd = str(root)
+    elif mismatch == "lifecycle_event":
+        lifecycle = "another npm task"
+    npm_cli.write_text(
+        "const {spawnSync}=require('node:child_process');\n"
+        f"const child=spawnSync(process.execPath,{json.dumps(argv)},"
+        f"{{cwd:{json.dumps(cwd)},env:{{...process.env,npm_lifecycle_event:{json.dumps(lifecycle)}}},encoding:'utf8'}});\n"
+        "console.log(JSON.stringify({owner_pid:process.pid,child_exit:child.status}));\n",
+        encoding="utf-8",
+    )
+    npm_entry = npm_cli
+    npm_args = expected["npm_args"]
+    if mismatch == "npm_entry":
+        npm_entry = root / "unrelated-npm-cli.js"
+        shutil.copy2(npm_cli, npm_entry)
+    elif mismatch == "npm_args":
+        npm_args = ["run", "another-script", "--", "--port", "5891"]
+    elif mismatch == "owner_token":
+        probe_environment["MOSS_TEST_VITE_OWNER_TOKEN"] = "other task"
+    elif mismatch == "duplicate_receipt":
+        receipt.write_text("prior identity must not be overwritten", encoding="utf-8")
+    completed = subprocess.run(
+        [NODE, str(npm_entry), *npm_args], cwd=frontend,
+        env={**_environment(), **probe_environment}, capture_output=True, text=True,
+        encoding="utf-8", timeout=10, check=True,
+    )
+    observed = json.loads(completed.stdout)
+    if mismatch == "duplicate_receipt":
+        assert observed["child_exit"] != 0
+        assert receipt.read_text(encoding="utf-8") == "prior identity must not be overwritten"
+    elif mismatch is not None:
+        assert observed["child_exit"] == 0
+        assert not receipt.exists(), f"Probe accepted {mismatch}"
+    else:
+        assert observed["child_exit"] == 0
+        identity = json.loads(receipt.read_text(encoding="utf-8"))
+        assert identity["owner_pid"] == observed["owner_pid"]
+        assert identity["pid"] != observed["owner_pid"]
+        assert identity["owner_token"] == expected["owner_token"]
+        assert identity["args"] == expected["args"]
+        assert identity["lifecycle_event"] == "dev:source"
+        for key in ("node_executable", "entry", "cwd"):
+            assert Path(identity[key]).absolute() == Path(expected[key]).absolute()
 
 
 def _stage_frontend(root: Path, dependencies: Path) -> dict[str, str]:
@@ -308,20 +467,26 @@ def test_real_application_source_proxy_reads_isolated_positions_and_stops(tmp_pa
     api_log, frontend_log = root / "api.log", root / "frontend.log"
     api = frontend = browser = None
     api_pid = vite_pid = None
+    vite_receipt = vite_identity = None
     try:
         with api_log.open("w", encoding="utf-8") as api_output, frontend_log.open("w", encoding="utf-8") as frontend_output:
             api = subprocess.Popen([sys.executable, str(scripts / "dev_runtime_control.py"), "--repo-root", str(root),
                                     "run", "--command-base64", command], cwd=root, env=environment,
                                    stdout=api_output, stderr=subprocess.STDOUT, **_process_options())
             _wait(api_base, "/health", api, api_log)
+            frontend_environment = environment
+            if os.name == "nt":
+                probe_environment, vite_receipt, vite_identity = _prepare_vite_pid_probe(root, npm_cli, frontend_port)
+                frontend_environment = {**environment, **probe_environment}
             frontend = subprocess.Popen([NODE, str(npm_cli), "run", "dev:source", "--", "--port", str(frontend_port)],
-                                        cwd=root / "frontend", env=environment, stdout=frontend_output,
+                                        cwd=root / "frontend", env=frontend_environment, stdout=frontend_output,
                                         stderr=subprocess.STDOUT, **_process_options())
             _wait(base, "/positions?report_date=2026-01-10", frontend, frontend_log)
             api_pid = _api_pid(api_log)
-            vite_pid = _vite_pid(frontend.pid)
+            vite_pid = _vite_pid(frontend.pid, receipt=vite_receipt, expected=vite_identity)
             assert b"/@vite/client" in _get(base, "/positions?report_date=2026-01-10")
             bonds_path = "/api/positions/bonds?report_date=2026-01-10&page=1&page_size=20"
+            _wait(base, bonds_path, frontend, frontend_log)
             direct = json.loads(_get(api_base, bonds_path))
             proxied = json.loads(_get(base, bonds_path))
             assert direct["result"] == proxied["result"]
@@ -404,6 +569,7 @@ def test_real_application_source_proxy_reads_isolated_positions_and_stops(tmp_pa
             "api": api_base, "frontend": base, "sample_rows": {"bonds": 4, "interbank": 2},
             "permissions": ["positions/read", "balance_analysis/read"], "services_stopped": True,
             "stopped_child_pids": {"api": api_pid, "vite": vite_pid},
+            "vite_startup_identity": json.loads(vite_receipt.read_text(encoding="utf-8")) if vite_receipt else None,
             "migration_and_prewarm_skipped": True, "compose_executed": False,
             "repository_dotenv_disabled_in_test_process": True,
             "browser_executed": True, "shutdown_trigger": "Ctrl+C sent to the owned terminal process group",
@@ -416,3 +582,34 @@ def test_real_application_source_proxy_reads_isolated_positions_and_stops(tmp_pa
             _close(frontend, vite_pid)
         if api is not None:
             _close(api, api_pid)
+
+
+@pytest.mark.skipif(os.name != "nt" or os.environ.get("MOSS_TEST_FULL_APP") != "1",
+                    reason="Opt in to Windows real application startup receipt failure")
+def test_real_application_bad_vite_receipt_fails_and_cleans_owned_processes(tmp_path, monkeypatch) -> None:
+    discover = _vite_pid
+    observed = {}
+    monkeypatch.delenv("MOSS_TEST_FULL_APP_WORKSPACE", raising=False)
+
+    def reject_receipt(wrapper_pid, *, receipt, expected):
+        observed.update(vite=discover(wrapper_pid, receipt=receipt, expected=expected), wrapper=wrapper_pid,
+                        api=_api_pid(receipt.parent / "api.log"), frontend_port=int(expected["args"][3]),
+                        db_digest=_digest(receipt.parent / "sample-storage/positions.duckdb"))
+        assert _pid_is_running(wrapper_pid), "Failure cleanup must exercise an active owned npm wrapper"
+        identity = json.loads(receipt.read_text(encoding="utf-8"))
+        receipt.write_text(json.dumps({**identity, "owner_token": "another task"}), encoding="utf-8")
+        return discover(wrapper_pid, receipt=receipt, expected=expected)
+
+    monkeypatch.setitem(test_real_application_source_proxy_reads_isolated_positions_and_stops.__globals__,
+                        "_vite_pid", reject_receipt)
+    with pytest.raises(AssertionError, match="Vite receipt owner token differs"):
+        test_real_application_source_proxy_reads_isolated_positions_and_stops(tmp_path)
+
+    for pid in (observed["vite"], observed["wrapper"], observed["api"]):
+        assert not _pid_is_running(pid), "Owned application process survived rejected startup identity"
+    with socket.socket() as connection:
+        connection.settimeout(2)
+        assert connection.connect_ex(("127.0.0.1", observed["frontend_port"])) != 0
+    storage = tmp_path / "real-application/sample-storage"
+    assert _digest(storage / "positions.duckdb") == observed["db_digest"]
+    assert not list(storage.glob("**/*.jsonl"))
