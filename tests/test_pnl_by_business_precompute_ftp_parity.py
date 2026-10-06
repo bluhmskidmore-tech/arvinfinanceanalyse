@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, localcontext
+from importlib import import_module
 
 import pytest
 
@@ -15,10 +16,8 @@ precompute_module = load_module(
     "backend.app.tasks.pnl_by_business_precompute",
     "backend/app/tasks/pnl_by_business_precompute.py",
 )
-pnl_repo_module = load_module(
-    "backend.app.repositories.pnl_repo",
-    "backend/app/repositories/pnl_repo.py",
-)
+# Reuse the canonical module so collection cannot replace services' exception classes.
+pnl_repo_module = import_module("backend.app.repositories.pnl_repo")
 pnl_service_module = load_module(
     "backend.app.services.pnl_service",
     "backend/app/services/pnl_service.py",

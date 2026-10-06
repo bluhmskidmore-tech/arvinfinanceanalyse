@@ -430,6 +430,36 @@ def test_pending_monthly_authority_makes_action_and_trading_overlay_unavailable(
                     period_type=period, period_start=date(2025, 3, 31), period_end=end, duckdb_path="unused")
 
 
+@pytest.mark.parametrize("action", [True, False], ids=["action", "trading_overlay"])
+def test_real_repository_duplicate_key_is_converted_to_pending(monkeypatch, action):
+    from importlib import import_module
+
+    pnl_repo_module = import_module("backend.app.repositories.pnl_repo")
+    repo = pnl_repo_module.PnlRepository("synthetic-pnl")
+    conn = MagicMock()
+    conn.execute.return_value.fetchall.return_value = [(name,) for name in (
+        "report_date", "instrument_code", "portfolio_name", "cost_center", "accounting_basis", "currency_basis",
+    )]
+    conn.execute.return_value.fetchone.return_value = ("2026-03-31", 2)
+    connect = MagicMock(return_value=conn)
+    monkeypatch.setattr(pnl_repo_module, "duckdb", SimpleNamespace(connect=connect, Error=duckdb.Error))
+    monkeypatch.setattr(pnl_repo_module, "resolve_effective_read_path", lambda path: path)
+    monkeypatch.setattr(bonds, "PnlRepository", lambda *_: repo)
+
+    # Exercise the real repository duplicate-key guard; only storage is mocked.
+    with pytest.raises(bonds.ActionAttributionPnlUnavailableError, match="VERSION_AUTHORITY_PENDING") as caught:
+        if action:
+            bonds._build_action_attribution_pnl_by_key(repo, period_type="MoM",
+                period_start=date(2026, 3, 1), period_end=date(2026, 3, 31))
+        else:
+            bonds._overlay_return_decomposition_trading_pnl517({"trading_total": D("999")}, period_type="MoM",
+                period_start=date(2026, 3, 1), period_end=date(2026, 3, 31), duckdb_path="synthetic-pnl")
+    assert type(caught.value.__cause__) is pnl_repo_module.Pnl517AuthorityError
+    assert "duplicate_natural_key" in str(caught.value.__cause__)
+    connect.assert_called_once_with("synthetic-pnl", read_only=True)
+    conn.close.assert_called_once()
+
+
 def test_missing_month_remains_partial_and_separate_from_complete_key_assignment():
     from backend.app.core_finance.action_attribution import build_action_attribution_success_payload
     raw = compute_action_attribution_bonds(period_start=date(2026, 1, 1), period_end=date(2026, 3, 31),

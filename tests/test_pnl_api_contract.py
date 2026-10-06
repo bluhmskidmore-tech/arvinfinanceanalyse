@@ -6,6 +6,7 @@ import sys
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -2938,7 +2939,8 @@ def test_pnl_by_business_ytd_total_matches_formal_fact_rollups(tmp_path, monkeyp
     payload = response.json()
     assert payload["result_meta"]["result_kind"] == "pnl.by_business_ytd"
     result = payload["result"]
-    repo_mod = load_module("backend.app.repositories.pnl_repo", "backend/app/repositories/pnl_repo.py")
+    # Reuse the canonical module so services retain the same repository exception classes.
+    repo_mod = import_module("backend.app.repositories.pnl_repo")
     repo = repo_mod.PnlRepository(str(duckdb_path))
     expected = repo.sum_formal_total_pnl_through_report_date("2025-12-31") + repo.sum_nonstd_bridge_total_pnl_through_report_date(
         "2025-12-31"
@@ -5838,7 +5840,7 @@ def test_pnl_by_business_daily_uses_formal_facts_not_refresh_source_override(tmp
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_pnl_by_business_rows(duckdb_path)
-    pnl_repo_module = load_module("backend.app.repositories.pnl_repo", "backend/app/repositories/pnl_repo.py")
+    pnl_repo_module = import_module("backend.app.repositories.pnl_repo")
     source_service = load_module(
         "backend.app.services.pnl_source_service",
         "backend/app/services/pnl_source_service.py",
@@ -6406,7 +6408,7 @@ def test_pnl_by_business_ytd_uses_v1_formula_and_balance_movement_rows(tmp_path,
 
     # 不变量：payload.total_pnl = 各条 V1 记录 total_pnl 之和（每条资产/凭证一条）；因 ZQTZ 多行命中，
     # items 各行 total_pnl 之和可大于该值（父级+其中重复分摊）。
-    repo_mod = load_module("backend.app.repositories.pnl_repo", "backend/app/repositories/pnl_repo.py")
+    repo_mod = import_module("backend.app.repositories.pnl_repo")
     repo = repo_mod.PnlRepository(str(duckdb_path))
     sub_map = repo.fetch_zqtz_sub_type_map(["2025-12-31"])
     fx_rates = repo.fetch_latest_fx_rates("2025-12-31", {"USD"})
