@@ -670,6 +670,169 @@ CALIBER_GATE_MAP["backend/app/services/bond_analytics_service.py"] = (
     "tests/test_bond_analytics_service.py", "tests/test_advanced_attribution_contract.py",
     "tests/test_pnl_audit_repair.py")
 
+# Keep the imported regression guards tied to their exercised production files.
+# Exact paths preserve the existing gate scope; appending retains every old check.
+for _source, _checks in {
+    "backend/app/api/routes/ledger.py": (
+        "tests/test_ledger_multipart_integrity.py",
+    ),
+    "backend/app/services/ledger_import_service.py": (
+        "tests/test_import_duplicate_fields_contract.py",
+        "tests/test_ledger_multipart_integrity.py",
+    ),
+    "backend/app/tasks/ledger_import.py": (
+        "tests/test_import_duplicate_fields_contract.py",
+        "tests/test_ledger_multipart_integrity.py",
+    ),
+    "backend/app/tasks/bond_dv01_limit_config_import.py": (
+        "tests/test_import_duplicate_fields_contract.py",
+        "tests/test_bond_dv01_limit_finite_admission.py",
+    ),
+    "backend/app/tasks/stock_limit_price_ingest.py": (
+        "tests/test_import_duplicate_fields_contract.py",
+        "tests/test_stock_limit_price_duplicate_contract.py",
+    ),
+    "backend/app/tasks/stock_limit_price_daily_refresh.py": (
+        "tests/test_import_duplicate_fields_contract.py",
+        "tests/test_stock_limit_price_duplicate_contract.py",
+    ),
+    "backend/app/tasks/stock_factor_refresh.py": (
+        "tests/test_structural_scoped_refresh.py",
+    ),
+    "backend/app/repositories/stock_official_disclosure_repo.py": (
+        "tests/test_stock_selected_generation_context.py",
+    ),
+    "backend/app/services/executive_service.py": (
+        "tests/test_structural_executive_read_pin.py",
+    ),
+    "backend/app/repositories/cashflow_projection_repo.py": (
+        "tests/test_structural_repository_read_pin.py",
+    ),
+    "backend/app/repositories/accounting_asset_movement_repo.py": (
+        "tests/test_structural_repository_read_pin.py",
+    ),
+    "backend/app/repositories/ledger_analytics_repo.py": (
+        "tests/test_structural_repository_read_pin.py",
+        "tests/test_ledger_xlsx_text_contract.py",
+        "tests/test_xlsx_text_independent_review.py",
+    ),
+    "backend/app/services/ledger_analytics_service.py": (
+        "tests/test_structural_repository_read_pin.py",
+        "tests/test_ledger_xlsx_text_contract.py",
+        "tests/test_xlsx_text_independent_review.py",
+    ),
+    "backend/app/services/adb_analysis_service.py": (
+        "tests/test_structural_adb_read_pin.py",
+        "tests/test_structural_generation_cache.py",
+        "tests/test_adb_comparison_locf_contract.py",
+        "tests/test_adb_comparison_valid_frames_contract.py",
+    ),
+    "backend/app/repositories/adb_analysis_repo.py": (
+        "tests/test_structural_adb_read_pin.py",
+    ),
+    "backend/app/services/bond_analytics_service.py": (
+        "tests/test_structural_generation_cache.py",
+        "tests/test_structural_bond_positions.py",
+    ),
+    "backend/app/core_finance/bond_analytics/read_models.py": (
+        "tests/test_structural_bond_positions.py",
+    ),
+    "backend/app/repositories/research_calendar_repo.py": (
+        "tests/test_structural_calendar_read_pin.py",
+    ),
+    "backend/app/services/research_calendar_service.py": (
+        "tests/test_structural_calendar_read_pin.py",
+    ),
+    "backend/app/tasks/formal_compute_runtime.py": (
+        "tests/test_structural_formal_terminal_lock.py",
+    ),
+    "backend/app/tasks/financial_result_publication.py": (
+        "tests/test_structural_publication_negative_controls.py",
+    ),
+    "backend/app/repositories/financial_result_publication_repo.py": (
+        "tests/test_structural_publication_negative_controls.py",
+    ),
+    "backend/app/tasks/system_read_publication.py": (
+        "tests/test_structural_publication_negative_controls.py",
+    ),
+    "backend/app/repositories/home_macro_release_context_repo.py": (
+        "tests/test_selected_generation_context_repositories.py",
+        "tests/test_selected_generation_context_api.py",
+    ),
+    "backend/app/services/balance_analysis_workbook_service.py": (
+        "tests/test_balance_xlsx_text_contract.py",
+        "tests/test_xlsx_text_independent_review.py",
+    ),
+    "backend/app/core_finance/balance_analysis_workbook.py": (
+        "tests/test_balance_campisi_fin002_completeness.py",
+        "tests/test_balance_campisi_fin002_api.py",
+        "tests/test_balance_xlsx_text_contract.py",
+        "tests/test_xlsx_text_independent_review.py",
+    ),
+    "backend/app/services/balance_analysis_service.py": (
+        "tests/test_balance_campisi_fin002_api.py",
+    ),
+    "backend/app/tasks/pnl_by_business_precompute.py": (
+        "tests/test_structural_precompute_rounding.py",
+    ),
+    "backend/app/services/product_category_pnl_service.py": (
+        "tests/test_structural_read_consistency.py",
+        "tests/test_product_category_pnl_flow.py",
+    ),
+    "backend/app/services/pnl_v1_cache_support.py": (
+        "tests/test_structural_read_consistency.py",
+    ),
+    "backend/app/core_finance/qdb_gl_monthly_analysis.py": (
+        "tests/test_qdb_gl_missing_average_contract.py",
+        "tests/test_qdb_gl_monthly_analysis_core.py",
+    ),
+    "backend/app/services/pnl_service.py": (
+        "tests/test_pnl_v1_source_integrity.py",
+    ),
+    "backend/app/repositories/pnl_repo.py": (
+        "tests/test_pnl_v1_source_integrity.py",
+    ),
+    "backend/app/core_finance/macro/toolkit/scripts/credit_bond_dashboard.py": (
+        "tests/test_credit_dashboard_demo_disclosure.py",
+    ),
+    "backend/app/services/macro_vendor_service.py": (
+        "tests/test_fx_analytical_fallback_api.py",
+        "tests/test_fx_analytical_fallback_lineage.py",
+        "tests/test_fx_analytical_previous_observation.py",
+        "tests/test_fx_selected_availability.py",
+        "tests/test_fx_selected_availability_api_review.py",
+        "tests/test_fx_sql_null_chain.py",
+        "tests/test_fx_analytical_view_service.py",
+    ),
+    "backend/app/api/routes/macro_vendor.py": (
+        "tests/test_fx_analytical_fallback_api.py",
+        "tests/test_fx_selected_availability_api_review.py",
+    ),
+    "backend/app/core_finance/fx_rates.py": (
+        "tests/test_fx_analytical_fallback_lineage.py",
+        "tests/test_fx_analytical_view_service.py",
+    ),
+    "backend/app/core_finance/macro_bond_linkage.py": (
+        "tests/test_macro_portfolio_truthfulness.py",
+    ),
+    "backend/app/repositories/macro_bond_linkage_repo.py": (
+        "tests/test_macro_portfolio_truthfulness.py",
+    ),
+    "backend/app/services/macro_bond_linkage_service.py": (
+        "tests/test_macro_portfolio_truthfulness.py",
+    ),
+    "backend/app/services/macro_toolkit_route_support.py": (
+        "tests/test_macro_strategy_return_truthfulness.py",
+    ),
+    "backend/app/services/macro_toolkit_service.py": (
+        "tests/test_macro_strategy_return_truthfulness.py",
+    ),
+    "backend/app/core_finance/macro/equity_strategies.py": (
+        "tests/test_macro_strategy_return_truthfulness.py",
+    ),
+}.items():
+    CALIBER_GATE_MAP[_source] = (*CALIBER_GATE_MAP.get(_source, ()), *_checks)
+
 # Self-selection uses the same map and resolver as source changes. Snapshot
 # values before adding test keys so the map is never mutated during iteration.
 _REGISTERED_TESTS = tuple(sorted({

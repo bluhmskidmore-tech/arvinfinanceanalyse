@@ -15,6 +15,7 @@ Covers three surfaces:
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import subprocess
@@ -239,6 +240,78 @@ def test_every_selected_test_exists_and_selects_itself_with_the_mapping_guard() 
             assert set(gate.resolve_required_tests([test_path])) == {
                 test_path, "tests/test_caliber_gate_mapping.py"
             }
+
+
+def test_imported_regressions_are_selected_by_production_and_test_changes() -> None:
+    # Discover the regression cohort independently of CALIBER_GATE_MAP. Keeping
+    # only the map's internal self-selection invariant missed these new files.
+    patterns = (
+        "test_structural_*.py",
+        "test_selected_generation_context_*.py",
+        "test_balance_campisi_fin002_*.py",
+        "test_adb_comparison_*_contract.py",
+        "test_fx_analytical_fallback_*.py",
+        "test_fx_analytical_previous_observation.py",
+        "test_fx_analytical_view_service.py",
+        "test_fx_selected_availability*.py",
+        "test_fx_sql_null_chain.py",
+        "test_macro_*_truthfulness.py",
+        "test_*_xlsx_text_contract.py",
+        "test_xlsx_text_independent_review.py",
+        "test_import_duplicate_fields_contract.py",
+        "test_ledger_multipart_integrity.py",
+        "test_bond_dv01_limit_finite_admission.py",
+        "test_stock_limit_price_duplicate_contract.py",
+        "test_stock_selected_generation_context.py",
+        "test_credit_dashboard_demo_disclosure.py",
+        "test_product_category_pnl_flow.py",
+        "test_qdb_gl_missing_average_contract.py",
+        "test_qdb_gl_monthly_analysis_core.py",
+        "test_pnl_v1_source_integrity.py",
+    )
+    regression_files: set[Path] = set()
+    for pattern in patterns:
+        matches = set((REPO_ROOT / "tests").glob(pattern))
+        assert matches, f"missing regression cohort: {pattern}"
+        regression_files.update(matches)
+
+    source_omissions: list[str] = []
+    test_omissions: list[str] = []
+    for regression in sorted(regression_files):
+        test_path = regression.relative_to(REPO_ROOT).as_posix()
+        modules: set[str] = set()
+        literals: set[str] = set()
+        # Read imports and explicit load_module/source paths without importing
+        # the financial tests or executing their fixtures and production code.
+        for node in ast.walk(ast.parse(regression.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                modules.add(node.module)
+                modules.update(f"{node.module}.{alias.name}" for alias in node.names)
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                literals.add(node.value)
+        production_sources = {
+            f"{module.replace('.', '/')}.py"
+            for module in modules | literals
+            if module.startswith("backend.app.")
+        } | {
+            literal for literal in literals
+            if literal.startswith("backend/app/") and literal.endswith(".py")
+        }
+        production_sources = {
+            source for source in production_sources if (REPO_ROOT / source).is_file()
+        }
+        assert production_sources, f"no production dependency found: {test_path}"
+        if test_path not in gate.resolve_required_tests(production_sources):
+            source_omissions.append(test_path)
+        if set(gate.resolve_required_tests([test_path])) != {
+            test_path, "tests/test_caliber_gate_mapping.py",
+        }:
+            test_omissions.append(test_path)
+
+    assert not source_omissions, f"production changes omit regressions: {source_omissions}"
+    assert not test_omissions, f"test changes omit regressions: {test_omissions}"
 
 
 def test_resolve_required_tests_exact_prefix_dedup_and_order() -> None:
