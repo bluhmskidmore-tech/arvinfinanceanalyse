@@ -123,6 +123,9 @@ if BALANCE_ANALYSIS_SECONDARY_FACT_TABLE not in BALANCE_ANALYSIS_MODULE.fact_tab
 CACHE_KEY = BALANCE_ANALYSIS_MODULE.cache_key
 CACHE_VERSION = BALANCE_ANALYSIS_MODULE.cache_version
 RULE_VERSION = BALANCE_ANALYSIS_MODULE.rule_version
+# Read-workbook completeness is independent of formal fact materialization.
+BALANCE_WORKBOOK_QUERY_RULE_VERSION = "rv_balance_analysis_workbook_fin002_v1"
+BALANCE_WORKBOOK_QUERY_CACHE_VERSION = "cv_balance_analysis_workbook_fin002_v1"
 BALANCE_ANALYSIS_LOCK = LockDefinition(
     key=BALANCE_ANALYSIS_MODULE.lock_key,
     ttl_seconds=BALANCE_ANALYSIS_MODULE.lock_ttl_seconds,
@@ -216,6 +219,8 @@ def _balance_workbook_payload_cache_key(
         *governance_identities,
         RULE_VERSION,
         CACHE_VERSION,
+        BALANCE_WORKBOOK_QUERY_RULE_VERSION,
+        BALANCE_WORKBOOK_QUERY_CACHE_VERSION,
         report_date,
         position_scope,
         currency_basis,
@@ -893,6 +898,8 @@ def balance_analysis_workbook_envelope(
         report_date,
         position_scope,
         currency_basis,
+        BALANCE_WORKBOOK_QUERY_RULE_VERSION,
+        BALANCE_WORKBOOK_QUERY_CACHE_VERSION,
     )
     if cache_key is not None:
         return _with_fresh_trace(
@@ -935,6 +942,17 @@ def _balance_analysis_workbook_envelope_uncached(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
+    quality_flag = _balance_workbook_quality_flag(workbook)
+    for table in workbook["tables"]:
+        if table.get("key") == "campisi_breakdown" and any(
+            int(row.get("coupon_required_count") or 0) > 0
+            and (
+                row.get("coupon_coverage_status") != "完整"
+                or row.get("benchmark_rate_pct") is None
+            )
+            for row in table["rows"]
+        ):
+            quality_flag = "warning"
     env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_workbook_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.workbook",
@@ -945,7 +963,7 @@ def _balance_analysis_workbook_envelope_uncached(
             field_name=field_name,
             report_date=report_date,
         ),
-        quality_flag=_balance_workbook_quality_flag(workbook),
+        quality_flag=quality_flag,
         result_payload=BalanceAnalysisWorkbookPayload(
             report_date=workbook["report_date"],
             position_scope=workbook["position_scope"],
@@ -1002,6 +1020,9 @@ def _balance_analysis_workbook_envelope_uncached(
             ],
         ).model_dump(mode="json"),
     )
+    # Validate source/formal lineage first; append only this read-query identity.
+    env["result_meta"]["rule_version"] += f"|{BALANCE_WORKBOOK_QUERY_RULE_VERSION}"
+    env["result_meta"]["cache_version"] += f"|{BALANCE_WORKBOOK_QUERY_CACHE_VERSION}"
     return _with_balance_analysis_response_context(
         env,
         report_date=report_date,

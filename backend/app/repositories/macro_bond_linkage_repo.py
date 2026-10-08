@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+import hashlib
+import json
 from decimal import Decimal
 from typing import Any
 
@@ -93,7 +95,7 @@ class MacroBondLinkageRepository(DuckDBRepository):
                 return self._load_portfolio_metrics_impl(scoped, report_date)
         except (OSError, duckdb.Error):
             return self._unavailable_portfolio_metrics(
-                ["组合 DV01/CS01 不可用，组合冲击估算将按 0 返回。"]
+                ["组合 DV01/CS01 不可用，组合冲击估算保持缺失。"]
             )
 
     def fetch_equity_axis_latest_rows(
@@ -251,82 +253,123 @@ class MacroBondLinkageRepository(DuckDBRepository):
     ) -> dict[str, Any]:
         warnings: list[str] = []
         if self._relation_exists_on_conn(conn, RELATION_FACT_FORMAL_RISK_TENSOR_DAILY):
-            row = conn.execute(
-                """
-                select
-                  cast(report_date as date) as resolved_report_date,
-                  cast(portfolio_dv01 as decimal(24, 8)) as portfolio_dv01,
-                  cast(cs01 as decimal(24, 8)) as cs01,
-                  cast(total_market_value as decimal(24, 8)) as total_market_value,
-                  coalesce(source_version, '') as source_version,
-                  coalesce(rule_version, '') as rule_version
-                from fact_formal_risk_tensor_daily
-                where try_cast(report_date as date) <= ?
-                order by try_cast(report_date as date) desc
-                limit 1
-                """,
+            cursor = conn.execute(
+                """select * from fact_formal_risk_tensor_daily
+                   where try_cast(report_date as date) <= ?
+                   order by try_cast(report_date as date) desc limit 1""",
                 [report_date.isoformat()],
-            ).fetchone()
+            )
+            row = cursor.fetchone()
             if row is not None:
-                resolved_report_date = _coerce_date(row[0])
-                if resolved_report_date is not None and resolved_report_date != report_date:
-                    warnings.append(
-                        f"风险张量使用最近日期 {resolved_report_date.isoformat()}，目标日期为 {report_date.isoformat()}。"
-                    )
-                return {
-                    "portfolio_dv01": _coerce_decimal(row[1]),
-                    "portfolio_cs01": _coerce_decimal(row[2]),
-                    "portfolio_market_value": _coerce_decimal(row[3]),
-                    "source_version": str(row[4] or EMPTY_SOURCE_VERSION),
-                    "rule_version": str(row[5] or ""),
+                record = dict(zip([item[0] for item in cursor.description], row))
+                resolved = _coerce_date(record["report_date"])
+                if resolved != report_date:
+                    warnings.append(f"风险张量使用最近日期 {resolved.isoformat()}，目标日期为 {report_date.isoformat()}。")
+                inputs = {
+                    "portfolio_dv01": _coerce_decimal(record.get("portfolio_dv01")),
+                    "portfolio_cs01": _coerce_decimal(record.get("cs01")),
+                    "portfolio_market_value": _coerce_decimal(record.get("total_market_value")),
+                    "risk_report_date": resolved.isoformat(),
+                    "source_table": RELATION_FACT_FORMAL_RISK_TENSOR_DAILY,
+                    "source_version": str(record.get("source_version") or EMPTY_SOURCE_VERSION),
+                    "rule_version": str(record.get("rule_version") or ""),
+                    "coverage": {
+                        "basis": "risk_tensor_published_scope",
+                        "row_count": record.get("bond_count"),
+                        "duration_excluded_count": record.get("duration_excluded_count"),
+                        "rate_risk_market_value": _coerce_decimal(record.get("rate_risk_market_value")),
+                        "quality_flag": record.get("quality_flag"),
+                    },
+                    "entities": self._portfolio_entities(conn, resolved),
                     "warnings": warnings,
                 }
+                raw_warnings = record.get("warnings_json")
+                if raw_warnings:
+                    try:
+                        published_warnings = json.loads(str(raw_warnings))
+                        if isinstance(published_warnings, list):
+                            warnings.extend(str(item) for item in published_warnings)
+                    except (TypeError, ValueError):
+                        warnings.append("风险张量质量说明无法解析。")
+                if record.get("bond_count") == 0:
+                    # The tensor materializer publishes structural zeros for an
+                    # empty input set; those are not observed zero sensitivities.
+                    for key in ("portfolio_dv01", "portfolio_cs01", "portfolio_market_value"):
+                        inputs[key] = None
+                    warnings.append("风险张量发布范围为空，组合风险及情景估算不可用。")
+                if any(inputs[key] is None for key in ("portfolio_dv01", "portfolio_cs01", "portfolio_market_value")):
+                    warnings.append("风险张量存在缺失风险输入，相关情景影响保持缺失。")
+                return inputs
 
         if self._relation_exists_on_conn(conn, RELATION_FACT_FORMAL_BOND_ANALYTICS_DAILY):
-            row = conn.execute(
-                """
-                with latest as (
-                  select max(try_cast(report_date as date)) as resolved_report_date
-                  from fact_formal_bond_analytics_daily
-                  where try_cast(report_date as date) <= ?
-                )
-                select
-                  latest.resolved_report_date,
-                  cast(coalesce(sum(dv01), 0) as decimal(24, 8)) as portfolio_dv01,
-                  cast(coalesce(sum(case when is_credit then spread_dv01 else 0 end), 0) as decimal(24, 8)) as portfolio_cs01,
-                  cast(coalesce(sum(market_value), 0) as decimal(24, 8)) as portfolio_market_value,
-                  coalesce(string_agg(distinct source_version, '__'), '') as source_version,
-                  coalesce(string_agg(distinct rule_version, '__'), '') as rule_version
-                from fact_formal_bond_analytics_daily, latest
-                where try_cast(fact_formal_bond_analytics_daily.report_date as date) = latest.resolved_report_date
-                group by latest.resolved_report_date
-                """,
-                [report_date.isoformat()],
+            latest = conn.execute(
+                """select max(try_cast(report_date as date)) from fact_formal_bond_analytics_daily
+                   where try_cast(report_date as date) <= ?""", [report_date.isoformat()],
             ).fetchone()
-            if row is None:
-                row = (None, Decimal("0"), Decimal("0"), Decimal("0"), EMPTY_SOURCE_VERSION, "")
-            resolved_report_date = _coerce_date(row[0])
-            if resolved_report_date is None:
-                warnings.append("风险张量缺失，且 bond analytics 未提供可用组合 DV01/CS01。")
-            elif resolved_report_date == report_date:
-                warnings.append("风险张量缺失，组合 DV01/CS01 已回退到 bond analytics 聚合结果。")
-            else:
-                warnings.append(
-                    "风险张量缺失，组合 DV01/CS01 已回退到 "
-                    f"{resolved_report_date.isoformat()} bond analytics 聚合结果。"
-                )
-            return {
-                "portfolio_dv01": _coerce_decimal(row[1]),
-                "portfolio_cs01": _coerce_decimal(row[2]),
-                "portfolio_market_value": _coerce_decimal(row[3]),
-                "source_version": str(row[4] or EMPTY_SOURCE_VERSION),
-                "rule_version": str(row[5] or ""),
-                "warnings": warnings,
-            }
-
+            resolved = _coerce_date(latest[0]) if latest else None
+            if resolved is not None:
+                entities = self._portfolio_entities(conn, resolved)
+                row_count = len(entities)
+                dv01_values = [row["dv01"] for row in entities]
+                # An explicit non-credit classification is a known structural zero;
+                # an unknown classification or missing credit sensitivity is not.
+                cs01_values = [Decimal(0) if row["is_credit"] is False else
+                               row["spread_dv01"] if row["is_credit"] is True else None
+                               for row in entities]
+                market_values = [row["market_value"] for row in entities]
+                def complete_sum(values):
+                    return sum(values, Decimal(0)) if values and all(v is not None for v in values) else None
+                warnings.append(f"风险张量缺失，组合 DV01/CS01 已回退到 {resolved.isoformat()} bond analytics 聚合结果。")
+                if any(v is None for v in [*dv01_values, *cs01_values, *market_values]):
+                    warnings.append("bond analytics 风险输入覆盖不完整，缺失分项不按零计入组合估算。")
+                return {
+                    "portfolio_dv01": complete_sum(dv01_values),
+                    "portfolio_cs01": complete_sum(cs01_values),
+                    "portfolio_market_value": complete_sum(market_values),
+                    "risk_report_date": resolved.isoformat(),
+                    "source_table": RELATION_FACT_FORMAL_BOND_ANALYTICS_DAILY,
+                    "source_version": "__".join(sorted({r["source_version"] for r in entities if r["source_version"]})) or EMPTY_SOURCE_VERSION,
+                    "rule_version": "__".join(sorted({r["rule_version"] for r in entities if r["rule_version"]})),
+                    "coverage": {
+                        "basis": "bond_analytics_row_count",
+                        "row_count": row_count,
+                        "dv01_observed_count": sum(v is not None for v in dv01_values),
+                        "cs01_observed_count": sum(v is not None for v in cs01_values),
+                        "market_value_observed_count": sum(v is not None for v in market_values),
+                    },
+                    "entities": entities,
+                    "warnings": warnings,
+                }
         return self._unavailable_portfolio_metrics(
-            ["组合 DV01/CS01 不可用，组合冲击估算将按 0 返回。"]
+            ["组合 DV01/CS01 不可用，组合冲击估算保持缺失。"]
         )
+
+    def _portfolio_entities(self, conn: duckdb.DuckDBPyConnection, report_date: date) -> list[dict[str, Any]]:
+        if not self._relation_exists_on_conn(conn, RELATION_FACT_FORMAL_BOND_ANALYTICS_DAILY):
+            return []
+        cursor = conn.execute(
+            """select * from fact_formal_bond_analytics_daily
+               where try_cast(report_date as date) = ?
+               order by instrument_code, portfolio_name, cost_center, accounting_class, currency_code, source_version""",
+            [report_date.isoformat()],
+        )
+        columns = [item[0] for item in cursor.description]
+        entities = []
+        for index, row in enumerate(cursor.fetchall()):
+            source = dict(zip(columns, row))
+            entity = {key: source.get(key) for key in (
+                "instrument_code", "instrument_name", "portfolio_name", "cost_center",
+                "accounting_class", "currency_code", "is_credit",
+            )}
+            entity.update({key: _coerce_decimal(source.get(key)) for key in ("dv01", "spread_dv01", "market_value")})
+            entity.update({"report_date": report_date.isoformat(),
+                           "source_version": str(source.get("source_version") or ""),
+                           "rule_version": str(source.get("rule_version") or "")})
+            identity = json.dumps([report_date.isoformat(), *[entity[key] for key in (
+                "instrument_code", "portfolio_name", "cost_center", "accounting_class", "currency_code", "source_version")], index], ensure_ascii=False)
+            entity["entity_id"] = hashlib.sha256(identity.encode()).hexdigest()[:20]
+            entities.append(entity)
+        return entities
 
     def _fetch_equity_axis_latest_rows_impl(
         self,
@@ -409,9 +452,13 @@ class MacroBondLinkageRepository(DuckDBRepository):
     @staticmethod
     def _unavailable_portfolio_metrics(warnings: list[str]) -> dict[str, Any]:
         return {
-            "portfolio_dv01": Decimal("0"),
-            "portfolio_cs01": Decimal("0"),
-            "portfolio_market_value": Decimal("0"),
+            "portfolio_dv01": None,
+            "portfolio_cs01": None,
+            "portfolio_market_value": None,
+            "risk_report_date": None,
+            "source_table": None,
+            "coverage": {"basis": "unavailable", "row_count": None},
+            "entities": [],
             "source_version": EMPTY_SOURCE_VERSION,
             "rule_version": "",
             "warnings": warnings,
@@ -429,10 +476,14 @@ def _coerce_date(value: object) -> date | None:
     return date.fromisoformat(text)
 
 
-def _coerce_decimal(value: object) -> Decimal:
-    if isinstance(value, Decimal):
-        return value
-    return Decimal(str(value or "0"))
+def _coerce_decimal(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        number = Decimal(str(value))
+    except (ValueError, ArithmeticError):
+        return None
+    return number if number.is_finite() else None
 
 
 def _non_empty_values(values: list[str]) -> list[str]:

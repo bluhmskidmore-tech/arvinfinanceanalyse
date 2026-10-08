@@ -143,6 +143,14 @@ def refresh_stock_factors(
                     f"check indicator entitlement ({','.join(indicator_tokens)})."
                 )
 
+            expected_keys = {(resolved_date, str(code)) for code in resolved_codes}
+            returned_keys = [(str(row["as_of_date"]), str(row["stock_code"])) for row in rows]
+            if set(returned_keys) != expected_keys or len(returned_keys) != len(expected_keys):
+                raise RuntimeError(
+                    "Choice css factor refresh incomplete or outside requested scope: "
+                    "expected one usable factor row per requested stock and date; no factor rows written."
+                )
+
             partial = failed_chunk_count > 0
             run_id = f"stock_factor_refresh:{resolved_date}:{uuid.uuid4().hex[:12]}"
             vendor_version = f"vv_choice_factor_refresh_{resolved_date.replace('-', '')}"
@@ -347,10 +355,11 @@ def _upsert_factor_snapshot_rows(
     if not rows:
         return
 
-    as_of_date = str(rows[0]["as_of_date"])
-    conn.execute(
-        "delete from choice_stock_factor_snapshot where as_of_date = ?",
-        [as_of_date],
+    # A scoped refresh replaces only returned date/stock keys. Deleting the
+    # entire date discards unrelated stocks and their source/run lineage.
+    conn.executemany(
+        "delete from choice_stock_factor_snapshot where as_of_date = ? and stock_code = ?",
+        [(row["as_of_date"], row["stock_code"]) for row in rows],
     )
     conn.executemany(
         """

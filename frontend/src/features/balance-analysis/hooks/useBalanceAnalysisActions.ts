@@ -3,6 +3,7 @@ import { useContext, useState } from "react";
 import { useApiClient } from "../../../api/clientContext";
 import type { BalanceCurrencyBasis, BalancePositionScope } from "../../../api/contracts";
 import { runPollingTask } from "../../../app/jobs/polling";
+import { usePollingTaskSignal } from "../../../app/jobs/usePollingTaskSignal";
 import { SystemReadInteractionContext } from "../../../router/systemReadInteractionContext";
 
 type BalanceAnalysisActionSelection = {
@@ -53,6 +54,7 @@ export function useBalanceAnalysisActions(
   refetchCurrentReads: () => Promise<unknown>,
 ) {
   const client = useApiClient();
+  const getPollingSignal = usePollingTaskSignal();
   const systemReadInteraction = useContext(SystemReadInteractionContext);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -63,6 +65,7 @@ export function useBalanceAnalysisActions(
   const [refreshAwaitingPublication, setRefreshAwaitingPublication] = useState(false);
 
   async function handleRefresh() {
+    const signal = getPollingSignal();
     if (!selectedReportDate) {
       return;
     }
@@ -71,12 +74,14 @@ export function useBalanceAnalysisActions(
     setRefreshAwaitingPublication(false);
     try {
       const payload = await runPollingTask({
+        signal,
         start: () => client.refreshBalanceAnalysis(selectedReportDate),
         getStatus: (runId) => client.getBalanceAnalysisRefreshStatus(runId),
         onUpdate: (nextPayload) => {
           setRefreshStatus(formatRefreshStatusDisplay(nextPayload.status));
         },
       });
+      if (signal?.aborted) return;
       setRefreshStatus(formatRefreshStatusDisplay(payload.status));
       if (payload.status !== "completed") {
         throw new Error(payload.error_message ?? payload.detail ?? `刷新未完成：${payload.status}`);
@@ -87,9 +92,10 @@ export function useBalanceAnalysisActions(
       }
       await refetchCurrentReads();
     } catch {
+      if (signal?.aborted) return;
       setRefreshError(formatOperationIssueDisplay("refresh"));
     } finally {
-      setIsRefreshing(false);
+      if (!signal?.aborted) setIsRefreshing(false);
     }
   }
 

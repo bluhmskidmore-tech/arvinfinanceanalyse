@@ -15,17 +15,19 @@ import { useApiClient } from "../../../api/client";
 import { SectionHead } from "../../../components/layout";
 import { PageStateSurface } from "../../../components/page/PagePrimitives";
 import { EM_DASH } from "../../../utils/format";
+import { observeKpiWrite, type KpiPendingWriteProps, type PendingKpiWrite } from "./pendingKpiWrite";
 
 import { TracePanel } from "./TracePanel";
 
-export type MetricTableProps = {
+export type MetricTableProps = Pick<KpiPendingWriteProps, "onUnconfirmedWrite"> & {
   metrics: KpiMetricWithValue[];
   loading?: boolean;
+  writeDisabled?: boolean;
   onRefresh?: () => void;
   onAddMetric?: () => void;
   onEditMetricDef?: (metric: KpiMetricWithValue) => void;
-  /** 日视图下的 as_of_date；汇总视图无 value行编辑时需传入页面截止日期供 updateValue */
-  valueAsOfDate: string;
+  /** 仅日视图提供缺值行的写入日期；汇总行必须使用自身的数据日期。 */
+  valueAsOfDate?: string;
   /** 打开完整表单编辑（与行内编辑并存） */
   onFullEdit?: (metric: KpiMetricWithValue) => void;
   /**
@@ -72,6 +74,8 @@ function getScoreTone(score: KpiDecimalString, weight: KpiDecimalString): ScoreT
 export function MetricTable({
   metrics,
   loading = false,
+  writeDisabled = false,
+  onUnconfirmedWrite,
   onRefresh,
   onAddMetric,
   onEditMetricDef,
@@ -83,6 +87,22 @@ export function MetricTable({
   const [expandedMetricId, setExpandedMetricId] = React.useState<number | null>(null);
   const [editing, setEditing] = React.useState<EditingState | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const requestSeq = React.useRef(0);
+  const pending = React.useRef(false);
+  const activeWrite = React.useRef<{ handoff: () => void } | null>(null);
+
+  React.useEffect(() => {
+    requestSeq.current += 1;
+    pending.current = false;
+    setEditing(null);
+    setSaving(false);
+    return () => {
+      requestSeq.current += 1;
+      const request = activeWrite.current;
+      activeWrite.current = null;
+      request?.handoff();
+    };
+  }, [metrics, valueAsOfDate, loading]);
 
   const groupedMetrics = React.useMemo(() => {
     const groups: Record<string, KpiMetricWithValue[]> = {};
@@ -106,22 +126,39 @@ export function MetricTable({
 
   const handleSaveEdit = React.useCallback(
     async (metric: KpiMetricWithValue) => {
-      if (!editing) return;
+      const asOf = metric.as_of_date || valueAsOfDate;
+      if (!editing || !asOf || pending.current || writeDisabled || loading || editing.metricId !== metric.metric_id) return;
+      pending.current = true;
+      const requestId = ++requestSeq.current;
+      let write: PendingKpiWrite | undefined;
+      let request: { handoff: () => void } | undefined;
       setSaving(true);
       try {
         const updateData: Record<string, string | undefined> = {};
         updateData[editing.field] = editing.value || undefined;
-        const asOf = metric.as_of_date || valueAsOfDate;
-        await client.updateKpiValue(metric.value_id || 0, metric.metric_id, asOf, updateData);
+        const operation = client.updateKpiValue(metric.value_id || 0, metric.metric_id, asOf, updateData);
+        write = observeKpiWrite(operation);
+        request = { handoff: () => {
+          if (write) onUnconfirmedWrite?.(write, `行内编辑写入日期：${asOf}`);
+        } };
+        activeWrite.current = request;
+        await operation;
+        if (activeWrite.current === request) activeWrite.current = null;
+        if (requestId !== requestSeq.current) return;
         setEditing(null);
         onRefresh?.();
       } catch (e) {
+        if (activeWrite.current === request) activeWrite.current = null;
+        if (requestId === requestSeq.current) request?.handoff();
         console.error(e);
       } finally {
-        setSaving(false);
+        if (requestId === requestSeq.current) {
+          pending.current = false;
+          setSaving(false);
+        }
       }
     },
-    [client, editing, onRefresh, valueAsOfDate],
+    [client, editing, onRefresh, valueAsOfDate, loading, writeDisabled, onUnconfirmedWrite],
   );
 
   const renderEditableCell = (
@@ -131,6 +168,10 @@ export function MetricTable({
     suffix?: string,
     scoreTone?: ScoreTone,
   ) => {
+    if (writeDisabled) return <span title="前一笔写入结果尚未确认，请先核实">{displayValue}{suffix && displayValue !== EM_DASH ? suffix : ""}</span>;
+    if (!metric.as_of_date && !valueAsOfDate) {
+      return <span title="无数据日期，请切换到日视图录入">{displayValue}{suffix && displayValue !== EM_DASH ? suffix : ""}</span>;
+    }
     const isEditing = editing?.metricId === metric.metric_id && editing?.field === field;
     if (isEditing) {
       return (
@@ -139,6 +180,7 @@ export function MetricTable({
             size="small"
             className="kpi-metric-table__edit-input"
             value={editing.value}
+            disabled={saving}
             onChange={(e) => setEditing({ ...editing, value: e.target.value })}
             onPressEnter={() => void handleSaveEdit(metric)}
           />
@@ -155,6 +197,7 @@ export function MetricTable({
             type="text"
             size="small"
             icon={<CloseOutlined />}
+            disabled={saving}
             onClick={() => setEditing(null)}
           />
         </div>
@@ -173,8 +216,11 @@ export function MetricTable({
         role="button"
         tabIndex={0}
         className={cellClassName}
+        title={`写入日期：${metric.as_of_date || valueAsOfDate}`}
         onClick={(e) => {
           e.stopPropagation();
+          if (saving) return;
+          setExpandedMetricId(metric.metric_id);
           setEditing({
             metricId: metric.metric_id,
             field,
@@ -182,7 +228,8 @@ export function MetricTable({
           });
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
+          if (e.key === "Enter" && !saving) {
+            setExpandedMetricId(metric.metric_id);
             setEditing({
               metricId: metric.metric_id,
               field,
@@ -373,7 +420,7 @@ export function MetricTable({
                                       编辑指标
                                     </Button>
                                   ) : null}
-                                  {onFullEdit ? (
+                                  {onFullEdit && (metric.as_of_date || valueAsOfDate) ? (
                                     <Button type="link" size="small" onClick={() => onFullEdit(metric)}>
                                       表单编辑完成情况
                                     </Button>
@@ -381,6 +428,10 @@ export function MetricTable({
                                 </div>
                                 <Card size="small">
                                   <div className="kpi-metric-table__detail-list">
+                                    <div>
+                                      <span className="kpi-metric-table__detail-label">写入日期 </span>
+                                      {metric.as_of_date || valueAsOfDate || EM_DASH}
+                                    </div>
                                     <div>
                                       <span className="kpi-metric-table__detail-label">指标代码 </span>
                                       <code>{metric.metric_code}</code>

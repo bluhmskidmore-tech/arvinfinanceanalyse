@@ -1,4 +1,4 @@
-import type { ColDef, ValueFormatterParams } from "ag-grid-community";
+import type { ColDef, ITooltipParams, ValueFormatterParams } from "ag-grid-community";
 
 import type {
   BalanceAnalysisBasisBreakdownRow,
@@ -6,7 +6,7 @@ import type {
   BalanceAnalysisWorkbookColumn,
 } from "../../../api/contracts";
 import { tabularNumsStyle } from "../../../theme/designSystem";
-import { EM_DASH } from "../../../utils/format";
+import { EM_DASH, formatPercent } from "../../../utils/format";
 import {
   formatBalanceAmountToYiFromYuan,
   formatBalanceBusinessTextDisplay,
@@ -35,7 +35,13 @@ const workbookWanAmountFieldKeys = new Set([
   "bond_assets_amount",
   "bond_maturity_amount",
   "book_value_amount",
+  "benchmark_balance_amount",
+  "benchmark_known_abs_face_amount",
+  "benchmark_total_abs_face_amount",
   "coupon_income_amount",
+  "coupon_known_abs_face_amount",
+  "coupon_known_balance_amount",
+  "coupon_total_abs_face_amount",
   "cumulative_gap_amount",
   "cumulative_net_cashflow_amount",
   "face_value_amount",
@@ -52,6 +58,9 @@ const workbookWanAmountFieldKeys = new Set([
   "interbank_liabilities_amount",
   "issuance_amount",
   "issuance_maturity_amount",
+  "known_coupon_income_amount",
+  "known_spread_income_amount",
+  "known_total_coupon_income_amount",
   "liability_amount",
   "market_value_amount",
   "net_cashflow_amount",
@@ -60,8 +69,54 @@ const workbookWanAmountFieldKeys = new Set([
   "price_return_amount",
   "spread_income_amount",
   "total_amount",
+  "total_coupon_income_amount",
   "amortized_cost_amount",
 ]);
+
+const workbookRatioFieldKeys = new Set([
+  "coupon_coverage_ratio",
+  "benchmark_coupon_coverage_ratio",
+  "share_of_income",
+  "known_share_of_income",
+]);
+
+const workbookCoverageDetailFieldKeys = new Set([
+  "total_coupon_income_amount",
+  "portfolio_coupon_coverage_status",
+  "known_total_coupon_income_amount",
+  "coupon_known_balance_amount",
+  "coupon_known_abs_face_amount",
+  "coupon_total_abs_face_amount",
+  "coupon_known_count",
+  "coupon_required_count",
+  "benchmark_balance_amount",
+  "benchmark_known_abs_face_amount",
+  "benchmark_total_abs_face_amount",
+  "benchmark_coupon_known_count",
+  "benchmark_coupon_required_count",
+]);
+
+function workbookCoverageTooltip(params: ITooltipParams): string {
+  const row = params.data as Record<string, unknown> | undefined;
+  if (!row) {
+    return "";
+  }
+  const field = params.colDef && "field" in params.colDef ? params.colDef.field : undefined;
+  if (field === "coupon_coverage_ratio" || field === "benchmark_coupon_coverage_ratio") {
+    const benchmark = field === "benchmark_coupon_coverage_ratio";
+    const prefix = benchmark ? "benchmark" : "coupon";
+    const countPrefix = benchmark ? "benchmark_coupon" : "coupon";
+    const netField = benchmark ? "benchmark_balance_amount" : "coupon_known_balance_amount";
+    return `绝对面值覆盖：${formatBalanceWorkbookWanAmountDisplay(row[`${prefix}_known_abs_face_amount`])} / ${formatBalanceWorkbookWanAmountDisplay(row[`${prefix}_total_abs_face_amount`])}；票息已知/非零面值笔数：${formatBalanceGridThousandsValue(row[`${countPrefix}_known_count`])} / ${formatBalanceGridThousandsValue(row[`${countPrefix}_required_count`])}；${benchmark ? "基准净面值" : "已知净面值"}：${formatBalanceWorkbookWanAmountDisplay(row[netField])}`;
+  }
+  if (field === "share_of_income") {
+    return `组合票息覆盖状态：${formatBalanceBusinessTextDisplay(row.portfolio_coupon_coverage_status)}；完整组合票息收入：${formatBalanceWorkbookWanAmountDisplay(row.total_coupon_income_amount)}`;
+  }
+  if (field === "known_share_of_income") {
+    return `已知组合票息收入小计：${formatBalanceWorkbookWanAmountDisplay(row.known_total_coupon_income_amount)}`;
+  }
+  return "";
+}
 
 function isWorkbookWanAmountField(field: unknown): field is string {
   return typeof field === "string" && workbookWanAmountFieldKeys.has(field);
@@ -70,6 +125,14 @@ function isWorkbookWanAmountField(field: unknown): field is string {
 function workbookCellFormatter(params: ValueFormatterParams): string {
   if (isWorkbookWanAmountField(params.colDef.field)) {
     return formatBalanceWorkbookWanAmountDisplay(params.value);
+  }
+  if (workbookRatioFieldKeys.has(String(params.colDef.field))) {
+    return formatPercent(
+      params.value == null || (typeof params.value === "string" && params.value.trim() === "")
+        ? null
+        : Number(params.value),
+      false,
+    );
   }
   if (typeof params.value === "string" && /(?:wan yuan|万元)/i.test(params.value)) {
     return formatBalanceWorkbookWanTextDisplay(params.value);
@@ -293,7 +356,10 @@ export function buildWorkbookGridColumnDefs(columns: BalanceAnalysisWorkbookColu
   return columns.map((col) => ({
     field: col.key,
     headerName: formatWorkbookColumnLabelDisplay(col.label),
+    headerTooltip: formatWorkbookColumnLabelDisplay(col.label),
     valueFormatter: workbookCellFormatter,
+    hide: workbookCoverageDetailFieldKeys.has(col.key),
+    tooltipValueGetter: workbookCoverageTooltip,
     cellStyle: { ...tabularNumsStyle },
   }));
 }

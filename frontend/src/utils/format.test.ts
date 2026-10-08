@@ -84,9 +84,7 @@ describe("missing values render EM_DASH", () => {
   });
 
   it("*AsYiPlain/*AsWanPlain map an 'Infinity' string or fully non-numeric garbage to EM_DASH, not the literal token (审计 F02 #1)", () => {
-    // parseFloat("Infinity") / parseFloat("abc") 均不产出有限数：修复前会回显原始字符串
-    // （"Infinity"/"abc"），现在统一走 EM_DASH。带部分数字前缀的截断解析（如 "12abc" →
-    // parseFloat 截断为 12）属于既有 parseFloat 语义，超出本任务范围（审计未覆盖），不在此断言。
+    // 非有限值及不完整金额 token 统一走 EM_DASH，不回显或截取数字前缀。
     expect(formatYuanAmountAsYiPlain("Infinity")).toBe(EM_DASH);
     expect(formatYuanAmountAsWanPlain("Infinity")).toBe(EM_DASH);
     expect(formatWanAmountAsYiPlain("abc")).toBe(EM_DASH);

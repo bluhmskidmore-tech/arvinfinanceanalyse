@@ -9,6 +9,7 @@ import duckdb
 import pandas as pd
 from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate, validate_formal_fx_observation
 from backend.app.repositories.currency_codes import normalize_currency_code
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
 
 RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY = "fact_formal_zqtz_balance_daily"
@@ -295,7 +296,7 @@ class AdbAnalysisRepository(DuckDBRepository):
         currency: str,
     ) -> list[dict[str, object]]:
         """会计计量分桶（141/142/143/1440101/144020 前缀）单快照日行；表或库缺失时返回空。"""
-        if not Path(self.path).exists():
+        if not Path(resolve_effective_read_path(self.path)).exists():
             return []
         with read_only_connection(self.path) as conn:
             if not self.table_exists(conn, RELATION_PRODUCT_CATEGORY_PNL_CANONICAL_FACT):
@@ -330,7 +331,7 @@ class AdbAnalysisRepository(DuckDBRepository):
         currency: str,
     ) -> list[dict[str, object]]:
         """会计计量分桶区间行（含 report_date 列）；表或库缺失时返回空。"""
-        if not Path(self.path).exists():
+        if not Path(resolve_effective_read_path(self.path)).exists():
             return []
         with read_only_connection(self.path) as conn:
             if not self.table_exists(conn, RELATION_PRODUCT_CATEGORY_PNL_CANONICAL_FACT):

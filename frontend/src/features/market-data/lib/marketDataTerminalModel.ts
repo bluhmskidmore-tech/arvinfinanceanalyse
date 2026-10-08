@@ -448,7 +448,12 @@ export function buildTerminalSparklineValues(point: ChoiceMacroLatestPoint): num
   const sorted = [...(point.recent_points ?? [])].sort((left, right) =>
     left.trade_date.localeCompare(right.trade_date),
   );
-  const values = sorted.map((recentPoint) => recentPoint.value_numeric);
+  // This undated sparkline cannot faithfully depict a missing observation.
+  if (point.value_numeric == null || !Number.isFinite(point.value_numeric) || sorted.some((recentPoint) => recentPoint.value_numeric == null || !Number.isFinite(recentPoint.value_numeric))) {
+    return [];
+  }
+  const values = sorted.map((recentPoint) => recentPoint.value_numeric)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
   if (values.length === 0) {
     return [point.value_numeric];
   }

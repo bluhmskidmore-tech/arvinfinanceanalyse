@@ -466,6 +466,30 @@ function buildSnapshotWindowQuery(options?: {
   return q ? `?${q}` : "";
 }
 
+// Keep FX wire null/nonfinite observations distinct from valid zero/negative swaps.
+function normalizeFxAnalyticalEnvelope(envelope: ApiEnvelope<FxAnalyticalPayload>): ApiEnvelope<FxAnalyticalPayload> {
+  const numeric = (value: unknown): number | null =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+  return {
+    ...envelope,
+    result: {
+      ...envelope.result,
+      groups: envelope.result.groups.map((group) => ({
+        ...group,
+        series: group.series.map((point) => ({
+          ...point,
+          value_numeric: numeric(point.value_numeric),
+          latest_change: numeric(point.value_numeric) === null ? null : numeric(point.latest_change),
+          recent_points: point.recent_points?.map((recent) => ({
+            ...recent,
+            value_numeric: numeric(recent.value_numeric),
+          })),
+        })),
+      })),
+    },
+  };
+}
+
 export function createRealMarketDataClient({
   fetchImpl,
   baseUrl,
@@ -583,7 +607,7 @@ export function createRealMarketDataClient({
         fetchImpl,
         baseUrl,
         "/ui/market-data/fx/analytical",
-      ),
+      ).then(normalizeFxAnalyticalEnvelope),
     refreshChoiceMacro: (backfillDays?: number) => {
       const query = backfillDays ? `?backfill_days=${backfillDays}` : "";
       return requestActionJson<ChoiceMacroRefreshPayload>(

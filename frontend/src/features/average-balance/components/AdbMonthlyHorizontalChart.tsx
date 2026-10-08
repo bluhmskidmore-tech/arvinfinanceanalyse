@@ -40,11 +40,15 @@ function buildHorizontalOption(rows: AdbMonthlyHorizontalChartRow[], color: stri
         const items = Array.isArray(params) ? params as Array<{ dataIndex: number }> : [];
         if (!items.length) return "";
         const row = rows[items[0].dataIndex];
-        return [
+        const content = document.createElement("div");
+        content.append(
           row.category,
+          document.createElement("br"),
           `日均：${formatYi(row.avgYi)} 亿元`,
+          document.createElement("br"),
           `加权利率：${formatPct(row.weightedRate)}`,
-        ].join("<br/>");
+        );
+        return content;
       },
     },
     grid: { left: 120, right: 24, top: 44 },

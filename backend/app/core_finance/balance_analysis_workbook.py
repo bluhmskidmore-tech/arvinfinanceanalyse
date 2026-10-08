@@ -838,12 +838,23 @@ def _build_rule_reference_table() -> dict[str, Any]:
             "rule_name": "Campisi 基准缺失口径",
             "summary": (
                 "Campisi 归因的利差基准为在册'政策性金融债'加权票面利率；"
-                "在册无该基准（或基准行票面利率全部缺失）时，"
+                "在册无该基准、任一非零面值基准行票息缺失或基准净面值为零时，"
                 "'campisi_breakdown' 的利差(bp)与利差收入贡献列显式输出 null，"
                 "不允许把基准静默降级为 0（利差退化为票息本身）。"
             ),
             "source_doc": "docs/calc_rules.md",
             "source_section": "14 禁止事项（不允许静默降级为 0 且不打标记）",
+        },
+        {
+            "rule_id": "bal_campisi_coupon_completeness_fin002",
+            "rule_name": "Campisi 票息完整性与已知小计",
+            "summary": (
+                "非零面值行的票息缺失或非有限时，完整收入、加权利率与利差输出 null；"
+                "完整组合收入不齐时，占总收入比重也为 null。已知小计仅使用有效票息行，"
+                "利差成本使用同一子集的有符号面值；覆盖率按绝对面值计算并披露分子、分母和笔数。"
+            ),
+            "source_doc": "docs/calc_rules.md",
+            "source_section": "12.8 余额工作簿 Campisi 票息完整性（FIN002）",
         },
         {
             "rule_id": "bal_wb_rating_default_001",
@@ -1260,45 +1271,112 @@ def _build_counterparty_type_table(tyw_rows: list[FormalTywBalanceFactRow]) -> d
     )
 
 
+def _campisi_coupon_coverage(entries: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
+    """Keep signed income weights and absolute-face disclosure in the same scope."""
+    balance = _ZERO
+    known_balance = _ZERO
+    total_abs_face = _ZERO
+    known_abs_face = _ZERO
+    known_income = _ZERO
+    required_count = 0
+    known_count = 0
+    for row in entries:
+        face = _to_finite_decimal(row.face_value_amount)
+        balance += face
+        if face == _ZERO:
+            continue
+        required_count += 1
+        total_abs_face += abs(face)
+        coupon = _optional_finite_decimal(row.coupon_rate)
+        if coupon is None:
+            continue
+        known_count += 1
+        known_balance += face
+        known_abs_face += abs(face)
+        # Formal fact coupon_rate is percent (4 means 4%), not a decimal rate.
+        known_income += face * coupon / Decimal("100")
+    complete = known_count == required_count
+    if required_count == 0:
+        status = "无面值敞口"
+    elif complete:
+        status = "完整"
+    elif known_count == 0:
+        status = "全部缺失"
+    else:
+        status = "部分缺失"
+    return {
+        "balance": balance,
+        "known_balance": known_balance,
+        "known_income": known_income,
+        "known_rate": known_income * Decimal("100") / known_balance if known_balance != _ZERO else None,
+        "total_abs_face": total_abs_face,
+        "known_abs_face": known_abs_face,
+        "coverage_ratio": known_abs_face / total_abs_face if total_abs_face != _ZERO else None,
+        "required_count": required_count,
+        "known_count": known_count,
+        "complete": complete,
+        "status": status,
+    }
+
+
 def _build_campisi_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
     benchmark_rows = [row for row in asset_rows if row.bond_type == _CAMPISI_POLICY_BOND]
-    # 在册无政策性金融债（或基准行票面利率全部缺失）时 benchmark_rate 为 None。
-    # 此时利差(bp)与利差收入贡献列显式输出 None，不再把基准静默降级为 0
-    # （否则 spread_bp 退化为票息×100、利差收入=全部票息收入）。语义由
-    # rule_reference 的 bal_campisi_benchmark_missing_null 行披露
-    # （docs/calc_rules.md §14：不允许静默降级为 0 且不打标记）。
-    benchmark_rate = _weighted_average(benchmark_rows, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
-    # coupon_rate 落库为百分数（2.85 = 2.85%，见 docs/audits/2026-07-19-system-calculation-audit.md
-    # 取证 1），收入类金额必须显式 ÷100，与包版 balance_workbook/_analysis_tables.py 保持一致。
-    total_income = _sum_decimal(asset_rows, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
+    benchmark = _campisi_coupon_coverage(benchmark_rows)
+    # A partial policy-bond average cannot represent the full benchmark.
+    # Signed net-zero benchmark weights also leave its rate undefined.
+    benchmark_rate = benchmark["known_rate"] if benchmark["complete"] else None
+    portfolio = _campisi_coupon_coverage(asset_rows)
+    total_known_income = portfolio["known_income"]
+    total_income = total_known_income if portfolio["complete"] else None
     grouped = _group_rows(asset_rows, lambda row: row.bond_type or "未分类")
     rows = []
     for bond_type, entries in sorted(grouped.items()):
-        balance_amount = _sum_decimal(entries, lambda row: row.face_value_amount)
-        coupon_income = _sum_decimal(entries, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
-        bucket_rate_pct = _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
+        bucket = _campisi_coupon_coverage(entries)
+        known_income = bucket["known_income"]
+        known_rate = bucket["known_rate"]
+        coupon_income = known_income if bucket["complete"] else None
+        bucket_rate_pct = known_rate if bucket["complete"] else None
         if benchmark_rate is None:
-            spread_value = None
-            spread_income_amount = None
+            known_spread_income = None
         else:
-            spread_value = ((bucket_rate_pct or _ZERO) - benchmark_rate) * Decimal("100")
-            spread_income_amount = _to_wanyuan(
-                _sum_decimal(
-                    entries,
-                    lambda row: row.face_value_amount * ((_rate_value(row.coupon_rate) - benchmark_rate) / Decimal("100")),
-                )
+            # Deduct benchmark cost only from the coupon-observed signed face.
+            known_spread_income = _to_wanyuan(
+                known_income - bucket["known_balance"] * benchmark_rate / Decimal("100")
             )
         rows.append(
             {
                 "bond_type": bond_type,
-                "balance_amount": _to_wanyuan(balance_amount),
+                "balance_amount": _to_wanyuan(bucket["balance"]),
                 "weighted_rate_pct": bucket_rate_pct,
-                "coupon_income_amount": _to_wanyuan(coupon_income),
+                "coupon_income_amount": _to_wanyuan(coupon_income) if coupon_income is not None else None,
                 "duration_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _optional_remaining_years(row.report_date, row.maturity_date)),
-                "spread_bp": spread_value,
-                "spread_income_amount": spread_income_amount,
-                "share_of_income": _safe_ratio(coupon_income, total_income),
+                "spread_bp": _spread_bp(bucket_rate_pct, benchmark_rate),
+                "spread_income_amount": known_spread_income if bucket["complete"] else None,
+                "share_of_income": coupon_income / total_income if coupon_income is not None and total_income not in (None, _ZERO) else None,
+                "total_coupon_income_amount": _to_wanyuan(total_income) if total_income is not None else None,
+                "portfolio_coupon_coverage_status": portfolio["status"],
+                "known_coupon_income_amount": _to_wanyuan(known_income),
+                "known_weighted_rate_pct": known_rate,
+                "known_spread_bp": _spread_bp(known_rate, benchmark_rate),
+                "known_spread_income_amount": known_spread_income,
+                "known_share_of_income": known_income / total_known_income if total_known_income != _ZERO else None,
+                "known_total_coupon_income_amount": _to_wanyuan(total_known_income),
+                "coupon_known_balance_amount": _to_wanyuan(bucket["known_balance"]),
+                "coupon_known_abs_face_amount": _to_wanyuan(bucket["known_abs_face"]),
+                "coupon_total_abs_face_amount": _to_wanyuan(bucket["total_abs_face"]),
+                "coupon_coverage_ratio": bucket["coverage_ratio"],
+                "coupon_known_count": bucket["known_count"],
+                "coupon_required_count": bucket["required_count"],
+                "coupon_coverage_status": bucket["status"],
+                "benchmark_rate_pct": benchmark_rate,
+                "benchmark_balance_amount": _to_wanyuan(benchmark["balance"]),
+                "benchmark_known_abs_face_amount": _to_wanyuan(benchmark["known_abs_face"]),
+                "benchmark_total_abs_face_amount": _to_wanyuan(benchmark["total_abs_face"]),
+                "benchmark_coupon_coverage_ratio": benchmark["coverage_ratio"],
+                "benchmark_coupon_known_count": benchmark["known_count"],
+                "benchmark_coupon_required_count": benchmark["required_count"],
+                "benchmark_coverage_status": benchmark["status"] if benchmark_rows else "缺少基准持仓",
                 "price_return_amount": _to_wanyuan(_sum_decimal(entries, lambda row: row.market_value_amount - row.amortized_cost_amount)),
             }
         )
@@ -1308,12 +1386,35 @@ def _build_campisi_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str,
         [
             ("bond_type", "分析维度"),
             ("balance_amount", "余额"),
-            ("weighted_rate_pct", "加权利率(%)"),
-            ("coupon_income_amount", "票息收入贡献"),
+            ("weighted_rate_pct", "完整加权利率(%)"),
+            ("coupon_income_amount", "完整票息收入贡献"),
             ("duration_years", "久期贡献(年)"),
-            ("spread_bp", "利差(bp)"),
-            ("spread_income_amount", "利差收入贡献"),
-            ("share_of_income", "占总收入比重"),
+            ("spread_bp", "完整利差(bp)"),
+            ("spread_income_amount", "完整利差收入贡献"),
+            ("share_of_income", "占完整组合票息收入比重"),
+            ("total_coupon_income_amount", "完整组合票息收入"),
+            ("portfolio_coupon_coverage_status", "组合票息覆盖状态"),
+            ("known_coupon_income_amount", "已知票息收入小计"),
+            ("known_weighted_rate_pct", "已知部分加权利率(%)"),
+            ("known_spread_bp", "已知部分利差(bp)"),
+            ("known_spread_income_amount", "已知利差收入小计"),
+            ("known_share_of_income", "占已知组合票息收入比重"),
+            ("known_total_coupon_income_amount", "已知组合票息收入小计"),
+            ("coupon_known_balance_amount", "已知票息净面值"),
+            ("coupon_known_abs_face_amount", "票息覆盖绝对面值"),
+            ("coupon_total_abs_face_amount", "全部绝对面值"),
+            ("coupon_coverage_ratio", "票息绝对面值覆盖率"),
+            ("coupon_known_count", "票息已知笔数"),
+            ("coupon_required_count", "非零面值笔数"),
+            ("coupon_coverage_status", "票息覆盖状态"),
+            ("benchmark_rate_pct", "完整基准利率(%)"),
+            ("benchmark_balance_amount", "基准净面值"),
+            ("benchmark_known_abs_face_amount", "基准覆盖绝对面值"),
+            ("benchmark_total_abs_face_amount", "基准全部绝对面值"),
+            ("benchmark_coupon_coverage_ratio", "基准绝对面值覆盖率"),
+            ("benchmark_coupon_known_count", "基准票息已知笔数"),
+            ("benchmark_coupon_required_count", "基准非零面值笔数"),
+            ("benchmark_coverage_status", "基准票息覆盖状态"),
             ("price_return_amount", "浮盈浮亏"),
         ],
         rows,

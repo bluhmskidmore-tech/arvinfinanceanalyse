@@ -48,7 +48,7 @@ export type HomeMarketTicker = {
   deltaTone: "up" | "down" | "flat" | "muted";
   sparkline: readonly number[];
   tradeDate?: string;
-  valueNumeric?: number;
+  valueNumeric?: number | null;
   unit?: string;
   qualityFlag?: ChoiceMacroLatestPoint["quality_flag"];
   vendorName?: string | null;
@@ -90,7 +90,7 @@ function buildTickerDelta(
     spaceBeforeUnit: false,
     emptyDisplay: EM_DASH,
   });
-  if (point.latest_change == null) {
+  if (point.value_numeric == null || !Number.isFinite(point.value_numeric) || point.latest_change == null || !Number.isFinite(point.latest_change)) {
     return { delta: fullDelta, deltaTone: "flat" };
   }
 

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import type { ApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
+import { usePollingTaskSignal } from "../../../app/jobs/usePollingTaskSignal";
 
 type RefreshClient = Pick<
   ApiClient,
@@ -12,6 +13,7 @@ type RefreshClient = Pick<
 /** Owns the refresh lifecycle shared by the refresh button and adjustment actions. */
 export function useProductCategoryRefresh(client: RefreshClient) {
   const queryClient = useQueryClient();
+  const getPollingSignal = usePollingTaskSignal();
   const [refreshPollSnapshot, setRefreshPollSnapshot] = useState<{
     status: string;
     run_id?: string;
@@ -20,14 +22,17 @@ export function useProductCategoryRefresh(client: RefreshClient) {
   const refresh = useMutation({
     retry: false,
     mutationFn: async () => {
+      const signal = getPollingSignal();
       setRefreshPollSnapshot(null);
       const payload = await runPollingTask({
+        signal,
         start: () => client.refreshProductCategoryPnl(),
         getStatus: (runId) => client.getProductCategoryRefreshStatus(runId),
         onUpdate: ({ status, run_id }) => {
           setRefreshPollSnapshot({ status, run_id });
         },
       });
+      if (signal?.aborted) return;
       setLastRefreshRunId(payload.run_id);
       if (payload.status !== "completed") {
         throw new Error(payload.detail ?? `刷新任务未完成：${payload.status}`);
@@ -43,11 +48,14 @@ export function useProductCategoryRefresh(client: RefreshClient) {
       // Discard reads started before materialization completed, including reads
       // without cached data. Their older response must not make the cache fresh.
       await queryClient.cancelQueries(filters);
+      if (signal?.aborted) return;
       await queryClient.invalidateQueries({ ...filters, refetchType: "active" });
       // Disabled/unmounted queries stay stale until consumed. Query errors remain
       // on their existing page error/retry surfaces, separate from task failure.
     },
-    onSettled: () => setRefreshPollSnapshot(null),
+    onSettled: () => {
+      if (!getPollingSignal()?.aborted) setRefreshPollSnapshot(null);
+    },
   });
 
   return {

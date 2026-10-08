@@ -891,6 +891,15 @@ class PnlRepository:
         return {str(base): Decimal(str(rate)) for base, rate in rows if base and rate is not None}
 
     def fetch_formal_fx_rates(self, report_date: str, base_currencies: set[str]) -> dict[str, Decimal]:
+        return {
+            base: value[0]
+            for base, value in self.fetch_formal_fx_rates_with_lineage(report_date, base_currencies).items()
+        }
+
+    def fetch_formal_fx_rates_with_lineage(
+        self, report_date: str, base_currencies: set[str],
+    ) -> dict[str, tuple[Decimal, str]]:
+        """Retain the source identity after applying the existing formal observation guards."""
         required = sorted({currency.strip().upper() for currency in base_currencies if currency.strip()})
         required_fx = [currency for currency in required if currency not in {"CNY", "CNX", "RMB"}]
         if not required_fx:
@@ -903,6 +912,7 @@ class PnlRepository:
                 select
                   upper(base_currency) as base_currency,
                   mid_rate,
+                  source_version,
                   is_business_day,
                   is_carry_forward,
                   cast(observed_trade_date as varchar) as observed_trade_date
@@ -921,8 +931,8 @@ class PnlRepository:
             if "conn" in locals():
                 conn.close()
 
-        rates: dict[str, Decimal] = {}
-        for base_currency, mid_rate, is_business_day, is_carry_forward, observed_trade_date in rows:
+        rates: dict[str, tuple[Decimal, str]] = {}
+        for base_currency, mid_rate, source_version, is_business_day, is_carry_forward, observed_trade_date in rows:
             if base_currency is None or mid_rate is None:
                 continue
             base = str(base_currency)
@@ -946,7 +956,7 @@ class PnlRepository:
                 is_business_day=is_business_day,
                 is_carry_forward=is_carry_forward,
             )
-            rates[base] = rate
+            rates[base] = (rate, str(source_version or ""))
 
         missing = [currency for currency in required_fx if currency not in rates]
         if missing:

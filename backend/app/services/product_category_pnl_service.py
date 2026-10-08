@@ -4,6 +4,7 @@ import logging
 from calendar import monthrange
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -52,8 +53,10 @@ from backend.app.services.analysis_service import (
     build_default_analysis_service,
 )
 from backend.app.services.formal_result_runtime import (
+    QualityFlag,
     build_formal_result_envelope,
     build_formal_result_meta,
+    build_scenario_result_meta,
 )
 from backend.app.services.product_category_source_service import discover_source_pairs
 
@@ -775,13 +778,14 @@ def product_category_history_envelope(
         scenario_rate_pct=scenario_rate_pct,
         items=[ProductCategoryHistoryItem.model_validate(item) for item in items],
     )
-    meta = build_formal_result_meta(
+    meta_builder = build_scenario_result_meta if scenario_rate_pct is not None else build_formal_result_meta
+    meta = meta_builder(
         trace_id="tr_product_category_pnl_history",
         result_kind="product_category_pnl.history",
         source_version=_batch_source_version(items),
-        rule_version=RULE_VERSION,
+        rule_version=_batch_lineage_version(items, "rule_version", RULE_VERSION),
         cache_version=CACHE_VERSION,
-        quality_flag="warning" if _batch_has_missing(items) else "ok",
+        quality_flag=_batch_quality(items),
         filters_applied={
             "report_dates": list(report_dates),
             "view": view,
@@ -838,9 +842,9 @@ def product_category_attribution_history_envelope(
         trace_id="tr_product_category_pnl_attribution_history",
         result_kind="product_category_pnl.attribution_history",
         source_version=_batch_source_version(items),
-        rule_version=RULE_VERSION,
+        rule_version=_batch_lineage_version(items, "rule_version", RULE_VERSION),
         cache_version=CACHE_VERSION,
-        quality_flag="warning" if _batch_has_missing(items) else "ok",
+        quality_flag=_batch_quality(items),
         filters_applied={
             "report_dates": list(report_dates),
             "compare": compare,
@@ -868,22 +872,38 @@ def _map_product_category_batch(
 
     max_workers = min(PRODUCT_CATEGORY_BATCH_MAX_WORKERS, len(report_dates))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        return list(executor.map(read_period, report_dates))
+        # A distinct copy for each worker preserves both DuckDB and system/governance
+        # pins. A Context cannot be entered concurrently by several threads.
+        futures = [executor.submit(copy_context().run, read_period, day) for day in report_dates]
+        return [future.result() for future in futures]
 
 
-def _batch_has_missing(items: list[dict[str, object]]) -> bool:
-    return any(item.get("status") != "ok" for item in items)
+def _batch_quality(items: list[dict[str, object]]) -> QualityFlag:
+    quality: QualityFlag = "ok"
+    priority = {"ok": 0, "warning": 1, "stale": 2, "error": 3}
+    for item in items:
+        meta = item.get("result_meta")
+        item_quality = meta.get("quality_flag") if isinstance(meta, dict) else None
+        if item.get("status") != "ok" or item_quality not in priority:
+            item_quality = "warning"
+        if priority[item_quality] > priority[quality]:
+            quality = item_quality
+    return quality
+
+
+def _batch_lineage_version(items: list[dict[str, object]], field: str, empty: str) -> str:
+    versions = set()
+    for item in items:
+        meta = item.get("result_meta")
+        value = meta.get(field) if isinstance(meta, dict) else None
+        if isinstance(value, str) and value.strip():
+            versions.add(value.strip())
+    return "__".join(sorted(versions)) if versions else empty
 
 
 def _batch_source_version(items: list[dict[str, object]]) -> str:
-    """Reuse the newest item's source version so the batch stays traceable to the read model."""
-    for item in items:
-        meta = item.get("result_meta")
-        if isinstance(meta, dict):
-            source_version = meta.get("source_version")
-            if isinstance(source_version, str) and source_version:
-                return source_version
-    return "sv_none"
+    """Bind every represented period rather than borrowing the first period's source."""
+    return _batch_lineage_version(items, "source_version", "sv_none")
 
 
 def resolve_product_category_ytd_payload_for_home_snapshot(

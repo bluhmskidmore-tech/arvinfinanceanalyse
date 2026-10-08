@@ -1,3 +1,4 @@
+import type { BalanceMovementReadState } from "../hooks/useBalanceMovementAnalysis";
 import type { BalanceMovementPayload, BalanceMovementDatesPayload } from "../../../api/contracts";
 import { EM_DASH } from "../../../utils/format";
 import { formatSignedPointNullable } from "../lib/balanceMovementShareModel";
@@ -21,6 +22,7 @@ export function FigmaDecisionHero({
   topDriver,
   movementDrivers,
   dates,
+  readStatus,
   selectedDate,
   reconciliationLabel,
   currencyBasis,
@@ -30,6 +32,7 @@ export function FigmaDecisionHero({
   topDriver: BalanceMovementDriver;
   movementDrivers: BalanceMovementDriver[];
   dates: BalanceMovementDatesPayload;
+  readStatus: BalanceMovementReadState;
   selectedDate: string;
   reconciliationLabel: string;
   currencyBasis: string;
@@ -71,6 +74,7 @@ export function FigmaDecisionHero({
       </article>
       <FreshnessStrip
         dates={dates}
+        readStatus={readStatus}
         selectedDate={selectedDate}
         reconciliationLabel={reconciliationLabel}
         currencyBasis={currencyBasis}
@@ -81,11 +85,13 @@ export function FigmaDecisionHero({
 
 export function FigmaEmptyHero({
   dates,
+  readStatus,
   selectedDate,
   reconciliationLabel,
   currencyBasis,
 }: {
   dates: BalanceMovementDatesPayload;
+  readStatus: BalanceMovementReadState;
   selectedDate: string;
   reconciliationLabel: string;
   currencyBasis: string;
@@ -108,6 +114,7 @@ export function FigmaEmptyHero({
       </article>
       <FreshnessStrip
         dates={dates}
+        readStatus={readStatus}
         selectedDate={selectedDate}
         reconciliationLabel={reconciliationLabel}
         currencyBasis={currencyBasis}
@@ -118,11 +125,13 @@ export function FigmaEmptyHero({
 
 export function FigmaLoadingHero({
   dates,
+  readStatus,
   selectedDate,
   reconciliationLabel,
   currencyBasis,
 }: {
   dates: BalanceMovementDatesPayload;
+  readStatus: BalanceMovementReadState;
   selectedDate: string;
   reconciliationLabel: string;
   currencyBasis: string;
@@ -154,6 +163,7 @@ export function FigmaLoadingHero({
       </article>
       <FreshnessStrip
         dates={dates}
+        readStatus={readStatus}
         selectedDate={selectedDate}
         reconciliationLabel={reconciliationLabel}
         currencyBasis={currencyBasis}

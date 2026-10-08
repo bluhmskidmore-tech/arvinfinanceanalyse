@@ -4,7 +4,7 @@ import json
 import os
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from inspect import signature
 from typing import Any, NotRequired, TypedDict, cast
 
@@ -1886,7 +1886,7 @@ def _zqtz_other_bond_type() -> str:
     return "其他"
 
 def _quantize_decimal(value: Decimal) -> Decimal:
-    return value.quantize(TWOPLACES)
+    return value.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
 def _quantize_ratio(value: Decimal) -> Decimal:
-    return value.quantize(RATIOPLACES)
+    return value.quantize(RATIOPLACES, rounding=ROUND_HALF_UP)

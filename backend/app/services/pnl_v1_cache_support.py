@@ -21,6 +21,7 @@ from backend.app.services.pnl_source_service import (
     SUPPORTED_PNL_SOURCE_FAMILIES,
 )
 from backend.app.services.pnl_task_dispatch import PNL_RESULT_CACHE_VERSION
+from backend.app.services.source_file_hash import sha256_file
 
 _PNL_V1_DATA_INPUT_FAMILIES: tuple[tuple[str, str], ...] = (
     ("", "*.xls"),
@@ -103,10 +104,10 @@ def _pnl_v1_data_governance_streams_identity(
     return tuple(identities)
 
 
-def _pnl_v1_data_input_fingerprint(data_root: Path) -> tuple[tuple[str, int, int], ...] | None:
+def _pnl_v1_data_input_fingerprint(data_root: Path) -> tuple[tuple[str, int, int, str], ...] | None:
     if not data_root.exists():
         return None
-    hits: dict[str, tuple[int, int]] = {}
+    hits: dict[str, tuple[int, int, str]] = {}
     for subdir, pattern in _PNL_V1_DATA_INPUT_FAMILIES:
         base = data_root / subdir if subdir else data_root
         if not base.exists():
@@ -116,28 +117,29 @@ def _pnl_v1_data_input_fingerprint(data_root: Path) -> tuple[tuple[str, int, int
                 continue
             try:
                 stat = path.stat()
+                content_sha256 = sha256_file(path)
             except OSError:
                 return None
-            hits[str(path.resolve())] = (stat.st_mtime_ns, stat.st_size)
+            hits[str(path.resolve())] = (stat.st_mtime_ns, stat.st_size, content_sha256)
     return tuple(
-        (resolved, mtime, size)
-        for resolved, (mtime, size) in sorted(hits.items())
+        (resolved, mtime, size, digest)
+        for resolved, (mtime, size, digest) in sorted(hits.items())
     )
 
 
 def _pnl_v1_data_manifest_archived_paths_fingerprint(
     governance_dir: str,
     archive_root: str | Path | None = None,
-) -> tuple[tuple[str, int, int], ...] | None:
-    """Stat every eligible `archived_path` referenced by `source_manifest.jsonl`.
+) -> tuple[tuple[str, int, int, str], ...] | None:
+    """Content-fingerprint every eligible `archived_path` referenced by `source_manifest.jsonl`.
 
     Mirrors `pnl_source_service._manifest_candidates` filtering (supported
     source family, eligible status, non-empty archived_path, not a `processed/`
-    path) so we fingerprint the actual files the read path materialises. Only
-    stat is performed for current-root files; relocated identities also verify
+    path) so we fingerprint the actual files the read path materialises. Streaming SHA256 is included for every input, including same-size/mtime edits.
+    Relocated identities also verify
     the full receipt SHA256 before returning a physical path. No xlsx parsing
     is performed. If any eligible archived_path cannot
-    be stat'd, return None so the envelope falls back to the uncached path
+    be read, return None so the envelope falls back to the uncached path
     instead of serving stale bytes from an inconsistent manifest.
     """
     manifest_path = Path(governance_dir) / f"{SOURCE_MANIFEST_STREAM}.jsonl"
@@ -148,7 +150,7 @@ def _pnl_v1_data_manifest_archived_paths_fingerprint(
     except OSError:
         return None
 
-    hits: dict[str, tuple[int, int]] = {}
+    hits: dict[str, tuple[int, int, str]] = {}
     for row in rows:
         source_family = str(row.get("source_family", ""))
         if source_family not in SUPPORTED_PNL_SOURCE_FAMILIES:
@@ -164,12 +166,13 @@ def _pnl_v1_data_manifest_archived_paths_fingerprint(
         path = resolve_local_archive_path(historical_path, archive_root) if archive_root is not None else historical_path
         try:
             stat = path.stat()
+            content_sha256 = sha256_file(path)
         except OSError:
             return None
-        hits[str(path.resolve())] = (stat.st_mtime_ns, stat.st_size)
+        hits[str(path.resolve())] = (stat.st_mtime_ns, stat.st_size, content_sha256)
     return tuple(
-        (resolved, mtime, size)
-        for resolved, (mtime, size) in sorted(hits.items())
+        (resolved, mtime, size, digest)
+        for resolved, (mtime, size, digest) in sorted(hits.items())
     )
 
 

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
@@ -240,6 +240,67 @@ function emptyProductPayload(): ProductCategoryPnlPayload {
 }
 
 describe("TeamPerformancePage", () => {
+  it.each([
+    { name: "partial", february: null, quality: "stale", fallback: "latest_snapshot", amount: "5 亿元", coverage: "部分已知小计" },
+    { name: "complete", february: "100000000", quality: "ok", fallback: "none", amount: "6 亿元", coverage: "季度证据齐全" },
+  ] as const)("renders $name Q1 evidence and analytical-only usage through the production monthly client", async ({ february, quality: qualityFlag, fallback, amount, coverage }) => {
+    const base = createApiClient({ mode: "mock" });
+    const payload = q1MonthlyPayload([]);
+    payload.months = ["200000000", february, "300000000"].map((value, index) => {
+      const monthKey = `2026-0${index + 1}`;
+      const days = index === 1 ? 28 : 31;
+      return {
+        ...q1MonthlyPayload([]).months[0], month_key: monthKey,
+        period_start_date: `${monthKey}-01`, period_end_date: `${monthKey}-${days}`,
+        calendar_days: days, expected_days: days, coverage_days: days, sample_filled: false,
+        items: [{ ...monthlyBusinessItem({ row_key: "asset_zqtz_detail_structured_finance_broker",
+          business_type: "合成产业基金" }), ftp_net_pnl: value }],
+      };
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      result_meta: buildMeta("pnl.by_business_monthly", "synthetic-q1-monthly-trace", {
+        // Mirrors _build_pnl_by_business_analytical_result_envelope for both paths.
+        basis: "analytical", formal_use_allowed: false,
+        quality_flag: qualityFlag, fallback_mode: fallback, source_version: "synthetic-q1-source",
+      }), result: payload,
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const real = createApiClient({ mode: "real", baseUrl: "", fetchImpl });
+    renderTeamPerformance({ ...base,
+      getFormalPnlDates: async () => ({ result_meta: buildMeta("pnl.dates", "synthetic-dates"),
+        result: { report_dates: ["2025-12-31", "2026-03-31"], formal_fi_report_dates: [], nonstd_bridge_report_dates: [] } }),
+      getPnlByBusinessMonthly: real.getPnlByBusinessMonthly,
+      getProductCategoryPnl: async ({ reportDate }) => ({
+        result_meta: buildMeta("product_category_pnl.detail", `synthetic-product-${reportDate}`),
+        result: { ...emptyProductPayload(), report_date: reportDate },
+      }),
+    });
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/pnl/by-business-monthly?year=2026&as_of_date=2026-03-31", expect.anything(),
+    ));
+    const q1 = screen.getByTestId("team-performance-q1-caliber");
+    await waitFor(() => expect(q1).toHaveTextContent("synthetic-q1-monthly-trace"));
+    const center = screen.getByTestId("team-performance-q1-center-product-market");
+    expect(center).toHaveTextContent(amount);
+    expect(center).toHaveTextContent(coverage);
+    const quality = within(q1).getByTestId("team-performance-q1-quality");
+    if (qualityFlag === "stale") {
+      expect(q1).toHaveTextContent("2026-02 FTP后净损益不可用");
+      expect(quality).toHaveTextContent("quality_flag=stale");
+      expect(quality).toHaveTextContent("fallback_mode=latest_snapshot");
+    }
+    const usage = within(q1).getByTestId("team-performance-q1-use-q1-by-business-monthly");
+    expect(usage).toBeVisible();
+    expect(usage).toHaveTextContent("Q1业务种类月度损益：仅供分析，尚未获准正式使用");
+    const provenance = within(q1).getByTestId("team-performance-q1-result-meta");
+    expect(provenance).toHaveTextContent("Q1业务种类月度损益");
+    expect(provenance).toHaveTextContent("synthetic-q1-monthly-trace");
+    expect(provenance).toHaveTextContent("synthetic-q1-source");
+    expect(provenance).toHaveTextContent("分析口径");
+    expect(provenance).toHaveTextContent("仅供分析，尚未获准正式使用");
+    expect(provenance).toHaveTextContent("Q1产品分类损益 YTD");
+    expect(provenance).toHaveTextContent("synthetic-product-2026-03-31");
+  });
+
   it("keeps page surfaces on the IB light token family without bare hex colors", () => {
     const css = readFileSync(
       resolve(process.cwd(), "src/features/team-performance/TeamPerformancePage.css"),
@@ -251,6 +312,23 @@ describe("TeamPerformancePage", () => {
     expect(css).toContain("var(--ib-surface)");
     expect(css).toContain("var(--ib-surface-muted)");
     expect(css).toContain("var(--ib-radius, 2px)");
+  });
+
+  it("shows missing Q1 metadata without claiming fallback values were used", async () => {
+    const base = createApiClient({ mode: "mock" });
+    renderTeamPerformance({ ...base,
+      getFormalPnlDates: async () => ({ result_meta: buildMeta("pnl.dates", "synthetic-dates"),
+        result: { report_dates: ["2025-12-31", "2026-03-31"], formal_fi_report_dates: [], nonstd_bridge_report_dates: [] } }),
+      getPnlByBusinessMonthly: async () => { throw new Error("synthetic unavailable"); },
+      getProductCategoryPnl: async ({ reportDate }) => ({ result_meta: buildMeta("product_category_pnl.detail", "synthetic-product"),
+        result: { ...emptyProductPayload(), report_date: reportDate } }),
+    });
+    const q1 = screen.getByTestId("team-performance-q1-caliber");
+    await waitFor(() => expect(q1).toHaveTextContent("Q1证据加载失败"));
+    const missingMeta = within(q1).getByTestId("team-performance-q1-missing-meta-q1-by-business-monthly");
+    expect(missingMeta).toBeVisible();
+    expect(missingMeta).toHaveTextContent("缺少结果元信息，完整性未确认");
+    expect(q1).not.toHaveTextContent("部分数据使用回退值");
   });
 
   it("locks to 2025-12-31 and renders the matrix, detail panel, warnings, and meta evidence", async () => {

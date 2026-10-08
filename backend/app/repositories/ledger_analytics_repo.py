@@ -9,6 +9,7 @@ import duckdb
 from backend.app.governance.ledger_classification import (
     LEDGER_CLASSIFICATION_RULE_VERSION,
 )
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 
 _CLASSIFICATION_RULE_ROLLUP_SQL = """
 case
@@ -192,10 +193,10 @@ class LedgerAnalyticsRepository:
         }
 
     def _database_exists(self) -> bool:
-        return Path(self.path).is_file()
+        return Path(resolve_effective_read_path(self.path)).is_file()
 
     def _connect(self) -> duckdb.DuckDBPyConnection:
-        return duckdb.connect(str(Path(self.path)), read_only=True)
+        return duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
 
     @staticmethod
     def _resolve_batch(

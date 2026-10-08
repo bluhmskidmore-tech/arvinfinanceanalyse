@@ -48,7 +48,7 @@ export type ChoiceMacroLatestPoint = {
   series_name: string;
   display_name?: string | null;
   trade_date: string;
-  value_numeric: number;
+  value_numeric: number | null;
   frequency?: string;
   unit: string;
   source_version: string;
@@ -65,7 +65,7 @@ export type ChoiceMacroLatestPoint = {
 
 export type ChoiceMacroRecentPoint = {
   trade_date: string;
-  value_numeric: number;
+  value_numeric: number | null;
   source_version: string;
   vendor_version: string;
   quality_flag: ApiQuality;
@@ -551,18 +551,57 @@ export type MacroBondLinkageEnvironmentScore = {
   composite_score: number;
   composite_contributions?: MacroBondLinkageCompositeContribution[];
   composite_formula_version?: string;
+  signal_status?: "ready" | "partial" | "unavailable";
   signal_description: string;
   contributing_factors: MacroBondLinkageEnvironmentFactor[];
   warnings: string[];
 };
 
 export type MacroBondLinkagePortfolioImpact = {
-  estimated_rate_change_bps: DecimalLike;
-  estimated_spread_widening_bps: DecimalLike;
-  estimated_rate_pnl_impact: DecimalLike;
-  estimated_spread_pnl_impact: DecimalLike;
-  total_estimated_impact: DecimalLike;
-  impact_ratio_to_market_value: DecimalLike;
+  estimated_rate_change_bps: DecimalLike | null;
+  estimated_spread_widening_bps: DecimalLike | null;
+  estimated_rate_pnl_impact: DecimalLike | null;
+  estimated_spread_pnl_impact: DecimalLike | null;
+  total_estimated_impact: DecimalLike | null;
+  impact_ratio_to_market_value: DecimalLike | null;
+  status?: "available" | "partial" | "unavailable";
+  requested_report_date?: string;
+  risk_report_date?: string | null;
+  risk_source_table?: string | null;
+  risk_source_version?: string;
+  risk_rule_version?: string;
+  portfolio_dv01?: DecimalLike | null;
+  portfolio_cs01?: DecimalLike | null;
+  portfolio_market_value?: DecimalLike | null;
+  ratio_unavailable_reason?: string | null;
+  entity_link_status?: "same_date_only" | "aggregation_inputs" | "unavailable";
+  availability_reason?: "macro_signal_unavailable" | "macro_signal_partial" | "risk_inputs_unavailable" | "risk_inputs_partial" | null;
+  coverage?: {
+    basis: string;
+    row_count?: number | null;
+    dv01_observed_count?: number | null;
+    cs01_observed_count?: number | null;
+    market_value_observed_count?: number | null;
+    duration_excluded_count?: number | null;
+    rate_risk_market_value?: DecimalLike | null;
+    quality_flag?: string | null;
+  };
+  entities?: Array<{
+    entity_id: string;
+    report_date: string;
+    instrument_code: string | null;
+    instrument_name: string | null;
+    portfolio_name: string | null;
+    cost_center: string | null;
+    accounting_class: string | null;
+    currency_code: string | null;
+    is_credit: boolean | null;
+    dv01: DecimalLike | null;
+    spread_dv01: DecimalLike | null;
+    market_value: DecimalLike | null;
+    source_version: string;
+    rule_version: string;
+  }>;
 };
 
 export type MacroBondLinkageTopCorrelation = {
@@ -646,7 +685,7 @@ export type FxAnalyticalSeriesPoint = {
   series_id: string;
   series_name: string;
   trade_date: string;
-  value_numeric: number;
+  value_numeric: number | null;
   frequency: string;
   unit: string;
   source_version: string;

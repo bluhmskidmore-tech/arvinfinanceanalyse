@@ -5,6 +5,7 @@ import type {
   PnlByBusinessMonthlyPayload,
   PnlByBusinessYtdItem,
   ProductCategoryPnlRow,
+  ResultMeta,
   TeamPerformanceAssessmentIndicator,
   TeamPerformanceAssessmentWorkbookPayload,
 } from "../../api/contracts";
@@ -13,6 +14,7 @@ import { EM_DASH } from "../../pageModel";
 import {
   type AssessmentIndicator2025,
   type CenterPnlMapping2025,
+  type TeamPerformanceQ1CaliberRule,
   Q1_CENTER_CALIBER_RULES,
   buildTeamPerformanceQ1CaliberModel,
   buildTeamPerformanceViewModel,
@@ -750,6 +752,174 @@ describe("teamPerformancePageModel", () => {
     const labels = Q1_CENTER_CALIBER_RULES.map((rule) => rule.businessLabel);
 
     expect(labels).not.toEqual(expect.arrayContaining(["营收", "线性外推合计", "全年预测"]));
+  });
+});
+
+describe("Q1 evidence completeness", () => {
+  const rule: TeamPerformanceQ1CaliberRule = {
+    centerId: "synthetic-center",
+    centerName: "合成测试中心",
+    businessLabel: "合成测试业务",
+    sourceEndpoint: "by-business-monthly",
+    rowId: "synthetic-row",
+    amountField: "ftp_net_pnl",
+    allocation: "include",
+    evidenceStatus: "direct",
+  };
+  const meta: ResultMeta = {
+    // Both live and precomputed monthly envelopes use this analytical contract.
+    trace_id: "synthetic-q1", basis: "analytical", result_kind: "pnl.by_business_monthly",
+    formal_use_allowed: false, source_version: "synthetic", vendor_version: "synthetic",
+    rule_version: "synthetic", cache_version: "synthetic", quality_flag: "ok",
+    vendor_status: "ok", fallback_mode: "none", scenario_flag: false,
+    generated_at: "2026-04-01T00:00:00Z",
+  };
+  function monthly(values: Array<string | null | undefined>): PnlByBusinessMonthlyPayload {
+    const template = byBusinessMonthlyPayload([]);
+    return {
+      ...template,
+      months: values.map((value, index) => {
+        const monthKey = `2026-0${index + 1}`;
+        const days = index === 1 ? 28 : 31;
+        return {
+          ...template.months[0], month_key: monthKey,
+          period_start_date: `${monthKey}-01`, period_end_date: `${monthKey}-${days}`,
+          calendar_days: days, coverage_days: days, expected_days: days, sample_filled: false,
+          items: value === undefined ? [] : [{
+            ...monthlyBusinessItem({ row_key: rule.rowId!, business_type: rule.businessLabel }),
+            ftp_net_pnl: value,
+          }],
+        };
+      }),
+    };
+  }
+  function model(payload: PnlByBusinessMonthlyPayload | null, rules = [rule]) {
+    return buildTeamPerformanceQ1CaliberModel({ rules, byBusinessMonthly: payload, byBusinessMeta: meta });
+  }
+
+  it("distinguishes a null February from real zero without changing the known subtotal", () => {
+    const partial = model(monthly(["100", null, "300"]));
+    const zero = model(monthly(["100", "0", "300"]));
+    expect(partial.centers[0]).toMatchObject({ includedTotalYuan: 400, coverageStatus: "partial" });
+    expect(partial.centers[0].rules[0]).toMatchObject({ amountYuan: 400, coverageStatus: "partial" });
+    expect(partial.centers[0].rules[0].coverageWarnings.join(" ")).toContain("2026-02 FTP后净损益不可用");
+    expect(zero.centers[0]).toMatchObject({ includedTotalYuan: 400, coverageStatus: "complete" });
+  });
+
+  it.each(["duplicate month", "duplicate row", "extra month"] as const)(
+    "retains original amount aggregation for %s while flagging ambiguous quarter coverage", (kind) => {
+      const payload = monthly(["100", "200", "300"]);
+      if (kind === "duplicate month") payload.months.push(payload.months[1]);
+      if (kind === "duplicate row") payload.months[0].items.push(payload.months[0].items[0]);
+      if (kind === "extra month") payload.months.push({ ...payload.months[2], month_key: "2026-04" });
+      const result = model(payload).centers[0];
+      expect(result.includedTotalYuan).toBe(kind === "duplicate month" ? 800 : kind === "duplicate row" ? 700 : 900);
+      expect(result.coverageStatus).toBe("partial");
+      expect(result.coverageWarnings.join(" ")).toContain(kind === "extra month" ? "季度外月份：2026-04" : "重复");
+    },
+  );
+
+  it("preserves source-order floating point addition when months are reordered", () => {
+    const payload = monthly(["10000000000000000", "1", "-10000000000000000"]);
+    // In source order, cancellation happens before the final +1. Sorting would lose it.
+    payload.months = [payload.months[0], payload.months[2], payload.months[1]];
+    expect(model(payload).centers[0]).toMatchObject({ includedTotalYuan: 1, coverageStatus: "complete" });
+  });
+
+  it.each([
+    ["healthy", ["100", "200", "300"], 600, "complete"],
+    ["valid zeros", ["0", "0", "0"], 0, "complete"],
+    ["all null", [null, null, null], null, "unavailable"],
+    ["missing row", ["100", undefined, "300"], 400, "partial"],
+    ["nonfinite", ["100", "NaN", "300"], 400, "partial"],
+    ["infinite", ["100", "Infinity", "300"], 400, "partial"],
+    ["empty", ["100", "", "300"], 400, "partial"],
+  ] as const)("preserves %s semantics", (_name, values, amount, coverageStatus) => {
+    const result = model(monthly([...values])).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: amount, coverageStatus });
+    expect(result.rules[0]).toMatchObject({ amountYuan: amount, coverageStatus });
+  });
+
+  it("names missing January and February for March-only evidence", () => {
+    const payload = monthly(["100", "200", "300"]);
+    payload.months = payload.months.slice(2);
+    const result = model(payload).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: 300, coverageStatus: "partial" });
+    expect(result.rules[0].coverageWarnings.join(" ")).toContain("缺少月份：2026-01、2026-02");
+  });
+
+  it("treats an omitted FTP field as unavailable rather than zero", () => {
+    const payload = monthly(["100", "200", "300"]);
+    delete (payload.months[1].items[0] as Partial<PnlByBusinessMonthlyItem>).ftp_net_pnl;
+    expect(model(payload).centers[0]).toMatchObject({ includedTotalYuan: 400, coverageStatus: "partial" });
+  });
+
+  it("keeps day coverage, sample fill, truncated periods and pending balance issues visible", () => {
+    const payload = monthly(["100", "200", "300"]);
+    Object.assign(payload.months[1], {
+      coverage_days: 10, sample_filled: true, sample_fill_method: "observed_days_scaled_to_calendar",
+      period_end_date: "2026-02-20",
+      balance_quality_issues: [{ issue_id: "synthetic", report_date: "2026-02-10", status: "pending",
+        reason: "合成余额缺口", source_file: "synthetic", source_version: "synthetic" }],
+    });
+    const result = model(payload).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: 600, coverageStatus: "partial" });
+    const warnings = result.rules[0].coverageWarnings.join(" ");
+    expect(warnings).toContain("10/28");
+    expect(warnings).toContain("observed_days_scaled_to_calendar");
+    expect(warnings).toContain("2026-02-20");
+    expect(warnings).toContain("合成余额缺口");
+  });
+
+  it("reports unknown completeness when legacy payload omits day coverage", () => {
+    const payload = monthly(["100", "200", "300"]);
+    delete payload.months[1].coverage_days;
+    const result = model(payload).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: 600, coverageStatus: "unknown" });
+    expect(result.rules[0].coverageWarnings.join(" ")).toContain("2026-02 缺少日覆盖信息");
+  });
+
+  it("does not claim completeness when day coverage is null or invalid", () => {
+    const payload = monthly(["100", "200", "300"]);
+    Object.assign(payload.months[1], { coverage_days: null, expected_days: null });
+    expect(model(payload).centers[0]).toMatchObject({ includedTotalYuan: 600, coverageStatus: "unknown" });
+    Object.assign(payload.months[1], { coverage_days: 0, expected_days: 0 });
+    expect(model(payload).centers[0].coverageStatus).toBe("unknown");
+  });
+
+  it("keeps complete product-currency zero and flags source-date or metadata gaps", () => {
+    const productRule: TeamPerformanceQ1CaliberRule = { ...rule, sourceEndpoint: "product-category-ytd", amountField: "foreign_net" };
+    const row = productRow({ category_id: rule.rowId!, category_name: "合成产品", level: 1, is_total: false,
+      report_date: "2026-03-31", view: "ytd", foreign_net: "0" });
+    const args = { rules: [productRule], productCategoryRows: [row], productCategoryMeta: meta };
+    expect(buildTeamPerformanceQ1CaliberModel(args).centers[0]).toMatchObject({ includedTotalYuan: 0, coverageStatus: "complete" });
+    expect(buildTeamPerformanceQ1CaliberModel({ ...args, productCategoryMeta: null }).centers[0].coverageStatus).toBe("unknown");
+    row.report_date = "2025-12-31";
+    expect(buildTeamPerformanceQ1CaliberModel(args).centers[0].coverageStatus).toBe("partial");
+  });
+
+  it("does not let a missing subtract component look like a complete center total", () => {
+    const result = model(monthly(["100", "200", "300"]), [rule, {
+      ...rule, businessLabel: "待扣除项", rowId: "missing-subtract", allocation: "subtract",
+    }]).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: 600, coverageStatus: "partial" });
+  });
+
+  it("preserves deduplication and excludes reference and excluded rows from total coverage", () => {
+    const result = model(monthly(["100", "200", "300"]), [rule, { ...rule },
+      { ...rule, rowId: "reference", allocation: "reference" },
+      { ...rule, rowId: "excluded", evidenceStatus: "excluded" },
+    ]).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: 600, coverageStatus: "complete" });
+    expect(result.rules.map((row) => row.contributionYuan)).toEqual([600, null, null, null]);
+  });
+
+  it("discloses Q1 result quality separately and never fills an unavailable payload", () => {
+    const result = buildTeamPerformanceQ1CaliberModel({ rules: [rule], byBusinessMonthly: null,
+      byBusinessMeta: { ...meta, quality_flag: "stale", fallback_mode: "latest_snapshot" } });
+    expect(result.centers[0]).toMatchObject({ includedTotalYuan: null, coverageStatus: "unavailable" });
+    expect(result.warnings.join(" ")).toContain("Q1业务种类月度损益 quality_flag=stale");
+    expect(result.warnings.join(" ")).toContain("fallback_mode=latest_snapshot");
   });
 });
 

@@ -4,6 +4,8 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import duckdb
+
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 
@@ -244,7 +246,7 @@ def list_stock_official_disclosures(
         },
     }
 
-    path = Path(duckdb_path)
+    path = Path(resolve_effective_read_path(duckdb_path))
     if not path.exists():
         return result
 

@@ -12,6 +12,7 @@ import type { Numeric, PnlBasis, PnlV1DetailRow } from "../../api/contracts";
 import type { LiabilityYieldKpi } from "../../api/liabilityAdbContracts";
 import { EM_DASH, formatNumeric, formatYuanAmountAsWanPlain } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
+import { usePollingTaskSignal } from "../../app/jobs/usePollingTaskSignal";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { PageAsyncSection } from "../../components/page/PageAsyncSection";
@@ -87,6 +88,7 @@ function tabButtonClassName(active: boolean) {
 
 export default function FormalPnlV1Page() {
   const client = useApiClient();
+  const getPollingSignal = usePollingTaskSignal();
   const [basis, setBasis] = useState<PnlBasis>("formal");
   const [selectedReportDate, setSelectedReportDate] = useState("");
   const [dataTab, setDataTab] = useState<DataTab>("fi");
@@ -222,6 +224,7 @@ export default function FormalPnlV1Page() {
   );
 
   async function handleRefresh() {
+    const signal = getPollingSignal();
     if (!selectedReportDate) {
       return;
     }
@@ -229,6 +232,7 @@ export default function FormalPnlV1Page() {
     setRefreshError(null);
     try {
       const payload = await runPollingTask({
+        signal,
         start: () => client.refreshFormalPnl(selectedReportDate),
         getStatus: (runId) => client.getFormalPnlImportStatus(runId),
         onUpdate: (nextPayload) => {
@@ -238,14 +242,16 @@ export default function FormalPnlV1Page() {
           setRefreshStatus([nextPayload.status, secondary].filter(Boolean).join(" · "));
         },
       });
+      if (signal?.aborted) return;
       if (payload.status !== "completed") {
         throw new Error(payload.error_message ?? payload.detail ?? `刷新未完成：${payload.status}`);
       }
       await Promise.all([datesQuery.refetch(), overviewQuery.refetch(), dataQuery.refetch()]);
     } catch (error) {
+      if (signal?.aborted) return;
       setRefreshError(error instanceof Error ? error.message : "刷新损益失败");
     } finally {
-      setIsRefreshing(false);
+      if (!signal?.aborted) setIsRefreshing(false);
     }
   }
 

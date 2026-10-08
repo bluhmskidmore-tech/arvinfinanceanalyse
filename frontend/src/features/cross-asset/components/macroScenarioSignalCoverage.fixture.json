@@ -1,0 +1,1183 @@
+{
+  "inflation_only": {
+    "result_meta": {
+      "trace_id": "tr_deb4bfedafd3",
+      "basis": "analytical",
+      "result_kind": "macro_bond_linkage.analysis",
+      "formal_use_allowed": false,
+      "amount_currency_basis": null,
+      "amount_currency_basis_note": null,
+      "source_version": "sv_axis_risk_synthetic__sv_axis_synthetic__sv_curve_synthetic",
+      "vendor_version": "vv_axis_synthetic__vv_curve_synthetic",
+      "rule_version": "rv_axis_risk_synthetic__rv_axis_synthetic__rv_curve_synthetic__rv_macro_bond_linkage_v2_liquidity_inverted",
+      "cache_version": "cv_macro_bond_linkage_v3_risk_availability",
+      "cache_key": null,
+      "quality_flag": "warning",
+      "vendor_status": "ok",
+      "fallback_mode": "none",
+      "requested_report_date": null,
+      "resolved_report_date": null,
+      "scenario_flag": false,
+      "as_of_date": null,
+      "date_basis": null,
+      "fallback_date": null,
+      "generated_at": "2026-10-07T13:19:01.487513Z",
+      "data_built_at": null,
+      "filters_applied": {},
+      "tables_used": [],
+      "evidence_rows": null,
+      "next_drill": [],
+      "source_surface": null
+    },
+    "result": {
+      "report_date": "2026-10-06",
+      "environment_score": {
+        "report_date": "2026-10-06",
+        "rate_direction": "neutral",
+        "rate_direction_score": 0.0,
+        "liquidity_score": 0.0,
+        "growth_score": 0.0,
+        "inflation_score": 0.0,
+        "composite_score": 0.0,
+        "signal_description": "宏观环境中性，维持当前久期配置",
+        "contributing_factors": [
+          {
+            "category": "inflation",
+            "series_id": "EMM00072301",
+            "series_name": "CPI:当月同比",
+            "report_date": "2026-10-06",
+            "latest_value": 2.39,
+            "score": 0.0,
+            "weight": 1.0,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 1,
+            "winsorized": false,
+            "normalized_signal": 0.39
+          }
+        ],
+        "warnings": [
+          "Indicator history too short: 中债国债到期收益率:10年",
+          "Indicator history too short: 中债国债到期收益率:5年",
+          "Indicator history too short: 中债国债到期收益率:1年",
+          "Indicator history too short: SHIBOR:隔夜",
+          "Indicator history too short: SHIBOR:1周",
+          "Indicator history too short: 存款类机构质押式回购加权利率:DR007",
+          "Indicator history too short: 工业增加值:当月同比",
+          "Indicator history too short: 中国:GDP:现价:当季值"
+        ],
+        "composite_formula_version": "macro_env_composite_v2_liquidity_inverted",
+        "composite_contributions": [
+          {
+            "component": "rate_direction",
+            "raw_score": 0.0,
+            "weight": 0.4,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "liquidity",
+            "raw_score": 0.0,
+            "weight": -0.3,
+            "signed_contribution": -0.0
+          },
+          {
+            "component": "growth",
+            "raw_score": 0.0,
+            "weight": 0.2,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "inflation",
+            "raw_score": 0.0,
+            "weight": 0.1,
+            "signed_contribution": 0.0
+          }
+        ],
+        "signal_status": "partial",
+        "signal_evidence_categories": [
+          "inflation"
+        ],
+        "signal_missing_categories": [
+          "rate",
+          "liquidity",
+          "growth"
+        ]
+      },
+      "portfolio_impact": {
+        "estimated_rate_change_bps": null,
+        "estimated_spread_widening_bps": null,
+        "estimated_rate_pnl_impact": null,
+        "estimated_spread_pnl_impact": null,
+        "total_estimated_impact": null,
+        "impact_ratio_to_market_value": null,
+        "availability_reason": "macro_signal_unavailable",
+        "status": "unavailable",
+        "requested_report_date": "2026-10-06",
+        "risk_report_date": "2026-10-05",
+        "risk_source_table": "fact_formal_bond_analytics_daily",
+        "risk_source_version": "sv_axis_risk_synthetic",
+        "risk_rule_version": "rv_axis_risk_synthetic",
+        "portfolio_dv01": "100.00000000",
+        "portfolio_cs01": "40.00000000",
+        "portfolio_market_value": "100000.00000000",
+        "coverage": {
+          "basis": "bond_analytics_row_count",
+          "row_count": 1,
+          "dv01_observed_count": 1,
+          "cs01_observed_count": 1,
+          "market_value_observed_count": 1
+        },
+        "entities": [
+          {
+            "instrument_code": "SYN-AXIS",
+            "instrument_name": "合成情景券",
+            "portfolio_name": "SYN-P",
+            "cost_center": "SYN-C",
+            "accounting_class": "FVOCI",
+            "currency_code": "CNY",
+            "is_credit": true,
+            "dv01": "100.00000000",
+            "spread_dv01": "40.00000000",
+            "market_value": "100000.00000000",
+            "report_date": "2026-10-05",
+            "source_version": "sv_axis_risk_synthetic",
+            "rule_version": "rv_axis_risk_synthetic",
+            "entity_id": "3b0606efee900c560172"
+          }
+        ],
+        "entity_link_status": "aggregation_inputs",
+        "ratio_unavailable_reason": "macro_signal_unavailable"
+      }
+    }
+  },
+  "rate_only": {
+    "result_meta": {
+      "trace_id": "tr_6f327e3f10d9",
+      "basis": "analytical",
+      "result_kind": "macro_bond_linkage.analysis",
+      "formal_use_allowed": false,
+      "amount_currency_basis": null,
+      "amount_currency_basis_note": null,
+      "source_version": "sv_axis_risk_synthetic__sv_axis_synthetic__sv_curve_synthetic",
+      "vendor_version": "vv_axis_synthetic__vv_curve_synthetic",
+      "rule_version": "rv_axis_risk_synthetic__rv_axis_synthetic__rv_curve_synthetic__rv_macro_bond_linkage_v2_liquidity_inverted",
+      "cache_version": "cv_macro_bond_linkage_v3_risk_availability",
+      "cache_key": null,
+      "quality_flag": "warning",
+      "vendor_status": "ok",
+      "fallback_mode": "none",
+      "requested_report_date": null,
+      "resolved_report_date": null,
+      "scenario_flag": false,
+      "as_of_date": null,
+      "date_basis": null,
+      "fallback_date": null,
+      "generated_at": "2026-10-07T13:19:01.759689Z",
+      "data_built_at": null,
+      "filters_applied": {},
+      "tables_used": [],
+      "evidence_rows": null,
+      "next_drill": [],
+      "source_surface": null
+    },
+    "result": {
+      "report_date": "2026-10-06",
+      "environment_score": {
+        "report_date": "2026-10-06",
+        "rate_direction": "rising",
+        "rate_direction_score": 0.8943,
+        "liquidity_score": 0.0,
+        "growth_score": 0.0,
+        "inflation_score": 0.0,
+        "composite_score": 0.3577,
+        "signal_description": "宏观环境偏紧，利率上行压力，建议缩短久期",
+        "contributing_factors": [
+          {
+            "category": "rate",
+            "series_id": "EMM00166466",
+            "series_name": "中债国债到期收益率:10年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.039,
+            "latest_value": 2.351,
+            "delta": 0.31199999999999983,
+            "score": 0.894302,
+            "weight": 1.0,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 2.88602
+          },
+          {
+            "category": "rate",
+            "series_id": "EMM00166462",
+            "series_name": "中债国债到期收益率:5年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.039,
+            "latest_value": 2.351,
+            "delta": 0.31199999999999983,
+            "score": 0.894302,
+            "weight": 0.8,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 2.88602
+          },
+          {
+            "category": "rate",
+            "series_id": "EMM00166458",
+            "series_name": "中债国债到期收益率:1年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.039,
+            "latest_value": 2.351,
+            "delta": 0.31199999999999983,
+            "score": 0.894302,
+            "weight": 0.6,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 2.88602
+          }
+        ],
+        "warnings": [
+          "Indicator history too short: SHIBOR:隔夜",
+          "Indicator history too short: SHIBOR:1周",
+          "Indicator history too short: 存款类机构质押式回购加权利率:DR007",
+          "Indicator history too short: 工业增加值:当月同比",
+          "Indicator history too short: 中国:GDP:现价:当季值",
+          "Inflation indicator missing latest point: CPI:当月同比",
+          "Inflation score defaulted to 0 due to missing indicators."
+        ],
+        "composite_formula_version": "macro_env_composite_v2_liquidity_inverted",
+        "composite_contributions": [
+          {
+            "component": "rate_direction",
+            "raw_score": 0.8943,
+            "weight": 0.4,
+            "signed_contribution": 0.3577
+          },
+          {
+            "component": "liquidity",
+            "raw_score": 0.0,
+            "weight": -0.3,
+            "signed_contribution": -0.0
+          },
+          {
+            "component": "growth",
+            "raw_score": 0.0,
+            "weight": 0.2,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "inflation",
+            "raw_score": 0.0,
+            "weight": 0.1,
+            "signed_contribution": 0.0
+          }
+        ],
+        "signal_status": "partial",
+        "signal_evidence_categories": [
+          "rate"
+        ],
+        "signal_missing_categories": [
+          "liquidity",
+          "growth",
+          "inflation"
+        ]
+      },
+      "portfolio_impact": {
+        "estimated_rate_change_bps": "26.829",
+        "estimated_spread_widening_bps": null,
+        "estimated_rate_pnl_impact": "-2682.90000000000",
+        "estimated_spread_pnl_impact": null,
+        "total_estimated_impact": null,
+        "impact_ratio_to_market_value": null,
+        "availability_reason": "macro_signal_partial",
+        "status": "partial",
+        "requested_report_date": "2026-10-06",
+        "risk_report_date": "2026-10-05",
+        "risk_source_table": "fact_formal_bond_analytics_daily",
+        "risk_source_version": "sv_axis_risk_synthetic",
+        "risk_rule_version": "rv_axis_risk_synthetic",
+        "portfolio_dv01": "100.00000000",
+        "portfolio_cs01": "40.00000000",
+        "portfolio_market_value": "100000.00000000",
+        "coverage": {
+          "basis": "bond_analytics_row_count",
+          "row_count": 1,
+          "dv01_observed_count": 1,
+          "cs01_observed_count": 1,
+          "market_value_observed_count": 1
+        },
+        "entities": [
+          {
+            "instrument_code": "SYN-AXIS",
+            "instrument_name": "合成情景券",
+            "portfolio_name": "SYN-P",
+            "cost_center": "SYN-C",
+            "accounting_class": "FVOCI",
+            "currency_code": "CNY",
+            "is_credit": true,
+            "dv01": "100.00000000",
+            "spread_dv01": "40.00000000",
+            "market_value": "100000.00000000",
+            "report_date": "2026-10-05",
+            "source_version": "sv_axis_risk_synthetic",
+            "rule_version": "rv_axis_risk_synthetic",
+            "entity_id": "3b0606efee900c560172"
+          }
+        ],
+        "entity_link_status": "aggregation_inputs",
+        "ratio_unavailable_reason": "macro_signal_partial"
+      }
+    }
+  },
+  "liquidity_only": {
+    "result_meta": {
+      "trace_id": "tr_595722477ccf",
+      "basis": "analytical",
+      "result_kind": "macro_bond_linkage.analysis",
+      "formal_use_allowed": false,
+      "amount_currency_basis": null,
+      "amount_currency_basis_note": null,
+      "source_version": "sv_axis_risk_synthetic__sv_axis_synthetic__sv_curve_synthetic",
+      "vendor_version": "vv_axis_synthetic__vv_curve_synthetic",
+      "rule_version": "rv_axis_risk_synthetic__rv_axis_synthetic__rv_curve_synthetic__rv_macro_bond_linkage_v2_liquidity_inverted",
+      "cache_version": "cv_macro_bond_linkage_v3_risk_availability",
+      "cache_key": null,
+      "quality_flag": "warning",
+      "vendor_status": "ok",
+      "fallback_mode": "none",
+      "requested_report_date": null,
+      "resolved_report_date": null,
+      "scenario_flag": false,
+      "as_of_date": null,
+      "date_basis": null,
+      "fallback_date": null,
+      "generated_at": "2026-10-07T13:19:02.020692Z",
+      "data_built_at": null,
+      "filters_applied": {},
+      "tables_used": [],
+      "evidence_rows": null,
+      "next_drill": [],
+      "source_surface": null
+    },
+    "result": {
+      "report_date": "2026-10-06",
+      "environment_score": {
+        "report_date": "2026-10-06",
+        "rate_direction": "neutral",
+        "rate_direction_score": 0.0,
+        "liquidity_score": -0.7252,
+        "growth_score": 0.0,
+        "inflation_score": 0.0,
+        "composite_score": 0.2176,
+        "signal_description": "宏观环境中性，维持当前久期配置",
+        "contributing_factors": [
+          {
+            "category": "liquidity",
+            "series_id": "EMM00166252",
+            "series_name": "SHIBOR:隔夜",
+            "baseline_mean": 2.1727428571428575,
+            "baseline_std": 0.0969212767020277,
+            "recent_mean": 2.3508,
+            "score": -0.725218,
+            "weight": 1.0,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 1.837132
+          },
+          {
+            "category": "liquidity",
+            "series_id": "EMM00166253",
+            "series_name": "SHIBOR:1周",
+            "baseline_mean": 2.1727428571428575,
+            "baseline_std": 0.0969212767020277,
+            "recent_mean": 2.3508,
+            "score": -0.725218,
+            "weight": 0.8,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 1.837132
+          },
+          {
+            "category": "liquidity",
+            "series_id": "CA.DR007",
+            "series_name": "存款类机构质押式回购加权利率:DR007",
+            "baseline_mean": 2.1727428571428575,
+            "baseline_std": 0.0969212767020277,
+            "recent_mean": 2.3508,
+            "score": -0.725218,
+            "weight": 0.9,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 1.837132
+          }
+        ],
+        "warnings": [
+          "Indicator history too short: 中债国债到期收益率:10年",
+          "Indicator history too short: 中债国债到期收益率:5年",
+          "Indicator history too short: 中债国债到期收益率:1年",
+          "Indicator history too short: 工业增加值:当月同比",
+          "Indicator history too short: 中国:GDP:现价:当季值",
+          "Inflation indicator missing latest point: CPI:当月同比",
+          "Inflation score defaulted to 0 due to missing indicators."
+        ],
+        "composite_formula_version": "macro_env_composite_v2_liquidity_inverted",
+        "composite_contributions": [
+          {
+            "component": "rate_direction",
+            "raw_score": 0.0,
+            "weight": 0.4,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "liquidity",
+            "raw_score": -0.7252,
+            "weight": -0.3,
+            "signed_contribution": 0.2176
+          },
+          {
+            "component": "growth",
+            "raw_score": 0.0,
+            "weight": 0.2,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "inflation",
+            "raw_score": 0.0,
+            "weight": 0.1,
+            "signed_contribution": 0.0
+          }
+        ],
+        "signal_status": "partial",
+        "signal_evidence_categories": [
+          "liquidity"
+        ],
+        "signal_missing_categories": [
+          "rate",
+          "growth",
+          "inflation"
+        ]
+      },
+      "portfolio_impact": {
+        "estimated_rate_change_bps": null,
+        "estimated_spread_widening_bps": "14.504",
+        "estimated_rate_pnl_impact": null,
+        "estimated_spread_pnl_impact": "-580.16000000000",
+        "total_estimated_impact": null,
+        "impact_ratio_to_market_value": null,
+        "availability_reason": "macro_signal_partial",
+        "status": "partial",
+        "requested_report_date": "2026-10-06",
+        "risk_report_date": "2026-10-05",
+        "risk_source_table": "fact_formal_bond_analytics_daily",
+        "risk_source_version": "sv_axis_risk_synthetic",
+        "risk_rule_version": "rv_axis_risk_synthetic",
+        "portfolio_dv01": "100.00000000",
+        "portfolio_cs01": "40.00000000",
+        "portfolio_market_value": "100000.00000000",
+        "coverage": {
+          "basis": "bond_analytics_row_count",
+          "row_count": 1,
+          "dv01_observed_count": 1,
+          "cs01_observed_count": 1,
+          "market_value_observed_count": 1
+        },
+        "entities": [
+          {
+            "instrument_code": "SYN-AXIS",
+            "instrument_name": "合成情景券",
+            "portfolio_name": "SYN-P",
+            "cost_center": "SYN-C",
+            "accounting_class": "FVOCI",
+            "currency_code": "CNY",
+            "is_credit": true,
+            "dv01": "100.00000000",
+            "spread_dv01": "40.00000000",
+            "market_value": "100000.00000000",
+            "report_date": "2026-10-05",
+            "source_version": "sv_axis_risk_synthetic",
+            "rule_version": "rv_axis_risk_synthetic",
+            "entity_id": "3b0606efee900c560172"
+          }
+        ],
+        "entity_link_status": "aggregation_inputs",
+        "ratio_unavailable_reason": "macro_signal_partial"
+      }
+    }
+  },
+  "observed_neutral_axes": {
+    "result_meta": {
+      "trace_id": "tr_db0438f3f987",
+      "basis": "analytical",
+      "result_kind": "macro_bond_linkage.analysis",
+      "formal_use_allowed": false,
+      "amount_currency_basis": null,
+      "amount_currency_basis_note": null,
+      "source_version": "sv_axis_risk_synthetic__sv_axis_synthetic__sv_curve_synthetic",
+      "vendor_version": "vv_axis_synthetic__vv_curve_synthetic",
+      "rule_version": "rv_axis_risk_synthetic__rv_axis_synthetic__rv_curve_synthetic__rv_macro_bond_linkage_v2_liquidity_inverted",
+      "cache_version": "cv_macro_bond_linkage_v3_risk_availability",
+      "cache_key": null,
+      "quality_flag": "warning",
+      "vendor_status": "ok",
+      "fallback_mode": "none",
+      "requested_report_date": null,
+      "resolved_report_date": null,
+      "scenario_flag": false,
+      "as_of_date": null,
+      "date_basis": null,
+      "fallback_date": null,
+      "generated_at": "2026-10-07T13:19:02.380029Z",
+      "data_built_at": null,
+      "filters_applied": {},
+      "tables_used": [],
+      "evidence_rows": null,
+      "next_drill": [],
+      "source_surface": null
+    },
+    "result": {
+      "report_date": "2026-10-06",
+      "environment_score": {
+        "report_date": "2026-10-06",
+        "rate_direction": "neutral",
+        "rate_direction_score": 0.0,
+        "liquidity_score": 0.0,
+        "growth_score": 0.0,
+        "inflation_score": 0.0,
+        "composite_score": 0.0,
+        "signal_description": "宏观环境中性，维持当前久期配置",
+        "contributing_factors": [
+          {
+            "category": "rate",
+            "series_id": "EMM00166466",
+            "series_name": "中债国债到期收益率:10年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.0,
+            "latest_value": 2.0,
+            "delta": 0.0,
+            "score": 0.0,
+            "weight": 1.0,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "rate",
+            "series_id": "EMM00166462",
+            "series_name": "中债国债到期收益率:5年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.0,
+            "latest_value": 2.0,
+            "delta": 0.0,
+            "score": 0.0,
+            "weight": 0.8,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "rate",
+            "series_id": "EMM00166458",
+            "series_name": "中债国债到期收益率:1年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.0,
+            "latest_value": 2.0,
+            "delta": 0.0,
+            "score": 0.0,
+            "weight": 0.6,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "liquidity",
+            "series_id": "EMM00166252",
+            "series_name": "SHIBOR:隔夜",
+            "baseline_mean": 2.0,
+            "baseline_std": 0.05,
+            "recent_mean": 2.0,
+            "score": -0.0,
+            "weight": 1.0,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "liquidity",
+            "series_id": "EMM00166253",
+            "series_name": "SHIBOR:1周",
+            "baseline_mean": 2.0,
+            "baseline_std": 0.05,
+            "recent_mean": 2.0,
+            "score": -0.0,
+            "weight": 0.8,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "liquidity",
+            "series_id": "CA.DR007",
+            "series_name": "存款类机构质押式回购加权利率:DR007",
+            "baseline_mean": 2.0,
+            "baseline_std": 0.05,
+            "recent_mean": 2.0,
+            "score": -0.0,
+            "weight": 0.9,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          }
+        ],
+        "warnings": [
+          "Indicator history too short: 工业增加值:当月同比",
+          "Indicator history too short: 中国:GDP:现价:当季值",
+          "Inflation indicator missing latest point: CPI:当月同比",
+          "Inflation score defaulted to 0 due to missing indicators."
+        ],
+        "composite_formula_version": "macro_env_composite_v2_liquidity_inverted",
+        "composite_contributions": [
+          {
+            "component": "rate_direction",
+            "raw_score": 0.0,
+            "weight": 0.4,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "liquidity",
+            "raw_score": 0.0,
+            "weight": -0.3,
+            "signed_contribution": -0.0
+          },
+          {
+            "component": "growth",
+            "raw_score": 0.0,
+            "weight": 0.2,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "inflation",
+            "raw_score": 0.0,
+            "weight": 0.1,
+            "signed_contribution": 0.0
+          }
+        ],
+        "signal_status": "partial",
+        "signal_evidence_categories": [
+          "rate",
+          "liquidity"
+        ],
+        "signal_missing_categories": [
+          "growth",
+          "inflation"
+        ]
+      },
+      "portfolio_impact": {
+        "estimated_rate_change_bps": "0.0",
+        "estimated_spread_widening_bps": "-0.0",
+        "estimated_rate_pnl_impact": "0E-9",
+        "estimated_spread_pnl_impact": "0E-9",
+        "total_estimated_impact": "0E-9",
+        "impact_ratio_to_market_value": "0.0",
+        "availability_reason": null,
+        "status": "available",
+        "requested_report_date": "2026-10-06",
+        "risk_report_date": "2026-10-05",
+        "risk_source_table": "fact_formal_bond_analytics_daily",
+        "risk_source_version": "sv_axis_risk_synthetic",
+        "risk_rule_version": "rv_axis_risk_synthetic",
+        "portfolio_dv01": "100.00000000",
+        "portfolio_cs01": "40.00000000",
+        "portfolio_market_value": "100000.00000000",
+        "coverage": {
+          "basis": "bond_analytics_row_count",
+          "row_count": 1,
+          "dv01_observed_count": 1,
+          "cs01_observed_count": 1,
+          "market_value_observed_count": 1
+        },
+        "entities": [
+          {
+            "instrument_code": "SYN-AXIS",
+            "instrument_name": "合成情景券",
+            "portfolio_name": "SYN-P",
+            "cost_center": "SYN-C",
+            "accounting_class": "FVOCI",
+            "currency_code": "CNY",
+            "is_credit": true,
+            "dv01": "100.00000000",
+            "spread_dv01": "40.00000000",
+            "market_value": "100000.00000000",
+            "report_date": "2026-10-05",
+            "source_version": "sv_axis_risk_synthetic",
+            "rule_version": "rv_axis_risk_synthetic",
+            "entity_id": "3b0606efee900c560172"
+          }
+        ],
+        "entity_link_status": "aggregation_inputs",
+        "ratio_unavailable_reason": null
+      }
+    }
+  },
+  "neutral_missing_rate_risk": {
+    "result_meta": {
+      "trace_id": "tr_b73e06bba66e",
+      "basis": "analytical",
+      "result_kind": "macro_bond_linkage.analysis",
+      "formal_use_allowed": false,
+      "amount_currency_basis": null,
+      "amount_currency_basis_note": null,
+      "source_version": "sv_axis_risk_synthetic__sv_axis_synthetic__sv_curve_synthetic",
+      "vendor_version": "vv_axis_synthetic__vv_curve_synthetic",
+      "rule_version": "rv_axis_risk_synthetic__rv_axis_synthetic__rv_curve_synthetic__rv_macro_bond_linkage_v2_liquidity_inverted",
+      "cache_version": "cv_macro_bond_linkage_v3_risk_availability",
+      "cache_key": null,
+      "quality_flag": "warning",
+      "vendor_status": "ok",
+      "fallback_mode": "none",
+      "requested_report_date": null,
+      "resolved_report_date": null,
+      "scenario_flag": false,
+      "as_of_date": null,
+      "date_basis": null,
+      "fallback_date": null,
+      "generated_at": "2026-10-07T13:19:02.711777Z",
+      "data_built_at": null,
+      "filters_applied": {},
+      "tables_used": [],
+      "evidence_rows": null,
+      "next_drill": [],
+      "source_surface": null
+    },
+    "result": {
+      "report_date": "2026-10-06",
+      "environment_score": {
+        "report_date": "2026-10-06",
+        "rate_direction": "neutral",
+        "rate_direction_score": 0.0,
+        "liquidity_score": 0.0,
+        "growth_score": 0.0,
+        "inflation_score": 0.0,
+        "composite_score": 0.0,
+        "signal_description": "宏观环境中性，维持当前久期配置",
+        "contributing_factors": [
+          {
+            "category": "rate",
+            "series_id": "EMM00166466",
+            "series_name": "中债国债到期收益率:10年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.0,
+            "latest_value": 2.0,
+            "delta": 0.0,
+            "score": 0.0,
+            "weight": 1.0,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "rate",
+            "series_id": "EMM00166462",
+            "series_name": "中债国债到期收益率:5年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.0,
+            "latest_value": 2.0,
+            "delta": 0.0,
+            "score": 0.0,
+            "weight": 0.8,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "rate",
+            "series_id": "EMM00166458",
+            "series_name": "中债国债到期收益率:1年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.0,
+            "latest_value": 2.0,
+            "delta": 0.0,
+            "score": 0.0,
+            "weight": 0.6,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "liquidity",
+            "series_id": "EMM00166252",
+            "series_name": "SHIBOR:隔夜",
+            "baseline_mean": 2.0,
+            "baseline_std": 0.05,
+            "recent_mean": 2.0,
+            "score": -0.0,
+            "weight": 1.0,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "liquidity",
+            "series_id": "EMM00166253",
+            "series_name": "SHIBOR:1周",
+            "baseline_mean": 2.0,
+            "baseline_std": 0.05,
+            "recent_mean": 2.0,
+            "score": -0.0,
+            "weight": 0.8,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "liquidity",
+            "series_id": "CA.DR007",
+            "series_name": "存款类机构质押式回购加权利率:DR007",
+            "baseline_mean": 2.0,
+            "baseline_std": 0.05,
+            "recent_mean": 2.0,
+            "score": -0.0,
+            "weight": 0.9,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          }
+        ],
+        "warnings": [
+          "Indicator history too short: 工业增加值:当月同比",
+          "Indicator history too short: 中国:GDP:现价:当季值",
+          "Inflation indicator missing latest point: CPI:当月同比",
+          "Inflation score defaulted to 0 due to missing indicators."
+        ],
+        "composite_formula_version": "macro_env_composite_v2_liquidity_inverted",
+        "composite_contributions": [
+          {
+            "component": "rate_direction",
+            "raw_score": 0.0,
+            "weight": 0.4,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "liquidity",
+            "raw_score": 0.0,
+            "weight": -0.3,
+            "signed_contribution": -0.0
+          },
+          {
+            "component": "growth",
+            "raw_score": 0.0,
+            "weight": 0.2,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "inflation",
+            "raw_score": 0.0,
+            "weight": 0.1,
+            "signed_contribution": 0.0
+          }
+        ],
+        "signal_status": "partial",
+        "signal_evidence_categories": [
+          "rate",
+          "liquidity"
+        ],
+        "signal_missing_categories": [
+          "growth",
+          "inflation"
+        ]
+      },
+      "portfolio_impact": {
+        "estimated_rate_change_bps": "0.0",
+        "estimated_spread_widening_bps": "-0.0",
+        "estimated_rate_pnl_impact": null,
+        "estimated_spread_pnl_impact": "0E-9",
+        "total_estimated_impact": null,
+        "impact_ratio_to_market_value": null,
+        "availability_reason": "risk_inputs_partial",
+        "status": "partial",
+        "requested_report_date": "2026-10-06",
+        "risk_report_date": "2026-10-05",
+        "risk_source_table": "fact_formal_bond_analytics_daily",
+        "risk_source_version": "sv_axis_risk_synthetic",
+        "risk_rule_version": "rv_axis_risk_synthetic",
+        "portfolio_dv01": null,
+        "portfolio_cs01": "40.00000000",
+        "portfolio_market_value": "100000.00000000",
+        "coverage": {
+          "basis": "bond_analytics_row_count",
+          "row_count": 1,
+          "dv01_observed_count": 0,
+          "cs01_observed_count": 1,
+          "market_value_observed_count": 1
+        },
+        "entities": [
+          {
+            "instrument_code": "SYN-AXIS",
+            "instrument_name": "合成情景券",
+            "portfolio_name": "SYN-P",
+            "cost_center": "SYN-C",
+            "accounting_class": "FVOCI",
+            "currency_code": "CNY",
+            "is_credit": true,
+            "dv01": null,
+            "spread_dv01": "40.00000000",
+            "market_value": "100000.00000000",
+            "report_date": "2026-10-05",
+            "source_version": "sv_axis_risk_synthetic",
+            "rule_version": "rv_axis_risk_synthetic",
+            "entity_id": "3b0606efee900c560172"
+          }
+        ],
+        "entity_link_status": "aggregation_inputs",
+        "ratio_unavailable_reason": "impact_unavailable"
+      }
+    }
+  },
+  "neutral_missing_all_risk": {
+    "result_meta": {
+      "trace_id": "tr_eb48fa87387f",
+      "basis": "analytical",
+      "result_kind": "macro_bond_linkage.analysis",
+      "formal_use_allowed": false,
+      "amount_currency_basis": null,
+      "amount_currency_basis_note": null,
+      "source_version": "sv_axis_risk_synthetic__sv_axis_synthetic__sv_curve_synthetic",
+      "vendor_version": "vv_axis_synthetic__vv_curve_synthetic",
+      "rule_version": "rv_axis_risk_synthetic__rv_axis_synthetic__rv_curve_synthetic__rv_macro_bond_linkage_v2_liquidity_inverted",
+      "cache_version": "cv_macro_bond_linkage_v3_risk_availability",
+      "cache_key": null,
+      "quality_flag": "warning",
+      "vendor_status": "ok",
+      "fallback_mode": "none",
+      "requested_report_date": null,
+      "resolved_report_date": null,
+      "scenario_flag": false,
+      "as_of_date": null,
+      "date_basis": null,
+      "fallback_date": null,
+      "generated_at": "2026-10-07T13:19:03.021346Z",
+      "data_built_at": null,
+      "filters_applied": {},
+      "tables_used": [],
+      "evidence_rows": null,
+      "next_drill": [],
+      "source_surface": null
+    },
+    "result": {
+      "report_date": "2026-10-06",
+      "environment_score": {
+        "report_date": "2026-10-06",
+        "rate_direction": "neutral",
+        "rate_direction_score": 0.0,
+        "liquidity_score": 0.0,
+        "growth_score": 0.0,
+        "inflation_score": 0.0,
+        "composite_score": 0.0,
+        "signal_description": "宏观环境中性，维持当前久期配置",
+        "contributing_factors": [
+          {
+            "category": "rate",
+            "series_id": "EMM00166466",
+            "series_name": "中债国债到期收益率:10年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.0,
+            "latest_value": 2.0,
+            "delta": 0.0,
+            "score": 0.0,
+            "weight": 1.0,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "rate",
+            "series_id": "EMM00166462",
+            "series_name": "中债国债到期收益率:5年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.0,
+            "latest_value": 2.0,
+            "delta": 0.0,
+            "score": 0.0,
+            "weight": 0.8,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "rate",
+            "series_id": "EMM00166458",
+            "series_name": "中债国债到期收益率:1年",
+            "window_start": "2026-08-28",
+            "window_end": "2026-10-06",
+            "start_value": 2.0,
+            "latest_value": 2.0,
+            "delta": 0.0,
+            "score": 0.0,
+            "weight": 0.6,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "liquidity",
+            "series_id": "EMM00166252",
+            "series_name": "SHIBOR:隔夜",
+            "baseline_mean": 2.0,
+            "baseline_std": 0.05,
+            "recent_mean": 2.0,
+            "score": -0.0,
+            "weight": 1.0,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "liquidity",
+            "series_id": "EMM00166253",
+            "series_name": "SHIBOR:1周",
+            "baseline_mean": 2.0,
+            "baseline_std": 0.05,
+            "recent_mean": 2.0,
+            "score": -0.0,
+            "weight": 0.8,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          },
+          {
+            "category": "liquidity",
+            "series_id": "CA.DR007",
+            "series_name": "存款类机构质押式回购加权利率:DR007",
+            "baseline_mean": 2.0,
+            "baseline_std": 0.05,
+            "recent_mean": 2.0,
+            "score": -0.0,
+            "weight": 0.9,
+            "scoring_method": "robust_environment_score_v1",
+            "observation_count": 40,
+            "winsorized": true,
+            "normalized_signal": 0.0
+          }
+        ],
+        "warnings": [
+          "Indicator history too short: 工业增加值:当月同比",
+          "Indicator history too short: 中国:GDP:现价:当季值",
+          "Inflation indicator missing latest point: CPI:当月同比",
+          "Inflation score defaulted to 0 due to missing indicators."
+        ],
+        "composite_formula_version": "macro_env_composite_v2_liquidity_inverted",
+        "composite_contributions": [
+          {
+            "component": "rate_direction",
+            "raw_score": 0.0,
+            "weight": 0.4,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "liquidity",
+            "raw_score": 0.0,
+            "weight": -0.3,
+            "signed_contribution": -0.0
+          },
+          {
+            "component": "growth",
+            "raw_score": 0.0,
+            "weight": 0.2,
+            "signed_contribution": 0.0
+          },
+          {
+            "component": "inflation",
+            "raw_score": 0.0,
+            "weight": 0.1,
+            "signed_contribution": 0.0
+          }
+        ],
+        "signal_status": "partial",
+        "signal_evidence_categories": [
+          "rate",
+          "liquidity"
+        ],
+        "signal_missing_categories": [
+          "growth",
+          "inflation"
+        ]
+      },
+      "portfolio_impact": {
+        "estimated_rate_change_bps": "0.0",
+        "estimated_spread_widening_bps": "-0.0",
+        "estimated_rate_pnl_impact": null,
+        "estimated_spread_pnl_impact": null,
+        "total_estimated_impact": null,
+        "impact_ratio_to_market_value": null,
+        "availability_reason": "risk_inputs_unavailable",
+        "status": "unavailable",
+        "requested_report_date": "2026-10-06",
+        "risk_report_date": "2026-10-05",
+        "risk_source_table": "fact_formal_bond_analytics_daily",
+        "risk_source_version": "sv_axis_risk_synthetic",
+        "risk_rule_version": "rv_axis_risk_synthetic",
+        "portfolio_dv01": null,
+        "portfolio_cs01": null,
+        "portfolio_market_value": "100000.00000000",
+        "coverage": {
+          "basis": "bond_analytics_row_count",
+          "row_count": 1,
+          "dv01_observed_count": 0,
+          "cs01_observed_count": 0,
+          "market_value_observed_count": 1
+        },
+        "entities": [
+          {
+            "instrument_code": "SYN-AXIS",
+            "instrument_name": "合成情景券",
+            "portfolio_name": "SYN-P",
+            "cost_center": "SYN-C",
+            "accounting_class": "FVOCI",
+            "currency_code": "CNY",
+            "is_credit": true,
+            "dv01": null,
+            "spread_dv01": null,
+            "market_value": "100000.00000000",
+            "report_date": "2026-10-05",
+            "source_version": "sv_axis_risk_synthetic",
+            "rule_version": "rv_axis_risk_synthetic",
+            "entity_id": "3b0606efee900c560172"
+          }
+        ],
+        "entity_link_status": "aggregation_inputs",
+        "ratio_unavailable_reason": "impact_unavailable"
+      }
+    }
+  }
+}

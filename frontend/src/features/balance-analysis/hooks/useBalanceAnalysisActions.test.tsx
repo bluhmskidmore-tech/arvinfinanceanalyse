@@ -147,3 +147,22 @@ describe("balance analysis refresh and export lifecycle", () => {
     expect(result.current.refreshError).toBe("正式结果暂未刷新，请稍后重试。");
   });
 });
+
+
+it("releases an unmounted page while rebuild is pending without rereading or cancelling the backend", async () => {
+  const { client, refetchCurrentReads, wrapper } = setup();
+  const rebuild = deferred<BalanceAnalysisRefreshPayload>();
+  client.refreshBalanceAnalysis.mockReturnValue(rebuild.promise);
+  const { result, unmount } = renderHook(() => useBalanceAnalysisActions({ selectedReportDate: "2025-12-31", positionScope: "all", currencyBasis: "CNY" }, refetchCurrentReads), { wrapper });
+  let settled = false;
+  let work!: Promise<void>;
+  act(() => { work = result.current.handleRefresh().then(() => { settled = true; }); });
+  unmount();
+  try {
+    await waitFor(() => expect(settled).toBe(true), { timeout: 150 });
+  } finally {
+    await act(async () => { rebuild.resolve(completed); await work; });
+  }
+  expect(refetchCurrentReads).not.toHaveBeenCalled();
+  expect(client.getBalanceAnalysisRefreshStatus).not.toHaveBeenCalled();
+});

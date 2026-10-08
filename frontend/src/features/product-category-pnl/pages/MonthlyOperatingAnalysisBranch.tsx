@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
+import { usePollingTaskSignal } from "../../../app/jobs/usePollingTaskSignal";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import { SectionHead } from "../../../components/layout";
@@ -179,6 +180,7 @@ function StatusPanel(props: { testId: string; children: ReactNode }) {
 
 export default function MonthlyOperatingAnalysisBranch() {
   const client = useApiClient();
+  const getPollingSignal = usePollingTaskSignal();
   const [selectedMonth, setSelectedMonth] = useState("");
   const [refreshPayload, setRefreshPayload] = useState<QdbGlMonthlyAnalysisRefreshPayload | null>(null);
   const [scenarioWarn, setScenarioWarn] = useState("6");
@@ -266,6 +268,7 @@ export default function MonthlyOperatingAnalysisBranch() {
     : "/product-category-pnl/audit?branch=monthly_operating_analysis";
 
   async function handleRefresh() {
+    const signal = getPollingSignal();
     const actionMonth = selectedMonth;
     if (!actionMonth || isRefreshingAnalysis) {
       return;
@@ -274,10 +277,11 @@ export default function MonthlyOperatingAnalysisBranch() {
     setIsRefreshingAnalysis(true);
     try {
       const payload = await runPollingTask({
+        signal,
         start: () => client.refreshQdbGlMonthlyAnalysis({ reportMonth: actionMonth }),
         getStatus: (runId) => client.getQdbGlMonthlyAnalysisRefreshStatus(runId),
       });
-      if (selectedMonthRef.current !== actionMonth) {
+      if (signal?.aborted || selectedMonthRef.current !== actionMonth) {
         return;
       }
       setRefreshPayload(payload);
@@ -285,7 +289,7 @@ export default function MonthlyOperatingAnalysisBranch() {
         return;
       }
       const refreshed = await workbookQuery.refetch();
-      if (selectedMonthRef.current !== actionMonth) {
+      if (signal?.aborted || selectedMonthRef.current !== actionMonth) {
         return;
       }
       if (refreshed.data?.result.sheets) {
@@ -294,7 +298,7 @@ export default function MonthlyOperatingAnalysisBranch() {
         setDisplayedWorkbookMeta(refreshed.data.result_meta);
       }
     } catch (error) {
-      if (selectedMonthRef.current !== actionMonth) {
+      if (signal?.aborted || selectedMonthRef.current !== actionMonth) {
         return;
       }
       setRefreshPayload({
@@ -308,7 +312,7 @@ export default function MonthlyOperatingAnalysisBranch() {
         error_message: formatActionErrorMessage(error),
       });
     } finally {
-      if (selectedMonthRef.current === actionMonth) {
+      if (!signal?.aborted && selectedMonthRef.current === actionMonth) {
         setIsRefreshingAnalysis(false);
       }
     }

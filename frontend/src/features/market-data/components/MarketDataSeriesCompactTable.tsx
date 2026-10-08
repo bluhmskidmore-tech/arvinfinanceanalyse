@@ -43,9 +43,15 @@ function tierLabelFor(point: MarketObservationPoint) {
 }
 
 function sparklineValuesFromRecent(points: ChoiceMacroRecentPoint[] | undefined): number[] {
+  // A compact sparkline cannot show dated gaps. Suppress it rather than join
+  // across missing observations or turn SQL/wire null into a zero.
+  if (points?.some((point) => point.value_numeric == null || !Number.isFinite(point.value_numeric))) {
+    return [];
+  }
   return [...(points ?? [])]
     .sort((left, right) => left.trade_date.localeCompare(right.trade_date))
-    .map((point) => point.value_numeric);
+    .map((point) => point.value_numeric)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 }
 
 function sortedRecentPoints(points: ChoiceMacroRecentPoint[] | undefined) {
@@ -57,7 +63,7 @@ function formatRecentTrailTooltip(points: ChoiceMacroRecentPoint[] | undefined) 
   if (trail.length === 0) {
     return null;
   }
-  return trail.map((point) => `${point.trade_date}  ${point.value_numeric.toFixed(2)}`).join("\n");
+  return trail.map((point) => `${point.trade_date}  ${point.value_numeric == null || !Number.isFinite(point.value_numeric) ? EM_DASH : point.value_numeric.toFixed(2)}`).join("\n");
 }
 
 function formatPriorPointHint(
@@ -65,16 +71,13 @@ function formatPriorPointHint(
   currentTradeDate: string,
 ): string | null {
   const sorted = sortedRecentPoints(points);
-  if (sorted.length < 2) {
-    return null;
-  }
-  const prior =
-    sorted.filter((point) => point.trade_date < currentTradeDate).at(-1) ??
-    sorted[sorted.length - 2];
+  // A fallback headline must not describe itself (or a same-date revision)
+  // as a previous-date observation when there is no earlier date.
+  const prior = sorted.filter((point) => point.trade_date < currentTradeDate).at(-1);
   if (!prior) {
     return null;
   }
-  return `${prior.trade_date.slice(5)} ${prior.value_numeric.toFixed(2)}`;
+  return `${prior.trade_date.slice(5)} ${prior.value_numeric == null || !Number.isFinite(prior.value_numeric) ? EM_DASH : prior.value_numeric.toFixed(2)}`;
 }
 
 function CompactPlaceholder() {
@@ -212,7 +215,8 @@ export function MarketDataSeriesCompactTable({
         className: "market-data-series-compact-col-value",
         render: (_value, row) => {
           const { value, unit } = formatMarketSeriesValueParts(row);
-          const rawTitle = `${row.value_numeric}${row.unit?.trim() ? ` ${row.unit.trim()}` : ""}`;
+          const rawValue = row.value_numeric != null && Number.isFinite(row.value_numeric) ? row.value_numeric : EM_DASH;
+          const rawTitle = `${rawValue}${row.unit?.trim() ? ` ${row.unit.trim()}` : ""}`;
           return (
             <div className="market-data-series-compact-value-stack" title={rawTitle}>
               <span className="market-data-series-compact-value">{value}</span>
@@ -272,7 +276,7 @@ export function MarketDataSeriesCompactTable({
                   tone={sparkToneFromDelta(delta)}
                   variant="ticker"
                 />
-              ) : compactSparseColumns ? (
+              ) : compactSparseColumns && !row.recent_points?.some((point) => point.value_numeric == null || !Number.isFinite(point.value_numeric)) ? (
                 <span className="market-data-series-compact-sparse-label">低频</span>
               ) : (
                 <CompactPlaceholder />

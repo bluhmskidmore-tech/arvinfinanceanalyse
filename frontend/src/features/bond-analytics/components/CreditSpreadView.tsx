@@ -58,7 +58,9 @@ function renderConcentrationChart(metrics: ConcentrationMetrics | undefined) {
       trigger: "item",
       formatter: (params: unknown) => {
         const item = params as { name?: string; value?: number; percent?: number };
-        return `${item.name ?? ""}: ${formatYi(item.value)} (${item.percent ?? 0}%)`;
+        const content = document.createElement("div");
+        content.append(`${item.name ?? ""}: ${formatYi(item.value)} (${item.percent ?? 0}%)`);
+        return content;
       },
     },
     series: [

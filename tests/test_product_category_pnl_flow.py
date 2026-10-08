@@ -491,7 +491,7 @@ def test_product_category_history_preserves_per_period_result_meta(monkeypatch):
     assert items[1]["result_meta"]["quality_flag"] == "warning"
     assert items[0]["result"]["report_date"] == "2026-02-28"
     assert envelope["result_meta"]["result_kind"] == "product_category_pnl.history"
-    assert envelope["result_meta"]["quality_flag"] == "ok"
+    assert envelope["result_meta"]["quality_flag"] == "warning"
 
 
 def test_product_category_history_degrades_only_the_missing_period(monkeypatch):

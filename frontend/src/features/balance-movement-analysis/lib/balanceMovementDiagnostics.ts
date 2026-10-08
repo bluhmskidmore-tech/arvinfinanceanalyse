@@ -1,3 +1,4 @@
+import { nullableNumber } from "./balanceMovementShareModel";
 import type {
   BalanceDifferenceAttributionWaterfall,
   BalanceMovementPayload,
@@ -47,8 +48,7 @@ export type AnalysisDimensionCard = {
 };
 
 function amountToNumber(value: string | number | null | undefined) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
+  return nullableNumber(value);
 }
 
 export function buildExplanationClosure(options: {
@@ -268,3 +268,6 @@ export function buildHistoricalAnomalyDiagnostics(options: {
     businessSignals,
   };
 }
+
+export const SAME_DAY_CLOSURE_NOTE = "同日报表桥的残差已计入分项，算术闭合不表示差异已被解释";
+export const PERIOD_CLOSURE_NOTE = "跨期分类驱动的期末校验等于未解释残差";

@@ -19,7 +19,7 @@ import {
 import { EM_DASH } from "../../../utils/format";
 export type DenseLiquidityPoint = {
   date: string;
-  value: number;
+  value: number | null;
 };
 
 export type DenseLiquiditySeriesRole =
@@ -124,6 +124,10 @@ function formatLiquidityValue(value: number, unit: string) {
   return `${value.toFixed(4)}${unit}`;
 }
 
+function observedLiquidityDates(points: readonly DenseLiquidityPoint[]): string[] {
+  return points.flatMap((point) => point.value !== null ? [point.date] : []);
+}
+
 function toDenseLiquiditySeries(
   point: ChoiceMacroLatestPoint,
   key: string,
@@ -139,14 +143,14 @@ function toDenseLiquiditySeries(
   );
   observations.set(point.trade_date, point.value_numeric);
   const points = [...observations.entries()]
-    .map(([date, value]) => ({ date, value }))
+    .map(([date, value]) => ({ date, value: typeof value === "number" && Number.isFinite(value) ? value : null }))
     .sort((left, right) => left.date.localeCompare(right.date));
   return {
     key,
     label,
     role,
     readingHint,
-    status: points.length >= 2 ? "ready" : "insufficient-observations",
+    status: observedLiquidityDates(points).length >= 2 ? "ready" : "insufficient-observations",
     unit: point.unit,
     latestDate: point.trade_date,
     points,
@@ -195,11 +199,12 @@ export function buildDenseLiquidityChartSpec(
   // 让数据齐全的序列在左侧留出整段空白。窗口内的真实缺口仍然保持为空。
   const dates = sharedDateAxis(
     plottableSeries.map((series) => series.points.map((point) => point.date)),
+    plottableSeries.map((series) => observedLiquidityDates(series.points)),
   );
   const axisEnd = dates.at(-1);
   const laggingNotes = axisEnd
     ? plottableSeries.flatMap((series) => {
-        const latestDate = series.points.at(-1)?.date;
+        const latestDate = observedLiquidityDates(series.points).at(-1);
         return latestDate && latestDate < axisEnd
           ? [`${series.label} 最新观测 ${latestDate}`]
           : [];
@@ -208,7 +213,7 @@ export function buildDenseLiquidityChartSpec(
   const gapNotes = innerGapNotes(
     plottableSeries.map((series) => ({
       name: series.label,
-      dates: series.points.map((point) => point.date),
+      dates: observedLiquidityDates(series.points),
     })),
     dates,
   );
@@ -251,7 +256,7 @@ export function buildDenseLiquidityChartSpec(
       label,
       role,
       readingHint: seriesReadingHint,
-      observationCount: points.length,
+      observationCount: observedLiquidityDates(points).length,
       status: seriesStatus,
     }),
   );
@@ -342,7 +347,7 @@ export function buildDenseLiquidityChartSpec(
             );
             const data = dates.map((date) => byDate.get(date) ?? null);
             const gaps = innerGapRanges(
-              series.points.map((point) => point.date),
+              observedLiquidityDates(series.points),
               dates,
             );
             return {

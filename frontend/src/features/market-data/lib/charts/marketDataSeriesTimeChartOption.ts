@@ -1,6 +1,7 @@
 import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../../api/contracts";
 import { nocturneChartTheme } from "../../../../components/charts/chartTheme";
 import type { EChartsOption } from "../../../../lib/echarts";
+import { EM_DASH } from "../../../../utils/format";
 import { seriesDisplayName } from "../marketDataFormat";
 import { buildMarketDataChartTooltip, marketDataChartTheme } from "./marketDataChartTheme";
 
@@ -131,7 +132,7 @@ export function buildMarketDataSeriesTimeChartOption(
 
   const isSheetVariant = options.variant === "sheet";
   const categories = timeline.map((point) => point.trade_date);
-  const values = timeline.map((point) => point.value_numeric);
+  const values = timeline.map((point) => point.value_numeric != null && Number.isFinite(point.value_numeric) ? point.value_numeric : null);
   const unit = displayAxisUnit(series.unit) || undefined;
   const axisLabel = isSheetVariant
     ? { ...marketDataChartTheme.axisLabel, fontSize: 10, fontWeight: 600 }
@@ -161,7 +162,7 @@ export function buildMarketDataSeriesTimeChartOption(
         symbol: "circle",
         symbolSize: isSheetVariant ? 4 : 5,
         showSymbol: false,
-        connectNulls: true,
+        connectNulls: !values.some((value) => value == null),
         lineStyle: { width: isSheetVariant ? 1.5 : 2 },
         itemStyle: { borderColor: marketDataChartTheme.chartSurface, borderWidth: 1.2 },
         areaStyle: isSheetVariant ? undefined : buildSoftAreaGradient(lineColor),
@@ -205,7 +206,7 @@ export function displayAxisUnit(unit: string | null | undefined): string {
 function seriesMagnitude(input: MarketDataSeriesTimeInput): number {
   let max = 0;
   for (const point of input.recent_points ?? []) {
-    const abs = Math.abs(point.value_numeric);
+    const abs = Math.abs(point.value_numeric ?? Number.NaN);
     if (Number.isFinite(abs) && abs > max) {
       max = abs;
     }
@@ -273,11 +274,11 @@ export function buildMarketDataMultiSeriesTimeChartOption(
   const isDualAxis = axisClusters.length > 1;
 
   const dateSet = new Set<string>();
-  const timelineByMember = new Map<number, Map<string, number>>();
+  const timelineByMember = new Map<number, Map<string, number | null>>();
   for (const member of charted) {
-    const timeline = new Map<string, number>();
+    const timeline = new Map<string, number | null>();
     for (const point of sortedRecentPoints(member.input.recent_points)) {
-      timeline.set(point.trade_date, point.value_numeric);
+      timeline.set(point.trade_date, point.value_numeric != null && Number.isFinite(point.value_numeric) ? point.value_numeric : null);
       dateSet.add(point.trade_date);
     }
     timelineByMember.set(member.index, timeline);
@@ -297,7 +298,7 @@ export function buildMarketDataMultiSeriesTimeChartOption(
     tooltip: buildMarketDataChartTooltip({
       trigger: "axis",
       axisPointer: marketDataChartTheme.axisPointerLine,
-      valueFormatter: (value: unknown) => (typeof value === "number" ? value.toFixed(2) : String(value)),
+      valueFormatter: (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : EM_DASH),
     }),
     legend: {
       ...(legendSelected ? { selected: legendSelected } : {}),
@@ -319,8 +320,8 @@ export function buildMarketDataMultiSeriesTimeChartOption(
         )
       : buildCompactValueAxis(marketDataChartTheme.axisLabel, { splitNumber: 4 }),
     // 系列只用颜色区分（虚线保留给「预测/代理」语义，当前多系列无此语义）。
-    // connectNulls=true 是混频序列（月度点落在日度时间轴上）的成图前提；
-    // 序列覆盖窗口不足产生的首尾缺口不会被连接，属于如实展示。
+    // Mixed-frequency dates may connect, but an explicitly missing source
+    // observation must stay a visible gap rather than suggest continuity.
     series: charted.map((member, order) => {
       const color =
         marketDataChartTheme.multiSeriesPalette[order % marketDataChartTheme.multiSeriesPalette.length]!;
@@ -333,7 +334,7 @@ export function buildMarketDataMultiSeriesTimeChartOption(
         symbol: "circle",
         symbolSize: 5,
         showSymbol: false,
-        connectNulls: true,
+        connectNulls: !member.input.recent_points?.some((point) => point.value_numeric == null || !Number.isFinite(point.value_numeric)),
         lineStyle: {
           color,
           width: isPrimary ? 2 : 1.5,

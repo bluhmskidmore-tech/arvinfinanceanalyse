@@ -35,6 +35,9 @@ export function formatChoiceMacroValueParts(
   options: ChoiceMacroFormatOptions = {},
 ): { value: string; unit: string } {
   const unit = normalizeUnit(point);
+  if (point.value_numeric == null || !Number.isFinite(point.value_numeric)) {
+    return { value: options.emptyDisplay ?? EM_DASH, unit: "" };
+  }
   if (unit === "%") {
     return { value: `${formatNumber(point.value_numeric)}%`, unit: "" };
   }
@@ -63,7 +66,7 @@ export function formatChoiceMacroDelta(
   point: ChoiceMacroLatestPoint,
   options: ChoiceMacroFormatOptions = {},
 ): string {
-  if (point.latest_change == null) {
+  if (point.value_numeric == null || !Number.isFinite(point.value_numeric) || point.latest_change == null || !Number.isFinite(point.latest_change)) {
     return options.emptyDisplay ?? EM_DASH;
   }
 

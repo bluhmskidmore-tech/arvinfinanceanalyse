@@ -39,10 +39,10 @@ export function basisThreeBucketSum(
   if (ac === undefined || oci === undefined || tpl === undefined) {
     return undefined;
   }
-  const a = Number(ac);
-  const o = Number(oci);
-  const t = Number(tpl);
-  if (!Number.isFinite(a) || !Number.isFinite(o) || !Number.isFinite(t)) {
+  const a = nullableNumber(ac);
+  const o = nullableNumber(oci);
+  const t = nullableNumber(tpl);
+  if (a === null || o === null || t === null) {
     return undefined;
   }
   return a + o + t;
@@ -52,9 +52,9 @@ export function trendDelta(
   current: string | number | null | undefined,
   previous: string | number | null | undefined,
 ) {
-  const currentValue = Number(current);
-  const previousValue = Number(previous);
-  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) {
+  const currentValue = nullableNumber(current);
+  const previousValue = nullableNumber(previous);
+  if (currentValue === null || previousValue === null) {
     return null;
   }
   return currentValue - previousValue;

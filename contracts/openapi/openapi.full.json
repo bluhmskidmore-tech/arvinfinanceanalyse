@@ -14073,8 +14073,15 @@
             "type": "string"
           },
           "value_numeric": {
-            "title": "Value Numeric",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Numeric"
           },
           "vendor_name": {
             "anyOf": [
@@ -14128,8 +14135,15 @@
             "type": "string"
           },
           "value_numeric": {
-            "title": "Value Numeric",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Numeric"
           },
           "vendor_version": {
             "title": "Vendor Version",

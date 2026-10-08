@@ -8,10 +8,10 @@
     "amount_currency_basis_note": null,
     "source_version": "sv-fx-1__sv-t-1__sv-z-1",
     "vendor_version": "vv_none",
-    "rule_version": "rv_balance_analysis_formal_materialize_v1",
-    "cache_version": "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+    "rule_version": "rv_balance_analysis_formal_materialize_v1|rv_balance_analysis_workbook_fin002_v1",
+    "cache_version": "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1|cv_balance_analysis_workbook_fin002_v1",
     "cache_key": null,
-    "quality_flag": "ok",
+    "quality_flag": "warning",
     "vendor_status": "ok",
     "fallback_mode": "none",
     "requested_report_date": "2025-12-31",
@@ -1128,9 +1128,16 @@
           {
             "rule_id": "bal_campisi_benchmark_missing_null",
             "rule_name": "Campisi 基准缺失口径",
-            "summary": "Campisi 归因的利差基准为在册'政策性金融债'加权票面利率；在册无该基准（或基准行票面利率全部缺失）时，'campisi_breakdown' 的利差(bp)与利差收入贡献列显式输出 null，不允许把基准静默降级为 0（利差退化为票息本身）。",
+            "summary": "Campisi 归因的利差基准为在册'政策性金融债'加权票面利率；在册无该基准、任一非零面值基准行票息缺失或基准净面值为零时，'campisi_breakdown' 的利差(bp)与利差收入贡献列显式输出 null，不允许把基准静默降级为 0（利差退化为票息本身）。",
             "source_doc": "docs/calc_rules.md",
             "source_section": "14 禁止事项（不允许静默降级为 0 且不打标记）"
+          },
+          {
+            "rule_id": "bal_campisi_coupon_completeness_fin002",
+            "rule_name": "Campisi 票息完整性与已知小计",
+            "summary": "非零面值行的票息缺失或非有限时，完整收入、加权利率与利差输出 null；完整组合收入不齐时，占总收入比重也为 null。已知小计仅使用有效票息行，利差成本使用同一子集的有符号面值；覆盖率按绝对面值计算并披露分子、分母和笔数。",
+            "source_doc": "docs/calc_rules.md",
+            "source_section": "12.8 余额工作簿 Campisi 票息完整性（FIN002）"
           },
           {
             "rule_id": "bal_wb_rating_default_001",
@@ -1494,11 +1501,11 @@
           },
           {
             "key": "weighted_rate_pct",
-            "label": "加权利率(%)"
+            "label": "完整加权利率(%)"
           },
           {
             "key": "coupon_income_amount",
-            "label": "票息收入贡献"
+            "label": "完整票息收入贡献"
           },
           {
             "key": "duration_years",
@@ -1506,15 +1513,107 @@
           },
           {
             "key": "spread_bp",
-            "label": "利差(bp)"
+            "label": "完整利差(bp)"
           },
           {
             "key": "spread_income_amount",
-            "label": "利差收入贡献"
+            "label": "完整利差收入贡献"
           },
           {
             "key": "share_of_income",
-            "label": "占总收入比重"
+            "label": "占完整组合票息收入比重"
+          },
+          {
+            "key": "total_coupon_income_amount",
+            "label": "完整组合票息收入"
+          },
+          {
+            "key": "portfolio_coupon_coverage_status",
+            "label": "组合票息覆盖状态"
+          },
+          {
+            "key": "known_coupon_income_amount",
+            "label": "已知票息收入小计"
+          },
+          {
+            "key": "known_weighted_rate_pct",
+            "label": "已知部分加权利率(%)"
+          },
+          {
+            "key": "known_spread_bp",
+            "label": "已知部分利差(bp)"
+          },
+          {
+            "key": "known_spread_income_amount",
+            "label": "已知利差收入小计"
+          },
+          {
+            "key": "known_share_of_income",
+            "label": "占已知组合票息收入比重"
+          },
+          {
+            "key": "known_total_coupon_income_amount",
+            "label": "已知组合票息收入小计"
+          },
+          {
+            "key": "coupon_known_balance_amount",
+            "label": "已知票息净面值"
+          },
+          {
+            "key": "coupon_known_abs_face_amount",
+            "label": "票息覆盖绝对面值"
+          },
+          {
+            "key": "coupon_total_abs_face_amount",
+            "label": "全部绝对面值"
+          },
+          {
+            "key": "coupon_coverage_ratio",
+            "label": "票息绝对面值覆盖率"
+          },
+          {
+            "key": "coupon_known_count",
+            "label": "票息已知笔数"
+          },
+          {
+            "key": "coupon_required_count",
+            "label": "非零面值笔数"
+          },
+          {
+            "key": "coupon_coverage_status",
+            "label": "票息覆盖状态"
+          },
+          {
+            "key": "benchmark_rate_pct",
+            "label": "完整基准利率(%)"
+          },
+          {
+            "key": "benchmark_balance_amount",
+            "label": "基准净面值"
+          },
+          {
+            "key": "benchmark_known_abs_face_amount",
+            "label": "基准覆盖绝对面值"
+          },
+          {
+            "key": "benchmark_total_abs_face_amount",
+            "label": "基准全部绝对面值"
+          },
+          {
+            "key": "benchmark_coupon_coverage_ratio",
+            "label": "基准绝对面值覆盖率"
+          },
+          {
+            "key": "benchmark_coupon_known_count",
+            "label": "基准票息已知笔数"
+          },
+          {
+            "key": "benchmark_coupon_required_count",
+            "label": "基准非零面值笔数"
+          },
+          {
+            "key": "benchmark_coverage_status",
+            "label": "基准票息覆盖状态"
           },
           {
             "key": "price_return_amount",
@@ -1531,6 +1630,29 @@
             "spread_bp": null,
             "spread_income_amount": null,
             "share_of_income": "1",
+            "total_coupon_income_amount": "0.0000180000000000",
+            "portfolio_coupon_coverage_status": "完整",
+            "known_coupon_income_amount": "0.0000180000000000",
+            "known_weighted_rate_pct": "0.02500000",
+            "known_spread_bp": null,
+            "known_spread_income_amount": null,
+            "known_share_of_income": "1",
+            "known_total_coupon_income_amount": "0.0000180000000000",
+            "coupon_known_balance_amount": "0.07200000",
+            "coupon_known_abs_face_amount": "0.07200000",
+            "coupon_total_abs_face_amount": "0.07200000",
+            "coupon_coverage_ratio": "1",
+            "coupon_known_count": 1,
+            "coupon_required_count": 1,
+            "coupon_coverage_status": "完整",
+            "benchmark_rate_pct": null,
+            "benchmark_balance_amount": "0",
+            "benchmark_known_abs_face_amount": "0",
+            "benchmark_total_abs_face_amount": "0",
+            "benchmark_coupon_coverage_ratio": null,
+            "benchmark_coupon_known_count": 0,
+            "benchmark_coupon_required_count": 0,
+            "benchmark_coverage_status": "缺少基准持仓",
             "price_return_amount": "0.00720000"
           }
         ]

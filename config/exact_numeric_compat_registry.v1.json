@@ -44,13 +44,6 @@
   "active_exceptions": [],
   "pending_migrations": [
     {
-      "path": "frontend/src/utils/format.ts",
-      "page": "dashboard-home",
-      "rule": "literal_div_1e8",
-      "count": 1,
-      "reason": "The shared formatter still performs one local yuan-to-yi division for plain-number displays, so dashboard-home remains on the compatibility path until that boundary is migrated."
-    },
-    {
       "path": "frontend/src/features/cashflow-projection/pages/cashflowProjectionPageModel.ts",
       "page": "cashflow-projection",
       "rule": "literal_div_1e8",

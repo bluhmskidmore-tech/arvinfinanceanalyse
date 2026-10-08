@@ -37,7 +37,7 @@ from backend.app.services.formal_result_runtime import (
 from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 RULE_VERSION = "rv_macro_bond_linkage_v2_liquidity_inverted"
-CACHE_VERSION = "cv_macro_bond_linkage_v2_liquidity_inverted"
+CACHE_VERSION = "cv_macro_bond_linkage_v3_risk_availability"
 RESULT_KIND = "macro_bond_linkage.analysis"
 EMPTY_SOURCE_VERSION = "sv_macro_bond_linkage_empty"
 LOOKBACK_DAYS = 365
@@ -604,6 +604,60 @@ def _get_macro_bond_linkage_uncached(
                 portfolio_market_value=portfolio_metrics["portfolio_market_value"],
             )
         )
+        # Each scenario leg needs evidence for the axis used by its core formula.
+        # Missing growth/inflation does not invalidate observed rate/liquidity shocks.
+        covered_axes = environment_score_payload["signal_evidence_categories"]
+        missing_scenario_axes = [axis for axis in ("rate", "liquidity") if axis not in covered_axes]
+        for axis, shock_key, pnl_key in (
+            ("rate", "estimated_rate_change_bps", "estimated_rate_pnl_impact"),
+            ("liquidity", "estimated_spread_widening_bps", "estimated_spread_pnl_impact"),
+        ):
+            if axis in missing_scenario_axes:
+                portfolio_impact_payload[shock_key] = None
+                portfolio_impact_payload[pnl_key] = None
+        if missing_scenario_axes:
+            portfolio_impact_payload["total_estimated_impact"] = None
+            portfolio_impact_payload["impact_ratio_to_market_value"] = None
+        signal_availability_reason = (
+            "macro_signal_unavailable" if len(missing_scenario_axes) == 2
+            else "macro_signal_partial" if missing_scenario_axes else None
+        )
+        availability_reason = (
+            signal_availability_reason if signal_availability_reason is not None
+            else "risk_inputs_unavailable" if all(portfolio_impact_payload[key] is None for key in (
+                "estimated_rate_pnl_impact", "estimated_spread_pnl_impact"))
+            else "risk_inputs_partial" if portfolio_impact_payload["total_estimated_impact"] is None
+            else None
+        )
+        portfolio_impact_payload.update(_json_safe({
+            "availability_reason": availability_reason,
+            "status": (
+                "available" if portfolio_impact_payload["total_estimated_impact"] is not None
+                else "partial" if any(portfolio_impact_payload[key] is not None for key in (
+                    "estimated_rate_pnl_impact", "estimated_spread_pnl_impact")) else "unavailable"
+            ),
+            "requested_report_date": report_date.isoformat(),
+            "risk_report_date": portfolio_metrics.get("risk_report_date"),
+            "risk_source_table": portfolio_metrics.get("source_table"),
+            "risk_source_version": portfolio_metrics["source_version"],
+            "risk_rule_version": portfolio_metrics["rule_version"],
+            "portfolio_dv01": portfolio_metrics["portfolio_dv01"],
+            "portfolio_cs01": portfolio_metrics["portfolio_cs01"],
+            "portfolio_market_value": portfolio_metrics["portfolio_market_value"],
+            "coverage": portfolio_metrics.get("coverage", {"basis": "unavailable"}),
+            "entities": portfolio_metrics.get("entities", []),
+            "entity_link_status": (
+                "unavailable" if not portfolio_metrics.get("entities") else
+                "aggregation_inputs" if portfolio_metrics.get("source_table") == "fact_formal_bond_analytics_daily"
+                else "same_date_only"
+            ),
+            "ratio_unavailable_reason": (
+                signal_availability_reason if signal_availability_reason is not None
+                else "impact_unavailable" if portfolio_impact_payload["total_estimated_impact"] is None
+                else "market_value_missing" if portfolio_metrics["portfolio_market_value"] is None
+                else "market_value_zero" if portfolio_metrics["portfolio_market_value"] == 0 else None
+            ),
+        }))
         equity_bond_signal = None
         mega_cap_signal = None
         equity_bond_signal, mega_cap_signal, landed_axis_warnings = _load_landed_equity_research_signals(

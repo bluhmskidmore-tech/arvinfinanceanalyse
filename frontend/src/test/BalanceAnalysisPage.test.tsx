@@ -1008,7 +1008,7 @@ describe("BalanceAnalysisPage", () => {
         data: Array<number | null | { value: number | null }>;
         label?: { formatter?: (params: { dataIndex: number }) => string };
       }[];
-      tooltip: { formatter: (items: { dataIndex: number }[]) => string };
+      tooltip: { formatter: (items: { dataIndex: number }[]) => string | HTMLElement };
     };
     expect(comparisonOption).toBeDefined();
     const adbSeries = comparisonOption.series.find((series) => series.name.includes("区间日均"));
@@ -1024,9 +1024,13 @@ describe("BalanceAnalysisPage", () => {
     expect(missingAdbValue).not.toBe(0);
     expect(Number.isNaN(missingAdbValue)).toBe(false);
 
-    expect(comparisonOption.tooltip.formatter([{ dataIndex: 0 }])).toContain("区间日均：—");
+    const tooltipText = (dataIndex: number) => {
+      const content = comparisonOption.tooltip.formatter([{ dataIndex }]);
+      return typeof content === "string" ? content : content.textContent;
+    };
+    expect(tooltipText(0)).toContain("区间日均：—");
     expect(adbSeries?.label?.formatter?.({ dataIndex: 0 })).toBe("—");
-    expect(comparisonOption.tooltip.formatter([{ dataIndex: 1 }])).toContain("区间日均：0.00");
+    expect(tooltipText(1)).toContain("区间日均：0.00");
   });
 
   it("shows an em dash instead of NaN when the interval total average is missing", () => {

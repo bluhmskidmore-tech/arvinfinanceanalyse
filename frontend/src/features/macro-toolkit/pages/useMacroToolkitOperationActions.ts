@@ -183,13 +183,14 @@ export function useMacroToolkitOperationActions({
     };
   }, []);
 
-  const clearFullAnalysisCache = useCallback(async (options?: { preserveCrisisGapRepairFeedback?: boolean }) => {
+  const clearFullAnalysisCache = useCallback(async (options?: { preserveCrisisGapRepairFeedback?: boolean; signal?: AbortSignal }) => {
     setFullAnalysisEnvelope(null);
     setFullAnalysisError(null);
     if (!options?.preserveCrisisGapRepairFeedback) {
       setCrisisGapRepairFeedback(null);
     }
     await queryClient.cancelQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
+    if (options?.signal?.aborted) return;
     queryClient.removeQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
   }, [queryClient, setFullAnalysisEnvelope, setFullAnalysisError]);
 
@@ -372,14 +373,17 @@ export function useMacroToolkitOperationActions({
           nextStep: isCompleted ? "重读完整分析并复核数据健康" : "复核未完成来源，数据健康保持阻断",
         });
       if (isCompleted || isPartial) {
-        await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: Boolean(gapGroup) });
+        await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: Boolean(gapGroup), signal });
+        if (signal?.aborted) return;
         await Promise.all([
           scriptsQuery.refetch(),
           analysisQuery.refetch(),
           strategyQuery.refetch(),
           modelChainQuery.refetch(),
         ]);
+        if (signal?.aborted) return;
         const reloaded = await loadFullAnalysis();
+        if (signal?.aborted) return;
         if (gapGroup) {
           const reloadedFeedback = buildCrisisGapRepairFeedback(gapGroup, reloaded, resultMessage);
             setCrisisGapRepairFeedback(
@@ -650,13 +654,15 @@ export function useMacroToolkitOperationActions({
         artifact: resultMessage,
         nextStep: isCompleted ? "核对 CFFEX席位状态" : "复核未完成来源，席位状态保持待确认",
       });
-      await clearFullAnalysisCache();
+      await clearFullAnalysisCache({ signal });
+      if (signal?.aborted) return;
       await Promise.all([
         scriptsQuery.refetch(),
         analysisQuery.refetch(),
         strategyQuery.refetch(),
         modelChainQuery.refetch(),
       ]);
+      if (signal?.aborted) return;
       await loadFullAnalysis();
     } catch (error) {
       if (signal?.aborted) return;
@@ -754,13 +760,15 @@ export function useMacroToolkitOperationActions({
         artifact: `历史 ${refresh.history_row_count ?? EM_DASH} 行 · 因子 ${refresh.factor_row_count ?? EM_DASH} 行`,
         nextStep: "核对策略展示和刷新状态",
       });
-      await clearFullAnalysisCache();
+      await clearFullAnalysisCache({ signal });
+      if (signal?.aborted) return;
       await Promise.all([
         scriptsQuery.refetch(),
         analysisQuery.refetch(),
         strategyQuery.refetch(),
         modelChainQuery.refetch(),
       ]);
+      if (signal?.aborted) return;
       await loadFullAnalysis();
     } catch (error) {
       if (signal?.aborted) return;
@@ -1003,16 +1011,19 @@ export function useMacroToolkitOperationActions({
         refreshedProducts: commodityRefreshRunProducts(refresh),
         fullReloaded: false,
       });
-      await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: shouldReloadFullAnalysis && Boolean(commodityGapGroup) });
+      await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: shouldReloadFullAnalysis && Boolean(commodityGapGroup), signal });
+      if (signal?.aborted) return;
       await Promise.all([
         scriptsQuery.refetch(),
         analysisQuery.refetch(),
         strategyQuery.refetch(),
         modelChainQuery.refetch(),
       ]);
+      if (signal?.aborted) return;
       if (shouldReloadFullAnalysis) {
         setCommodityEvidenceReloadMessage("正在重新读取完整分析证据");
         const reloaded = await loadFullAnalysis({ force: true });
+        if (signal?.aborted) return;
         const shortfallsAfterRefresh = crisisCommodityShortItemsFromEnvelope(reloaded);
         setCommodityShortfallChanges(
           formatCommodityShortfallChanges(shortfallsBeforeRefresh, shortfallsAfterRefresh),

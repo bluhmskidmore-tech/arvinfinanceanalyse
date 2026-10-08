@@ -52,9 +52,10 @@ export const EM_DASH = "—";
 
 const NULL_DISPLAY = EM_DASH;
 
-function signPrefix(raw: number, signed: boolean): string {
+function signPrefix(raw: number | Decimal, signed: boolean): string {
   if (!signed) return "";
-  return raw >= 0 ? "+" : "";
+  const nonnegative = Decimal.isDecimal(raw) ? !raw.isNegative() || raw.isZero() : raw >= 0;
+  return nonnegative ? "+" : "";
 }
 
 /**
@@ -62,11 +63,37 @@ function signPrefix(raw: number, signed: boolean): string {
  * the ``*AsYiPlain``/``*AsWanPlain`` family below so 亿/万 displays never
  * disagree on grouping within the same file (see format.ts 千分位 note).
  */
-function formatDecimalZh(value: number, precision: number): string {
-  return value.toLocaleString("zh-CN", {
-    minimumFractionDigits: precision,
-    maximumFractionDigits: precision,
-  });
+function formatDecimalZh(value: Decimal.Value, precision: number, grouped = true): string {
+  const [integer, fraction] = new Decimal(value).toFixed(precision, Decimal.ROUND_HALF_UP).split(".");
+  const whole = grouped ? integer.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : integer;
+  return fraction === undefined ? whole : `${whole}.${fraction}`;
+}
+
+const EXACT_DECIMAL_TEXT_PATTERN = /^-?\d+(?:\.\d+)?$/;
+// Amount helpers retain full finite exponent tokens; Numeric.raw_text stays plain decimal.
+const AMOUNT_TOKEN_PATTERN = /^[+-]?(?:(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+function decimalFromText(text: string): Decimal {
+  const AmountDecimal = Decimal.clone({ precision: Math.max(64, text.length + 16) });
+  return new AmountDecimal(text);
+}
+
+/** Full-token amounts only; grouped input must use complete thousands groups. */
+function amountDecimalOrNull(raw: string | number | null | undefined): Decimal | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "number") return Number.isFinite(raw) ? new Decimal(raw) : null;
+  const text = raw.trim();
+  if (!AMOUNT_TOKEN_PATTERN.test(text)) return null;
+  const amount = decimalFromText(text.replace(/,/g, ""));
+  return amount.isFinite() && Number.isFinite(amount.toNumber()) ? amount : null;
+}
+
+/** Shared display-only scaling. The divisor expresses the existing unit convention. */
+export function formatScaledAmount(
+  raw: string | number | null | undefined, divisor: number, precision: number, grouped = true,
+): string {
+  const amount = amountDecimalOrNull(raw);
+  return amount === null ? NULL_DISPLAY : formatDecimalZh(amount.div(divisor), precision, grouped);
 }
 
 /**
@@ -77,8 +104,7 @@ function formatDecimalZh(value: number, precision: number): string {
  */
 export function formatYi(raw: number | null | undefined, signed: boolean): string {
   if (raw === null || raw === undefined || !Number.isFinite(raw)) return NULL_DISPLAY;
-  const yi = raw / 100_000_000;
-  return `${signPrefix(yi, signed)}${formatDecimalZh(yi, 2)} 亿`;
+  return `${signPrefix(raw, signed)}${formatScaledAmount(raw, 100_000_000, 2)} 亿`;
 }
 
 /**
@@ -89,8 +115,7 @@ export function formatYi(raw: number | null | undefined, signed: boolean): strin
  */
 export function formatWan(raw: number | null | undefined, signed: boolean): string {
   if (raw === null || raw === undefined || !Number.isFinite(raw)) return NULL_DISPLAY;
-  const wan = raw / 10_000;
-  return `${signPrefix(wan, signed)}${formatDecimalZh(wan, 2)} 万`;
+  return `${signPrefix(raw, signed)}${formatScaledAmount(raw, 10_000, 2)} 万`;
 }
 
 /**
@@ -139,6 +164,8 @@ export function formatRawAsNumeric(opts: {
   unit: NumericUnit;
   sign_aware: boolean;
   precision?: number;
+  /** Authoritative accepted decimal text; raw remains approximate chart compatibility. */
+  raw_text?: string | null;
 }): Numeric {
   const { raw, unit, sign_aware } = opts;
   // NaN/Infinity 与 null/undefined 同视为缺失：display 走 EM_DASH，raw 归一为 null，
@@ -146,6 +173,10 @@ export function formatRawAsNumeric(opts: {
   const rawNorm =
     raw === undefined || raw === null || !Number.isFinite(raw) ? null : raw;
 
+  const rawText = rawNorm !== null && typeof opts.raw_text === "string" && EXACT_DECIMAL_TEXT_PATTERN.test(opts.raw_text)
+    ? opts.raw_text : null;
+  const exactDisplay = rawText === null ? null : decimalFromText(rawText);
+  const displayRaw = exactDisplay ?? (rawNorm === null ? null : new Decimal(rawNorm));
   let display: string;
   let precision: number;
 
@@ -153,28 +184,30 @@ export function formatRawAsNumeric(opts: {
     display = NULL_DISPLAY;
     precision = opts.precision ?? defaultPrecisionForUnit(unit);
   } else if (unit === "yuan") {
-    display = formatYi(rawNorm, sign_aware);
+    display = `${signPrefix(displayRaw!, sign_aware)}${formatDecimalZh(displayRaw!.div(100_000_000), opts.precision ?? 2)} 亿`;
     precision = opts.precision ?? 2;
   } else if (unit === "yi") {
-    display = `${signPrefix(rawNorm, sign_aware)}${formatDecimalZh(rawNorm, opts.precision ?? 2)} 亿`;
+    display = `${signPrefix(displayRaw!, sign_aware)}${formatDecimalZh(displayRaw!, opts.precision ?? 2)} 亿`;
     precision = opts.precision ?? 2;
   } else if (unit === "pct") {
-    display = formatPercentRaw(rawNorm, sign_aware, opts.precision ?? 2);
+    display = `${signPrefix(displayRaw!, sign_aware)}${displayRaw!.times(100).toFixed(opts.precision ?? 2, Decimal.ROUND_HALF_UP)}%`;
     precision = opts.precision ?? 2;
   } else if (unit === "bp") {
-    display = `${signPrefix(rawNorm, sign_aware)}${rawNorm.toFixed(opts.precision ?? 1)} bp`;
+    display = `${signPrefix(displayRaw!, sign_aware)}${displayRaw!.toFixed(opts.precision ?? 1, Decimal.ROUND_HALF_UP)} bp`;
     precision = opts.precision ?? 1;
   } else if (unit === "ratio") {
-    display = `${signPrefix(rawNorm, sign_aware)}${rawNorm.toFixed(opts.precision ?? 2)}`;
+    display = `${signPrefix(displayRaw!, sign_aware)}${displayRaw!.toFixed(opts.precision ?? 2, Decimal.ROUND_HALF_UP)}`;
     precision = opts.precision ?? 2;
   } else if (unit === "years") {
-    display = `${signPrefix(rawNorm, sign_aware)}${rawNorm.toFixed(opts.precision ?? 2)}`;
+    display = `${signPrefix(displayRaw!, sign_aware)}${displayRaw!.toFixed(opts.precision ?? 2, Decimal.ROUND_HALF_UP)}`;
     precision = opts.precision ?? 2;
   } else if (unit === "count") {
-    display = zhNumberFormat.format(rawNorm);
+    // Exact integer counts must not lose digits; fractional counts retain legacy Intl behavior.
+    display = exactDisplay?.isInteger() && !exactDisplay.isZero()
+      ? formatDecimalZh(exactDisplay, 0) : zhNumberFormat.format(rawNorm);
     precision = 0;
   } else if (unit === "dv01") {
-    display = zhNumberFormat.format(Math.round(rawNorm));
+    display = formatDecimalZh(displayRaw!, 0);
     precision = 0;
   } else {
     // unreachable given NumericUnit Literal; fall back defensively
@@ -184,19 +217,12 @@ export function formatRawAsNumeric(opts: {
 
   return {
     raw: rawNorm,
+    ...(rawText === null ? {} : { raw_text: rawText }),
     unit,
     display,
     precision,
     sign_aware,
   };
-}
-
-function formatPercentRaw(raw: number, signed: boolean, precision: number): string {
-  // Note: ``formatPercent(raw, signed)`` uses fixed precision 2; this helper
-  // lets ``formatRawAsNumeric`` honor caller-specified precision without
-  // changing the public ``formatPercent`` signature.
-  const pct = raw * 100;
-  return `${signPrefix(pct, signed)}${pct.toFixed(precision)}%`;
 }
 
 function defaultPrecisionForUnit(unit: NumericUnit): number {
@@ -215,16 +241,7 @@ const WAN_PER_YI = 10_000;
  * `/ui/balance-analysis/overview`、summary、detail、basis_breakdown 的金额字段均为元。
  */
 export function formatYuanAmountAsYiPlain(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
-  if (typeof raw === "number" && !Number.isFinite(raw)) return NULL_DISPLAY;
-  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
-  // 非有限值（NaN 或字符串本身就是 "Infinity"/垃圾 token）统一显示 EM_DASH，
-  // 不回显原始字符串，避免类似 "Infinity"/"12abc" 的半可信输出。
-  if (!Number.isFinite(n)) return NULL_DISPLAY;
-  return (n / YUAN_PER_YI).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatScaledAmount(raw, YUAN_PER_YI, 2);
 }
 
 const YUAN_PER_WAN = 10_000;
@@ -234,26 +251,12 @@ const YUAN_PER_WAN = 10_000;
  * 供 KpiCard 等以 `unit="万元"` 展示的场景使用。
  */
 export function formatYuanAmountAsWanPlain(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
-  if (typeof raw === "number" && !Number.isFinite(raw)) return NULL_DISPLAY;
-  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(n)) return NULL_DISPLAY;
-  return (n / YUAN_PER_WAN).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatScaledAmount(raw, YUAN_PER_WAN, 2);
 }
 
 /**
  * 万元 → 亿元数值串（不含“亿”后缀）。balance-analysis workbook 读模型中多数金额为万元（`_to_wanyuan`）。
  */
 export function formatWanAmountAsYiPlain(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
-  if (typeof raw === "number" && !Number.isFinite(raw)) return NULL_DISPLAY;
-  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(n)) return NULL_DISPLAY;
-  return (n / WAN_PER_YI).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatScaledAmount(raw, WAN_PER_YI, 2);
 }

@@ -17,7 +17,7 @@ import {
   finiteMetric,
   drilldownStatusLabel,
 } from "../lib/balanceMovementPresentation";
-import type { BalanceExplanationClosure } from "../lib/balanceMovementDiagnostics";
+import { SAME_DAY_CLOSURE_NOTE, PERIOD_CLOSURE_NOTE, type BalanceExplanationClosure } from "../lib/balanceMovementDiagnostics";
 
 export function FigmaAccountingBuckets({ rows }: { rows: BalanceMovementRow[] }) {
   return (
@@ -189,7 +189,7 @@ export function StructureBridgeStage({
                   <strong>{closure?.unsupportedComponents.length ?? unsupportedComponents.length} 项</strong>
                 </div>
                 <div>
-                  <span>闭合校验</span>
+                  <span>算术闭合校验（含残差）</span>
                   <strong>{formatSignedYiCell(waterfall.closing_check)} 亿</strong>
                 </div>
                 <span className="balance-movement-sr-only">
@@ -202,6 +202,7 @@ export function StructureBridgeStage({
                     : formatPct(closure.residualRatioPct)} · {closure?.headline} {closure?.note}
                 </span>
               </div>
+              <p>{SAME_DAY_CLOSURE_NOTE}。</p>
               <div
                 className="balance-movement-sr-only"
                 data-testid="balance-movement-analysis-residual-closure"
@@ -263,6 +264,7 @@ export function LiveBasisDecompositionStage({
           </p>
         </header>
 
+        <p>{PERIOD_CLOSURE_NOTE}，须与同日报表桥的算术闭合分别复核。</p>
         <div className="balance-movement-live-decomposition__metrics">
           <article className="balance-movement-live-decomposition__metric balance-movement-live-decomposition__metric--positive">
             <span>覆盖率</span>

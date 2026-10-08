@@ -1,65 +1,37 @@
 import type { Numeric } from "../../../api/contracts";
-import { EM_DASH } from "../../../utils/format";
+import { EM_DASH, formatScaledAmount } from "../../../utils/format";
 import { TONE_CSS_VAR } from "../../../utils/tone";
 
 type FormatValue = Numeric | string | number | null | undefined;
 
-function coerceRaw(value: FormatValue): number {
-  if (value == null) {
-    return Number.NaN;
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : Number.NaN;
-  }
-  if (typeof value === "string") {
-    return Number.parseFloat(value);
-  }
+function exactRaw(value: FormatValue): string | number | null | undefined {
+  if (value === null || value === undefined || typeof value !== "object") return value;
   if (value.raw === null || !Number.isFinite(value.raw)) {
-    return Number.NaN;
+    return null;
   }
-  return value.raw;
+  return value.raw_text ?? value.raw;
+}
+
+function scaled(value: FormatValue, divisor: number, precision: number, suffix = "", grouped = true): string {
+  const display = formatScaledAmount(exactRaw(value), divisor, precision, grouped);
+  return display === EM_DASH ? display : `${display}${suffix}`;
 }
 
 /** Format yuan amount to 亿 with 2 decimal places */
-export const formatYi = (value: FormatValue): string => {
-  const num = coerceRaw(value);
-  if (Number.isNaN(num)) return EM_DASH;
-  return `${(num / 1e8).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} 亿`;
-};
+export const formatYi = (value: FormatValue): string => scaled(value, 1e8, 2, " 亿");
 
 /** Format yuan amount to 万 with no decimal places */
-export const formatWan = (value: FormatValue): string => {
-  const num = coerceRaw(value);
-  if (Number.isNaN(num)) return EM_DASH;
-  return `${(num / 1e4).toLocaleString("zh-CN", { maximumFractionDigits: 0 })} 万`;
-};
+export const formatWan = (value: FormatValue): string => scaled(value, 1e4, 0, " 万");
 
 /** Format DV01 raw yuan-per-bp exposure to 万元/bp display. */
-export const formatDv01Wan = (value: FormatValue, digits = 2): string => {
-  const num = coerceRaw(value);
-  if (Number.isNaN(num)) return EM_DASH;
-  return (num / 1e4).toLocaleString("zh-CN", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
-};
+export const formatDv01Wan = (value: FormatValue, digits = 2): string => scaled(value, 1e4, digits);
 
 /** Format percentage: `pct` unit uses server display; `ratio` uses raw×100 (e.g. 0.25 → 25%). */
 export const formatPct = (value: Numeric | string | null | undefined): string => {
-  if (value != null && typeof value !== "string") {
-    if (value.unit === "pct" && value.display) {
-      return value.display;
-    }
-    if (value.unit === "ratio" && value.raw !== null && Number.isFinite(value.raw)) {
-      return `${(value.raw * 100).toFixed(2)}%`;
-    }
+  if (value != null && typeof value !== "string" && value.unit === "pct" && value.display) {
+    return value.display;
   }
-  const num = coerceRaw(value);
-  if (Number.isNaN(num)) return EM_DASH;
-  return `${(num * 100).toFixed(2)}%`;
+  return scaled(value, 0.01, 2, "%", false);
 };
 
 /** Format bp value */
@@ -73,9 +45,7 @@ export const formatBp = (value: Numeric | string | number | null | undefined): s
   ) {
     return value.display;
   }
-  const num = coerceRaw(value);
-  if (Number.isNaN(num)) return EM_DASH;
-  return `${num.toFixed(1)} bp`;
+  return scaled(value, 1, 1, " bp", false);
 };
 
 /**

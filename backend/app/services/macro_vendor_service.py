@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import re
 from collections.abc import Collection, Mapping
 from datetime import UTC, date, datetime
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Literal, SupportsFloat, SupportsIndex, cast
 
 import duckdb
-from backend.app.core_finance.fx_rates import get_usd_cny_rate
+from backend.app.core_finance.fx_rates import get_usd_cny_rate, is_valid_fx_mid_rate
 from backend.app.core_finance.market_derived import calculate_spreads
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import (
@@ -460,12 +461,16 @@ def _load_choice_macro_latest_payload_with_warnings(
         quality_flag,
         _rn,
     ) in recent_rows:
+        logical_name = str(catalog_by_series.get(str(series_id), {}).get("series_name") or series_name)
+        is_fx = classify_fx_series_group(logical_name) is not None
         grouped_rows.setdefault(str(series_id), []).append(
             {
                 "series_id": str(series_id),
                 "series_name": str(series_name),
                 "trade_date": str(trade_date),
-                "value_numeric": float(value_numeric),
+                "value_numeric": _fx_numeric_or_none(value_numeric) if is_fx else float(value_numeric),
+                "is_fx": is_fx,
+                "fx_name": logical_name,
                 "frequency": str(frequency),
                 "unit": str(unit),
                 "source_version": str(source_version),
@@ -481,7 +486,7 @@ def _load_choice_macro_latest_payload_with_warnings(
         recent_points = [
             ChoiceMacroRecentPoint(
                 trade_date=str(row["trade_date"]),
-                value_numeric=float(row["value_numeric"]),
+                value_numeric=_fx_numeric_or_none(row["value_numeric"]) if row["is_fx"] else float(row["value_numeric"]),
                 source_version=str(row["source_version"]),
                 vendor_version=str(row["vendor_version"]),
                 quality_flag=_normalize_quality_flag(str(row["quality_flag"])),
@@ -508,8 +513,22 @@ def _load_choice_macro_latest_payload_with_warnings(
         elif refresh_tier == "isolated":
             continue
         latest_change = None
+        quality_flag = str(latest["quality_flag"])
+        is_fx = bool(latest["is_fx"])
+        if is_fx and latest["value_numeric"] is None:
+            quality_flag = _aggregate_quality_flags([quality_flag, "warning"])
         if len(rows) > 1:
-            latest_change = float(latest["value_numeric"]) - float(rows[1]["value_numeric"])
+            previous = rows[1]["value_numeric"]
+            if is_fx and (
+                latest["value_numeric"] is None or previous is None
+                or (_is_usd_cny_middle_rate(str(latest["fx_name"])) and (
+                    not is_valid_fx_mid_rate(Decimal(str(latest["value_numeric"])))
+                    or not is_valid_fx_mid_rate(Decimal(str(previous)))
+                ))
+            ):
+                quality_flag = _aggregate_quality_flags([quality_flag, "warning"])
+            else:
+                latest_change = float(latest["value_numeric"]) - float(previous)
 
         series.append(
             ChoiceMacroLatestPoint(
@@ -517,7 +536,7 @@ def _load_choice_macro_latest_payload_with_warnings(
                 series_name=str(latest["series_name"]),
                 display_name=macro_series_display_name(str(latest["series_name"])),
                 trade_date=str(latest["trade_date"]),
-                value_numeric=_required_float(latest["value_numeric"]),
+                value_numeric=_fx_numeric_or_none(latest["value_numeric"]) if is_fx else _required_float(latest["value_numeric"]),
                 frequency=str(catalog["frequency"] or latest["frequency"]),
                 unit=str(catalog["unit"] or latest["unit"]),
                 source_version=str(latest["source_version"]),
@@ -530,7 +549,7 @@ def _load_choice_macro_latest_payload_with_warnings(
                     _as_optional_string(catalog.get("fetch_granularity")),
                 ),
                 policy_note=_as_optional_string(catalog.get("policy_note")),
-                quality_flag=_normalize_quality_flag(str(latest["quality_flag"])),
+                quality_flag=_normalize_quality_flag(quality_flag),
                 latest_change=latest_change,
                 recent_points=recent_points,
             )
@@ -2246,6 +2265,16 @@ def fx_formal_status_envelope(duckdb_path: str) -> dict[str, object]:
     )
 
 
+class FxAnalyticalReadError(RuntimeError):
+    """A source read failed; this is distinct from a genuinely empty FX source."""
+
+
+def _fx_numeric_or_none(value: object) -> float | None:
+    numeric = _float_or_none(value)
+    return numeric if numeric is not None and math.isfinite(numeric) else None
+
+
+
 def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
     payload, _warnings = _load_fx_analytical_payload_with_warnings(duckdb_path)
     return payload
@@ -2254,19 +2283,19 @@ def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
 def _load_fx_analytical_payload_with_warnings(
     duckdb_path: str,
 ) -> tuple[FxAnalyticalPayload, list[str]]:
-    duckdb_file = Path(duckdb_path)
+    duckdb_file = Path(resolve_effective_read_path(duckdb_path))
     if not duckdb_file.exists():
         return FxAnalyticalPayload(groups=[]), []
 
     try:
-        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_file)), read_only=True)
+        conn = duckdb.connect(str(resolve_effective_read_path(duckdb_path)), read_only=True)
     except duckdb.Error as exc:
         warning = _warn_duckdb_query_failure(
             surface="fx_analytical",
             table="fact_choice_macro_daily",
             exc=exc,
         )
-        return FxAnalyticalPayload(groups=[]), [warning]
+        raise FxAnalyticalReadError(warning) from exc
 
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
@@ -2289,7 +2318,7 @@ def _load_fx_analytical_payload_with_warnings(
             table="fact_choice_macro_daily",
             exc=exc,
         )
-        return FxAnalyticalPayload(groups=[]), [warning]
+        raise FxAnalyticalReadError(warning) from exc
     finally:
         conn.close()
 
@@ -2316,7 +2345,7 @@ def _load_fx_analytical_payload_with_warnings(
                 "series_id": str(series_id),
                 "series_name": logical_name,
                 "trade_date": str(trade_date),
-                "value_numeric": float(value_numeric),
+                "value_numeric": _fx_numeric_or_none(value_numeric),
                 "frequency": str(frequency),
                 "unit": str(unit),
                 "source_version": str(source_version),
@@ -2326,12 +2355,19 @@ def _load_fx_analytical_payload_with_warnings(
         )
 
     groups: dict[str, list[FxAnalyticalSeriesPoint]] = {}
+    warnings: list[str] = []
     for series_id, rows in grouped_rows.items():
-        latest = _resolve_fx_analytical_latest_row(rows)
+        latest, selection_warnings, substituted = _resolve_fx_analytical_latest_row(rows)
+        warnings.extend(f"series_id={series_id}: {warning}" for warning in selection_warnings)
+        if substituted:
+            warnings.append(
+                f"series_id={series_id}: FX analytical latest_change omitted after observation fallback: "
+                f"target_date={rows[0]['trade_date']}, observed_date={latest['trade_date']}"
+            )
         recent_points = [
             ChoiceMacroRecentPoint(
                 trade_date=str(row["trade_date"]),
-                value_numeric=float(row["value_numeric"]),
+                value_numeric=_fx_numeric_or_none(row["value_numeric"]),
                 source_version=str(row["source_version"]),
                 vendor_version=str(row["vendor_version"]),
                 quality_flag=_normalize_quality_flag(str(row["quality_flag"])),
@@ -2339,8 +2375,31 @@ def _load_fx_analytical_payload_with_warnings(
             for row in rows
         ]
         latest_change = None
-        if len(rows) > 1:
-            latest_change = float(rows[0]["value_numeric"]) - float(rows[1]["value_numeric"])
+        quality_flag = str(latest["quality_flag"])
+        if latest["value_numeric"] is None:
+            quality_flag = _aggregate_quality_flags([quality_flag, "warning"])
+            warnings.append(
+                f"series_id={series_id}: FX analytical latest observation unavailable: "
+                f"trade_date={latest['trade_date']}, source_version={latest['source_version']}"
+            )
+        if len(rows) > 1 and not substituted:
+            previous = rows[1]
+            previous_value = _fx_numeric_or_none(previous["value_numeric"])
+            latest_value = _fx_numeric_or_none(latest["value_numeric"])
+            if latest_value is None or previous_value is None or (
+                _is_usd_cny_middle_rate(str(latest["series_name"]))
+                and not is_valid_fx_mid_rate(Decimal(str(previous_value)))
+            ):
+                quality_flag = _aggregate_quality_flags([quality_flag, "warning"])
+                warnings.append(
+                    f"series_id={series_id}: FX analytical latest_change omitted for "
+                    f"{'invalid latest' if latest_value is None else 'invalid previous'} observation: "
+                    f"target_date={latest['trade_date']}, previous_date={previous['trade_date']}, "
+                    f"previous_source_version={previous['source_version']}, "
+                    f"previous_vendor_version={previous['vendor_version']}"
+                )
+            else:
+                latest_change = latest_value - previous_value
         catalog = catalog_by_series.get(
             series_id,
             {
@@ -2355,7 +2414,7 @@ def _load_fx_analytical_payload_with_warnings(
             series_id=series_id,
             series_name=str(latest["series_name"]),
             trade_date=str(latest["trade_date"]),
-            value_numeric=float(latest["value_numeric"]),
+            value_numeric=_fx_numeric_or_none(latest["value_numeric"]),
             frequency=str(latest["frequency"]),
             unit=str(latest["unit"]),
             source_version=str(latest["source_version"]),
@@ -2364,7 +2423,7 @@ def _load_fx_analytical_payload_with_warnings(
             fetch_mode=_as_optional_string(catalog.get("fetch_mode")),
             fetch_granularity=_as_optional_string(catalog.get("fetch_granularity")),
             policy_note=_as_optional_string(catalog.get("policy_note")),
-            quality_flag=_normalize_quality_flag(str(latest["quality_flag"])),
+            quality_flag=_normalize_quality_flag(quality_flag),
             latest_change=latest_change,
             recent_points=recent_points,
         )
@@ -2387,29 +2446,38 @@ def _load_fx_analytical_payload_with_warnings(
                 series=points,
             )
         )
-    return FxAnalyticalPayload(groups=ordered_groups), []
+    return FxAnalyticalPayload(groups=ordered_groups), warnings
 
 
-def _resolve_fx_analytical_latest_row(rows: list[dict[str, object]]) -> dict[str, object]:
+def _resolve_fx_analytical_latest_row(
+    rows: list[dict[str, object]],
+) -> tuple[dict[str, object], list[str], bool]:
     latest = rows[0]
     if not _is_usd_cny_middle_rate(str(latest["series_name"])):
-        return latest
+        return latest, [], False
     target_date = date.fromisoformat(str(latest["trade_date"]))
+    observations = [
+        (date.fromisoformat(str(row["trade_date"])),
+         None if row["value_numeric"] is None else Decimal(str(row["value_numeric"])))
+        for row in rows
+    ]
     rate, observed_date, warnings = get_usd_cny_rate(
-        [
-            (date.fromisoformat(str(row["trade_date"])), Decimal(str(row["value_numeric"])))
-            for row in rows
-        ],
+        observations,
         target_date,
         allow_stale_fallback=True,
     )
-    quality_flag = "warning" if warnings else str(latest["quality_flag"])
-    return {
-        **latest,
-        "trade_date": observed_date.isoformat() if observed_date is not None else str(latest["trade_date"]),
-        "value_numeric": float(rate),
-        "quality_flag": quality_flag,
-    }
+    matches = [
+        row
+        for row, (row_date, row_rate) in zip(rows, observations, strict=True)
+        if row_date == observed_date and row_rate == rate
+    ]
+    # The selector sorts stably: its direct-date branch takes the first valid
+    # row, while either older-date fallback takes the last. Preserve that exact
+    # supplied observation, including identical date/value with distinct lineage.
+    selected = matches[0] if observed_date == target_date else matches[-1]
+    substituted = selected is not latest
+    quality_flag = _aggregate_quality_flags([str(selected["quality_flag"]), "warning"]) if warnings or substituted else str(selected["quality_flag"])
+    return {**selected, "quality_flag": quality_flag}, warnings, substituted
 
 
 def _is_usd_cny_middle_rate(series_name: str) -> bool:
@@ -2431,7 +2499,9 @@ def fx_analytical_envelope(duckdb_path: str) -> dict[str, object]:
         [point.vendor_version for point in points],
         empty_value="vv_none",
     )
-    quality_flag = "warning" if warnings else _aggregate_quality_flags([point.quality_flag for point in points])
+    quality_flag = _aggregate_quality_flags(
+        [point.quality_flag for point in points] + (["warning"] if warnings else [])
+    )
     return build_result_envelope(
         basis="analytical",
         trace_id="tr_fx_analytical",
@@ -2682,6 +2752,7 @@ def _load_choice_macro_catalog_map(
     }
     select_columns = [
         "series_id",
+        _catalog_column_expr("series_name", available_columns, "NULL"),
         _catalog_column_expr("vendor_name", available_columns, "NULL"),
         _catalog_column_expr("refresh_tier", available_columns, "NULL"),
         _catalog_column_expr("fetch_mode", available_columns, "NULL"),
@@ -2701,6 +2772,7 @@ def _load_choice_macro_catalog_map(
     catalog_by_series: dict[str, dict[str, object]] = {}
     for (
         series_id,
+        series_name,
         vendor_name,
         refresh_tier,
         fetch_mode,
@@ -2711,6 +2783,7 @@ def _load_choice_macro_catalog_map(
     ) in rows:
         category = category_by_series.get(str(series_id), {})
         catalog_by_series[str(series_id)] = {
+            "series_name": _as_optional_string(series_name),
             "vendor_name": _as_optional_string(vendor_name),
             "refresh_tier": _sanitize_choice_macro_refresh_tier(
                 category.get("refresh_tier") or refresh_tier

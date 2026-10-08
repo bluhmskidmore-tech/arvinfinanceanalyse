@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { runPollingTask } from "../../../app/jobs/polling";
+import { usePollingTaskSignal } from "../../../app/jobs/usePollingTaskSignal";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import { SectionHead } from "../../../components/layout";
@@ -140,6 +141,7 @@ function SectionLead(props: {
 
 function LegacyProductCategoryAdjustmentAuditBody() {
   const client = useApiClient();
+  const getPollingSignal = usePollingTaskSignal();
   const [selectedDate, setSelectedDate] = useState("");
   const [showManualForm, setShowManualForm] = useState(false);
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
@@ -240,27 +242,34 @@ function LegacyProductCategoryAdjustmentAuditBody() {
   }
 
   async function runRefreshWorkflow() {
+    const signal = getPollingSignal();
     const payload = await runPollingTask({
+      signal,
       start: () => client.refreshProductCategoryPnl(),
       getStatus: (runId) => client.getProductCategoryRefreshStatus(runId),
     });
+    if (signal?.aborted) return;
     setLastRefreshRunId(payload.run_id);
     if (payload.status !== "completed") {
       throw new Error(payload.detail ?? `刷新任务未完成：${payload.status}`);
     }
     await datesQuery.refetch();
+    if (signal?.aborted) return;
     await adjustmentsQuery.refetch();
   }
 
   async function handleRefresh() {
+    const signal = getPollingSignal();
     setAdjustmentError(null);
     setIsRefreshing(true);
     try {
       await runRefreshWorkflow();
+      if (signal?.aborted) return;
     } catch (error) {
+      if (signal?.aborted) return;
       setAdjustmentError(error instanceof Error ? error.message : "刷新损益数据失败");
     } finally {
-      setIsRefreshing(false);
+      if (!signal?.aborted) setIsRefreshing(false);
     }
   }
 
@@ -285,6 +294,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
   }
 
   async function handleSubmit() {
+    const signal = getPollingSignal();
     setAdjustmentError(null);
     if (!draft.report_date || !draft.account_code.trim()) {
       setAdjustmentError("请填写报表日期和科目代码。");
@@ -306,19 +316,23 @@ function LegacyProductCategoryAdjustmentAuditBody() {
       const payload = editingAdjustmentId
         ? await client.updateProductCategoryManualAdjustment(editingAdjustmentId, draft)
         : await client.createProductCategoryManualAdjustment(draft);
+      if (signal?.aborted) return;
       setLastAdjustmentId(payload.adjustment_id);
       await runRefreshWorkflow();
+      if (signal?.aborted) return;
       setShowManualForm(false);
       setEditingAdjustmentId(null);
       setDraft(buildAdjustmentDraft(selectedDate));
     } catch (error) {
+      if (signal?.aborted) return;
       setAdjustmentError(error instanceof Error ? error.message : "保存手工调整失败");
     } finally {
-      setIsRefreshing(false);
+      if (!signal?.aborted) setIsRefreshing(false);
     }
   }
 
   async function handleRevoke(adjustmentId: string) {
+    const signal = getPollingSignal();
     if (!window.confirm(`Confirm revoke product-category adjustment ${adjustmentId}?`)) {
       return;
     }
@@ -326,24 +340,31 @@ function LegacyProductCategoryAdjustmentAuditBody() {
     setIsRefreshing(true);
     try {
       await client.revokeProductCategoryManualAdjustment(adjustmentId);
+      if (signal?.aborted) return;
       await runRefreshWorkflow();
+      if (signal?.aborted) return;
     } catch (error) {
+      if (signal?.aborted) return;
       setAdjustmentError(error instanceof Error ? error.message : "撤销失败");
     } finally {
-      setIsRefreshing(false);
+      if (!signal?.aborted) setIsRefreshing(false);
     }
   }
 
   async function handleRestore(adjustmentId: string) {
+    const signal = getPollingSignal();
     setAdjustmentError(null);
     setIsRefreshing(true);
     try {
       await client.restoreProductCategoryManualAdjustment(adjustmentId);
+      if (signal?.aborted) return;
       await runRefreshWorkflow();
+      if (signal?.aborted) return;
     } catch (error) {
+      if (signal?.aborted) return;
       setAdjustmentError(error instanceof Error ? error.message : "恢复失败");
     } finally {
-      setIsRefreshing(false);
+      if (!signal?.aborted) setIsRefreshing(false);
     }
   }
 

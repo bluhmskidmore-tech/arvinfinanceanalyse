@@ -526,17 +526,23 @@ async def _extract_multipart_file(
         max_body_bytes=max_file_bytes + MAX_LEDGER_MULTIPART_OVERHEAD_BYTES,
     )
     marker = b"--" + boundary
-    for raw_part in body.split(marker):
-        # RFC 2046：boundary 前后的 CRLF 属于分隔符本身，只允许精确剥离一个；
-        # strip(b"\r\n") 会把 payload 结尾任意数量的 CR/LF 字节一并剥掉，
-        # 静默截断以换行结尾的 CSV 内容。
-        part = raw_part[2:] if raw_part.startswith(b"\r\n") else raw_part
-        if part.endswith(b"\r\n"):
-            part = part[:-2]
-        if not part or part == b"--":
-            continue
-        if part.endswith(b"--"):
-            part = part[:-2].rstrip(b"\r\n")
+    # A boundary token inside a file is not a delimiter. Match complete
+    # delimiter lines with optional SP/HTAB transport padding, leaving the
+    # trailing CRLF available to the next match.
+    delimiters = re.finditer(
+        rb"(?:\A|\r\n)" + re.escape(marker)
+        + rb"(?:(?P<closing>--)[ \t]*(?=\r\n|\Z)|[ \t]*(?=\r\n))",
+        body,
+    )
+    delimiter = next(delimiters, None)
+    while delimiter is not None and not delimiter.group("closing"):
+        part_start = delimiter.end() + 2  # Opening delimiter's CRLF.
+        delimiter = next(delimiters, None)
+        if delimiter is None:
+            break
+        # Only the framing CRLF belongs to the delimiter; original payload
+        # spans preserve trailing hyphens, newlines and all other file bytes.
+        part = body[part_start:delimiter.start()]
         header_bytes, separator, payload = part.partition(b"\r\n\r\n")
         if not separator:
             continue
@@ -554,7 +560,6 @@ async def _extract_multipart_file(
         filename = _multipart_filename(disposition)
         if not filename:
             raise ValueError("Multipart file field is missing filename.")
-        # 分隔用 CRLF 已在 part 级精确剥离一次，这里不得再剥，否则会截掉文件自身的结尾换行。
         if not payload:
             raise ValueError("Uploaded ledger file is empty.")
         if len(payload) > max_file_bytes:

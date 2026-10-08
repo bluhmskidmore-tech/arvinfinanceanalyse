@@ -268,14 +268,16 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
     }).linkageReportDate;
   }, [client, queryClient]);
 
-  const refreshMacroBondLinkage = useCallback(async () => {
+  const refreshMacroBondLinkage = useCallback(async (signal?: AbortSignal) => {
     const reportDate = resolveLinkageReportDate();
     if (!reportDate) {
       return;
     }
     const linkageQueryKey = ["market-data", "macro-bond-linkage", client.mode, reportDate] as const;
     await queryClient.cancelQueries({ queryKey: linkageQueryKey, exact: true });
+    if (signal?.aborted) return;
     const envelope = await client.getMacroBondLinkageAnalysis({ reportDate });
+    if (signal?.aborted) return;
     queryClient.setQueryData(linkageQueryKey, envelope);
   }, [client, queryClient, resolveLinkageReportDate]);
 
@@ -312,7 +314,9 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
         coverageSummaryQuery.refetch(nonCancellingRefetchOptions),
         livermoreEnabled ? livermoreStrategyQuery.refetch(nonCancellingRefetchOptions) : Promise.resolve(),
       ]);
-      await refreshMacroBondLinkage();
+      if (signal?.aborted) return;
+      await refreshMacroBondLinkage(signal);
+      if (signal?.aborted) return;
       setRefreshStatus(
         payload.status === "partial"
           ? "刷新部分完成，请复核可用数据"

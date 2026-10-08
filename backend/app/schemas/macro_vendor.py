@@ -113,7 +113,7 @@ class ChoiceMacroRecentPoint(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     trade_date: str
-    value_numeric: float
+    value_numeric: float | None
     source_version: str
     vendor_version: str
     quality_flag: Literal["ok", "warning", "error", "stale"] = "warning"
@@ -126,7 +126,7 @@ class ChoiceMacroLatestPoint(BaseModel):
     series_name: str
     display_name: str | None = None
     trade_date: str
-    value_numeric: float
+    value_numeric: float | None
     frequency: str
     unit: str
     source_version: str
@@ -195,7 +195,7 @@ class FxAnalyticalSeriesPoint(BaseModel):
     series_id: str
     series_name: str
     trade_date: str
-    value_numeric: float
+    value_numeric: float | None
     frequency: str
     unit: str
     source_version: str

@@ -129,6 +129,71 @@ function ratesPayload(): ChoiceMacroLatestPayload {
 }
 
 describe("marketOverviewDenseLiquidityModel", () => {
+  it.each([null, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])("preserves finite liquidity observations and normalizes missing tail %s", (value) => {
+    const source = ratePoint("CA.DR007", "DR007", 0);
+    source.recent_points![0].value_numeric = -1;
+    source.recent_points![1].value_numeric = 0;
+    source.value_numeric = value;
+    const rates: ChoiceMacroLatestPayload = { read_target: "duckdb", series: [source] };
+    const series = buildDenseLiquiditySeries(rates);
+    const chart = buildDenseLiquidityChartSpec(rates);
+    const plottedSeries = Array.isArray(chart.option?.series) ? chart.option.series : [];
+
+    expect(series[0].points).toEqual([
+      { date: "2026-07-25", value: -1 },
+      { date: "2026-07-26", value: 0 },
+      { date: "2026-07-27", value: null },
+    ]);
+    expect(chart.seriesRoles[0]).toMatchObject({ observationCount: 2, status: "ready" });
+    expect(plottedSeries[0]).toMatchObject({ connectNulls: false, data: [-1, 0, null] });
+    expect(chart.footnote).toContain("DR007 最新观测 2026-07-26");
+  });
+
+  it.each([0, 1])("requires two finite liquidity observations when only %i are observed", (observedCount) => {
+    const source = ratePoint("CA.DR007", "DR007", 0);
+    source.recent_points![0].value_numeric = observedCount ? 0 : null;
+    source.recent_points![1].value_numeric = null;
+    source.value_numeric = null;
+    const chart = buildDenseLiquidityChartSpec({ read_target: "duckdb", series: [source] });
+
+    expect(chart.option).toBeNull();
+    expect(chart.status).toBe("insufficient-observations");
+    expect(chart.seriesRoles[0]).toMatchObject({ observationCount: observedCount, status: "insufficient-observations" });
+  });
+
+  it("discloses an explicit missing liquidity date between two finite observations", () => {
+    const source = ratePoint("CA.DR007", "DR007", 1.42);
+    source.recent_points![1].value_numeric = null;
+    const chart = buildDenseLiquidityChartSpec({ read_target: "duckdb", series: [source] });
+    const xAxis = Array.isArray(chart.option?.xAxis) ? chart.option.xAxis[0] : chart.option?.xAxis;
+    const plottedSeries = Array.isArray(chart.option?.series) ? chart.option.series : [];
+
+    expect(xAxis).toMatchObject({ data: ["2026-07-25", "2026-07-26", "2026-07-27"] });
+    expect(plottedSeries[0]).toMatchObject({
+      connectNulls: false,
+      data: [1.4, null, 1.42],
+      markArea: { silent: true, data: [[{ xAxis: "2026-07-26" }, { xAxis: "2026-07-26" }]] },
+    });
+    expect(chart.footnote).toContain("DR007 2026-07-26 无观测");
+  });
+
+  it("does not count explicit null liquidity tails when aligning windows", () => {
+    const early = seriesWithTradeDates("CA.DR007", "DR007", DR007_TRADE_DATES.slice(0, 4), 1.38);
+    early.recent_points!.slice(-2).forEach((point) => { point.value_numeric = null; });
+    early.value_numeric = null;
+    const later = seriesWithTradeDates("EMM00088132", "公开市场操作:逆回购:7天:中标利率", DR007_TRADE_DATES.slice(2, 6), 1.4);
+    const chart = buildDenseLiquidityChartSpec({ read_target: "duckdb", series: [early, later] });
+    const xAxis = Array.isArray(chart.option?.xAxis) ? chart.option.xAxis[0] : chart.option?.xAxis;
+    const plottedSeries = Array.isArray(chart.option?.series) ? chart.option.series : [];
+    const earlyData = (plottedSeries[0]?.data ?? []) as (number | null)[];
+
+    expect(xAxis).toMatchObject({ data: DR007_TRADE_DATES.slice(0, 6) });
+    expect(earlyData.filter((value) => value !== null)).toEqual(
+      early.recent_points!.slice(0, 2).map((point) => point.value_numeric),
+    );
+    expect(chart.footnote).toContain("DR007 最新观测 2026-07-29");
+  });
+
   it("selects only the four governed liquidity series in display order", () => {
     const series = buildDenseLiquiditySeries(ratesPayload());
 

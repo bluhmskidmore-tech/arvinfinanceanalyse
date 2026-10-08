@@ -212,3 +212,26 @@ describe("product-category refresh data synchronization", () => {
     await waitFor(() => expect(result.current.refresh.isRefreshing).toBe(false));
   });
 });
+
+
+it("stops an unmounted page waiting for status and leaves its published read cache untouched", async () => {
+  const { client, wrapper, queryClient } = setup();
+  const status = deferred<ProductCategoryRefreshPayload>();
+  client.refreshProductCategoryPnl.mockResolvedValue({ ...completed, status: "queued" });
+  client.getProductCategoryRefreshStatus.mockReturnValue(status.promise);
+  const queryKey = ["product-category-pnl", "baseline", "mock", "2026-02-28", "monthly"];
+  queryClient.setQueryData(queryKey, 1);
+  const { result, unmount } = renderHook(() => useProductCategoryRefresh(client), { wrapper });
+  let outcome: unknown = "pending";
+  let work!: Promise<unknown>;
+  act(() => { work = result.current.runRefreshWorkflow().catch((error: unknown) => { outcome = error; }); });
+  await waitFor(() => expect(client.getProductCategoryRefreshStatus).toHaveBeenCalledOnce());
+  unmount();
+  try {
+    await waitFor(() => expect(outcome).toBeInstanceOf(Error), { timeout: 150 });
+  } finally {
+    await act(async () => { status.resolve(completed); await work; });
+  }
+  expect(queryClient.getQueryData(queryKey)).toBe(1);
+  expect(queryClient.getQueryState(queryKey)?.isInvalidated).toBe(false);
+});

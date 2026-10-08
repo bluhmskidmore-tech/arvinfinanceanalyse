@@ -7,6 +7,8 @@ from typing import Literal
 
 import duckdb
 
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
+
 SUPPORTED_HOME_MACRO_TABLES = {
     "fact_choice_macro_daily",
     "std_external_macro_daily",
@@ -56,7 +58,7 @@ class HomeMacroReleaseContextRepository:
         if limit <= 0:
             raise ValueError("limit must be positive")
 
-        conn = duckdb.connect(str(self._duckdb_path), read_only=True)
+        conn = duckdb.connect(resolve_effective_read_path(self._duckdb_path), read_only=True)
         try:
             try:
                 rows = conn.execute(

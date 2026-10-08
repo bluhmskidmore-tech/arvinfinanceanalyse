@@ -47,3 +47,9 @@
   - `tables[22]`（Campisi）`spread_bp` / `spread_income_amount` `2.50000000 / 0.0000180000000000 → null`: rule `bal_campisi_benchmark_missing_null` — the fixture has no benchmark curve, so the spread is fail-closed to null instead of being assumed.
 - Owner authorization: `arvin` (sample owner) reviewed the three content changes above and authorized this recapture in-session on 2026-09-02, mirroring the 2026-07-20 record.
 - Approval boundary: this records owner authorization to recapture; the three content changes are committed governed behaviour, not new decisions. Final approver and approval timestamp remain pending.
+
+## FIN002 limited recapture record — 2026-10-08
+
+The user approved the complete/known coupon-income split and the necessary synthetic sample update in-session. This recapture reused the existing isolated balance fixture and workbook request. Only the FIN002 query rule/cache identity, its missing-benchmark warning, the Campisi fields/labels, and the corresponding rule-reference disclosure were updated. The sample has one coupon-observed asset with no policy-bond benchmark: coupon income and its known subtotal agree, absolute-face coverage is 100%, and both full and known spread comparisons remain null.
+
+Trace and capture timestamps, all other workbook tables, cards, operational sections and the existing validator are retained. The candidate also contains an unrelated rate-distribution change; that change was not adopted in this limited update. This records the approved FIN002 recapture scope and preserves the sample's existing overall approval status.

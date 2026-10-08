@@ -221,11 +221,14 @@ function sourceKindFromSeriesId(seriesId: string): ResolvedCrossAssetKpi["source
 }
 
 function sparklinePointsFromPoint(point: ChoiceMacroLatestPoint | undefined): CrossAssetDatedValue[] {
-  if (!point?.recent_points?.length) {
+  if (!point?.recent_points?.length || point.value_numeric == null || !Number.isFinite(point.value_numeric)) {
     return [];
   }
   const sorted = [...point.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
-  return sorted.map((p) => ({ tradeDate: p.trade_date, value: p.value_numeric }));
+  // Pairwise analytics and undated sparklines require complete observations.
+  if (sorted.some((p) => p.value_numeric == null || !Number.isFinite(p.value_numeric))) return [];
+  return sorted.flatMap((p) => typeof p.value_numeric === "number"
+    ? [{ tradeDate: p.trade_date, value: p.value_numeric }] : []);
 }
 
 function spreadLatestChange(sparkline: number[]): number | null {
@@ -239,7 +242,7 @@ function toneForChange(
   format: CrossAssetKpiFormat,
   delta: number | null | undefined,
 ): ResolvedCrossAssetKpi["changeTone"] {
-  if (delta == null || Number.isNaN(delta)) {
+  if (delta == null || !Number.isFinite(delta)) {
     return "default";
   }
   if (format === "bp") {
@@ -268,7 +271,7 @@ function changeLabelForSlot(
   format: CrossAssetKpiFormat,
   delta: number | null | undefined,
 ): string {
-  if (delta == null || Number.isNaN(delta)) {
+  if (delta == null || !Number.isFinite(delta)) {
     return EM_DASH;
   }
   if (format === "percent") {
@@ -294,9 +297,9 @@ function changeLabelForSlot(
 
 function valueLabelForSlot(
   format: CrossAssetKpiFormat,
-  value: number | undefined,
+  value: number | null | undefined,
 ): string {
-  if (value == null || Number.isNaN(value)) {
+  if (value == null || !Number.isFinite(value)) {
     return EM_DASH;
   }
   if (format === "percent") {
@@ -366,7 +369,7 @@ function resolveSpreadSlot(
 function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceMacroLatestPoint>): ResolvedCrossAssetKpi {
   const point = pickPoint(byId, slot.candidateSeriesIds);
   const id = point?.series_id ?? slot.candidateSeriesIds[0] ?? slot.key;
-  const delta = point?.latest_change ?? null;
+  const delta = point?.value_numeric != null && Number.isFinite(point.value_numeric) ? point.latest_change ?? null : null;
   const label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
   const sparklinePoints = sparklinePointsFromPoint(point);
   return {
@@ -402,7 +405,8 @@ export function resolveCrossAssetKpis(series: ChoiceMacroLatestPoint[]): Resolve
 export type CrossAssetTrendLine = { name: string; dates: string[]; values: number[] };
 
 /** Same trade_date can appear more than once from upstream; keep last and enforce strictly increasing x. */
-function dedupeDateSeries(dates: string[], values: number[]): Pick<CrossAssetTrendLine, "dates" | "values"> {
+function dedupeDateSeries(dates: string[], values: (number | null)[]): Pick<CrossAssetTrendLine, "dates" | "values"> {
+  if (values.some((value) => value == null || !Number.isFinite(value))) return { dates: [], values: [] };
   const byDate = new Map<string, number>();
   for (let i = 0; i < dates.length; i += 1) {
     const d = dates[i];

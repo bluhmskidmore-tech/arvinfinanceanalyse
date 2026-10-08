@@ -31,7 +31,7 @@ export function sparklineFromChoicePoint(
   point: ChoiceMacroLatestPoint | undefined,
   limit = DEFAULT_SPARKLINE_POINTS,
 ): readonly number[] | undefined {
-  if (!point) {
+  if (!point || point.value_numeric == null || !Number.isFinite(point.value_numeric)) {
     return undefined;
   }
 
@@ -39,10 +39,12 @@ export function sparklineFromChoicePoint(
     left.trade_date.localeCompare(right.trade_date),
   );
   if (sorted.length >= 2) {
-    return sorted.slice(-limit).map((item) => item.value_numeric);
+    const window = sorted.slice(-limit);
+    if (window.some((item) => item.value_numeric == null || !Number.isFinite(item.value_numeric))) return undefined;
+    return window.flatMap((item) => typeof item.value_numeric === "number" ? [item.value_numeric] : []);
   }
 
-  if (point.latest_change != null && Number.isFinite(point.value_numeric) && Number.isFinite(point.latest_change)) {
+  if (point.latest_change != null && point.value_numeric != null && Number.isFinite(point.value_numeric) && Number.isFinite(point.latest_change)) {
     return [point.value_numeric - point.latest_change, point.value_numeric];
   }
 

@@ -16,6 +16,7 @@ import {
   buildTeamPerformanceViewModel,
   formatConfidenceLabel,
   formatQ1AllocationLabel,
+  formatQ1CoverageLabel,
   formatQ1EvidenceStatusLabel,
   formatRatePct,
   formatScore,
@@ -329,6 +330,8 @@ export default function TeamPerformancePage() {
       buildTeamPerformanceQ1CaliberModel({
         byBusinessMonthly: q1ByBusinessMonthlyQuery.data?.result,
         productCategoryRows: q1ProductCategoryQuery.data?.result.rows,
+        byBusinessMeta: q1ByBusinessMonthlyQuery.data?.result_meta,
+        productCategoryMeta: q1ProductCategoryQuery.data?.result_meta,
       }),
     [q1ByBusinessMonthlyQuery.data, q1ProductCategoryQuery.data],
   );
@@ -379,6 +382,10 @@ export default function TeamPerformancePage() {
       meta: productCategoryQuery.data?.result_meta,
     },
   ] satisfies Array<{ key: string; title: string; meta: ResultMeta | null | undefined }>;
+  const q1ResultMetaSections = [
+    { key: "q1-by-business-monthly", title: "Q1业务种类月度损益", meta: q1ByBusinessMonthlyQuery.data?.result_meta },
+    { key: "q1-product-category-ytd", title: "Q1产品分类损益 YTD", meta: q1ProductCategoryQuery.data?.result_meta },
+  ];
   const visibleResultMetaSections = resultMetaSections.filter(
     (section): section is { key: string; title: string; meta: ResultMeta } => Boolean(section.meta),
   );
@@ -517,8 +524,27 @@ export default function TeamPerformancePage() {
         </div>
 
         <div className="team-performance-page__q1-warning-list">
-          {q1CaliberModel.warnings.map((warning) => (
+          {q1CaliberModel.warnings.filter((warning) => !q1ResultMetaSections.some((section) => warning.startsWith(section.title))).map((warning) => (
             <span key={warning}>{warning}</span>
+          ))}
+        </div>
+        <div data-testid="team-performance-q1-quality">
+          {q1ResultMetaSections.map((section) => (
+            <div key={section.key}>
+              {section.meta ? (
+                <DataQualityBanner resultMeta={section.meta}
+                  warnings={q1CaliberModel.warnings.filter((warning) => warning.startsWith(section.title))} />
+              ) : (
+                <p data-testid={`team-performance-q1-missing-meta-${section.key}`} className="team-performance-page__q1-note" role="status">
+                  {section.title}缺少结果元信息，完整性未确认。
+                </p>
+              )}
+              {section.meta?.formal_use_allowed === false ? (
+                <p data-testid={`team-performance-q1-use-${section.key}`} className="team-performance-page__q1-note">
+                  {section.title}：仅供分析，尚未获准正式使用
+                </p>
+              ) : null}
+            </div>
           ))}
         </div>
 
@@ -526,10 +552,10 @@ export default function TeamPerformancePage() {
           <div className="team-performance-page__q1-center-stack">
             {q1CaliberSummaries.map(
               ({ center, includedRules, exceptionRules }) => (
-                <section key={center.centerId} className="team-performance-page__q1-center-band">
+                <section key={center.centerId} data-testid={`team-performance-q1-center-${center.centerId}`} className="team-performance-page__q1-center-band">
                   <div className="team-performance-page__q1-center-head">
                     <span>{center.centerName}</span>
-                    <strong>{formatYiFromYuan(center.includedTotalYuan)}</strong>
+                    <strong title={center.coverageWarnings.join("；")}>{formatYiFromYuan(center.includedTotalYuan)} · {formatQ1CoverageLabel(center.coverageStatus)}</strong>
                     <em>
                       纳入 {center.includedRuleCount}，另列 {exceptionRules.length}，待拆 {center.pendingRuleCount}
                     </em>
@@ -544,14 +570,14 @@ export default function TeamPerformancePage() {
                               key={`${rule.businessLabel}-${rule.rowId ?? "pending"}-${rule.amountField ?? "none"}`}
                               className={`team-performance-page__q1-rule-pill team-performance-page__q1-rule-pill--${q1RulePillTone(
                                 rule.allocation,
-                                rule.evidenceStatus,
+                                rule.coverageStatus === "complete" ? rule.evidenceStatus : "split-needed",
                               )}`}
                               title={`${formatQ1AllocationLabel(rule.allocation)} · ${formatQ1EvidenceStatusLabel(
                                 rule.evidenceStatus,
                               )}`}
                             >
                               <span>{rule.businessLabel}</span>
-                              <em>{formatQ1EvidenceStatusLabel(rule.evidenceStatus)}</em>
+                              <em>{rule.coverageStatus === "complete" ? formatQ1EvidenceStatusLabel(rule.evidenceStatus) : formatQ1CoverageLabel(rule.coverageStatus)}</em>
                             </span>
                           ))}
                         </div>
@@ -624,6 +650,9 @@ export default function TeamPerformancePage() {
                     <td data-label="口径">
                       <strong className="team-performance-page__q1-business-name">{rule.businessLabel}</strong>
                       {rule.note ? <span className="team-performance-page__q1-note">{rule.note}</span> : null}
+                      {rule.coverageWarnings.map((warning) => (
+                        <span key={warning} className="team-performance-page__q1-note">{warning}</span>
+                      ))}
                     </td>
                     <td data-label="来源">
                       <div className="team-performance-page__q1-source-cell">
@@ -642,9 +671,9 @@ export default function TeamPerformancePage() {
                     </td>
                     <td data-label="状态">
                       <span
-                        className={`team-performance-page__status-pill team-performance-page__status-pill--${q1StatusTone(rule.evidenceStatus)}`}
+                        className={`team-performance-page__status-pill team-performance-page__status-pill--${q1StatusTone(rule.coverageStatus === "complete" ? rule.evidenceStatus : "aggregate")}`}
                       >
-                        {formatQ1EvidenceStatusLabel(rule.evidenceStatus)}
+                        {formatQ1EvidenceStatusLabel(rule.evidenceStatus)} · {formatQ1CoverageLabel(rule.coverageStatus)}
                       </span>
                     </td>
                   </tr>
@@ -652,6 +681,11 @@ export default function TeamPerformancePage() {
               </tbody>
             </table>
           </div>
+        </details>
+        <details className="team-performance-page__meta-details">
+          <summary>Q1结果元信息 / 溯源字段</summary>
+          <FormalResultMetaPanel testId="team-performance-q1-result-meta"
+            sections={q1ResultMetaSections} title="Q1结果元信息 / 溯源字段" />
         </details>
       </section>
 

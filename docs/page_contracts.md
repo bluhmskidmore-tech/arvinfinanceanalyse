@@ -387,6 +387,10 @@
 | refresh | `/ui/balance-analysis/refresh*` | action payload | action | 非 envelope 主读面 |
 | advanced attribution | `/ui/balance-analysis/advanced-attribution` | bundle payload | `analytical/scenario` | 仅边界内附加合同 |
 
+2026-10-08 FIN002：工作簿 `campisi_breakdown` 按已批准的完整性口径发布完整字段和已知小计。非零面值行票息缺失或非有限时，完整票息收入、加权票息与利差保持 JSON `null`，前端显示缺失；完整组合收入分母不齐或为零时，完整占比也缺失。`known_coupon_income_amount / known_spread_income_amount` 分别为有效票息子集收入与同一子集面值扣基准成本后的利差，`known_share_of_income` 只除以 `known_total_coupon_income_amount`。基准票息不完整或净面值为零时，完整和已知利差都缺失，不使用部分基准作完整比较。具体公式见 `docs/calc_rules.md` §12.8。
+
+覆盖率明确显示“绝对面值覆盖率”：`coupon_known_abs_face_amount / coupon_total_abs_face_amount` 和基准对应字段给出万元分子、分母，`coupon_known_count / coupon_required_count` 与基准对应字段给出非零面值行笔数。收入和基准成本继续按有符号面值计算，已知子集净面值与基准净面值单独披露。页面常显完整指标、已知小计、比较值、覆盖率和基准状态；分子分母、笔数和净面值保留于 API，通过覆盖率单元格悬浮说明披露，完整和已知占比悬浮说明披露各自组合收入分母及覆盖状态。新金额列与既有工作簿列一样由万元转换为亿元显示，覆盖率和占比按比例格式化为百分数，空值显示缺失、真实零显示零。`total_coupon_income_amount` 和 `portfolio_coupon_coverage_status` 披露完整占比分母；票息或基准缺口仅影响该工作簿质量，空仓和零面值敞口不误报。响应元信息保留正式事实血缘并追加 FIN002 工作簿查询版本，不改变正式物化身份。
+
 ### F. 指标映射
 
 | 页面展示项 | `metric_id` | 来源字段 |

@@ -1,7 +1,13 @@
 import { useApiClient } from "../../../api/client";
 import { useSearchParams } from "react-router-dom";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { requestUnlessAborted, sleepUnlessAborted } from "../../../app/jobs/polling";
+import type { BalanceMovementBucket } from "../../../api/contracts";
+import { balanceMovementBuckets } from "../lib/balanceMovementBusinessModel";
 import { useQuery } from "@tanstack/react-query";
+
+export type BalanceMovementReadState = "confirmed" | "refreshing" | "cached_after_error";
+type RefreshFailureSource = "refresh" | "dates" | "detail";
 
 function normalizeMovementCurrencyBasis(_value: string | null): "CNX" {
   return "CNX";
@@ -13,10 +19,14 @@ export function useBalanceMovementAnalysis() {
   const queryReportDate = searchParams.get("report_date")?.trim() || "";
   const rawQueryCurrencyBasis = searchParams.get("currency_basis")?.trim().toUpperCase() || "";
   const queryCurrencyBasis = normalizeMovementCurrencyBasis(rawQueryCurrencyBasis);
-  const [selectedDate, setSelectedDate] = useState("");
-  const [currencyBasis, setCurrencyBasis] = useState(queryCurrencyBasis);
+  const currencyBasis = queryCurrencyBasis;
+  const requestedReportDate = searchParams.get("requested_report_date")?.trim() || queryReportDate;
+  const queryBucket = searchParams.get("basis_bucket");
+  const selectedBucket: BalanceMovementBucket | "all" = balanceMovementBuckets.find((bucket) => bucket === queryBucket) ?? "all";
+  const isEvidenceOpen = searchParams.get("evidence") === "1" && selectedBucket !== "all";
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [refreshFailure, setRefreshFailure] = useState<{ source: RefreshFailureSource; message: string } | null>(null);
 
   const datesQuery = useQuery({
     queryKey: ["balance-movement-analysis", "dates", client.mode, currencyBasis],
@@ -41,35 +51,35 @@ export function useBalanceMovementAnalysis() {
         }
       : null;
 
+  const selectedDate = reportDates.includes(queryReportDate) ? queryReportDate : reportDates[0] ?? "";
+  const selectionIdentity = `${client.mode}|${currencyBasis}|${selectedDate}|${requestedReportDate || selectedDate}|${selectedBucket}|${isEvidenceOpen}`;
+  const latestSelectionRef = useRef(selectionIdentity);
+  latestSelectionRef.current = selectionIdentity;
+  const refreshControllerRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
-    if (rawQueryCurrencyBasis && rawQueryCurrencyBasis !== "CNX") {
-      const canonicalParams = new URLSearchParams(searchParams);
-      canonicalParams.set("currency_basis", "CNX");
+    setIsRefreshing(false);
+    setRefreshMessage(null);
+    return () => refreshControllerRef.current?.abort();
+  }, [selectionIdentity]);
+
+  useEffect(() => {
+    // Bucket and evidence navigation do not establish a new read snapshot.
+    setRefreshFailure(null);
+  }, [client.mode, currencyBasis, selectedDate]);
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    const canonicalParams = new URLSearchParams(searchParams);
+    if (queryReportDate && queryReportDate !== selectedDate) {
+      canonicalParams.set("requested_report_date", queryReportDate);
+    }
+    canonicalParams.set("report_date", selectedDate);
+    canonicalParams.set("currency_basis", "CNX");
+    if (canonicalParams.toString() !== searchParams.toString()) {
       setSearchParams(canonicalParams, { replace: true });
     }
-  }, [rawQueryCurrencyBasis, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    if (currencyBasis !== queryCurrencyBasis) {
-      setCurrencyBasis(queryCurrencyBasis);
-      setSelectedDate("");
-    }
-  }, [currencyBasis, queryCurrencyBasis]);
-
-  useEffect(() => {
-    if (!reportDates.length) {
-      return;
-    }
-    if (queryReportDate && reportDates.includes(queryReportDate)) {
-      if (selectedDate !== queryReportDate) {
-        setSelectedDate(queryReportDate);
-      }
-      return;
-    }
-    if (!selectedDate || !reportDates.includes(selectedDate)) {
-      setSelectedDate(reportDates[0] ?? "");
-    }
-  }, [queryReportDate, reportDates, selectedDate]);
+  }, [queryReportDate, searchParams, selectedDate, setSearchParams]);
 
   const detailQuery = useQuery({
     queryKey: ["balance-movement-analysis", "detail", client.mode, selectedDate, currencyBasis],
@@ -83,18 +93,50 @@ export function useBalanceMovementAnalysis() {
     retry: false,
   });
 
+  const refreshError = refreshFailure && (
+    refreshFailure.source === "refresh" ||
+    (refreshFailure.source === "dates" && datesQuery.isError) ||
+    (refreshFailure.source === "detail" && detailQuery.isError)
+  ) ? refreshFailure.message : null;
+  const readStatus: BalanceMovementReadState = datesQuery.isError || detailQuery.isError || refreshError
+    ? "cached_after_error"
+    : datesQuery.isFetching || detailQuery.isFetching || isRefreshing
+      ? "refreshing"
+      : "confirmed";
+  const actualReportDate = detailQuery.data?.result_meta.resolved_report_date ||
+    detailQuery.data?.result.report_date || selectedDate;
+
   function updateReportDateSelection(reportDate: string) {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("report_date", reportDate);
     nextParams.set("currency_basis", "CNX");
-    setSearchParams(nextParams, { replace: true });
-    setSelectedDate(reportDate);
+    nextParams.delete("requested_report_date");
+    setSearchParams(nextParams);
+  }
+
+  function updateBucketSelection(bucket: BalanceMovementBucket | "all") {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("basis_bucket", bucket);
+    nextParams.delete("evidence");
+    setSearchParams(nextParams);
+  }
+
+  function updateEvidenceSelection(open: boolean) {
+    const nextParams = new URLSearchParams(searchParams);
+    if (open && selectedBucket !== "all") nextParams.set("evidence", "1");
+    else nextParams.delete("evidence");
+    setSearchParams(nextParams);
   }
 
   async function handleRefresh() {
     if (!selectedDate) {
       return;
     }
+    refreshControllerRef.current?.abort();
+    const controller = new AbortController();
+    refreshControllerRef.current = controller;
+    const { signal } = controller;
+    const canCommit = () => !signal.aborted && latestSelectionRef.current === selectionIdentity;
     const refreshReportDate =
       datesQuery.data?.result.freshness_status === "read_model_lagging"
         ? datesQuery.data.result.latest_upstream_control_report_date ?? selectedDate
@@ -103,11 +145,14 @@ export function useBalanceMovementAnalysis() {
       datesQuery.data?.result.report_dates.includes(refreshReportDate) ?? false;
     setIsRefreshing(true);
     setRefreshMessage(null);
+    setRefreshFailure(null);
+    let failureSource: RefreshFailureSource = "refresh";
     try {
-      const payload = await client.refreshBalanceMovementAnalysis({
+      const payload = await requestUnlessAborted(() => client.refreshBalanceMovementAnalysis({
         reportDate: refreshReportDate,
         currencyBasis,
-      });
+      }), signal);
+      if (!canCommit()) return;
       const upstreamRefreshCount =
         (payload.product_category_refreshed_dates?.length ?? 0) +
         (payload.formal_balance_refreshed_dates?.length ?? 0);
@@ -120,14 +165,21 @@ export function useBalanceMovementAnalysis() {
             : "";
       const rowCountText =
         typeof payload.row_count === "number" ? `${payload.row_count} 行` : "已排队";
-      setRefreshMessage(`${payload.status}: ${rowCountText}${refreshDetail}`);
+      setRefreshMessage(`运行状态 ${payload.status}: ${rowCountText}${refreshDetail}；读取与发布状态另行核对。`);
       const applyRefreshedDate = async () => {
-        const refreshedDates = await datesQuery.refetch();
+        if (!canCommit()) return false;
+        failureSource = "dates";
+        const refreshedDates = await requestUnlessAborted(() => datesQuery.refetch(), signal);
+        if (!canCommit()) return false;
+        if (refreshedDates.isError) throw refreshedDates.error;
         if (!refreshedDates.data?.result.report_dates.includes(refreshReportDate)) {
           return false;
         }
         if (refreshReportDate === selectedDate) {
-          await detailQuery.refetch();
+          failureSource = "detail";
+          const refreshedDetail = await requestUnlessAborted(() => detailQuery.refetch(), signal);
+          if (!canCommit()) return false;
+          if (refreshedDetail.isError) throw refreshedDetail.error;
         } else {
           updateReportDateSelection(refreshReportDate);
         }
@@ -143,24 +195,29 @@ export function useBalanceMovementAnalysis() {
         }
         const maxPollAttempts = 30;
         for (let attempt = 0; attempt < maxPollAttempts; attempt += 1) {
+          if (!canCommit()) return;
           if (await applyRefreshedDate()) {
-            setRefreshMessage(`completed: ${refreshReportDate} \u5df2\u66f4\u65b0`);
+            if (canCommit()) setRefreshMessage(`报告日 ${refreshReportDate} 已可读取；运行终态与发布状态仍需分别确认。`);
             return;
           }
           if (attempt < maxPollAttempts - 1) {
-            await new Promise<void>((resolve) => {
-              window.setTimeout(resolve, 1_000);
-            });
+            await sleepUnlessAborted(1_000, signal);
           }
         }
+        if (!canCommit()) return;
         setRefreshMessage(
           `queued: ${refreshReportDate} \u540e\u53f0\u5904\u7406\u4e2d\uff0c\u8bf7\u7a0d\u540e\u5237\u65b0`,
         );
         return;
       }
       await applyRefreshedDate();
+    } catch (error) {
+      if (!canCommit()) return;
+      const message = `刷新或后续读取失败：${error instanceof Error ? error.message : "请重试"}；未确认发布状态。`;
+      setRefreshFailure({ source: failureSource, message });
+      setRefreshMessage(message);
     } finally {
-      setIsRefreshing(false);
+      if (canCommit()) setIsRefreshing(false);
     }
   }
 
@@ -170,9 +227,17 @@ export function useBalanceMovementAnalysis() {
     reportDates,
     dateStatus,
     selectedDate,
+    requestedReportDate,
+    actualReportDate,
+    readStatus,
+    selectedBucket,
+    isEvidenceOpen,
+    updateBucketSelection,
+    updateEvidenceSelection,
     currencyBasis,
     isRefreshing,
-    refreshMessage,
+    refreshMessage: refreshFailure ? refreshError : refreshMessage,
+    refreshError,
     updateReportDateSelection,
     handleRefresh,
   };

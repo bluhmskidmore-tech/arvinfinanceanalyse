@@ -1,5 +1,6 @@
 .workbench-shell-grid--institutional-console :where(.ag-theme-alpine, .ag-theme-quartz) {
   --ag-background-color: var(--moss-institutional-surface-raised);
+  --ag-tooltip-background-color: var(--ag-background-color);
   --ag-header-background-color: var(--moss-institutional-surface-muted);
   --ag-odd-row-background-color: var(--moss-institutional-row-stripe);
   --ag-row-hover-color: var(--moss-institutional-row-hover);
@@ -12,6 +13,7 @@
 
 .theme-dh-api :where(.ag-theme-alpine, .ag-theme-quartz) {
   --ag-background-color: var(--dh-api-panel);
+  --ag-tooltip-background-color: var(--ag-background-color);
   --ag-header-background-color: var(--dh-api-panel-3);
   --ag-odd-row-background-color: rgba(255, 255, 255, 0.01);
   /* 行 hover 走 institutional 语义变量（Nocturne scope 内已重映射为 accent 8% mix），

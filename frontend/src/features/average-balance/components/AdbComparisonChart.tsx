@@ -30,7 +30,7 @@ function formatSignedPct(value: number | null | undefined): string {
 
 /**
  * 横向条形（yAxis 分类、inverse 让规模最大者在顶部）：
- * 分类名走 y 轴整行可读，不再把 24+ 分类塞进 x 轴挤成墨团。
+ * 分类名走 y 轴，长名称截断以保留绘图区，完整名称由 tooltip 展示。
  * 日均系列右侧标签为偏离度，|偏离|>5% 走 down 红（与 KPI 警示同判据）。
  */
 function buildComparisonOption(rows: AdbComparisonChartRow[]) {
@@ -42,25 +42,30 @@ function buildComparisonOption(rows: AdbComparisonChartRow[]) {
         const items = Array.isArray(params) ? params as Array<{ dataIndex: number }> : [];
         if (!items.length) return "";
         const row = rows[items[0].dataIndex];
-        return [
+        const content = document.createElement("div");
+        content.append(
           row.label,
+          document.createElement("br"),
           `${SERIES_SPOT}：${formatYiValue(row.spot)} 亿元`,
+          document.createElement("br"),
           `${SERIES_AVG}：${formatYiValue(row.avg)} 亿元`,
+          document.createElement("br"),
           `偏离度：${formatSignedPct(row.deviationPct)}`,
-        ].join("<br/>");
+        );
+        return content;
       },
     },
     legend: { data: [SERIES_SPOT, SERIES_AVG] },
     grid: { left: 8, right: 64, top: 32 },
     xAxis: {
       type: "value",
-      axisLabel: { formatter: (value: number) => `${(value / YI).toFixed(0)}亿` },
+      axisLabel: { formatter: (value: number) => `${(value / YI).toFixed(0)}亿`, hideOverlap: true },
     },
     yAxis: {
       type: "category",
       data: rows.map((row) => row.label),
       inverse: true,
-      axisLabel: { fontSize: 11 },
+      axisLabel: { fontSize: 11, width: 88, overflow: "truncate" },
     },
     series: [
       {

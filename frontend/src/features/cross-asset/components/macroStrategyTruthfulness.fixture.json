@@ -1,0 +1,253 @@
+{
+  "result_meta": {
+    "trace_id": "macro-toolkit-b04419fb409c",
+    "basis": "analytical",
+    "result_kind": "macro_toolkit.analysis.strategy_summaries",
+    "formal_use_allowed": false,
+    "amount_currency_basis": null,
+    "amount_currency_basis_note": null,
+    "source_version": "macro_toolkit_registry",
+    "vendor_version": "choice+tushare",
+    "rule_version": "rv_macro_toolkit_ui_v1",
+    "cache_version": "none",
+    "cache_key": null,
+    "quality_flag": "warning",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "requested_report_date": null,
+    "resolved_report_date": null,
+    "scenario_flag": false,
+    "as_of_date": "2026-10-06",
+    "date_basis": null,
+    "fallback_date": null,
+    "generated_at": "2026-10-07T12:23:48.247828Z",
+    "data_built_at": null,
+    "filters_applied": {},
+    "tables_used": [
+      "choice_stock_daily_observation",
+      "choice_stock_factor_snapshot"
+    ],
+    "evidence_rows": null,
+    "next_drill": [],
+    "source_surface": null
+  },
+  "result": {
+    "strategy_summaries": [
+      {
+        "key": "moving_average",
+        "label": "移动均线策略",
+        "group": "A股策略",
+        "status": "unavailable",
+        "tone": "missing",
+        "primary_metric": null,
+        "warnings": [
+          "收益链未验证：原始收盘价缺少复权与股息证据，模拟累计净值不可用。"
+        ],
+        "evidence": [
+          "当前日成交额样本回看，1 只股票、80 个交易日；缺价沿用前值。",
+          "昨日收盘仓位计今日收益；不含成本和滑点；未配置比较基准。"
+        ],
+        "result": {
+          "data_status": "unavailable",
+          "price_source": "choice_stock_daily_observation",
+          "price_basis": "raw_close",
+          "return_basis_status": "unverified",
+          "unavailable_reason": "return_basis_unverified",
+          "benchmark_status": "not_configured",
+          "final_value": null,
+          "sample_selection": "latest_date_turnover_top_n_lookback",
+          "price_gap_policy": "forward_fill_then_drop_incomplete_stocks",
+          "position_timing": "previous_close_position",
+          "dividend_treatment": "not_verified",
+          "transaction_costs": "not_included",
+          "execution_assumption": "close_signal_for_next_period_no_slippage",
+          "as_of_date": "2026-10-06",
+          "stock_count": 1,
+          "observation_count": 80,
+          "tables_used": [
+            "choice_stock_daily_observation",
+            "choice_stock_factor_snapshot"
+          ],
+          "source_versions": [
+            "sv_synthetic_price_g1"
+          ],
+          "vendor_versions": [
+            "vv_choice_tushare_stock_20261006_aaaaaaaaaaaa"
+          ]
+        }
+      },
+      {
+        "key": "mean_reversion_momentum",
+        "label": "均值回归 + 动量",
+        "group": "A股策略",
+        "status": "unavailable",
+        "tone": "missing",
+        "primary_metric": null,
+        "warnings": [
+          "收益链未验证：原始收盘价缺少复权与股息证据，模拟累计净值不可用。"
+        ],
+        "evidence": [
+          "当前日成交额样本回看，1 只股票、80 个交易日；缺价沿用前值。",
+          "昨日收盘仓位计今日收益；不含成本和滑点；未配置比较基准。"
+        ],
+        "result": {
+          "data_status": "unavailable",
+          "price_source": "choice_stock_daily_observation",
+          "price_basis": "raw_close",
+          "return_basis_status": "unverified",
+          "unavailable_reason": "return_basis_unverified",
+          "benchmark_status": "not_configured",
+          "final_value": null,
+          "sample_selection": "latest_date_turnover_top_n_lookback",
+          "price_gap_policy": "forward_fill_then_drop_incomplete_stocks",
+          "position_timing": "previous_close_position",
+          "dividend_treatment": "not_verified",
+          "transaction_costs": "not_included",
+          "execution_assumption": "close_signal_for_next_period_no_slippage",
+          "as_of_date": "2026-10-06",
+          "stock_count": 1,
+          "observation_count": 80,
+          "tables_used": [
+            "choice_stock_daily_observation",
+            "choice_stock_factor_snapshot"
+          ],
+          "source_versions": [
+            "sv_synthetic_price_g1"
+          ],
+          "vendor_versions": [
+            "vv_choice_tushare_stock_20261006_aaaaaaaaaaaa"
+          ]
+        }
+      },
+      {
+        "key": "multi_factor_selection",
+        "label": "多因子选股",
+        "group": "A股策略",
+        "status": "complete",
+        "tone": "neutral",
+        "primary_metric": {
+          "label": "真实入选数量",
+          "value": 1,
+          "unit": ""
+        },
+        "evidence": [
+          "已接入 choice_stock_factor_snapshot，按估值、质量、动量、低波动、股息五类因子打分。",
+          "因子快照日 2026-10-05，行情日 2026-10-06，可用股票 1 只。"
+        ],
+        "warnings": [
+          "FACTOR_SNAPSHOT_DATE_FALLBACK"
+        ],
+        "result": {
+          "data_status": "complete",
+          "price_source": "choice_stock_daily_observation",
+          "factor_source": "choice_stock_factor_snapshot",
+          "as_of_date": "2026-10-06",
+          "factor_as_of_date": "2026-10-05",
+          "factor_date_status": "fallback",
+          "stock_count": 1,
+          "factor_row_count": 1,
+          "selected_count": 1,
+          "selected_stock_codes": [
+            "SYN001.SZ"
+          ],
+          "selection_top_pct": 0.1,
+          "tables_used": [
+            "choice_stock_daily_observation",
+            "choice_stock_factor_snapshot"
+          ],
+          "source_versions": [
+            "sv_synthetic_price_g1"
+          ],
+          "vendor_versions": [
+            "vv_choice_tushare_stock_20261006_aaaaaaaaaaaa"
+          ],
+          "factor_source_versions": [
+            "sv_synthetic_snapshot_g1"
+          ],
+          "factor_vendor_versions": [
+            "vv_synthetic_snapshot_g1"
+          ],
+          "factor_rule_versions": [
+            "rv_choice_stock_factor_percent_units_adjusted_prices_v2"
+          ],
+          "factor_run_ids": [
+            "synthetic_snapshot_g1"
+          ]
+        }
+      },
+      {
+        "key": "low_crowding_regime_multifactor",
+        "label": "低拥挤度择时多因子",
+        "group": "A股策略",
+        "status": "complete",
+        "tone": "neutral",
+        "primary_metric": {
+          "label": "目标仓位",
+          "value": 0.35,
+          "unit": ""
+        },
+        "evidence": [
+          "市场状态 fast_down，仓位建议 0.35。",
+          "因子快照 2026-10-05，行情日 2026-10-06，低拥挤多因子入选 1 只。"
+        ],
+        "warnings": [
+          "FACTOR_SNAPSHOT_DATE_FALLBACK"
+        ],
+        "result": {
+          "data_status": "complete",
+          "price_source": "choice_stock_daily_observation",
+          "as_of_date": "2026-10-06",
+          "regime": "fast_down",
+          "target_position": 0.35,
+          "regime_score": -1.5,
+          "breadth_score": -1.0,
+          "limit_down_count": 0,
+          "amount_change_20": 0.0,
+          "idx_ret_20d": -0.5,
+          "stock_count": 1,
+          "observation_count": 80,
+          "tables_used": [
+            "choice_stock_daily_observation",
+            "choice_stock_factor_snapshot"
+          ],
+          "source_versions": [
+            "sv_synthetic_price_g1"
+          ],
+          "vendor_versions": [
+            "vv_choice_tushare_stock_20261006_aaaaaaaaaaaa"
+          ],
+          "factor_source": "choice_stock_factor_snapshot",
+          "factor_as_of_date": "2026-10-05",
+          "factor_date_status": "fallback",
+          "factor_row_count": 1,
+          "selected_count": 1,
+          "selected_stock_codes": [
+            "SYN001.SZ"
+          ],
+          "selection_top_pct": 0.1,
+          "crowding_excluded_count": 0,
+          "factor_source_versions": [
+            "sv_synthetic_snapshot_g1"
+          ],
+          "factor_vendor_versions": [
+            "vv_synthetic_snapshot_g1"
+          ],
+          "factor_rule_versions": [
+            "rv_choice_stock_factor_percent_units_adjusted_prices_v2"
+          ],
+          "factor_run_ids": [
+            "synthetic_snapshot_g1"
+          ]
+        }
+      }
+    ],
+    "strategy_data_status": {
+      "status": "degraded",
+      "summary_count": 4
+    },
+    "shadow_portfolio_report": {},
+    "macro_etf_strategy": {},
+    "choice_stock_refresh": {},
+    "warnings": []
+  }
+}

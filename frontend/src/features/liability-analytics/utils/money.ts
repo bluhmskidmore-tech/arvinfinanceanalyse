@@ -1,4 +1,5 @@
 import type { Numeric } from "../../../api/contracts";
+import { numericDecimalOrNull } from "../../../api/numeric";
 import { EM_DASH, numericRaw as sharedNumericRaw } from "../../../pageModel";
 import { formatRawAsNumeric } from "../../../utils/format";
 
@@ -35,6 +36,7 @@ export function numericToYiNumeric(value: Numeric | null | undefined): Numeric |
   if (value?.unit === "yuan") {
     return formatRawAsNumeric({
       raw: raw / 1e8,
+      raw_text: numericDecimalOrNull(value)?.div(1e8).toFixed(),
       unit: "yi",
       sign_aware: value.sign_aware,
       precision: 2,

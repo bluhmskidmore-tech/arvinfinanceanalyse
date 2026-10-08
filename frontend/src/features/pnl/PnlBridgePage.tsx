@@ -9,6 +9,7 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 import "../../styles/agGridInstitutional.css";
 import { useApiClient } from "../../api/client";
 import { runPollingTask } from "../../app/jobs/polling";
+import { usePollingTaskSignal } from "../../app/jobs/usePollingTaskSignal";
 import type { DataSectionState } from "../../components/DataSection.types";
 import { FilterBar } from "../../components/FilterBar";
 import { ChartCard } from "../../components/charts/ChartCard";
@@ -235,6 +236,7 @@ const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
 
 export default function PnlBridgePage() {
   const client = useApiClient();
+  const getPollingSignal = usePollingTaskSignal();
   const [selectedReportDate, setSelectedReportDate] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
@@ -321,6 +323,7 @@ export default function PnlBridgePage() {
   const refreshDisabled = !selectedReportDate || isRefreshing;
 
   async function handleRefresh() {
+    const signal = getPollingSignal();
     if (!selectedReportDate) {
       return;
     }
@@ -328,6 +331,7 @@ export default function PnlBridgePage() {
     setRefreshError(null);
     try {
       const payload = await runPollingTask({
+        signal,
         start: () => client.refreshFormalPnl(selectedReportDate),
         getStatus: (runId) => client.getFormalPnlImportStatus(runId),
         onUpdate: (nextPayload) => {
@@ -338,14 +342,16 @@ export default function PnlBridgePage() {
           );
         },
       });
+      if (signal?.aborted) return;
       if (payload.status !== "completed") {
         throw new Error(payload.error_message ?? payload.detail ?? `刷新未完成：${payload.status}`);
       }
       await Promise.all([datesQuery.refetch(), bridgeQuery.refetch()]);
     } catch (error) {
+      if (signal?.aborted) return;
       setRefreshError(error instanceof Error ? error.message : "刷新损益桥接失败");
     } finally {
-      setIsRefreshing(false);
+      if (!signal?.aborted) setIsRefreshing(false);
     }
   }
 

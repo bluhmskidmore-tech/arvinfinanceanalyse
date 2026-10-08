@@ -108,12 +108,12 @@ type BuildMarketDataPageModelInput = {
 };
 
 function recentTimelineForMacroPoint(point: ChoiceMacroLatestPoint | undefined) {
-  const map = new Map<string, number>();
+  const map = new Map<string, number | null>();
   if (!point) {
     return map;
   }
   for (const rp of point.recent_points ?? []) {
-    map.set(rp.trade_date, rp.value_numeric);
+    map.set(rp.trade_date, rp.value_numeric != null && Number.isFinite(rp.value_numeric) ? rp.value_numeric : null);
   }
   return map;
 }
@@ -158,7 +158,7 @@ export function buildMarketDataRateTrendChartOption(
       symbol: "circle" as const,
       symbolSize: 4,
       showSymbol: categories.length <= 36,
-      connectNulls: true,
+      connectNulls: ![...maps[i].values()].some((value) => value == null),
       itemStyle: { color },
       lineStyle: { color, width: i === 0 ? 2 : 1.5 },
       areaStyle:
@@ -525,7 +525,7 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     macroBondLinkage,
     macroBondLinkageMeta: input.macroBondLinkageEnvelope?.result_meta,
     macroBondLinkageWarnings: macroBondLinkage.warnings ?? [],
-    hasPortfolioImpact: Object.keys(macroBondLinkage.portfolio_impact ?? {}).length > 0,
+    hasPortfolioImpact: macroBondLinkage.portfolio_impact?.total_estimated_impact != null,
     macroMeta,
     formalRatesMeta,
     fxFormalStatus,

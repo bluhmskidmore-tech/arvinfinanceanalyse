@@ -18,6 +18,14 @@ EXPORT_WORKBOOK_TABLES = (
     ("\u671f\u9650\u5206\u5e03", ("maturity_distribution", "maturity_gap")),
     ("\u5229\u7387\u5206\u5e03", ("rate_distribution",)),
 )
+# JSON also serializes numeric Decimals as strings. Only proven current-table
+# dimensions bypass numeric coercion; historical aliases keep their old contract.
+EXPORT_WORKBOOK_TEXT_DIMENSIONS = {
+    "bond_business_types": "bond_type",
+    "counterparty_types": "counterparty_type",
+    "maturity_gap": "bucket",
+    "rate_distribution": "bucket",
+}
 EXCEL_AMOUNT_FORMAT = "#,##0.00000000"
 EXCEL_NUMBER_FORMAT = "0.00000000"
 EXCEL_INTEGER_FORMAT = "0"
@@ -251,12 +259,20 @@ def _pick_workbook_export_table(payload: dict[str, Any], *candidate_keys: str) -
     )
 
 
+def _append_workbook_row(sheet: Any, values: list[Any]) -> None:
+    sheet.append(values)
+    for column_index, value in enumerate(values, start=1):
+        if isinstance(value, str):
+            # openpyxl otherwise infers formulas (=...) and Excel error tokens.
+            sheet.cell(row=sheet.max_row, column=column_index).data_type = "s"
+
+
 def _write_workbook_cards_sheet(sheet: Any, cards: list[dict[str, Any]]) -> None:
-    sheet.append(["label", "value"])
+    _append_workbook_row(sheet, ["label", "value"])
     _style_header_row(sheet, column_count=2)
     for card in cards:
         value = _coerce_excel_value(card.get("value"))
-        sheet.append([card.get("label"), value])
+        _append_workbook_row(sheet, [card.get("label"), value])
         _style_numeric_cell(sheet.cell(row=sheet.max_row, column=2), value, column_key="value")
     _autosize_sheet_columns(sheet)
 
@@ -266,18 +282,20 @@ def _write_workbook_table_sheet(sheet: Any, table: dict[str, Any]) -> None:
     rows = list(table.get("rows") or [])
     headers = [str(column.get("label") or "") for column in columns]
     column_keys = [str(column.get("key") or "") for column in columns]
+    text_dimension = EXPORT_WORKBOOK_TEXT_DIMENSIONS.get(str(table.get("key")))
 
-    sheet.append(headers)
+    _append_workbook_row(sheet, headers)
     _style_header_row(sheet, column_count=len(headers))
 
     for row in rows:
         values = []
         coerced_values: list[object] = []
         for column_key in column_keys:
-            coerced = _coerce_excel_value(row.get(column_key))
+            value = row.get(column_key)
+            coerced = value if column_key == text_dimension and isinstance(value, str) else _coerce_excel_value(value)
             values.append(coerced)
             coerced_values.append(coerced)
-        sheet.append(values)
+        _append_workbook_row(sheet, values)
         for column_index, (column_key, value) in enumerate(zip(column_keys, coerced_values, strict=False), start=1):
             _style_numeric_cell(sheet.cell(row=sheet.max_row, column=column_index), value, column_key=column_key)
 

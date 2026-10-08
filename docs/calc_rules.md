@@ -355,6 +355,20 @@ Duration denominator rules:
 
 - QDB 总账“总账自检占位”（`ledger_self_check_placeholder` 异动类型）读者告知：该行不具备独立对账能力（position 与 ledger 同源自同一份总账 Excel），消费方禁止将其渲染/解读为“头寸与总账已对账通过”。
 
+### 12.8 余额工作簿 Campisi 票息完整性（FIN002）
+
+2026-10-08 用户批准：完整组合收入、利差及相关占比在证据不完整时显示缺失，另列已知小计和覆盖率，并按同一覆盖范围计算比较值。`campisi_breakdown` 继续只使用请求范围内的正式资产端债券，按 `bond_type` 分组；收入和加权票息保留有符号面值，票息仍按百分数解释，金额输出单位为万元。有限负票息沿用本工作簿既有观测语义，本次只裁决完整性。
+
+每个类别的非零面值行全部具有有限、可解析的票息时，才发布 `coupon_income_amount` 和 `weighted_rate_pct`；缺失、不可解析或非有限票息使完整字段为 `null`。零面值行不需要票息即可确认其收入为零，真实零票息是有效观测。加权利率使用同一已知子集的净面值作分母，净面值为零时利率及对应 bp 利差为 `null`，已经能够计算的收入金额仍保留。`total_coupon_income_amount` 只有整个资产组合票息完整时才有值；`share_of_income` 同时要求这个完整分母非零，否则为 `null`。
+
+`known_coupon_income_amount` 是有效票息子集的收入小计，`known_weighted_rate_pct` 只在该子集净面值非零时计算。`known_share_of_income` 除以整个资产组合的 `known_total_coupon_income_amount`；已知组合收入小计为零时占比为 `null`。没有有效票息的子集有零已知收入小计，并通过零已知笔数和“全部缺失”状态披露；这个零不能替代完整收入。`portfolio_coupon_coverage_status` 明示完整占比分母的覆盖状态。
+
+利差基准仍为在册政策性金融债的面值加权票息，但只有全部非零面值基准行票息完整、基准净面值非零时，`benchmark_rate_pct` 才可用。缺少持仓、部分或全部票息缺失、净面值抵消时，完整与已知部分的利差比较均为 `null`，不以部分基准外推完整基准。完整基准可用时，`known_spread_income_amount` 对每笔已知面值按 `(票息 − 基准票息) / 100` 计算利差收入，再以万元汇总；等价于已知票息收入减去同一子集净面值按基准票息百分数计提的成本。完整类别才把这个小计发布到 `spread_income_amount`。例如企业债两笔各一亿元，票息分别为 4% 和缺失，完整收入与利差均缺失；3% 完整基准下，已知票息收入为 400 万元，已知利差收入为 100 万元。
+
+`coupon_coverage_ratio` 明确按绝对面值计量：分子为 `coupon_known_abs_face_amount`，分母为 `coupon_total_abs_face_amount`，两者都是万元；分母为零时比率为 `null`。`coupon_known_balance_amount` 另行披露已知子集净面值，用于核对有符号收入和基准成本，不用作显示覆盖率分母。`coupon_known_count / coupon_required_count` 分别披露有效票息和全部非零面值笔数，完整性由笔数逐行判断，正负面值抵消不能掩盖缺失。基准按同一绝对面值定义披露 `benchmark_known_abs_face_amount / benchmark_total_abs_face_amount`、`benchmark_coupon_coverage_ratio` 和对应笔数，另列 `benchmark_balance_amount` 净面值。覆盖状态为“完整”“部分缺失”“全部缺失”“无面值敞口”；没有基准持仓时另列“缺少基准持仓”。
+
+此改动只升级工作簿读取查询身份 `rv_balance_analysis_workbook_fin002_v1 / cv_balance_analysis_workbook_fin002_v1`，追加到已校验的正式血缘版本，并进入工作簿响应及载荷缓存键。正式余额物化版本不变。适用资产存在票息或基准缺口时，工作簿质量为 warning；空仓或只有零面值行不因这项规则报缺口。
+
 ## 13. Livermore 股票输入（观测层）
 
 本节只约束 Choice/Tushare 落地到 DuckDB 的股票**观测**字段如何读，不扩展正式损益口径；字段清单与探针证据以 `config/choice_stock_catalog.json` 与 `docs/choice_stock_catalog.md` 为准。

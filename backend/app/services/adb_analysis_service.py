@@ -63,6 +63,8 @@ from backend.app.repositories.adb_analysis_repo import (
     AdbAnalysisRepository,
 )
 from backend.app.repositories.currency_codes import normalize_currency_code
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
+from backend.app.repositories.system_read_publication_repo import system_read_cache_identity
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.liability_analytics_service import build_nim_stress_percent_points
 
@@ -397,7 +399,7 @@ def _load_accounting_basis_daily_average(
         ],
         "excluded_controls": list(ACCOUNTING_BASIS_EXCLUDED_CONTROLS),
     }
-    if not Path(duckdb_path).exists():
+    if not Path(resolve_effective_read_path(duckdb_path)).exists():
         return empty, [], [], 0
 
     repo = AdbAnalysisRepository(path=duckdb_path)
@@ -471,7 +473,7 @@ def _load_accounting_basis_daily_average_trend(
     end_date: date,
     currency_basis: str = ACCOUNTING_BASIS_CURRENCY,
 ) -> tuple[list[dict[str, Any]], list[str], list[str], int]:
-    if not Path(duckdb_path).exists():
+    if not Path(resolve_effective_read_path(duckdb_path)).exists():
         return [], [], [], 0
 
     repo = AdbAnalysisRepository(path=duckdb_path)
@@ -681,7 +683,7 @@ def _load_adb_raw_data(
     end_date: date,
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[str], str, list[str], dict[str, Any]]:
     snapshot_fx_summary = _empty_snapshot_fx_summary()
-    if not Path(duckdb_path).exists():
+    if not Path(resolve_effective_read_path(duckdb_path)).exists():
         return pd.DataFrame(), pd.DataFrame(), [], [], "snapshot_calendar", [], snapshot_fx_summary
 
     zqtz_df = pd.DataFrame()
@@ -935,24 +937,6 @@ def _comparison_valid_balance_rows(
     return frame.loc[explicitly_valid & finite_amount].copy()
 
 
-def _adb_comparison_valid_balance_days(
-    bonds_df: pd.DataFrame,
-    interbank_df: pd.DataFrame,
-) -> int:
-    """Comparison 资产/负债任一侧有效余额日期并集；不改变共享 `/adb` 日期口径。"""
-    valid_bonds = _comparison_valid_balance_rows(
-        bonds_df,
-        amount_attr="market_value",
-        validity_attr="market_value_is_valid",
-    )
-    valid_interbank = _comparison_valid_balance_rows(
-        interbank_df,
-        amount_attr="amount",
-        validity_attr="amount_is_valid",
-    )
-    return len(_frame_unique_dates(valid_bonds) | _frame_unique_dates(valid_interbank))
-
-
 def _frame_sum_by_date(frame: pd.DataFrame, amount_attr: str) -> dict[date, Decimal]:
     totals: dict[date, Decimal] = {}
     if frame.empty:
@@ -1103,7 +1087,6 @@ def _finalize_spot_map_locf_for_frame(
     end_date: date,
     category_resolver,
     spot_map: dict[str, Decimal],
-    sum_map: dict[str, Decimal],
     locf_categories: set[str] | None = None,
 ) -> None:
     """对允许回退的分类做 LOCF；``None`` 表示来源末日整体缺数，允许全部分类回退。"""
@@ -1126,8 +1109,6 @@ def _finalize_spot_map_locf_for_frame(
     for cat in frame_categories:
         if locf_categories is not None and cat not in locf_categories:
             continue
-        if sum_map.get(cat, Decimal("0")) == Decimal("0"):
-            continue
         if cat in end_date_seen:
             continue
         if spot_map.get(cat, Decimal("0")) != Decimal("0"):
@@ -1135,6 +1116,7 @@ def _finalize_spot_map_locf_for_frame(
         pairs = pairs_by_cat.get(cat) or []
         if not pairs:
             continue
+        # Across-date signed balances may cancel; LOCF depends only on the latest day.
         latest = max(d for d, _ in pairs)
         locf_total = sum(amt for d, amt in pairs if d == latest)
         if locf_total != Decimal("0"):
@@ -1363,7 +1345,7 @@ def calculate_adb(
     start_date: date,
     end_date: date,
 ) -> tuple[dict[str, Any], list[str], list[str], list[str]]:
-    if not Path(duckdb_path).exists():
+    if not Path(resolve_effective_read_path(duckdb_path)).exists():
         return _empty_adb_response(), [], [], []
 
     calendar_days = (end_date - start_date).days + 1
@@ -1452,7 +1434,6 @@ def _build_comparison_spot_sum_maps(
             end_date=end_date,
             category_resolver=lambda row: getattr(row, "bond_category", None),
             spot_map=spot_assets,
-            sum_map=sum_assets,
             locf_categories=bonds_asset_locf_categories,
         )
         _accumulate_spot_and_sum_maps(
@@ -1469,7 +1450,6 @@ def _build_comparison_spot_sum_maps(
             end_date=end_date,
             category_resolver=lambda row: getattr(row, "bond_category", None),
             spot_map=spot_liabilities,
-            sum_map=sum_liabilities,
             locf_categories=bonds_liability_locf_categories,
         )
 
@@ -1504,7 +1484,6 @@ def _build_comparison_spot_sum_maps(
             end_date=end_date,
             category_resolver=lambda row: getattr(row, "product_type", None),
             spot_map=spot_assets,
-            sum_map=sum_assets,
             locf_categories=ib_asset_locf_categories,
         )
         _accumulate_spot_and_sum_maps(
@@ -1521,7 +1500,6 @@ def _build_comparison_spot_sum_maps(
             end_date=end_date,
             category_resolver=lambda row: getattr(row, "product_type", None),
             spot_map=spot_liabilities,
-            sum_map=sum_liabilities,
             locf_categories=ib_liability_locf_categories,
         )
 
@@ -1657,7 +1635,7 @@ def get_adb_comparison(
     )
 
     calendar_denom = max(calendar_days_inclusive, 1)
-    coverage_days = _adb_comparison_valid_balance_days(bonds_df, interbank_df)
+    coverage_days = len(_frame_unique_dates(valid_bonds_df) | _frame_unique_dates(valid_interbank_df))
     sample_filled = False
     sample_fill_method = "none"
     sum_assets_effective = dict(sum_assets)
@@ -2099,20 +2077,21 @@ def adb_envelope_for_dates(start_date: str, end_date: str) -> dict[str, Any]:
     }
 
 
-def _duckdb_storage_identity(duckdb_path: str) -> tuple[str, int, int]:
-    """DuckDB 文件身份 (resolved_path, mtime_ns, size)，折入无 TTL 读缓存键。
+def _duckdb_storage_identity(duckdb_path: str) -> tuple[object, ...]:
+    """有效 DuckDB 文件与冻结 generation 身份，折入无 TTL 读缓存键。
 
     物化任务（可能在另一进程的 worker 中）重写 DuckDB 后 mtime/size 变化，
     API 进程的旧缓存键自然不再命中——不依赖跨进程的 cache_clear 钩子。
     与 risk_tensor_service / positions_service 的读缓存失效模式一致；
     文件缺失时返回 (-1, -1) 哨兵（仍可缓存，文件出现后自动失效）。
     """
-    path = Path(duckdb_path)
+    path = Path(resolve_effective_read_path(duckdb_path))
+    read_identity = system_read_cache_identity(())
     try:
         stat = path.stat()
-        return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+        return (str(path.resolve()), stat.st_mtime_ns, stat.st_size, read_identity)
     except OSError:
-        return (str(path), -1, -1)
+        return (str(path), -1, -1, read_identity)
 
 
 def adb_comparison_envelope(start_date: str, end_date: str, top_n: int = 20) -> dict[str, Any]:
@@ -2136,7 +2115,7 @@ def _cached_adb_comparison_envelope(
     end_date: str,
     top_n: int,
     _duckdb_path: str,
-    _storage_identity: tuple[str, int, int],
+    _storage_identity: tuple[object, ...],
 ) -> dict[str, Any]:
     return _adb_comparison_envelope_uncached(start_date, end_date, top_n)
 
@@ -2284,7 +2263,7 @@ def _cached_adb_insights_envelope(
     start_date: str,
     end_date: str,
     _duckdb_path: str,
-    _storage_identity: tuple[str, int, int],
+    _storage_identity: tuple[object, ...],
 ) -> dict[str, Any]:
     return _adb_insights_envelope_uncached(start_date, end_date)
 
@@ -2387,7 +2366,7 @@ def adb_monthly_envelope(year: int) -> dict[str, Any]:
 def adb_coverage_diagnostics(start_date: str, end_date: str) -> dict[str, Any]:
     settings = get_settings()
     duckdb_path = str(settings.duckdb_path)
-    if not Path(duckdb_path).exists():
+    if not Path(resolve_effective_read_path(duckdb_path)).exists():
         raise FileNotFoundError(f"DuckDB not found: {duckdb_path}")
 
     parsed_start_date = _parse_date(start_date)
@@ -2442,7 +2421,7 @@ def adb_coverage_diagnostics(start_date: str, end_date: str) -> dict[str, Any]:
 def adb_backfill_candidate_dates(start_date: str, end_date: str) -> dict[str, Any]:
     settings = get_settings()
     duckdb_path = str(settings.duckdb_path)
-    if not Path(duckdb_path).exists():
+    if not Path(resolve_effective_read_path(duckdb_path)).exists():
         raise FileNotFoundError(f"DuckDB not found: {duckdb_path}")
 
     parsed_start_date = _parse_date(start_date)

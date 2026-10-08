@@ -295,7 +295,7 @@ describe("BalanceMovementAnalysisPage", () => {
       "总账 AC/OCI/TPL",
     );
     expect(screen.getByTestId("balance-movement-analysis-series-context")).toHaveTextContent(
-      "两个月度",
+      "当前覆盖 2 个月度；基期为序列首月 2026-01",
     );
     expect(screen.getByTestId("balance-movement-analysis-governance")).toHaveTextContent(
       "规则版本",
@@ -423,7 +423,7 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getAllByText("2026年2月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("2026年1月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("较上月").length).toBeGreaterThan(0);
-    expect(within(trendTable).getAllByText("较年初").length).toBeGreaterThan(0);
+    expect(within(trendTable).getByRole("columnheader", { name: "较基期 2026年1月" })).toBeInTheDocument();
     expect(within(trendTable).queryByText("央行票据")).not.toBeInTheDocument();
     expect(within(trendTable).queryByText("地方政府债")).not.toBeInTheDocument();
     expect(within(trendTable).queryByText("政策性金融债")).not.toBeInTheDocument();
@@ -436,7 +436,7 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getByText("资产端合计")).toBeInTheDocument();
     expect(within(trendTable).getByText("负债端合计")).toBeInTheDocument();
     expect(within(trendTable).getByText("资产负债净额")).toBeInTheDocument();
-    /* 两期 mock（首月+当前月）下「较年初」= 当前期末 − 数据序列首月，与「较上月」同值，故动额两列各出现一次。 */
+    /* 两期 mock（首月+当前月）下「较基期」与「较上月」同值，故动额两列各出现一次。 */
     expect(within(trendTable).getAllByText("+194.80").length).toBe(2);
     expect(within(trendTable).getAllByText("-85.00").length).toBe(2);
     expect(within(trendTable).getAllByText("+109.80").length).toBe(2);
@@ -2060,9 +2060,9 @@ describe("BalanceMovementAnalysisPage", () => {
       client: laggingDatesClient,
     });
 
-    const freshness = await screen.findByTestId("balance-movement-analysis-freshness");
+    await waitFor(() => expect(screen.getByTestId("balance-movement-analysis-freshness")).toHaveTextContent("读模型落后上游"));
+    const freshness = screen.getByTestId("balance-movement-analysis-freshness");
     expect(freshness).toHaveClass("balance-movement-data-trust--warn");
-    expect(freshness).toHaveTextContent("读模型落后上游");
     expect(freshness).toHaveTextContent("2026-05-31");
     expect(freshness).toHaveTextContent("2026-04-30");
   });

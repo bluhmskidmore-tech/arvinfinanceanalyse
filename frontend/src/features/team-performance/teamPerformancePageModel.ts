@@ -57,6 +57,11 @@ export type Q1CaliberAmountField =
   | "foreign_net";
 export type Q1CaliberAllocation = "include" | "reference" | "subtract" | "pending";
 export type Q1CaliberEvidenceStatus = "direct" | "aggregate" | "split-needed" | "excluded";
+export type Q1CoverageStatus = "complete" | "partial" | "unknown" | "unavailable";
+type Q1Coverage = {
+  coverageStatus: Q1CoverageStatus;
+  coverageWarnings: string[];
+};
 
 export type TeamPerformanceQ1CaliberRule = {
   centerId: string;
@@ -70,14 +75,14 @@ export type TeamPerformanceQ1CaliberRule = {
   note?: string;
 };
 
-export type TeamPerformanceQ1CaliberRuleResult = TeamPerformanceQ1CaliberRule & {
+export type TeamPerformanceQ1CaliberRuleResult = TeamPerformanceQ1CaliberRule & Q1Coverage & {
   rowName: string;
   amountYuan: number | null;
   contributionYuan: number | null;
   sourceLabel: string;
 };
 
-export type TeamPerformanceQ1CenterCaliber = {
+export type TeamPerformanceQ1CenterCaliber = Q1Coverage & {
   centerId: string;
   centerName: string;
   includedTotalYuan: number | null;
@@ -150,6 +155,8 @@ type BuildQ1CaliberModelArgs = {
   byBusinessItems?: PnlByBusinessYtdItem[];
   byBusinessMonthly?: PnlByBusinessMonthlyPayload | null;
   productCategoryRows?: ProductCategoryPnlRow[];
+  byBusinessMeta?: ResultMeta | null;
+  productCategoryMeta?: ResultMeta | null;
 };
 
 function toNumber(value: string | number | null | undefined): number | null {
@@ -471,6 +478,16 @@ export function buildTeamPerformanceViewModel({
 
 const Q1_PERIOD_LABEL = "2026 Q1（2026-01-01 至 2026-03-31）";
 const Q1_SOURCE_LABEL = "Q1损益.xlsx 规则拆解 + 两条现有页面数据源";
+const Q1_MONTH_ENDS = ["2026-01-31", "2026-02-28", "2026-03-31"];
+
+export function formatQ1CoverageLabel(status: Q1CoverageStatus): string {
+  return {
+    complete: "季度证据齐全",
+    partial: "部分已知小计",
+    unknown: "已知小计（完整性未确认）",
+    unavailable: "暂无可用金额",
+  }[status];
+}
 
 export const Q1_CENTER_CALIBER_RULES: TeamPerformanceQ1CaliberRule[] = [
   {
@@ -858,30 +875,91 @@ function q1SourceLabel(endpoint: Q1CaliberSourceEndpoint | undefined): string {
   return "现有数据源暂无独立行";
 }
 
-type Q1MonthlyFtpNetEvidence = {
+type Q1MonthlyFtpNetEvidence = Q1Coverage & {
   rowName: string;
   amountYuan: number | null;
 };
 
 function buildQ1MonthlyFtpNetEvidence(
   monthlyPayload: PnlByBusinessMonthlyPayload | null | undefined,
+  meta: ResultMeta | null | undefined,
 ): Map<string, Q1MonthlyFtpNetEvidence> {
   const evidence = new Map<string, Q1MonthlyFtpNetEvidence>();
-  for (const month of monthlyPayload?.months ?? []) {
+  const months = monthlyPayload?.months ?? [];
+  // Retain the existing amount reducer and its source order exactly. Coverage
+  // diagnostics must not silently filter, deduplicate or reorder financial inputs.
+  const amounts = new Map<string, Pick<Q1MonthlyFtpNetEvidence, "rowName" | "amountYuan">>();
+  for (const month of months) {
     for (const item of month.items) {
-      const current = evidence.get(item.row_key) ?? {
-        rowName: item.business_type,
-        amountYuan: null,
-      };
+      const current = amounts.get(item.row_key) ?? { rowName: item.business_type, amountYuan: null };
       const ftpNetPnl = toNumber(item.ftp_net_pnl);
-      evidence.set(item.row_key, {
+      amounts.set(item.row_key, {
         rowName: item.business_type,
-        amountYuan:
-          ftpNetPnl === null
-            ? current.amountYuan
-            : (current.amountYuan ?? 0) + ftpNetPnl,
+        amountYuan: ftpNetPnl === null ? current.amountYuan : (current.amountYuan ?? 0) + ftpNetPnl,
       });
     }
+  }
+  for (const [rowKey, amount] of amounts) {
+    const warnings = buildEvidenceWarnings([{ title: "Q1业务种类月度损益", meta }]);
+    const missingMonths = Q1_MONTH_ENDS.filter((end) => !months.some((month) => month.month_key === end.slice(0, 7)));
+    if (missingMonths.length) warnings.push(`缺少月份：${missingMonths.map((end) => end.slice(0, 7)).join("、")}`);
+    const extraMonths = months.filter((month) => !Q1_MONTH_ENDS.some((end) => end.startsWith(`${month.month_key}-`)));
+    if (extraMonths.length) warnings.push(`存在季度外月份：${uniqueBy(extraMonths, (month) => month.month_key).map((month) => month.month_key).join("、")}`);
+    if (monthlyPayload?.year !== 2026 || monthlyPayload.as_of_date !== "2026-03-31") {
+      warnings.push(`Q1来源期间不匹配：${monthlyPayload?.year} / ${monthlyPayload?.as_of_date}`);
+    }
+    let incomplete = warnings.length > 0;
+    let unknown = !meta;
+    if (!meta) warnings.push("Q1业务种类月度损益缺少结果元信息，完整性未确认。");
+    for (const end of Q1_MONTH_ENDS) {
+      const key = end.slice(0, 7);
+      const matchingMonths = months.filter((candidate) => candidate.month_key === key);
+      if (matchingMonths.length > 1) {
+        incomplete = true;
+        warnings.push(`${key} 存在重复月份，保留来源金额，季度完整性待核`);
+      }
+      for (const month of matchingMonths) {
+        const items = month.items.filter((candidate) => candidate.row_key === rowKey);
+        if (items.length > 1) {
+          incomplete = true;
+          warnings.push(`${key} 存在重复来源行，保留来源金额，季度完整性待核`);
+        }
+        if (items.length === 0 || items.some((item) => toNumber(item.ftp_net_pnl) === null)) {
+          incomplete = true;
+          warnings.push(items.length ? `${key} FTP后净损益不可用` : `${key} 缺少来源行`);
+        }
+        if (month.period_start_date !== `${key}-01` || month.period_end_date !== end) {
+          incomplete = true;
+          warnings.push(`${key} 来源期间为 ${month.period_start_date} 至 ${month.period_end_date}，未覆盖完整月份`);
+        }
+        if (typeof month.coverage_days !== "number" || !Number.isFinite(month.coverage_days) ||
+            typeof month.expected_days !== "number" || !Number.isFinite(month.expected_days) ||
+            month.coverage_days < 0 || month.expected_days <= 0) {
+          unknown = true;
+          warnings.push(`${key} 缺少日覆盖信息，完整性未确认`);
+        } else if (month.coverage_days !== month.expected_days || month.expected_days !== Number(end.slice(-2))) {
+          incomplete = true;
+          warnings.push(`${key} 日覆盖 ${month.coverage_days}/${month.expected_days}`);
+        }
+        if (month.sample_filled) {
+          incomplete = true;
+          warnings.push(`${key} 使用样本补齐：${month.sample_fill_method ?? "方法未提供"}`);
+        }
+        for (const issue of month.balance_quality_issues ?? []) {
+          incomplete = true;
+          warnings.push(`${issue.report_date} 来源月份余额质量待核：${issue.reason}`);
+        }
+      }
+    }
+    for (const issue of monthlyPayload?.balance_quality_issues ?? []) {
+      incomplete = true;
+      warnings.push(`${issue.report_date} 来源期间余额质量待核：${issue.reason}`);
+    }
+    evidence.set(rowKey, {
+      ...amount,
+      coverageStatus: amount.amountYuan === null ? "unavailable" : incomplete ? "partial" : unknown ? "unknown" : "complete",
+      coverageWarnings: uniqueBy(warnings, (warning) => warning),
+    });
   }
   return evidence;
 }
@@ -891,22 +969,22 @@ function pickQ1Amount(
   byBusinessItems: PnlByBusinessYtdItem[],
   byBusinessMonthlyFtpNet: Map<string, Q1MonthlyFtpNetEvidence>,
   productCategoryRows: ProductCategoryPnlRow[],
-): {
+  productCategoryMeta: ResultMeta | null | undefined,
+): Q1Coverage & {
   rowName: string;
   amountYuan: number | null;
   sourceEndpoint?: Q1CaliberSourceEndpoint;
   amountField?: Q1CaliberAmountField;
 } {
   if (!rule.sourceEndpoint || !rule.rowId || !rule.amountField) {
-    return { rowName: "待补充独立数据行", amountYuan: null };
+    return { rowName: "待补充独立数据行", amountYuan: null, coverageStatus: "unavailable", coverageWarnings: ["待补充独立数据行"] };
   }
 
   if (rule.sourceEndpoint === "by-business-ytd" || rule.sourceEndpoint === "by-business-monthly") {
     const monthlyEvidence = byBusinessMonthlyFtpNet.get(rule.rowId);
     if (monthlyEvidence) {
       return {
-        rowName: monthlyEvidence.rowName,
-        amountYuan: monthlyEvidence.amountYuan,
+        ...monthlyEvidence,
         sourceEndpoint: "by-business-monthly",
         amountField: "ftp_net_pnl",
       };
@@ -917,20 +995,32 @@ function pickQ1Amount(
       amountYuan: null,
       sourceEndpoint: "by-business-monthly",
       amountField: "ftp_net_pnl",
+      coverageStatus: "unavailable",
+      coverageWarnings: ["2026-01、2026-02、2026-03 均无可用月度FTP后证据"],
     };
   }
 
   const row = productCategoryRows.find((item) => item.category_id === rule.rowId);
   if (!row) {
-    return { rowName: "未命中产品分类行", amountYuan: null };
+    return { rowName: "未命中产品分类行", amountYuan: null, coverageStatus: "unavailable", coverageWarnings: ["未命中产品分类行"] };
   }
   if (rule.amountField === "total_pnl" || rule.amountField === "ftp_net_pnl") {
-    return { rowName: row.category_name, amountYuan: null };
+    return { rowName: row.category_name, amountYuan: null, coverageStatus: "unavailable", coverageWarnings: ["产品分类行无对应FTP字段"] };
   }
   const productAmountField = rule.amountField;
+  const amountYuan = toNumber(row[productAmountField]);
+  const coverageWarnings = buildEvidenceWarnings([{ title: "Q1产品分类损益 YTD", meta: productCategoryMeta }]);
+  if (row.report_date !== "2026-03-31" || row.view !== "ytd") {
+    coverageWarnings.push(`产品分类来源期间为 ${row.report_date} / ${row.view}，与Q1 YTD不匹配`);
+  }
+  const incomplete = coverageWarnings.length > 0;
+  if (!productCategoryMeta) coverageWarnings.push("Q1产品分类损益 YTD缺少结果元信息，完整性未确认。");
+  if (amountYuan === null) coverageWarnings.push("产品分类来源金额不可用");
   return {
     rowName: row.category_name,
-    amountYuan: toNumber(row[productAmountField]),
+    amountYuan,
+    coverageStatus: amountYuan === null ? "unavailable" : incomplete ? "partial" : !productCategoryMeta ? "unknown" : "complete",
+    coverageWarnings,
   };
 }
 
@@ -939,8 +1029,9 @@ function buildQ1RuleResult(
   byBusinessItems: PnlByBusinessYtdItem[],
   byBusinessMonthlyFtpNet: Map<string, Q1MonthlyFtpNetEvidence>,
   productCategoryRows: ProductCategoryPnlRow[],
+  productCategoryMeta: ResultMeta | null | undefined,
 ): TeamPerformanceQ1CaliberRuleResult {
-  const amount = pickQ1Amount(rule, byBusinessItems, byBusinessMonthlyFtpNet, productCategoryRows);
+  const amount = pickQ1Amount(rule, byBusinessItems, byBusinessMonthlyFtpNet, productCategoryRows, productCategoryMeta);
   const amountYuan = amount.amountYuan;
   const canContribute =
     rule.evidenceStatus !== "excluded" &&
@@ -956,6 +1047,8 @@ function buildQ1RuleResult(
     amountYuan,
     contributionYuan: canContribute ? amountYuan * sign : null,
     sourceLabel: q1SourceLabel(amount.sourceEndpoint ?? rule.sourceEndpoint),
+    coverageStatus: amount.coverageStatus,
+    coverageWarnings: amount.coverageWarnings,
   };
 }
 
@@ -975,6 +1068,7 @@ function buildQ1CenterCaliber(
   byBusinessItems: PnlByBusinessYtdItem[],
   byBusinessMonthlyFtpNet: Map<string, Q1MonthlyFtpNetEvidence>,
   productCategoryRows: ProductCategoryPnlRow[],
+  productCategoryMeta: ResultMeta | null | undefined,
 ): TeamPerformanceQ1CenterCaliber {
   const centerRules = rules.filter((rule) => rule.centerId === centerId);
   const seenContributionKeys = new Set<string>();
@@ -984,6 +1078,7 @@ function buildQ1CenterCaliber(
       byBusinessItems,
       byBusinessMonthlyFtpNet,
       productCategoryRows,
+      productCategoryMeta,
     );
     if (resolvedRule.contributionYuan === null) {
       return resolvedRule;
@@ -1006,6 +1101,13 @@ function buildQ1CenterCaliber(
     contributionRows.length > 0
       ? contributionRows.reduce((sum, rule) => sum + (rule.contributionYuan ?? 0), 0)
       : null;
+  // Coverage follows the same inclusion boundary, but missing subtract/include
+  // evidence must remain visible even though it contributes no numeric amount.
+  const requiredRules = resolvedRules.filter((rule) => rule.evidenceStatus !== "excluded" &&
+    (rule.allocation === "include" || rule.allocation === "subtract"));
+  const coverageStatus: Q1CoverageStatus = includedTotalYuan === null ? "unavailable"
+    : requiredRules.some((rule) => rule.coverageStatus === "partial" || rule.coverageStatus === "unavailable") ? "partial"
+    : requiredRules.some((rule) => rule.coverageStatus === "unknown") ? "unknown" : "complete";
 
   return {
     centerId,
@@ -1014,6 +1116,8 @@ function buildQ1CenterCaliber(
     includedRuleCount: centerRules.filter((rule) => rule.allocation === "include").length,
     pendingRuleCount: centerRules.filter((rule) => rule.evidenceStatus === "split-needed").length,
     rules: resolvedRules,
+    coverageStatus,
+    coverageWarnings: uniqueBy(requiredRules.flatMap((rule) => rule.coverageWarnings), (warning) => warning),
   };
 }
 
@@ -1022,9 +1126,11 @@ export function buildTeamPerformanceQ1CaliberModel({
   byBusinessItems = [],
   byBusinessMonthly = null,
   productCategoryRows = [],
+  byBusinessMeta = null,
+  productCategoryMeta = null,
 }: BuildQ1CaliberModelArgs = {}): TeamPerformanceQ1CaliberModel {
   const centerIds = uniqueBy(rules, (rule) => rule.centerId).map((rule) => rule.centerId);
-  const byBusinessMonthlyFtpNet = buildQ1MonthlyFtpNetEvidence(byBusinessMonthly);
+  const byBusinessMonthlyFtpNet = buildQ1MonthlyFtpNetEvidence(byBusinessMonthly, byBusinessMeta);
 
   return {
     periodLabel: Q1_PERIOD_LABEL,
@@ -1036,6 +1142,7 @@ export function buildTeamPerformanceQ1CaliberModel({
         byBusinessItems,
         byBusinessMonthlyFtpNet,
         productCategoryRows,
+        productCategoryMeta,
       ),
     ),
     warnings: [
@@ -1043,6 +1150,12 @@ export function buildTeamPerformanceQ1CaliberModel({
       "Excel中的外推值、全年预测和手工汇总不参与本区实际汇总。",
       "/pnl-by-business 的业务种类行采用月度 ftp_net_pnl 汇总；不再把未扣FTP的 total_pnl 直接归中心。",
       "接口粒度较粗的行只展示聚合证据，不强行分摊到子项。",
+      "部分已知小计保留可用金额；缺失月份、不可用来源行及待核质量不等同于零，不能作为完整季度合计。",
+      ...[
+        { title: "Q1业务种类月度损益", meta: byBusinessMeta },
+        { title: "Q1产品分类损益 YTD", meta: productCategoryMeta },
+      ].flatMap((source) => source.meta ? buildEvidenceWarnings([source])
+        : [`${source.title}缺少结果元信息，完整性未确认。`]),
     ],
   };
 }

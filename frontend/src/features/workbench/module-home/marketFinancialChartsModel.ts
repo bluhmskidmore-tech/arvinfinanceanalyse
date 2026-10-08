@@ -177,7 +177,7 @@ export type MarketFinancialChartsInput = {
 
 type LineInput = {
   name: string;
-  values: Map<string, number>;
+  values: Map<string, number | null>;
   prominence?: "primary" | "secondary";
 };
 
@@ -193,9 +193,13 @@ function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function observedLineDates(line: LineInput): string[] {
+  return [...line.values].flatMap(([date, value]) => finiteNumber(value) ? [date] : []);
+}
+
 function sortedRecentPoints(series: ChoiceMacroLatestPoint) {
   return [...(series.recent_points ?? [])]
-    .filter((point) => finiteNumber(point.value_numeric))
+    .map((point) => ({ ...point, value_numeric: finiteNumber(point.value_numeric) ? point.value_numeric : null }))
     .sort((left, right) => left.trade_date.localeCompare(right.trade_date));
 }
 
@@ -215,22 +219,24 @@ const MIN_ALIGNED_OBSERVATIONS = 2;
  * 停更序列会把并集日轴向左拉宽，让数据齐全的序列在左侧留出整段空白，看起来像断点。
  * 这里把共享日轴收敛到各序列的共同起点；只有当收敛后每条序列仍保有 2 个以上可见
  * 观测时才收敛，避免把交错的稀疏观测裁成孤点。窗口内的缺口仍然保持为空。
+ * 显式缺值日期保留在日轴上；观测起点和数量只按有限值日期判断。
  */
 export function sharedDateAxis(
   dateGroups: readonly (readonly string[])[],
+  observedDateGroups: readonly (readonly string[])[] = dateGroups,
 ): string[] {
   const union = [...new Set(dateGroups.flat())].sort((left, right) =>
     left.localeCompare(right),
   );
-  if (dateGroups.length < 2 || dateGroups.some((group) => group.length === 0))
+  if (observedDateGroups.length < 2 || observedDateGroups.some((group) => group.length === 0))
     return union;
-  const alignedStart = dateGroups
+  const alignedStart = observedDateGroups
     .map(
       (group) =>
         [...group].sort((left, right) => left.localeCompare(right))[0],
     )
     .reduce((latest, start) => (start > latest ? start : latest));
-  const keepsEverySeries = dateGroups.every(
+  const keepsEverySeries = observedDateGroups.every(
     (group) =>
       group.filter((date) => date >= alignedStart).length >=
       MIN_ALIGNED_OBSERVATIONS,
@@ -244,7 +250,7 @@ export function sharedDateAxis(
 function laggingSeriesNotes(lines: LineInput[], axisEnd: string | undefined) {
   if (!axisEnd) return [];
   return lines.flatMap((line) => {
-    const latestDate = [...line.values.keys()]
+    const latestDate = observedLineDates(line)
       .sort((left, right) => left.localeCompare(right))
       .at(-1);
     return latestDate && latestDate < axisEnd
@@ -399,7 +405,7 @@ function buildMultiLineOption(
     series: lines.map((line, index) => {
       const color = LINE_COLORS[index % LINE_COLORS.length];
       const data = dates.map((date) => line.values.get(date) ?? null);
-      const gaps = innerGapRanges([...line.values.keys()], dates);
+      const gaps = innerGapRanges(observedLineDates(line), dates);
       const isPrimary = line.prominence === "primary";
       const isSecondary = line.prominence === "secondary";
       return {
@@ -778,7 +784,7 @@ function pickKeyRateSeries(
     merged.set(series.series_id, series);
   });
   const all = [...merged.values()].filter(
-    (series) => series.unit === "%" && (series.recent_points?.length ?? 0) >= 8,
+    (series) => series.unit === "%" && (series.recent_points ?? []).filter((point) => finiteNumber(point.value_numeric)).length >= 8,
   );
   const patterns = [
     /国债到期收益率.*10\s*年|国债.*10Y/i,
@@ -825,10 +831,11 @@ function buildKeyRateTrend(
   });
   const dates = sharedDateAxis(
     lines.map((line) => [...line.values.keys()]),
+    lines.map(observedLineDates),
   );
   const laggingNotes = laggingSeriesNotes(lines, dates.at(-1));
   const gapNotes = innerGapNotes(
-    lines.map((line) => ({ name: line.name, dates: [...line.values.keys()] })),
+    lines.map((line) => ({ name: line.name, dates: observedLineDates(line) })),
     dates,
   );
   return {
@@ -878,14 +885,14 @@ function buildIndexedCrossAsset(
   const lines = selected
     .map((series) => {
       const points = sortedRecentPoints(series);
-      const base = points[0]?.value_numeric;
+      const base = points.find((point) => finiteNumber(point.value_numeric))?.value_numeric;
       if (!finiteNumber(base) || base === 0) return null;
       return {
         name: compactSeriesName(series),
         values: new Map(
           points.map((point) => [
             point.trade_date,
-            (point.value_numeric / base) * 100,
+            finiteNumber(point.value_numeric) ? (point.value_numeric / base) * 100 : null,
           ]),
         ),
       };
@@ -937,7 +944,7 @@ function buildLatestCrossAssetMove(
       const points = sortedRecentPoints(series);
       const latestPoint = points.at(-1);
       const previousPoint = points.at(-2);
-      if (!latestPoint || !previousPoint) {
+      if (!latestPoint || !previousPoint || !finiteNumber(latestPoint.value_numeric) || !finiteNumber(previousPoint.value_numeric)) {
         unavailableNotes.push(`${name}不足两个有效观测，无法比较`);
         return null;
       }

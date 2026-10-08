@@ -293,6 +293,12 @@ def _positions_workbook(
     ):
         meta.append([key, metadata.get(key)])
     meta.append(["filters", json.dumps(filters, ensure_ascii=False, sort_keys=True)])
+    # Exported strings are literal data, including formula-looking and error text.
+    for sheet in workbook.worksheets:
+        for row in sheet.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, str):
+                    cell.data_type = "s"
     return workbook
 
 

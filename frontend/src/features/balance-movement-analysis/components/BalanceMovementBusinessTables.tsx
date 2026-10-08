@@ -49,7 +49,7 @@ export function BusinessBalanceMatrixSection({
         <div>
           <h2>业务口径余额矩阵与 AC / OCI / TPL 对账</h2>
         </div>
-        <p>报告月 {currentMonth} / 较上月与较年初</p>
+        <p>报告月 {currentMonth} / 基期 {months[0]?.report_month ?? EM_DASH}</p>
       </header>
 
       <div className="balance-movement-business-matrix__scope">
@@ -61,7 +61,7 @@ export function BusinessBalanceMatrixSection({
           <span>
             {accountingSnapshotsAreNonAdjacent
               ? "相邻快照非连续，环比结论保持隐藏。"
-              : `当前覆盖 ${months.length} 个月度；若仅含两个月度，较年初按序列首月解释。`}
+              : `当前覆盖 ${months.length} 个月度；基期为序列首月 ${months[0]?.report_month ?? EM_DASH}。`}
           </span>
         </p>
       </div>
@@ -80,7 +80,7 @@ export function BusinessBalanceMatrixSection({
                 </th>
               ))}
               <th scope="col">较上月</th>
-              <th scope="col">较年初</th>
+              <th scope="col">较基期 {months[0] ? formatTrendMonthLabel(months[0].report_month) : EM_DASH}</th>
             </tr>
           </thead>
           <tbody>
@@ -204,7 +204,7 @@ export function SupplementaryBusinessRowsTable({
                 </th>
               ))}
               <th scope="col">较上月</th>
-              <th scope="col">较年初</th>
+              <th scope="col">较基期 {months[0] ? formatTrendMonthLabel(months[0].report_month) : EM_DASH}</th>
             </tr>
           </thead>
           <tbody>
@@ -271,7 +271,7 @@ export function ZqtzAssetDetailTable({
                 </th>
               ))}
               <th scope="col">较上月</th>
-              <th scope="col">较年初</th>
+              <th scope="col">较基期 {businessMatrixMonths[0] ? formatTrendMonthLabel(businessMatrixMonths[0].report_month) : EM_DASH}</th>
             </tr>
           </thead>
           <tbody>

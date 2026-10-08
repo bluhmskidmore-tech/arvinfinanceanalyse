@@ -4,15 +4,16 @@ import { Alert, Button, Input, Modal, Typography } from "antd";
 
 import type { KpiMetricWithValue } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { observeKpiWrite, type KpiPendingWriteProps, type PendingKpiWrite } from "./pendingKpiWrite";
 import { EM_DASH } from "../../../utils/format";
 
 const { Text } = Typography;
 
-export type MetricEditModalProps = {
+export type MetricEditModalProps = KpiPendingWriteProps & {
   open: boolean;
   onClose: () => void;
   metric: KpiMetricWithValue | null;
-  asOfDate: string;
+  asOfDate?: string;
   onSaveSuccess: () => void;
 };
 
@@ -22,6 +23,8 @@ export function MetricEditModal({
   metric,
   asOfDate,
   onSaveSuccess,
+  writePending = false,
+  onUnconfirmedWrite,
 }: MetricEditModalProps) {
   const client = useApiClient();
   const [targetValue, setTargetValue] = React.useState("");
@@ -30,8 +33,16 @@ export function MetricEditModal({
   const [actualText, setActualText] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const requestSeq = React.useRef(0);
+  const pending = React.useRef(false);
+  const pendingWrite = React.useRef<PendingKpiWrite | null>(null);
+  const writeDate = metric?.as_of_date || asOfDate;
 
   React.useEffect(() => {
+    requestSeq.current += 1;
+    pending.current = false;
+    pendingWrite.current = null;
+    setSaving(false);
     if (metric && open) {
       setTargetValue(metric.target_value || "");
       setActualValue(metric.actual_value || "");
@@ -39,26 +50,46 @@ export function MetricEditModal({
       setActualText(metric.actual_text || "");
       setError(null);
     }
-  }, [metric, open]);
+    return () => { requestSeq.current += 1; };
+  }, [metric, open, asOfDate]);
 
   const handleSave = React.useCallback(async () => {
-    if (!metric) return;
+    if (!open || !metric || !writeDate || pending.current || writePending) return;
+    pending.current = true;
+    const requestId = ++requestSeq.current;
     setSaving(true);
     setError(null);
     try {
-      await client.updateKpiValue(metric.value_id || 0, metric.metric_id, asOfDate, {
+      const operation = client.updateKpiValue(metric.value_id || 0, metric.metric_id, writeDate, {
         target_value: targetValue || undefined,
         actual_value: actualValue || undefined,
         progress_pct: progressPct || undefined,
         actual_text: actualText || undefined,
       });
-      onSaveSuccess();
+      pendingWrite.current = observeKpiWrite(operation);
+      await operation;
+      if (requestId === requestSeq.current) onSaveSuccess();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      if (requestId === requestSeq.current) {
+        if (pendingWrite.current) onUnconfirmedWrite?.(pendingWrite.current);
+        setError(err instanceof Error ? err.message : "保存结果尚未确认");
+      }
     } finally {
-      setSaving(false);
+      if (requestId === requestSeq.current) {
+        pending.current = false;
+        setSaving(false);
+      }
     }
-  }, [client, metric, asOfDate, targetValue, actualValue, progressPct, actualText, onSaveSuccess]);
+  }, [client, metric, writeDate, targetValue, actualValue, progressPct, actualText, onSaveSuccess, open, writePending, onUnconfirmedWrite]);
+
+  const stopWaiting = () => {
+    const write = pendingWrite.current;
+    if (!write || !onUnconfirmedWrite) return;
+    pendingWrite.current = null;
+    requestSeq.current += 1;
+    onUnconfirmedWrite(write);
+    onClose();
+  };
 
   if (!metric) return null;
 
@@ -84,18 +115,31 @@ export function MetricEditModal({
         </div>
       }
       open={open}
-      onCancel={onClose}
+      closable={!saving}
+      maskClosable={!saving}
+      keyboard={!saving}
+      onCancel={() => { if (!pending.current) onClose(); }}
       footer={[
+        saving && onUnconfirmedWrite ? <Button key="stop" onClick={stopWaiting}>停止等待</Button> : null,
         <Button key="c" onClick={onClose} disabled={saving}>
           取消
         </Button>,
-        <Button key="s" type="primary" loading={saving} icon={<SaveOutlined />} onClick={() => void handleSave()}>
+        <Button key="s" type="primary" loading={saving} disabled={!writeDate || writePending} icon={<SaveOutlined />} onClick={() => void handleSave()}>
           保存
         </Button>,
       ]}
       width={560}
     >
+      {((saving) && onUnconfirmedWrite) || writePending ? (
+        <Alert type="warning" showIcon message={writePending
+          ? "前一笔写入结果尚未确认，请关闭窗口后刷新核实，勿重复提交。"
+          : "停止等待只关闭窗口，不会取消服务端写入；结果仍需核实。"} />
+      ) : null}
       <div className="kpi-modal-v2__summary">
+        <div className="kpi-modal-v2__summary-row">
+          <Text type="secondary">写入日期 </Text>
+          <Text>{writeDate || "未确定，请切换到日视图选择日期"}</Text>
+        </div>
         <div className="kpi-modal-v2__summary-row">
           <Text type="secondary">指标代码 </Text>
           <Text code>{metric.metric_code}</Text>

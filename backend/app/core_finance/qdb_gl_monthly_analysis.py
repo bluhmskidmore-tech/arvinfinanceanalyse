@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
+from collections.abc import Callable
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
@@ -842,7 +843,7 @@ def build_11d_top_rows(
     cfg = analysis_config if analysis_config is not None else CONFIG
     filtered = [row for row in rows if abs(_as_decimal(row.get("月日均")) or ZERO) > cfg["MIN_AMOUNT_11D"] * ONE_HUNDRED_MILLION]
     ordered = sorted(filtered, key=lambda row: abs(_as_decimal(row.get("偏离%")) or ZERO), reverse=True)[:50]
-    return [{"科目代码": row["科目代码"], "科目名称": row.get("科目名称", ""), "期末余额": _display_number(_to_yi(_as_decimal(row.get("期末余额")) or ZERO)), "月日均": _display_number(_to_yi(_as_decimal(row.get("月日均")) or ZERO)), "年日均": _display_number(_to_yi(_as_decimal(row.get("年日均")) or ZERO)), "偏离额": _display_number(_to_yi(_as_decimal(row.get("偏离额")) or ZERO)), "偏离%": _display_number(_as_decimal(row.get("偏离%"))), "趋势额": _display_number(_to_yi(_as_decimal(row.get("趋势额")) or ZERO)), "趋势%": _display_number(_as_decimal(row.get("趋势%")))} for row in ordered]
+    return [{"科目代码": row["科目代码"], "科目名称": row.get("科目名称", ""), "期末余额": _display_number(_to_yi(_as_decimal(row.get("期末余额")) or ZERO)), "月日均": _display_yi(_as_decimal(row.get("月日均"))), "年日均": _display_yi(_as_decimal(row.get("年日均"))), "偏离额": _display_yi(_as_decimal(row.get("偏离额"))), "偏离%": _display_number(_as_decimal(row.get("偏离%"))), "趋势额": _display_yi(_as_decimal(row.get("趋势额"))), "趋势%": _display_number(_as_decimal(row.get("趋势%")))} for row in ordered]
 
 
 def _build_segment_base_scale_sheet(
@@ -873,41 +874,93 @@ def _build_segment_base_scale_sheet(
     )
 
 
-def _segment_base_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
-    rows_3 = {row["科目代码"]: row for row in merged_data.get("3位", [])}
-    rows_11 = list(merged_data.get("11位", []))
-    if not rows_3 or not rows_11:
-        return []
+def _sum_scale_values(*values: Decimal | None) -> Decimal | None:
+    # A full signed total is unavailable if any present component is unknown.
+    return None if any(value is None for value in values) else sum((value for value in values if value is not None), ZERO)
 
-    def value_3d(code: str, field: str) -> Decimal | None:
-        row = rows_3.get(code)
-        return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
 
-    def value_11d(code: str, field: str) -> Decimal | None:
-        for row in rows_11:
-            if row["科目代码"] == code:
-                return _as_decimal(row.get(field)) or ZERO
-        return ZERO
+def _negate_scale_value(value: Decimal | None) -> Decimal | None:
+    return None if value is None else -value
 
-    def sum_11d(prefix: str, field: str) -> Decimal | None:
-        return sum(
-            (_as_decimal(row.get(field)) or ZERO for row in rows_11 if row["科目代码"].startswith(prefix)),
-            ZERO,
+
+class _ScaleInputs:
+    """Nullable readers for scale rows, retaining their existing source choices."""
+
+    def __init__(self, merged_data: dict[str, Any], *, segment: bool = False) -> None:
+        self.rows_3 = {row["科目代码"]: row for row in merged_data.get("3位", [])}
+        self.avg_rows_3 = {row["科目代码"]: row for row in merged_data.get("日均_3位", [])}
+        self.avg_rows_5 = {row["科目代码"]: row for row in merged_data.get("日均_5位", [])}
+        self.rows_11 = list(merged_data.get("11位", []))
+        self.segment = segment
+        self.missing: set[str] = set()
+
+    def _value(self, row: dict[str, Any] | None, code: str, field: str, *, present: bool = False) -> Decimal | None:
+        if row is None and not present:
+            return ZERO  # Keep the established entirely-absent-business convention.
+        value = _as_decimal((row or {}).get(field))
+        if value is None:
+            self.missing.add(f"{code} {field}")
+        return value
+
+    def value_3d(self, code: str, field: str) -> Decimal | None:
+        row = self.rows_3.get(code)
+        if field in {"年日均", "月日均"}:
+            average_row = self.avg_rows_3.get(code)
+            if not self.segment and average_row is not None:
+                row = average_row
+            elif row is None and average_row is not None and _as_decimal(average_row.get(field)) is None:
+                # Segment formulas retain GL-backed values, but another-period
+                # average proves this missing field is not an absent business.
+                return self._value(average_row, code, field)
+        return self._value(row, code, field)
+
+    def value_11d(self, code: str, field: str) -> Decimal | None:
+        row = next((row for row in self.rows_11 if row["科目代码"] == code), None)
+        return self._value(row, code, field)
+
+    def sum_11d(self, prefix: str, field: str) -> Decimal | None:
+        return _sum_scale_values(*(
+            self._value(row, row["科目代码"], field)
+            for row in self.rows_11 if row["科目代码"].startswith(prefix)
+        ))
+
+    def value_5d(self, code: str, field: str) -> Decimal | None:
+        if field in {"年日均", "月日均"}:
+            return self._value(
+                self.avg_rows_5.get(code), code, field,
+                present=any(row["科目代码"].startswith(code) for row in self.rows_11),
+            )
+        return self.sum_11d(code, field)
+
+    def amount_row(self, name: str, calculate: Callable[[str], Decimal | None], source: str) -> dict[str, Any]:
+        self.missing.clear()
+        row = {"指标": name, "时点余额": calculate("期末余额"),
+               "年日均": calculate("年日均"), "月日均": calculate("月日均")}
+        row["口径来源"] = (
+            f"source_missing: {', '.join(sorted(self.missing))}；{source}"
+            if self.missing else source
         )
+        return row
 
-    def sum_or_none(*values: Decimal | None) -> Decimal | None:
-        if any(value is None for value in values):
-            return None
-        return sum((value for value in values if value is not None), ZERO)
 
-    def amount_row(name: str, spot: Decimal | None, year_avg: Decimal | None, month_avg: Decimal | None, source: str) -> dict[str, Any]:
-        return {
-            "指标": name,
-            "时点余额": spot,
-            "年日均": year_avg,
-            "月日均": month_avg,
-            "口径来源": source,
-        }
+def _scale_dependency_source(source: str, rows: list[dict[str, Any]], fields: tuple[str, ...]) -> str:
+    missing_sources = [
+        str(row["口径来源"]) for row in rows
+        if any(row.get(field) is None for field in fields)
+        and str(row.get("口径来源") or "").startswith("source_missing:")
+    ]
+    return "; ".join(dict.fromkeys(missing_sources)) if missing_sources else source
+
+
+def _segment_base_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
+    inputs = _ScaleInputs(merged_data, segment=True)
+    if not inputs.rows_3 or not inputs.rows_11:
+        return []
+    value_3d = inputs.value_3d
+    value_11d = inputs.value_11d
+    sum_11d = inputs.sum_11d
+    sum_or_none = _sum_scale_values
+    negate = _negate_scale_value
 
     def company_deposit(field: str) -> Decimal | None:
         company_demand_203 = value_3d("203", field) if field == "期末余额" else value_11d("20301000001", field)
@@ -917,7 +970,7 @@ def _segment_base_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, 
             company_demand_203,
             company_demand_204,
             value_3d("202", field),
-            None if sum_11d("20250", field) is None else -sum_11d("20250", field),
+            negate(sum_11d("20250", field)),
             value_3d("205", field),
             value_3d("225", field),
             value_3d("243", field),
@@ -943,7 +996,7 @@ def _segment_base_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, 
             value_11d("13003000002", field),
             value_3d("132", field),
             value_3d("136", field),
-            None if sum_11d("13604", field) is None else -sum_11d("13604", field),
+            negate(sum_11d("13604", field)),
             value_3d("129", field),
         )
 
@@ -958,37 +1011,15 @@ def _segment_base_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, 
     def credit_card(field: str) -> Decimal | None:
         return sum_11d("13604", field)
 
-    company_spot = company_deposit("期末余额")
-    company_year = company_deposit("年日均")
-    company_month = company_deposit("月日均")
-    savings_spot = savings_deposit("期末余额")
-    savings_year = savings_deposit("年日均")
-    savings_month = savings_deposit("月日均")
-    corporate_loan_spot = corporate_loan("期末余额")
-    corporate_loan_year = corporate_loan("年日均")
-    corporate_loan_month = corporate_loan("月日均")
-    personal_loan_spot = personal_loan("期末余额")
-    personal_loan_year = personal_loan("年日均")
-    personal_loan_month = personal_loan("月日均")
-    credit_card_spot = credit_card("期末余额")
-    credit_card_year = credit_card("年日均")
-    credit_card_month = credit_card("月日均")
-
     return [
-        amount_row("公司存款合计", None if company_spot is None else -company_spot, None if company_year is None else -company_year, None if company_month is None else -company_month, SEGMENT_BASE_SCALE_SOURCE),
-        amount_row("储蓄存款合计", savings_spot, savings_year, savings_month, SEGMENT_BASE_SCALE_SOURCE),
-        amount_row("公司贷款合计", corporate_loan_spot, corporate_loan_year, corporate_loan_month, SEGMENT_BASE_SCALE_SOURCE),
-        amount_row("个人贷款合计", personal_loan_spot, personal_loan_year, personal_loan_month, SEGMENT_BASE_SCALE_SOURCE),
+        inputs.amount_row("公司存款合计", lambda field: negate(company_deposit(field)), SEGMENT_BASE_SCALE_SOURCE),
+        inputs.amount_row("储蓄存款合计", savings_deposit, SEGMENT_BASE_SCALE_SOURCE),
+        inputs.amount_row("公司贷款合计", corporate_loan, SEGMENT_BASE_SCALE_SOURCE),
+        inputs.amount_row("个人贷款合计", personal_loan, SEGMENT_BASE_SCALE_SOURCE),
         # 标准总账对账-日均源缺少 80297 微贷金融支行专段，不能从 merged_data 正确拆出微贷中心。
-        amount_row("微贷中心", None, None, None, SEGMENT_BASE_SCALE_MICRO_LOAN_MISSING_SOURCE),
-        amount_row("信用卡", credit_card_spot, credit_card_year, credit_card_month, SEGMENT_BASE_SCALE_SOURCE),
-        amount_row(
-            "存款合计",
-            None if company_spot is None or savings_spot is None else -company_spot + savings_spot,
-            None if company_year is None or savings_year is None else -company_year + savings_year,
-            None if company_month is None or savings_month is None else -company_month + savings_month,
-            SEGMENT_BASE_SCALE_SOURCE,
-        ),
+        inputs.amount_row("微贷中心", lambda field: None, SEGMENT_BASE_SCALE_MICRO_LOAN_MISSING_SOURCE),
+        inputs.amount_row("信用卡", credit_card, SEGMENT_BASE_SCALE_SOURCE),
+        inputs.amount_row("存款合计", lambda field: sum_or_none(negate(company_deposit(field)), savings_deposit(field)), SEGMENT_BASE_SCALE_SOURCE),
     ]
 
 
@@ -1025,14 +1056,10 @@ def _build_segment_scale_compare_sheet(
             current_value = _as_decimal(current_row.get(field))
             comparison_value = _as_decimal(comparison_row.get(field)) if comparison_row else None
             delta = None if current_value is None or comparison_value is None else current_value - comparison_value
-            current_source = str(current_row.get("口径来源") or "")
-            comparison_source = str((comparison_row or {}).get("口径来源") or "")
-            source = SEGMENT_SCALE_COMPARE_SOURCE
-            if current_source.startswith("source_missing:"):
-                source = current_source
-            elif comparison_source.startswith("source_missing:"):
-                source = comparison_source
-            elif comparison_row is None:
+            source = _scale_dependency_source(
+                SEGMENT_SCALE_COMPARE_SOURCE, [current_row, comparison_row or {}], (field,),
+            )
+            if comparison_row is None:
                 source = f"source_missing: {comparison_caption}缺少同名分部规模行"
             rows.append(
                 {
@@ -1077,6 +1104,9 @@ def _with_deposit_component_residual_disclosure(
             return None
         return sum(component_values, ZERO) - total_value
 
+    residual_source = _scale_dependency_source(source, [total_row, *component_rows], ("时点余额", "年日均", "月日均"))
+    if residual_source != source:
+        residual_source = f"{residual_source}；{source}"
     rows = list(raw_rows)
     rows.insert(
         rows.index(total_row) + 1,
@@ -1085,7 +1115,7 @@ def _with_deposit_component_residual_disclosure(
             "时点余额": residual("时点余额"),
             "年日均": residual("年日均"),
             "月日均": residual("月日均"),
-            "口径来源": source,
+            "口径来源": residual_source,
         },
     )
     return rows
@@ -1127,104 +1157,58 @@ def _build_company_scale_sheet(
 
 
 def _company_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
-    rows_3 = {row["科目代码"]: row for row in merged_data.get("3位", [])}
-    avg_rows_3 = {row["科目代码"]: row for row in merged_data.get("日均_3位", [])}
-    avg_rows_5 = {row["科目代码"]: row for row in merged_data.get("日均_5位", [])}
-    rows_11 = list(merged_data.get("11位", []))
-    if not rows_3 or not rows_11:
+    inputs = _ScaleInputs(merged_data)
+    if not inputs.rows_3 or not inputs.rows_11:
         return []
+    value_3d = inputs.value_3d
+    value_11d = inputs.value_11d
+    value_5d = inputs.value_5d
+    sum_or_none = _sum_scale_values
+    negate = _negate_scale_value
 
-    def value_3d(code: str, field: str) -> Decimal:
-        if field in {"年日均", "月日均"}:
-            avg_row = avg_rows_3.get(code)
-            if avg_row is not None:
-                return _as_decimal(avg_row.get(field)) or ZERO
-        row = rows_3.get(code)
-        return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
-
-    def value_11d(code: str, field: str) -> Decimal:
-        for row in rows_11:
-            if row["科目代码"] == code:
-                return _as_decimal(row.get(field)) or ZERO
-        return ZERO
-
-    def value_5d(code: str, field: str) -> Decimal:
-        if field in {"年日均", "月日均"}:
-            row = avg_rows_5.get(code)
-            return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
-        return sum(
-            (_as_decimal(row.get(field)) or ZERO for row in rows_11 if row["科目代码"].startswith(code)),
-            ZERO,
-        )
-
-    def company_demand_deposit(field: str) -> Decimal:
+    def company_demand_deposit(field: str) -> Decimal | None:
         company_203 = value_3d("203", field) if field == "期末余额" else value_11d("20301000001", field)
         company_204 = value_3d("204", field) if field == "期末余额" else value_11d("20401000001", field)
-        return -(value_3d("201", field) + company_203 + company_204 + value_3d("243", field))
+        return negate(sum_or_none(value_3d("201", field), company_203, company_204, value_3d("243", field)))
 
-    def company_term_deposit(field: str) -> Decimal:
-        return -(
-            value_3d("202", field)
-            - value_5d("20250", field)
-            + value_3d("205", field)
-            + value_3d("225", field)
-            + value_3d("244", field)
-            + value_3d("251", field)
-        )
+    def company_term_deposit(field: str) -> Decimal | None:
+        return negate(sum_or_none(
+            value_3d("202", field), negate(value_5d("20250", field)),
+            value_3d("205", field), value_3d("225", field), value_3d("244", field), value_3d("251", field),
+        ))
 
-    def company_structured_deposit(field: str) -> Decimal:
-        return -value_5d("21601", field)
+    def company_structured_deposit(field: str) -> Decimal | None:
+        return negate(value_5d("21601", field))
 
-    def company_deposit_total(field: str) -> Decimal:
+    def company_deposit_total(field: str) -> Decimal | None:
         company_203 = value_3d("203", field) if field == "期末余额" else value_11d("20301000001", field)
         company_204 = value_3d("204", field) if field == "期末余额" else value_11d("20401000001", field)
-        return -(
-            value_3d("201", field)
-            + value_3d("202", field)
-            + company_203
-            + company_204
-            - value_5d("20250", field)
-            + value_3d("205", field)
-            + value_3d("225", field)
-            + value_3d("243", field)
-            + value_3d("244", field)
-            + value_3d("251", field)
-            + value_11d("21601020001", field)
+        return negate(sum_or_none(
+            value_3d("201", field), value_3d("202", field), company_203, company_204,
+            negate(value_5d("20250", field)), value_3d("205", field), value_3d("225", field),
+            value_3d("243", field), value_3d("244", field), value_3d("251", field), value_11d("21601020001", field),
+        ))
+
+    def company_general_loan(field: str) -> Decimal | None:
+        return sum_or_none(
+            value_3d("123", field), value_11d("13001000002", field), value_11d("13003000002", field),
+            value_3d("132", field), value_3d("136", field), negate(value_5d("13604", field)),
         )
 
-    def company_general_loan(field: str) -> Decimal:
-        return (
-            value_3d("123", field)
-            + value_11d("13001000002", field)
-            + value_11d("13003000002", field)
-            + value_3d("132", field)
-            + value_3d("136", field)
-            - value_5d("13604", field)
-        )
-
-    def company_bill(field: str) -> Decimal:
+    def company_bill(field: str) -> Decimal | None:
         return value_3d("129", field)
 
-    def company_loan_total(field: str) -> Decimal:
-        return company_general_loan(field) + company_bill(field)
-
-    def amount_row(name: str, spot: Decimal, year_avg: Decimal, month_avg: Decimal) -> dict[str, Any]:
-        return {
-            "指标": name,
-            "时点余额": spot,
-            "年日均": year_avg,
-            "月日均": month_avg,
-            "口径来源": COMPANY_SCALE_SOURCE,
-        }
+    def company_loan_total(field: str) -> Decimal | None:
+        return sum_or_none(company_general_loan(field), company_bill(field))
 
     return [
-        amount_row("公司存款-活期", company_demand_deposit("期末余额"), company_demand_deposit("年日均"), company_demand_deposit("月日均")),
-        amount_row("公司存款-定期", company_term_deposit("期末余额"), company_term_deposit("年日均"), company_term_deposit("月日均")),
-        amount_row("公司存款-结构性", company_structured_deposit("期末余额"), company_structured_deposit("年日均"), company_structured_deposit("月日均")),
-        amount_row("公司存款合计", company_deposit_total("期末余额"), company_deposit_total("年日均"), company_deposit_total("月日均")),
-        amount_row("公司贷款-一般贷款", company_general_loan("期末余额"), company_general_loan("年日均"), company_general_loan("月日均")),
-        amount_row("公司贷款-票据", company_bill("期末余额"), company_bill("年日均"), company_bill("月日均")),
-        amount_row("公司贷款合计", company_loan_total("期末余额"), company_loan_total("年日均"), company_loan_total("月日均")),
+        inputs.amount_row("公司存款-活期", company_demand_deposit, COMPANY_SCALE_SOURCE),
+        inputs.amount_row("公司存款-定期", company_term_deposit, COMPANY_SCALE_SOURCE),
+        inputs.amount_row("公司存款-结构性", company_structured_deposit, COMPANY_SCALE_SOURCE),
+        inputs.amount_row("公司存款合计", company_deposit_total, COMPANY_SCALE_SOURCE),
+        inputs.amount_row("公司贷款-一般贷款", company_general_loan, COMPANY_SCALE_SOURCE),
+        inputs.amount_row("公司贷款-票据", company_bill, COMPANY_SCALE_SOURCE),
+        inputs.amount_row("公司贷款合计", company_loan_total, COMPANY_SCALE_SOURCE),
     ]
 
 
@@ -1261,7 +1245,9 @@ def _build_company_scale_compare_sheet(
             current_value = _as_decimal(current_row.get(field))
             comparison_value = _as_decimal(comparison_row.get(field)) if comparison_row else None
             delta = None if current_value is None or comparison_value is None else current_value - comparison_value
-            source = COMPANY_SCALE_COMPARE_SOURCE
+            source = _scale_dependency_source(
+                COMPANY_SCALE_COMPARE_SOURCE, [current_row, comparison_row or {}], (field,),
+            )
             if comparison_row is None:
                 source = "source_missing: 对比期缺少同名公司规模行"
             rows.append(
@@ -1321,78 +1307,45 @@ def _build_retail_scale_sheet(
 
 
 def _retail_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
-    rows_3 = {row["科目代码"]: row for row in merged_data.get("3位", [])}
-    avg_rows_3 = {row["科目代码"]: row for row in merged_data.get("日均_3位", [])}
-    avg_rows_5 = {row["科目代码"]: row for row in merged_data.get("日均_5位", [])}
-    rows_11 = list(merged_data.get("11位", []))
-    if not rows_3 or not rows_11:
+    inputs = _ScaleInputs(merged_data)
+    if not inputs.rows_3 or not inputs.rows_11:
         return []
+    value_3d = inputs.value_3d
+    value_11d = inputs.value_11d
+    value_5d = inputs.value_5d
+    sum_or_none = _sum_scale_values
+    negate = _negate_scale_value
 
-    def value_3d(code: str, field: str) -> Decimal:
-        if field in {"年日均", "月日均"}:
-            avg_row = avg_rows_3.get(code)
-            if avg_row is not None:
-                return _as_decimal(avg_row.get(field)) or ZERO
-        row = rows_3.get(code)
-        return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
+    def savings_demand_deposit(field: str) -> Decimal | None:
+        return negate(sum_or_none(value_3d("211", field), value_5d("21702", field)))
 
-    def value_11d(code: str, field: str) -> Decimal:
-        for row in rows_11:
-            if row["科目代码"] == code:
-                return _as_decimal(row.get(field)) or ZERO
-        return ZERO
+    def savings_term_deposit(field: str) -> Decimal | None:
+        return negate(sum_or_none(value_3d("215", field), value_5d("20250", field)))
 
-    def value_5d(code: str, field: str) -> Decimal:
-        if field in {"年日均", "月日均"}:
-            row = avg_rows_5.get(code)
-            return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
-        return sum(
-            (_as_decimal(row.get(field)) or ZERO for row in rows_11 if row["科目代码"].startswith(code)),
-            ZERO,
-        )
+    def savings_structured_deposit(field: str) -> Decimal | None:
+        return negate(value_5d("21602", field))
 
-    def savings_demand_deposit(field: str) -> Decimal:
-        return -(value_3d("211", field) + value_5d("21702", field))
+    def savings_deposit_total(field: str) -> Decimal | None:
+        return negate(sum_or_none(
+            value_5d("20250", field), value_3d("211", field), value_3d("215", field),
+            value_5d("21702", field), value_11d("21602020001", field),
+        ))
 
-    def savings_term_deposit(field: str) -> Decimal:
-        return -(value_3d("215", field) + value_5d("20250", field))
+    def personal_loan_total(field: str) -> Decimal | None:
+        return sum_or_none(value_3d("122", field), value_11d("13001000001", field), value_11d("13003000001", field), value_5d("13604", field))
 
-    def savings_structured_deposit(field: str) -> Decimal:
-        return -value_5d("21602", field)
-
-    def savings_deposit_total(field: str) -> Decimal:
-        return -(
-            value_5d("20250", field)
-            + value_3d("211", field)
-            + value_3d("215", field)
-            + value_5d("21702", field)
-            + value_11d("21602020001", field)
-        )
-
-    def personal_loan_total(field: str) -> Decimal:
-        return value_3d("122", field) + value_11d("13001000001", field) + value_11d("13003000001", field) + value_5d("13604", field)
-
-    def credit_card(field: str) -> Decimal:
+    def credit_card(field: str) -> Decimal | None:
         return value_5d("13604", field)
 
-    def amount_row(name: str, spot: Decimal | None, year_avg: Decimal | None, month_avg: Decimal | None, source: str) -> dict[str, Any]:
-        return {
-            "指标": name,
-            "时点余额": spot,
-            "年日均": year_avg,
-            "月日均": month_avg,
-            "口径来源": source,
-        }
-
     return [
-        amount_row("零售存款-活期", savings_demand_deposit("期末余额"), savings_demand_deposit("年日均"), savings_demand_deposit("月日均"), RETAIL_SCALE_SOURCE),
-        amount_row("零售存款-定期", savings_term_deposit("期末余额"), savings_term_deposit("年日均"), savings_term_deposit("月日均"), RETAIL_SCALE_SOURCE),
-        amount_row("零售存款-结构性", savings_structured_deposit("期末余额"), savings_structured_deposit("年日均"), savings_structured_deposit("月日均"), RETAIL_SCALE_SOURCE),
-        amount_row("零售存款合计", savings_deposit_total("期末余额"), savings_deposit_total("年日均"), savings_deposit_total("月日均"), RETAIL_SCALE_SOURCE),
-        amount_row("零售贷款-分支行个贷", None, None, None, RETAIL_SCALE_BRANCH_LOAN_MISSING_SOURCE),
-        amount_row("参考：微贷中心", None, None, None, SEGMENT_BASE_SCALE_MICRO_LOAN_MISSING_SOURCE),
-        amount_row("参考：信用卡", credit_card("期末余额"), credit_card("年日均"), credit_card("月日均"), RETAIL_SCALE_SOURCE),
-        amount_row("参考：个人贷款合计", personal_loan_total("期末余额"), personal_loan_total("年日均"), personal_loan_total("月日均"), RETAIL_SCALE_SOURCE),
+        inputs.amount_row("零售存款-活期", savings_demand_deposit, RETAIL_SCALE_SOURCE),
+        inputs.amount_row("零售存款-定期", savings_term_deposit, RETAIL_SCALE_SOURCE),
+        inputs.amount_row("零售存款-结构性", savings_structured_deposit, RETAIL_SCALE_SOURCE),
+        inputs.amount_row("零售存款合计", savings_deposit_total, RETAIL_SCALE_SOURCE),
+        inputs.amount_row("零售贷款-分支行个贷", lambda field: None, RETAIL_SCALE_BRANCH_LOAN_MISSING_SOURCE),
+        inputs.amount_row("参考：微贷中心", lambda field: None, SEGMENT_BASE_SCALE_MICRO_LOAN_MISSING_SOURCE),
+        inputs.amount_row("参考：信用卡", credit_card, RETAIL_SCALE_SOURCE),
+        inputs.amount_row("参考：个人贷款合计", personal_loan_total, RETAIL_SCALE_SOURCE),
     ]
 
 
@@ -1429,14 +1382,10 @@ def _build_retail_scale_compare_sheet(
             current_value = _as_decimal(current_row.get(field))
             comparison_value = _as_decimal(comparison_row.get(field)) if comparison_row else None
             delta = None if current_value is None or comparison_value is None else current_value - comparison_value
-            current_source = str(current_row.get("口径来源") or "")
-            comparison_source = str((comparison_row or {}).get("口径来源") or "")
-            source = RETAIL_SCALE_COMPARE_SOURCE
-            if current_source.startswith("source_missing:"):
-                source = current_source
-            elif comparison_source.startswith("source_missing:"):
-                source = comparison_source
-            elif comparison_row is None:
+            source = _scale_dependency_source(
+                RETAIL_SCALE_COMPARE_SOURCE, [current_row, comparison_row or {}], (field,),
+            )
+            if comparison_row is None:
                 source = "source_missing: 对比期缺少同名零售规模行"
             rows.append(
                 {
@@ -1488,75 +1437,43 @@ def _build_financial_market_scale_sheet(
 
 
 def _financial_market_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
-    rows_3 = {row["科目代码"]: row for row in merged_data.get("3位", [])}
-    avg_rows_3 = {row["科目代码"]: row for row in merged_data.get("日均_3位", [])}
-    avg_rows_5 = {row["科目代码"]: row for row in merged_data.get("日均_5位", [])}
-    rows_11 = list(merged_data.get("11位", []))
-    if not rows_3 or not rows_11:
+    inputs = _ScaleInputs(merged_data)
+    if not inputs.rows_3 or not inputs.rows_11:
         return []
+    value_3d = inputs.value_3d
+    value_5d = inputs.value_5d
+    sum_11d = inputs.sum_11d
+    sum_or_none = _sum_scale_values
+    negate = _negate_scale_value
 
-    def value_3d(code: str, field: str) -> Decimal:
-        if field in {"年日均", "月日均"}:
-            avg_row = avg_rows_3.get(code)
-            if avg_row is not None:
-                return _as_decimal(avg_row.get(field)) or ZERO
-        row = rows_3.get(code)
-        return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
+    def sum_3d(codes: tuple[str, ...], field: str) -> Decimal | None:
+        return sum_or_none(*(value_3d(code, field) for code in codes))
 
-    def sum_3d(codes: tuple[str, ...], field: str) -> Decimal:
-        return sum((value_3d(code, field) for code in codes), ZERO)
-
-    def sum_11d(prefix: str, field: str) -> Decimal:
-        return sum(
-            (_as_decimal(row.get(field)) or ZERO for row in rows_11 if row["科目代码"].startswith(prefix)),
-            ZERO,
+    def interest_earning_bonds(field: str) -> Decimal | None:
+        return sum_or_none(
+            sum_3d(("142", "143", "144"), field),
+            negate(sum_11d("14301010001", field)), negate(sum_11d("14301010002", field)),
         )
 
-    def value_5d(code: str, field: str) -> Decimal:
-        if field in {"年日均", "月日均"}:
-            row = avg_rows_5.get(code)
-            return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
-        # BAL-P1-01：时点余额复用 11 位科目前缀求和，使同业资产时点与年/月日均同口径扣减 14004/14005。
-        return sum_11d(code, field)
-
-    def interest_earning_bonds(field: str) -> Decimal:
-        return (
-            sum_3d(("142", "143", "144"), field)
-            - sum_11d("14301010001", field)
-            - sum_11d("14301010002", field)
-        )
-
-    def fvtpl(field: str) -> Decimal:
+    def fvtpl(field: str) -> Decimal | None:
         return value_3d("141", field)
 
-    def interbank_assets(field: str) -> Decimal:
-        return (
-            sum_3d(("120", "121", "140"), field)
-            - value_5d("14004", field)
-            - value_5d("14005", field)
+    def interbank_assets(field: str) -> Decimal | None:
+        return sum_or_none(
+            sum_3d(("120", "121", "140"), field), negate(value_5d("14004", field)), negate(value_5d("14005", field)),
         )
 
-    def interbank_liabilities(field: str) -> Decimal:
-        return -(
-            sum_3d(("234", "235", "241", "242", "255"), field)
-            + sum_11d("27205000001", field)
-            + sum_11d("27206000001", field)
-        )
-
-    def amount_row(name: str, spot: Decimal, year_avg: Decimal, month_avg: Decimal) -> dict[str, Any]:
-        return {
-            "指标": name,
-            "时点余额": spot,
-            "年日均": year_avg,
-            "月日均": month_avg,
-            "口径来源": FINANCIAL_MARKET_SCALE_SOURCE,
-        }
+    def interbank_liabilities(field: str) -> Decimal | None:
+        return negate(sum_or_none(
+            sum_3d(("234", "235", "241", "242", "255"), field),
+            sum_11d("27205000001", field), sum_11d("27206000001", field),
+        ))
 
     return [
-        amount_row("生息债券投资", interest_earning_bonds("期末余额"), interest_earning_bonds("年日均"), interest_earning_bonds("月日均")),
-        amount_row("FVTPL", fvtpl("期末余额"), fvtpl("年日均"), fvtpl("月日均")),
-        amount_row("同业资产", interbank_assets("期末余额"), interbank_assets("年日均"), interbank_assets("月日均")),
-        amount_row("同业负债", interbank_liabilities("期末余额"), interbank_liabilities("年日均"), interbank_liabilities("月日均")),
+        inputs.amount_row("生息债券投资", interest_earning_bonds, FINANCIAL_MARKET_SCALE_SOURCE),
+        inputs.amount_row("FVTPL", fvtpl, FINANCIAL_MARKET_SCALE_SOURCE),
+        inputs.amount_row("同业资产", interbank_assets, FINANCIAL_MARKET_SCALE_SOURCE),
+        inputs.amount_row("同业负债", interbank_liabilities, FINANCIAL_MARKET_SCALE_SOURCE),
     ]
 
 
@@ -1593,7 +1510,9 @@ def _build_financial_market_scale_compare_sheet(
             current_value = _as_decimal(current_row.get(field))
             comparison_value = _as_decimal(comparison_row.get(field)) if comparison_row else None
             delta = None if current_value is None or comparison_value is None else current_value - comparison_value
-            source = FINANCIAL_MARKET_SCALE_COMPARE_SOURCE
+            source = _scale_dependency_source(
+                FINANCIAL_MARKET_SCALE_COMPARE_SOURCE, [current_row, comparison_row or {}], (field,),
+            )
             if comparison_row is None:
                 source = "source_missing: 对比期缺少同名金融市场规模行"
             rows.append(
@@ -1729,7 +1648,7 @@ def _income_rate_raw_rows(*, report_month: str, merged_data: dict[str, Any]) -> 
             income_type="贷款利息收入",
             year_avg_scale=scale("公司贷款合计", company_rows),
             amount=company_loan_income,
-            source=INCOME_RATE_ANALYSIS_SOURCE,
+            source=_scale_dependency_source(INCOME_RATE_ANALYSIS_SOURCE, [company_rows.get("公司贷款合计", {})], ("年日均",)),
         ),
         amount_row(
             name="个人贷款利息收入",
@@ -1745,7 +1664,7 @@ def _income_rate_raw_rows(*, report_month: str, merged_data: dict[str, Any]) -> 
             income_type="存款利息支出",
             year_avg_scale=scale("公司存款合计", company_rows),
             amount=company_deposit_expense,
-            source=INCOME_RATE_ANALYSIS_SOURCE,
+            source=_scale_dependency_source(INCOME_RATE_ANALYSIS_SOURCE, [company_rows.get("公司存款合计", {})], ("年日均",)),
         ),
         amount_row(
             name="储蓄存款利息支出",
@@ -1753,7 +1672,7 @@ def _income_rate_raw_rows(*, report_month: str, merged_data: dict[str, Any]) -> 
             income_type="存款利息支出",
             year_avg_scale=scale("零售存款合计", retail_rows),
             amount=savings_deposit_expense,
-            source=INCOME_RATE_ANALYSIS_SOURCE,
+            source=_scale_dependency_source(INCOME_RATE_ANALYSIS_SOURCE, [retail_rows.get("零售存款合计", {})], ("年日均",)),
         ),
         amount_row(
             name="折现回拨",
@@ -2006,7 +1925,7 @@ def _deposit_interest_split_raw_rows(merged_data: dict[str, Any]) -> list[dict[s
             "年日均规模": scale(scale_metric, scale_rows, "年日均"),
             "月日均规模": scale(scale_metric, scale_rows, "月日均"),
             "年累计利息支出": amount,
-            "口径来源": DEPOSIT_INTEREST_SPLIT_SOURCE,
+            "口径来源": _scale_dependency_source(DEPOSIT_INTEREST_SPLIT_SOURCE, [scale_rows.get(scale_metric, {})], ("年日均", "月日均")),
         }
 
     company_demand = sum_11d("52101")
@@ -2032,7 +1951,7 @@ def _deposit_interest_split_raw_rows(merged_data: dict[str, Any]) -> list[dict[s
             "年日均规模": sum_scale("公司存款合计", company_rows, "零售存款合计", retail_rows, "年日均"),
             "月日均规模": sum_scale("公司存款合计", company_rows, "零售存款合计", retail_rows, "月日均"),
             "年累计利息支出": total_amount,
-            "口径来源": DEPOSIT_INTEREST_SPLIT_SOURCE,
+            "口径来源": _scale_dependency_source(DEPOSIT_INTEREST_SPLIT_SOURCE, [company_rows.get("公司存款合计", {}), retail_rows.get("零售存款合计", {})], ("年日均", "月日均")),
         },
     ]
 

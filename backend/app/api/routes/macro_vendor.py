@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from backend.app.api.deps import ensure_read_allowed
+from backend.app.core_finance.fx_rates import FxRateUnavailableError
 from backend.app.governance.settings import get_settings
 from backend.app.observability.perf_logging import timed_api_call
 from backend.app.observability.response_cache import (
@@ -19,6 +20,7 @@ from backend.app.services.macro_vendor_refresh_service import (
 )
 from backend.app.services.macro_vendor_service import (
     ChoiceMacroRefreshStatusUnavailableError,
+    FxAnalyticalReadError,
     choice_macro_formal_envelope,
     choice_macro_latest_envelope,
     choice_macro_refresh_status,
@@ -103,7 +105,17 @@ def fx_formal_status(auth: Annotated[AuthContext, Depends(get_auth_context)]) ->
 def fx_analytical(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
     _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
-    return fx_analytical_envelope(settings.duckdb_path)
+    try:
+        return fx_analytical_envelope(settings.duckdb_path)
+    except (FxRateUnavailableError, FxAnalyticalReadError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "fx_analytical_read_failed" if isinstance(exc, FxAnalyticalReadError) else "fx_analytical_unavailable",
+                "message": str(exc),
+                "error_message": str(exc),
+            },
+        ) from exc
 
 
 @router.get("/ui/market-data/tushare-supplement")
@@ -144,7 +156,17 @@ def market_data_coverage_summary(
 ) -> dict[str, object]:
     _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
-    return market_data_coverage_summary_envelope(settings.duckdb_path)
+    try:
+        return market_data_coverage_summary_envelope(settings.duckdb_path)
+    except (FxRateUnavailableError, FxAnalyticalReadError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "fx_analytical_read_failed" if isinstance(exc, FxAnalyticalReadError) else "fx_analytical_unavailable",
+                "message": str(exc),
+                "error_message": str(exc),
+            },
+        ) from exc
 
 
 @router.post("/ui/macro/choice-series/refresh")

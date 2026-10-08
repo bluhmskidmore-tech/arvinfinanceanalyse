@@ -1029,7 +1029,7 @@ def _equity_strategy_payload_data_status(
     elif any(status in {"complete", "degraded"} for status in data_statuses):
         status = "degraded"
     else:
-        status = "unavailable"
+        return {"status": "unavailable", "summary_count": len(summaries), "reason": "all_strategies_unavailable"}
     return {"status": status, "summary_count": len(summaries)}
 
 
@@ -1048,6 +1048,8 @@ def _equity_strategy_payload_warnings(strategy_data_status: dict[str, object]) -
         return []
     if strategy_data_status.get("reason") == "price_context_unavailable":
         return [_EQUITY_STRATEGY_PRICE_CONTEXT_UNAVAILABLE_WARNING]
+    if strategy_data_status.get("reason") == "all_strategies_unavailable":
+        return ["已返回策略说明，当前各策略均无可用结果；请查看对应策略的缺失证据。"]
     return [_EQUITY_STRATEGY_NO_SUMMARIES_WARNING]
 
 
@@ -1070,12 +1072,21 @@ def _real_equity_strategy_summaries(price_context: dict[str, object]) -> list[di
     if not isinstance(prices, pd.DataFrame):
         return []
 
-    moving_average = moving_average_strategy(prices)
-    mean_reversion = mean_reversion_momentum_strategy(prices)
     financials = price_context.get("financials")
     common_result = {
-        "data_status": "complete",
+        "data_status": "unavailable",
         "price_source": "choice_stock_daily_observation",
+        "price_basis": "raw_close",
+        "return_basis_status": "unverified",
+        "unavailable_reason": "return_basis_unverified",
+        "benchmark_status": "not_configured",
+        "final_value": None,
+        "sample_selection": "latest_date_turnover_top_n_lookback",
+        "price_gap_policy": "forward_fill_then_drop_incomplete_stocks",
+        "position_timing": "previous_close_position",
+        "dividend_treatment": "not_verified",
+        "transaction_costs": "not_included",
+        "execution_assumption": "close_signal_for_next_period_no_slippage",
         "as_of_date": price_context["as_of_date"],
         "stock_count": len(prices.columns),
         "observation_count": len(prices.index),
@@ -1084,32 +1095,23 @@ def _real_equity_strategy_summaries(price_context: dict[str, object]) -> list[di
         "vendor_versions": price_context["vendor_versions"],
     }
     return [
-        _strategy_summary(
-            key="moving_average",
-            label="移动均线策略",
-            metric_label="真实累计净值",
-            metric_value=round(float(moving_average.iloc[-1]), 4),
-            status="complete",
-            warnings=[],
-            evidence=[
-                "短均线上穿长均线时建仓，下穿或触发止损时退出。",
-                f"已接入 choice_stock_daily_observation，样本 {len(prices.columns)} 只股票、{len(prices.index)} 个交易日。",
-            ],
-            result={"final_value": round(float(moving_average.iloc[-1]), 6), **common_result},
-        ),
-        _strategy_summary(
-            key="mean_reversion_momentum",
-            label="均值回归 + 动量",
-            metric_label="真实累计净值",
-            metric_value=round(float(mean_reversion.iloc[-1]), 4),
-            status="complete",
-            warnings=[],
-            evidence=[
-                "低于均值的价格偏离需同时站上趋势均线才进入观察。",
-                f"已接入 choice_stock_daily_observation，最新交易日 {price_context['as_of_date']}。",
-            ],
-            result={"final_value": round(float(mean_reversion.iloc[-1]), 6), **common_result},
-        ),
+        *[
+            {
+                "key": key,
+                "label": label,
+                "group": "A股策略",
+                "status": "unavailable",
+                "tone": "missing",
+                "primary_metric": None,
+                "warnings": ["收益链未验证：原始收盘价缺少复权与股息证据，模拟累计净值不可用。"],
+                "evidence": [
+                    f"当前日成交额样本回看，{len(prices.columns)} 只股票、{len(prices.index)} 个交易日；缺价沿用前值。",
+                    "昨日收盘仓位计今日收益；不含成本和滑点；未配置比较基准。",
+                ],
+                "result": dict(common_result),
+            }
+            for key, label in (("moving_average", "移动均线策略"), ("mean_reversion_momentum", "均值回归 + 动量"))
+        ],
         _real_multi_factor_summary(price_context, prices=prices, financials=financials),
         _real_low_crowding_regime_multifactor_summary(
             price_context,

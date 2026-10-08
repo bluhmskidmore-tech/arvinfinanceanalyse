@@ -6648,23 +6648,31 @@ def test_pnl_v1_data_returns_v1_detail_formula_rows(tmp_path, monkeypatch):
         is_month_end = True
         fi_rows = [
             {
+                "report_date": report_date,
                 "instrument_code": "240001.IB",
                 "instrument_name": "Test FI",
                 "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "T",
                 "asset_class": "企业债",
                 "interest_income_514": Decimal("106.00"),
                 "fair_value_change_516": Decimal("3.00"),
                 "capital_gain_517": Decimal("10.00"),
                 "source_version": "sv-fi",
                 "trace_id": "tr-fi",
+                "event_type": "fi_cumulative_realized_517",
             }
         ]
         nonstd_rows_by_type = {
             "514": [
                 {
                     "voucher_date": "2025-12-15",
+                    "account_code": "51401000004",
                     "asset_code": "JM001",
                     "portfolio_name": "NonStd Desk",
+                    "cost_center": "CC100",
+                    "event_type": "interest",
+                    "source_file": "synthetic-514.xlsx",
                     "dc_flag": "贷",
                     "raw_amount": Decimal("106.00"),
                     "source_version": "sv-nonstd-514",
@@ -6674,8 +6682,12 @@ def test_pnl_v1_data_returns_v1_detail_formula_rows(tmp_path, monkeypatch):
             "517": [
                 {
                     "voucher_date": "2025-12-16",
+                    "account_code": "51701000004",
                     "asset_code": "JM001",
                     "portfolio_name": "NonStd Desk",
+                    "cost_center": "CC100",
+                    "event_type": "realized",
+                    "source_file": "synthetic-517.xlsx",
                     "dc_flag": "贷",
                     "raw_amount": Decimal("20.00"),
                     "source_version": "sv-nonstd-517",
@@ -6683,6 +6695,18 @@ def test_pnl_v1_data_returns_v1_detail_formula_rows(tmp_path, monkeypatch):
                 }
             ],
         }
+
+    task_module = import_module("backend.app.tasks.pnl_materialize")
+    refresh_input = FakeRefreshInput()
+    receipt = task_module.materialize_pnl_facts.fn(
+        report_date=refresh_input.report_date,
+        is_month_end=refresh_input.is_month_end,
+        fi_rows=refresh_input.fi_rows,
+        nonstd_rows_by_type=refresh_input.nonstd_rows_by_type,
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+    assert receipt["status"] == "completed"
 
     monkeypatch.setattr(
         pnl_service,

@@ -235,6 +235,7 @@ def _read_xls_rows(content: bytes) -> list[dict[str, object]]:
     if sheet.nrows < 3:
         return []
     headers = [_header_text(sheet.cell_value(1, column)) for column in range(sheet.ncols)]
+    _validate_unique_headers(headers)
     rows: list[dict[str, object]] = []
     for row_index in range(2, sheet.nrows):
         values = [
@@ -259,6 +260,7 @@ def _read_xlsx_rows(content: bytes) -> list[dict[str, object]]:
         if header_values is None:
             return []
         headers = [_header_text(value) for value in header_values]
+        _validate_unique_headers(headers)
         rows: list[dict[str, object]] = []
         for values in worksheet.iter_rows(min_row=3, values_only=True):
             row = _raw_row(headers, list(values))
@@ -275,6 +277,7 @@ def _read_csv_rows(content: bytes) -> list[dict[str, object]]:
     if len(reader) < 3:
         return []
     headers = [_header_text(value) for value in reader[1]]
+    _validate_unique_headers(headers)
     rows: list[dict[str, object]] = []
     for values in reader[2:]:
         row = _raw_row(headers, values)
@@ -320,6 +323,18 @@ def _standardize_row(
         sort_keys=True,
     )
     return standard
+
+
+def _validate_unique_headers(headers: list[str]) -> None:
+    columns: dict[str, int] = {}
+    for index, header in enumerate(headers, start=1):
+        if not header:
+            continue
+        if header in columns:
+            raise ValueError(
+                f"Duplicate ledger field {header!r} in columns {columns[header]} and {index}"
+            )
+        columns[header] = index
 
 
 def _raw_row(headers: list[str], values: list[object]) -> dict[str, object]:

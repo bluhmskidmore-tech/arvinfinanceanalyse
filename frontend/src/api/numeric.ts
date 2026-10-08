@@ -119,14 +119,13 @@ export function normalizeNumeric(
     return parsed;
   }
   const normalizedInput = typeof value === "string" ? value.trim() : value;
-  const normalized = formatRawAsNumeric({
+  return formatRawAsNumeric({
     raw: numericChartNumberOrNull(normalizedInput),
+    raw_text: numericExactTextOrNull(normalizedInput),
     unit,
     sign_aware: signAware,
     precision,
   });
-  const rawText = numericExactTextOrNull(normalizedInput);
-  return rawText === null ? normalized : { ...normalized, raw_text: rawText };
 }
 
 export function numericExactTextOrNull(value: unknown): string | null {

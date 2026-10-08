@@ -10,8 +10,8 @@ export type PollingTaskPayload = {
 };
 
 export type RunPollingTaskOptions<TPayload extends PollingTaskPayload> = {
-  start: () => Promise<TPayload>;
-  getStatus: (runId: string) => Promise<TPayload>;
+  start: (signal?: AbortSignal) => Promise<TPayload>;
+  getStatus: (runId: string, signal?: AbortSignal) => Promise<TPayload>;
   intervalMs?: number;
   getIntervalMs?: (payload: TPayload, attempt: number) => number;
   maxAttempts?: number;
@@ -19,7 +19,8 @@ export type RunPollingTaskOptions<TPayload extends PollingTaskPayload> = {
   onUpdate?: (payload: TPayload) => void;
   /**
    * 可选取消信号（AbortSignal 风格）。调用方在组件卸载/effect cleanup 时
-   * abort，轮询会立刻停止（含等待间隔中），并以取消错误 reject；
+   * abort，轮询会立刻停止（含请求悬挂和等待间隔），并以取消错误 reject；
+   * 这只停止本地等待，不代表已取消后台任务。支持 signal 的 client 可继续透传。
    * 不传 signal 时行为与原来完全一致。
    */
   signal?: AbortSignal;
@@ -41,7 +42,35 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   }
 }
 
-function sleepUnlessAborted(ms: number, signal: AbortSignal | undefined): Promise<void> {
+/** Release local waiters even when a client cannot abort its pending request. */
+export function requestUnlessAborted<T>(
+  request: () => Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  throwIfAborted(signal);
+  if (!signal) return request();
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const onAbort = () => {
+      cleanup();
+      reject(pollingAbortError(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      // Keep both handlers attached after cancellation so late rejections are
+      // consumed and late responses cannot resume polling or commit progress.
+      request().then(
+        (payload) => { cleanup(); resolve(payload); },
+        (error: unknown) => { cleanup(); reject(error); },
+      );
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
+  });
+}
+
+export function sleepUnlessAborted(ms: number, signal: AbortSignal | undefined): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(pollingAbortError(signal));
@@ -75,9 +104,10 @@ export async function runPollingTask<TPayload extends PollingTaskPayload>(
   } = options;
 
   throwIfAborted(signal);
-  let payload = await start();
+  let payload = await requestUnlessAborted(() => start(signal), signal);
   throwIfAborted(signal);
   onUpdate?.(payload);
+  throwIfAborted(signal);
   if (isTerminal(payload.status)) {
     return payload;
   }
@@ -87,9 +117,10 @@ export async function runPollingTask<TPayload extends PollingTaskPayload>(
     if (!runId) {
       throw new Error(`任务轮询缺少 run_id（最后状态：${payload.status}）`);
     }
-    payload = await getStatus(runId);
+    payload = await requestUnlessAborted(() => getStatus(runId, signal), signal);
     throwIfAborted(signal);
     onUpdate?.(payload);
+    throwIfAborted(signal);
     if (isTerminal(payload.status)) {
       return payload;
     }

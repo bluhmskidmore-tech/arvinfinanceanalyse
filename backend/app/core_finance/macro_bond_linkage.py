@@ -599,19 +599,32 @@ def _macro_environment_composite_contributions(
 
 def estimate_macro_impact_on_portfolio(
     macro_environment: MacroEnvironmentScore,
-    portfolio_dv01: Decimal,
-    portfolio_cs01: Decimal,
-    portfolio_market_value: Decimal,
+    portfolio_dv01: Decimal | None,
+    portfolio_cs01: Decimal | None,
+    portfolio_market_value: Decimal | None,
 ) -> dict[str, Any]:
     rate_change_bps = Decimal(str(round(macro_environment.rate_direction_score * 30, 4)))
     spread_change_bps = Decimal(str(round(-macro_environment.liquidity_score * 20, 4)))
-    rate_pnl_impact = -(portfolio_dv01 * rate_change_bps)
-    spread_pnl_impact = -(portfolio_cs01 * spread_change_bps)
-    total_estimated_impact = rate_pnl_impact + spread_pnl_impact
+    # Missing risk is not a measured zero, including when the scenario shock is zero.
+    rate_pnl_impact = (
+        -(portfolio_dv01 * rate_change_bps)
+        if portfolio_dv01 is not None and portfolio_dv01.is_finite() else None
+    )
+    spread_pnl_impact = (
+        -(portfolio_cs01 * spread_change_bps)
+        if portfolio_cs01 is not None and portfolio_cs01.is_finite() else None
+    )
+    total_estimated_impact = (
+        rate_pnl_impact + spread_pnl_impact
+        if rate_pnl_impact is not None and spread_pnl_impact is not None else None
+    )
     impact_ratio = (
         total_estimated_impact / portfolio_market_value
-        if portfolio_market_value != ZERO_DECIMAL
-        else ZERO_DECIMAL
+        if total_estimated_impact is not None
+        and portfolio_market_value is not None
+        and portfolio_market_value.is_finite()
+        and portfolio_market_value != ZERO_DECIMAL
+        else None
     )
     return {
         "estimated_rate_change_bps": rate_change_bps,

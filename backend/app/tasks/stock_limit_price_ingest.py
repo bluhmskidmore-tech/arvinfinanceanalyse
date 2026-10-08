@@ -477,6 +477,11 @@ def _normalize_vendor_rows(
             skipped += 1
             continue
         if stock_code in rows_by_code:
+            previous = rows_by_code[stock_code]
+            if (previous["up_limit"], previous["down_limit"], previous["pre_close"]) != (
+                up_limit, down_limit, pre_close
+            ):
+                raise RuntimeError(f"conflicting vendor duplicate for {stock_code} on {trade_date_text}")
             skipped += 1
             continue
         rows_by_code[stock_code] = {
@@ -609,6 +614,15 @@ def _records_from_tabular_payload(payload: object) -> list[dict[str, object]]:
         return []
     to_dict = getattr(payload, "to_dict", None)
     if callable(to_dict):
+        columns = getattr(payload, "columns", None)
+        if columns is not None:
+            positions: dict[object, int] = {}
+            for index, field in enumerate(columns, start=1):
+                if field in positions:
+                    raise RuntimeError(
+                        f"Duplicate vendor column {field!r} in columns {positions[field]} and {index}"
+                    )
+                positions[field] = index
         records = to_dict(orient="records")
         return [record for record in records if isinstance(record, dict)]
     if isinstance(payload, list):

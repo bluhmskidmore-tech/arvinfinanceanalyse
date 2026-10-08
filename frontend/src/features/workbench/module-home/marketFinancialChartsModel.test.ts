@@ -290,6 +290,53 @@ describe("sharedDateAxis", () => {
 });
 
 describe("buildKeyRateTrend", () => {
+  it.each([0, 1])("requires eight finite observations instead of eight rows when only %i are observed", (observedCount) => {
+    const source = ratePoint("EMM00166466", "中债国债到期收益率:10年", CURRENT_TRADE_DATES.slice(0, 8), 1.68);
+    source.recent_points!.slice(observedCount).forEach((point) => { point.value_numeric = null; });
+    source.value_numeric = null;
+    const chart = keyRateChart({ read_target: "duckdb", series: [source] });
+
+    expect(chart.option).toBeNull();
+    expect(chart.footnote).toContain("0 条百分比利率序列");
+  });
+
+  it("does not count explicit null tail rows as observations when aligning windows", () => {
+    const early = ratePoint("EMM00166466", "中债国债到期收益率:10年", CURRENT_TRADE_DATES.slice(0, 10), 1.68);
+    early.recent_points!.slice(-2).forEach((point) => { point.value_numeric = null; });
+    early.value_numeric = null;
+    const later = ratePoint("CA.DR007", "银行间质押式回购加权利率:DR007", CURRENT_TRADE_DATES.slice(8, 16), 1.42);
+    const chart = keyRateChart({ read_target: "duckdb", series: [early, later] });
+    const xAxis = Array.isArray(chart.option?.xAxis) ? chart.option.xAxis[0] : chart.option?.xAxis;
+    const plottedSeries = Array.isArray(chart.option?.series) ? chart.option.series : [];
+    const earlyData = (plottedSeries.find((series) => series?.name === "国债 10Y")?.data ?? []) as (number | null)[];
+
+    expect(xAxis).toMatchObject({ data: CURRENT_TRADE_DATES.slice(0, 16) });
+    expect(earlyData.filter((value) => value !== null)).toEqual(
+      early.recent_points!.slice(0, 8).map((point) => point.value_numeric),
+    );
+    expect(chart.footnote).toContain("国债 10Y 最新观测 2026-08-06");
+  });
+
+  it.each([null, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])("preserves explicit missing date ticks and discloses invalid gap rows %s", (value) => {
+    const repo = ratePoint("EMM00088132", "公开市场操作:逆回购:7天:中标利率", CURRENT_TRADE_DATES, 1.4);
+    repo.recent_points!.slice(10, 18).forEach((point) => { point.value_numeric = value; });
+    const dr007 = ratePoint("CA.DR007", "银行间质押式回购加权利率:DR007", CURRENT_TRADE_DATES.filter((_, index) => index < 10 || index >= 18), 1.42);
+    const chart = keyRateChart({ read_target: "duckdb", series: [repo, dr007] });
+    const xAxis = Array.isArray(chart.option?.xAxis) ? chart.option.xAxis[0] : chart.option?.xAxis;
+    const plottedSeries = Array.isArray(chart.option?.series) ? chart.option.series : [];
+    const repoSeries = plottedSeries.find((series) => series?.name === "7D 逆回购") as Record<string, unknown> | undefined;
+    const repoData = (repoSeries?.data ?? []) as (number | null)[];
+
+    expect(xAxis).toMatchObject({ data: [...CURRENT_TRADE_DATES] });
+    expect(repoData.slice(10, 18)).toEqual(Array(8).fill(null));
+    expect(chart.footnote).toContain("7D 逆回购 2026-08-11–2026-08-20 无观测");
+    expect(repoSeries?.markArea).toMatchObject({
+      silent: true,
+      itemStyle: { opacity: 0.035 },
+      data: [[{ xAxis: "2026-08-11" }, { xAxis: "2026-08-20" }]],
+    });
+  });
+
   it("aligns the date axis so a stale series cannot widen it", () => {
     const chart = keyRateChart(keyRatePayload());
     const xAxis = Array.isArray(chart.option?.xAxis)

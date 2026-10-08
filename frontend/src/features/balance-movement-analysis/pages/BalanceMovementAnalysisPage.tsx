@@ -1,3 +1,9 @@
+import { Button } from "antd";
+import { FilterBar } from "../../../components/FilterBar";
+import { PageStateSurface } from "../../../components/page/PagePrimitives";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
+import type { BalanceMovementBucket } from "../../../api/contracts";
+import { BalanceMovementBucketEvidence } from "../components/BalanceMovementBucketEvidence";
 import { BalanceMovementReadStatus } from "../components/BalanceMovementReadStatus";
 import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
 import { SixMonthStructurePanel } from "../components/BalanceStructureEvolution";
@@ -42,9 +48,17 @@ export default function BalanceMovementAnalysisPage() {
     reportDates,
     dateStatus,
     selectedDate,
+    requestedReportDate,
+    actualReportDate,
+    readStatus,
+    selectedBucket,
+    isEvidenceOpen,
+    updateBucketSelection,
+    updateEvidenceSelection,
     currencyBasis,
     isRefreshing,
     refreshMessage,
+    refreshError,
     updateReportDateSelection,
     handleRefresh,
   } = useBalanceMovementAnalysis();
@@ -101,6 +115,9 @@ export default function BalanceMovementAnalysisPage() {
     const csv = buildBalanceMovementCsv({
       result: detailQuery.data.result,
       resultMeta,
+      selectedBucket,
+      requestedReportDate,
+      readStatus,
       businessTopMove: businessTopMomMoves[0],
       accountingTopDriver: topMovementDriver,
       residualComponent: residualWaterfallComponent,
@@ -112,7 +129,7 @@ export default function BalanceMovementAnalysisPage() {
       historicalAnomalyDiagnostics,
     });
     downloadCsv(
-      `balance-movement-analysis-${detailQuery.data.result.report_date}-${detailQuery.data.result.currency_basis}.csv`,
+      `balance-movement-analysis-${detailQuery.data.result.report_date}-${detailQuery.data.result.currency_basis}-${selectedBucket}.csv`,
       csv,
     );
   }
@@ -130,7 +147,7 @@ export default function BalanceMovementAnalysisPage() {
         </div>
         <div className="balance-movement-page-header__actions">
           <label>
-            <span>报告日</span>
+            <span>报告月</span>
             <select
               aria-label="余额变动分析-报告日期"
               value={selectedDate}
@@ -212,21 +229,24 @@ export default function BalanceMovementAnalysisPage() {
             topDriver={topMovementDriver}
             movementDrivers={movementDrivers}
             dates={datesQuery.data.result}
-            selectedDate={selectedDate}
+            readStatus={readStatus}
+            selectedDate={actualReportDate}
             reconciliationLabel={reconciliationLabel}
             currencyBasis={currencyBasis}
           />
         ) : detailQuery.isLoading && selectedDate && datesQuery.data?.result ? (
           <FigmaLoadingHero
             dates={datesQuery.data.result}
-            selectedDate={selectedDate}
+            readStatus={readStatus}
+            selectedDate={actualReportDate}
             reconciliationLabel={reconciliationLabel}
             currencyBasis={currencyBasis}
           />
         ) : !detailQuery.isError && datesQuery.data?.result ? (
           <FigmaEmptyHero
             dates={datesQuery.data.result}
-            selectedDate={selectedDate}
+            readStatus={readStatus}
+            selectedDate={actualReportDate}
             reconciliationLabel={reconciliationLabel}
             currencyBasis={currencyBasis}
           />
@@ -256,12 +276,49 @@ export default function BalanceMovementAnalysisPage() {
         {resultMeta ? (
           <EvidenceStrip
             meta={resultMeta}
-            reportDate={selectedDate || detailQuery.data?.result.report_date || ""}
+            reportDate={actualReportDate}
             currencyBasis={currencyBasis}
           />
         ) : null}
 
-        {rows.length > 0 ? <FigmaAccountingBuckets rows={rows} /> : null}
+        <section aria-label="分类桶只读复核">
+          <FilterBar className="balance-movement-filter-bar">
+            <label className="balance-movement-filter-field" style={{ fontSize: designTokens.fontSize[12] }}>
+              <span>复核分类桶</span>
+              <select
+                aria-label="余额变动分析-分类桶"
+                value={selectedBucket}
+                onChange={(event) => updateBucketSelection(event.target.value as BalanceMovementBucket | "all")}
+                style={{
+                  height: designTokens.density.tableRowNormal,
+                  paddingInline: designTokens.space[3],
+                  border: "1px solid var(--dh-api-line)",
+                  borderRadius: nocturneTokens.radius,
+                  background: "var(--dh-api-panel)",
+                  color: "var(--dh-api-ink)",
+                  fontSize: designTokens.fontSize[13],
+                }}
+              >
+                <option value="all">全部</option><option value="AC">AC</option><option value="OCI">OCI</option><option value="TPL">TPL</option>
+              </select>
+            </label>
+            <Button disabled={selectedBucket === "all" || !detailQuery.data || detailQuery.isError} onClick={() => updateEvidenceSelection(true)}>查看分类桶来源</Button>
+          </FilterBar>
+          <p className="balance-movement-derived-panel__summary">分类桶选择作用于核心对账、来源复核与 CSV 分类明细；本页其余汇总和诊断保留全资产范围。</p>
+          <p className="balance-movement-derived-panel__summary" data-testid="balance-movement-selection-dates">请求日期 {requestedReportDate || selectedDate} · 实际报告日 {actualReportDate}</p>
+          {rows.length > 0 ? <FigmaAccountingBuckets rows={selectedBucket === "all" ? rows : rows.filter((row) => row.basis_bucket === selectedBucket)} /> : null}
+        </section>
+        {isEvidenceOpen && selectedBucket !== "all" ? (
+          detailQuery.isLoading ? <PageStateSurface variant="loading" description="正在载入分类桶来源复核" />
+            : detailQuery.isError ? <PageStateSurface
+              variant="error"
+              title="分类桶来源读取失败"
+              description="暂时无法获取来源证据，请重试。"
+              actions={<button type="button" onClick={() => void detailQuery.refetch()}>重试读取</button>}
+            />
+              : detailQuery.data ? <BalanceMovementBucketEvidence result={detailQuery.data.result} bucket={selectedBucket} onReturn={() => updateEvidenceSelection(false)} />
+                : <PageStateSurface variant="empty" description="当前暂无分类桶来源证据。" />
+        ) : null}
 
         {balanceStructureChartRows.length > 0 ||
         structureShareTableRows.length > 0 ||
@@ -353,18 +410,17 @@ export default function BalanceMovementAnalysisPage() {
         />
       ) : null}
       <DataStatesGovernancePanel
-        isLoading={datesQuery.isFetching || detailQuery.isFetching}
+        isLoading={datesQuery.isFetching || detailQuery.isFetching || isRefreshing}
         hasReportDates={reportDates.length > 0}
         hasRows={rows.length > 0}
         freshnessStatus={datesQuery.data?.result.freshness_status}
-        selectedDate={selectedDate}
-        resolvedReportDate={
-          resultMeta?.resolved_report_date ?? detailQuery.data?.result.report_date ?? ""
-        }
+        requestedReportDate={requestedReportDate || selectedDate}
+        resolvedReportDate={actualReportDate}
+        readStatus={readStatus}
         hasError={datesQuery.isError || detailQuery.isError}
         datesReadFailed={datesQuery.isError}
         datesReadConfirmed={datesQuery.isSuccess && !datesQuery.isFetching}
-        refreshMessage={refreshMessage}
+        refreshError={refreshError}
         resultMeta={resultMeta}
         governanceMeta={governanceMeta}
         supplementary={() => (

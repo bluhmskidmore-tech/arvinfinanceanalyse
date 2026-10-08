@@ -77,7 +77,7 @@ const YI_PER_WANYI = 10_000;
 
 export type MarketSeriesDisplayPoint = {
   unit?: string | null;
-  value_numeric: number;
+  value_numeric: number | null;
   latest_change?: number | null;
 };
 
@@ -110,6 +110,9 @@ export function formatMarketSeriesValueParts(point: MarketSeriesDisplayPoint): {
 } {
   const unit = normalizeMarketSeriesUnit(point.unit);
   const value = point.value_numeric;
+  if (value == null || !Number.isFinite(value)) {
+    return { value: EM_DASH, unit };
+  }
   if (unit === "%") {
     return { value: `${zhCompactNumber.format(value)}%`, unit: "" };
   }
@@ -134,7 +137,7 @@ export function formatMarketSeriesDelta(
   options: { emptyDisplay?: string } = {},
 ): string {
   const change = point.latest_change;
-  if (change == null || Number.isNaN(change)) {
+  if (point.value_numeric == null || !Number.isFinite(point.value_numeric) || change == null || !Number.isFinite(change)) {
     return options.emptyDisplay ?? EM_DASH;
   }
   const unit = normalizeMarketSeriesUnit(point.unit);

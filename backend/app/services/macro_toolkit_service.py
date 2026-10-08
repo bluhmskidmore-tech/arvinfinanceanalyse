@@ -2236,6 +2236,10 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
     ].copy()
     return {
         "prices": prices.astype("float64"),
+        "price_basis": "raw_close",
+        "return_basis_status": "unverified",
+        "sample_selection": "latest_date_turnover_top_n_lookback",
+        "price_gap_policy": "forward_fill_then_drop_incomplete_stocks",
         "observations": observations,
         "financials": financials,
         "as_of_date": latest_trade_date.isoformat(),

@@ -233,7 +233,9 @@ export function concentrationBarOption(
         const list = Array.isArray(params) ? params : [params];
         const p = list[0] as { name?: string; value?: number | null };
         const value = typeof p.value === "number" ? `${p.value}%` : EM_DASH;
-        return `${p.name ?? ""}<br/>${yAxisName}：${value}`;
+        const content = document.createElement("div");
+        content.append(p.name ?? "", document.createElement("br"), `${yAxisName}：${value}`);
+        return content;
       },
     },
     xAxis: {
@@ -285,7 +287,9 @@ export function buildIssuerConcentrationPieOption(metrics: ConcentrationMetrics)
           | { name: string; marketValueRaw: Numeric; weight: Numeric }
           | undefined;
         if (!d || typeof d !== "object") return "";
-        return `${d.name}<br/>市值：${formatYi(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
+        const content = document.createElement("div");
+        content.append(d.name, document.createElement("br"), `市值：${formatYi(d.marketValueRaw)}`, document.createElement("br"), `权重：${d.weight.display}`);
+        return content;
       },
     },
     graphic: {

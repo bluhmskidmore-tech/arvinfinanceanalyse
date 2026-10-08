@@ -126,7 +126,19 @@ export function LiabilityCounterpartyBlock({
             const balanceDisplay = numericToYiNumeric(row.value)?.display ?? EM_DASH;
             const shareDisplay = row.share?.display ?? EM_DASH;
             const weightedCostDisplay = unsignedNumericDisplay(row.weightedCost);
-            return `${row.name}<br/>余额：${balanceDisplay}<br/>占比：${shareDisplay}<br/>加权负债成本：${weightedCostDisplay}<br/>类型：${counterpartyTypeLabel(row.type) || EM_DASH}`;
+            const content = document.createElement("div");
+            content.append(
+              row.name,
+              document.createElement("br"),
+              `余额：${balanceDisplay}`,
+              document.createElement("br"),
+              `占比：${shareDisplay}`,
+              document.createElement("br"),
+              `加权负债成本：${weightedCostDisplay}`,
+              document.createElement("br"),
+              `类型：${counterpartyTypeLabel(row.type) || EM_DASH}`,
+            );
+            return content;
           },
         },
         // 主题给柱图 xAxis 预置 boundaryGap: true（类目轴语义）；横向柱图的 x 是数值轴，

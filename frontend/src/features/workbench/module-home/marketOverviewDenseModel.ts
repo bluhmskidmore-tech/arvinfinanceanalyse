@@ -50,7 +50,7 @@ export function normalizeTapeDelta(delta: string) {
 }
 
 export function formatSignedPointValue(point: ChoiceMacroLatestPoint) {
-  if (!Number.isFinite(point.value_numeric)) return null;
+  if (point.value_numeric == null || !Number.isFinite(point.value_numeric)) return null;
   const sign = point.value_numeric > 0 ? "+" : "";
   return `${sign}${compactNumber(point.value_numeric)}${denseUnitSuffix(point.unit)}`;
 }

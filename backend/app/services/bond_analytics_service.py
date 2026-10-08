@@ -31,6 +31,7 @@ from backend.app.core_finance.bond_analytics.common import (
     safe_decimal,
 )
 from backend.app.core_finance.bond_analytics.read_models import (
+    aggregate_bond_position_market_values,
     build_asset_class_risk_summary,
     build_concentration,
     build_curve_scenarios,
@@ -473,12 +474,10 @@ def _invalidate_bond_analytics_caches_for_report_date(report_date: object) -> No
     )
 
 
-def _duckdb_cache_version_token() -> tuple[str, int | None]:
-    duckdb_path = str(get_settings().duckdb_path)
-    try:
-        return duckdb_path, Path(duckdb_path).stat().st_mtime_ns
-    except OSError:
-        return duckdb_path, None
+def _duckdb_cache_version_token() -> tuple[object, ...]:
+    # Resolve/validate the physical pin before any legacy cache hit. Keep the
+    # generation identity inside the token so date-based invalidation is intact.
+    return (*_bond_analytics_rows_cache_version_token(), system_read_cache_identity(()))
 
 
 def _bond_analytics_rows_cache_version_token() -> tuple[object, ...]:
@@ -4433,8 +4432,10 @@ def get_position_changes(report_date: date, top_n: int = 5) -> dict:
 
     # previous_rows is non-empty past the early return above, which requires prev_report_date.
     assert prev_report_date is not None
-    by_current = {str(row.get("instrument_code") or "").strip(): row for row in current_rows}
-    by_previous = {str(row.get("instrument_code") or "").strip(): row for row in previous_rows}
+    by_current, current_warnings = aggregate_bond_position_market_values(current_rows)
+    by_previous, previous_warnings = aggregate_bond_position_market_values(previous_rows)
+    warnings.extend(f"{report_date.isoformat()}: {warning}" for warning in current_warnings)
+    warnings.extend(f"{prev_report_date}: {warning}" for warning in previous_warnings)
     instrument_codes = sorted((set(by_current) | set(by_previous)) - {""})
     all_items = [
         _position_change_item(
@@ -4471,7 +4472,7 @@ def get_position_changes(report_date: date, top_n: int = 5) -> dict:
                 "total_market_value": total_market_value,
                 "prev_total_market_value": prev_total_market_value,
                 "computed_at": datetime.now(UTC).isoformat(),
-                "warnings": [],
+                "warnings": warnings,
             },
             BondPositionChangesResponse,
         )

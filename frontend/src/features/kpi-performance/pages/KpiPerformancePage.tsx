@@ -8,11 +8,12 @@ import {
   TeamOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import { Button, DatePicker, Select, Typography, message } from "antd";
+import { Alert, Button, DatePicker, Select, Typography, message } from "antd";
 import dayjs from "dayjs";
 
 import type {
   KpiFetchAndRecalcResponse,
+  KpiMetric,
   KpiMetricWithValue,
   KpiOwner,
   KpiOwnerAuthorityMeta,
@@ -28,6 +29,7 @@ import {
 import { BatchPasteModal } from "../components/BatchPasteModal";
 import { MetricEditModal } from "../components/MetricEditModal";
 import { MetricManageModal } from "../components/MetricManageModal";
+import { observeKpiWrite, type KpiStoppedWrite, type PendingKpiWrite } from "../components/pendingKpiWrite";
 import { MetricTable } from "../components/MetricTable";
 import { OwnerList } from "../components/OwnerList";
 import "./KpiPerformancePage.css";
@@ -35,6 +37,7 @@ import "./KpiPerformancePage.css";
 const { Text } = Typography;
 
 type PeriodType = "DAILY" | "MONTH" | "QUARTER" | "YEAR";
+type PendingRecalc = { contextKey: string; handedOff: boolean; handoff: () => void };
 
 // 用本地日期分量而非 toISOString()：后者按 UTC 取日，会在 UTC+8 凌晨把
 // “今天”算成昨天，导致页头（本地日）与筛选器/请求日期差一天。
@@ -62,6 +65,7 @@ export default function KpiPerformancePage() {
   const [ownersMeta, setOwnersMeta] = React.useState<KpiOwnerAuthorityMeta | null>(null);
   const [selectedOwner, setSelectedOwner] = React.useState<KpiOwner | null>(null);
   const [metrics, setMetrics] = React.useState<KpiMetricWithValue[]>([]);
+  const [metricsContextKey, setMetricsContextKey] = React.useState<string | null>(null);
 
   const [periodType, setPeriodType] = React.useState<PeriodType>("DAILY");
   const [periodValue, setPeriodValue] = React.useState<number>(() => new Date().getMonth() + 1);
@@ -80,7 +84,56 @@ export default function KpiPerformancePage() {
 
   const [metricManageOpen, setMetricManageOpen] = React.useState(false);
   const [metricManageMode, setMetricManageMode] = React.useState<"create" | "edit">("create");
-  const [managingMetric, setManagingMetric] = React.useState<KpiMetricWithValue | null>(null);
+  const [managingMetric, setManagingMetric] = React.useState<KpiMetric | null>(null);
+  const editContextKey = `${year}:${selectedOwner?.owner_id ?? "none"}:${periodType}:${periodValue}:${formatDate(asOfDate)}`;
+  const currentPeriodLabel =
+    periodType === "DAILY"
+      ? `截止 ${formatDateCN(asOfDate)}`
+      : periodType === "MONTH"
+        ? `${year}年${periodValue}月`
+        : periodType === "QUARTER"
+          ? `${year}年Q${periodValue}`
+          : `${year}年度汇总`;
+  const metricsMatchContext = metricsContextKey === editContextKey;
+  const contextSeqRef = React.useRef(0);
+  const definitionRequestSeqRef = React.useRef(0);
+  const fetchPendingRef = React.useRef<PendingRecalc | null>(null);
+  const writeScopeKey = `${selectedOwner?.year ?? year}:${selectedOwner?.owner_id ?? "none"}`;
+  const [stoppedWrites, setStoppedWrites] = React.useState<Record<string, KpiStoppedWrite>>({});
+  const stoppedWriteSeq = React.useRef(Date.now());
+  const stoppedWriteMounted = React.useRef(true);
+  const currentStoppedWrite = stoppedWrites[writeScopeKey];
+  const writePending = Boolean(currentStoppedWrite && !currentStoppedWrite.outcome?.confirmed && !currentStoppedWrite.released);
+  const stoppedWriteMatchesContext = currentStoppedWrite?.contextKey === editContextKey;
+  React.useEffect(() => {
+    stoppedWriteMounted.current = true;
+    return () => { stoppedWriteMounted.current = false; };
+  }, []);
+
+
+  React.useEffect(() => {
+    contextSeqRef.current += 1;
+    definitionRequestSeqRef.current += 1;
+    setEditModalOpen(false);
+    setEditingMetric(null);
+    setMetricManageOpen(false);
+    setManagingMetric(null);
+    setBatchPasteOpen(false);
+    setLastFetchResult(null);
+    setFetchLoading(false);
+    const pendingRecalc = fetchPendingRef.current;
+    if (pendingRecalc && pendingRecalc.contextKey !== editContextKey) {
+      pendingRecalc.handoff();
+      if (fetchPendingRef.current === pendingRecalc) fetchPendingRef.current = null;
+    }
+    setStoppedWrites((old) => Object.values(old).some((write) => write.readbackDone)
+      ? Object.fromEntries(Object.entries(old).map(([scope, write]) => [scope, { ...write, readbackDone: false }]))
+      : old);
+    return () => {
+      contextSeqRef.current += 1;
+      definitionRequestSeqRef.current += 1;
+    };
+  }, [editContextKey]);
 
   const yearOptions = React.useMemo(
     () => Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i),
@@ -138,10 +191,11 @@ export default function KpiPerformancePage() {
 
   const loadMetrics = React.useCallback(async () => {
     const requestId = ++metricsRequestSeqRef.current;
+    setMetrics([]);
+    setPeriodSummary(null);
     if (!selectedOwner) {
-      setMetrics([]);
-      setPeriodSummary(null);
-      return;
+      setLoadingMetrics(false);
+      return false;
     }
     setLoadingMetrics(true);
     try {
@@ -151,8 +205,9 @@ export default function KpiPerformancePage() {
           as_of_date: formatDate(asOfDate),
           include_trace: true,
         });
-        if (requestId !== metricsRequestSeqRef.current) return;
+        if (requestId !== metricsRequestSeqRef.current) return false;
         setMetrics(response.metrics);
+        setMetricsContextKey(editContextKey);
         setPeriodSummary(null);
       } else {
         const response = await client.getKpiValuesSummary({
@@ -161,7 +216,7 @@ export default function KpiPerformancePage() {
           period_type: periodType,
           period_value: periodType !== "YEAR" ? periodValue : undefined,
         });
-        if (requestId !== metricsRequestSeqRef.current) return;
+        if (requestId !== metricsRequestSeqRef.current) return false;
         setPeriodSummary(response);
         const converted: KpiMetricWithValue[] = response.metrics.map((m) => ({
           metric_id: m.metric_id,
@@ -196,19 +251,22 @@ export default function KpiPerformancePage() {
           source: undefined,
         }));
         setMetrics(converted);
+        setMetricsContextKey(editContextKey);
       }
+      return true;
     } catch (e) {
-      if (requestId !== metricsRequestSeqRef.current) return;
+      if (requestId !== metricsRequestSeqRef.current) return false;
       console.error(e);
       message.error("加载指标失败");
       setMetrics([]);
       setPeriodSummary(null);
+      return false;
     } finally {
       if (requestId === metricsRequestSeqRef.current) {
         setLoadingMetrics(false);
       }
     }
-  }, [client, selectedOwner, asOfDate, periodType, periodValue, year]);
+  }, [client, selectedOwner, asOfDate, periodType, periodValue, year, editContextKey]);
 
   React.useEffect(() => {
     void loadOwners();
@@ -216,24 +274,99 @@ export default function KpiPerformancePage() {
 
   React.useEffect(() => {
     void loadMetrics();
+    return () => { metricsRequestSeqRef.current += 1; };
   }, [loadMetrics]);
 
+  const currentReadback = React.useRef({ context: editContextKey, refresh: loadMetrics });
+  React.useEffect(() => { currentReadback.current = { context: editContextKey, refresh: loadMetrics }; }, [editContextKey, loadMetrics]);
+  const handleUnconfirmedWrite = React.useCallback((write: PendingKpiWrite, notice?: string) => {
+    if (!stoppedWriteMounted.current) return;
+    const context = editContextKey;
+    const scope = writeScopeKey;
+    const id = ++stoppedWriteSeq.current;
+    const contextLabel = `${selectedOwner?.owner_name ?? "未选择考核对象"} · ${currentPeriodLabel}`;
+    setStoppedWrites((old) => {
+      const previous = old[scope];
+      const retainPrevious = previous && !previous.released && !previous.outcome?.confirmed;
+      return {
+        ...old,
+        [scope]: retainPrevious
+          ? { ...previous, id, writes: { ...previous.writes, [id]: undefined }, outcome: undefined, readbackDone: false,
+            notice: [previous.notice, notice].filter((value, index, values) => value && values.indexOf(value) === index).join("；") || undefined }
+          : { id, contextKey: context, contextLabel, notice, writes: { [id]: undefined } },
+      };
+    });
+    void write.then((outcome) => {
+      if (!stoppedWriteMounted.current) return;
+      setStoppedWrites((old) => {
+        const entry = old[scope];
+        if (!entry || !(id in entry.writes)) return old;
+        const writes = { ...entry.writes, [id]: outcome };
+        const results = Object.values(writes);
+        const combinedOutcome = results.some((result) => !result) ? undefined : {
+          changed: results.some((result) => result?.changed),
+          confirmed: results.every((result) => result?.confirmed),
+          error: results.map((result) => result?.error).filter(Boolean).join("；") || undefined,
+        };
+        return { ...old, [scope]: { ...entry, writes, outcome: combinedOutcome, readbackDone: false } };
+      });
+      // The old write must never close a newly opened modal or refresh a different scope.
+      if (outcome.changed && currentReadback.current.context === context) void currentReadback.current.refresh();
+    });
+  }, [editContextKey, writeScopeKey, selectedOwner, currentPeriodLabel]);
+
+  const handleVerifyStoppedWrite = React.useCallback(async () => {
+    if (!currentStoppedWrite || !stoppedWriteMatchesContext) return;
+    const id = currentStoppedWrite?.id;
+    const scope = writeScopeKey;
+    const resultWasUnknown = Boolean(currentStoppedWrite?.outcome && !currentStoppedWrite.outcome.confirmed);
+    if (id !== undefined) setStoppedWrites((old) => old[scope]?.id === id
+      ? { ...old, [scope]: { ...old[scope], readbackDone: false, released: false } } : old);
+    const pendingRecalc = fetchPendingRef.current;
+    if (pendingRecalc?.contextKey === editContextKey) pendingRecalc.handoff();
+    const readSucceeded = await loadMetrics();
+    if (readSucceeded && resultWasUnknown && id !== undefined) setStoppedWrites((old) => old[scope]?.id === id
+      ? { ...old, [scope]: { ...old[scope], readbackDone: true } } : old);
+  }, [currentStoppedWrite, stoppedWriteMatchesContext, loadMetrics, writeScopeKey, editContextKey]);
+
   const handleFetchAndRecalc = React.useCallback(async () => {
-    if (!selectedOwner) return;
+    if (!selectedOwner || periodType !== "DAILY" || fetchPendingRef.current || writePending) return;
+    const contextId = contextSeqRef.current;
+    let write: PendingKpiWrite | undefined;
+    const request: PendingRecalc = {
+      contextKey: editContextKey,
+      handedOff: false,
+      handoff: () => {
+        if (!write || request.handedOff) return;
+        request.handedOff = true;
+        handleUnconfirmedWrite(write, "抓取并重算请求结果未知，请核实后再操作。");
+      },
+    };
+    fetchPendingRef.current = request;
     setFetchLoading(true);
     setLastFetchResult(null);
     try {
-      const result = await client.fetchAndRecalcKpi(selectedOwner.owner_id, formatDate(asOfDate));
+      const operation = client.fetchAndRecalcKpi(selectedOwner.owner_id, formatDate(asOfDate));
+      write = observeKpiWrite(operation);
+      const result = await operation;
+      if (request.handedOff || contextId !== contextSeqRef.current) return;
       setLastFetchResult(result);
-      await loadMetrics();
-      message.success("抓取并重算已完成");
+      const readSucceeded = await loadMetrics();
+      if (request.handedOff || contextId !== contextSeqRef.current) return;
+      if (readSucceeded) message.success("抓取并重算已完成");
+      else message.warning("抓取并重算请求已成功，但当前页面刷新失败，请刷新核实数据。");
     } catch (e) {
+      if (request.handedOff || contextId !== contextSeqRef.current) return;
       console.error(e);
-      message.error("抓取并重算失败");
+      request.handoff();
+      message.error("抓取并重算结果尚未确认，请刷新核实。");
     } finally {
-      setFetchLoading(false);
+      if (fetchPendingRef.current === request) {
+        fetchPendingRef.current = null;
+        if (contextId === contextSeqRef.current) setFetchLoading(false);
+      }
     }
-  }, [client, selectedOwner, asOfDate, loadMetrics]);
+  }, [client, selectedOwner, asOfDate, loadMetrics, periodType, writePending, handleUnconfirmedWrite, editContextKey]);
 
   const handleExportCSV = React.useCallback(async () => {
     setExportLoading(true);
@@ -252,9 +385,10 @@ export default function KpiPerformancePage() {
   }, [client, year, selectedOwner, asOfDate]);
 
   const handleOpenEditModal = React.useCallback((metric: KpiMetricWithValue) => {
+    if (periodType !== "DAILY" && !metric.as_of_date) return;
     setEditingMetric(metric);
     setEditModalOpen(true);
-  }, []);
+  }, [periodType]);
 
   const handleCloseEditModal = React.useCallback(() => {
     setEditModalOpen(false);
@@ -262,18 +396,33 @@ export default function KpiPerformancePage() {
   }, []);
 
   const handleAddMetric = React.useCallback(() => {
+    definitionRequestSeqRef.current += 1;
     setMetricManageMode("create");
     setManagingMetric(null);
     setMetricManageOpen(true);
   }, []);
 
-  const handleEditMetricDef = React.useCallback((metric: KpiMetricWithValue) => {
-    setMetricManageMode("edit");
-    setManagingMetric(metric);
-    setMetricManageOpen(true);
-  }, []);
+  const handleEditMetricDef = React.useCallback(async (metric: KpiMetricWithValue) => {
+    const requestId = ++definitionRequestSeqRef.current;
+    setMetricManageOpen(false);
+    try {
+      // 汇总行没有完整定义，不将其合成的来源、规则和空备注写回。
+      const definition = await client.getKpiMetricById(metric.metric_id);
+      if (requestId !== definitionRequestSeqRef.current) return;
+      if (!selectedOwner || definition.metric_id !== metric.metric_id || definition.owner_id !== selectedOwner.owner_id || definition.year !== selectedOwner.year) {
+        throw new Error("指标与当前考核对象不一致");
+      }
+      setMetricManageMode("edit");
+      setManagingMetric(definition);
+      setMetricManageOpen(true);
+    } catch (error) {
+      if (requestId !== definitionRequestSeqRef.current) return;
+      message.error(error instanceof Error ? error.message : "加载指标定义失败");
+    }
+  }, [client, selectedOwner]);
 
   const handleCloseMetricManage = React.useCallback(() => {
+    definitionRequestSeqRef.current += 1;
     setMetricManageOpen(false);
     setManagingMetric(null);
   }, []);
@@ -293,20 +442,12 @@ export default function KpiPerformancePage() {
     void loadMetrics();
   }, [loadMetrics]);
 
-  const currentPeriodLabel =
-    periodType === "DAILY"
-      ? `截止 ${formatDateCN(asOfDate)}`
-      : periodType === "MONTH"
-        ? `${year}年${periodValue}月`
-        : periodType === "QUARTER"
-          ? `${year}年Q${periodValue}`
-          : `${year}年度汇总`;
-
   const currentOwnerLabel = selectedOwner
     ? `${selectedOwner.owner_name} · ${selectedOwner.org_unit}`
     : "未选择考核对象";
 
   const ownerGateTitle = selectedOwner ? undefined : "请先在左侧选择考核对象";
+  const dailyWriteGateTitle = ownerGateTitle ?? (periodType !== "DAILY" ? "请切换到日视图选择写入日期" : undefined);
 
   return (
     <div
@@ -333,8 +474,8 @@ export default function KpiPerformancePage() {
             </Button>
             <Button
               icon={<UploadOutlined aria-hidden="true" />}
-              disabled={!selectedOwner}
-              title={ownerGateTitle}
+              disabled={!selectedOwner || loadingMetrics || !metricsMatchContext || periodType !== "DAILY"}
+              title={dailyWriteGateTitle}
               onClick={() => setBatchPasteOpen(true)}
             >
               批量导入
@@ -343,8 +484,8 @@ export default function KpiPerformancePage() {
               type="primary"
               icon={<SyncOutlined aria-hidden="true" />}
               loading={fetchLoading}
-              disabled={!selectedOwner}
-              title={ownerGateTitle}
+              disabled={!selectedOwner || periodType !== "DAILY" || writePending}
+              title={dailyWriteGateTitle}
               onClick={() => void handleFetchAndRecalc()}
             >
               抓取并重算
@@ -368,6 +509,23 @@ export default function KpiPerformancePage() {
         </DataStatusStrip>
       </PageDecisionHero>
 
+      {currentStoppedWrite ? (
+        <Alert type={writePending || currentStoppedWrite.outcome?.error ? "warning" : "info"} showIcon
+          message={writePending ? "写入结果尚未确认，请勿重复提交。"
+            : currentStoppedWrite.released ? "已核实当前数据；原写入结果仍未知，请谨慎编辑。"
+            : currentStoppedWrite.outcome?.changed ? "写入已返回成功结果，请核对最新数据。" : "写入未确认成功，请刷新核实后再操作。"}
+          description={[`原提交口径：${currentStoppedWrite.contextLabel}`, currentStoppedWrite.outcome?.error, currentStoppedWrite.notice,
+            !stoppedWriteMatchesContext ? "请回到原提交日期和视图后刷新核实。" : undefined,
+            "刷新核实只读取数据，不会重新提交。未知请求仍可能有迟到写入。"].filter(Boolean).join("；")}
+          action={<>
+            <Button disabled={!stoppedWriteMatchesContext} loading={loadingMetrics} onClick={() => void handleVerifyStoppedWrite()}>刷新核实</Button>
+            {stoppedWriteMatchesContext && currentStoppedWrite.outcome && !currentStoppedWrite.outcome.confirmed && currentStoppedWrite.readbackDone && !currentStoppedWrite.released ? (
+              <Button onClick={() => setStoppedWrites((old) => ({ ...old, [writeScopeKey]: { ...old[writeScopeKey], released: true } }))}>已核实，继续编辑</Button>
+            ) : null}
+          </>}
+        />
+      ) : null}
+
       <PageFilterTray testId="kpi-performance-filters">
         <div className="kpi-performance-page__filter-tray">
           <div className="kpi-performance-page__filter-row" data-testid="kpi-performance-filter-row">
@@ -379,7 +537,10 @@ export default function KpiPerformancePage() {
                 getPopupContainer={resolvePopupContainer}
                 value={year}
                 options={yearOptions.map((y) => ({ label: `${y} 年`, value: y }))}
-                onChange={(v) => setYear(v)}
+                onChange={(v) => {
+                  setSelectedOwner(null);
+                  setYear(v);
+                }}
               />
             </div>
             <div className="kpi-performance-page__field">
@@ -499,7 +660,7 @@ export default function KpiPerformancePage() {
                     </p>
                   </div>
                   <div className="kpi-performance-page__detail-actions">
-                    {periodSummary ? (
+                    {metricsMatchContext && periodSummary ? (
                       <div className="kpi-performance-page__period-badge">
                         <CalendarOutlined className="kpi-performance-page__period-badge-icon" />
                         <Text strong className="kpi-performance-page__period-badge-text">
@@ -517,15 +678,18 @@ export default function KpiPerformancePage() {
                 </div>
               </section>
               <MetricTable
-                metrics={metrics}
+                key={editContextKey}
+                metrics={metricsMatchContext ? metrics : []}
                 loading={loadingMetrics}
+                writeDisabled={writePending}
+                onUnconfirmedWrite={handleUnconfirmedWrite}
                 onRefresh={() => void loadMetrics()}
                 onAddMetric={handleAddMetric}
                 onEditMetricDef={handleEditMetricDef}
-                valueAsOfDate={formatDate(asOfDate)}
+                valueAsOfDate={periodType === "DAILY" ? formatDate(asOfDate) : undefined}
                 onFullEdit={handleOpenEditModal}
                 backendSummary={
-                  periodSummary
+                  metricsMatchContext && periodSummary
                     ? {
                         totalWeight: periodSummary.total_weight,
                         totalScore: periodSummary.total_score,
@@ -551,29 +715,38 @@ export default function KpiPerformancePage() {
       </div>
 
       <MetricEditModal
+        key={`value:${editContextKey}`}
         open={editModalOpen}
         onClose={handleCloseEditModal}
         metric={editingMetric}
-        asOfDate={formatDate(asOfDate)}
+        asOfDate={periodType === "DAILY" ? formatDate(asOfDate) : undefined}
         onSaveSuccess={handleSaveSuccess}
+        onUnconfirmedWrite={handleUnconfirmedWrite}
+        writePending={writePending}
       />
 
       <MetricManageModal
+        key={`definition:${editContextKey}`}
         open={metricManageOpen}
         onClose={handleCloseMetricManage}
         mode={metricManageMode}
         metric={managingMetric}
         owner={selectedOwner}
         onSuccess={handleMetricManageSuccess}
+        onUnconfirmedWrite={handleUnconfirmedWrite}
+        writePending={writePending}
       />
 
       <BatchPasteModal
+        key={`batch:${editContextKey}`}
         open={batchPasteOpen}
         onClose={() => setBatchPasteOpen(false)}
         owner={selectedOwner}
         asOfDate={formatDate(asOfDate)}
-        metrics={metrics}
+        metrics={metricsMatchContext ? metrics : []}
         onSuccess={handleBatchPasteSuccess}
+        onUnconfirmedWrite={handleUnconfirmedWrite}
+        writePending={writePending}
       />
     </div>
   );

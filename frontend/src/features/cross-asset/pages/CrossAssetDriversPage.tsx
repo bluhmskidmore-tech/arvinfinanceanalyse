@@ -17,11 +17,7 @@ import "./crossAssetTerminalTheme.css";
 import { useCrossAssetViewModel } from "../hooks/useCrossAssetViewModel";
 
 import { CrossAssetDecisionZone } from "../components/CrossAssetDecisionZone";
-import {
-  formatEstimatedImpactCny,
-  formatSignedNumber,
-  impactTone,
-} from "../components/utils";
+import { PortfolioImpactPanel } from "../components/PortfolioImpactPanel";
 
 import {
   LivermoreStrategyStatusPanel,
@@ -36,7 +32,6 @@ import { CrossAssetStatusStrip } from "../components/CrossAssetStatusStrip";
 import { CrossAssetKpiBand } from "../components/CrossAssetKpiBand";
 import { buildStatusStripFlags } from "../lib/crossAssetStatusStrip";
 import { buildKpiBandItems } from "../lib/crossAssetKpiBand";
-import { crossAssetPanelClass } from "../components/shared";
 
 import {
   CrossAssetEvidenceTape,
@@ -123,7 +118,6 @@ export default function CrossAssetDriversPage() {
     eventItems,
     firstScreenConclusion,
     firstScreenDisplay,
-    hasPortfolioImpact,
     heatmapRows,
     kpis,
     latestMeta,
@@ -429,44 +423,7 @@ export default function CrossAssetDriversPage() {
                       />
                     </details>
 
-                    <section
-                      data-testid="cross-asset-linkage-portfolio-impact"
-                      className={`${crossAssetPanelClass} cross-asset-linkage-portfolio-impact`}
-                    >
-                      <h2 className="cross-asset-linkage-portfolio-impact__title">
-                        组合影响估算
-                      </h2>
-                      <p className="cross-asset-linkage-portfolio-impact__description">
-                        以下数值属于分析口径估算，只作为环境敏感度提示，不代表正式损益。
-                      </p>
-                      {hasPortfolioImpact ? (
-                        <div className="cross-asset-linkage-portfolio-impact__grid">
-                          <div>
-                            <div className="cross-asset-linkage-portfolio-impact__label">利率变动</div>
-                            <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}</div>
-                          </div>
-                          <div>
-                            <div className="cross-asset-linkage-portfolio-impact__label">利差走阔</div>
-                            <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}</div>
-                          </div>
-                          <div>
-                            <div className="cross-asset-linkage-portfolio-impact__label">合计估算</div>
-                            <div
-                              className={`cross-asset-linkage-portfolio-impact__value cross-asset-linkage-portfolio-impact__value--${impactTone(macroBondLinkage.portfolio_impact?.total_estimated_impact)}`}
-                              title={
-                                macroBondLinkage.portfolio_impact?.total_estimated_impact != null
-                                  ? `${macroBondLinkage.portfolio_impact.total_estimated_impact} 元`
-                                  : undefined
-                              }
-                            >
-                              {formatEstimatedImpactCny(macroBondLinkage.portfolio_impact?.total_estimated_impact)}
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="cross-asset-linkage-portfolio-impact__empty">当前没有可用组合影响估算。</div>
-                      )}
-                    </section>
+                    <PortfolioImpactPanel impact={macroBondLinkage.portfolio_impact ?? {}} expandDetails={expandAllDetails} />
                   </div>
                 )}
               </PageAsyncSection>

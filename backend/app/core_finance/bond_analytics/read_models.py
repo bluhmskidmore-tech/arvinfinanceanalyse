@@ -646,6 +646,44 @@ def build_concentration(rows: list[dict[str, Any]], *, field_name: str, dimensio
     }
 
 
+def aggregate_bond_position_market_values(
+    rows: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Build the bond-code grain consumed by position changes.
+
+    All portfolio/book/currency/maturity legs are additive in the already
+    materialized CNY ``market_value`` basis, just as in the portfolio total.
+    Native currency amounts are never summed here. Conflicting descriptions
+    are left unavailable and disclosed instead of choosing an arbitrary leg.
+    """
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        instrument_code = str(row.get("instrument_code") or "").strip()
+        if instrument_code:
+            grouped[instrument_code].append(row)
+
+    result: dict[str, dict[str, Any]] = {}
+    warnings: list[str] = []
+    for instrument_code, positions in sorted(grouped.items()):
+        item: dict[str, Any] = {
+            "instrument_code": instrument_code,
+            "market_value": _sum(positions, "market_value"),
+        }
+        for field in ("instrument_name", "issuer_name", "rating", "asset_class_std"):
+            values = {
+                str(row.get(field) or (row.get("asset_class") if field == "asset_class_std" else "") or "").strip()
+                for row in positions
+            } - {""}
+            item[field] = next(iter(values)) if len(values) == 1 else None
+            if len(values) > 1:
+                warnings.append(
+                    f"Conflicting bond position metadata for {instrument_code}: {field}; "
+                    "description unavailable, market value includes all legs."
+                )
+        result[instrument_code] = item
+    return result, warnings
+
+
 def summarize_accounting_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total_market_value = _sum(rows, "market_value")
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)

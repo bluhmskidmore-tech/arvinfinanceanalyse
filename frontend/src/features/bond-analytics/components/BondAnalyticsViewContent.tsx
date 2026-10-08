@@ -6,6 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import type { ApiEnvelope } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
+import { usePollingTaskSignal } from "../../../app/jobs/usePollingTaskSignal";
 import { PageStateSurface } from "../../../components/page/PagePrimitives";
 import { SystemReadInteractionContext } from "../../../router/systemReadInteractionContext";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
@@ -114,6 +115,7 @@ function BondAnalyticsDateFallbackWorkbench({
 
 export function BondAnalyticsViewContent() {
   const client = useApiClient();
+  const getPollingSignal = usePollingTaskSignal();
   const queryClient = useQueryClient();
   const systemReadInteraction = useContext(SystemReadInteractionContext);
 
@@ -213,6 +215,7 @@ export function BondAnalyticsViewContent() {
       : null;
 
   async function handleBondAnalyticsRefresh() {
+    const signal = getPollingSignal();
     if (!effectiveReportDate) {
       return;
     }
@@ -221,6 +224,7 @@ export function BondAnalyticsViewContent() {
     setBondAnalyticsRefreshAwaitingPublication(false);
     try {
       const payload = await runPollingTask({
+        signal,
         start: () => client.refreshBondAnalytics(effectiveReportDate),
         getStatus: (runId) => client.getBondAnalyticsRefreshStatus(runId),
         onUpdate: (nextPayload) => {
@@ -229,6 +233,7 @@ export function BondAnalyticsViewContent() {
           }
         },
       });
+      if (signal?.aborted) return;
       if (payload.status !== "completed") {
         const hint =
           typeof payload.error_message === "string" && payload.error_message.trim()
@@ -242,13 +247,14 @@ export function BondAnalyticsViewContent() {
         return;
       }
       await queryClient.invalidateQueries({ queryKey: [...bondAnalyticsQueryKeyRoot] });
-      setDetailRemountKey((key) => key + 1);
+      if (!signal?.aborted) setDetailRemountKey((key) => key + 1);
     } catch (error: unknown) {
+      if (signal?.aborted) return;
       setBondAnalyticsRefreshError(
         error instanceof Error ? error.message : "刷新债券分析失败",
       );
     } finally {
-      setIsBondAnalyticsRefreshing(false);
+      if (!signal?.aborted) setIsBondAnalyticsRefreshing(false);
     }
   }
 

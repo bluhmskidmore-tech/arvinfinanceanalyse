@@ -1,3 +1,4 @@
+import type { BalanceMovementReadState } from "../hooks/useBalanceMovementAnalysis";
 import type { BalanceMovementDatesPayload, ResultMeta } from "../../../api/contracts";
 import { SectionHead } from "../../../components/layout";
 import { EM_DASH } from "../../../utils/format";
@@ -7,7 +8,9 @@ import { formatMetaList } from "../lib/balanceMovementPresentation";
 
 type BalanceMovementFreshnessStatus = NonNullable<BalanceMovementDatesPayload["freshness_status"]>;
 
-function freshnessStatusLabel(status: BalanceMovementFreshnessStatus | undefined) {
+function freshnessStatusLabel(status: BalanceMovementFreshnessStatus | undefined, readStatus: BalanceMovementReadState = "confirmed") {
+  if (readStatus === "cached_after_error") return "读取或刷新失败 · 新鲜度待确认";
+  if (readStatus === "refreshing") return "新鲜度确认中";
   switch (status) {
     case "fresh":
       return "数据已同步";
@@ -49,11 +52,13 @@ function freshnessStatusTone(status: BalanceMovementFreshnessStatus | undefined)
 
 export function FreshnessStrip({
   dates,
+  readStatus,
   selectedDate,
   reconciliationLabel,
   currencyBasis,
 }: {
   dates: BalanceMovementDatesPayload;
+  readStatus: BalanceMovementReadState;
   selectedDate: string;
   reconciliationLabel: string;
   currencyBasis: string;
@@ -61,7 +66,10 @@ export function FreshnessStrip({
   const status = dates.freshness_status;
   const latestReadModelDate = dates.latest_read_model_report_date ?? dates.report_dates[0] ?? null;
   const latestUpstreamDate = dates.latest_upstream_control_report_date ?? null;
-  const tone = freshnessStatusTone(status);
+  const tone = readStatus === "confirmed" ? freshnessStatusTone(status) : "warn";
+  const statusDetail = readStatus === "cached_after_error"
+    ? "本次读取或刷新失败，保留上次读取的日期与来源；尚未确认最新数据。"
+    : readStatus === "refreshing" ? "读取或刷新尚未完成；尚未确认最新数据。" : freshnessStatusDetail(status);
   return (
     <aside
       className={`balance-movement-data-trust balance-movement-data-trust--${tone} balance-movement-freshness-strip balance-movement-freshness-strip--${tone}`}
@@ -70,7 +78,7 @@ export function FreshnessStrip({
     >
       <header className="balance-movement-data-trust__header">
         <span>数据可信度</span>
-        <strong title={freshnessStatusDetail(status)}>{freshnessStatusLabel(status)}</strong>
+        <strong title={statusDetail}>{freshnessStatusLabel(status, readStatus)}</strong>
       </header>
       <dl className="balance-movement-data-trust__facts">
         <div>
@@ -146,12 +154,13 @@ export function DataStatesGovernancePanel({
   hasReportDates,
   hasRows,
   freshnessStatus,
-  selectedDate,
+  requestedReportDate,
   resolvedReportDate,
+  readStatus,
   hasError,
   datesReadFailed,
   datesReadConfirmed,
-  refreshMessage,
+  refreshError,
   resultMeta,
   governanceMeta,
   supplementary,
@@ -160,23 +169,24 @@ export function DataStatesGovernancePanel({
   hasReportDates: boolean;
   hasRows: boolean;
   freshnessStatus: BalanceMovementDatesPayload["freshness_status"] | undefined;
-  selectedDate: string;
+  requestedReportDate: string;
   resolvedReportDate: string;
+  readStatus: BalanceMovementReadState;
   hasError: boolean;
   datesReadFailed: boolean;
   datesReadConfirmed: boolean;
-  refreshMessage: string | null;
+  refreshError: string | null;
   resultMeta: ResultMeta | null;
   governanceMeta: { reportDate: string; ruleVersions: string[]; sourceVersions: string[] };
   supplementary?: () => ReactNode;
 }) {
   const hasFallbackDate = Boolean(
     resultMeta?.fallback_date ||
-      (selectedDate && resolvedReportDate && selectedDate !== resolvedReportDate),
+      (requestedReportDate && resolvedReportDate && requestedReportDate !== resolvedReportDate),
   );
   const detailReadConfirmed = datesReadConfirmed && !hasError && !isLoading && resultMeta !== null;
-  const freshnessConfirmed = datesReadConfirmed && freshnessStatus !== undefined;
-  const freshnessUnknownNote = datesReadFailed ? "本次读取失败，无法确认读模型新鲜度" : "尚未完成本次读取，无法确认读模型新鲜度";
+  const freshnessConfirmed = readStatus === "confirmed" && datesReadConfirmed && freshnessStatus !== undefined;
+  const freshnessUnknownNote = readStatus === "cached_after_error" ? "本次读取或刷新失败，无法确认读模型新鲜度" : "尚未完成本次读取，无法确认读模型新鲜度";
   const states = [
     {
       label: "加载中",
@@ -212,8 +222,8 @@ export function DataStatesGovernancePanel({
     },
     {
       label: "加载 / 刷新失败",
-      value: hasError ? "是" : "否",
-      note: hasError ? refreshMessage ?? "显示错误，不回填演示数据" : "当前没有加载或刷新错误",
+      value: hasError || refreshError ? "是" : "否",
+      note: refreshError ?? (hasError ? "显示错误，不回填演示数据" : "当前没有加载或刷新错误"),
     },
   ];
   const sourceVersion =
@@ -251,7 +261,7 @@ export function DataStatesGovernancePanel({
         </div>
         <dl className="balance-movement-data-states__meta">
           <div><dt>质量</dt><dd>{resultMeta?.quality_flag ?? EM_DASH}</dd></div>
-          <div><dt>新鲜度</dt><dd>{freshnessStatusLabel(freshnessStatus)}</dd></div>
+          <div><dt>新鲜度</dt><dd>{freshnessStatusLabel(freshnessStatus, readStatus)}</dd></div>
           <div><dt>回退</dt><dd>{resultMeta?.fallback_mode ?? EM_DASH}</dd></div>
           <div><dt>策略</dt><dd>fail-closed</dd></div>
         </dl>

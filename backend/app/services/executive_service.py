@@ -33,7 +33,10 @@ from backend.app.repositories.news_warehouse_repo import NewsWarehouseRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.repositories.risk_tensor_repo import load_latest_bond_analytics_lineage
-from backend.app.repositories.system_read_publication_repo import raise_if_system_read_failure
+from backend.app.repositories.system_read_publication_repo import (
+    current_system_read_context,
+    raise_if_system_read_failure,
+)
 from backend.app.schemas.common_numeric import Numeric
 from backend.app.schemas.executive_dashboard import (
     AlertItem,
@@ -367,7 +370,8 @@ def _read_all_cache_build_runs_for_executive_overview(
 ) -> _HomeCacheBuildRunRows | None:
     try:
         rows = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
-    except (RuntimeError, OSError, TypeError, ValueError):
+    except (RuntimeError, OSError, TypeError, ValueError) as exc:
+        raise_if_system_read_failure(exc)
         return None
     return _HomeCacheBuildRunRows(rows, is_partial=False)
 
@@ -462,6 +466,9 @@ def _read_cache_build_runs_for_executive_overview(governance_dir: str) -> list[d
         and load_latest_bond_analytics_lineage is not _DEFAULT_LOAD_LATEST_BOND_ANALYTICS_LINEAGE
     ):
         return None
+    if current_system_read_context() is not None:
+        # The live tail and its fingerprint cannot describe pinned amounts.
+        return _read_all_cache_build_runs_for_executive_overview(governance_dir)
     fingerprint = _governance_file_fingerprint(governance_dir, CACHE_BUILD_RUN_STREAM)
     if fingerprint is None:
         return _read_all_cache_build_runs_for_executive_overview(governance_dir)

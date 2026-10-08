@@ -11,6 +11,7 @@ from backend.app.core_finance.accounting_asset_movement import (
     reconcile_chain_fx_adjustments,
 )
 from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS as _ZQTZ_ASSET_ROWS
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
 
 _LEDGER_BUSINESS_ROWS = [
@@ -201,7 +202,7 @@ class AccountingAssetMovementRepository(DuckDBRepository):
             self._assert_scoped_path_matches_context()
             # Each helper closes its cursor; the request scope owns the database.
             return scoped.cursor()
-        return duckdb.connect(self.path, read_only=True)
+        return duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
 
     def list_report_dates(self, *, currency_basis: str = "CNX") -> list[str]:
         try:
