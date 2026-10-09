@@ -86,7 +86,7 @@ describe("BalanceMovementAnalysisPage request boundary", () => {
       expect(dateState).not.toHaveTextContent("先物化读模型");
       const lagState = within(dataStates).getByText("读模型滞后").closest("article");
       expect(lagState).toHaveTextContent("未知");
-      expect(lagState).toHaveTextContent("本次读取失败");
+      expect(lagState).toHaveTextContent("本次读取或刷新失败，无法确认读模型新鲜度");
       expect(lagState).not.toHaveTextContent("否");
     } else {
       const detailRowsState = within(dataStates).getByText("无明细行").closest("article");

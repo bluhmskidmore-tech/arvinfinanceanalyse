@@ -8,6 +8,7 @@ from contextvars import copy_context
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from backend.app.core_finance import product_category_pnl_attribution as product_category_attribution
@@ -880,14 +881,15 @@ def _map_product_category_batch(
 
 def _batch_quality(items: list[dict[str, object]]) -> QualityFlag:
     quality: QualityFlag = "ok"
-    priority = {"ok": 0, "warning": 1, "stale": 2, "error": 3}
+    priority: dict[QualityFlag, int] = {"ok": 0, "warning": 1, "stale": 2, "error": 3}
     for item in items:
         meta = item.get("result_meta")
         item_quality = meta.get("quality_flag") if isinstance(meta, dict) else None
         if item.get("status") != "ok" or item_quality not in priority:
             item_quality = "warning"
-        if priority[item_quality] > priority[quality]:
-            quality = item_quality
+        normalized_quality = cast(QualityFlag, item_quality)
+        if priority[normalized_quality] > priority[quality]:
+            quality = normalized_quality
     return quality
 
 

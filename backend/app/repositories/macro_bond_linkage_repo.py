@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
 import hashlib
 import json
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 import duckdb
-
 from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
 
 RELATION_FACT_CHOICE_MACRO_DAILY = "fact_choice_macro_daily"
@@ -261,8 +260,10 @@ class MacroBondLinkageRepository(DuckDBRepository):
             )
             row = cursor.fetchone()
             if row is not None:
-                record = dict(zip([item[0] for item in cursor.description], row))
+                record = dict(zip([item[0] for item in cursor.description], row, strict=False))
                 resolved = _coerce_date(record["report_date"])
+                # The query excludes null and unparseable report dates.
+                assert resolved is not None
                 if resolved != report_date:
                     warnings.append(f"风险张量使用最近日期 {resolved.isoformat()}，目标日期为 {report_date.isoformat()}。")
                 inputs = {
@@ -356,7 +357,7 @@ class MacroBondLinkageRepository(DuckDBRepository):
         columns = [item[0] for item in cursor.description]
         entities = []
         for index, row in enumerate(cursor.fetchall()):
-            source = dict(zip(columns, row))
+            source = dict(zip(columns, row, strict=False))
             entity = {key: source.get(key) for key in (
                 "instrument_code", "instrument_name", "portfolio_name", "cost_center",
                 "accounting_class", "currency_code", "is_credit",

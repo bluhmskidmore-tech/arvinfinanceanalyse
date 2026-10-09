@@ -132,6 +132,14 @@ DISPLAY_ONLY_FILE_SNIPPETS = {
         # the helper formats a backend-provided CNY impact value.
         "DV01/CS01",
     ),
+    "features/cross-asset/components/PortfolioImpactPanel.tsx": (
+        # Render backend sensitivity fields and coverage counts only. Match
+        # complete snippets so calculations added to these expressions still fail.
+        '<p>DV01 {formatSignedNumber(impact.portfolio_dv01, " 元/bp")} · CS01 {formatSignedNumber(impact.portfolio_cs01, " 元/bp")} · 组合市值 {formatEstimatedImpactCny(impact.portfolio_market_value)}</p>',
+        '已观测行覆盖：DV01 {coverage.dv01_observed_count ?? EM_DASH}/{coverage.row_count ?? EM_DASH}，',
+        'CS01 {coverage.cs01_observed_count ?? EM_DASH}/{coverage.row_count ?? EM_DASH}，',
+        '<p>DV01 {formatSignedNumber(selected.dv01, " 元/bp")} · 信用敏感度 {formatSignedNumber(selected.spread_dv01, " 元/bp")} · 市值 {formatEstimatedImpactCny(selected.market_value)}</p>',
+    ),
     "features/publication-showcase/PublicationShowcasePage.tsx": (
         # Publication showcase is static marketing/demo copy and fixture values.
         'body: "由金融规则计算久期、DV01、损益桥和分类汇总。",',
@@ -466,6 +474,16 @@ def test_frontend_source_does_not_contain_formal_finance_logic_tokens():
             "features/workbench/module-home/riskHomeViewModel.ts",
             'const detail = { evidence: "CS01 是信用债 DV01 代理；首页只提供字段摘要，不在前端重算。", };',
             "const derivedCS01 = amount * spreadDuration * 0.0001;",
+        ),
+        (
+            "features/cross-asset/components/PortfolioImpactPanel.tsx",
+            '<p>DV01 {formatSignedNumber(selected.dv01, " 元/bp")} · 信用敏感度 {formatSignedNumber(selected.spread_dv01, " 元/bp")} · 市值 {formatEstimatedImpactCny(selected.market_value)}</p>',
+            '<p>DV01 {formatSignedNumber(amount * duration * 0.0001, " 元/bp")} · 信用敏感度 {formatSignedNumber(selected.spread_dv01, " 元/bp")} · 市值 {formatEstimatedImpactCny(selected.market_value)}</p>',
+        ),
+        (
+            "features/cross-asset/components/PortfolioImpactPanel.tsx",
+            'CS01 {coverage.cs01_observed_count ?? EM_DASH}/{coverage.row_count ?? EM_DASH}，',
+            'CS01 {amount * spreadDuration * 0.0001}/{coverage.row_count ?? EM_DASH}，',
         ),
     ],
 )

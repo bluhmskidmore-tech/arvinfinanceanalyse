@@ -789,6 +789,10 @@ for _source, _checks in {
     "backend/app/services/pnl_service.py": (
         "tests/test_pnl_v1_source_integrity.py",
     ),
+    "backend/app/services/pnl_v1_snapshot_validation.py": (
+        "tests/test_pnl_v1_source_integrity.py",
+        "tests/test_pnl_api_contract.py",
+    ),
     "backend/app/repositories/pnl_repo.py": (
         "tests/test_pnl_v1_source_integrity.py",
     ),

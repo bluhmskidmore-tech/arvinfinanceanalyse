@@ -1021,8 +1021,11 @@ def _balance_analysis_workbook_envelope_uncached(
         ).model_dump(mode="json"),
     )
     # Validate source/formal lineage first; append only this read-query identity.
-    env["result_meta"]["rule_version"] += f"|{BALANCE_WORKBOOK_QUERY_RULE_VERSION}"
-    env["result_meta"]["cache_version"] += f"|{BALANCE_WORKBOOK_QUERY_CACHE_VERSION}"
+    result_meta = env.get("result_meta")
+    if not isinstance(result_meta, dict):
+        raise RuntimeError("Balance-analysis formal envelope is missing result_meta.")
+    result_meta["rule_version"] += f"|{BALANCE_WORKBOOK_QUERY_RULE_VERSION}"
+    result_meta["cache_version"] += f"|{BALANCE_WORKBOOK_QUERY_CACHE_VERSION}"
     return _with_balance_analysis_response_context(
         env,
         report_date=report_date,

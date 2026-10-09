@@ -44,6 +44,7 @@ EXPECTED_CALIBER_TESTS = {
     ("backend/app/services/campisi_attribution_service.py", {"tests/test_campisi_formal_bridge_coverage.py"}),
     ("backend/app/services/product_category_pnl_service.py", {"tests/test_product_category_read_boundary.py"}),
     ("scripts/backend_release_suite.py", {"tests/test_backend_release_suite.py"}),
+    ("backend/app/services/pnl_v1_snapshot_validation.py", {"tests/test_pnl_v1_source_integrity.py", "tests/test_pnl_api_contract.py"}),
 ])
 def test_audited_read_and_publication_boundaries_are_selected(source_path, required):
     assert required <= set(gate.resolve_required_tests([source_path]))

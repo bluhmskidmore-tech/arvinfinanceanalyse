@@ -5,7 +5,7 @@ import json
 import logging
 import math
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -45,6 +45,7 @@ from backend.app.schemas.macro_vendor import (
     ChoiceMacroRecentPoint,
     ChoiceMacroRefreshTier,
     FxAnalyticalGroup,
+    FxAnalyticalGroupKey,
     FxAnalyticalPayload,
     FxAnalyticalSeriesPoint,
     FxFormalStatusPayload,
@@ -468,7 +469,9 @@ def _load_choice_macro_latest_payload_with_warnings(
                 "series_id": str(series_id),
                 "series_name": str(series_name),
                 "trade_date": str(trade_date),
-                "value_numeric": _fx_numeric_or_none(value_numeric) if is_fx else float(value_numeric),
+                "value_numeric": (
+                    _fx_numeric_or_none(value_numeric) if is_fx else _required_float(value_numeric)
+                ),
                 "is_fx": is_fx,
                 "fx_name": logical_name,
                 "frequency": str(frequency),
@@ -486,7 +489,11 @@ def _load_choice_macro_latest_payload_with_warnings(
         recent_points = [
             ChoiceMacroRecentPoint(
                 trade_date=str(row["trade_date"]),
-                value_numeric=_fx_numeric_or_none(row["value_numeric"]) if row["is_fx"] else float(row["value_numeric"]),
+                value_numeric=(
+                    _fx_numeric_or_none(row["value_numeric"])
+                    if row["is_fx"]
+                    else _required_float(row["value_numeric"])
+                ),
                 source_version=str(row["source_version"]),
                 vendor_version=str(row["vendor_version"]),
                 quality_flag=_normalize_quality_flag(str(row["quality_flag"])),
@@ -528,7 +535,7 @@ def _load_choice_macro_latest_payload_with_warnings(
             ):
                 quality_flag = _aggregate_quality_flags([quality_flag, "warning"])
             else:
-                latest_change = float(latest["value_numeric"]) - float(previous)
+                latest_change = _required_float(latest["value_numeric"]) - _required_float(previous)
 
         series.append(
             ChoiceMacroLatestPoint(
@@ -750,7 +757,9 @@ def _load_formal_yield_curve_points(
         ]
         latest_change = None
         if len(recent_points) > 1:
-            latest_change = recent_points[0].value_numeric - recent_points[1].value_numeric
+            latest_change = _required_float(recent_points[0].value_numeric) - _required_float(
+                recent_points[1].value_numeric
+            )
         points.append(
             ChoiceMacroLatestPoint(
                 series_id=series_id,
@@ -794,7 +803,9 @@ def _merge_formal_yield_curve_history(
     )[:_CHOICE_MACRO_RECENT_POINT_LIMIT]
     latest_change = latest_source.latest_change
     if len(recent_points) > 1 and recent_points[0].trade_date == latest_source.trade_date:
-        latest_change = recent_points[0].value_numeric - recent_points[1].value_numeric
+        latest_change = _required_float(recent_points[0].value_numeric) - _required_float(
+            recent_points[1].value_numeric
+        )
 
     return latest_source.model_copy(
         update={
@@ -2358,6 +2369,14 @@ def _load_fx_analytical_payload_with_warnings(
     warnings: list[str] = []
     for series_id, rows in grouped_rows.items():
         latest, selection_warnings, substituted = _resolve_fx_analytical_latest_row(rows)
+        if latest["group_key"] == "middle_rate":
+            selected_group_key: FxAnalyticalGroupKey = "middle_rate"
+        elif latest["group_key"] == "fx_index":
+            selected_group_key = "fx_index"
+        elif latest["group_key"] == "fx_swap_curve":
+            selected_group_key = "fx_swap_curve"
+        else:
+            raise ValueError(f"Unsupported FX analytical group: {latest['group_key']!r}")
         warnings.extend(f"series_id={series_id}: {warning}" for warning in selection_warnings)
         if substituted:
             warnings.append(
@@ -2410,7 +2429,7 @@ def _load_fx_analytical_payload_with_warnings(
             },
         )
         point = FxAnalyticalSeriesPoint(
-            group_key=latest["group_key"],
+            group_key=selected_group_key,
             series_id=series_id,
             series_name=str(latest["series_name"]),
             trade_date=str(latest["trade_date"]),
@@ -2419,15 +2438,24 @@ def _load_fx_analytical_payload_with_warnings(
             unit=str(latest["unit"]),
             source_version=str(latest["source_version"]),
             vendor_version=str(latest["vendor_version"]),
-            refresh_tier=_as_optional_string(catalog.get("refresh_tier")),
-            fetch_mode=_as_optional_string(catalog.get("fetch_mode")),
-            fetch_granularity=_as_optional_string(catalog.get("fetch_granularity")),
+            refresh_tier=cast(
+                ChoiceMacroRefreshTier | None,
+                _as_optional_string(catalog.get("refresh_tier")),
+            ),
+            fetch_mode=cast(
+                ChoiceMacroFetchMode | None,
+                _as_optional_string(catalog.get("fetch_mode")),
+            ),
+            fetch_granularity=cast(
+                ChoiceMacroFetchGranularity | None,
+                _as_optional_string(catalog.get("fetch_granularity")),
+            ),
             policy_note=_as_optional_string(catalog.get("policy_note")),
             quality_flag=_normalize_quality_flag(quality_flag),
             latest_change=latest_change,
             recent_points=recent_points,
         )
-        groups.setdefault(latest["group_key"], []).append(point)
+        groups.setdefault(selected_group_key, []).append(point)
 
     ordered_groups: list[FxAnalyticalGroup] = []
     for group_key, title, description in (
@@ -2874,7 +2902,7 @@ def _fallback_mode_for_macro_latest(payload: ChoiceMacroLatestPayload, quality_f
     return "none"
 
 
-def _aggregate_quality_flags(values: list[str]) -> str:
+def _aggregate_quality_flags(values: Sequence[str]) -> str:
     normalized = {_normalize_quality_flag(value) for value in values if value}
     if not normalized:
         return "warning"

@@ -41,8 +41,6 @@ from backend.app.core_finance.macro import (
     compute_risk_parity_payload,  # noqa: F401  # re-exported for the route module
     compute_yield_curve_shape,  # noqa: F401  # re-exported for the route module
     low_crowding_multifactor_selection,
-    mean_reversion_momentum_strategy,
-    moving_average_strategy,
     multi_factor_selection,
 )
 from backend.app.core_finance.macro.a_share_stampede_risk import (
@@ -1094,24 +1092,25 @@ def _real_equity_strategy_summaries(price_context: dict[str, object]) -> list[di
         "source_versions": price_context["source_versions"],
         "vendor_versions": price_context["vendor_versions"],
     }
+    price_only_summaries: list[dict[str, object]] = [
+        {
+            "key": key,
+            "label": label,
+            "group": "A股策略",
+            "status": "unavailable",
+            "tone": "missing",
+            "primary_metric": None,
+            "warnings": ["收益链未验证：原始收盘价缺少复权与股息证据，模拟累计净值不可用。"],
+            "evidence": [
+                f"当前日成交额样本回看，{len(prices.columns)} 只股票、{len(prices.index)} 个交易日；缺价沿用前值。",
+                "昨日收盘仓位计今日收益；不含成本和滑点；未配置比较基准。",
+            ],
+            "result": dict(common_result),
+        }
+        for key, label in (("moving_average", "移动均线策略"), ("mean_reversion_momentum", "均值回归 + 动量"))
+    ]
     return [
-        *[
-            {
-                "key": key,
-                "label": label,
-                "group": "A股策略",
-                "status": "unavailable",
-                "tone": "missing",
-                "primary_metric": None,
-                "warnings": ["收益链未验证：原始收盘价缺少复权与股息证据，模拟累计净值不可用。"],
-                "evidence": [
-                    f"当前日成交额样本回看，{len(prices.columns)} 只股票、{len(prices.index)} 个交易日；缺价沿用前值。",
-                    "昨日收盘仓位计今日收益；不含成本和滑点；未配置比较基准。",
-                ],
-                "result": dict(common_result),
-            }
-            for key, label in (("moving_average", "移动均线策略"), ("mean_reversion_momentum", "均值回归 + 动量"))
-        ],
+        *price_only_summaries,
         _real_multi_factor_summary(price_context, prices=prices, financials=financials),
         _real_low_crowding_regime_multifactor_summary(
             price_context,

@@ -27,12 +27,17 @@ if importlib.util.find_spec("matplotlib") is None:
     mpatches = None
     plt = None
 else:
-    import matplotlib
+    import matplotlib as _matplotlib
 
-    matplotlib.use("Agg")
-    import matplotlib.gridspec as gridspec
-    import matplotlib.patches as mpatches
-    import matplotlib.pyplot as plt
+    _matplotlib.use("Agg")
+    import matplotlib.gridspec as _gridspec
+    import matplotlib.patches as _mpatches
+    import matplotlib.pyplot as _plt
+
+    matplotlib = _matplotlib
+    gridspec = _gridspec
+    mpatches = _mpatches
+    plt = _plt
 
 from datetime import datetime
 
