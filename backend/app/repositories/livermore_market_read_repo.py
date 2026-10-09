@@ -44,6 +44,8 @@ _MARKET_READ_RELATIONS = frozenset(
 # reaches a FROM/JOIN/PRAGMA clause must come from this whitelist.
 _STRATEGY_READ_RELATIONS = frozenset(
     {
+        "stock_adjustment_factor",
+        "choice_stock_request_audit",
         RELATION_CHOICE_STOCK_DAILY_OBSERVATION,
         RELATION_CHOICE_STOCK_FACTOR_SNAPSHOT,
         RELATION_CHOICE_STOCK_SECTOR_MEMBERSHIP,
@@ -1175,6 +1177,72 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
         group by stock_code
         """,
             params,
+        ).fetchall()
+
+    def fetch_signal_stock_history_rows(
+        self,
+        *,
+        stock_codes: list[str],
+        as_of_date: str,
+        history_window: int,
+        trading_only: bool,
+        conn: duckdb.DuckDBPyConnection,
+    ) -> list[tuple[Any, ...]]:
+        """Keep ties and undated evidence for rejection without shrinking dated windows."""
+        optional = {
+            column: (column if self.table_has_columns(table_name=RELATION_CHOICE_STOCK_DAILY_OBSERVATION,
+                                                      columns=[column], conn=conn)
+                     else f"cast(null as varchar) as {column}")
+            for column in ("vendor_version", "source_version", "run_id")
+        }
+        status_filter = f"and {tradable_status_sql_condition('tradestatus')}" if trading_only else ""
+        has_units_basis = self.table_has_columns(table_name=RELATION_CHOICE_STOCK_DAILY_OBSERVATION,
+                                                 columns=["vendor_version"], conn=conn)
+        amount_select = amount_rmb_sql(alias="amount") if has_units_basis else "cast(null as double) as amount"
+        volume_select = volume_shares_sql(alias="volume") if has_units_basis else "cast(null as double) as volume"
+        return conn.execute(
+            f"""
+            with signal_window as (
+              select stock_code, trade_date, close_value, turn,
+                     {amount_select}, {volume_select},
+                     {optional["vendor_version"]}, {optional["source_version"]}, {optional["run_id"]},
+                     rank() over (partition by stock_code order by cast(trade_date as date) desc nulls last) as rn
+              from {RELATION_CHOICE_STOCK_DAILY_OBSERVATION}
+              where stock_code = any(?::varchar[])
+                and (trade_date is null or cast(trade_date as date) <= cast(? as date))
+                {status_filter}
+            )
+            select stock_code, trade_date, close_value, turn, amount, volume,
+                   vendor_version, source_version, run_id
+            from signal_window where rn <= ? or trade_date is null order by stock_code, rn desc
+            """,
+            [stock_codes, as_of_date, history_window],
+        ).fetchall()
+
+    def fetch_signal_adjustment_factor_rows(
+        self, *, stock_codes: list[str], start_date: str, as_of_date: str,
+        conn: duckdb.DuckDBPyConnection,
+    ) -> list[tuple[Any, ...]]:
+        # Read separately: this table has no uniqueness constraint and a join
+        # would multiply price observations. Preserve duplicates for validation.
+        return conn.execute(
+            """select stock_code, trade_date, adj_factor, source_version
+               from stock_adjustment_factor
+               where stock_code = any(?::varchar[])
+                  and (trade_date is null or cast(trade_date as date) between cast(? as date) and cast(? as date))
+               order by stock_code, cast(trade_date as date)""",
+            [stock_codes, start_date, as_of_date],
+        ).fetchall()
+
+    def fetch_signal_price_request_audits(
+        self, *, run_ids: list[str], conn: duckdb.DuckDBPyConnection,
+    ) -> list[tuple[Any, ...]]:
+        return conn.execute(
+            """select run_id, input_family, field_key, call, vendor_indicator,
+                      request_arguments_json, request_options_json, status, source_version
+               from choice_stock_request_audit where run_id = any(?::varchar[])
+                 and input_family = 'stock_ohlcv' and field_key = 'daily_ohlcv_amount'""",
+            [run_ids],
         ).fetchall()
 
     # ---- trading-stock snapshot inputs ------------------------------------

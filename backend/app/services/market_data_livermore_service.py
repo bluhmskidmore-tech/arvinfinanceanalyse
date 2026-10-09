@@ -16,7 +16,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import duckdb
-from backend.app.core_finance.breakout_geometry import attach_breakout_geometry
+from backend.app.core_finance.adjusted_returns import (
+    SIGNAL_PRICE_ADJUSTMENT_MODE,
+    SignalPriceHistory,
+    signal_price_history,
+)
+from backend.app.core_finance.breakout_geometry import (
+    BREAKOUT_GEOMETRY_FIELD_KEYS,
+    BREAKOUT_GEOMETRY_MIN_HISTORY,
+    attach_breakout_geometry,
+)
 from backend.app.core_finance.cycle_macro_score import (
     CN10Y_SERIES_ID,
     CSI300_PE_SERIES_ID,
@@ -95,10 +104,13 @@ from backend.app.core_finance.uptrend_momentum_candidates import (
 from backend.app.repositories.choice_stock_adapter import (
     ChoiceStockCatalogAsset,
     ChoiceStockReadiness,
+    StockDailyPriceBasisEvidence,
     build_choice_stock_readiness,
     choice_stock_optional_input_status,
     choice_stock_readiness_missing,
     load_choice_stock_readiness,
+    stock_daily_price_basis,
+    stock_daily_price_basis_evidence,
 )
 from backend.app.repositories.livermore_gate_supplement_repo import fetch_market_gate_supplement
 from backend.app.repositories.livermore_market_read_repo import (
@@ -1768,6 +1780,168 @@ def _project_sector_materialization_coverage(
     )
 
 
+@dataclass(frozen=True)
+class _SignalStockHistory:
+    prices: SignalPriceHistory
+    turnover: tuple[object, ...] = ()
+    amount: tuple[object, ...] = ()
+    volume: tuple[object, ...] = ()
+    source_versions: tuple[str, ...] = ()
+    vendor_versions: tuple[str, ...] = ()
+    tables_used: tuple[str, ...] = ()
+
+
+def _load_signal_stock_histories(
+    *,
+    conn: duckdb.DuckDBPyConnection,
+    stock_codes: list[str],
+    as_of_date: str,
+    trading_only: bool,
+) -> dict[str, _SignalStockHistory]:
+    """Load raw and signal-scaled prices independently of shared raw histories."""
+    codes = _unique_preserving_order(stock_codes)
+    if not codes:
+        return {}
+    def unavailable(reason: str) -> dict[str, _SignalStockHistory]:
+        return {code: _SignalStockHistory(prices=SignalPriceHistory(unavailable_reason=reason)) for code in codes}
+    try:
+        rows = LIVERMORE_STRATEGY_READS.fetch_signal_stock_history_rows(
+            stock_codes=codes, as_of_date=as_of_date, history_window=CHOICE_STOCK_HISTORY_WINDOW,
+            trading_only=trading_only, conn=conn,
+        )
+        if not rows:
+            return unavailable("price_window_missing")
+        if not _table_has_columns(conn, "stock_adjustment_factor", ["stock_code", "trade_date", "adj_factor", "source_version"]):
+            return unavailable("adjustment_factor_table_missing")
+        factor_rows = LIVERMORE_STRATEGY_READS.fetch_signal_adjustment_factor_rows(
+            stock_codes=codes, start_date=min((str(row[1]) for row in rows if row[1] is not None), default=as_of_date),
+            as_of_date=as_of_date, conn=conn,
+        )
+        run_ids = _unique_preserving_order([str(row[8]) for row in rows if row[8]])
+        audit_rows = []
+        if run_ids and _table_has_columns(conn, "choice_stock_request_audit", [
+            "run_id", "input_family", "field_key", "call", "vendor_indicator",
+            "request_arguments_json", "request_options_json", "status", "source_version",
+        ]):
+            audit_rows = LIVERMORE_STRATEGY_READS.fetch_signal_price_request_audits(run_ids=run_ids, conn=conn)
+    except duckdb.Error as exc:
+        _warn_duckdb_query_failed("signal_stock_histories", exc=exc,
+                                tables=["choice_stock_daily_observation", "stock_adjustment_factor"],
+                                as_of_date=as_of_date)
+        return unavailable("price_history_query_failed")
+    audits_by_run: dict[str, list[dict[str, object]]] = {}
+    audit_keys = ("run_id", "input_family", "field_key", "call", "vendor_indicator", "request_arguments_json",
+                  "request_options_json", "status", "source_version")
+    for audit_row in audit_rows:
+        audits_by_run.setdefault(str(audit_row[0]), []).append(dict(zip(audit_keys, audit_row, strict=True)))
+    evidence_by_run_source: dict[tuple[str, str], StockDailyPriceBasisEvidence] = {}
+    for row in rows:
+        run_source = (str(row[8]), str(row[7] or ""))
+        if run_source not in evidence_by_run_source:
+            evidence_by_run_source[run_source] = stock_daily_price_basis_evidence(
+                source_version=row[7], request_audits=audits_by_run.get(run_source[0], []),
+            )
+    by_code: dict[str, list[tuple[object, ...]]] = {}
+    factors_by_code: dict[str, list[tuple[object, object]]] = {}
+    factor_sources_by_code: dict[str, list[str]] = {}
+    for row in rows:
+        by_code.setdefault(str(row[0]), []).append(row)
+    for code, trade_date, factor, source in factor_rows:
+        factors_by_code.setdefault(str(code), []).append((trade_date, factor))
+        if source:
+            factor_sources_by_code.setdefault(str(code), []).append(str(source))
+    result: dict[str, _SignalStockHistory] = {}
+    for code in codes:
+        observations = by_code.get(code, [])
+        prices = signal_price_history(
+            raw_prices=[row[2] for row in observations], trade_dates=[row[1] for row in observations],
+            price_bases=[stock_daily_price_basis(vendor_version=row[6], source_version=row[7], stock_code=code,
+                                                trade_date=str(row[1]), request_audits=[],
+                                                request_evidence=evidence_by_run_source[(str(row[8]), str(row[7] or ""))])
+                         for row in observations],
+            factor_rows=factors_by_code.get(code, []), signal_date=as_of_date,
+        )
+        result[code] = _SignalStockHistory(
+            prices=prices, turnover=tuple(row[3] for row in observations),
+            amount=tuple(row[4] for row in observations), volume=tuple(row[5] for row in observations),
+            source_versions=tuple(_unique_preserving_order([str(row[7]) for row in observations if row[7]]
+                                                           + factor_sources_by_code.get(code, []))),
+            vendor_versions=tuple(_unique_preserving_order([str(row[6]) for row in observations if row[6]])),
+            tables_used=("choice_stock_daily_observation", "stock_adjustment_factor")
+                        + (("choice_stock_request_audit",) if audit_rows else ()),
+        )
+    return result
+
+
+def _signal_history_disclosure(
+    histories: dict[str, _SignalStockHistory],
+    *, stock_codes: list[str],
+) -> dict[str, object]:
+    reasons = {
+        code: (histories[code].prices.unavailable_reason if code in histories else "price_window_missing")
+        for code in _unique_preserving_order(stock_codes)
+        if code not in histories or histories[code].prices.unavailable_reason
+    }
+    return {
+        "price_adjustment_mode": SIGNAL_PRICE_ADJUSTMENT_MODE,
+        "price_history_status": "unavailable" if reasons and len(reasons) == len(set(stock_codes))
+                                else "partial" if reasons else "available",
+        "price_history_unavailable_count": len(reasons),
+        "price_history_unavailable_reasons": reasons,
+    }
+
+
+def _attach_signal_breakout_geometry(
+    payload: dict[str, object],
+    *, close_histories: Mapping[str, tuple[object, ...]], as_of_date: str,
+) -> dict[str, object]:
+    # Replace the dependent geometry as a unit; preserve the signal day's raw
+    # close, which is also the adjusted window's anchor price.
+    prepared = {**payload, "items": [
+        {key: value for key, value in item.items()
+         if key not in {"breakout_level", "distance_to_breakout_pct", "pattern", "pattern_code",
+                        "price_as_of_date", "price_stale", "breakout_geometry_unavailable_reason"}}
+        for item in cast(list[dict[str, object]], payload.get("items") or [])
+    ]}
+    result = attach_breakout_geometry(
+        prepared, close_history_by_code=close_histories, price_as_of_date=as_of_date,
+        last_trade_date_by_code={code: as_of_date for code in close_histories},
+    )
+    price_reasons = cast(dict[str, str], payload.get("price_history_unavailable_reasons") or {})
+    for original, item in zip(
+        cast(list[dict[str, object]], prepared["items"]),
+        cast(list[dict[str, object]], result["items"]), strict=True,
+    ):
+        code = str(item.get("stock_code") or "")
+        close = item.get("close")
+        breakout_level = item.get("breakout_level")
+        numeric = (close, breakout_level, item.get("distance_to_breakout_pct"))
+        reason = ""
+        if any(value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                     or not math.isfinite(value)) for value in numeric):
+            reason = "geometry_nonfinite_value"
+        elif isinstance(breakout_level, (int, float)) and breakout_level <= 0:
+            reason = "geometry_nonpositive_breakout_level"
+        elif isinstance(close, (int, float)) and close <= 0:
+            reason = "geometry_nonpositive_close"
+        elif any(item.get(key) is None for key in BREAKOUT_GEOMETRY_FIELD_KEYS):
+            reason = price_reasons.get(code) or (
+                "geometry_history_insufficient" if len(close_histories.get(code, ())) < BREAKOUT_GEOMETRY_MIN_HISTORY
+                else "geometry_fields_unavailable"
+            )
+        if reason:
+            for key in (*BREAKOUT_GEOMETRY_FIELD_KEYS, "price_as_of_date", "price_stale"):
+                item[key] = None
+            original_close = original.get("close")
+            if (not isinstance(original_close, bool) and isinstance(original_close, (int, float))
+                    and math.isfinite(original_close) and original_close > 0):
+                item["close"] = original_close
+            item["breakout_geometry_unavailable_reason"] = reason
+    result["breakout_geometry"] = {**cast(dict[str, object], result["breakout_geometry"]),
+                                   "price_adjustment_mode": SIGNAL_PRICE_ADJUSTMENT_MODE}
+    return result
+
+
 def _load_choice_stock_outputs(
     *,
     duckdb_path: str,
@@ -2192,8 +2366,8 @@ def _load_choice_stock_outputs_on_conn(
         ).payload
 
     # 观察位几何：主候选与五个观察候选源（动量/新趋势/超跌/多因子/融合）共用
-    # core_finance.breakout_geometry 的同一 attach 公式，收盘历史与 Livermore
-    # 候选同源同窗口（锚定策略 as_of_date），一次查询覆盖全部源的候选码。
+    # core_finance.breakout_geometry 的同一 attach 公式。多因子与融合候选
+    # 在评分后用独立核验的复权窗口，精确锚定策略 as_of_date。
     # 各源选股/评分/排序零变化；装载失败或缺 K 线时 attach 层保持字段
     # None（fail-closed），源自带的 close 等同名键不被覆盖。
     geometry_target_payloads: list[dict[str, object] | None] = [
@@ -2223,9 +2397,44 @@ def _load_choice_stock_outputs_on_conn(
     )
     tables_used.extend(geometry_tables)
 
-    def _with_breakout_geometry(payload: dict[str, object] | None) -> dict[str, object] | None:
+    # Factor/fusion admission can include codes absent from both stock snapshot
+    # maps. Verify their exact union on the supplied connection, without reopening
+    # an active database or falling back to raw/stale geometry.
+    factor_fusion_payloads = [factor_screen_payload, hybrid_fusion_payload]
+    factor_fusion_codes_by_payload = [
+        [str(item.get("stock_code") or "").strip()
+         for item in cast(list[dict[str, object]], (payload or {}).get("items") or [])
+         if str(item.get("stock_code") or "").strip()]
+        for payload in factor_fusion_payloads
+    ]
+    factor_fusion_codes = sorted({code for codes in factor_fusion_codes_by_payload for code in codes})
+    factor_fusion_histories = (
+        _load_signal_stock_histories(
+            conn=stock_conn, stock_codes=factor_fusion_codes, as_of_date=as_of_date, trading_only=False,
+        ) if stock_conn is not None and factor_fusion_codes else {}
+    )
+    factor_fusion_close_histories = {
+        code: history.prices.closes for code, history in factor_fusion_histories.items()
+        if not history.prices.unavailable_reason
+    }
+    for history in factor_fusion_histories.values():
+        tables_used.extend(history.tables_used)
+        source_versions.extend(history.source_versions)
+        vendor_versions.extend(history.vendor_versions)
+    for payload, codes in zip(factor_fusion_payloads, factor_fusion_codes_by_payload, strict=True):
+        if payload is not None:
+            payload.update(_signal_history_disclosure(factor_fusion_histories, stock_codes=codes))
+
+    def _with_breakout_geometry(
+        payload: dict[str, object] | None,
+        *, signal_close_histories: Mapping[str, tuple[object, ...]] | None = None,
+    ) -> dict[str, object] | None:
         if payload is None:
             return None
+        if signal_close_histories is not None:
+            return _attach_signal_breakout_geometry(
+                payload, close_histories=signal_close_histories, as_of_date=as_of_date,
+            )
         return attach_breakout_geometry(
             payload,
             close_history_by_code=geometry_histories,
@@ -2237,8 +2446,12 @@ def _load_choice_stock_outputs_on_conn(
     uptrend_momentum_payload = _with_breakout_geometry(uptrend_momentum_payload)
     fresh_trend_watchlist_payload = _with_breakout_geometry(fresh_trend_watchlist_payload)
     mean_reversion_payload = _with_breakout_geometry(mean_reversion_payload)
-    factor_screen_payload = _with_breakout_geometry(factor_screen_payload)
-    hybrid_fusion_payload = _with_breakout_geometry(hybrid_fusion_payload)
+    factor_screen_payload = _with_breakout_geometry(
+        factor_screen_payload, signal_close_histories=factor_fusion_close_histories,
+    )
+    hybrid_fusion_payload = _with_breakout_geometry(
+        hybrid_fusion_payload, signal_close_histories=factor_fusion_close_histories,
+    )
 
     risk_exit_payload: dict[str, object] | None = None
     risk_exit_block_reason = ""
