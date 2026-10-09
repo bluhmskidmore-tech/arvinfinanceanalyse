@@ -343,7 +343,11 @@ def test_ci_full_backend_regression_runs_only_for_default_or_explicit_selection(
 
     assert actual is expected
     assert "uv sync --frozen --project backend --extra dev --python 3.11" in job
-    assert "python -m pytest -q" in _workflow_step(job, "Run full backend pytest suite")
+    pytest_step = _workflow_step(job, "Run full backend pytest suite")
+    assert "python -m pytest -n 4 --dist loadfile -v --tb=short" in pytest_step
+    pytest_arguments = pytest_step.split("python -m pytest", 1)[1].split("2>&1", 1)[0]
+    assert not re.search(r"(?:^|\s)(?:-q|--quiet|-m|-k|--ignore(?:-glob)?|--deselect)(?:\s|=|$)", pytest_arguments)
+    assert "timeout-minutes: 40" in job
     assert "continue-on-error:" not in job
     assert "contents: read" in job
     assert "issues: write" in job

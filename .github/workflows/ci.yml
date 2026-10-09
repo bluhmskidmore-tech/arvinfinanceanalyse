@@ -459,7 +459,7 @@ jobs:
         id: full-pytest
         run: |
           mkdir -p test_output/ci
-          python -m pytest -q \
+          python -m pytest -n 4 --dist loadfile -v --tb=short \
             --junitxml=test_output/ci/full-pytest-report.xml \
             2>&1 | tee test_output/ci/full-pytest-console.log
           exit "${PIPESTATUS[0]}"
