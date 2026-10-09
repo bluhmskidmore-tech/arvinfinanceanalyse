@@ -99,6 +99,9 @@ _TEST_QUEUE_INSTALLER = "tests/test_install_data_update_queue.py"
 _TEST_DATA_HEALTH = "tests/test_data_health.py"
 _TEST_DATA_HEALTH_SCHTASKS_QUERY = "tests/test_data_health_schtasks_query.py"
 _TEST_BALANCE_API = "tests/test_balance_analysis_api.py"
+_TEST_STOCK_SIGNAL_ADJUSTMENT = "tests/test_stock_signal_adjustment.py"
+_TEST_LIVERMORE_VERIFIED_GEOMETRY = "tests/test_livermore_factor_verified_geometry.py"
+_TEST_LIVERMORE_GEOMETRY_REVIEW = "tests/test_livermore_factor_geometry_review.py"
 
 _ALL_CALIBER_TESTS = (
     _TEST_ACCOUNTING_BASIS,
@@ -698,6 +701,29 @@ for _source, _checks in {
     ),
     "backend/app/tasks/stock_factor_refresh.py": (
         "tests/test_structural_scoped_refresh.py",
+    ),
+    # These synthetic guards retain the excluded-surface regression boundary.
+    "backend/app/core_finance/adjusted_returns.py": (
+        "tests/test_adjusted_returns.py",
+        _TEST_STOCK_SIGNAL_ADJUSTMENT,
+        _TEST_LIVERMORE_VERIFIED_GEOMETRY,
+        _TEST_LIVERMORE_GEOMETRY_REVIEW,
+    ),
+    "backend/app/repositories/choice_stock_adapter.py": (
+        "tests/test_choice_stock_adapter.py",
+        _TEST_STOCK_SIGNAL_ADJUSTMENT,
+        _TEST_LIVERMORE_VERIFIED_GEOMETRY,
+        _TEST_LIVERMORE_GEOMETRY_REVIEW,
+    ),
+    "backend/app/repositories/livermore_market_read_repo.py": (
+        _TEST_STOCK_SIGNAL_ADJUSTMENT,
+        _TEST_LIVERMORE_VERIFIED_GEOMETRY,
+        _TEST_LIVERMORE_GEOMETRY_REVIEW,
+    ),
+    "backend/app/services/market_data_livermore_service.py": (
+        _TEST_STOCK_SIGNAL_ADJUSTMENT,
+        _TEST_LIVERMORE_VERIFIED_GEOMETRY,
+        _TEST_LIVERMORE_GEOMETRY_REVIEW,
     ),
     "backend/app/repositories/stock_official_disclosure_repo.py": (
         "tests/test_stock_selected_generation_context.py",
