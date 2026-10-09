@@ -302,6 +302,54 @@ def test_ci_workflow_keeps_main_pr_and_codex_push_checks():
     assert "master" not in workflow
 
 
+def test_ci_full_backend_regression_label_preserves_default_pr_triggers():
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    pull_request = workflow.split("\n  pull_request:", 1)[1].split("\n  schedule:", 1)[0]
+    types = re.search(r"types: \[([^\]]+)\]", pull_request)
+
+    assert "branches: [main]" in pull_request
+    assert types is not None
+    assert {value.strip() for value in types.group(1).split(",")} == {
+        "opened", "synchronize", "reopened", "labeled",
+    }
+
+
+@pytest.mark.parametrize(
+    ("event_name", "ref", "labels", "expected"),
+    [
+        ("schedule", "refs/heads/main", [], True),
+        ("push", "refs/heads/main", [], True),
+        ("push", "refs/heads/codex/example", ["full-backend-regression"], False),
+        ("pull_request", "refs/pull/48/merge", [], False),
+        ("pull_request", "refs/pull/48/merge", ["maintenance"], False),
+        ("pull_request", "refs/pull/48/merge", ["full-backend-regression"], True),
+        ("pull_request", "refs/pull/48/merge", ["maintenance", "full-backend-regression"], True),
+        ("workflow_dispatch", "refs/heads/main", ["full-backend-regression"], False),
+    ],
+)
+def test_ci_full_backend_regression_runs_only_for_default_or_explicit_selection(event_name, ref, labels, expected):
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    job = workflow.split("\n  backend-full-pytest:", 1)[1].split("\n  backend-lint:", 1)[0]
+    condition = re.search(r"^    if: >-\n((?:      .+\n)+)", job, re.MULTILINE)
+    assert condition is not None
+    expression = " ".join(line.strip() for line in condition.group(1).splitlines())
+    expression = expression.replace("github.event.pull_request.labels.*.name", "labels")
+    expression = expression.replace("github.event_name", "event_name").replace("github.ref", "ref")
+    expression = expression.replace("&&", " and ").replace("||", " or ")
+    actual = eval(expression, {"__builtins__": {}}, {
+        "event_name": event_name, "ref": ref, "labels": labels,
+        "contains": lambda values, value: value.casefold() in {item.casefold() for item in values},
+    })
+
+    assert actual is expected
+    assert "uv sync --frozen --project backend --extra dev --python 3.11" in job
+    assert "python -m pytest -q" in _workflow_step(job, "Run full backend pytest suite")
+    assert "continue-on-error:" not in job
+    assert "contents: read" in job
+    assert "issues: write" in job
+    assert "if: failure() && github.event_name == 'schedule'" in job
+
+
 def test_caliber_pr_workflow_always_checks_map_before_merge_diff_gate():
     workflow = (
         ROOT / ".github" / "workflows" / "caliber-pr-gate.yml"

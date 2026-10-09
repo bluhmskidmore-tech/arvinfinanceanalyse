@@ -18,7 +18,7 @@
 
 POSIX 对应 `.venv/bin/python scripts/backend_release_suite.py`。该命令仍是当前 release cutoff 使用的 bounded backend release suite；本机全量诊断命令 `.\.venv\Scripts\python.exe -m pytest -q` 不替代它，也不是每次修改的必跑项。
 
-正式计算边界与测试执行范围分别判断。默认 PR 的 bounded gate、独立 Agent 测试、前端 Vitest，以及定时和 `main` 推送的全量后端任务，按 [测试选择入口](../tests/AGENTS.md#test-selection) 所引用的实际选择器核对。排除面测试被执行不代表正式口径晋升；声明门禁通过仍须有对应执行记录。
+正式计算边界与测试执行范围分别判断。默认 PR 的 bounded gate、独立 Agent 测试、前端 Vitest，以及全量后端任务，按 [测试选择入口](../tests/AGENTS.md#test-selection) 所引用的实际选择器核对。全量任务在定时和 `main` 推送时运行；目标为 `main` 的 PR 可添加 `full-backend-regression` 标签显式运行，标签保留期间的后续更新也会运行。排除面测试被执行不代表正式口径晋升；声明门禁通过仍须有对应执行记录。
 
 ### 1.1 完成声明的证据
 

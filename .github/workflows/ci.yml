@@ -5,6 +5,7 @@ on:
     branches: [main, "codex/**"]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: "0 18 * * *"
 
@@ -421,7 +422,10 @@ jobs:
     name: Backend Full Pytest
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-backend-regression'))
     permissions:
       contents: read
       issues: write

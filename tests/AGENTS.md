@@ -13,7 +13,7 @@ The following entry points were checked on 2026-09-20. Read their current select
 - **Bounded backend release gate:** [`scripts/backend_release_suite.py`](../scripts/backend_release_suite.py) owns the explicit file lists and the default `not excluded_surface_acceptance` filter. Mainline classification alone does not add a file to this gate.
 - **Other PR checks:** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) also has a `Run agent harness tests` step with its own explicit list. Agent tests are not categorically excluded from PR CI.
 - **Frontend CI:** the workflow runs `npm test`; [`frontend/package.json`](../frontend/package.json), [`vitest-safe.mjs`](../frontend/scripts/vitest-safe.mjs), and [`vitest.config.ts`](../frontend/vitest.config.ts) define execution. There is no business-surface exclusion in the current Vitest selector.
-- **Full backend CI:** the workflow's `backend-full-pytest` job runs on schedule and pushes to `main`, using full pytest collection without the bounded gate's marker filter. This does not promote excluded surfaces.
+- **Full backend CI:** the workflow's `backend-full-pytest` job runs on schedule, pushes to `main`, and main-targeted PRs explicitly labeled `full-backend-regression`, using full pytest collection without the bounded gate's marker filter. The label keeps subsequent PR updates opted in until removed. This does not promote excluded surfaces.
 - **Local task verification:** choose the smallest relevant files and, where applicable, markers. Interpreter and command guidance lives in [`tests/CLAUDE.md`](CLAUDE.md); full CI collection is not a requirement for every task.
 
 ## Three enforcement tiers
