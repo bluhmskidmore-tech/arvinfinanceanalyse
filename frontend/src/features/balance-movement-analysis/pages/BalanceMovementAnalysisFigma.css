@@ -108,7 +108,7 @@
 .balance-movement-page-header__actions button {
   display: inline-flex;
   box-sizing: border-box;
-  height: 32px;
+  height: 36px;
   align-items: center;
   gap: 7px;
   margin: 0;
@@ -119,13 +119,19 @@
   color: var(--dh-api-soft);
   font-family: var(--moss-font-tabular);
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1;
 }
 
 .balance-movement-page-header__actions label:first-child {
-  width: 146px;
+  width: auto;
+}
+
+.balance-movement-page-header__actions label {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .balance-movement-page-header__actions label > span {
@@ -134,11 +140,14 @@
 }
 
 .balance-movement-page-header__actions select {
+  box-sizing: border-box;
+  height: 36px;
   min-width: 0;
-  padding: 0;
-  border: 0;
+  padding: 0 10px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--ib-radius);
   outline: 0;
-  background: transparent;
+  background: var(--dh-api-panel);
   color: var(--dh-api-ink);
   font: inherit;
 }
@@ -149,9 +158,9 @@
 }
 
 .balance-movement-page-header__actions .balance-movement-page-header__currency {
-  width: 48px;
+  width: auto;
   justify-content: center;
-  padding: 0 6px;
+  padding: 0;
 }
 
 .balance-movement-page-header__currency > span {

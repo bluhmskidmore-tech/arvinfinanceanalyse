@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { evaluateCompliance, parseArgs, validateConfig } from './visual-compliance-audit.mjs';
+import { evaluateCompliance, measureCompliance, parseArgs, validateConfig } from './visual-compliance-audit.mjs';
 import { JSDOM } from 'jsdom';
 import { classifyControlRoles, classifyTableValues } from './visual-compliance-control-roles.mjs';
 
@@ -114,6 +114,74 @@ test('risk-tensor tiles require the verified parent, value and detail structure'
     <button id="incompleteTile" class="risk-tensor-brief__tile risk-tensor-brief__tile--action">Retry</button>
     <button id="largeButton" style="height:160px">Run</button>
   </div>`), { tile: 'clickable-card', incompleteTile: 'control', largeButton: 'control' });
+});
+
+const marketEntry = (id, { title = 'Macro and FX', meta = 'Stable 0; degraded 0', kicker = 'More readings', type = 'button' } = {}) => `
+  <button id="${id}" type="${type}" class="market-data-series-library-entry" data-testid="market-data-series-library-entry">
+    <span class="market-data-series-library-entry__titles">
+      <span class="market-data-series-library-entry__kicker">${kicker}</span>
+      <span class="market-data-series-library-entry__title">${title}</span>
+    </span><span class="market-data-series-library-entry__meta">${meta}</span>
+  </button>`;
+
+test('only the complete market library content entry uses the card role; ordinary and incomplete controls remain controls', () => {
+  assert.deepEqual(roleMap(`<main class="market-data-main" data-testid="market-data-main">
+    ${marketEntry('library')}${marketEntry('missingTitle', { title: '' })}
+    ${marketEntry('missingMeta', { meta: '' })}${marketEntry('missingKicker', { kicker: '' })}
+    ${marketEntry('submit', { type: 'submit' })}
+    <button id="sameClass" type="button" class="market-data-series-library-entry">Retry</button>
+    <button id="ordinary">Refresh</button><select id="select"><option>2026</option></select>
+  </main><div>${marketEntry('wrongParent')}</div>`), {
+    library: 'clickable-card', missingTitle: 'control', missingMeta: 'control', missingKicker: 'control',
+    submit: 'control', sameClass: 'control', ordinary: 'control', select: 'control', wrongParent: 'control',
+  });
+});
+
+test('selected and unselected owner rows remain selection controls regardless of icon or height', () => {
+  assert.deepEqual(roleMap(`<section class="kpi-owner-list-card" data-testid="kpi-owner-list-panel">
+    <div id="selectedOwner" class="kpi-owner-list__row kpi-owner-list__row--selected" role="button" aria-pressed="true">
+      <div class="kpi-owner-list__row-content"><div class="kpi-owner-list__avatar">Icon</div><span class="kpi-owner-list__name">Owner A</span></div>
+    </div><div id="owner" class="kpi-owner-list__row" role="button" aria-pressed="false" style="height:160px">
+      <div class="kpi-owner-list__row-content"><div class="kpi-owner-list__avatar">Icon</div><span class="kpi-owner-list__name">Owner B</span></div>
+    </div></section>`), { selectedOwner: 'control', owner: 'control' });
+});
+
+test('card classification retains content and container checks while incomplete buttons and selects retain geometry checks', () => {
+  // JSDOM has no layout engine. Supply only rectangles and visibility; execute the
+  // production measurement against its DOM and computed CSS, without a copied audit.
+  const dom = new JSDOM(`<style>
+    * { color: rgb(0, 0, 0); background-color: rgb(255, 255, 255); font-size: 13px; font-weight: 400;
+      border: 0px solid rgb(0, 0, 0); border-top-left-radius: 8px; border-top-right-radius: 8px;
+      border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; box-shadow: none; }
+    #library { border: 1px solid rgb(0, 0, 0); box-shadow: 0px 1px 4px rgb(0, 0, 0); }
+    #library .market-data-series-library-entry__title { font-size: 16px; }
+    #incomplete, #ordinary, #select { font-size: 16px; }
+  </style><div data-testid="workbench-main-content"><section id="outer"><section id="inner">
+    <main class="market-data-main" data-testid="market-data-main">${marketEntry('library')}
+      <button id="incomplete" type="button" class="market-data-series-library-entry" data-testid="market-data-series-library-entry">Retry</button>
+      <button id="ordinary">Refresh</button><select id="select"><option>2026</option></select>
+    </main></section></section></div>`, { runScripts: 'outside-only' });
+  try {
+    dom.window.HTMLElement.prototype.getBoundingClientRect = function () { return new dom.window.DOMRect(0, 0, 640, 58); };
+    dom.window.HTMLElement.prototype.checkVisibility = () => true;
+    dom.window.CSS = { escape: (value) => value }; // All fixture IDs are simple CSS identifiers.
+    const controlRoles = classifyControlRoles(dom.window.document);
+    const measure = dom.window.eval(`(${measureCompliance.toString()})`);
+    const measurement = measure({ config, route: '/market-data', controlRoles, tableValueRoles: [], legacy: {
+      mainInnerW: 640, evidence: { shellFrames: [], pageFrames: [], boxes: [
+        { selector: '#outer', depth: 1, w: 640, top: 0 }, { selector: '#inner', depth: 2, w: 640, top: 0 },
+      ] },
+    } });
+    const geometry = measurement.metrics['controls.geometry'].entries.map(({ selector }) => selector);
+    for (const id of ['incomplete', 'ordinary', 'select']) assert.ok(geometry.includes(`#${id}`), `${id} retains geometry`);
+    assert.equal(geometry.includes('#library'), false);
+    assert.ok(measurement.metrics['typography.sizes'].entries.some(({ selector }) => selector.startsWith('#library >')));
+    assert.ok(measurement.metrics['decoration.shadows'].entries.some(({ selector }) => selector === '#library'));
+    assert.ok(measurement.metrics['containers.depth3'].entries.some(({ selector }) => selector === '#library'));
+    assert.equal(evaluateCompliance(measurement, config).passed, false);
+  } finally {
+    dom.window.close();
+  }
 });
 
 test('clickable ledger data rows keep table rules while buttons in cells retain control rules', () => {

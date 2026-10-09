@@ -58,6 +58,7 @@ function resolvePopupContainer(trigger: HTMLElement): HTMLElement {
 
 export default function KpiPerformancePage() {
   const client = useApiClient();
+  const [messageApi, messageHolder] = message.useMessage();
   const [year, setYear] = React.useState<number>(() => new Date().getFullYear());
   const [asOfDate, setAsOfDate] = React.useState<Date>(() => new Date());
   const [owners, setOwners] = React.useState<KpiOwner[]>([]);
@@ -178,7 +179,7 @@ export default function KpiPerformancePage() {
     } catch (e) {
       if (requestId !== ownersRequestSeqRef.current) return;
       console.error(e);
-      message.error("加载考核对象失败");
+      messageApi.error("加载考核对象失败");
       setOwnersError(e instanceof Error ? e : new Error(String(e)));
       setOwnersMeta(null);
       setOwners([]);
@@ -187,7 +188,7 @@ export default function KpiPerformancePage() {
         setLoadingOwners(false);
       }
     }
-  }, [client, year]);
+  }, [client, year, messageApi]);
 
   const loadMetrics = React.useCallback(async () => {
     const requestId = ++metricsRequestSeqRef.current;
@@ -257,7 +258,7 @@ export default function KpiPerformancePage() {
     } catch (e) {
       if (requestId !== metricsRequestSeqRef.current) return false;
       console.error(e);
-      message.error("加载指标失败");
+      messageApi.error("加载指标失败");
       setMetrics([]);
       setPeriodSummary(null);
       return false;
@@ -266,7 +267,7 @@ export default function KpiPerformancePage() {
         setLoadingMetrics(false);
       }
     }
-  }, [client, selectedOwner, asOfDate, periodType, periodValue, year, editContextKey]);
+  }, [client, selectedOwner, asOfDate, periodType, periodValue, year, editContextKey, messageApi]);
 
   React.useEffect(() => {
     void loadOwners();
@@ -353,20 +354,20 @@ export default function KpiPerformancePage() {
       setLastFetchResult(result);
       const readSucceeded = await loadMetrics();
       if (request.handedOff || contextId !== contextSeqRef.current) return;
-      if (readSucceeded) message.success("抓取并重算已完成");
-      else message.warning("抓取并重算请求已成功，但当前页面刷新失败，请刷新核实数据。");
+      if (readSucceeded) messageApi.success("抓取并重算已完成");
+      else messageApi.warning("抓取并重算请求已成功，但当前页面刷新失败，请刷新核实数据。");
     } catch (e) {
       if (request.handedOff || contextId !== contextSeqRef.current) return;
       console.error(e);
       request.handoff();
-      message.error("抓取并重算结果尚未确认，请刷新核实。");
+      messageApi.error("抓取并重算结果尚未确认，请刷新核实。");
     } finally {
       if (fetchPendingRef.current === request) {
         fetchPendingRef.current = null;
         if (contextId === contextSeqRef.current) setFetchLoading(false);
       }
     }
-  }, [client, selectedOwner, asOfDate, loadMetrics, periodType, writePending, handleUnconfirmedWrite, editContextKey]);
+  }, [client, selectedOwner, asOfDate, loadMetrics, periodType, writePending, messageApi, handleUnconfirmedWrite, editContextKey]);
 
   const handleExportCSV = React.useCallback(async () => {
     setExportLoading(true);
@@ -378,11 +379,11 @@ export default function KpiPerformancePage() {
       });
     } catch (e) {
       console.error(e);
-      message.error("导出失败");
+      messageApi.error("导出失败");
     } finally {
       setExportLoading(false);
     }
-  }, [client, year, selectedOwner, asOfDate]);
+  }, [client, year, selectedOwner, asOfDate, messageApi]);
 
   const handleOpenEditModal = React.useCallback((metric: KpiMetricWithValue) => {
     if (periodType !== "DAILY" && !metric.as_of_date) return;
@@ -417,9 +418,9 @@ export default function KpiPerformancePage() {
       setMetricManageOpen(true);
     } catch (error) {
       if (requestId !== definitionRequestSeqRef.current) return;
-      message.error(error instanceof Error ? error.message : "加载指标定义失败");
+      messageApi.error(error instanceof Error ? error.message : "加载指标定义失败");
     }
-  }, [client, selectedOwner]);
+  }, [client, selectedOwner, messageApi]);
 
   const handleCloseMetricManage = React.useCallback(() => {
     definitionRequestSeqRef.current += 1;
@@ -455,6 +456,7 @@ export default function KpiPerformancePage() {
       data-moss-theme-scope="kpi"
       data-testid="kpi-performance-page"
     >
+      {messageHolder}
       <PageDecisionHero
         testId="kpi-performance-header"
         className="kpi-performance-page__header"

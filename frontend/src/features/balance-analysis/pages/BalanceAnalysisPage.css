@@ -2453,6 +2453,14 @@
   border-color: var(--dh-api-line-soft) !important;
 }
 
+.balance-analysis-page [data-testid="balance-analysis-result-meta-collapse"] > .ant-collapse-item > .ant-collapse-header {
+  box-sizing: border-box;
+  height: 36px;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: var(--dh-api-radius) !important;
+}
+
 .balance-analysis-page :where(.ant-collapse .ant-collapse-content) {
   border-color: var(--dh-api-line-soft) !important;
   background: var(--dh-api-panel) !important;

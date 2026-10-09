@@ -126,14 +126,16 @@
 }
 
 .team-performance-page__select {
+  box-sizing: border-box;
   min-width: 168px;
-  min-height: 42px;
-  padding: 10px 14px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
   border-radius: var(--ib-radius, 2px);
   border: 1px solid var(--ib-hairline);
   background: var(--ib-surface);
   color: var(--ib-ink);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .team-performance-page__summary-grid {
