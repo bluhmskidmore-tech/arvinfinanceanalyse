@@ -1,7 +1,7 @@
 {
   "report_kind": "business_display_coverage_report",
-  "generated_at": "2026-06-10T22:23:43+08:00",
-  "repo_root": "G:\\MOSS-V3-worktrees\\full-workspace-final-20260808",
+  "generated_at": "2026-10-09T22:50:14+08:00",
+  "repo_root": "<repo-root>",
   "summary": {
     "tracked_route_count": 26,
     "route_gap_count": 0,
@@ -929,7 +929,7 @@
           "path": "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
           "exists": true,
           "configured": true,
-          "ready_selector": "[data-testid=\"macro-toolkit-tailwind-cockpit\"]",
+          "ready_selector": "[data-testid=\"macro-toolkit-cockpit\"]",
           "runs_test": false
         }
       },

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import inspect
+import json
 import logging
 import sqlite3
 import sys
@@ -205,7 +206,13 @@ def _seed_choice_stock_replay_coverage(
           input_family varchar,
           field_key varchar,
           status varchar,
-          row_count integer
+          row_count integer,
+          call varchar,
+          vendor_indicator varchar,
+          request_arguments_json varchar,
+          request_options_json varchar,
+          source_version varchar,
+          vendor_version varchar
         )
         """
     )
@@ -258,7 +265,13 @@ def _seed_choice_stock_replay_coverage(
         """
     )
     conn.executemany(
-        "insert into choice_stock_request_audit values (?, ?, ?, ?, ?)",
+        """
+        insert into choice_stock_request_audit (
+          as_of_date, input_family, field_key, status, row_count, call,
+          vendor_indicator, request_arguments_json, request_options_json,
+          source_version, vendor_version
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
         [
             (
                 trade_date,
@@ -266,6 +279,12 @@ def _seed_choice_stock_replay_coverage(
                 "a_share_universe_sector_001004",
                 "completed",
                 1,
+                "sector",
+                "001004",
+                json.dumps(["001004", trade_date]),
+                "{}",
+                "choice-test-source",
+                "choice-test-vendor",
             ),
             (
                 trade_date,
@@ -273,6 +292,12 @@ def _seed_choice_stock_replay_coverage(
                 "sw2021_industry_membership",
                 "completed",
                 1,
+                "css",
+                "SW2021,SW2021CODE",
+                json.dumps(["000001.SZ", "SW2021,SW2021CODE"]),
+                json.dumps({"EndDate": trade_date, "Classification": "1"}),
+                "choice-test-source",
+                "choice-test-vendor",
             ),
             (
                 trade_date,
@@ -280,16 +305,28 @@ def _seed_choice_stock_replay_coverage(
                 "daily_return_turnover_amplitude",
                 "completed",
                 1,
+                "csd",
+                "",
+                "[]",
+                "{}",
+                "choice-test-source",
+                "choice-test-vendor",
             ),
-            (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1),
-            (trade_date, "stock_status", "daily_trade_status", "completed", 1),
-            (trade_date, "limit_up_quality", "daily_limit_flags", "completed", 1),
+            (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+            (trade_date, "stock_status", "daily_trade_status", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
+            (trade_date, "limit_up_quality", "daily_limit_flags", "completed", 1, "csd", "", "[]", "{}", "choice-test-source", "choice-test-vendor"),
             (
                 trade_date,
                 "limit_up_quality",
                 "point_in_time_limit_streaks",
                 "completed",
                 1,
+                "css",
+                "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS",
+                json.dumps(["000001.SZ", "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS"]),
+                json.dumps({"TradeDate": trade_date}),
+                "choice-test-source",
+                "choice-test-vendor",
             ),
         ],
     )
@@ -328,6 +365,75 @@ def _seed_choice_stock_replay_coverage(
             9.0,
         ],
     )
+
+
+@pytest.mark.parametrize(
+    ("invalidate_evidence", "missing_item"),
+    [
+        (
+            "delete from choice_stock_request_audit",
+            "stock_universe:a_share_universe_sector_001004",
+        ),
+        (
+            "update choice_stock_request_audit set request_options_json = '{}' "
+            "where field_key = 'sw2021_industry_membership'",
+            "sector_membership:sw2021_industry_membership",
+        ),
+        (
+            "update choice_stock_request_audit set source_version = '' "
+            "where field_key = 'point_in_time_limit_streaks'",
+            "limit_up_quality:point_in_time_limit_streaks",
+        ),
+        (
+            "delete from choice_stock_universe",
+            "stock_universe:a_share_universe_sector_001004",
+        ),
+    ],
+)
+def test_livermore_replay_fixture_requires_landed_rows_and_pit_receipts(
+    invalidate_evidence: str,
+    missing_item: str,
+) -> None:
+    from backend.app.tasks.choice_stock_materialize import load_choice_stock_materialization_coverage
+
+    conn = duckdb.connect(":memory:")
+    try:
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-04-30")
+        ready = load_choice_stock_materialization_coverage(
+            duckdb_path=":memory:", as_of_date="2026-04-30", conn=conn,
+        )
+        assert ready.full_coverage is True
+        assert ready.missing_request_items == []
+
+        conn.execute(invalidate_evidence)
+        blocked = load_choice_stock_materialization_coverage(
+            duckdb_path=":memory:", as_of_date="2026-04-30", conn=conn,
+        )
+        assert blocked.full_coverage is False
+        assert missing_item in blocked.missing_request_items
+    finally:
+        conn.close()
+
+
+def test_livermore_source_coverage_does_not_certify_zero_signal_replay() -> None:
+    from backend.app.services.livermore_candidate_history_window_stats import _classify_replay_date
+    from backend.app.tasks.choice_stock_materialize import load_choice_stock_materialization_coverage
+
+    conn = duckdb.connect(":memory:")
+    try:
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-04-30")
+        coverage = load_choice_stock_materialization_coverage(
+            duckdb_path=":memory:", as_of_date="2026-04-30", conn=conn,
+        )
+        assert coverage.full_coverage is True
+        classification = _classify_replay_date(
+            trade_date="2026-04-30", coverage=coverage, rows=[], history_table_present=True,
+        )
+        assert classification["status"] == "unsupported"
+        assert classification["affects_completed_stats"] is False
+        assert classification["public_reason"]["reason_code"] == "missing_candidate_history_receipt"
+    finally:
+        conn.close()
 
 
 def _seed_choice_stock_observation_rows(
@@ -920,6 +1026,17 @@ def test_livermore_read_surfaces_require_explicit_read_scope(
     path, params, tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+    monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "sql-authority")
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
+    monkeypatch.setenv("MOSS_MINIO_ACCESS_KEY", "livermore-test-access")
+    monkeypatch.setenv("MOSS_MINIO_SECRET_KEY", "livermore-test-secret")
+    monkeypatch.setenv("MOSS_CORS_ORIGINS", "http://127.0.0.1:8000")
+    for name in (
+        "MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST",
+        "MOSS_USER_ID",
+        "MOSS_USER_ROLE",
+    ):
+        monkeypatch.delenv(name, raising=False)
     client = _build_client(tmp_path, monkeypatch, grant_livermore_read=False)
     _stub_livermore_read_services(monkeypatch)
 
@@ -1141,6 +1258,7 @@ def test_livermore_signal_confluence_envelope_uses_candidate_history_backtest_su
     )
 
     assert calls["kwargs"] == {
+        "_conn": None,
         "duckdb_path": "unused.duckdb",
         "stock_code": None,
         "snapshot_from": "2025-11-07",
@@ -3770,9 +3888,11 @@ def test_livermore_api_factor_screen_items_carry_breakout_geometry(tmp_path) -> 
               close_value double,
               turn double,
               amount double,
+              volume double,
               tradestatus varchar,
               source_version varchar,
-              vendor_version varchar
+              vendor_version varchar,
+              run_id varchar
             )
             """
         )
@@ -3789,14 +3909,50 @@ def test_livermore_api_factor_screen_items_carry_breakout_geometry(tmp_path) -> 
                         close_value,
                         1.5,
                         240_000_000.0,
+                        2_400_000.0,
                         "交易",
                         "sv_obs",
                         "vv_choice_stock_20260430_0123456789ab",
+                        "geometry-native-run",
                     )
                 )
         conn.executemany(
-            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?)",
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             obs_rows,
+        )
+        # Native Choice prices need the historical raw-price request receipt;
+        # unit factors retain the original 100/103 geometry on every dated row.
+        conn.execute(
+            """
+            create table choice_stock_request_audit (
+              as_of_date varchar, input_family varchar, field_key varchar,
+              status varchar, row_count integer, call varchar,
+              vendor_indicator varchar, request_arguments_json varchar,
+              request_options_json varchar, source_version varchar,
+              vendor_version varchar, run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into choice_stock_request_audit values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                signal_date.isoformat(), "stock_ohlcv", "daily_ohlcv_amount",
+                "completed", len(obs_rows), "csd", "OPEN,HIGH,LOW,CLOSE",
+                json.dumps([
+                    ",".join(factor_codes), "OPEN,HIGH,LOW,CLOSE",
+                    (signal_date - timedelta(days=129)).isoformat(),
+                    signal_date.isoformat(),
+                ]),
+                json.dumps({"AdjustFlag": "1"}), "sv_obs",
+                "vv_choice_stock_20260430_0123456789ab", "geometry-native-run",
+            ],
+        )
+        from backend.app.core_finance.adjusted_returns import ensure_stock_adjustment_factor_schema
+
+        ensure_stock_adjustment_factor_schema(conn)
+        conn.executemany(
+            "insert into stock_adjustment_factor values (?, ?, ?, ?, ?)",
+            [(row[1], row[0], 1.0, "sv_geometry_factors", "geometry-factor-run") for row in obs_rows],
         )
     finally:
         conn.close()
@@ -3814,6 +3970,8 @@ def test_livermore_api_factor_screen_items_carry_breakout_geometry(tmp_path) -> 
     geometry = payload["breakout_geometry"]
     assert geometry["price_as_of_date"] == "2026-05-08"
     assert geometry["breakout_basis"] == "prior_55d_close_high"
+    assert payload["price_history_status"] == "available"
+    assert payload["price_history_unavailable_count"] == 0
     items = payload["items"]
     assert items
     for item in items:
@@ -3823,13 +3981,15 @@ def test_livermore_api_factor_screen_items_carry_breakout_geometry(tmp_path) -> 
         assert item["pattern"] == "突破（参考）"
         assert item["pattern_code"] == "breakout"
     assert "choice_stock_daily_observation" in envelope["result_meta"]["tables_used"]
+    assert "stock_adjustment_factor" in envelope["result_meta"]["tables_used"]
+    assert "choice_stock_request_audit" in envelope["result_meta"]["tables_used"]
 
 
 def test_livermore_strategy_attaches_breakout_geometry_to_all_observation_sources(
     monkeypatch,
 ) -> None:
-    """服务接线锁：主候选/动量/新趋势/超跌/多因子/融合六源共用同一次收盘历史查询
-    (候选码合并去重后单次装载),attach 后各源 items 携带几何字段;
+    """服务接线锁：六源候选码合并去重后单次装载原价收盘历史，
+    多因子/融合另核验同股信号复权窗口，attach 后各源 items 携带几何字段;
     源自带的策略日 close 不被覆盖;融合候选与多因子候选同股几何逐位一致;
     装载失败时 fail-closed(字段 None、close 保留原值)。"""
     from backend.app.services import market_data_livermore_service as service
@@ -4027,17 +4187,39 @@ def test_livermore_strategy_attaches_breakout_geometry_to_all_observation_source
 
     monkeypatch.setattr(service, "_load_candidate_close_histories", fake_close_histories)
 
-    outputs = service._load_choice_stock_outputs(
-        duckdb_path="unused.duckdb",
-        as_of_date="2026-06-18",
-        market_state="WARM",
-        stock_readiness=_ready_choice_stock_readiness(),
-    )
+    signal_loader_calls: list[list[str]] = []
+
+    def fake_signal_histories(*, conn, stock_codes, as_of_date, trading_only):
+        assert conn is not None
+        assert as_of_date == "2026-06-18"
+        assert trading_only is False
+        signal_loader_calls.append(list(stock_codes))
+        closes = (100.0,) * 55 + (103.0,)
+        return {
+            code: service._SignalStockHistory(
+                prices=service.SignalPriceHistory(
+                    closes=closes, raw_closes=closes, factors=(1.0,) * 56,
+                ),
+                tables_used=("choice_stock_daily_observation", "stock_adjustment_factor"),
+            )
+            for code in stock_codes
+        }
+
+    monkeypatch.setattr(service, "_load_signal_stock_histories", fake_signal_histories)
+    with duckdb.connect(":memory:") as geometry_conn:
+        outputs = service._load_choice_stock_outputs(
+            duckdb_path="unused.duckdb",
+            as_of_date="2026-06-18",
+            market_state="WARM",
+            stock_readiness=_ready_choice_stock_readiness(),
+            conn=geometry_conn,
+        )
 
     # 一次查询覆盖全部源：候选码合并去重升序，仅调用一次。
     assert loader_calls == [
         ["000001.SZ", "000002.SZ", "300001.SZ", "600001.SH", "601999.SH"]
     ]
+    assert signal_loader_calls == [["600001.SH"]]
 
     stock_candidate_item = outputs.stock_candidates_payload["items"][0]
     assert stock_candidate_item["close"] == 103.0
@@ -4102,6 +4284,8 @@ def test_livermore_strategy_attaches_breakout_geometry_to_all_observation_source
     assert fusion_item["distance_to_breakout_pct"] == 3.0
     assert fusion_item["pattern"] == "突破（参考）"
     assert fusion_item["pattern_code"] == "breakout"
+    assert outputs.factor_screen_payload["price_history_status"] == "available"
+    assert outputs.hybrid_fusion_payload["price_history_status"] == "available"
 
     for payload in (
         outputs.stock_candidates_payload,
@@ -4113,6 +4297,7 @@ def test_livermore_strategy_attaches_breakout_geometry_to_all_observation_source
     ):
         assert payload["breakout_geometry"]["price_as_of_date"] == "2026-06-18"
     assert "choice_stock_daily_observation" in outputs.tables_used
+    assert "stock_adjustment_factor" in outputs.tables_used
 
     # 装载失败(库缺失/查询异常)时 fail-closed：几何字段 None,自带 close 保留。
     monkeypatch.setattr(
@@ -4120,12 +4305,15 @@ def test_livermore_strategy_attaches_breakout_geometry_to_all_observation_source
         "_load_candidate_close_histories",
         lambda **_kwargs: ({}, {}, []),
     )
-    degraded = service._load_choice_stock_outputs(
-        duckdb_path="unused.duckdb",
-        as_of_date="2026-06-18",
-        market_state="WARM",
-        stock_readiness=_ready_choice_stock_readiness(),
-    )
+    monkeypatch.setattr(service, "_load_signal_stock_histories", lambda **_kwargs: {})
+    with duckdb.connect(":memory:") as geometry_conn:
+        degraded = service._load_choice_stock_outputs(
+            duckdb_path="unused.duckdb",
+            as_of_date="2026-06-18",
+            market_state="WARM",
+            stock_readiness=_ready_choice_stock_readiness(),
+            conn=geometry_conn,
+        )
     degraded_momentum = degraded.uptrend_momentum_payload["items"][0]
     assert degraded_momentum["close"] == 160.0
     assert degraded_momentum["breakout_level"] is None
@@ -4142,6 +4330,8 @@ def test_livermore_strategy_attaches_breakout_geometry_to_all_observation_source
     assert degraded_fusion["close"] is None
     assert degraded_fusion["pattern"] is None
     assert degraded_fusion["pattern_code"] is None
+    assert degraded.hybrid_fusion_payload["price_history_status"] == "unavailable"
+    assert degraded_fusion["breakout_geometry_unavailable_reason"] == "price_window_missing"
 
 
 def test_factor_screen_liquidity_degradation_reason_thresholds() -> None:
@@ -4699,6 +4889,7 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
         duckdb_path: str,
         as_of_date: str | None = None,
         choice_stock_catalog_file: object = None,
+        theme_overlay_reader: object = None,
     ) -> dict[str, object]:
         calls["livermore"] = {
             "duckdb_path": duckdb_path,
@@ -4907,6 +5098,7 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
         "snapshot_from": "2025-10-08",
         "snapshot_to": "2026-04-06",
         "evaluation_as_of_date": "2026-04-06",
+        "_conn": None,
     }
     get_settings.cache_clear()
 
@@ -5415,17 +5607,21 @@ def test_livermore_signal_confluence_api_marks_replay_ready_when_thresholds_are_
             (date(2026, 4, 1) + timedelta(days=offset)).isoformat()
             for offset in range(20)
         ]
-        coverage_only_dates = [
+        tail_completed_dates = [
             (date(2026, 4, 21) + timedelta(days=offset)).isoformat()
-            for offset in range(29)
+            for offset in range(10)
+        ]
+        pending_dates = [
+            (date(2026, 5, 1) + timedelta(days=offset)).isoformat()
+            for offset in range(20)
         ]
         stock_codes = _seed_livermore_replay_window(
             conn,
-            completed_snapshot_dates=completed_dates,
+            completed_snapshot_dates=completed_dates + tail_completed_dates,
             evaluation_date="2026-05-20",
             stocks_per_completed_date=5,
-            pending_snapshot_dates=["2026-05-20"],
-            coverage_only_dates=coverage_only_dates,
+            execution_dates=set(completed_dates),
+            pending_snapshot_dates=pending_dates,
         )
     finally:
         conn.close()
@@ -5527,17 +5723,21 @@ def test_livermore_signal_confluence_api_keeps_current_day_pending_out_of_ready_
             (date(2026, 4, 1) + timedelta(days=offset)).isoformat()
             for offset in range(20)
         ]
-        coverage_only_dates = [
+        tail_completed_dates = [
             (date(2026, 4, 21) + timedelta(days=offset)).isoformat()
-            for offset in range(29)
+            for offset in range(10)
+        ]
+        pending_dates = [
+            (date(2026, 5, 1) + timedelta(days=offset)).isoformat()
+            for offset in range(20)
         ]
         _seed_livermore_replay_window(
             conn,
-            completed_snapshot_dates=completed_dates,
+            completed_snapshot_dates=completed_dates + tail_completed_dates,
             evaluation_date="2026-05-20",
             stocks_per_completed_date=5,
-            pending_snapshot_dates=["2026-05-20"],
-            coverage_only_dates=coverage_only_dates,
+            execution_dates=set(completed_dates),
+            pending_snapshot_dates=pending_dates,
         )
     finally:
         conn.close()
@@ -5612,7 +5812,7 @@ def test_livermore_signal_confluence_api_keeps_current_day_pending_out_of_ready_
     replay_status = payload["result"]["closed_loop_state"]["replay_status"]
     assert payload["result_meta"]["filters_applied"]["replay_snapshot_to"] == "2026-05-20"
     assert completed_dates == replay_status["included_completed_stats_dates"][:20]
-    assert replay_status["pending_dates"] == 1
+    assert replay_status["pending_dates"] == len(pending_dates)
     assert replay_status["blocked_dates"][-1] == {
         "trade_date": "2026-05-20",
         "status": "pending",
@@ -5640,16 +5840,21 @@ def test_livermore_signal_confluence_api_does_not_mark_ready_with_only_completed
             (date(2026, 4, 1) + timedelta(days=offset)).isoformat()
             for offset in range(20)
         ]
-        coverage_only_dates = [
+        tail_completed_dates = [
             (date(2026, 4, 21) + timedelta(days=offset)).isoformat()
-            for offset in range(29)
+            for offset in range(10)
+        ]
+        pending_dates = [
+            (date(2026, 5, 1) + timedelta(days=offset)).isoformat()
+            for offset in range(20)
         ]
         _seed_livermore_replay_window(
             conn,
-            completed_snapshot_dates=completed_dates,
+            completed_snapshot_dates=completed_dates + tail_completed_dates,
             evaluation_date="2026-05-20",
             stocks_per_completed_date=4,
-            coverage_only_dates=coverage_only_dates,
+            execution_dates=set(completed_dates),
+            pending_snapshot_dates=pending_dates,
         )
     finally:
         conn.close()

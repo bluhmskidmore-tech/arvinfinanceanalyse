@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
@@ -25,9 +26,16 @@ from backend.app.core_finance.strategy_policy import POLICY
 from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness, load_choice_stock_readiness
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    CACHE_MANIFEST_STREAM,
+    GovernanceRepository,
+)
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
+from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.services.market_data_livermore_service import (
     EXECUTION_STOCK_CANDIDATE_POLICY,
+    LIVERMORE_DUCKDB_QUERY_FAILED_CODE,
     capture_livermore_external_inputs,
     livermore_external_input_identities_match,
     load_livermore_strategy_payload_from_connection,
@@ -471,6 +479,13 @@ def materialize_livermore_candidate_history(
                 as_of_date=snapshot_as_of,
                 conn=conn,
             )
+            zero_signal_input_blockers = _zero_signal_input_blockers(
+                payload=payload, captured_external_inputs=captured_external_inputs,
+                stock_candidate_policy=resolved_candidate_policy,
+                conn=conn, duckdb_path=str(duckdb_file),
+            )
+            if not input_coverage_ready:
+                zero_signal_input_blockers.append("choice_stock_materialization_coverage_incomplete")
 
             source_version_meta = cast(str, meta.get("source_version"))
             lineage_payload = _build_vendor_payload(payload=payload, items=items_sorted, snapshot_as_of=snapshot_as_of)
@@ -494,7 +509,10 @@ def materialize_livermore_candidate_history(
             computed_universe_rows: list[dict[str, object]] = []
             computed_execution_rows: list[dict[str, object]] = []
             if not items_sorted:
-                skipped.append("no_strategy_signals")
+                if zero_signal_input_blockers:
+                    skipped.extend(zero_signal_input_blockers)
+                else:
+                    skipped.append("no_strategy_signals")
             for item in items_sorted:
                 code = _text(item.get("stock_code")).upper()
                 if not code:
@@ -635,11 +653,13 @@ def materialize_livermore_candidate_history(
                 skipped.append("universe:missing_observation_table")
 
             computed_execution_rows = _deduplicate_execution_history_rows(computed_execution_rows)
+            replace_snapshot = bool(computed_rows) or not zero_signal_input_blockers
             with acquire_lock(LIVERMORE_CANDIDATE_HISTORY_LOCK, base_dir=duckdb_file.parent):
                 try:
-                    conn.execute(f"delete from {TABLE_HIST} where snapshot_as_of_date = ?", [snapshot_as_of])
-                    conn.execute(f"delete from {TABLE_STOCK_UNIVERSE} where snapshot_as_of_date = ?", [snapshot_as_of])
-                    conn.execute(f"delete from {TABLE_EXECUTION_HIST} where signal_date = ?", [snapshot_as_of])
+                    if replace_snapshot:
+                        conn.execute(f"delete from {TABLE_HIST} where snapshot_as_of_date = ?", [snapshot_as_of])
+                        conn.execute(f"delete from {TABLE_STOCK_UNIVERSE} where snapshot_as_of_date = ?", [snapshot_as_of])
+                        conn.execute(f"delete from {TABLE_EXECUTION_HIST} where signal_date = ?", [snapshot_as_of])
                     if computed_rows:
                         placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
                         conn.executemany(
@@ -649,7 +669,7 @@ def materialize_livermore_candidate_history(
                             """,
                             [tuple(cast(Any, row[col]) for col in _INSERT_COLUMNS) for row in computed_rows],
                         )
-                    if computed_universe_rows:
+                    if computed_universe_rows and replace_snapshot:
                         placeholders = ", ".join("?" for _ in _UNIVERSE_INSERT_COLUMNS)
                         conn.executemany(
                             f"""
@@ -661,7 +681,8 @@ def materialize_livermore_candidate_history(
                                 for row in computed_universe_rows
                             ],
                         )
-                    _insert_execution_history_rows(conn, computed_execution_rows)
+                    if replace_snapshot:
+                        _insert_execution_history_rows(conn, computed_execution_rows)
                     input_snapshot_after = capture_pretrade_input_snapshot(
                         conn,
                         target_date=snapshot_as_of,
@@ -692,6 +713,7 @@ def materialize_livermore_candidate_history(
                 not computed_rows
                 and skipped == ["no_strategy_signals"]
                 and input_coverage_ready
+                and not zero_signal_input_blockers
             )
             status = "ok"
             if skipped and computed_rows:
@@ -699,11 +721,12 @@ def materialize_livermore_candidate_history(
             elif not computed_rows and not ready_empty:
                 status = "partial"
 
-            return {
+            result: dict[str, object] = {
                 "status": status,
                 "row_count": len(computed_rows),
                 "empty_result": ready_empty,
                 "input_coverage_status": "ready" if input_coverage_ready else "incomplete",
+                "zero_signal_input_status": "unavailable" if zero_signal_input_blockers else "ready",
                 "run_id": run_id,
                 "snapshot_as_of_date": snapshot_as_of,
                 "source_version": row_source_version,
@@ -724,12 +747,179 @@ def materialize_livermore_candidate_history(
                     "identity_profiles"
                 ],
             }
+            if ready_empty or (not computed_rows and zero_signal_input_blockers):
+                _persist_zero_signal_materialization_receipt(conn, result=result)
+            return result
         finally:
             try:
                 if transaction_started:
                     conn.execute("rollback")
             finally:
                 conn.close()
+
+
+def _zero_signal_input_blockers(
+    *, payload: dict[str, object], captured_external_inputs: dict[str, object],
+    stock_candidate_policy: str,
+    conn: duckdb.DuckDBPyConnection, duckdb_path: str,
+) -> list[str]:
+    """Distinguish computed empty pools from unavailable or failed inputs."""
+    from backend.app.core_finance.livermore_stock_candidates import (
+        is_stock_candidate_policy_active,
+    )
+    from backend.app.services.market_data_livermore_service import _load_factor_screen_rows
+
+    blockers: list[str] = []
+    if getattr(captured_external_inputs.get("stock_readiness"), "ready", False) is not True:
+        blockers.append("choice_stock_catalog_not_ready")
+    state = _payload_market_state(payload)
+    if not state or state in {"NO_DATA", "PENDING_DATA", "STALE"}:
+        blockers.append("strategy_market_inputs_not_ready")
+    diagnostics = payload.get("diagnostics")
+    if not isinstance(diagnostics, list) or any(
+        isinstance(item, dict) and (
+            item.get("code") == LIVERMORE_DUCKDB_QUERY_FAILED_CODE
+            or item.get("severity") == "error"
+        )
+        for item in diagnostics
+    ):
+        blockers.append("strategy_query_or_diagnostics_failed")
+
+    required = ["sector_rank", "factor_screen_candidates"]
+    if state and is_stock_candidate_policy_active(
+        policy_name=stock_candidate_policy, market_state=state,
+    ):
+        required.append("stock_candidates")
+    if state in {"WARM", "HOT"}:
+        required.append("uptrend_momentum_candidates")
+    if state in {"WARM", "HOT", "OVERHEAT"}:
+        required.append("fresh_trend_watchlist")
+    if state in {"OFF", "WARM"}:
+        required.append("mean_reversion_candidates")
+    if state and state not in {"NO_DATA", "PENDING_DATA", "STALE", "OVERHEAT"}:
+        required.append("theme_breakout")
+    for key in required:
+        family = payload.get(key)
+        if not isinstance(family, dict) or not isinstance(family.get("items"), list):
+            blockers.append(f"{key}:strategy_inputs_unavailable")
+            continue
+        if key in {
+            "stock_candidates", "uptrend_momentum_candidates",
+            "fresh_trend_watchlist", "mean_reversion_candidates",
+        } and (
+            (_safe_int(family.get("input_stock_count"), default=0) <= 0)
+            or _safe_int(family.get("insufficient_history_count"), default=-1) != 0
+        ):
+            blockers.append(f"{key}:strategy_history_incomplete")
+        if key == "factor_screen_candidates":
+            count = _safe_int(family.get("coverage_count"), default=0)
+            denominator = _safe_int(family.get("coverage_denominator"), default=0)
+            if count <= 0 or count != denominator:
+                blockers.append(f"{key}:strategy_coverage_incomplete")
+            if state in POLICY.factor_screen_active_states:
+                raw_inputs = _load_factor_screen_rows(
+                    duckdb_path=duckdb_path, as_of_date=str(payload["as_of_date"]), conn=conn,
+                )
+                # Coverage counts loaded rows; liquidity evaluated_count counts
+                # only rows surviving the core's ST/valuation/quality policy.
+                # Verify raw required inputs separately from those exclusions.
+                raw_complete = (
+                    not raw_inputs.unavailable_reason
+                    and len(raw_inputs.rows) == count
+                    and raw_inputs.snapshot_as_of_date == family.get("factor_snapshot_as_of_date")
+                )
+                for row in raw_inputs.rows:
+                    try:
+                        complete = bool(_text(row.get("industry"))) and all(
+                            row.get(field) is not None
+                            and not isinstance(row[field], bool)
+                            and math.isfinite(float(cast(Any, row[field])))
+                            for field in (
+                                "pe", "pb", "ps", "roe", "gross_margin",
+                                "three_month_return", "twelve_month_return",
+                                "volatility", "dividend_yield",
+                            )
+                        )
+                    except (TypeError, ValueError, OverflowError):
+                        complete = False
+                    raw_complete = raw_complete and complete
+                liquidity = _mapping(family.get("liquidity_filter"))
+                evaluated = _safe_int(liquidity.get("evaluated_count"), default=-1)
+                passed = _safe_int(liquidity.get("pass_count"), default=-1)
+                below = _safe_int(liquidity.get("below_floor_count"), default=-1)
+                if (
+                    not raw_complete
+                    or evaluated < 0 or evaluated > count
+                    or passed < 0 or below < 0 or passed + below != evaluated
+                    or _safe_int(liquidity.get("missing_amount_count"), default=-1) != 0
+                ):
+                    blockers.append(f"{key}:strategy_factor_inputs_incomplete")
+    # Hybrid fusion consumes the three computed upstream pools. When all are
+    # empty it is intentionally absent, rather than a separate failed query.
+    return blockers
+
+
+def _persist_zero_signal_materialization_receipt(
+    conn: duckdb.DuckDBPyConnection, *, result: dict[str, object],
+) -> None:
+    from backend.app.services.livermore_candidate_history_service import (
+        ZERO_SIGNAL_CACHE_KEY,
+        ZERO_SIGNAL_JOB_NAME,
+        _zero_signal_source_profiles,
+    )
+
+    # A completed empty result receives a manifest; unavailable inputs retain
+    # only a failed terminal, blocking reuse of an older completed receipt.
+    if result["input_snapshot_before"] != result["input_snapshot_after"]:
+        raise RuntimeError("livermore source cut changed during zero-signal production")
+    report_date = str(result["snapshot_as_of_date"])
+    lineage: dict[str, object] = {
+        "producer_result": result,
+        "source_profiles": _zero_signal_source_profiles(conn, trade_date=report_date),
+    }
+    cache_version = "cv_livermore_zero_signal_" + canonical_pretrade_output_sha256(lineage)
+    cache_key = f"{ZERO_SIGNAL_CACHE_KEY}:{result['stock_candidate_policy']}"
+    now = datetime.now(timezone.utc).isoformat()
+    common = {
+        "run_id": str(result["run_id"]),
+        "cache_key": cache_key,
+        "cache_version": cache_version,
+        "report_date": report_date,
+        "source_version": str(result["source_version"]),
+        "vendor_version": str(result["vendor_version"]),
+        "rule_version": RULE_VERSION,
+        "created_at": now,
+    }
+    terminal = CacheBuildRunRecord(
+        **common,
+        job_name=ZERO_SIGNAL_JOB_NAME,
+        status="completed" if result["empty_result"] is True else "failed",
+        lock=LIVERMORE_CANDIDATE_HISTORY_LOCK.key,
+        finished_at=now,
+        failure_category=None if result["empty_result"] is True else "input_unavailable",
+        failure_reason=None if result["empty_result"] is True else ", ".join(cast(list[str], result["skipped"])),
+    )
+    records = [(CACHE_BUILD_RUN_STREAM, terminal.model_dump())]
+    if result["empty_result"] is True:
+        manifest = CacheManifestRecord(
+            **common,
+            module_name="livermore_candidate_history",
+            basis="materialized",
+            input_sources=["choice_stock_request_audit", *[
+                str(profile["table"])
+                for profile in cast(dict[str, Any], result["input_snapshot_after"])["sources"]
+            ]],
+            fact_tables=[TABLE_HIST, TABLE_STOCK_UNIVERSE, TABLE_EXECUTION_HIST],
+            lineage=lineage,
+        )
+        records.append((CACHE_MANIFEST_STREAM, manifest.model_dump()))
+    settings = get_settings()
+    repository = GovernanceRepository(
+        base_dir=Path(settings.governance_path),
+        sql_dsn=settings.governance_sql_dsn,
+        backend_mode=settings.governance_backend,
+    )
+    repository.append_many_atomic(records)
 
 
 def backfill_livermore_candidate_history(

@@ -509,6 +509,47 @@ def test_snapshot_reads_exact_date_universe_without_losing_missing_stock(module,
     assert missing["technical_pass"] is False
 
 
+def test_snapshot_honors_the_selected_immutable_read_database(module, tmp_path, monkeypatch):
+    from backend.app.repositories.duckdb_read_context import DuckDBReadSelection, duckdb_read_scope
+
+    active = _fixture_database(tmp_path)
+    selected_root = tmp_path / "selected"
+    selected_root.mkdir()
+    selected = _fixture_database(selected_root)
+    with duckdb.connect(str(selected)) as conn:
+        conn.execute("delete from choice_stock_universe where stock_code = '000004.SZ'")
+    active_before = active.read_bytes()
+    selected_before = selected.read_bytes()
+    original_connect = duckdb.connect
+    opens: list[str] = []
+
+    def connect(database: str, *, read_only: bool):
+        assert read_only is True
+        opens.append(database)
+        return original_connect(database, read_only=read_only)
+
+    monkeypatch.setattr(duckdb, "connect", connect)
+    selection = DuckDBReadSelection(str(active), str(selected), "research-selected")
+    with duckdb_read_scope(selection, required_online=True):
+        snapshot = module.load_moss_snapshot(active, TARGET_DATE)
+    assert {row["stock_code"] for row in snapshot["universe"]} == {"000001.SZ", "000002.SZ", "000003.SZ"}
+    assert opens == [str(selected.resolve())]
+    assert snapshot["source"] == str(selected.resolve())
+    assert active.read_bytes() == active_before
+    assert selected.read_bytes() == selected_before
+
+
+def test_snapshot_refuses_active_fallback_when_online_selection_is_required(module, tmp_path):
+    from backend.app.repositories.duckdb_read_context import DuckDBOnlineReadRequiredError, duckdb_read_scope
+
+    target = _fixture_database(tmp_path)
+    before = target.read_bytes()
+    with duckdb_read_scope(None, required_online=True, active_path=str(target)):
+        with pytest.raises(DuckDBOnlineReadRequiredError):
+            module.load_moss_snapshot(target, TARGET_DATE)
+    assert target.read_bytes() == before
+
+
 def test_snapshot_normalizes_native_tushare_and_unknown_vendor_units(module, tmp_path):
     snapshot = module.load_moss_snapshot(_fixture_database(tmp_path), TARGET_DATE)
     observed = {row["stock_code"]: row for row in snapshot["observations"]}

@@ -15,6 +15,7 @@ from backend.app.api.routes import market_data_livermore as livermore_route
 from backend.app.governance.settings import get_settings
 from backend.app.main import SystemReadPublicationMiddleware
 from backend.app.observability.response_cache import market_home_response_cache
+from backend.app.repositories.duckdb_migrations import _run_sql_slice
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
@@ -23,11 +24,13 @@ from backend.app.repositories.governance_repo import (
 from backend.app.repositories.system_read_publication_repo import (
     SYSTEM_READ_GENERATION_HEADER,
     resolve_system_read_publication,
+    system_read_scope,
 )
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.services import (
     livermore_signal_confluence_service as confluence_service,
 )
+from backend.app.services import livermore_candidate_history_service as history_service
 from backend.app.tasks.system_read_publication import (
     publish_qualified_system_read_bootstrap,
 )
@@ -104,9 +107,29 @@ def _append_remaining_market_facts(path: Path) -> None:
             "update choice_stock_daily_observation "
             "set source_version = 'sv_synthetic_target'"
         )
+        _run_sql_slice(conn, "21_choice_stock.sql")
+        conn.execute(
+            "insert into choice_stock_concept_membership "
+            "(as_of_date, stock_code, concept_code, concept_name, concept_source, "
+            "field_key, source_version, vendor_version, rule_version, run_id) "
+            "values (?, '000003.SZ', 'synthetic-concept', 'Synthetic Concept', 'choice', "
+            "'concept_membership', 'choice_stock_concept_membership-synthetic-v1', "
+            "'vv_synthetic_concept', 'rv_synthetic_concept', 'synthetic-concept-run')",
+            [TARGET_DATE],
+        )
+        conn.execute(
+            "insert into choice_stock_intraday_movement_event "
+            "(as_of_date, event_time, stock_code, stock_name, concept_code, concept_name, "
+            "event_type, event_title, pctchange, turn, field_key, raw_json, "
+            "source_version, vendor_version, rule_version, run_id) "
+            "values (?, '12:00:00', '000003.SZ', 'Synthetic Other Stock', "
+            "'synthetic-concept', 'Synthetic Concept', 'synthetic_observation', "
+            "'Synthetic neutral observation', 0.0, 0.0, 'intraday_movement', '{}', "
+            "'choice_stock_intraday_movement_event-synthetic-v1', "
+            "'vv_synthetic_movement', 'rv_synthetic_movement', 'synthetic-movement-run')",
+            [TARGET_DATE],
+        )
         for table_name, date_column in (
-            ("choice_stock_concept_membership", "as_of_date"),
-            ("choice_stock_intraday_movement_event", "as_of_date"),
             ("stock_limit_price_daily", "trade_date"),
             ("fact_commodity_futures_daily", "trade_date"),
             ("fact_cffex_member_rank_daily", "trade_date"),
@@ -147,6 +170,8 @@ def _drop_bootstrap_market_placeholders(path: Path) -> None:
         "choice_stock_daily_observation",
         "choice_stock_limit_quality",
         "choice_stock_factor_snapshot",
+        "choice_stock_concept_membership",
+        "choice_stock_intraday_movement_event",
         "stock_adjustment_factor",
         "stock_limit_price_daily",
         "fact_livermore_gate_supplement_daily",
@@ -331,6 +356,7 @@ def test_actual_producer_evidence_survives_publication_and_public_api_selection(
     _isolate_only_unrelated_financial_fixture_domains(monkeypatch)
     _forbid_source_ingest_and_financial_replay(monkeypatch)
     bootstrap_settings = _bootstrap_settings_and_run(tmp_path)
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(bootstrap_settings.governance_path))
     source = Path(bootstrap_settings.duckdb_path)
     catalog_path = tmp_path / "synthetic-choice-catalog.json"
     _write_confirmed_choice_catalog(catalog_path)
@@ -409,6 +435,27 @@ def test_actual_producer_evidence_survives_publication_and_public_api_selection(
     selected_bundle = selected.manifest["sealed_payload"]["system_read_bundle"]
     assert selected_bundle["pretrade_availability"] == evidence_before_publication
     assert producer_result["pretrade_qualification"] == evidence_before_publication
+    if not ready_candidate:
+        producer_step = next(
+            step["result"] for step in producer_result["steps"]
+            if step["name"] == "candidate_history"
+        )
+        frozen_streams = selected_bundle["governance_streams"]
+        for stream in (CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM):
+            matching_rows = [
+                row for row in frozen_streams[stream]
+                if row.get("run_id") == producer_step["run_id"]
+            ]
+            assert len(matching_rows) == 1
+        # Removing live copies cannot cause a publication reader to seek new
+        # evidence; the same completed receipt must be read from the seal.
+        for stream in (CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM):
+            (Path(settings.governance_path) / f"{stream}.jsonl").unlink()
+        with system_read_scope(settings, generation=publication["generation"]):
+            with duckdb.connect(str(selected.database_path), read_only=True) as conn:
+                assert history_service._has_completed_zero_signal_receipt(
+                    duckdb_path=str(source), trade_date=TARGET_DATE, conn=conn,
+                )
 
     monkeypatch.setattr(livermore_route, "get_settings", lambda: settings)
     market_home_response_cache.invalidate()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -76,7 +77,7 @@ class MacroToolkitRefreshReceiptHealth:
             "warnings": list(self.warnings),
             "latest_observation_dates": dict(self.latest_observation_dates),
             "failure_category": self.failure_category,
-            "failure_message": self.failure_message,
+            "failure_message": _public_failure_message(self.failure_message),
             "step_statuses": {
                 step_name: dict(summary)
                 for step_name, summary in self.step_statuses.items()
@@ -89,7 +90,8 @@ class MacroToolkitRefreshReceiptHealth:
             return messages
         if self.status == "blocked" and self.failure_message:
             category = _failure_category_label(self.failure_category)
-            reason = f"最近一次刷新未完成（{category}）"
+            detail = _public_failure_message(self.failure_message)
+            reason = f"最近一次刷新未完成（{category}）：{detail}"
         elif self.status == "abandoned":
             generated_at = self.generated_at or "未知时间"
             age_hours = self.running_age_hours if self.running_age_hours is not None else 0.0
@@ -369,7 +371,7 @@ def _summarize_step_statuses(
             summary["attempt_count"] = attempt_count
         reason = step.get("reason")
         if _has_summary_value(reason):
-            summary["reason"] = reason
+            summary["reason"] = _public_failure_message(str(reason))
         summaries[step_name] = summary
     return summaries
 
@@ -403,7 +405,7 @@ def _failure_category_label(category: str | None) -> str:
     }
     if category is None:
         return "未分类失败"
-    return labels.get(category, category)
+    return labels.get(category, "未分类失败")
 
 
 def _parse_generated_at(value: object) -> datetime | None:
@@ -460,7 +462,7 @@ def _health(
         warnings=tuple(warnings or ()),
         latest_observation_dates=dict(latest_observation_dates or {}),
         failure_category=failure_category,
-        failure_message=failure_message,
+        failure_message=_public_failure_message(failure_message),
         step_statuses={
             step_name: dict(summary)
             for step_name, summary in (step_statuses or {}).items()
@@ -477,6 +479,22 @@ def _add_missing(missing_fields: list[str], field: str) -> None:
 def _safe_error(exc: BaseException) -> str:
     message = " ".join(str(exc).split()) or "no error details"
     return f"{type(exc).__name__}: {message[:300]}"
+
+
+def _public_failure_message(value: str | None) -> str | None:
+    if value is None:
+        return None
+    # Reuse the refresh service's credential redaction before adding a public
+    # receipt detail. Execution stacks and local paths remain protected.
+    from backend.app.services.macro_toolkit_service import _redact_sensitive_error_text
+
+    detail = value.split("Traceback (most recent call last)", 1)[0].strip()
+    if not detail:
+        return "refresh failed; see protected execution logs"
+    detail = _redact_sensitive_error_text(detail)
+    detail = re.sub(r"(?:[A-Za-z]:[\\/]|\\\\)[^\s]+", "<path>", detail)
+    detail = re.sub(r"(?:(?<=\s)|^)(?:\.\.?/|/)[^\s]+", "<path>", detail)
+    return detail
 
 
 def _string_or_none(value: object) -> str | None:

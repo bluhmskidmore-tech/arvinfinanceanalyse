@@ -39,7 +39,8 @@ EXPECTED_CALIBER_TESTS = {
 
 
 @pytest.mark.parametrize("source_path, required", [
-    ("backend/app/main.py", {"tests/test_system_online_read_boundary.py", "tests/test_system_online_publication_concurrency.py"}),
+    ("backend/app/main.py", {"tests/test_system_online_read_boundary.py", "tests/test_system_online_publication_concurrency.py", "tests/test_boundary_surface_inventory.py"}),
+    ("backend/app/api/routes/system_read_publication.py", {"tests/test_system_online_read_boundary.py", "tests/test_boundary_surface_inventory.py"}),
     ("backend/app/tasks/system_read_publication.py", {"tests/test_system_read_publication_process_crash.py", "tests/test_system_online_publication_concurrency.py"}),
     ("backend/app/services/campisi_attribution_service.py", {"tests/test_campisi_formal_bridge_coverage.py"}),
     ("backend/app/services/product_category_pnl_service.py", {"tests/test_product_category_read_boundary.py"}),
@@ -48,6 +49,113 @@ EXPECTED_CALIBER_TESTS = {
 ])
 def test_audited_read_and_publication_boundaries_are_selected(source_path, required):
     assert required <= set(gate.resolve_required_tests([source_path]))
+
+
+@pytest.mark.parametrize(("source_path", "expected_tests"), [
+    ("backend/app/core_finance/macro/toolkit/system_sources.py", {
+        "tests/test_macro_immutable_read_selection.py",
+        "tests/test_macro_system_sources_pushdown.py",
+        "tests/test_macro_toolkit_scripts.py",
+    }),
+    ("backend/app/services/macro_toolkit_refresh_receipt_service.py", {
+        "tests/test_macro_toolkit_refresh_failure_health.py",
+        "tests/test_macro_toolkit_refresh_receipt_service.py",
+    }),
+    ("backend/app/services/livermore_candidate_history_service.py", {
+        "tests/test_market_data_livermore_candidate_history.py",
+        "tests/test_pretrade_producer_full_integration.py",
+        "tests/test_pretrade_sealed_api_integration.py",
+    }),
+    ("backend/app/services/livermore_candidate_history_window_stats.py", {
+        "tests/test_market_data_livermore_candidate_history.py",
+        "tests/test_pretrade_producer_full_integration.py",
+        "tests/test_pretrade_sealed_api_integration.py",
+    }),
+    ("backend/app/tasks/livermore_candidate_history_materialize.py", {
+        "tests/test_livermore_candidate_writer_admission.py",
+        "tests/test_market_data_livermore_candidate_history.py",
+        "tests/test_pretrade_producer_full_integration.py",
+        "tests/test_pretrade_sealed_api_integration.py",
+    }),
+    ("backend/scripts/audit_caliber_violations.py", {
+        "tests/test_audit_caliber_violations_script.py",
+        "tests/test_caliber_audit_ci_gate.py",
+    }),
+    ("backend/scripts/backfill_stock_factor_market_cap_tushare.py", {
+        "tests/test_backfill_stock_factor_market_cap_tushare.py",
+    }),
+    ("backend/app/tasks/stock_factor_market_cap_backfill.py", {
+        "tests/test_backfill_stock_factor_market_cap_tushare.py",
+    }),
+    ("scripts/bond_risk_shadow_candidate.py", {
+        "tests/test_bond_risk_shadow_candidate.py",
+    }),
+    ("scripts/portfolio_home_evidence_packet_guard.py", {
+        "tests/test_portfolio_home_evidence_packet_guard.py",
+        "tests/test_portfolio_home_scorecard_command_verifier.py",
+    }),
+    ("scripts/portfolio_home_evidence_snapshot.py", {
+        "tests/test_portfolio_home_evidence_snapshot.py",
+        "tests/test_portfolio_home_scorecard_command_verifier.py",
+    }),
+    ("scripts/verify_portfolio_home_scorecard_commands.py", {
+        "tests/test_portfolio_home_evidence_packet_guard.py",
+        "tests/test_portfolio_home_evidence_snapshot.py",
+        "tests/test_portfolio_home_scorecard_command_verifier.py",
+    }),
+    ("scripts/rematerialize_fixed_income_versions.py", {
+        "tests/test_rematerialize_fixed_income_versions.py",
+    }),
+    ("scripts/stock_analysis_page_gap_factor_manifest.py", {
+        "tests/test_stock_analysis_page_gap_factor_manifest.py",
+    }),
+    ("scripts/stock_analysis_page_gap_manifest.py", {
+        "tests/test_stock_analysis_page_gap_manifest_cli.py",
+    }),
+    ("scripts/stock_research_daily.py", {
+        "tests/test_stock_research_daily.py",
+    }),
+    ("scripts/verify_system_audit_monitoring_snapshot.py", {
+        "tests/test_system_audit_monitoring_snapshot_verifier.py",
+    }),
+    ("scripts/wp7_release_rehearsal.py", {
+        "tests/test_wp7_release_rehearsal.py",
+    }),
+    ("backend/app/tasks/wp7_rehearsal_bundle.py", {
+        "tests/test_wp7_release_rehearsal.py",
+    }),
+    ("scripts/check_full_pytest_partition.py", {
+        "tests/test_full_pytest_platform.py",
+    }),
+])
+def test_ci_remediation_paths_select_only_their_direct_checks(
+    source_path: str, expected_tests: set[str],
+) -> None:
+    assert gate.resolve_required_tests([source_path]) == sorted(expected_tests)
+    neighboring_source = source_path.removesuffix(".py") + "_extra.py"
+    assert gate.resolve_required_tests([neighboring_source]) == []
+
+
+@pytest.mark.parametrize(("source_path", "expected_tests"), [
+    ("backend/app/services/bond_analytics_service.py", {
+        "tests/test_lazy_task_import_constants.py",
+        "tests/test_bond_analytics_service.py",
+        "tests/test_advanced_attribution_contract.py",
+        "tests/test_pnl_audit_repair.py",
+        "tests/test_structural_generation_cache.py",
+        "tests/test_structural_bond_positions.py",
+    }),
+    ("backend/app/services/pnl_bridge_service.py", {
+        "tests/test_lazy_task_import_constants.py",
+        "tests/test_pnl_bridge_result_meta_dates.py",
+        "tests/test_pnl_api_contract.py",
+        "tests/test_campisi_formal_bridge_coverage.py",
+    }),
+])
+def test_cache_identity_repairs_keep_existing_checks_and_select_identity_guards(
+    source_path: str, expected_tests: set[str],
+) -> None:
+    assert expected_tests <= set(gate.resolve_required_tests([source_path]))
 
 
 @pytest.mark.parametrize("test_path", [
@@ -635,7 +743,7 @@ def test_refresh_gate_does_not_expand_to_unrelated_or_excluded_surfaces() -> Non
     assert gate.resolve_required_tests([
         "backend/app/tasks/choice_news.py",
         "backend/app/tasks/source_preview_refresh.py",
-        "backend/app/services/macro_toolkit_refresh_receipt_service.py",
+        "backend/app/services/macro_toolkit_refresh_receipt_service_extra.py",
         "backend/app/services/data_update_service_extra.py",
     ]) == []
 

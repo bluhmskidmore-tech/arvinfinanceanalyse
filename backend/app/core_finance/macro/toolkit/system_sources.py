@@ -7,7 +7,6 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
-from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +149,8 @@ _SOURCE_PRIORITY = {
 
 
 def resolve_system_duckdb_path(duckdb_path: str | Path | None = None) -> Path:
+    from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
+
     configured_path = duckdb_path
     if configured_path is None:
         from backend.app.governance.settings import get_settings  # noqa: PLC0415

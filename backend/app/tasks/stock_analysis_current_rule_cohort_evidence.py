@@ -643,9 +643,15 @@ def _normalize_version_tuple(value: Mapping[str, Any]) -> dict[str, Any]:
     if version_tuple.get("stock_candidate_selection_policy") != EXP3B_STOCK_CANDIDATE_POLICY:
         raise ValueError("stock_candidate_selection_policy must equal exp3b.")
     if version_tuple.get("stock_candidate_selection_formula_version") != STOCK_CANDIDATE_FORMULA_VERSION:
-        raise ValueError("stock_candidate_selection_formula_version must equal current v7.")
+        raise ValueError(
+            "stock_candidate_selection_formula_version must equal current "
+            f"{STOCK_CANDIDATE_FORMULA_VERSION}."
+        )
     if version_tuple.get("matched_baseline_formula_version") != MATCHED_BASELINE_FORMULA_VERSION:
-        raise ValueError("matched_baseline_formula_version must equal current v3.")
+        raise ValueError(
+            "matched_baseline_formula_version must equal current "
+            f"{MATCHED_BASELINE_FORMULA_VERSION}."
+        )
     if version_tuple.get("decision_metric_basis") != ALLOWED_DECISION_METRIC_BASIS:
         raise ValueError("decision_metric_basis must equal net_next_open_adj.")
     if version_tuple.get("coverage_authority_mode") != CURRENT_RULE_COVERAGE_AUTHORITY_MODE:

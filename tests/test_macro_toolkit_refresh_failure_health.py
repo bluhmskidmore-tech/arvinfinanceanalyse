@@ -139,6 +139,48 @@ def test_failed_step_reason_is_the_message_fallback(tmp_path: Path) -> None:
     }
 
 
+@pytest.mark.parametrize("message_source", ["receipt", "result", "step"])
+def test_failure_detail_preserves_safe_reason_without_credentials_paths_or_stack(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, message_source: str
+) -> None:
+    monkeypatch.setenv("MOSS_API_KEY", "synthetic-environment-secret")
+    receipt = _receipt(status="failed")
+    receipt["failure_category"] = "upstream_unavailable"
+    result = receipt["result"]
+    message = (
+        "vendor rejected token=synthetic-assigned-secret Bearer synthetic-auth-secret "
+        "at C:\\Private\\refresh.py /private/refresh.py with synthetic-environment-secret "
+        "Traceback (most recent call last): File internal.py, line 9, private_stack()"
+    )
+    if message_source == "receipt":
+        receipt["failure_message"] = message
+    elif message_source == "result":
+        result["failure_message"] = message
+    else:
+        result["steps"][0] = {
+            "step": "choice_policy_rate_7d", "status": "failed", "reason": message,
+        }
+    path = tmp_path / "receipt.json"
+    _write(path, receipt)
+
+    health = load_macro_toolkit_refresh_receipt_health(path)
+    public_text = json.dumps(
+        {"health": health.as_payload(), "warnings": health.analysis_warnings()},
+        ensure_ascii=False,
+    )
+
+    assert health.status == "blocked"
+    assert health.ready is False
+    assert "vendor rejected" in public_text
+    assert "上游暂不可用" in public_text
+    assert "方向性结论已关闭" in public_text
+    for sensitive in (
+        "synthetic-assigned-secret", "synthetic-auth-secret", "synthetic-environment-secret",
+        "Private", "/private/refresh.py", "Traceback", "private_stack", "internal.py",
+    ):
+        assert sensitive not in public_text
+
+
 def test_old_success_receipt_and_direct_construction_remain_compatible(
     tmp_path: Path,
 ) -> None:

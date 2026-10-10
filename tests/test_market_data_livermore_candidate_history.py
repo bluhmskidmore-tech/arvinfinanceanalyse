@@ -2876,9 +2876,32 @@ def test_task_materializes_hybrid_fusion_signal_rows_with_core_scores(monkeypatc
 
 
 def test_task_reports_no_strategy_signals_when_payload_has_no_candidates(monkeypatch, tmp_path) -> None:
+    from backend.app.repositories.governance_repo import GovernanceRepository
+    from backend.app.services import livermore_signal_confluence_service as confluence_service
+
     db_path = tmp_path / "empty-signals.duckdb"
+    governance_path = tmp_path / "governance"
     snap = date(2026, 5, 1)
     _seed_calendar_observations(str(db_path), stock_code="000007.SZ", start=snap, days=25)
+    monkeypatch.setenv("MOSS_CHOICE_STOCK_CATALOG_FILE", str(tmp_path / "missing-choice-catalog.json"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "jsonl")
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        livermore_service,
+        "_OFFICIAL_AVAILABILITY_MANIFEST_PATH",
+        tmp_path / "missing-availability.json",
+    )
+    monkeypatch.setattr(
+        livermore_service,
+        "_OFFICIAL_RELEASES_MANIFEST_PATH",
+        tmp_path / "missing-releases.json",
+    )
+    monkeypatch.setattr(
+        confluence_service,
+        "load_macro_adversarial_signal_payload",
+        lambda **_kwargs: ({}, {}),
+    )
 
     def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
         payload, meta = _fake_payload(as_of_date=snap.isoformat(), items=[])
@@ -2890,43 +2913,93 @@ def test_task_reports_no_strategy_signals_when_payload_has_no_candidates(monkeyp
         _mock_load,
     )
 
-    out = materialize_livermore_candidate_history(str(db_path))
+    try:
+        out = materialize_livermore_candidate_history(
+            str(db_path), as_of_date=snap.isoformat(), stock_candidate_policy="exp3b",
+        )
+    finally:
+        get_settings.cache_clear()
 
     assert out["status"] == "partial"
     assert out["row_count"] == 0
-    assert out["skipped_count"] == 1
-    assert out["skipped"] == ["no_strategy_signals"]
+    assert out["empty_result"] is False
+    assert out["input_coverage_status"] == "incomplete"
+    assert out["zero_signal_input_status"] == "unavailable"
+    assert out["skipped_count"] == 8
+    assert out["skipped"] == [
+        "choice_stock_catalog_not_ready",
+        "strategy_query_or_diagnostics_failed",
+        "sector_rank:strategy_inputs_unavailable",
+        "factor_screen_candidates:strategy_inputs_unavailable",
+        "stock_candidates:strategy_history_incomplete",
+        "uptrend_momentum_candidates:strategy_inputs_unavailable",
+        "fresh_trend_watchlist:strategy_inputs_unavailable",
+        "choice_stock_materialization_coverage_incomplete",
+    ]
+    repository = GovernanceRepository(base_dir=governance_path, backend_mode="jsonl")
+    cache_key = "livermore-candidate-history:zero-signal:exp3b"
+    assert repository.read_latest_manifest(cache_key, report_date=snap.isoformat()) is None
+    terminal = repository.read_latest_run(cache_key, report_date=snap.isoformat())
+    assert terminal is not None and terminal["status"] == "failed"
 
 
 def test_task_treats_no_strategy_signals_as_ready_empty_when_inputs_are_complete(
     monkeypatch,
     tmp_path,
 ) -> None:
+    from backend.app.repositories.governance_repo import GovernanceRepository
+    from backend.app.services import livermore_signal_confluence_service as confluence_service
+    from tests.test_pretrade_producer_full_integration import (
+        TARGET_DATE,
+        _seed_actual_pretrade_database,
+        _write_confirmed_choice_catalog,
+    )
+
     db_path = tmp_path / "ready-empty-signals.duckdb"
-    snap = date(2026, 5, 1)
-    _seed_calendar_observations(str(db_path), stock_code="000007.SZ", start=snap, days=25)
-
-    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
-        payload, meta = _fake_payload(as_of_date=snap.isoformat(), items=[])
-        payload["theme_breakout"] = {"items": []}
-        return payload, meta
-
+    catalog_path = tmp_path / "synthetic-choice-catalog.json"
+    governance_path = tmp_path / "governance"
+    _seed_actual_pretrade_database(db_path, ready_candidate=False)
+    _write_confirmed_choice_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_STOCK_CATALOG_FILE", str(catalog_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "jsonl")
+    get_settings.cache_clear()
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload_from_connection",
-        _mock_load,
+        livermore_service,
+        "_OFFICIAL_AVAILABILITY_MANIFEST_PATH",
+        tmp_path / "missing-availability.json",
     )
     monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize._choice_stock_inputs_have_full_coverage",
-        lambda **_kwargs: True,
-        raising=False,
+        livermore_service,
+        "_OFFICIAL_RELEASES_MANIFEST_PATH",
+        tmp_path / "missing-releases.json",
+    )
+    monkeypatch.setattr(
+        confluence_service,
+        "load_macro_adversarial_signal_payload",
+        lambda **_kwargs: ({}, {}),
     )
 
-    out = materialize_livermore_candidate_history(str(db_path))
+    try:
+        out = materialize_livermore_candidate_history(
+            str(db_path), as_of_date=TARGET_DATE, stock_candidate_policy="exp3b",
+        )
+    finally:
+        get_settings.cache_clear()
 
     assert out["status"] == "ok"
     assert out["row_count"] == 0
     assert out["empty_result"] is True
     assert out["input_coverage_status"] == "ready"
+    assert out["zero_signal_input_status"] == "ready"
+    assert out["skipped"] == ["no_strategy_signals"]
+    assert out["input_snapshot_before"] == out["input_snapshot_after"]
+    repository = GovernanceRepository(base_dir=governance_path, backend_mode="jsonl")
+    cache_key = "livermore-candidate-history:zero-signal:exp3b"
+    terminal = repository.read_latest_run(cache_key, report_date=TARGET_DATE)
+    manifest = repository.read_latest_manifest(cache_key, report_date=TARGET_DATE)
+    assert terminal is not None and terminal["status"] == "completed"
+    assert manifest is not None and manifest["run_id"] == out["run_id"]
 
 
 def test_task_dedupe_second_run(monkeypatch, tmp_path) -> None:

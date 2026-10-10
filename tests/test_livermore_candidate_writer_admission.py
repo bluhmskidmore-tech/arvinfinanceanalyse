@@ -14,6 +14,7 @@ import requests
 
 from backend.app.governance.locks import acquire_lock as acquire_real_lock
 from backend.app.governance.locks import resolve_duckdb_writer_lock
+from backend.app.governance.settings import get_settings
 from backend.app.tasks import livermore_candidate_history_materialize as candidate_task
 from backend.app.tasks import livermore_candidate_outcome_maturity as maturity_task
 
@@ -468,35 +469,59 @@ def test_writer_admission_preserves_ready_empty_result(
     tmp_path: Path,
     request_sentinel: list[tuple[str, str]],
 ) -> None:
-    db_path = tmp_path / "ready-empty.duckdb"
-    snapshot_date = date(2026, 9, 15)
-    _seed_observations_and_control(db_path, snapshot_date=snapshot_date)
-    events = _install_lock_trace(monkeypatch, db_path=db_path)
-    _patch_local_inputs(monkeypatch)
-    monkeypatch.setattr(
-        candidate_task,
-        "_choice_stock_inputs_have_full_coverage",
-        lambda **_kwargs: True,
-    )
-    monkeypatch.setattr(
-        candidate_task,
-        "load_livermore_strategy_payload_from_connection",
-        lambda *_args, **_kwargs: _strategy_payload(
-            snapshot_date=snapshot_date,
-            items=[],
-        ),
+    from backend.app.repositories.governance_repo import GovernanceRepository
+    from backend.app.services import livermore_signal_confluence_service as confluence_service
+    from backend.app.services import market_data_livermore_service as livermore_service
+    from tests.test_pretrade_producer_full_integration import (
+        TARGET_DATE,
+        _seed_actual_pretrade_database,
+        _write_confirmed_choice_catalog,
     )
 
-    result = candidate_task.materialize_livermore_candidate_history(
-        str(db_path),
-        as_of_date=snapshot_date.isoformat(),
+    db_path = tmp_path / "ready-empty.duckdb"
+    catalog_path = tmp_path / "synthetic-choice-catalog.json"
+    governance_path = tmp_path / "governance"
+    _seed_actual_pretrade_database(db_path, ready_candidate=False)
+    _write_confirmed_choice_catalog(catalog_path)
+    with duckdb.connect(str(db_path), read_only=False) as conn:
+        conn.execute("create table control_probe (value integer)")
+        conn.execute("insert into control_probe values (7)")
+    monkeypatch.setenv("MOSS_CHOICE_STOCK_CATALOG_FILE", str(catalog_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "jsonl")
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        livermore_service,
+        "_OFFICIAL_AVAILABILITY_MANIFEST_PATH",
+        tmp_path / "missing-availability.json",
     )
+    monkeypatch.setattr(
+        livermore_service,
+        "_OFFICIAL_RELEASES_MANIFEST_PATH",
+        tmp_path / "missing-releases.json",
+    )
+    monkeypatch.setattr(
+        confluence_service,
+        "load_macro_adversarial_signal_payload",
+        lambda **_kwargs: ({}, {}),
+    )
+    events = _install_lock_trace(monkeypatch, db_path=db_path)
+
+    try:
+        result = candidate_task.materialize_livermore_candidate_history(
+            str(db_path),
+            as_of_date=TARGET_DATE,
+            stock_candidate_policy="exp3b",
+        )
+    finally:
+        get_settings.cache_clear()
 
     assert result["status"] == "ok"
     assert result["row_count"] == 0
     assert result["empty_result"] is True
     assert result["skipped"] == ["no_strategy_signals"]
     assert result["input_coverage_status"] == "ready"
+    assert result["zero_signal_input_status"] == "ready"
     assert result["input_snapshot_before"] == result["input_snapshot_after"]
     _assert_writer_lifecycle(events)
     assert request_sentinel == []
@@ -505,10 +530,17 @@ def test_writer_admission_preserves_ready_empty_result(
     try:
         assert conn.execute("select value from control_probe").fetchall() == [(7,)]
         assert conn.execute(
-            "select count(*) from livermore_candidate_history"
+            "select count(*) from livermore_candidate_history where snapshot_as_of_date = ?",
+            [TARGET_DATE],
         ).fetchone() == (0,)
     finally:
         conn.close()
+    repository = GovernanceRepository(base_dir=governance_path, backend_mode="jsonl")
+    cache_key = "livermore-candidate-history:zero-signal:exp3b"
+    terminal = repository.read_latest_run(cache_key, report_date=TARGET_DATE)
+    manifest = repository.read_latest_manifest(cache_key, report_date=TARGET_DATE)
+    assert terminal is not None and terminal["status"] == "completed"
+    assert manifest is not None and manifest["run_id"] == result["run_id"]
 
 
 def _lock_reacquire_script() -> str:

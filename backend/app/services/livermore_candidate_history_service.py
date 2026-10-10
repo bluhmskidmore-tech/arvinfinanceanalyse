@@ -33,6 +33,8 @@ from backend.app.core_finance.matched_baseline import (
     matched_baseline_stats_from_rows,
 )
 from backend.app.core_finance.strategy_policy import POLICY
+from backend.app.governance.settings import get_settings
+from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.livermore_candidate_history_repo import (
     CANDIDATE_EXECUTION_SELECT_COLUMNS,
     CANDIDATE_HISTORY_SELECT_COLUMNS,
@@ -265,6 +267,138 @@ def load_choice_stock_materialization_coverage(**kwargs: Any) -> ChoiceStockMate
 
 
 TABLE_ADJ_FACTOR = RELATION_STOCK_ADJUSTMENT_FACTOR
+ZERO_SIGNAL_CACHE_KEY = "livermore-candidate-history:zero-signal"
+ZERO_SIGNAL_JOB_NAME = "livermore-candidate-history"
+
+
+def _zero_signal_source_profiles(
+    conn: duckdb.DuckDBPyConnection, *, trade_date: str,
+) -> dict[str, Any]:
+    from backend.app.services.pretrade_qualification import _profile_source
+
+    tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+    return {
+        table: _profile_source(
+            conn,
+            tables=tables,
+            table_name=table,
+            date_column=date_column,
+            selector="date_exact",
+            target_date=trade_date,
+        )
+        for table, date_column in (
+            ("choice_stock_request_audit", "as_of_date"),
+            (TABLE_HIST, "snapshot_as_of_date"),
+            ("livermore_stock_candidate_universe_history", "snapshot_as_of_date"),
+            (TABLE_EXECUTION_HIST, "signal_date"),
+        )
+    }
+
+
+def _has_completed_zero_signal_receipt(
+    *, duckdb_path: str, trade_date: str,
+    conn: duckdb.DuckDBPyConnection | None = None,
+) -> bool:
+    """Read the exact persisted terminal and manifest; never infer an empty run."""
+    from backend.app.services.market_data_livermore_service import (
+        EXECUTION_STOCK_CANDIDATE_POLICY,
+        capture_livermore_external_inputs,
+    )
+    from backend.app.services.pretrade_qualification import (
+        canonical_pretrade_output_sha256,
+        capture_pretrade_input_snapshot,
+    )
+    from backend.app.tasks.livermore_candidate_history_materialize import (
+        FORMULA_VERSION,
+        RULE_VERSION,
+    )
+
+    settings = get_settings()
+    repository = GovernanceRepository(
+        base_dir=Path(settings.governance_path),
+        sql_dsn=settings.governance_sql_dsn,
+        backend_mode=settings.governance_backend,
+    )
+    cache_key = f"{ZERO_SIGNAL_CACHE_KEY}:{EXECUTION_STOCK_CANDIDATE_POLICY}"
+    try:
+        terminal = repository.read_latest_run(
+            cache_key, job_name=ZERO_SIGNAL_JOB_NAME, report_date=trade_date,
+        )
+        manifest = repository.read_latest_manifest(cache_key, report_date=trade_date)
+        if not terminal or not manifest or terminal.get("status") != "completed":
+            return False
+        for key in (
+            "run_id", "cache_key", "cache_version", "report_date",
+            "source_version", "vendor_version", "rule_version",
+        ):
+            if not terminal.get(key) or terminal.get(key) != manifest.get(key):
+                return False
+        lineage = manifest.get("lineage")
+        if not isinstance(lineage, dict):
+            return False
+        producer = lineage.get("producer_result")
+        if not isinstance(producer, dict) or (
+            producer.get("status") != "ok"
+            or producer.get("empty_result") is not True
+            or not isinstance(producer.get("row_count"), int)
+            or isinstance(producer.get("row_count"), bool)
+            or producer.get("row_count") != 0
+            or producer.get("input_coverage_status") != "ready"
+            or producer.get("zero_signal_input_status") != "ready"
+            or producer.get("skipped") != ["no_strategy_signals"]
+            or producer.get("stock_candidate_policy") != EXECUTION_STOCK_CANDIDATE_POLICY
+            or producer.get("snapshot_as_of_date") != trade_date
+            or producer.get("rule_version") != RULE_VERSION
+            or producer.get("formula_version") != FORMULA_VERSION
+        ):
+            return False
+        if any(
+            producer.get(key) != terminal.get(key)
+            for key in ("run_id", "source_version", "vendor_version", "rule_version")
+        ):
+            return False
+        if manifest.get("cache_version") != (
+            "cv_livermore_zero_signal_" + canonical_pretrade_output_sha256(lineage)
+        ):
+            return False
+        before = producer.get("input_snapshot_before")
+        if not isinstance(before, dict) or before != producer.get("input_snapshot_after"):
+            return False
+        connection_scope = (
+            nullcontext(conn) if conn is not None
+            else LivermoreCandidateHistoryRepository(duckdb_path).scoped_connection()
+        )
+        with connection_scope as read_conn:
+            assert read_conn is not None
+            profiles = _zero_signal_source_profiles(read_conn, trade_date=trade_date)
+            if profiles != lineage.get("source_profiles") or any(
+                profile.get("present") is not True for profile in profiles.values()
+            ):
+                return False
+            if (
+                profiles["choice_stock_request_audit"]["row_count"] == 0
+                or profiles[TABLE_HIST]["row_count"] != 0
+                or profiles[TABLE_EXECUTION_HIST]["row_count"] != 0
+            ):
+                return False
+            external_inputs = capture_livermore_external_inputs(settings.choice_stock_catalog_file)
+            if getattr(external_inputs.get("stock_readiness"), "ready", False) is not True:
+                return False
+            current_snapshot = capture_pretrade_input_snapshot(
+                read_conn, target_date=trade_date,
+                stock_candidate_policy=EXECUTION_STOCK_CANDIDATE_POLICY,
+                external_identity_profiles=external_inputs["identity_profiles"],
+            )
+            return current_snapshot == before
+    except (OSError, RuntimeError, ValueError, TypeError, duckdb.Error) as exc:
+        from backend.app.repositories.system_read_publication_repo import (
+            raise_if_system_read_failure,
+        )
+
+        raise_if_system_read_failure(exc)
+        return False
+
+
 _STRATEGY_LABELS = {
     "hybrid_fusion": "融合策略",
     "stock_candidate": "趋势突破",
@@ -1158,6 +1292,13 @@ def _build_backtest_window_summary_from_rows(
             coverage=coverage,
             rows=rows_by_date.get(trade_date, []),
             history_table_present=history_table_present,
+            zero_signal_receipt_valid=(
+                not rows_by_date.get(trade_date)
+                and bool(getattr(coverage, "full_coverage", False))
+                and _has_completed_zero_signal_receipt(
+                    duckdb_path=duckdb_path, trade_date=trade_date, conn=conn,
+                )
+            ),
         )
         status = str(classification["status"])
         row_count = len(rows_by_date.get(trade_date, []))

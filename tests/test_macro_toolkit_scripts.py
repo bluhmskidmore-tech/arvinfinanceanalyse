@@ -10,6 +10,7 @@ import importlib
 import importlib.util
 import inspect
 import json
+import os
 import py_compile
 import socket
 import subprocess
@@ -88,6 +89,7 @@ def _isolate_macro_read_inputs(tmp_path: Path, monkeypatch, request):
     def forbidden(*_args, **_kwargs):
         pytest.fail("isolated macro tests must mock script execution and vendor network calls")
 
+    inline_runner = macro_toolkit_service._run_toolkit_script_inline
     monkeypatch.setattr(macro_toolkit_service, "_run_toolkit_script_inline", forbidden)
     original_connect = socket.socket.connect
 
@@ -100,6 +102,7 @@ def _isolate_macro_read_inputs(tmp_path: Path, monkeypatch, request):
     monkeypatch.setattr(socket.socket, "connect", connect_loopback_only)
     if "standalone_vendor_shims_bootstrap_repo_root" not in request.node.name:
         monkeypatch.setattr(macro_toolkit_service.subprocess, "run", forbidden)
+    return inline_runner
 
 
 def _configure_macro_toolkit_scope_store(tmp_path: Path, monkeypatch):
@@ -2694,7 +2697,9 @@ def test_macro_toolkit_strategy_summaries_endpoint_returns_deferred_strategy_pay
     assert response.status_code == 200
     payload = response.json()
     strategies = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
-    assert strategies["moving_average"]["status"] == "complete"
+    assert strategies["moving_average"]["status"] == "unavailable"
+    assert strategies["moving_average"]["result"]["unavailable_reason"] == "return_basis_unverified"
+    assert strategies["moving_average"]["primary_metric"] is None
     assert strategies["moving_average"]["result"]["price_source"] == "choice_stock_daily_observation"
     assert payload["result"]["choice_stock_refresh"]["daily_observation"]["latest_trade_date"] == "2026-04-30"
     result_meta = payload["result_meta"]
@@ -2878,8 +2883,12 @@ def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shad
     assert context_loads == 1
     assert len(shadow_calls) == 1
     assert shadow_calls[0] is financials
-    assert payload["result"]["strategy_summaries"][0]["status"] == "complete"
-    assert payload["result"]["strategy_data_status"] == {"status": "complete", "summary_count": 4}
+    summaries = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
+    assert summaries["moving_average"]["status"] == "unavailable"
+    assert summaries["moving_average"]["result"]["unavailable_reason"] == "return_basis_unverified"
+    assert summaries["moving_average"]["primary_metric"] is None
+    assert summaries["multi_factor_selection"]["status"] == "complete"
+    assert payload["result"]["strategy_data_status"] == {"status": "degraded", "summary_count": 4}
     assert payload["result"]["warnings"] == []
     assert payload["result"]["shadow_portfolio_report"]["status"] == "complete"
     macro_etf_strategy = payload["result"]["macro_etf_strategy"]
@@ -3483,7 +3492,7 @@ def test_a_share_stampede_risk_context_loads_observations_as_dataframe(tmp_path,
                 assert "order by daily.trade_date asc, daily.stock_code asc" in normalized
                 assert "try_cast(daily.trade_date as date) as trade_date" in normalized
                 assert "where try_cast" not in normalized
-                assert parameters == ["2026-05-10", "2026-04-05", "2026-05-10"]
+                assert parameters == ["2026-05-10", "2026-03-26", "2026-05-10"]
                 return FakeResult(frame=observation_rows)
             raise AssertionError(f"unexpected query: {query}")
 
@@ -4428,14 +4437,18 @@ def test_macro_toolkit_analysis_uses_landed_choice_stock_for_strategy_summaries(
     assert response.status_code == 200
     payload = response.json()
     strategies = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
-    assert strategies["moving_average"]["status"] == "complete"
-    assert strategies["moving_average"]["warnings"] == []
-    assert strategies["moving_average"]["primary_metric"]["label"] == "真实累计净值"
-    assert strategies["moving_average"]["result"]["data_status"] == "complete"
+    assert strategies["moving_average"]["status"] == "unavailable"
+    assert strategies["moving_average"]["warnings"]
+    assert strategies["moving_average"]["primary_metric"] is None
+    assert strategies["moving_average"]["result"]["data_status"] == "unavailable"
+    assert strategies["moving_average"]["result"]["return_basis_status"] == "unverified"
+    assert strategies["moving_average"]["result"]["unavailable_reason"] == "return_basis_unverified"
+    assert strategies["moving_average"]["result"]["final_value"] is None
     assert strategies["moving_average"]["result"]["price_source"] == "choice_stock_daily_observation"
     assert strategies["moving_average"]["result"]["as_of_date"] == "2026-04-30"
     assert strategies["moving_average"]["result"]["stock_count"] == 3
-    assert strategies["mean_reversion_momentum"]["status"] == "complete"
+    assert strategies["mean_reversion_momentum"]["status"] == "unavailable"
+    assert strategies["mean_reversion_momentum"]["result"]["unavailable_reason"] == "return_basis_unverified"
     assert strategies["multi_factor_selection"]["status"] == "degraded"
     assert "FUNDAMENTAL_FACTORS_NOT_MATERIALIZED" in strategies["multi_factor_selection"]["warnings"]
     assert strategies["multi_factor_selection"]["result"]["price_source"] == "choice_stock_daily_observation"
@@ -5285,6 +5298,8 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
                 "as_of_date": "2026-04-30",
                 "duckdb_path": str(duckdb_path),
                 "catalog_path": str(get_settings().choice_stock_catalog_file),
+                "history_start_date": None,
+                "allow_cross_era_backfill": False,
             },
         ),
         (
@@ -7743,6 +7758,18 @@ def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monke
     _seed_choice_tushare_macro_db(duckdb_path)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setattr(macro_toolkit_route, "_ensure_macro_toolkit_script_execute_allowed", lambda *_args, **_kwargs: None)
+    calls = []
+
+    def fake_run(command, *, cwd, env, **kwargs):
+        calls.append(command)
+        assert command == [sys.executable, str(get_toolkit_script("debug_wind").path)]
+        assert Path(cwd) == TOOLKIT_ROOT
+        python_path = env["PYTHONPATH"].split(os.pathsep)
+        assert python_path[:2] == [str(TOOLKIT_ROOT), str(macro_toolkit_service.PROJECT_ROOT)]
+        assert env["MOSS_DUCKDB_PATH"] == str(duckdb_path)
+        return SimpleNamespace(returncode=0, stdout="ErrorCode: 0", stderr="")
+
+    monkeypatch.setattr(macro_toolkit_service.subprocess, "run", fake_run)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -7762,6 +7789,7 @@ def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monke
     assert payload["status"] == "completed"
     assert payload["exit_code"] == 0
     assert "ErrorCode" in payload["stdout"]
+    assert len(calls) == 1
 
 
 def test_macro_toolkit_run_script_passes_configured_output_dir_to_subprocess(tmp_path, monkeypatch) -> None:
@@ -7825,7 +7853,9 @@ def test_macro_toolkit_run_script_passes_configured_output_dir_to_subprocess(tmp
     assert [item["name"] for item in result["output_files"]] == ["cta_results.csv"]
 
 
-def test_macro_toolkit_run_script_inline_fallback_uses_configured_output_dir(tmp_path, monkeypatch) -> None:
+def test_macro_toolkit_run_script_inline_fallback_uses_configured_output_dir(
+    tmp_path, monkeypatch, _isolate_macro_read_inputs
+) -> None:
     requested_output_dir = tmp_path / "requested_output"
     inherited_output_dir = tmp_path / "inherited_output"
     requested_output_dir.mkdir()
@@ -7853,6 +7883,7 @@ def test_macro_toolkit_run_script_inline_fallback_uses_configured_output_dir(tmp
     monkeypatch.setenv("MOSS_MACRO_TOOLKIT_OUTPUT_DIR", str(inherited_output_dir))
     monkeypatch.setattr(macro_toolkit_service, "get_toolkit_script", lambda _name: fake_script)
     monkeypatch.setattr(macro_toolkit_service, "run_toolkit_script", fake_run_toolkit_script)
+    monkeypatch.setattr(macro_toolkit_service, "_run_toolkit_script_inline", _isolate_macro_read_inputs)
     monkeypatch.setattr(
         macro_toolkit_service,
         "_script_payload",

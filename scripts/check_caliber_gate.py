@@ -759,6 +759,7 @@ for _source, _checks in {
     "backend/app/services/bond_analytics_service.py": (
         "tests/test_structural_generation_cache.py",
         "tests/test_structural_bond_positions.py",
+        "tests/test_lazy_task_import_constants.py",
     ),
     "backend/app/core_finance/bond_analytics/read_models.py": (
         "tests/test_structural_bond_positions.py",
@@ -859,6 +860,93 @@ for _source, _checks in {
     ),
     "backend/app/core_finance/macro/equity_strategies.py": (
         "tests/test_macro_strategy_return_truthfulness.py",
+    ),
+    # Full-CI repairs retain their exact production-to-regression connections.
+    # New guarded writers share the same checks as their operational entrypoints.
+    "backend/app/core_finance/macro/toolkit/system_sources.py": (
+        "tests/test_macro_immutable_read_selection.py",
+        "tests/test_macro_system_sources_pushdown.py",
+        "tests/test_macro_toolkit_scripts.py",
+    ),
+    "backend/app/services/macro_toolkit_refresh_receipt_service.py": (
+        "tests/test_macro_toolkit_refresh_failure_health.py",
+        "tests/test_macro_toolkit_refresh_receipt_service.py",
+    ),
+    "backend/app/services/livermore_candidate_history_service.py": (
+        "tests/test_market_data_livermore_candidate_history.py",
+        "tests/test_pretrade_producer_full_integration.py",
+        "tests/test_pretrade_sealed_api_integration.py",
+    ),
+    "backend/app/services/livermore_candidate_history_window_stats.py": (
+        "tests/test_market_data_livermore_candidate_history.py",
+        "tests/test_pretrade_producer_full_integration.py",
+        "tests/test_pretrade_sealed_api_integration.py",
+    ),
+    "backend/app/tasks/livermore_candidate_history_materialize.py": (
+        "tests/test_livermore_candidate_writer_admission.py",
+        "tests/test_market_data_livermore_candidate_history.py",
+        "tests/test_pretrade_producer_full_integration.py",
+        "tests/test_pretrade_sealed_api_integration.py",
+    ),
+    "backend/app/services/pnl_bridge_service.py": (
+        "tests/test_lazy_task_import_constants.py",
+        "tests/test_pnl_bridge_result_meta_dates.py",
+    ),
+    "backend/app/main.py": (
+        "tests/test_boundary_surface_inventory.py",
+    ),
+    "backend/app/api/routes/system_read_publication.py": (
+        "tests/test_boundary_surface_inventory.py",
+    ),
+    "backend/scripts/audit_caliber_violations.py": (
+        "tests/test_audit_caliber_violations_script.py",
+        "tests/test_caliber_audit_ci_gate.py",
+    ),
+    "backend/scripts/backfill_stock_factor_market_cap_tushare.py": (
+        "tests/test_backfill_stock_factor_market_cap_tushare.py",
+    ),
+    "backend/app/tasks/stock_factor_market_cap_backfill.py": (
+        "tests/test_backfill_stock_factor_market_cap_tushare.py",
+    ),
+    "scripts/bond_risk_shadow_candidate.py": (
+        "tests/test_bond_risk_shadow_candidate.py",
+    ),
+    "scripts/portfolio_home_evidence_packet_guard.py": (
+        "tests/test_portfolio_home_evidence_packet_guard.py",
+        "tests/test_portfolio_home_scorecard_command_verifier.py",
+    ),
+    "scripts/portfolio_home_evidence_snapshot.py": (
+        "tests/test_portfolio_home_evidence_snapshot.py",
+        "tests/test_portfolio_home_scorecard_command_verifier.py",
+    ),
+    "scripts/verify_portfolio_home_scorecard_commands.py": (
+        "tests/test_portfolio_home_evidence_packet_guard.py",
+        "tests/test_portfolio_home_evidence_snapshot.py",
+        "tests/test_portfolio_home_scorecard_command_verifier.py",
+    ),
+    "scripts/rematerialize_fixed_income_versions.py": (
+        "tests/test_rematerialize_fixed_income_versions.py",
+    ),
+    "scripts/stock_analysis_page_gap_factor_manifest.py": (
+        "tests/test_stock_analysis_page_gap_factor_manifest.py",
+    ),
+    "scripts/stock_analysis_page_gap_manifest.py": (
+        "tests/test_stock_analysis_page_gap_manifest_cli.py",
+    ),
+    "scripts/stock_research_daily.py": (
+        "tests/test_stock_research_daily.py",
+    ),
+    "scripts/verify_system_audit_monitoring_snapshot.py": (
+        "tests/test_system_audit_monitoring_snapshot_verifier.py",
+    ),
+    "scripts/wp7_release_rehearsal.py": (
+        "tests/test_wp7_release_rehearsal.py",
+    ),
+    "backend/app/tasks/wp7_rehearsal_bundle.py": (
+        "tests/test_wp7_release_rehearsal.py",
+    ),
+    "scripts/check_full_pytest_partition.py": (
+        "tests/test_full_pytest_platform.py",
     ),
 }.items():
     CALIBER_GATE_MAP[_source] = (*CALIBER_GATE_MAP.get(_source, ()), *_checks)

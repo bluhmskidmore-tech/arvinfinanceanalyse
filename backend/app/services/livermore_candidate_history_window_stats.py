@@ -119,6 +119,7 @@ def _classify_replay_date(
     coverage: Any,
     rows: list[dict[str, Any]],
     history_table_present: bool,
+    zero_signal_receipt_valid: bool = False,
 ) -> dict[str, Any]:
     if not history_table_present:
         return _classification(
@@ -151,6 +152,15 @@ def _classify_replay_date(
             signal_kinds=_DEFAULT_SIGNAL_KINDS,
         )
     if not rows:
+        if zero_signal_receipt_valid:
+            return _classification(
+                trade_date=trade_date,
+                status="completed",
+                reason_code="no_strategy_signals",
+                message=f"Completed materialization proves zero strategy signals for {trade_date}.",
+                affects_completed_stats=True,
+                signal_kinds=_DEFAULT_SIGNAL_KINDS,
+            )
         return _classification(
             trade_date=trade_date,
             status="unsupported",

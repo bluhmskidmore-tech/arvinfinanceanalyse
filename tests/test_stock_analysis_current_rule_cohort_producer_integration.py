@@ -7,8 +7,16 @@ from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+import duckdb
 import pytest
 
+from backend.app.core_finance.adjusted_returns import ensure_stock_adjustment_factor_schema
+from backend.app.core_finance.livermore_stock_candidates import (
+    FORMULA_VERSION as STOCK_CANDIDATE_FORMULA_VERSION,
+)
+from backend.app.core_finance.matched_baseline import (
+    FORMULA_VERSION as MATCHED_BASELINE_FORMULA_VERSION,
+)
 from backend.app.governance.stock_analysis_calendar_receipt import (
     build_stock_analysis_calendar_receipt,
 )
@@ -81,10 +89,10 @@ def _ready_readiness() -> SimpleNamespace:
 def _version_tuple() -> dict[str, object]:
     return {
         "candidate_rule_version": "rv_candidate_history_current",
-        "stock_candidate_selection_formula_version": "rv_livermore_stock_candidates_bundle_v7",
+        "stock_candidate_selection_formula_version": STOCK_CANDIDATE_FORMULA_VERSION,
         "candidate_outcome_formula_version": "fv_livermore_candidate_forward_close_dual_adjust_v2",
         "execution_formula_version": "fv_livermore_candidate_execution_dual_adjust_v5",
-        "matched_baseline_formula_version": "fv_livermore_matched_baseline_v3",
+        "matched_baseline_formula_version": MATCHED_BASELINE_FORMULA_VERSION,
         "market_gate_rule_version": "rv_market_gate_current_v2",
         "signal_confluence_rule_version": "rv_signal_confluence_current_v4",
         "macro_formula_version": "fv_macro_bundle_current_v1",
@@ -166,7 +174,7 @@ def _runner_result(*, trade_date: str, candidate_codes: list[str], status: str) 
         "requested_matches_resolved": True,
         "market_state": "WARM",
         "selection_policy": "exp3b",
-        "stock_candidate_formula_version": "rv_livermore_stock_candidates_bundle_v7",
+        "stock_candidate_formula_version": STOCK_CANDIDATE_FORMULA_VERSION,
         "rule_tuple_matches": True,
         "candidate_count": count,
         "candidate_item_count": count,
@@ -212,7 +220,7 @@ def _selection_payload(*, trade_date: str, candidate_codes: list[str]) -> tuple[
             "market_gate": {"state": "WARM", "exposure": 0.5},
             "stock_candidates": {
                 "selection_policy": "exp3b",
-                "formula_version": "rv_livermore_stock_candidates_bundle_v7",
+                "formula_version": STOCK_CANDIDATE_FORMULA_VERSION,
                 "candidate_count": len(items),
                 "insufficient_history_count": 0,
                 "input_stock_count": 200,
@@ -233,7 +241,9 @@ def _selection_payload(*, trade_date: str, candidate_codes: list[str]) -> tuple[
     )
 
 
-def _candidate_source_evidence() -> dict[str, object]:
+def _candidate_source_evidence(
+    *, signal_date: str, exit_price_5d: float, exit_price_20d: float
+) -> dict[str, object]:
     def leaf(*, source_version: str, vendor_version: str, rule_version: str, run_id: str) -> dict[str, object]:
         return {
             "availability_status": "available",
@@ -244,28 +254,44 @@ def _candidate_source_evidence() -> dict[str, object]:
             "run_id": run_id,
         }
 
-    return {
-        "observation": {
-            "table": "choice_stock_daily_observation",
-            "entry": leaf(
-                source_version=OBS_SOURCE_VERSION,
-                vendor_version=OBS_VENDOR_VERSION,
-                rule_version=OBS_RULE_VERSION,
-                run_id=OBS_RUN_ID,
-            ),
-            "exit_5d": leaf(
-                source_version=OBS_SOURCE_VERSION,
-                vendor_version=OBS_VENDOR_VERSION,
-                rule_version=OBS_RULE_VERSION,
-                run_id=OBS_RUN_ID,
-            ),
-            "exit_20d": leaf(
-                source_version=OBS_SOURCE_VERSION,
-                vendor_version=OBS_VENDOR_VERSION,
-                rule_version=OBS_RULE_VERSION,
-                run_id=OBS_RUN_ID,
-            ),
+    signal = date.fromisoformat(signal_date)
+    observation = {
+        "table": "choice_stock_daily_observation",
+        **{
+            point: {
+                "trade_date": (signal + timedelta(days=days)).isoformat(),
+                **leaf(
+                    source_version=OBS_SOURCE_VERSION,
+                    vendor_version=OBS_VENDOR_VERSION,
+                    rule_version=OBS_RULE_VERSION,
+                    run_id=OBS_RUN_ID,
+                ),
+            }
+            for point, days in (("entry", 1), ("exit_5d", 5), ("exit_20d", 20))
         },
+    }
+    limit_price = {
+        "table": "stock_limit_price_daily",
+        "entry": None,
+        "entry_source": "observation_cast",
+    }
+    for horizon, exit_price in (("5d", exit_price_5d), ("20d", exit_price_20d)):
+        exit_observation = observation[f"exit_{horizon}"]
+        limit_price[f"exit_{horizon}"] = None
+        limit_price[f"exit_{horizon}_source"] = "observation_cast"
+        limit_price[f"exit_{horizon}_decisions"] = [{
+            "trade_date": exit_observation["trade_date"],
+            "decision": "sellable",
+            "close_value": exit_price,
+            "up_limit": exit_price * 1.1,
+            "down_limit": exit_price * 0.9,
+            "limit_down_flag": False,
+            "limit_price_source": "observation_cast",
+            "source": None,
+            "observation": dict(exit_observation),
+        }]
+    return {
+        "observation": observation,
         "adjustment_factor": {
             "table": "stock_adjustment_factor",
             "entry": leaf(
@@ -287,6 +313,7 @@ def _candidate_source_evidence() -> dict[str, object]:
                 run_id=FACTOR_RUN_ID,
             ),
         },
+        "limit_price": limit_price,
     }
 
 
@@ -339,7 +366,11 @@ def _candidate_pit_from_execution(execution: dict[str, object]) -> dict[str, obj
             },
         },
         "failure_reason": None,
-        "source_evidence": _candidate_source_evidence(),
+        "source_evidence": _candidate_source_evidence(
+            signal_date=(date.fromisoformat(str(execution["entry_date"])) - timedelta(days=1)).isoformat(),
+            exit_price_5d=float(execution["exit_price_5d"]),
+            exit_price_20d=float(execution["exit_price_20d"]),
+        ),
     }
 
 
@@ -349,7 +380,7 @@ def _control_rows(*, trade_date: str, stock_code: str, candidate_rank: int) -> l
     for control_index in range(collector.CONTROL_COUNT):
         rows.append(
             {
-                "control_stock_code": f"C{candidate_rank:02d}{control_index:02d}.SZ",
+                "control_stock_code": f"C{signal:%m%d}{candidate_rank:02d}{control_index:02d}.SZ",
                 "candidate_stock_code": stock_code,
                 "signal_date": trade_date,
                 "signal_kind": "stock_candidate",
@@ -370,11 +401,15 @@ def _control_rows(*, trade_date: str, stock_code: str, candidate_rank: int) -> l
                 "control_failure_reason_5d": None,
                 "control_failure_reason_20d": None,
                 "control_failure_reason": None,
-                "formula_version": "fv_livermore_matched_baseline_v3",
+                "formula_version": MATCHED_BASELINE_FORMULA_VERSION,
                 "metric_basis": "net_next_open_adj",
                 "price_adjustment_mode": "adj_factor_ratio",
                 "evaluation_as_of_date": EVALUATION_AS_OF_DATE,
-                "source_evidence": _candidate_source_evidence(),
+                "source_evidence": _candidate_source_evidence(
+                    signal_date=trade_date,
+                    exit_price_5d=9.5 + candidate_rank / 10.0,
+                    exit_price_20d=10.0 + candidate_rank / 10.0,
+                ),
             }
         )
     return rows
@@ -390,6 +425,58 @@ def _governed_run_id(
         evaluation_as_of_date=EVALUATION_AS_OF_DATE,
         open_dates=trade_dates,
     )
+
+
+def _seed_pit_source_rows(
+    db_path: Path, execution_by_key: dict[tuple[str, str], dict[str, object]]
+) -> None:
+    observations = []
+    factors = []
+    for (trade_date, code), execution in execution_by_key.items():
+        signal = date.fromisoformat(trade_date)
+        rank = int(code[3:6])
+        paths = [
+            (code, execution["entry_price"], execution["exit_price_5d"], execution["exit_price_20d"]),
+            *[
+                (
+                    control["control_stock_code"], control["control_entry_price"],
+                    control["control_exit_price_5d"], control["control_exit_price_20d"],
+                )
+                for control in _control_rows(
+                    trade_date=trade_date, stock_code=code, candidate_rank=rank
+                )
+            ],
+        ]
+        for stock_code, entry_price, exit_5d, exit_20d in paths:
+            for day in range(1, 21):
+                price_date = (signal + timedelta(days=day)).isoformat()
+                close = exit_5d if day == 5 else exit_20d if day == 20 else entry_price
+                observations.append((
+                    price_date, stock_code, entry_price, close, close * 1.1, close * 0.9,
+                    "trading", OBS_SOURCE_VERSION, OBS_VENDOR_VERSION, OBS_RULE_VERSION, OBS_RUN_ID,
+                ))
+                factors.append((
+                    stock_code, price_date, 1.0, FACTOR_SOURCE_VERSION, FACTOR_VENDOR_VERSION,
+                    FACTOR_RULE_VERSION, FACTOR_RUN_ID,
+                ))
+    with duckdb.connect(str(db_path), read_only=False) as conn:
+        ensure_stock_adjustment_factor_schema(conn)
+        conn.execute("alter table stock_adjustment_factor add column vendor_version varchar")
+        conn.execute("alter table stock_adjustment_factor add column rule_version varchar")
+        conn.execute("begin transaction")
+        conn.executemany(
+            "insert into choice_stock_daily_observation "
+            "(trade_date, stock_code, open_value, close_value, highlimit, lowlimit, tradestatus, "
+            "source_version, vendor_version, rule_version, run_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            observations,
+        )
+        conn.executemany(
+            "insert into stock_adjustment_factor "
+            "(stock_code, trade_date, adj_factor, source_version, vendor_version, rule_version, run_id) "
+            "values (?, ?, ?, ?, ?, ?, ?)",
+            factors,
+        )
+        conn.execute("commit")
 
 
 def _collect_ready_evidence(
@@ -408,6 +495,7 @@ def _collect_ready_evidence(
                 ordinal=(index * 5) + ordinal,
             )
     candidate_codes_by_date[trade_dates[-1]] = []
+    _seed_pit_source_rows(db_path, execution_by_key)
 
     def fake_loader(*, as_of_date, **kwargs):
         return _selection_payload(
@@ -490,7 +578,7 @@ def test_collector_producer_and_dry_run_form_a_closed_loop(
         governed_run_id=governed_run_id,
     )
 
-    assert collected["status"] == "ready"
+    assert collected["status"] == "ready", collected["blockers"]
     assert collected["counts"]["completed_dates"] == 21
     assert collected["counts"]["completed_with_signals_dates"] == 20
     assert collected["counts"]["completed_no_signal_dates"] == 1
@@ -563,6 +651,7 @@ def test_producer_refuses_tampered_candidate_source_leaf_from_collector_output(
         trade_dates=trade_dates,
         governed_run_id=governed_run_id,
     )
+    assert collected["status"] == "ready", collected["blockers"]
     broken = copy.deepcopy(collected["date_evidence"])
     del broken[0]["signal_facts"][0]["candidate_source_evidence"]["adjustment_factor"]["exit_20d"]
 

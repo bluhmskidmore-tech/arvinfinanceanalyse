@@ -167,11 +167,13 @@ def archive_moss_snapshot(snapshot: dict[str, Any], output_dir: Path,
 
 def load_moss_snapshot(duckdb_path: str | Path, target_date: str) -> dict[str, Any]:
     """Exact-date universe, left joins, and 61 market sessions; no migrations/writes."""
-    import duckdb
     from backend.app.core_finance.choice_stock_units import amount_rmb_sql, volume_shares_sql
+    from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
+    from backend.app.repositories.duckdb_repo import read_only_connection
 
     target = validate_date(target_date)
-    with duckdb.connect(str(duckdb_path), read_only=True) as conn:
+    effective_path = resolve_effective_read_path(duckdb_path)
+    with read_only_connection(effective_path) as conn:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
 
         def read(sql: str, params: list[object]) -> list[dict[str, Any]]:
@@ -235,7 +237,7 @@ def load_moss_snapshot(duckdb_path: str | Path, target_date: str) -> dict[str, A
             gate["conditions"] = json.loads(gate.pop("conditions_json"))
         snapshot = {"universe": universe, "observations": observations,
                     "adjustments": adjustments, "market_gate": gate,
-                    "sessions": sessions, "source": str(Path(duckdb_path).resolve())}
+                    "sessions": sessions, "source": str(Path(effective_path).resolve())}
         snapshot["snapshot_sha256"] = hashlib.sha256(_dump(snapshot)).hexdigest()
         return snapshot
 
