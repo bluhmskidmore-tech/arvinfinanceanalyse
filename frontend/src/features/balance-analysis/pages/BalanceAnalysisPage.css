@@ -2453,12 +2453,12 @@
   border-color: var(--dh-api-line-soft) !important;
 }
 
-.balance-analysis-page [data-testid="balance-analysis-result-meta-collapse"] > .ant-collapse-item > .ant-collapse-header {
+.balance-analysis-page [data-testid="balance-analysis-result-meta-collapse"].ant-collapse > .ant-collapse-item > .ant-collapse-header {
   box-sizing: border-box;
   height: 36px;
   align-items: center;
   padding: 0 12px;
-  border-radius: var(--dh-api-radius) !important;
+  border-radius: var(--dh-api-radius);
 }
 
 .balance-analysis-page :where(.ant-collapse .ant-collapse-content) {

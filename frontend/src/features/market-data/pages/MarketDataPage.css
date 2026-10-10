@@ -2351,9 +2351,9 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header {
   background: var(--t-navy) !important;
   color: var(--ib-rail-text-active) !important;
-  padding: 4px 12px !important;
+  padding: 4px 12px;
   border-bottom: 1px solid var(--t-navy) !important;
-  border-radius: 0 !important;
+  border-radius: 0;
   min-height: 30px;
   align-items: center;
 }
@@ -2361,10 +2361,10 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-panel-head strong,
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header {
   color: var(--ib-rail-text-active) !important;
-  font-size: 14px !important;
-  font-weight: 600 !important;
+  font-size: 14px;
+  font-weight: 600;
   font-family: inherit !important;
-  padding: 0 !important;
+  padding: 0;
   margin: 0 !important;
 }
 
@@ -2755,10 +2755,10 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header {
   background: var(--t-navy) !important;
-  font-size: 12px !important;
-  font-weight: 600 !important;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--ib-rail-text-active) !important;
-  padding: 6px 12px !important;
+  padding: 6px 12px;
 }
 
 .market-data-main .ant-collapse-content-box {
@@ -2916,10 +2916,10 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   align-items: center !important;
   justify-content: space-between;
   gap: 10px 16px !important;
-  min-height: auto !important;
-  padding: 14px 16px !important;
+  min-height: auto;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--imd-border-soft) !important;
-  border-radius: 0 !important;
+  border-radius: 0;
   background: linear-gradient(90deg, var(--dh-api-panel-2), var(--dh-api-panel)) !important;
   color: var(--imd-ink) !important;
 }
@@ -2927,10 +2927,10 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header,
 [data-testid="market-data-tushare-collapse"] .ant-collapse-header {
   margin: 0 !important;
-  padding: 0 !important;
+  padding: 0;
   color: var(--imd-ink) !important;
-  font-size: 15px !important;
-  font-weight: 600 !important;
+  font-size: 15px;
+  font-weight: 600;
   letter-spacing: 0 !important;
   line-height: 1.25;
 }
@@ -3147,7 +3147,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header,
 [data-testid="market-data-tushare-collapse"] .ant-collapse-header {
-  min-height: 42px !important;
+  min-height: 42px;
 }
 
 .market-data-main .ant-collapse-content,
@@ -3644,23 +3644,23 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
 .market-data-main > .ant-collapse > .ant-collapse-item > .ant-collapse-header,
 [data-testid="market-data-tushare-collapse"] .ant-collapse-header {
   color: var(--imd-ink) !important;
-  font-size: 15px !important;
-  font-weight: 600 !important;
+  font-size: 15px;
+  font-weight: 600;
   letter-spacing: 0 !important;
-  line-height: 1.25 !important;
+  line-height: 1.25;
 }
 
-.market-data-page [data-testid="market-data-extended-terminal-collapse"] > .ant-collapse-item > .ant-collapse-header,
-.market-data-page [data-testid="market-data-tushare-collapse"] > .ant-collapse-item > .ant-collapse-header {
+.market-data-page [data-testid="market-data-extended-terminal-collapse"].ant-collapse > .ant-collapse-item > .ant-collapse-header,
+.market-data-page [data-testid="market-data-tushare-collapse"].ant-collapse > .ant-collapse-item > .ant-collapse-header {
   box-sizing: border-box;
   height: 36px;
-  min-height: 36px !important;
+  min-height: 36px;
   align-items: center;
-  padding: 0 16px !important;
-  border-radius: var(--dh-api-radius) !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  line-height: 1.35 !important;
+  padding: 0 16px;
+  border-radius: var(--dh-api-radius);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .market-data-extended-terminal-label > strong {
