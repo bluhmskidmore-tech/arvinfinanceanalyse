@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { buildMockApiEnvelope } from "../../src/mocks/mockApiEnvelope.ts";
 import { mockHomeSnapshot } from "../../src/mocks/workbench.ts";
+import {
+  assertNoUnexpectedServiceRequests,
+  assertSyntheticReadRequest,
+  homeAuxiliaryGetPaths,
+  installSyntheticSystemReads,
+  syntheticReadHeaders,
+} from "./fixtures/synthetic-system-reads.mjs";
 
 const GEOMETRY_TOLERANCE_PX = 1.5;
 const REAL_STATE_BASE_URL =
@@ -20,10 +27,12 @@ function numeric(raw, unit, display) {
 }
 
 async function installHoldingFixture(page) {
+  const serviceFixture = await installSyntheticSystemReads(page);
   const reportDate = "2026-04-30";
   const snapshot = buildMockApiEnvelope("home.snapshot", {
     ...mockHomeSnapshot,
     report_date: reportDate,
+    domains_effective_date: { balance_sheet: reportDate, pnl: reportDate },
   });
   const holdings = buildMockApiEnvelope("bond_analytics.top_holdings", {
     report_date: reportDate,
@@ -48,19 +57,24 @@ async function installHoldingFixture(page) {
   });
 
   await page.route("**/ui/home/snapshot**", async (route) => {
+    assertSyntheticReadRequest(route, "/ui/home/snapshot");
     await route.fulfill({
+      headers: syntheticReadHeaders,
       body: JSON.stringify(snapshot),
       contentType: "application/json",
       status: 200,
     });
   });
   await page.route("**/api/bond-analytics/top-holdings?*", async (route) => {
+    assertSyntheticReadRequest(route, "/api/bond-analytics/top-holdings");
     await route.fulfill({
+      headers: syntheticReadHeaders,
       body: JSON.stringify(holdings),
       contentType: "application/json",
       status: 200,
     });
   });
+  return serviceFixture;
 }
 
 async function readBox(locator, label) {
@@ -74,7 +88,7 @@ test.describe("dashboard home holding detail drawer", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await installHoldingFixture(page);
+    const serviceFixture = await installHoldingFixture(page);
     await page.goto(new URL("/", REAL_STATE_BASE_URL).toString(), {
       waitUntil: "domcontentloaded",
     });
@@ -152,5 +166,6 @@ test.describe("dashboard home holding detail drawer", () => {
     expect(overlay.overlapWidth).toBeGreaterThan(0);
     expect(overlay.overlapHeight).toBeGreaterThan(0);
     expect(overlay.drawerOwnsOverlapPoint).toBe(true);
+    assertNoUnexpectedServiceRequests(serviceFixture, homeAuxiliaryGetPaths);
   });
 });

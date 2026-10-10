@@ -2,6 +2,12 @@ import { readFileSync } from "node:fs";
 
 import { AxeBuilder } from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
+import {
+  assertNoUnexpectedServiceRequests,
+  assertSyntheticReadRequest,
+  installSyntheticSystemReads,
+  syntheticReadHeaders,
+} from "./fixtures/synthetic-system-reads.mjs";
 
 const FORMAL_STATE_BASE_URL =
   process.env.MOSS_PLAYWRIGHT_STATE_BASE_URL ??
@@ -23,9 +29,12 @@ test.describe("governed PnL by-business Insights browser smoke", () => {
   test("renders the governed formal conclusions and has no critical axe violations", async ({ page }) => {
     const requestedFilters = [];
     const generation = "gen-browser-smoke-1";
+    const serviceFixture = await installSyntheticSystemReads(page);
 
     await page.route("**/api/pnl/dates*", async (route) => {
+      assertSyntheticReadRequest(route, "/api/pnl/dates");
       await route.fulfill({
+        headers: syntheticReadHeaders,
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
@@ -48,7 +57,9 @@ test.describe("governed PnL by-business Insights browser smoke", () => {
     });
 
     await page.route("**/api/pnl/by-business/precompute-status?*", async (route) => {
+      assertSyntheticReadRequest(route, "/api/pnl/by-business/precompute-status");
       await route.fulfill({
+        headers: syntheticReadHeaders,
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
@@ -80,6 +91,7 @@ test.describe("governed PnL by-business Insights browser smoke", () => {
     });
 
     await page.route("**/api/pnl/by-business-insights?*", async (route) => {
+      assertSyntheticReadRequest(route, "/api/pnl/by-business-insights");
       const requestUrl = new URL(route.request().url());
       requestedFilters.push({
         year: requestUrl.searchParams.get("year"),
@@ -87,6 +99,7 @@ test.describe("governed PnL by-business Insights browser smoke", () => {
         generation: requestUrl.searchParams.get("generation"),
       });
       await route.fulfill({
+        headers: syntheticReadHeaders,
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
@@ -149,5 +162,6 @@ test.describe("governed PnL by-business Insights browser smoke", () => {
       (violation) => violation.impact === "critical",
     );
     expect(criticalViolations).toEqual([]);
+    assertNoUnexpectedServiceRequests(serviceFixture, ["/ui/macro/choice-series/latest"]);
   });
 });

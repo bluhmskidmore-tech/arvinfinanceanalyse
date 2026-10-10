@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 
 import { test, expect } from "@playwright/test";
+import {
+  assertNoUnexpectedServiceRequests,
+  assertSyntheticReadRequest,
+  installSyntheticSystemReads,
+  syntheticReadHeaders,
+} from "./fixtures/synthetic-system-reads.mjs";
 
 const FORMAL_STATE_BASE_URL =
   process.env.MOSS_PLAYWRIGHT_STATE_BASE_URL ??
@@ -66,7 +72,9 @@ function resultPayload({ generation, traceId, year = 2026, asOfDate = "2026-02-2
 
 async function mockDates(page, dates = ["2026-02-28"]) {
   await page.route("**/api/pnl/dates*", async (route) => {
+    assertSyntheticReadRequest(route, "/api/pnl/dates");
     await route.fulfill({
+      headers: syntheticReadHeaders,
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
@@ -90,14 +98,24 @@ async function mockDates(page, dates = ["2026-02-28"]) {
 }
 
 test.describe("PnL by-business whole-page readiness browser flow", () => {
+  const serviceFixtures = new WeakMap();
+  test.beforeEach(async ({ page }) => {
+    serviceFixtures.set(page, await installSyntheticSystemReads(page));
+  });
+  test.afterEach(async ({ page }) => {
+    assertNoUnexpectedServiceRequests(serviceFixtures.get(page), ["/ui/macro/choice-series/latest"]);
+  });
+
   test("moves from pending to a fixed ready generation before reading formal results", async ({ page }) => {
     await mockDates(page);
     let statusReads = 0;
     const requestedGenerations = [];
     await page.route("**/api/pnl/by-business/precompute-status?*", async (route) => {
+      assertSyntheticReadRequest(route, "/api/pnl/by-business/precompute-status");
       statusReads += 1;
       const pending = statusReads === 1;
       await route.fulfill({
+        headers: syntheticReadHeaders,
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(statusPayload(pending ? {
@@ -113,9 +131,11 @@ test.describe("PnL by-business whole-page readiness browser flow", () => {
       });
     });
     await page.route("**/api/pnl/by-business-insights?*", async (route) => {
+      assertSyntheticReadRequest(route, "/api/pnl/by-business-insights");
       const generation = new URL(route.request().url()).searchParams.get("generation");
       requestedGenerations.push(generation);
       await route.fulfill({
+        headers: syntheticReadHeaders,
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(resultPayload({
@@ -137,10 +157,12 @@ test.describe("PnL by-business whole-page readiness browser flow", () => {
   test("keeps a late prior-cutoff response from replacing the selected cutoff", async ({ page }) => {
     await mockDates(page, ["2026-02-28", "2025-02-28"]);
     await page.route("**/api/pnl/by-business/precompute-status?*", async (route) => {
+      assertSyntheticReadRequest(route, "/api/pnl/by-business/precompute-status");
       const url = new URL(route.request().url());
       const asOfDate = url.searchParams.get("as_of_date");
       const generation = asOfDate === "2025-02-28" ? "gen-browser-2025" : "gen-browser-2026";
       await route.fulfill({
+        headers: syntheticReadHeaders,
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(statusPayload({
@@ -155,6 +177,7 @@ test.describe("PnL by-business whole-page readiness browser flow", () => {
       releaseFirst = resolve;
     });
     await page.route("**/api/pnl/by-business-insights?*", async (route) => {
+      assertSyntheticReadRequest(route, "/api/pnl/by-business-insights");
       const url = new URL(route.request().url());
       const asOfDate = url.searchParams.get("as_of_date");
       const generation = url.searchParams.get("generation");
@@ -162,6 +185,7 @@ test.describe("PnL by-business whole-page readiness browser flow", () => {
         await firstRequestHeld;
       }
       await route.fulfill({
+        headers: syntheticReadHeaders,
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(resultPayload({
@@ -193,7 +217,9 @@ test.describe("PnL by-business whole-page readiness browser flow", () => {
     await mockDates(page);
     let insightsReads = 0;
     await page.route("**/api/pnl/by-business/precompute-status?*", async (route) => {
+      assertSyntheticReadRequest(route, "/api/pnl/by-business/precompute-status");
       await route.fulfill({
+        headers: syntheticReadHeaders,
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(statusPayload({
@@ -205,6 +231,7 @@ test.describe("PnL by-business whole-page readiness browser flow", () => {
       });
     });
     await page.route("**/api/pnl/by-business-insights?*", async (route) => {
+      assertSyntheticReadRequest(route, "/api/pnl/by-business-insights");
       insightsReads += 1;
       await route.abort();
     });
@@ -222,7 +249,9 @@ test.describe("PnL by-business whole-page readiness browser flow", () => {
     await mockDates(page);
     let rebuildQuery = null;
     await page.route("**/api/pnl/by-business/precompute-status?*", async (route) => {
+      assertSyntheticReadRequest(route, "/api/pnl/by-business/precompute-status");
       await route.fulfill({
+        headers: syntheticReadHeaders,
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(statusPayload({
@@ -237,8 +266,11 @@ test.describe("PnL by-business whole-page readiness browser flow", () => {
       });
     });
     await page.route("**/api/pnl/by-business/precompute-rebuild?*", async (route) => {
+      expect(route.request().method()).toBe("POST");
+      expect(new URL(route.request().url()).pathname).toBe("/api/pnl/by-business/precompute-rebuild");
       rebuildQuery = new URL(route.request().url()).searchParams;
       await route.fulfill({
+        headers: syntheticReadHeaders,
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(statusPayload({
