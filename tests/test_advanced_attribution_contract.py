@@ -319,9 +319,20 @@ def test_governed_workbook_tables_exclude_advanced_attribution_bundle(tmp_path, 
     with duckdb.connect(str(duckdb_path)) as conn:
         conn.execute("update fx_daily_mid set observed_trade_date = trade_date")
 
+    # Registry contract suites can replace the registry while its runtime stays cached.
+    # Reload the real runtime before the task so both use the current registry.
+    runtime_mod = load_module(
+        "backend.app.tasks.formal_compute_runtime",
+        "backend/app/tasks/formal_compute_runtime.py",
+    )
     task_mod = load_module(
         "backend.app.tasks.balance_analysis_materialize",
         "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    assert task_mod.run_formal_materialize is runtime_mod.run_formal_materialize
+    assert (
+        runtime_mod.require_registered_formal_module(task_mod.BALANCE_ANALYSIS_MODULE)
+        is task_mod.BALANCE_ANALYSIS_MODULE
     )
     # Seed already inserts fx_daily_mid; avoid live Choice/AkShare in CI/local without credentials.
     monkeypatch.setattr(task_mod.materialize_fx_mid_for_report_date, "fn", lambda **kwargs: None)

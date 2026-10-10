@@ -1417,12 +1417,6 @@ def test_semantic_retry_repins_and_reauthorizes_before_staging(
         SEMANTIC_EXECUTION_CONTEXT_KEY,
     )
 
-    # Earlier load_module tests may replace sys.modules while leaving the
-    # runtime package attribute pointing at the old module instance.
-    local_request_resolution = importlib.import_module(
-        "backend.app.agent.runtime.local_request_resolution"
-    )
-
     def fail_execute(*_args, **_kwargs):
         raise RuntimeError("provider failed")
 
@@ -1452,11 +1446,20 @@ def test_semantic_retry_repins_and_reauthorizes_before_staging(
     assert _wait_for_terminal(client, created["run_id"])["status"] == "failed"
 
     retry_revision = "sha256:retry-repinned"
-    monkeypatch.setattr(
-        local_request_resolution,
-        "ontology_content_revision",
-        lambda: retry_revision,
-    )
+    # Runtime reloads can leave the route pin and resource resolver bound to
+    # different module instances. Advance the revision in each real function's
+    # globals so both observe the same ontology change.
+    for resolution_globals in (
+        route_module.pin_semantic_execution_request.__globals__,
+        route_module.ensure_agent_intent_resources_allowed.__globals__[
+            "resolve_local_request"
+        ].__globals__,
+    ):
+        monkeypatch.setitem(
+            resolution_globals,
+            "ontology_content_revision",
+            lambda: retry_revision,
+        )
     original_authorize = route_module.ensure_user_allowed
 
     def deny_revoked_pnl(*, auth, settings, resource, action):
