@@ -5,6 +5,7 @@ import json
 from copy import deepcopy
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -21,6 +22,10 @@ from backend.app.schemas.candidate_financial_indicators import (
 )
 from backend.app.services.candidate_financial_indicator_service import (
     candidate_financial_indicator_envelope,
+)
+from tests.test_candidate_financial_indicator_schema import (
+    _envelope as _schema_envelope,
+    _refresh_readiness_evidence_key,
 )
 
 
@@ -196,11 +201,102 @@ def test_current_sources_expose_a_numeric_source_version_impact_check() -> None:
     assert impact["formal_use_allowed"] is False
 
 
-def test_candidate_schema_rejects_source_impact_report_month_drift() -> None:
-    envelope = candidate_financial_indicator_envelope(
-        source_dir=str(SOURCE_DIR),
-        report_month="202606",
+def _synthetic_source_impact_envelope() -> dict[str, Any]:
+    """synthetic_fabricated: schema-only data, never source or historical acceptance.
+
+    Reuse the existing schema envelope; all hashes and digests below are fabricated.
+    The month and comparison counts exercise the contract, not actual source replay.
+    """
+    envelope = _schema_envelope()
+    result = envelope["result"]
+    source_version = "sv_synthetic_source_impact_schema_v1"
+    envelope["result_meta"].update(
+        trace_id="tr_synthetic_source_impact_schema",
+        source_version=source_version,
+        rule_version=CURRENT_RULE_VERSION,
+        amount_currency_basis_note="Synthetic schema fixture; no business certification.",
+        evidence_rows=0,
     )
+    result.update(
+        source_version=source_version,
+        rule_version=CURRENT_RULE_VERSION,
+        source_alignment="matched",
+    )
+    source_hashes = {}
+    for source in result["sources"]:
+        source["file_name"] = f"synthetic-{source['source_kind']}-202606.xlsx"
+        source["locked_sha256"] = source["sha256"]
+        source["locked_hash_match"] = True
+        source_hashes[source["source_kind"]] = source["sha256"]
+    metric = result["metrics"][0]
+    metric["name"] = "Synthetic schema metric"
+    metric["value"] = "1"
+    metric["lineage"][0].update(
+        raw_yuan="-100000000",
+        contribution_yi="1",
+        evidence_refs=["synthetic_fabricated.ledger!G1"],
+    )
+    result["gaps"] = [
+        {
+            "gap_id": "synthetic_fabricated.manual_inputs",
+            "severity": "warning",
+            "kind": "manual_input",
+            "title": "Synthetic default manual inputs",
+            "detail": "Schema fixture has no approved business inputs.",
+            "metric_ids": [],
+        }
+    ]
+    result["source_version_impact"] = {
+        "contract_version": "candidate-source-version-impact-v1",
+        "impact_asset_sha256": "a" * 64,
+        "status": "numerically_unchanged",
+        "comparison_basis": "canonical_decimal_value",
+        "report_month": "202606",
+        "reference_rule_version": HISTORICAL_RULE_VERSION,
+        "current_rule_version": CURRENT_RULE_VERSION,
+        "reference_result_sha256": "b" * 64,
+        "reference_ledger_sha256": "c" * 64,
+        "current_ledger_sha256": source_hashes["ledger"],
+        "daily_sha256": source_hashes["daily"],
+        "metric_total": 186,
+        "compared_metric_count": 186,
+        "reference_numeric_digest": "d" * 64,
+        "current_numeric_digest": "d" * 64,
+        "numeric_changed_count": 0,
+        "serialization_only_count": 0,
+        "serialization_only_metric_ids": [],
+        "formal_use_allowed": False,
+        "certification_effect": "none",
+    }
+    readiness = result["promotion_readiness"]
+    source_check = next(
+        check for check in readiness["checks"] if check["check_id"] == "source_evidence"
+    )
+    source_check.update(
+        summary="Synthetic hashes are not approved source evidence.",
+        evidence_refs=["synthetic_fabricated.source_pair"],
+    )
+    pack = readiness["evidence_pack"]
+    source_requirement = next(
+        item for item in pack["owner_requirements"] if item["category"] == "source_evidence"
+    )
+    source_requirement["evidence_refs"] = ["synthetic_fabricated.source_pair"]
+    pack.update(
+        source_version=source_version,
+        rule_version=CURRENT_RULE_VERSION,
+        source_alignment="matched",
+    )
+    _refresh_readiness_evidence_key(envelope)
+    validated = CandidateFinancialIndicatorEnvelope.model_validate(envelope)
+    assert validated.result.source_version_impact is not None
+    assert validated.result_meta.formal_use_allowed is False
+    assert validated.result.formal_use_allowed is False
+    assert validated.result.promotion_readiness.status == "blocked"
+    return envelope
+
+
+def test_candidate_schema_rejects_source_impact_report_month_drift() -> None:
+    envelope = _synthetic_source_impact_envelope()
     drifted = deepcopy(envelope)
     drifted["result"]["source_version_impact"]["report_month"] = "202605"
 
@@ -210,10 +306,7 @@ def test_candidate_schema_rejects_source_impact_report_month_drift() -> None:
 
 @pytest.mark.parametrize("source_field", ["current_ledger_sha256", "daily_sha256"])
 def test_candidate_schema_rejects_source_impact_hash_drift(source_field: str) -> None:
-    envelope = candidate_financial_indicator_envelope(
-        source_dir=str(SOURCE_DIR),
-        report_month="202606",
-    )
+    envelope = _synthetic_source_impact_envelope()
     drifted = deepcopy(envelope)
     drifted["result"]["source_version_impact"][source_field] = "0" * 64
 
@@ -222,10 +315,7 @@ def test_candidate_schema_rejects_source_impact_hash_drift(source_field: str) ->
 
 
 def test_candidate_schema_rejects_a_mismatch_status_when_digests_are_equal() -> None:
-    envelope = candidate_financial_indicator_envelope(
-        source_dir=str(SOURCE_DIR),
-        report_month="202606",
-    )
+    envelope = _synthetic_source_impact_envelope()
     drifted = deepcopy(envelope)
     impact = drifted["result"]["source_version_impact"]
     impact["status"] = "numeric_digest_mismatch"
