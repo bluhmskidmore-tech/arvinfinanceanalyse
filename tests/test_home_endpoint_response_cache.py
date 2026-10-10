@@ -14,6 +14,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.schemas.common_numeric import numeric_from_raw
 from tests.helpers import load_module
 
 READ_HEADERS = {"X-User-Id": "home-cache-read-user", "X-User-Role": "viewer"}
@@ -35,7 +36,59 @@ def _envelope(kind: str, **result: object) -> dict[str, object]:
             },
             "result": {"source_status": "empty", "warnings": [], **result},
         }
-    return {"result_meta": {"result_kind": kind}, "result": dict(result)}
+    # The two bond routes validate strict wire contracts before returning a
+    # cached response. Keep the stub complete and its empty metrics synthetic.
+    if kind == "bond_analytics.credit_spread_migration":
+        payload = {
+            "credit_bond_count": 0,
+            "credit_market_value": "0.00000000",
+            "credit_weight": "0.00000000",
+            "rating_aa_and_below_weight": "0.00000000",
+            "spread_dv01": "0.00000000",
+            "weighted_avg_spread": "0.00000000",
+            "weighted_avg_spread_duration": "0.00000000",
+            "spread_scenarios": [],
+            "migration_scenarios": [],
+            "concentration_by_issuer": None,
+            "concentration_by_industry": None,
+            "concentration_by_rating": None,
+            "concentration_by_tenor": None,
+            "display_limits": None,
+            "oci_credit_exposure": "0.00000000",
+            "oci_spread_dv01": "0.00000000",
+            "oci_sensitivity_25bp": "0.00000000",
+        }
+    elif kind == "bond_analytics.position_changes":
+        zero_amount = numeric_from_raw(raw=0, unit="yuan", sign_aware=False).model_dump(mode="json")
+        payload = {
+            "prev_report_date": None,
+            "source_status": "empty",
+            "items": [],
+            "total_market_value": zero_amount,
+            "prev_total_market_value": zero_amount,
+        }
+    else:
+        raise AssertionError(f"Unexpected cache fixture result kind: {kind}")
+    return {
+        "result_meta": {
+            "trace_id": "tr_home_cache_bond",
+            "result_kind": kind,
+            "basis": "formal",
+            "formal_use_allowed": False,
+            "source_version": "sv_home_cache_synthetic",
+            "rule_version": "rv_home_cache_synthetic",
+            "cache_version": "cv_home_cache_synthetic",
+            "source_surface": "bond_analytics",
+            "quality_flag": "warning",
+            "generated_at": "2026-03-31T00:00:00Z",
+        },
+        "result": {
+            "computed_at": "2026-03-31T00:00:00Z",
+            "warnings": [],
+            **payload,
+            **result,
+        },
+    }
 
 
 _CAMPISI_BOND_ROW = {
@@ -111,7 +164,6 @@ def bond_analytics_client(monkeypatch, seed_wildcard_scope) -> tuple[TestClient,
         return _envelope(
             "bond_analytics.credit_spread_migration",
             report_date=report_date.isoformat(),
-            build_index=len(calls),
         )
 
     def _position_changes(report_date, *, top_n):
@@ -119,7 +171,7 @@ def bond_analytics_client(monkeypatch, seed_wildcard_scope) -> tuple[TestClient,
         return _envelope(
             "bond_analytics.position_changes",
             report_date=report_date.isoformat(),
-            build_index=len(calls),
+            top_n=top_n,
         )
 
     monkeypatch.setattr(route_module, "get_credit_spread_migration", _credit_spread)
@@ -204,7 +256,8 @@ def test_position_changes_repeat_request_reuses_cache_and_top_n_separates_keys(
     )
 
     assert first.json()["result"] == second.json()["result"]
-    assert third.json()["result"]["build_index"] != first.json()["result"]["build_index"]
+    assert third.json()["result"]["top_n"] == 10
+    assert first.json()["result"]["top_n"] == 5
     assert [call[1:] for call in calls if call[0] == "position_changes"] == [
         (REPORT_DATE, 5),
         (REPORT_DATE, 10),

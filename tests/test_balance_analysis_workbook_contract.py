@@ -18,7 +18,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
-from tests.helpers import ROOT, load_module
+from tests.business_input_fixtures import business_input_bytes
+from tests.helpers import load_module
 
 pytestmark = [pytest.mark.integration, pytest.mark.materialize]
 
@@ -304,8 +305,9 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
             """
             insert into fx_daily_mid (
               trade_date, base_currency, quote_currency, mid_rate,
-              source_name, is_business_day, is_carry_forward, source_version
-            ) values (?, ?, ?, ?, ?, ?, ?, ?)
+              source_name, is_business_day, is_carry_forward, source_version,
+              observed_trade_date
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 "2025-12-31",
@@ -316,6 +318,7 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
                 True,
                 False,
                 "sv-fx-1",
+                "2025-12-31",
             ],
         )
     finally:
@@ -906,36 +909,36 @@ def test_workbook_campisi_uses_policy_bank_rate_as_benchmark():
     assert Decimal(str(corp_row["spread_bp"])) == Decimal("400")
 
 
-def test_real_zqtz_parse_marks_asset_class_issue_rows_as_issuance_like():
+def test_synthetic_zqtz_parse_marks_asset_class_issue_rows_as_issuance_like():
     parse_mod = load_module(
         "backend.app.repositories.snapshot_row_parse",
         "backend/app/repositories/snapshot_row_parse.py",
     )
     source_file = "ZQTZSHOW-20260228.xls"
     rows = parse_mod.parse_zqtz_snapshot_rows_from_bytes(
-        file_bytes=(ROOT / "data_input" / source_file).read_bytes(),
-        ingest_batch_id="ib-real-zqtz",
-        source_version="sv-real-zqtz",
+        file_bytes=business_input_bytes(source_file),
+        ingest_batch_id="ib-synthetic-zqtz",
+        source_version="sv-synthetic-zqtz",
         source_file=source_file,
-        rule_version="rv-real-zqtz",
+        rule_version="rv-synthetic-zqtz",
     )
     issue_rows = [row for row in rows if str(row.get("asset_class") or "") == ISSUANCE_ASSET_CLASS]
     assert issue_rows
     assert all(bool(row["is_issuance_like"]) for row in issue_rows[:10])
 
 
-def test_real_tyw_parse_marks_tongye_cunfang_as_liability():
+def test_synthetic_tyw_parse_marks_tongye_cunfang_as_liability():
     parse_mod = load_module(
         "backend.app.repositories.snapshot_row_parse",
         "backend/app/repositories/snapshot_row_parse.py",
     )
     source_file = "TYWLSHOW-20260228.xls"
     rows = parse_mod.parse_tyw_snapshot_rows_from_bytes(
-        file_bytes=(ROOT / "data_input" / source_file).read_bytes(),
-        ingest_batch_id="ib-real-tyw",
-        source_version="sv-real-tyw",
+        file_bytes=business_input_bytes(source_file),
+        ingest_batch_id="ib-synthetic-tyw",
+        source_version="sv-synthetic-tyw",
         source_file=source_file,
-        rule_version="rv-real-tyw",
+        rule_version="rv-synthetic-tyw",
     )
     cunfang_rows = [row for row in rows if str(row.get("product_type") or "") == INTERBANK_DEPOSIT]
     assert cunfang_rows

@@ -64,9 +64,6 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
     "PAGE-PORTFOLIO-HOME-001": (
         "portfolio module home is a navigation summary; downstream pages own formal metric bindings."
     ),
-    "PAGE-MARKET-HOME-001": (
-        "market module home is a mixed-source entry surface; downstream pages own metric bindings."
-    ),
     "PAGE-RISK-HOME-001": (
         "risk module home is a navigation summary; formal risk metrics remain on PAGE-RISK-001."
     ),

@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.powershell_runtime import powershell_executable
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "scheduling" / "register_scheduled_tasks.ps1"
 
@@ -37,7 +39,7 @@ def _prepare_script_copy(tmp_path: Path) -> Path:
 def _run_powershell(script_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -92,7 +94,7 @@ exit $LASTEXITCODE
 
     completed = subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -113,6 +115,7 @@ exit $LASTEXITCODE
 
 
 @pytest.mark.parametrize("script_name", ["install_data_update_queue.ps1", "register_scheduled_tasks.ps1"])
+@pytest.mark.windows_native  # Verifies SystemRoot WindowsPowerShell task executable identity.
 def test_registrars_accept_backend_only_python_and_preserve_task_actions(tmp_path: Path, script_name: str) -> None:
     scripts = tmp_path / "scripts"
     scheduling = scripts / "scheduling"
@@ -226,6 +229,7 @@ if ($env:MOSS_TEST_REGISTRAR_NAME -eq 'register_scheduled_tasks.ps1') {
 
 @pytest.mark.parametrize("script_name", ["install_data_update_queue.ps1", "register_scheduled_tasks.ps1"])
 @pytest.mark.parametrize("mode", ["WhatIf", "Unregister"])
+@pytest.mark.windows_native  # Registrar task actions resolve the Windows system directory.
 def test_registrar_preview_and_unregister_do_not_resolve_runtime(tmp_path: Path, script_name: str, mode: str) -> None:
     scripts = tmp_path / "scripts"
     scheduling = scripts / "scheduling"

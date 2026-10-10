@@ -19,6 +19,7 @@ from backend.app.repositories.snapshot_row_parse import (
     parse_tyw_snapshot_rows_from_bytes,
     parse_zqtz_snapshot_rows_from_bytes,
 )
+from tests.business_input_fixtures import write_business_input
 from tests.helpers import ROOT
 
 
@@ -159,8 +160,8 @@ def test_parse_tyw_synthetic_workbook_liability_product_and_optional_none(monkey
     assert asset["position_side"] == "asset"
 
 
-def test_parse_zqtz_rejects_source_file_report_date_conflicting_with_sheet_date():
-    path = ROOT / "data_input" / "ZQTZSHOW-2025.11.20.xls"
+def test_parse_zqtz_rejects_source_file_report_date_conflicting_with_sheet_date(tmp_path):
+    path = write_business_input(tmp_path / "ZQTZSHOW-2025.11.20.xls", sheet_date="2025-11-19")
     with pytest.raises(ValueError, match="source date mismatch: file=2025-11-20, sheet=2025-11-19"):
         parse_zqtz_snapshot_rows_from_bytes(
             file_bytes=path.read_bytes(),

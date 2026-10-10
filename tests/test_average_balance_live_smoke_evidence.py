@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from scripts.average_balance_live_smoke_evidence import build_artifact, render_markdown
+from tests.governance_evidence_inputs import governance_evidence_inputs
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,7 @@ def _run_generator(*args: str) -> tuple[int, dict[str, object]]:
 
 def test_average_balance_live_smoke_evidence_cli_writes_durable_artifact(
     tmp_path: Path,
+    governance_evidence_inputs,
 ) -> None:
     output_path = tmp_path / "average-balance-live-smoke-evidence.md"
 
@@ -86,7 +88,55 @@ def test_average_balance_live_smoke_evidence_cli_writes_durable_artifact(
     assert "does not approve monthly ADB/NIM truth" in text
 
 
-def test_static_average_balance_live_smoke_evidence_matches_generator() -> None:
+def test_average_balance_live_smoke_evidence_preserves_missing_governance_blocker(
+    tmp_path: Path, monkeypatch, governance_evidence_inputs,
+) -> None:
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "empty-governance"))
+    artifact = build_artifact(
+        output_path=tmp_path / "blocked.md", smoke_status="blocked",
+        verify_status="blocked", created_date="2026-06-09",
+    )
+
+    assert artifact["audit_review_status"] == "blocked_by_record_gaps"
+    assert artifact["formal_use_allowed"] is False
+    assert artifact["closure_approved"] is False
+    assert artifact["evidence_scope"]["proves_page_execution"] is False
+    assert "`audit_review.status=blocked_by_record_gaps`" in render_markdown(artifact)
+
+
+def test_average_balance_live_smoke_evidence_blocks_incomplete_governance_record(
+    tmp_path: Path, monkeypatch, governance_evidence_inputs,
+) -> None:
+    manifest = Path(governance_evidence_inputs["MOSS_GOVERNANCE_PATH"]) / "cache_manifest.jsonl"
+    record = next(
+        row
+        for line in manifest.read_text(encoding="utf-8").splitlines()
+        if (row := json.loads(line))["page_slug"] == "average-balance"
+    )
+    del record["source_version"]
+    governance_dir = tmp_path / "incomplete-governance"
+    governance_dir.mkdir()
+    (governance_dir / "cache_manifest.jsonl").write_text(
+        json.dumps(record) + "\n", encoding="utf-8",
+    )
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+
+    artifact = build_artifact(
+        output_path=tmp_path / "blocked.md", smoke_status="passed",
+        verify_status="passed", created_date="2026-06-09",
+    )
+
+    assert artifact["audit_review_status"] == "blocked_by_record_gaps"
+    assert artifact["formal_use_allowed"] is False
+    assert artifact["closure_approved"] is False
+    assert artifact["business_owner_approval_captured"] is False
+    assert artifact["evidence_scope"]["proves_page_execution"] is False
+    assert "`audit_review.status=blocked_by_record_gaps`" in render_markdown(artifact)
+
+
+def test_static_average_balance_live_smoke_evidence_matches_generator(
+    governance_evidence_inputs,
+) -> None:
     expected = render_markdown(
         build_artifact(
             output_path=STATIC_ARTIFACT,

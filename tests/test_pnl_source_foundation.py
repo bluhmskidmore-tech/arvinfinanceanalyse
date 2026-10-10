@@ -4,6 +4,7 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
+from tests.business_input_fixtures import business_input_bytes
 from tests.helpers import load_module
 
 
@@ -93,8 +94,8 @@ def test_load_latest_pnl_refresh_input_keeps_manifest_report_date_for_archived_f
     archive_dir = tmp_path / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
     archived_fi = archive_dir / "FI_202602__archived.xls"
-    source_fi = Path(__file__).resolve().parents[1] / "data_input" / "pnl" / "FI损益202602.xls"
-    archived_fi.write_bytes(source_fi.read_bytes())
+    source_fi = Path("FI损益202602.xls")
+    archived_fi.write_bytes(business_input_bytes(source_fi.name))
 
     governance_repo = governance_module.GovernanceRepository(base_dir=tmp_path / "governance")
     governance_repo.append(
@@ -130,9 +131,9 @@ def test_pnl_refresh_discovers_processed_fi_month_files(tmp_path):
 
     processed_dir = tmp_path / "data_input" / "pnl" / "processed"
     processed_dir.mkdir(parents=True)
-    source_fi = Path(__file__).resolve().parents[1] / "data_input" / "pnl" / "FI损益202602.xls"
+    source_fi = Path("FI损益202602.xls")
     processed_fi = processed_dir / "FI损益202502.xls"
-    processed_fi.write_bytes(source_fi.read_bytes())
+    processed_fi.write_bytes(business_input_bytes(source_fi.name))
 
     report_dates = source_module.list_pnl_refresh_report_dates(
         governance_dir=tmp_path / "governance",
@@ -158,9 +159,9 @@ def test_load_latest_pnl_refresh_input_marks_usd_rows_for_fx_conversion(tmp_path
 
     data_root = tmp_path / "data_input" / "pnl"
     data_root.mkdir(parents=True, exist_ok=True)
-    source_fi = Path(__file__).resolve().parents[1] / "data_input" / "pnl" / "FI损益202602.xls"
+    source_fi = Path("FI损益202602.xls")
     target_fi = data_root / source_fi.name
-    target_fi.write_bytes(source_fi.read_bytes())
+    target_fi.write_bytes(business_input_bytes(source_fi.name))
 
     refresh = source_module.load_latest_pnl_refresh_input(
         governance_dir=tmp_path / "governance",
@@ -182,9 +183,9 @@ def test_load_latest_pnl_refresh_input_marks_fi_rows_as_cumulative_realized_517(
 
     data_root = tmp_path / "data_input" / "pnl"
     data_root.mkdir(parents=True, exist_ok=True)
-    source_fi = Path(__file__).resolve().parents[1] / "data_input" / "pnl" / "FI损益202602.xls"
+    source_fi = Path("FI损益202602.xls")
     target_fi = data_root / source_fi.name
-    target_fi.write_bytes(source_fi.read_bytes())
+    target_fi.write_bytes(business_input_bytes(source_fi.name))
 
     refresh = source_module.load_latest_pnl_refresh_input(
         governance_dir=tmp_path / "governance",

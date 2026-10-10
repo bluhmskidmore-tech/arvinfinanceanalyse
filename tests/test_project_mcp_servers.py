@@ -4388,7 +4388,7 @@ def test_lineage_evidence_page_governance_record_validation_does_not_treat_slash
                     {
                         "page_slug": "dashboard-home",
                         "frontend_route": "/dashboard",
-                        "primary_api": "/api/bond-dashboard/headline-kpis",
+                        "primary_api": "/api/bond-dashboard/home-summary",
                         "page_id": "PAGE-BOND-001",
                         "report_date": "2026-05-31",
                         "basis": "analytical",
@@ -4436,7 +4436,7 @@ def test_lineage_evidence_page_governance_record_validation_does_not_treat_slash
         assert page["direct_record_validations"][0]["validation_status"] == "supporting_anchor_only"
         assert page["direct_record_validations"][0]["direct_anchor_match"] == {
             "anchor_type": "supporting_api",
-            "matched_query": "/api/bond-dashboard/headline-kpis",
+            "matched_query": "/api/bond-dashboard/home-summary",
             "proves_primary_page_anchor": False,
         }
     finally:
@@ -7019,7 +7019,7 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_routes_supporti
             {
                 "page_slug": "dashboard-home",
                 "frontend_route": "/dashboard",
-                "primary_api": "/api/bond-dashboard/headline-kpis",
+                "primary_api": "/api/bond-dashboard/home-summary",
                 "page_id": "PAGE-BOND-001",
                 "report_date": "2026-05-31",
                 "basis": "analytical",
@@ -7098,7 +7098,7 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_routes_supporti
         assert work_item["remediation_type"] == "repair_primary_page_anchor"
         assert work_item["repair_targets"][0]["direct_anchor_match"] == {
             "anchor_type": "supporting_api",
-            "matched_query": "/api/bond-dashboard/headline-kpis",
+            "matched_query": "/api/bond-dashboard/home-summary",
             "proves_primary_page_anchor": False,
         }
         assert work_item["repair_targets"][0]["missing_required_fields"] == ["rule_version"]
@@ -7126,13 +7126,13 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_routes_supporti
         assert anchor_repair_target["direct_anchor_targets"]["page_id"] == "PAGE-DASH-001"
         assert anchor_repair_target["direct_anchor_targets"]["frontend_route"] == "/"
         assert anchor_repair_target["direct_anchor_targets"]["primary_api"] == "/ui/home/snapshot"
-        assert "/api/bond-dashboard/headline-kpis" in anchor_repair_target[
+        assert "/api/bond-dashboard/home-summary" in anchor_repair_target[
             "direct_anchor_targets"
         ]["supporting_apis"]
         assert anchor_repair_target["current_supporting_anchor_matches"] == [
             {
                 "anchor_type": "supporting_api",
-                "matched_query": "/api/bond-dashboard/headline-kpis",
+                "matched_query": "/api/bond-dashboard/home-summary",
                 "proves_primary_page_anchor": False,
             }
         ]
@@ -7141,7 +7141,7 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_routes_supporti
                 "record_location": {
                     "stream": "cache_manifest",
                     "line": 1,
-                    "matched_query": "/api/bond-dashboard/headline-kpis",
+                    "matched_query": "/api/bond-dashboard/home-summary",
                 },
                 "tool": "moss-lineage-evidence.preflight_page_governance_record",
                 "arguments": {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+import importlib
 import json
 from pathlib import Path
 
@@ -102,7 +103,8 @@ def test_risk_coupon_window_repair_updates_exact_rows_and_governance(tmp_path, m
         "backend.app.tasks.risk_coupon_window_repair",
         "backend/app/tasks/risk_coupon_window_repair.py",
     )
-    from backend.app.tasks import bond_analytics_materialize, risk_tensor_materialize
+    bond_analytics_materialize = importlib.import_module("backend.app.tasks.bond_analytics_materialize")
+    risk_tensor_materialize = importlib.import_module("backend.app.tasks.risk_tensor_materialize")
 
     downstream_calls: list[tuple[str, str, bool | None]] = []
 
@@ -184,7 +186,8 @@ def test_risk_coupon_window_repair_fails_closed_when_existing_curve_contract_is_
         "backend.app.tasks.risk_coupon_window_repair",
         "backend/app/tasks/risk_coupon_window_repair.py",
     )
-    from backend.app.tasks import bond_analytics_materialize, risk_tensor_materialize
+    bond_analytics_materialize = importlib.import_module("backend.app.tasks.bond_analytics_materialize")
+    risk_tensor_materialize = importlib.import_module("backend.app.tasks.risk_tensor_materialize")
 
     risk_calls: list[str] = []
 
@@ -228,7 +231,8 @@ def test_risk_coupon_window_repair_records_failure_and_retries_idempotently(
         "backend.app.tasks.risk_coupon_window_repair",
         "backend/app/tasks/risk_coupon_window_repair.py",
     )
-    from backend.app.tasks import bond_analytics_materialize, risk_tensor_materialize
+    bond_analytics_materialize = importlib.import_module("backend.app.tasks.bond_analytics_materialize")
+    risk_tensor_materialize = importlib.import_module("backend.app.tasks.risk_tensor_materialize")
 
     fail_risk = True
     downstream_calls: list[tuple[str, str]] = []

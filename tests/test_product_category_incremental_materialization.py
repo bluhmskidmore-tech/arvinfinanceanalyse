@@ -126,6 +126,12 @@ class RefreshFixture:
 
 @pytest.fixture
 def refresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # Other suites reload or evict task modules after collection. The code
+    # fingerprint must inspect the same modules this fixture executes and patches.
+    for module in (task, refresh_state):
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+        parent_name, _, child_name = module.__name__.rpartition(".")
+        monkeypatch.setattr(sys.modules[parent_name], child_name, module)
     fixture = RefreshFixture(tmp_path)
     monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
     monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "jsonl")

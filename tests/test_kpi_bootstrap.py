@@ -96,6 +96,6 @@ def test_dev_postgres_cluster_finds_kpi_bootstrap_file(tmp_path):
     seed_path.parent.mkdir(parents=True, exist_ok=True)
     seed_path.write_text("{}", encoding="utf-8")
 
-    config = module.build_cluster_config(repo_root)
+    config = module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin")
 
     assert module._find_kpi_bootstrap_file(config) == seed_path.resolve()

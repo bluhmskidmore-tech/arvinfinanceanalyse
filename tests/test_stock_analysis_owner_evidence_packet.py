@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from scripts.stock_analysis_owner_evidence_packet import build_packet
+from tests.governance_evidence_inputs import governance_evidence_inputs
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,7 +30,9 @@ def _run_packet(*args: str) -> tuple[int, dict[str, object]]:
     return completed.returncode, json.loads(completed.stdout)
 
 
-def test_stock_analysis_owner_evidence_packet_preserves_observational_boundary() -> None:
+def test_stock_analysis_owner_evidence_packet_preserves_observational_boundary(
+    governance_evidence_inputs,
+) -> None:
     packet = build_packet()
 
     assert packet["packet_kind"] == "stock_analysis_owner_evidence_packet"
@@ -80,7 +83,22 @@ def test_stock_analysis_owner_evidence_packet_preserves_observational_boundary()
     )
 
 
-def test_stock_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path) -> None:
+def test_stock_analysis_owner_evidence_packet_reports_missing_records(
+    tmp_path: Path, monkeypatch, governance_evidence_inputs,
+) -> None:
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "empty-governance"))
+    packet = build_packet()
+
+    assert packet["governance_validation_status"] == "missing_direct_records"
+    assert packet["governance_record_write_status"] == "not_requested"
+    assert packet["formal_use_allowed"] is False
+    assert packet["closure_approved"] is False
+    assert packet["business_owner_approval_captured"] is False
+
+
+def test_stock_analysis_owner_evidence_packet_cli_writes_markdown(
+    tmp_path: Path, governance_evidence_inputs,
+) -> None:
     output_path = tmp_path / "packet.md"
 
     returncode, payload = _run_packet("--output", str(output_path))

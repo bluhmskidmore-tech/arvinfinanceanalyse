@@ -1867,6 +1867,13 @@ def test_update_failure_public_receipt_omits_private_exception(settings, monkeyp
 
 @pytest.mark.parametrize("failure_stage", ["read", "year", "handoff", "page"])
 def test_durable_recovery_failure_is_counted_without_private_log(settings, monkeypatch, caplog, failure_stage):
+    # Other contracts reload these modules after collection. Patch the same live
+    # bindings that the worker imports when durable recovery actually executes.
+    pnl_repository = import_module("backend.app.repositories.pnl_repo").PnlRepository
+    pnl_service = import_module("backend.app.services.pnl_service")
+    pnl_by_business_page_lifecycle = import_module(
+        "backend.app.services.pnl_by_business_page_lifecycle"
+    )
     marker = "synthetic-recovery-private-provider-token"
     read = Mock(return_value=[{"year": 2024, "dependency_revision": 1}, {"year": 2025, "dependency_revision": 2}])
     recover = Mock(return_value=None)
@@ -1880,11 +1887,12 @@ def test_durable_recovery_failure_is_counted_without_private_log(settings, monke
         handoff.side_effect = TypeError(marker)
     else:
         page.side_effect = TypeError(marker)
-    monkeypatch.setattr(pnl_service.PnlRepository, "list_pending_pnl_by_business_precompute", read)
+    monkeypatch.setattr(pnl_repository, "list_pending_pnl_by_business_precompute", read)
     monkeypatch.setattr(pnl_service, "recover_pending_pnl_by_business_precompute", recover)
     monkeypatch.setattr(pnl_service, "recover_pending_pnl_by_business_adjustment_handoffs", handoff)
     monkeypatch.setattr(pnl_by_business_page_lifecycle, "recover_pending_pnl_by_business_page_rebuilds", page)
     assert worker._recover_pending_pnl_by_business_precompute(settings) == 1
+    read.assert_called_once_with()
     assert recover.call_count == (0 if failure_stage == "read" else 2)
     handoff.assert_called_once_with(settings)
     page.assert_called_once_with(settings)

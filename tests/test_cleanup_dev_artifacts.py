@@ -3,6 +3,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from tests.powershell_runtime import powershell_executable
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "cleanup-dev-artifacts.ps1"
 
@@ -30,7 +32,7 @@ def _make_dir(path: Path, *, days_old: int = 30) -> Path:
 def _run_cleanup(repo_root: Path, *args: str) -> str:
     completed = subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",

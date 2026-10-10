@@ -346,12 +346,41 @@ def test_ci_full_backend_regression_runs_only_for_default_or_explicit_selection(
     pytest_step = _workflow_step(job, "Run full backend pytest suite")
     assert "python -m pytest -n 4 --dist loadfile -v --tb=short" in pytest_step
     pytest_arguments = pytest_step.split("python -m pytest", 1)[1].split("2>&1", 1)[0]
-    assert not re.search(r"(?:^|\s)(?:-q|--quiet|-m|-k|--ignore(?:-glob)?|--deselect)(?:\s|=|$)", pytest_arguments)
-    assert "timeout-minutes: 40" in job
+    assert not re.search(r"(?:^|\s)(?:-q|--quiet|-k|--ignore(?:-glob)?|--deselect)(?:\s|=|$)", pytest_arguments)
+    assert '-m "${{ matrix.marker }}"' in pytest_arguments
+    assert "excluded_surface_acceptance" not in pytest_arguments
+    assert "-p tests.full_pytest_inventory" in pytest_arguments
+    assert "--full-pytest-platform=${{ matrix.platform }}" in pytest_arguments
+    assert "--full-pytest-inventory=test_output/ci/full-pytest-inventory.json" in pytest_arguments
+    assert "timeout-minutes: 60" in job
     assert "continue-on-error:" not in job
     assert "contents: read" in job
     assert "issues: write" in job
     assert "if: failure() && github.event_name == 'schedule'" in job
+
+
+def test_ci_full_backend_platforms_have_complementary_selection_and_real_execution_accounting():
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    full_job = workflow.split("\n  backend-full-pytest:", 1)[1].split("\n  backend-full-pytest-partition:", 1)[0]
+    guard_job = workflow.split("\n  backend-full-pytest-partition:", 1)[1].split("\n  backend-lint:", 1)[0]
+    assert "runs-on: ${{ matrix.os }}" in full_job
+    assert "fail-fast: false" in full_job
+    assert "platform: linux\n            os: ubuntu-latest" in full_job
+    assert "platform: windows\n            os: windows-latest" in full_job
+    assert "marker: not windows_native" in full_job
+    assert "marker: windows_native" in full_job
+    assert "shell: bash" in full_job
+    assert "${{ matrix.python_dir }}" in full_job
+    assert "Require platform PowerShell runtime" in full_job
+    assert "backend-full-pytest-${{ matrix.platform }}" in full_job
+    assert "full-pytest-inventory.json" in full_job
+    assert "needs: backend-full-pytest" in guard_job
+    assert "if: always() && needs.backend-full-pytest.result != 'skipped'" in guard_job
+    assert "actions/download-artifact@v4" in guard_job
+    assert "python scripts/check_full_pytest_partition.py" in guard_job
+    assert "--linux-dir test_output/ci/partition-input/backend-full-pytest-linux" in guard_job
+    assert "--windows-dir test_output/ci/partition-input/backend-full-pytest-windows" in guard_job
+    assert "continue-on-error:" not in full_job + guard_job
 
 
 def test_caliber_pr_workflow_always_checks_map_before_merge_diff_gate():

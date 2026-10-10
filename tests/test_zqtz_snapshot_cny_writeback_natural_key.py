@@ -22,6 +22,7 @@ from backend.app.repositories.balance_analysis_repo import (
     ensure_balance_analysis_tables,
     sync_zqtz_snapshot_market_value_cny_from_formal,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 
 REPORT_DATE = "2025-12-31"
 INSTRUMENT = "031800572.IB"
@@ -141,7 +142,8 @@ def seeded_conn(tmp_path):
 
 
 def test_each_maturity_leg_gets_its_own_cny_market_value(seeded_conn):
-    sync_zqtz_snapshot_market_value_cny_from_formal(seeded_conn, REPORT_DATE)
+    with repository_task_write_scope("backend.app.tasks.snapshot_cny_natural_key_test"):
+        sync_zqtz_snapshot_market_value_cny_from_formal(seeded_conn, REPORT_DATE)
 
     written = dict(
         seeded_conn.execute(
@@ -163,7 +165,8 @@ def test_a_cny_row_never_ends_up_with_a_cny_value_that_contradicts_its_native_va
 
     折算率对 CNY 恒为 1，所以这两列相等是恒等式；不相等就意味着连接发生了 fanout。
     """
-    sync_zqtz_snapshot_market_value_cny_from_formal(seeded_conn, REPORT_DATE)
+    with repository_task_write_scope("backend.app.tasks.snapshot_cny_natural_key_test"):
+        sync_zqtz_snapshot_market_value_cny_from_formal(seeded_conn, REPORT_DATE)
 
     contradictions = seeded_conn.execute(
         """

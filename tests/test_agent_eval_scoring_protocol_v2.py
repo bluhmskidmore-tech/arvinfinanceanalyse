@@ -11,12 +11,13 @@ pytestmark = [
     pytest.mark.surface_agent_eval,
 ]
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPERIMENT_DIR = REPO_ROOT / "docs" / "paper" / "moss-financial-agent-paper" / "experiment"
-PROTOCOL_PATH = EXPERIMENT_DIR / "decision-chain-scoring-protocol-v2.json"
-MAIN_TASKS_PATH = EXPERIMENT_DIR / "decision-chain-pilot-tasks-v1.jsonl"
-RED_TEAM_TASKS_PATH = EXPERIMENT_DIR / "decision-chain-red-team-mini-v1.jsonl"
-RECORDS_TEMPLATE_PATH = EXPERIMENT_DIR / "records-template.csv"
+# Reviewed public derivatives of the synthetic pilot's draft scoring contract.
+# Keep CI independent of local private publication material.
+FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "agent_eval_scoring_protocol_v2"
+PROTOCOL_PATH = FIXTURE_DIR / "decision-chain-scoring-protocol-v2.json"
+MAIN_TASKS_PATH = FIXTURE_DIR / "decision-chain-pilot-tasks-v1.jsonl"
+RED_TEAM_TASKS_PATH = FIXTURE_DIR / "decision-chain-red-team-mini-v1.jsonl"
+RECORDS_TEMPLATE_PATH = FIXTURE_DIR / "records-template.csv"
 
 
 def _load_protocol() -> dict[str, object]:

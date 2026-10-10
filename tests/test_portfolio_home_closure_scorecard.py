@@ -780,12 +780,12 @@ def test_portfolio_home_closure_scorecard_handoff_gate_blocks_wrong_snapshot_kin
                     "handoff_ready": True,
                     "blockers": [],
                     "summary_current_status": {
-                        "artifact": "F:\\MOSS-V3\\docs\\portfolio\\portfolio-home-owner-input-needed-summary.json",
+                        "artifact": str(docs_root / "portfolio" / "portfolio-home-owner-input-needed-summary.json"),
                         "status": "current",
                         "current": True,
                     },
                     "handoff_current_status": {
-                        "artifact": "F:\\MOSS-V3\\docs\\portfolio\\portfolio-home-owner-handoff-packet.md",
+                        "artifact": str(docs_root / "portfolio" / "portfolio-home-owner-handoff-packet.md"),
                         "status": "current",
                     },
                     "owner_route_coverage": {
@@ -841,14 +841,14 @@ def test_portfolio_home_closure_scorecard_handoff_gate_blocks_current_fingerprin
                     "handoff_ready": True,
                     "blockers": [],
                     "summary_current_status": {
-                        "artifact": "F:\\MOSS-V3\\docs\\portfolio\\portfolio-home-owner-input-needed-summary.json",
+                        "artifact": str(docs_root / "portfolio" / "portfolio-home-owner-input-needed-summary.json"),
                         "status": "current",
                         "current": True,
                         "expected_sha256": "expected-summary",
                         "actual_sha256": "actual-summary",
                     },
                     "handoff_current_status": {
-                        "artifact": "F:\\MOSS-V3\\docs\\portfolio\\portfolio-home-owner-handoff-packet.md",
+                        "artifact": str(docs_root / "portfolio" / "portfolio-home-owner-handoff-packet.md"),
                         "status": "current",
                         "expected_sha256": "expected-handoff",
                         "actual_sha256": "actual-handoff",

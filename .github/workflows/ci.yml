@@ -419,16 +419,30 @@ jobs:
           if-no-files-found: ignore
 
   backend-full-pytest:
-    name: Backend Full Pytest
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+    name: Backend Full Pytest (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     if: >-
       github.event_name == 'schedule' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-backend-regression'))
     permissions:
       contents: read
-      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-latest
+            python_dir: bin
+            marker: not windows_native
+          - platform: windows
+            os: windows-latest
+            python_dir: Scripts
+            marker: windows_native
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v4
@@ -437,6 +451,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Set up Node.js for native command argument contracts
+        if: runner.os == 'Windows'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -453,13 +473,20 @@ jobs:
         run: |
           uv sync --frozen --project backend --extra dev --python 3.11
           echo "VIRTUAL_ENV=${GITHUB_WORKSPACE}/backend/.venv" >> "$GITHUB_ENV"
-          echo "${GITHUB_WORKSPACE}/backend/.venv/bin" >> "$GITHUB_PATH"
+          echo "${GITHUB_WORKSPACE}/backend/.venv/${{ matrix.python_dir }}" >> "$GITHUB_PATH"
+
+      - name: Require platform PowerShell runtime
+        run: python -c "import os, shutil; name = 'powershell' if os.name == 'nt' else 'pwsh'; assert shutil.which(name), name + ' is required'"
 
       - name: Run full backend pytest suite
         id: full-pytest
         run: |
           mkdir -p test_output/ci
           python -m pytest -n 4 --dist loadfile -v --tb=short \
+            -p tests.full_pytest_inventory \
+            -m "${{ matrix.marker }}" \
+            --full-pytest-platform=${{ matrix.platform }} \
+            --full-pytest-inventory=test_output/ci/full-pytest-inventory.json \
             --junitxml=test_output/ci/full-pytest-report.xml \
             2>&1 | tee test_output/ci/full-pytest-console.log
           exit "${PIPESTATUS[0]}"
@@ -468,10 +495,12 @@ jobs:
         if: always()
         run: |
           {
-            echo "## Backend Full Pytest (${GITHUB_EVENT_NAME})"
+            echo "## Backend Full Pytest (${{ matrix.platform }}, ${GITHUB_EVENT_NAME})"
             echo ""
             echo "- commit: \`${GITHUB_SHA}\`"
             echo "- conclusion: ${{ steps.full-pytest.outcome }}"
+            echo "- platform selector: ${{ matrix.marker }}"
+            echo "- Combined full-suite coverage requires the partition guard and both platform artifacts."
             echo ""
             echo '```text'
             tail -n 80 test_output/ci/full-pytest-console.log || echo "(no console log captured)"
@@ -482,10 +511,60 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: backend-full-pytest-report
+          name: backend-full-pytest-${{ matrix.platform }}
           path: |
             test_output/ci/full-pytest-report.xml
             test_output/ci/full-pytest-console.log
+            test_output/ci/full-pytest-inventory.json
+          retention-days: 14
+          if-no-files-found: warn
+
+  backend-full-pytest-partition:
+    name: Backend Full Pytest Coverage
+    runs-on: ubuntu-latest
+    needs: backend-full-pytest
+    if: always() && needs.backend-full-pytest.result != 'skipped'
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download both platform execution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-full-pytest-*
+          path: test_output/ci/partition-input
+
+      - name: Verify complete full pytest platform execution
+        run: |
+          python scripts/check_full_pytest_partition.py \
+            --linux-dir test_output/ci/partition-input/backend-full-pytest-linux \
+            --windows-dir test_output/ci/partition-input/backend-full-pytest-windows \
+            --output test_output/ci/full-pytest-partition.json
+
+      - name: Write combined full pytest accounting
+        if: always()
+        run: |
+          {
+            echo "## Combined Full Pytest Execution"
+            echo '```json'
+            cat test_output/ci/full-pytest-partition.json || echo '{"coverage_complete": false, "error": "No combined execution report was produced"}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload combined full pytest accounting
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-full-pytest-partition
+          path: test_output/ci/full-pytest-partition.json
           retention-days: 14
           if-no-files-found: warn
 
@@ -502,7 +581,7 @@ jobs:
               "",
               `- Run: ${runUrl}`,
               `- Commit: \`${context.sha}\``,
-              "- Evidence artifact: `backend-full-pytest-report` (junit xml + console tail, retained 14 days)",
+              "- Evidence artifacts: `backend-full-pytest-linux`, `backend-full-pytest-windows`, `backend-full-pytest-partition` (JUnit, collection inventories, console logs and combined accounting; retained 14 days)",
               "",
               "Triage: see docs/plans/tech-debt-remediation/B0-ci-gate-layering.md (close this issue only after a green scheduled run).",
             ].join("\n");

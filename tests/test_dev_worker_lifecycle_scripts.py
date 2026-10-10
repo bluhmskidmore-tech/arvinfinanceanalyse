@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from tests.powershell_runtime import powershell_executable
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -35,7 +37,7 @@ def _run_harness(tmp_path: Path, name: str, source: str) -> subprocess.Completed
     harness_path.write_text(isolated_runtime + source, encoding="utf-8")
     return subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",

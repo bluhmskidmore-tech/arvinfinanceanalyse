@@ -1,5 +1,7 @@
-import os
+import subprocess
 from pathlib import Path
+
+from tests.powershell_runtime import powershell_executable
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,13 +38,16 @@ def _single_quote_powershell(value: Path) -> str:
 
 
 def _run_powershell_harness(harness_path: Path, output_path: Path) -> int:
-    command = f'powershell -NoProfile -ExecutionPolicy Bypass -File "{harness_path}" > "{output_path}" 2>&1'
-    previous_cwd = Path.cwd()
-    try:
-        os.chdir(ROOT)
-        return os.system(command)
-    finally:
-        os.chdir(previous_cwd)
+    with output_path.open("w", encoding="utf-8") as output:
+        completed = subprocess.run(
+            [powershell_executable(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(harness_path)],
+            cwd=ROOT,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            check=False,
+        )
+    return completed.returncode
 
 
 def test_dev_api_script_bootstraps_native_environment():

@@ -16,7 +16,8 @@ from backend.app.repositories.governance_repo import (
 )
 from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
-from tests.helpers import ROOT, load_module
+from tests.business_input_fixtures import business_input_bytes, write_business_input
+from tests.helpers import load_module
 
 REFRESH_SOURCE_FAMILIES = ["zqtz", "tyw", "pnl", "pnl_514", "pnl_516", "pnl_517"]
 SOURCE_PREVIEW_READ_USER = "source-preview-read-user"
@@ -98,17 +99,17 @@ def test_source_preview_reads_return_503_when_duckdb_is_busy(path, tmp_path, mon
     assert response.json() == {"detail": "Source preview storage is temporarily unavailable."}
 
 
-def test_source_preview_service_summarizes_real_zqtz_and_tyw_files():
+def test_source_preview_service_summarizes_synthetic_zqtz_and_tyw_files(tmp_path):
     preview_module = load_module(
         "backend.app.services.source_preview_service",
         "backend/app/services/source_preview_service.py",
     )
 
     zqtz_summary = preview_module.summarize_source_file(
-        ROOT / "data_input" / "ZQTZSHOW-20251231.xls",
+        write_business_input(tmp_path / "ZQTZSHOW-20251231.xls"),
     )
     tyw_summary = preview_module.summarize_source_file(
-        ROOT / "data_input" / "TYWLSHOW-20251231.xls",
+        write_business_input(tmp_path / "TYWLSHOW-20251231.xls"),
     )
 
     assert zqtz_summary["source_family"] == "zqtz"
@@ -212,7 +213,7 @@ def test_materialize_task_persists_source_preview_summary_rows(tmp_path, monkeyp
     data_root = tmp_path / "data_input"
     data_root.mkdir()
     for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
@@ -272,7 +273,7 @@ def test_preview_api_returns_real_source_preview_envelope(tmp_path, monkeypatch)
     data_root = tmp_path / "data_input"
     data_root.mkdir()
     for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     ingest_module.ingest_demo_manifest.fn()
@@ -578,7 +579,7 @@ def test_source_preview_refresh_sync_fallback_materializes_only_current_incremen
     )
 
     for file_name in ("ZQTZSHOW-20251230.xls", "TYWLSHOW-20251230.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setattr(
         refresh_module.refresh_source_preview_cache,
@@ -1541,7 +1542,7 @@ def test_preview_rows_api_returns_columns_for_dynamic_table(tmp_path, monkeypatc
     data_root = tmp_path / "data_input"
     data_root.mkdir()
     for file_name in ("ZQTZSHOW-20251231.xls",):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     ingest_module.ingest_demo_manifest.fn()
@@ -1594,7 +1595,7 @@ def test_preview_traces_api_returns_typed_columns_for_generic_table(tmp_path, mo
     data_root = tmp_path / "data_input"
     data_root.mkdir()
     for file_name in ("TYWLSHOW-20251231.xls",):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     ingest_module.ingest_demo_manifest.fn()
@@ -1696,9 +1697,9 @@ def test_rule_traces_stay_family_scoped_with_tyw_and_pnl514_inputs(tmp_path, mon
     archive_dir = tmp_path / "archive"
     data_root = tmp_path / "data_input"
     data_root.mkdir()
-    (data_root / "TYWLSHOW-20251231.xls").write_bytes((ROOT / "data_input" / "TYWLSHOW-20251231.xls").read_bytes())
+    (data_root / "TYWLSHOW-20251231.xls").write_bytes(business_input_bytes("TYWLSHOW-20251231.xls"))
     (data_root / "非标514-20250101-1231.xlsx").write_bytes(
-        (ROOT / "data_input" / "pnl_514" / "非标514-20250101-1231.xlsx").read_bytes()
+        business_input_bytes("非标514-20250101-1231.xlsx")
     )
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
@@ -1757,8 +1758,8 @@ def test_materialize_clears_preview_tables_when_requested_ingest_batch_is_missin
     archive_dir = tmp_path / "archive"
     data_root = tmp_path / "data_input"
     data_root.mkdir()
-    (data_root / "TYWLSHOW-20251231.xls").write_bytes((ROOT / "data_input" / "TYWLSHOW-20251231.xls").read_bytes())
-    (data_root / "ZQTZSHOW-20251231.xls").write_bytes((ROOT / "data_input" / "ZQTZSHOW-20251231.xls").read_bytes())
+    (data_root / "TYWLSHOW-20251231.xls").write_bytes(business_input_bytes("TYWLSHOW-20251231.xls"))
+    (data_root / "ZQTZSHOW-20251231.xls").write_bytes(business_input_bytes("ZQTZSHOW-20251231.xls"))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
@@ -1804,7 +1805,7 @@ def test_materialize_ignores_manifest_rows_whose_archived_paths_no_longer_exist(
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     valid_file = tmp_path / "TYWLSHOW-20251231.xls"
-    valid_file.write_bytes((ROOT / "data_input" / "TYWLSHOW-20251231.xls").read_bytes())
+    valid_file.write_bytes(business_input_bytes("TYWLSHOW-20251231.xls"))
 
     repo = governance_module.GovernanceRepository(base_dir=governance_dir)
     repo.append(
@@ -1859,7 +1860,7 @@ def test_materialize_applies_source_family_scope_before_archive_boundary_validat
     archive_dir = tmp_path / "archive"
     archive_dir.mkdir()
     valid_file = archive_dir / "TYWLSHOW-20251231.xls"
-    valid_file.write_bytes((ROOT / "data_input" / "TYWLSHOW-20251231.xls").read_bytes())
+    valid_file.write_bytes(business_input_bytes("TYWLSHOW-20251231.xls"))
     unrelated_file = tmp_path / "research-calendar.csv"
     unrelated_file.write_text("date,value\n2025-12-31,1\n", encoding="utf-8")
 
@@ -1921,7 +1922,7 @@ def test_materialize_task_rejects_manifest_archived_path_outside_archive_root(tm
     data_root.mkdir(parents=True, exist_ok=True)
     outside_dir.mkdir(parents=True, exist_ok=True)
     poisoned_file = outside_dir / "TYWLSHOW-20251231.xls"
-    poisoned_file.write_bytes((ROOT / "data_input" / "TYWLSHOW-20251231.xls").read_bytes())
+    poisoned_file.write_bytes(business_input_bytes("TYWLSHOW-20251231.xls"))
 
     repo = governance_module.GovernanceRepository(base_dir=governance_dir)
     repo.append(
@@ -2072,12 +2073,12 @@ def _configure_source_preview_refresh_env(
     data_root.mkdir(parents=True, exist_ok=True)
 
     for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     if include_pnl_preview_source:
         (data_root / "pnl").mkdir(parents=True, exist_ok=True)
         (data_root / "pnl" / "FI损益202512.xls").write_bytes(
-            (ROOT / "data_input" / "pnl" / "FI损益202512.xls").read_bytes()
+            business_input_bytes("FI损益202512.xls")
         )
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))

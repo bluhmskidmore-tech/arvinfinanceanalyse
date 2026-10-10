@@ -763,6 +763,7 @@ def _prepare_scoped_debt_runner(tmp_path: Path) -> tuple[Path, Path]:
     for script_name in (
         "audit_visual_tokens.mjs",
         "audit_font_size_floor.mjs",
+        "audit_frontend_style_architecture.mjs",
         "audit_encoding_integrity.mjs",
         "audit_section_numbering.mjs",
         "audit_undeclared_css_vars.mjs",
@@ -789,11 +790,12 @@ def test_debt_runner_scopes_frontend_feedback_and_keeps_full_gate_failures(
     focused = _run_audit(runner, "--scope", "frontend")
 
     assert full.returncode == 1, full.stdout + full.stderr
-    assert "2/6 audit(s) failed" in full.stdout
+    assert "2/7 audit(s) failed" in full.stdout
     assert "audit_encoding_integrity.mjs [repository]: FAIL (exit 7)" in full.stdout
     assert "EXECUTED audit_undeclared_css_vars.mjs" in full.stdout
     assert focused.returncode == 0, focused.stdout + focused.stderr
-    assert "All 5 selected audits passed (scope=frontend)" in focused.stdout
+    assert "All 6 selected audits passed (scope=frontend)" in focused.stdout
+    assert "EXECUTED audit_frontend_style_architecture.mjs" in focused.stdout
     assert "not a full repository audit" in focused.stdout
     assert "repository encoding is not covered" in focused.stdout
     assert "EXECUTED audit_encoding_integrity.mjs" not in focused.stdout
@@ -809,7 +811,7 @@ def test_debt_runner_frontend_growth_fails_without_short_circuit(tmp_path: Path)
     completed = _run_audit(runner, "--scope", "frontend")
 
     assert completed.returncode == 1, completed.stdout + completed.stderr
-    assert "1/5 audit(s) failed" in completed.stdout
+    assert "1/6 audit(s) failed" in completed.stdout
     assert "audit_frontend_debt.mjs [frontend]: FAIL (exit 1)" in completed.stdout
     assert "EXECUTED audit_undeclared_css_vars.mjs" in completed.stdout
     assert baseline_path.read_bytes() == before

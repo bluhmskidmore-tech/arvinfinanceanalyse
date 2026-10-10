@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from scripts.bond_analysis_live_smoke_evidence import build_artifact, render_markdown
+from tests.governance_evidence_inputs import governance_evidence_inputs
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,7 @@ def _run_generator(*args: str) -> tuple[int, dict[str, object]]:
 
 def test_bond_analysis_live_smoke_evidence_cli_writes_durable_artifact(
     tmp_path: Path,
+    governance_evidence_inputs,
 ) -> None:
     output_path = tmp_path / "bond-analysis-live-smoke-evidence.md"
 
@@ -77,7 +79,25 @@ def test_bond_analysis_live_smoke_evidence_cli_writes_durable_artifact(
     assert "does not capture business-owner approval" in text
 
 
-def test_static_bond_analysis_live_smoke_evidence_matches_generator() -> None:
+def test_bond_analysis_live_smoke_evidence_preserves_missing_governance_blocker(
+    tmp_path: Path, monkeypatch, governance_evidence_inputs,
+) -> None:
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "empty-governance"))
+    artifact = build_artifact(
+        output_path=tmp_path / "blocked.md", smoke_status="blocked", created_date="2026-06-09",
+    )
+
+    assert artifact["audit_review_status"] == "blocked_by_record_gaps"
+    assert artifact["overall_status"] == "blocked"
+    assert artifact["formal_use_allowed"] is False
+    assert artifact["closure_approved"] is False
+    assert artifact["evidence_scope"]["proves_page_execution"] is False
+    assert "`audit_review.status=blocked_by_record_gaps`" in render_markdown(artifact)
+
+
+def test_static_bond_analysis_live_smoke_evidence_matches_generator(
+    governance_evidence_inputs,
+) -> None:
     expected = render_markdown(
         build_artifact(
             output_path=STATIC_ARTIFACT,

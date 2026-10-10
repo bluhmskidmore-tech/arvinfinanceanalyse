@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 pytestmark = [
+    pytest.mark.windows_native,  # WSL conversion requires Windows drives; wrappers launch powershell.
     pytest.mark.excluded_surface_acceptance,
     pytest.mark.surface_agent_mvp,
 ]

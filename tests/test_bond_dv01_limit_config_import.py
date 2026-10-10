@@ -8,6 +8,7 @@ from contextlib import redirect_stdout
 from datetime import date
 
 import duckdb
+import pytest
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import GovernanceRepository
@@ -20,6 +21,15 @@ from tests.helpers import load_module
 STREAM = "bond_dv01_limit_config"
 REPORT_DATE = "2026-03-31"
 EFFECTIVE_DATE = "2026-03-01"
+
+
+@pytest.fixture(autouse=True)
+def _isolated_limit_reference_storage(tmp_path, monkeypatch):
+    """Policy import tests start without position facts unless a case seeds them."""
+    duckdb_path = tmp_path / "limit-reference.duckdb"
+    duckdb.connect(str(duckdb_path)).close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
 
 
 def _valid_record(accounting_class: str) -> dict[str, str]:

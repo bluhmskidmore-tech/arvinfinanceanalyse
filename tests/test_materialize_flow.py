@@ -721,7 +721,7 @@ def test_snapshot_and_preview_materialize_share_same_duckdb_writer_lock(tmp_path
     assert preview_task.resolve_materialize_lock(duckdb_path).key == snapshot_task.resolve_snapshot_lock(duckdb_path).key
 
 
-def test_materialize_lock_normalizes_case_for_same_duckdb_path(tmp_path):
+def test_materialize_lock_preserves_platform_case_semantics(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.materialize")
     if task_module is None:
         task_module = load_module("backend.app.tasks.materialize", "backend/app/tasks/materialize.py")
@@ -732,4 +732,8 @@ def test_materialize_lock_normalizes_case_for_same_duckdb_path(tmp_path):
     first_lock = task_module.resolve_materialize_lock(mixed_case_path)
     second_lock = task_module.resolve_materialize_lock(same_path_different_case)
 
-    assert first_lock.key == second_lock.key
+    if sys.platform == "win32":
+        assert first_lock.key == second_lock.key
+    else:
+        # POSIX case differences identify independent database writer paths.
+        assert first_lock.key != second_lock.key

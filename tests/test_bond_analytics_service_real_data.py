@@ -410,7 +410,7 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
     payload = service_mod.get_krd_curve_risk(date.fromisoformat(REPORT_DATE), "standard")
     result = payload["result"]
 
-    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v5"
+    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v6"
     assert result["portfolio_duration"] == "5.05978431"
     assert result["portfolio_modified_duration"] == "4.87293147"
     assert result["portfolio_dv01"] == "0.22175249"

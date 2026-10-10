@@ -36,6 +36,7 @@ def _basetemp_probe(
         "if sys.argv[3] == 'precreate':\n"
         "    current.mkdir(parents=True)\n"
         "    sentinel.write_text('stale', encoding='utf-8')\n"
+        "sys.path.insert(0, str(Path(sys.argv[1]).parents[1]))\n"
         "runpy.run_path(sys.argv[1])\n"
         "from _pytest.tmpdir import TempPathFactory\n"
         "factory = TempPathFactory(None, 3, 'all', lambda *_args: None, _ispytest=True)\n"
@@ -80,6 +81,7 @@ def test_default_pytest_basetemp_differs_across_processes(tmp_path: Path) -> Non
     probe = (
         "import os, runpy, sys\n"
         "from pathlib import Path\n"
+        "sys.path.insert(0, str(Path(sys.argv[1]).parents[1]))\n"
         "runpy.run_path(sys.argv[1])\n"
         "from _pytest.tmpdir import TempPathFactory\n"
         "factory = TempPathFactory(None, 3, 'all', lambda *_args: None, _ispytest=True)\n"

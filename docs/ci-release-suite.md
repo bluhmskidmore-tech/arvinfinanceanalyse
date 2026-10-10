@@ -15,7 +15,7 @@
 | 第二阶段 | 治理 MCP 合约：默认 fast profile，`python -m pytest -q -m "mcp_fast and not excluded_surface_acceptance" tests/test_project_mcp_fast_contracts.py` |
 | 同 job 补充步骤 | agent harness + 门禁映射守卫（**不在 release suite 脚本内**）：`python -m pytest -q tests/test_agent_eval_spec.py tests/test_agent_eval_reward.py tests/test_agent_eval_collect.py tests/test_agent_eval_scoring_integrity.py tests/test_agent_eval_replay.py tests/test_agent_eval_pr_replay.py tests/test_agent_eval_rollout.py tests/test_agent_eval_coverage_report.py tests/test_agent_sql_disclosure_drift.py tests/test_agent_api_contract.py tests/test_agent_audit_log_contract.py tests/test_dexter_agent_service.py tests/test_agent_run_service_lifecycle.py tests/test_agent_run_cancellation_hook.py tests/test_caliber_gate_mapping.py tests/test_ci_workflow_contents.py tests/test_mcp_config_consistency.py`；由 `backend` job 保留原 20 分钟上限 |
 | 独立 PR 路径门 | `backend-caliber` job（名称 `Caliber Path Gate`，单独 20 分钟上限，不依赖 `backend`）：`Caliber path-trigger gate`（仅 `pull_request`）：`git fetch origin <base_ref>` 后运行 `python scripts/check_caliber_gate.py --base-ref origin/<base_ref>`，PR diff 触及 `CALIBER_GATE_MAP` 中的 core_finance 口径源文件时定向运行对应 caliber 红线测试文件（映射表权威在脚本内，拿不到 base-ref 时 fail-closed 非零退出；2026-08-12 起六个 caliber 红线文件同时是 release suite 无条件成员，路径触发为定向快反、套件成员为无条件兜底，互为双保险） |
-| 全量兜底 | `backend-full-pytest` job（仅 schedule / push→main）：`python -m pytest -q`，收集 `tests/` + `backend/tests/` 全部测试 |
+| 全量兜底 | `backend-full-pytest` Linux/Windows matrix（schedule / push→main / 标注 `full-backend-regression` 的 main PR），完整收集 `tests/` + `backend/tests/`，按 `windows_native` 互补执行；`backend-full-pytest-partition` 核对完整节点与实际 JUnit 回执 |
 
 执行环境（脚本注入，决定套件的证明边界）：
 

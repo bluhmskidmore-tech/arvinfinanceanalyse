@@ -114,13 +114,14 @@ class TestProductCategoryHeadlineFastPathDegraded:
         self, monkeypatch: pytest.MonkeyPatch, caplog
     ) -> None:
         es = _executive_service()
+        private_error = "synthetic-private path=C:/private/customer.xlsx token=provider-secret"
 
         class _ExplodingRepo:
             def __init__(self, _duck_path: str) -> None:
                 pass
 
             def fetch_home_headline_values(self, **_kwargs):
-                raise RuntimeError("duckdb unavailable for headline")
+                raise RuntimeError(private_error)
 
         monkeypatch.setattr(es, "ProductCategoryPnlRepository", _ExplodingRepo)
 
@@ -132,12 +133,15 @@ class TestProductCategoryHeadlineFastPathDegraded:
         # 形状兼容：消费端 `.get(view, {})` 行为不变。
         assert values == {}
         assert values.degraded is True
-        assert "RuntimeError" in values.degraded_reason
-        assert "duckdb unavailable for headline" in values.degraded_reason
+        assert values.degraded_reason == "Product-category headline read unavailable (error_type=RuntimeError)."
         assert any(
-            "duckdb unavailable for headline" in record.getMessage()
+            values.degraded_reason in record.getMessage()
             for record in caplog.records
         )
+        assert private_error not in values.degraded_reason
+        assert "C:/private/customer.xlsx" not in caplog.text
+        assert "provider-secret" not in caplog.text
+        assert not any(record.exc_info for record in caplog.records)
 
     def test_success_path_is_not_marked_degraded(self, monkeypatch: pytest.MonkeyPatch) -> None:
         es = _executive_service()
@@ -160,12 +164,13 @@ class TestProductCategoryYtdHeadlineDegraded:
         self, monkeypatch: pytest.MonkeyPatch, caplog
     ) -> None:
         es = _executive_service()
+        private_error = "synthetic-private path=C:/private/customer.xlsx token=provider-secret"
         monkeypatch.setattr(
             es, "_fetch_product_category_home_headline_values", lambda *_a, **_k: {}
         )
 
         def exploding_resolver(*_args, **_kwargs):
-            raise RuntimeError("ytd fallback resolver failed")
+            raise RuntimeError(private_error)
 
         monkeypatch.setattr(
             es, "resolve_product_category_ytd_payload_for_home_snapshot", exploding_resolver
@@ -177,12 +182,15 @@ class TestProductCategoryYtdHeadlineDegraded:
         assert isinstance(headline, es._DegradedProductCategoryHeadline)
         assert headline.degraded is True
         assert headline.component == "product_category_ytd"
-        assert "RuntimeError" in headline.reason
-        assert "ytd fallback resolver failed" in headline.reason
+        assert headline.reason == "Product-category YTD headline unavailable (error_type=RuntimeError)."
         assert any(
-            "ytd fallback resolver failed" in record.getMessage()
+            headline.reason in record.getMessage()
             for record in caplog.records
         )
+        assert private_error not in headline.reason
+        assert "C:/private/customer.xlsx" not in caplog.text
+        assert "provider-secret" not in caplog.text
+        assert not any(record.exc_info for record in caplog.records)
 
 
 class TestProductCategoryMonthlyHeadlineDegraded:
@@ -190,12 +198,13 @@ class TestProductCategoryMonthlyHeadlineDegraded:
         self, monkeypatch: pytest.MonkeyPatch, caplog
     ) -> None:
         es = _executive_service()
+        private_error = "synthetic-private path=C:/private/customer.xlsx token=provider-secret"
         monkeypatch.setattr(
             es, "_fetch_product_category_home_headline_values", lambda *_a, **_k: {}
         )
 
         def exploding_envelope(*_args, **_kwargs):
-            raise RuntimeError("monthly fallback envelope failed")
+            raise RuntimeError(private_error)
 
         monkeypatch.setattr(es, "product_category_pnl_envelope", exploding_envelope)
 
@@ -205,12 +214,15 @@ class TestProductCategoryMonthlyHeadlineDegraded:
         assert isinstance(headline, es._DegradedProductCategoryHeadline)
         assert headline.degraded is True
         assert headline.component == "product_category_monthly"
-        assert "RuntimeError" in headline.reason
-        assert "monthly fallback envelope failed" in headline.reason
+        assert headline.reason == "Product-category monthly headline unavailable (error_type=RuntimeError)."
         assert any(
-            "monthly fallback envelope failed" in record.getMessage()
+            headline.reason in record.getMessage()
             for record in caplog.records
         )
+        assert private_error not in headline.reason
+        assert "C:/private/customer.xlsx" not in caplog.text
+        assert "provider-secret" not in caplog.text
+        assert not any(record.exc_info for record in caplog.records)
 
 
 def _patch_home_snapshot_context(es, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -242,7 +254,7 @@ class TestHomeSnapshotDegradedReasonVisible:
         es = _executive_service()
         _patch_home_snapshot_context(es, monkeypatch)
         marker = es._DegradedProductCategoryHeadline(
-            "product_category_ytd", "RuntimeError: ytd fallback resolver failed"
+            "product_category_ytd", "Product-category YTD headline unavailable (error_type=RuntimeError)."
         )
         monkeypatch.setattr(
             es,
@@ -257,7 +269,7 @@ class TestHomeSnapshotDegradedReasonVisible:
         filters = env["result_meta"]["filters_applied"]
         assert "product_category_ytd" in filters["degraded_components"]
         assert filters["degraded_reasons"] == {
-            "product_category_ytd": "RuntimeError: ytd fallback resolver failed"
+            "product_category_ytd": "Product-category YTD headline unavailable (error_type=RuntimeError)."
         }
         assert env["result_meta"]["quality_flag"] == "warning"
 
@@ -267,7 +279,7 @@ class TestHomeSnapshotDegradedReasonVisible:
         es = _executive_service()
         _patch_home_snapshot_context(es, monkeypatch)
         marker = es._DegradedProductCategoryHeadline(
-            "product_category_monthly", "RuntimeError: monthly fallback envelope failed"
+            "product_category_monthly", "Product-category monthly headline unavailable (error_type=RuntimeError)."
         )
         monkeypatch.setattr(
             es,
@@ -281,6 +293,6 @@ class TestHomeSnapshotDegradedReasonVisible:
         filters = env["result_meta"]["filters_applied"]
         assert "product_category_monthly" in filters["degraded_components"]
         assert filters["degraded_reasons"] == {
-            "product_category_monthly": "RuntimeError: monthly fallback envelope failed"
+            "product_category_monthly": "Product-category monthly headline unavailable (error_type=RuntimeError)."
         }
         assert env["result_meta"]["quality_flag"] == "warning"

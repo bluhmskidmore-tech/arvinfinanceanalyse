@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+from types import SimpleNamespace
+
 import duckdb
 import pandas as pd
 import pytest
@@ -12,12 +15,16 @@ TABLES = ('fact_choice_macro_daily', 'choice_market_snapshot', 'phase1_macro_ven
 
 @pytest.fixture
 def fx_scope(tmp_path, monkeypatch):
-    import akshare
     path = tmp_path / 'fx.duckdb'
     with duckdb.connect(str(path)) as conn:
         task._ensure_tables(conn)
     records = [{'日期': '2026-09-15', '美元': 676.7}, {'日期': '2026-09-16', '美元': 676.28}, {'日期': '2026-09-17', '美元': 677.0}]
-    monkeypatch.setattr(akshare, 'currency_boc_safe', lambda: pd.DataFrame(records))
+    # Own the optional vendor boundary, including when an earlier toolkit test
+    # left its same-named local shim in the import cache.
+    monkeypatch.setitem(
+        sys.modules, 'akshare',
+        SimpleNamespace(currency_boc_safe=lambda: pd.DataFrame(records)),
+    )
     def prohibited(*args, **kwargs):
         pytest.fail('FX recovery must not fetch unrelated sources or run migrations')
     monkeypatch.setattr(task, '_load_public_cross_asset_history_rows', prohibited)

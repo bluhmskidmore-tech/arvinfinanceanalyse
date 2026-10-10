@@ -7,14 +7,21 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+import pytest
 
 from backend.app.services import (
     candidate_financial_indicator_period_comparison_service as actual_service,
 )
 from tests.helpers import load_module
+from tests.synthetic_ledger_pnl_fixture import (
+    SYNTHETIC_REPORT_MONTH,
+    write_synthetic_ledger_source_dir,
+)
 
 
-SOURCE_DIR = Path(__file__).resolve().parents[1] / "data_input" / "pnl_总账对账-日均"
+@pytest.fixture
+def synthetic_source_dir(tmp_path: Path) -> Path:
+    return write_synthetic_ledger_source_dir(tmp_path / "synthetic-ledger")
 
 
 class _FakePeriodComparisonService:
@@ -44,6 +51,7 @@ class _FakePeriodComparisonService:
 
 def test_period_comparison_route_uses_read_boundary_fixed_source_and_strict_model(
     monkeypatch,
+    synthetic_source_dir: Path,
 ) -> None:
     route_module = load_module(
         "backend.app.api.routes.ledger_pnl",
@@ -60,21 +68,24 @@ def test_period_comparison_route_uses_read_boundary_fixed_source_and_strict_mode
     monkeypatch.setattr(
         route_module,
         "get_settings",
-        lambda: SimpleNamespace(product_category_source_dir=SOURCE_DIR),
+        lambda: SimpleNamespace(product_category_source_dir=synthetic_source_dir),
     )
     app = FastAPI()
     app.include_router(route_module.router)
 
     response = TestClient(app).get(
         "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
-        params={"report_month": "202606"},
+        params={"report_month": SYNTHETIC_REPORT_MONTH},
     )
 
     assert response.status_code == 200
     assert len(permission_calls) == 1
     assert response.json()["overall_status"] == "partial"
+    assert all(
+        item["lock_status"] == "unlocked" for item in response.json()["source_periods"]
+    )
     assert service.calls == [
-        {"source_dir": str(SOURCE_DIR), "report_month": "202606"}
+        {"source_dir": str(synthetic_source_dir), "report_month": SYNTHETIC_REPORT_MONTH}
     ]
     target_route = next(
         route
@@ -115,10 +126,11 @@ def test_period_comparison_route_rejects_before_service_when_read_is_forbidden(
 
 def test_component_detail_route_uses_visible_parent_key_and_strict_model(
     monkeypatch,
+    synthetic_source_dir: Path,
 ) -> None:
     parent = actual_service.candidate_financial_indicator_period_comparison_envelope(
-        source_dir=str(SOURCE_DIR),
-        report_month="202606",
+        source_dir=str(synthetic_source_dir),
+        report_month=SYNTHETIC_REPORT_MONTH,
     )
     route_module = load_module(
         "backend.app.api.routes.ledger_pnl",
@@ -130,7 +142,7 @@ def test_component_detail_route_uses_visible_parent_key_and_strict_model(
     monkeypatch.setattr(
         route_module,
         "get_settings",
-        lambda: SimpleNamespace(product_category_source_dir=SOURCE_DIR),
+        lambda: SimpleNamespace(product_category_source_dir=synthetic_source_dir),
     )
     app = FastAPI()
     app.include_router(route_module.router)
@@ -138,7 +150,7 @@ def test_component_detail_route_uses_visible_parent_key_and_strict_model(
     response = TestClient(app).get(
         "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
         params={
-            "report_month": "202606",
+            "report_month": SYNTHETIC_REPORT_MONTH,
             "metric_id": "income.interest.investment",
             "parent_idempotency_key": parent["idempotency_key"],
         },
@@ -148,8 +160,8 @@ def test_component_detail_route_uses_visible_parent_key_and_strict_model(
     assert response.json()["rows"][0]["account_code"] == "51402010003"
     assert service.calls == [
         {
-            "source_dir": str(SOURCE_DIR),
-            "report_month": "202606",
+            "source_dir": str(synthetic_source_dir),
+            "report_month": SYNTHETIC_REPORT_MONTH,
             "metric_id": "income.interest.investment",
             "parent_idempotency_key": parent["idempotency_key"],
         }
@@ -189,7 +201,7 @@ def test_component_detail_route_rejects_invalid_query_before_service(monkeypatch
     assert service.calls == []
 
 
-def test_component_detail_route_translates_caller_error_to_422(monkeypatch) -> None:
+def test_component_detail_route_translates_caller_error_to_422(monkeypatch, tmp_path) -> None:
     route_module = load_module(
         "backend.app.api.routes.ledger_pnl",
         "backend/app/api/routes/ledger_pnl.py",
@@ -207,7 +219,7 @@ def test_component_detail_route_translates_caller_error_to_422(monkeypatch) -> N
     monkeypatch.setattr(
         route_module,
         "get_settings",
-        lambda: SimpleNamespace(product_category_source_dir=SOURCE_DIR),
+        lambda: SimpleNamespace(product_category_source_dir=tmp_path),
     )
     app = FastAPI()
     app.include_router(route_module.router)
@@ -225,7 +237,7 @@ def test_component_detail_route_translates_caller_error_to_422(monkeypatch) -> N
     assert response.json() == {"detail": "controlled component request error"}
 
 
-def test_component_detail_route_does_not_expose_internal_errors(monkeypatch) -> None:
+def test_component_detail_route_does_not_expose_internal_errors(monkeypatch, tmp_path) -> None:
     route_module = load_module(
         "backend.app.api.routes.ledger_pnl",
         "backend/app/api/routes/ledger_pnl.py",
@@ -241,7 +253,7 @@ def test_component_detail_route_does_not_expose_internal_errors(monkeypatch) -> 
     monkeypatch.setattr(
         route_module,
         "get_settings",
-        lambda: SimpleNamespace(product_category_source_dir=SOURCE_DIR),
+        lambda: SimpleNamespace(product_category_source_dir=tmp_path),
     )
     app = FastAPI()
     app.include_router(route_module.router)

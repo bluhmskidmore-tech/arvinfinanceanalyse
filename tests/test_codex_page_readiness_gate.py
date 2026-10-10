@@ -34,19 +34,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(scope="module", autouse=True)
 def readiness_input_snapshot_env(tmp_path_factory):
-    """Pin readiness date sampling and governance streams to a one-shot snapshot.
+    """Pin date sampling and direct records to portable synthetic inputs.
 
-    build_page_readiness_report / build_all_page_readiness_report and the
-    powershell/CLI subprocess runs below sample the shared real DuckDB
-    (data/moss.duckdb) with no lock retry. Concurrent writers (dev worker
-    materialize jobs, other sessions' rebuilds) hold the database read-write,
-    which flips catalog_date_evidence to incomplete and turns static-pass
-    pages into blocked. The snapshot (tests/readiness_input_snapshot.py, same
-    mechanism as tests/test_native_dev_scripts.py) mirrors a genuine catalog
-    regression, so the assertions keep their meaning. Overriding os.environ
-    covers both in-process report builds (env resolved at call time) and
-    subprocesses that copy os.environ; tests that set MOSS_DUCKDB_PATH /
-    MOSS_GOVERNANCE_PATH themselves still take precedence.
+    The shared helper creates declared catalog tables and explicit test
+    records under tmp_path. Environment overrides cover both in-process
+    reports and CLI subprocesses; cases that supply missing/stale storage
+    or governance inputs themselves still take precedence.
     """
     env_overrides = build_readiness_input_snapshot_env(
         tmp_path_factory.mktemp("readiness-input-snapshot")

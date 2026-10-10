@@ -197,13 +197,14 @@ def test_validate_qdb_gl_average_source_allows_auxiliary_only_rows(tmp_path):
     assert checks["row_shape"].status_label == "pass"
     assert checks["required_raw_fields"].status_label == "pass"
 
-def test_real_qdb_gl_average_fixture_is_admissible():
+def test_synthetic_qdb_gl_average_fixture_is_admissible(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_input_validation_service",
         "backend/app/services/qdb_gl_input_validation_service.py",
     )
 
-    path = ROOT / "data_input" / "pnl_总账对账-日均" / "日均202602.xlsx"
+    path = tmp_path / "日均202602.xlsx"
+    _write_qdb_gl_average_workbook(path)
 
     evidence = module.validate_qdb_gl_baseline_source(path)
 

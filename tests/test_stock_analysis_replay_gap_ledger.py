@@ -630,8 +630,8 @@ def test_gap_ledger_tracks_versions_and_certifiable_capacity(monkeypatch: pytest
     )
     assert report["date_state_summary"]["formal_use_allowed"] is False
     assert counts["completed_with_signals"] == 3
-    assert counts["completed_no_strategy_signals"] == 23
-    assert counts["unsupported"] == 2
+    assert counts["completed_no_strategy_signals"] == 0
+    assert counts["unsupported"] == 25
     assert counts["proxy_only"] == 1
     assert counts["pending_tail"] == 2
     assert counts["blocking_pending"] == 0
@@ -639,7 +639,16 @@ def test_gap_ledger_tracks_versions_and_certifiable_capacity(monkeypatch: pytest
     unsupported_signal_dates = report["date_state_summary"]["unsupported_signal_dates"]
     unsupported_no_signal_dates = report["date_state_summary"]["unsupported_no_signal_dates"]
     assert [item["trade_date"] for item in unsupported_signal_dates] == ["2026-05-04"]
-    assert [item["trade_date"] for item in unsupported_no_signal_dates] == ["2026-05-05"]
+    assert len(unsupported_no_signal_dates) == 24
+    missing_receipt_dates = [
+        item for item in unsupported_no_signal_dates
+        if item["reason_code"] == "missing_candidate_history_receipt"
+    ]
+    assert len(missing_receipt_dates) == 23
+    assert all(item["date_state"] == "unsupported" for item in missing_receipt_dates)
+    assert next(
+        item for item in unsupported_no_signal_dates if item["trade_date"] == "2026-05-05"
+    )["reason_code"] == "missing_required_source_table"
 
     stale = report["stale_versions"]
     assert stale["candidate_history_rule_stale_row_count"] == 1

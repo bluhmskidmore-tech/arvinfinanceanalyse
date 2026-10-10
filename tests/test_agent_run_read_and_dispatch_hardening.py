@@ -10,7 +10,6 @@ Covers two regressions:
 
 from __future__ import annotations
 
-import importlib
 import time
 from pathlib import Path
 
@@ -32,16 +31,27 @@ pytestmark = [
 ]
 
 
-def _count_run_stream_reads(monkeypatch) -> list[str]:
-    service_module = importlib.import_module("backend.app.services.agent_run_service")
-    original = service_module._load_run_records
+def _count_run_stream_reads(monkeypatch, client) -> list[str]:
+    endpoint = next(
+        route.endpoint
+        for route in client.app.routes
+        if route.path == "/api/agent/runs/{run_id}" and "GET" in route.methods
+    )
+    # Other suites reload agent_run_service. Resolve the repository from the
+    # route's bound service, which can outlive the sys.modules replacement.
+    bound_service_globals = endpoint.__globals__["get_agent_run_owner_and_status"].__globals__
+    repository = bound_service_globals["GovernanceRepository"]
+    run_stream = bound_service_globals["AGENT_RUN_STREAM"]
+    original = repository.read_by_run_id
     reads: list[str] = []
 
-    def counting_load(settings, *, run_id):
-        reads.append(run_id)
-        return original(settings, run_id=run_id)
+    def counting_read(repo, stream, run_id, **kwargs):
+        if stream == run_stream:
+            reads.append(run_id)
+            assert kwargs.get("latest_only") is True
+        return original(repo, stream, run_id, **kwargs)
 
-    monkeypatch.setattr(service_module, "_load_run_records", counting_load)
+    monkeypatch.setattr(repository, "read_by_run_id", counting_read)
     return reads
 
 
@@ -71,7 +81,7 @@ def test_run_status_endpoint_reads_the_run_stream_once(monkeypatch, tmp_path: Pa
     created = client.post("/api/agent/runs", json={"question": "ping"}).json()
     _wait_for_terminal(client, created["run_id"])
 
-    reads = _count_run_stream_reads(monkeypatch)
+    reads = _count_run_stream_reads(monkeypatch, client)
     response = client.get(f"/api/agent/runs/{created['run_id']}")
 
     assert response.status_code == 200
@@ -98,7 +108,7 @@ def test_run_status_endpoint_still_rejects_a_foreign_owner_with_one_read(
     _wait_for_terminal(client, created["run_id"], headers=owner_headers)
     del settings
 
-    reads = _count_run_stream_reads(monkeypatch)
+    reads = _count_run_stream_reads(monkeypatch, client)
     denied = client.get(
         f"/api/agent/runs/{created['run_id']}",
         headers={"X-User-Id": "other-user", "X-User-Role": "reviewer"},
@@ -121,7 +131,7 @@ def test_run_events_endpoint_reads_the_run_stream_once_before_streaming(
     created = client.post("/api/agent/runs", json={"question": "ping"}).json()
     _wait_for_terminal(client, created["run_id"])
 
-    reads = _count_run_stream_reads(monkeypatch)
+    reads = _count_run_stream_reads(monkeypatch, client)
     response = client.get(f"/api/agent/runs/{created['run_id']}/events")
 
     assert response.status_code == 200

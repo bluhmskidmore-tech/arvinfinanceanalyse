@@ -67,7 +67,15 @@ def test_read_model_cache_isolates_snapshots_and_rejects_missing_warm_snapshot(
             return result
     else:
         cache = attribution_service._PNL_ATTRIBUTION_CACHE
-        monkeypatch.setattr(attribution_service, "get_settings", lambda: SimpleNamespace(duckdb_path=active))
+        monkeypatch.setattr(
+            attribution_service,
+            "get_settings",
+            lambda: SimpleNamespace(
+                duckdb_path=active,
+                governance_backend="jsonl",
+                governance_path=tmp_path / "governance",
+            ),
+        )
         monkeypatch.setattr(attribution_service, "_pnl_attribution_runtime_cache_enabled", lambda: True)
         monkeypatch.setattr(attribution_service, "_volume_rate_attribution_envelope_uncached", build_result)
 

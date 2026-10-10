@@ -11,6 +11,7 @@ from scripts.bond_analysis_owner_evidence_packet import (
     render_audit_markdown,
     render_markdown,
 )
+from tests.governance_evidence_inputs import governance_evidence_inputs
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +44,9 @@ def _run_packet(*args: str) -> tuple[int, dict[str, object]]:
     return completed.returncode, json.loads(completed.stdout)
 
 
-def test_bond_analysis_owner_evidence_packet_preserves_candidate_boundary() -> None:
+def test_bond_analysis_owner_evidence_packet_preserves_candidate_boundary(
+    governance_evidence_inputs,
+) -> None:
     packet = build_packet()
 
     assert packet["packet_kind"] == "bond_analysis_owner_evidence_packet"
@@ -121,6 +124,7 @@ def test_bond_analysis_owner_evidence_packet_preserves_candidate_boundary() -> N
 def test_bond_analysis_owner_evidence_packet_reports_missing_records_when_governance_is_empty(
     tmp_path: Path,
     monkeypatch,
+    governance_evidence_inputs,
 ) -> None:
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "empty-governance"))
 
@@ -133,7 +137,9 @@ def test_bond_analysis_owner_evidence_packet_reports_missing_records_when_govern
     assert packet["closure_approved"] is False
 
 
-def test_bond_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path) -> None:
+def test_bond_analysis_owner_evidence_packet_cli_writes_markdown(
+    tmp_path: Path, governance_evidence_inputs,
+) -> None:
     output_path = tmp_path / "packet.md"
     audit_output_path = tmp_path / "audit.md"
 
@@ -218,6 +224,7 @@ def test_bond_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path)
 
 def test_bond_analysis_owner_evidence_packet_cli_can_report_missing_records_with_empty_governance(
     tmp_path: Path,
+    governance_evidence_inputs,
 ) -> None:
     output_path = tmp_path / "packet.md"
     env = {
@@ -248,14 +255,18 @@ def test_bond_analysis_owner_evidence_packet_cli_can_report_missing_records_with
     )
 
 
-def test_bond_analysis_owner_evidence_packet_matches_generator_output() -> None:
+def test_bond_analysis_owner_evidence_packet_matches_generator_output(
+    governance_evidence_inputs,
+) -> None:
     expected = render_markdown(build_packet())
     actual = OWNER_EVIDENCE_PACKET.read_text(encoding="utf-8")
 
     assert actual == expected
 
 
-def test_bond_analysis_governance_audit_packet_matches_generator_output() -> None:
+def test_bond_analysis_governance_audit_packet_matches_generator_output(
+    governance_evidence_inputs,
+) -> None:
     expected = render_audit_markdown(build_packet())
     actual = GOVERNANCE_AUDIT_PACKET.read_text(encoding="utf-8")
 

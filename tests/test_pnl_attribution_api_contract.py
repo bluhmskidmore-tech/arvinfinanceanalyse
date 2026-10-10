@@ -178,7 +178,15 @@ def test_pnl_attribution_endpoints_empty_duckdb(tmp_path, monkeypatch) -> None:
         response = client.get(path, params=params)
         assert response.status_code == 200, f"{path} {params} -> {response.status_code}: {response.text}"
         body = response.json()
-        _assert_formal_envelope(body, formal_use_allowed=path != "/api/pnl-attribution/advanced/krd")
+        _assert_formal_envelope(
+            body,
+            formal_use_allowed=path not in {
+                "/api/pnl-attribution/advanced/carry-rolldown",
+                "/api/pnl-attribution/advanced/spread",
+                "/api/pnl-attribution/advanced/krd",
+                "/api/pnl-attribution/advanced/campisi",
+            },
+        )
         assert body["result_meta"].get("quality_flag") == "warning"
         res = body["result"]
         if path == "/api/pnl-attribution/advanced/krd":

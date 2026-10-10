@@ -27,6 +27,7 @@ from tests.test_bond_analytics_materialize_flow import (
     _seed_bond_snapshot_rows,
     seed_yield_curves_for_bond_analytics_tests,
 )
+from tests.test_pnl_api_contract import _fake_parse_fi_refresh_rows, _write_fi_refresh_marker
 from tests.test_product_category_pnl_flow import (
     _write_month_pair as _write_product_category_month_pair,
 )
@@ -223,9 +224,11 @@ def _setup_pnl(tmp_path: Path, monkeypatch: Any) -> tuple[TestClient, list[objec
     governance_dir = tmp_path / "pnl" / "governance"
     source_dir = tmp_path / "pnl" / "source"
     source_dir.mkdir(parents=True)
+    _write_fi_refresh_marker(source_dir, month_key="202601")
+    _write_fi_refresh_marker(source_dir, month_key="202602")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
-    monkeypatch.setenv("MOSS_PNL_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(source_dir))
     repo = _scope_repo(tmp_path, monkeypatch, "pnl-auth.db")
     repo.grant_scope(user_id="*", role=None, resource="formal_pnl", action="read")
     repo.grant_scope(user_id="*", role=None, resource="formal_pnl", action="refresh")
@@ -233,6 +236,13 @@ def _setup_pnl(tmp_path: Path, monkeypatch: Any) -> tuple[TestClient, list[objec
 
     calls: list[object] = []
     service_mod = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    # Exercise actual source selection/date identity; only the workbook parser
+    # is replaced because these synthetic markers contain no business data.
+    monkeypatch.setitem(
+        service_mod.load_latest_pnl_refresh_input.__globals__,
+        "_parse_fi_rows",
+        _fake_parse_fi_refresh_rows,
+    )
     monkeypatch.setattr(service_mod.materialize_pnl_facts, "send", lambda **kwargs: calls.append(kwargs))
     return _main_client(), calls
 
@@ -749,7 +759,7 @@ ENDPOINTS = (
         path="/api/data/refresh_pnl",
         idempotency_key=" pnl-refresh-contract ",
         same_target={},
-        different_target={"params": {"report_date": "2026-02-27"}},
+        different_target={"params": {"report_date": "2026-01-31"}},
         setup=_setup_pnl,
         refresh_payload=_top_level_payload,
     ),

@@ -15,6 +15,7 @@ SCRIPT = ROOT / "scripts" / "scheduling" / "daily_data_refresh.ps1"
 HOST_SCRIPT = ROOT / "scripts" / "scheduling" / "run_daily_data_refresh_host.ps1"
 
 pytestmark = [
+    pytest.mark.windows_native,  # The scheduler harness executes fake-python.cmd.
     pytest.mark.excluded_surface_acceptance,
     pytest.mark.surface_livermore,
 ]

@@ -222,6 +222,7 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
             create table fact_formal_risk_tensor_daily (
               report_date varchar,
               portfolio_dv01 double,
+              regulatory_dv01 double,
               krd_1y double,
               krd_3y double,
               krd_5y double,
@@ -248,6 +249,16 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
               duration_excluded_count integer,
               missing_maturity_market_value double,
               missing_maturity_count integer,
+              missing_liability_maturity_principal_amount double,
+              missing_liability_maturity_count integer,
+              fund_no_maturity_market_value double,
+              fund_no_maturity_count integer,
+              unknown_maturity_market_value double,
+              unknown_maturity_count integer,
+              matured_outstanding_market_value double,
+              matured_outstanding_count integer,
+              nonpositive_duration_market_value double,
+              nonpositive_duration_count integer,
               floating_rate_proxy_market_value double,
               floating_rate_proxy_count integer,
               payment_frequency_fallback_market_value double,
@@ -261,6 +272,8 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
               upstream_source_version varchar,
               upstream_rule_version varchar,
               upstream_cache_version varchar,
+              liability_source_version varchar,
+              liability_rule_version varchar,
               rule_version varchar,
               cache_version varchar,
               trace_id varchar
@@ -273,12 +286,82 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
             """,
             [REPORT_DATE],
         )
+        # A successfully-read empty snapshot verifies zero liabilities. An
+        # absent table must continue to fail the formal freshness guard.
         conn.execute(
             """
-            insert into fact_formal_risk_tensor_daily values
-            (?, 12.34, 1.00, 2.00, 3.00, 2.50, 2.10, 1.10, 0.88, 0.45, 4.20, 0.12, 0.34, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 250, 0.40, 1500, 1500, 12.34, 4.20, 0, 0, 3, 'ok', '[]', 'sv_risk_tensor_1', 'sv_bond_analytics_1', 'rv_bond_analytics_1', 'cv_bond_analytics_1', ?, ?, 'tr-risk-1')
-            """,
-            [REPORT_DATE, risk_task_module.RULE_VERSION, risk_task_module.CACHE_VERSION],
+            create table fact_formal_tyw_balance_daily (
+              report_date varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        row = {
+            "report_date": REPORT_DATE,
+            "portfolio_dv01": 12.34,
+            "regulatory_dv01": 12.34,
+            "krd_1y": 1.00,
+            "krd_3y": 2.00,
+            "krd_5y": 3.00,
+            "krd_7y": 2.50,
+            "krd_10y": 2.10,
+            "krd_30y": 1.10,
+            "cs01": 0.88,
+            "portfolio_convexity": 0.45,
+            "portfolio_modified_duration": 4.20,
+            "issuer_concentration_hhi": 0.12,
+            "issuer_top5_weight": 0.34,
+            "asset_cashflow_30d": 100,
+            "asset_cashflow_90d": 250,
+            "liability_cashflow_30d": 0,
+            "liability_cashflow_90d": 0,
+            "liquidity_gap_30d": 100,
+            "liquidity_gap_90d": 250,
+            "liquidity_gap_30d_ratio": 0.40,
+            "total_market_value": 1500,
+            "rate_risk_market_value": 1500,
+            "rate_risk_dv01": 12.34,
+            "rate_risk_modified_duration": 4.20,
+            "duration_excluded_market_value": 0,
+            "duration_excluded_count": 0,
+            "missing_maturity_market_value": 0,
+            "missing_maturity_count": 0,
+            "missing_liability_maturity_principal_amount": 0,
+            "missing_liability_maturity_count": 0,
+            "fund_no_maturity_market_value": 0,
+            "fund_no_maturity_count": 0,
+            "unknown_maturity_market_value": 0,
+            "unknown_maturity_count": 0,
+            "matured_outstanding_market_value": 0,
+            "matured_outstanding_count": 0,
+            "nonpositive_duration_market_value": 0,
+            "nonpositive_duration_count": 0,
+            "floating_rate_proxy_market_value": 0,
+            "floating_rate_proxy_count": 0,
+            "payment_frequency_fallback_market_value": 0,
+            "payment_frequency_fallback_count": 0,
+            "bullet_value_date_fallback_market_value": 0,
+            "bullet_value_date_fallback_count": 0,
+            "bond_count": 3,
+            "quality_flag": "ok",
+            "warnings_json": "[]",
+            "source_version": "sv_risk_tensor_1",
+            "upstream_source_version": "sv_bond_analytics_1",
+            "upstream_rule_version": FIXED_INCOME_VERSION_SET.bond_analytics.rule_version,
+            "upstream_cache_version": FIXED_INCOME_VERSION_SET.bond_analytics.cache_version,
+            "liability_source_version": "",
+            "liability_rule_version": "",
+            "rule_version": risk_task_module.RULE_VERSION,
+            "cache_version": risk_task_module.CACHE_VERSION,
+            "trace_id": "tr-risk-1",
+        }
+        conn.execute(
+            f"insert into fact_formal_risk_tensor_daily ({', '.join(row)}) "
+            f"values ({', '.join('?' for _ in row)})",
+            list(row.values()),
         )
     finally:
         conn.close()
@@ -301,8 +384,8 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
             "cache_key": bond_task_module.CACHE_KEY,
             "source_version": "sv_bond_analytics_1",
             "vendor_version": "vv_none",
-            "rule_version": "rv_bond_analytics_1",
-            "cache_version": "cv_bond_analytics_1",
+            "rule_version": FIXED_INCOME_VERSION_SET.bond_analytics.rule_version,
+            "cache_version": FIXED_INCOME_VERSION_SET.bond_analytics.cache_version,
             "report_date": REPORT_DATE,
         },
     )
@@ -938,6 +1021,59 @@ def test_agent_query_enabled_path_risk_tensor_uses_latest_report_date_when_conte
     assert payload["evidence"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
     assert any(card["title"] == "Portfolio DV01" for card in payload["cards"])
     assert REPORT_DATE in payload["answer"]
+
+
+@pytest.mark.parametrize("invalid_input", ["missing_liability_table", "stale_upstream"])
+def test_agent_query_risk_tensor_rejects_unverified_formal_inputs(
+    tmp_path, monkeypatch, invalid_input
+):
+    duckdb_path = tmp_path / "moss-risk-invalid.duckdb"
+    governance_dir = tmp_path / "governance-risk-invalid"
+    _seed_agent_risk_tensor_tables(duckdb_path, governance_dir)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        if invalid_input == "missing_liability_table":
+            conn.execute("drop table fact_formal_tyw_balance_daily")
+        else:
+            conn.execute(
+                "update fact_formal_risk_tensor_daily "
+                "set upstream_rule_version = 'rv_bond_analytics_stale', "
+                "upstream_cache_version = 'cv_bond_analytics_stale'"
+            )
+    finally:
+        conn.close()
+    if invalid_input == "stale_upstream":
+        GovernanceRepository(base_dir=governance_dir).append(
+            "cache_build_run",
+            {
+                "run_id": "bond-analytics-stale-run",
+                "job_name": "bond_analytics_materialize",
+                "status": "completed",
+                "cache_key": FIXED_INCOME_VERSION_SET.bond_analytics.cache_key,
+                "source_version": "sv_bond_analytics_1",
+                "vendor_version": "vv_none",
+                "rule_version": "rv_bond_analytics_stale",
+                "cache_version": "cv_bond_analytics_stale",
+                "report_date": REPORT_DATE,
+            },
+        )
+    _enable_local_agent(monkeypatch)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_risk")
+    response = TestClient(_fresh_main_module().app).post(
+        "/api/agent/query",
+        json={
+            "question": "risk tensor KRD",
+            "context": {"user_id": "u_risk", "report_date": REPORT_DATE},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["quality_flag"] == "error"
+    assert payload["evidence"]["evidence_rows"] == 0
+    assert all(card["title"] != "Portfolio DV01" for card in payload["cards"])
 
 
 def test_agent_query_enabled_path_returns_real_market_data_and_audit(tmp_path, monkeypatch):

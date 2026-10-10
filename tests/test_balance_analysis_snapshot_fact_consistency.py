@@ -22,12 +22,17 @@ def _load_modules():
             "backend.app.repositories.balance_analysis_repo",
             "backend/app/repositories/balance_analysis_repo.py",
         )
-    task_mod = sys.modules.get("backend.app.tasks.balance_analysis_materialize")
-    if task_mod is None:
-        task_mod = load_module(
-            "backend.app.tasks.balance_analysis_materialize",
-            "backend/app/tasks/balance_analysis_materialize.py",
-        )
+    # Registry contract tests reload both its descriptors and registration map.
+    # Refresh the runtime and task together so the runtime validates the task's
+    # descriptor against that same current registry; retain the real validator.
+    load_module(
+        "backend.app.tasks.formal_compute_runtime",
+        "backend/app/tasks/formal_compute_runtime.py",
+    )
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
     return repo_mod, task_mod
 
 

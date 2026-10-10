@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from functools import partial
 from pathlib import Path
 from uuid import uuid4
 
@@ -20,6 +21,15 @@ from scripts.capture_average_balance_monthly_golden_candidate import (
     capture_candidate,
     main,
 )
+
+
+@pytest.fixture(autouse=True)
+def _owned_capture_fixture_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        capture_module,
+        "TemporaryDirectory",
+        partial(capture_module.TemporaryDirectory, dir=tmp_path),
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -96,11 +106,18 @@ def test_capture_accepts_old_golden_fixture_when_migration_fields_are_added(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    old_response = json.loads(CURRENT_RESPONSE_PATH.read_text(encoding="utf-8"))
+    current_before = CURRENT_RESPONSE_PATH.read_bytes()
+    old_response = json.loads(current_before)
     old_response.pop("calibration", None)
     old_response["result_meta"].pop("trace_id", None)
-    old_path = tmp_path / "old-response.json"
+    project_root = tmp_path / "project"
+    golden_root = project_root / "tests" / "golden_samples"
+    old_path = golden_root / capture_module.SAMPLE_ID / "response.json"
+    old_path.parent.mkdir(parents=True)
     old_path.write_text(json.dumps(old_response), encoding="utf-8")
+    old_before = old_path.read_bytes()
+    monkeypatch.setattr(capture_module, "ROOT", project_root)
+    monkeypatch.setattr(capture_module, "AUTHORITATIVE_GOLDEN_ROOT", golden_root)
     monkeypatch.setattr(capture_module, "CURRENT_RESPONSE_PATH", old_path)
 
     output_dir = tmp_path / "candidate-from-old-golden"
@@ -109,6 +126,8 @@ def test_capture_accepts_old_golden_fixture_when_migration_fields_are_added(
     diff = json.loads((output_dir / "diff.json").read_text(encoding="utf-8"))
     assert "calibration" in diff["added_paths"]
     assert "result_meta.trace_id" in diff["added_paths"]
+    assert old_path.read_bytes() == old_before
+    assert CURRENT_RESPONSE_PATH.read_bytes() == current_before
 
 
 def test_capture_rejects_authoritative_golden_tree() -> None:

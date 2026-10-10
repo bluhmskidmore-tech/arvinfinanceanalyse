@@ -7,6 +7,8 @@ import pytest
 
 from tests.helpers import ROOT, load_module
 
+# Configuration and mocked lifecycle tests do not require installed PostgreSQL binaries.
+
 EXPECTED_DEV_USER_SCOPE_GRANTS = {
     ("*", None, "choice_news.data", "read"),
     ("anonymous", "viewer", "accounting_asset_movement", "read"),
@@ -38,7 +40,7 @@ def test_dev_postgres_cluster_builds_expected_local_layout():
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    config = module.build_cluster_config(ROOT, pg_bin_dir=ROOT / "pgbin")
 
     assert config.repo_root == ROOT
     assert config.cluster_root == ROOT / "tmp-governance" / "pgdev"
@@ -64,7 +66,23 @@ def test_dev_postgres_cluster_seeds_home_page_read_scopes():
     assert seeded_scopes == EXPECTED_DEV_USER_SCOPE_GRANTS
 
 
-def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
+@pytest.fixture
+def default_storage_environment(monkeypatch):
+    """Default-path cases own their configuration instead of inheriting runner paths."""
+    for key in (
+        "MOSS_DUCKDB_PATH",
+        "MOSS_GOVERNANCE_PATH",
+        "MOSS_DATA_INPUT_ROOT",
+        "MOSS_LOCAL_ARCHIVE_PATH",
+        "MOSS_FINANCIAL_PUBLICATION_ROOT",
+        "MOSS_BALANCE_ANALYSIS_PUBLICATION_ROOT",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(
+    tmp_path, default_storage_environment,
+):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
@@ -77,7 +95,7 @@ def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
         conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
         conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-02-28')")
 
-    config = module.build_cluster_config(repo_root)
+    config = module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin")
     env = module.build_env_mapping(config)
 
     assert env["MOSS_POSTGRES_DSN"] == "postgresql://moss:moss@127.0.0.1:55432/moss"
@@ -90,7 +108,9 @@ def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
     assert env["MOSS_DATA_INPUT_ROOT"] == str(repo_root / "data_input")
 
 
-def test_dev_postgres_cluster_env_mapping_prefers_repo_when_runtime_also_seeded(tmp_path):
+def test_dev_postgres_cluster_env_mapping_prefers_repo_when_runtime_also_seeded(
+    tmp_path, default_storage_environment,
+):
     """Regression: avoid stale runtime-clean/moss.duckdb shadowing a fuller data/moss.duckdb."""
     module = load_module(
         "scripts.dev_postgres_cluster",
@@ -111,7 +131,7 @@ def test_dev_postgres_cluster_env_mapping_prefers_repo_when_runtime_also_seeded(
         conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
         conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-01-02')")
 
-    config = module.build_cluster_config(repo_root)
+    config = module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin")
     env = module.build_env_mapping(config)
 
     assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
@@ -148,7 +168,7 @@ def test_dev_postgres_cluster_preserves_explicit_external_storage_paths(tmp_path
             encoding="utf-8",
         )
 
-    env = module.build_env_mapping(module.build_cluster_config(repo_root))
+    env = module.build_env_mapping(module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin"))
 
     assert {key: env.get(key) for key in configured} == configured
     assert not external.exists(), "print-env must not create or initialize the selected storage"
@@ -165,11 +185,11 @@ def test_dev_postgres_cluster_explicit_path_precedence_and_repo_relative_resolut
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", "process-inputs")
     monkeypatch.chdir(tmp_path)
 
-    env = module.build_env_mapping(module.build_cluster_config(repo_root))
+    env = module.build_env_mapping(module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin"))
     assert env["MOSS_DATA_INPUT_ROOT"] == str((repo_root / "process-inputs").resolve())
 
     monkeypatch.delenv("MOSS_DATA_INPUT_ROOT")
-    env = module.build_env_mapping(module.build_cluster_config(repo_root))
+    env = module.build_env_mapping(module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin"))
     assert env["MOSS_DATA_INPUT_ROOT"] == str((repo_root / "root-inputs").resolve())
 
 
@@ -304,7 +324,7 @@ def test_prepare_runtime_clean_paths_seeds_formal_governance_with_runtime_duckdb
 
 
 def test_dev_postgres_cluster_env_mapping_falls_back_to_repo_data_root_when_runtime_duckdb_is_empty(
-    tmp_path,
+    tmp_path, default_storage_environment,
 ):
     module = load_module(
         "scripts.dev_postgres_cluster",
@@ -346,7 +366,7 @@ def test_dev_postgres_cluster_env_mapping_falls_back_to_repo_data_root_when_runt
 
 
 def test_command_print_env_does_not_prepare_or_copy_runtime_state(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, default_storage_environment,
 ):
     module = load_module(
         "scripts.dev_postgres_cluster",
@@ -403,7 +423,7 @@ def test_reset_schema_refuses_non_dev_endpoint():
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    config = module.build_cluster_config(ROOT, pg_bin_dir=ROOT / "pgbin")
     wrong_port = replace(config, port=5432)
     with pytest.raises(RuntimeError, match="reset-schema refused"):
         module.command_reset_schema(wrong_port)
@@ -464,7 +484,7 @@ def test_wait_for_postgres_ready_retries_until_probe_succeeds(monkeypatch):
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    config = module.build_cluster_config(ROOT, pg_bin_dir=ROOT / "pgbin")
     attempts = {"count": 0}
 
     def fake_probe(_config, *, database=None):
@@ -486,7 +506,7 @@ def test_wait_for_postgres_ready_raises_after_exhausting_retries(monkeypatch):
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    config = module.build_cluster_config(ROOT, pg_bin_dir=ROOT / "pgbin")
     monkeypatch.setattr(module, "_probe_postgres_ready", lambda _config, *, database=None: False)
     monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
 
@@ -500,7 +520,7 @@ def test_wait_for_postgres_ready_can_target_application_database(monkeypatch):
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    config = module.build_cluster_config(ROOT, pg_bin_dir=ROOT / "pgbin")
     seen: list[str | None] = []
 
     def fake_probe(_config, *, database=None):

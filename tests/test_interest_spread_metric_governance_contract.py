@@ -86,6 +86,7 @@ PRODUCT_CATEGORY_PAGE = (
     / "pages"
     / "ProductCategoryPnlPage.tsx"
 )
+PRODUCT_CATEGORY_TREND_CHARTS = PRODUCT_CATEGORY_PAGE.with_name("useProductCategoryTrendCharts.ts")
 
 SERIES_NAME_RE = re.compile(r'name:\s*"([^"]+)"')
 
@@ -379,12 +380,12 @@ def test_annualization_and_days_for_view_caliber_are_documented() -> None:
 
 
 def _chart_series_names(option_symbol: str) -> list[str]:
-    """Series names declared inside one `useMemo` chart-option block on the product-category page."""
-    source = PRODUCT_CATEGORY_PAGE.read_text(encoding="utf-8")
+    """Series names inside one `useMemo` option in the page's extracted chart hook."""
+    source = PRODUCT_CATEGORY_TREND_CHARTS.read_text(encoding="utf-8")
     anchor = f"\n  const {option_symbol} = useMemo("
     start = source.find(anchor)
     assert start != -1, (
-        f"{option_symbol} chart-option block not found in {PRODUCT_CATEGORY_PAGE.name}. If the chart "
+        f"{option_symbol} chart-option block not found in {PRODUCT_CATEGORY_TREND_CHARTS.name}. If the chart "
         "was renamed or restructured, update this guard rather than deleting it."
     )
     next_declaration = source.find("\n  const ", start + len(anchor))
@@ -400,8 +401,22 @@ def test_two_spread_charts_cannot_share_asset_or_spread_series_names() -> None:
     page and those frozen literals and happens to land on the same name for both charts. This guard
     encodes the invariant instead of the wording.
     """
-    with_tpl = _chart_series_names("interestSpreadOption")
-    interest_earning = _chart_series_names("interestEarningSpreadOption")
+    page_source = PRODUCT_CATEGORY_PAGE.read_text(encoding="utf-8")
+    assert 'from "./useProductCategoryTrendCharts"' in page_source
+    assert "const trendCharts = useProductCategoryTrendCharts(" in page_source
+    assert "charts={trendCharts}" in page_source
+    chart_source = PRODUCT_CATEGORY_TREND_CHARTS.read_text(encoding="utf-8")
+    assert "interestSpread: interestSpreadOption" in chart_source
+    assert "interestEarningSpread: interestEarningSpreadOption" in chart_source
+    _assert_spread_series_names_distinct(
+        _chart_series_names("interestSpreadOption"),
+        _chart_series_names("interestEarningSpreadOption"),
+    )
+
+
+def _assert_spread_series_names_distinct(
+    with_tpl: list[str], interest_earning: list[str]
+) -> None:
 
     assert len(with_tpl) == 3, f"expected 3 series on the with-TPL spread chart, got {with_tpl}"
     assert len(interest_earning) == 3, (
@@ -446,3 +461,13 @@ def test_two_spread_charts_cannot_share_asset_or_spread_series_names() -> None:
         "The interest-earning chart excludes TPL, so its series names must not claim otherwise. "
         f"Got {interest_earning}."
     )
+
+
+@pytest.mark.parametrize("reused_index", [0, 2])
+def test_spread_series_guard_rejects_shared_asset_or_spread_names(reused_index: int) -> None:
+    with_tpl = ["asset yield TPL", "liability yield", "spread TPL"]
+    interest_earning = ["interest-earning asset yield", "liability yield", "interest-earning spread"]
+    interest_earning[reused_index] = with_tpl[reused_index]
+
+    with pytest.raises(AssertionError, match="share the same"):
+        _assert_spread_series_names_distinct(with_tpl, interest_earning)

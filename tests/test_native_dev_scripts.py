@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from tests.readiness_input_snapshot import build_readiness_input_snapshot_env
+from tests.powershell_runtime import powershell_executable
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,14 +45,14 @@ def run_powershell_script_result(
     *args: str,
     env_overrides: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    env = None
+    env = os.environ.copy()
+    env.setdefault("MOSS_PYTHON", sys.executable)
     if env_overrides:
-        env = os.environ.copy()
         env.update(env_overrides)
 
     return subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -240,6 +242,7 @@ def test_codex_dev_flow_defaults_to_planning_the_system_development_loop():
     assert "Development flow plan complete. Pass -Run with -Mode verify/readiness/approval/all to execute." in output
 
 
+@pytest.mark.windows_native  # The development adapter launches Windows PowerShell children.
 def test_codex_dev_flow_can_run_preflight_readiness_only(readiness_env_overrides):
     output = run_powershell_script(
         "codex-dev-flow.ps1",
@@ -299,6 +302,7 @@ def test_codex_verify_home_feedback_rejects_other_pages():
     assert "HomeFeedback requires -PageSlug dashboard-home" in completed.stderr
 
 
+@pytest.mark.windows_native  # Executes the fake npm.cmd runner.
 def test_codex_verify_home_feedback_propagates_test_failure(tmp_path):
     # A fake runner proves the wrapper cannot turn a failing test command green.
     (tmp_path / "npm.cmd").write_text("@exit /b 9\n", encoding="ascii")
@@ -389,6 +393,7 @@ def test_codex_verify_frontend_feedback_rejects_ambiguous_scope(args, message):
     assert message in completed.stderr
 
 
+@pytest.mark.windows_native  # Executes fake npm.cmd and node.cmd runners.
 def test_codex_verify_frontend_feedback_runs_selected_checks_once_and_reports_results(tmp_path):
     (tmp_path / "npm.cmd").write_text("@echo npm-called %*\n@exit /b 0\n", encoding="ascii")
     (tmp_path / "node.cmd").write_text("@echo node-called %*\n@exit /b 0\n", encoding="ascii")
@@ -409,6 +414,7 @@ def test_codex_verify_frontend_feedback_runs_selected_checks_once_and_reports_re
 
 
 @pytest.mark.parametrize("runner_exit_code", [0, 9])
+@pytest.mark.windows_native  # cmd.exe argument forwarding is the contract under test.
 def test_codex_verify_frontend_feedback_passes_pattern_as_one_argument_and_keeps_failure(
     tmp_path, runner_exit_code,
 ):
@@ -452,6 +458,7 @@ def test_codex_verify_frontend_feedback_passes_pattern_as_one_argument_and_keeps
         assert "checks passed" not in completed.stdout
 
 
+@pytest.mark.windows_native  # Executes the fake node.cmd runner.
 def test_codex_verify_frontend_feedback_propagates_lint_failure(tmp_path):
     (tmp_path / "node.cmd").write_text("@exit /b 7\n", encoding="ascii")
     completed = run_powershell_script_result(
