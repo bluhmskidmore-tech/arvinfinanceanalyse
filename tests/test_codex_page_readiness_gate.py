@@ -53,6 +53,7 @@ def readiness_input_snapshot_env(tmp_path_factory):
 
 def _page_readiness_powershell_env() -> dict[str, str]:
     env = os.environ.copy()
+    env["MOSS_PYTHON"] = sys.executable
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
     return env
 

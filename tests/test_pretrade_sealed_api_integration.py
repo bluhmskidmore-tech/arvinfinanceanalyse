@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 from datetime import date, timedelta
+from importlib import import_module
 from pathlib import Path
 
 import duckdb
@@ -27,9 +28,6 @@ from backend.app.repositories.system_read_publication_repo import (
     system_read_scope,
 )
 from backend.app.repositories.user_scope_repo import UserScopeRepository
-from backend.app.services import (
-    livermore_signal_confluence_service as confluence_service,
-)
 from backend.app.services import livermore_candidate_history_service as history_service
 from backend.app.tasks.system_read_publication import (
     publish_qualified_system_read_bootstrap,
@@ -284,6 +282,11 @@ def _configure_actual_external_inputs(
 ) -> None:
     monkeypatch.setenv("MOSS_CHOICE_STOCK_CATALOG_FILE", str(catalog_path))
     get_settings.cache_clear()
+    # Other tests can reload this service after collection; patch the same
+    # current module that the actual producer and external-input capture import.
+    confluence_service = import_module(
+        "backend.app.services.livermore_signal_confluence_service"
+    )
     monkeypatch.setattr(
         confluence_service,
         "get_macro_environment_context",

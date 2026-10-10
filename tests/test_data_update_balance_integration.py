@@ -135,7 +135,10 @@ def test_balance_daily_request_materializes_same_date_and_serves_amounts(
         "Idempotency-Key": "synthetic-daily-20251231",
     }
     try:
-        client = TestClient(app)
+        # Exercise the real development trust boundary with loopback peer and server.
+        client = TestClient(
+            app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 12345)
+        )
         before_dates = client.get("/ui/balance-analysis/dates", headers=headers)
         # PAGE-BALANCE-001 fails closed until formal build lineage is present.
         assert before_dates.status_code == 503, before_dates.text

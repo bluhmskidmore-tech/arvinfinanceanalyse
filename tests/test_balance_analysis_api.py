@@ -79,6 +79,12 @@ def _clear_settings_caches() -> None:
 
 
 def _configure_and_materialize(tmp_path, monkeypatch, shared_seed=None):
+    # Registry contract suites can replace the registry while its runtime stays cached.
+    # Reload the real runtime before the task so both use the current registry.
+    load_module(
+        "backend.app.tasks.formal_compute_runtime",
+        "backend/app/tasks/formal_compute_runtime.py",
+    )
     if shared_seed is not None:
         duckdb_path = shared_seed.duckdb_path
         governance_dir = shared_seed.governance_dir

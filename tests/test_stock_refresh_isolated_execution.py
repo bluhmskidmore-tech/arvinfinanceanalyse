@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import _duckdb
+import _pytest_duckdb_guard as pytest_duckdb_guard
 import duckdb
 import pandas as pd
 import pytest
@@ -262,17 +263,13 @@ def _owned_storage_boundary(
 ) -> Iterator[tuple[list[tuple[Path, bool]], list[str]]]:
     root = _canonical(owned_root)
     database = _canonical(allowed_database)
-    technical_receipt = root.parent / "pytest-duckdb-guard-attempts.jsonl"
+    technical_receipt = root / "pytest-duckdb-guard-attempts.jsonl"
     database_opens: list[tuple[Path, bool]] = []
     boundary_denials: list[str] = []
 
     def require_owned(path: os.PathLike[str] | str) -> Path:
         resolved = _canonical(path)
-        if (
-            not resolved.is_relative_to(root)
-            and resolved != technical_receipt
-            and resolved != technical_receipt.parent
-        ):
+        if not resolved.is_relative_to(root):
             boundary_denials.append("foreign_write")
             raise _WriteBoundaryViolation("write target is outside the test-owned root")
         return resolved
@@ -350,6 +347,10 @@ def _owned_storage_boundary(
         return original_native_connect(str(resolved), *args, **kwargs)
 
     with monkeypatch.context() as boundary:
+        # Keep audit persistence inside the same boundary without changing admission.
+        # Restoring the global cursor leaves these attempts pending in its receipt.
+        boundary.setattr(pytest_duckdb_guard._GUARD, "_receipt_path", technical_receipt)
+        boundary.setattr(pytest_duckdb_guard._GUARD, "_persisted_attempt_count", 0)
         boundary.setattr(builtins, "open", guarded_builtin_open)
         boundary.setattr(Path, "open", guarded_path_open)
         boundary.setattr(Path, "mkdir", guarded_mkdir)
@@ -359,6 +360,117 @@ def _owned_storage_boundary(
         boundary.setattr(duckdb, "connect", guarded_connect)
         boundary.setattr(_duckdb, "connect", guarded_native_connect)
         yield database_opens, boundary_denials
+
+
+@pytest.mark.parametrize(
+    "synthetic_failure",
+    [False, True],
+    ids=["normal-exit", "synthetic-exception-exit"],
+)
+def test_owned_storage_boundary_scopes_guard_receipt_and_restores_global_audit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_failure: bool,
+) -> None:
+    from contextlib import nullcontext
+
+    class _SyntheticBoundaryExit(Exception):
+        pass
+
+    owned_root = tmp_path / "owned"
+    owned_root.mkdir()
+    database = owned_root / "isolated.duckdb"
+    outer_receipt = tmp_path / "outer" / "pytest-duckdb-guard-attempts.jsonl"
+    outer_receipt.parent.mkdir()
+    guard = pytest_duckdb_guard._GUARD
+    allowed_roots = tuple(guard.allowed_roots)
+    protected_paths = guard.protected_paths
+    original_receipt = guard._receipt_path
+    original_cursor = guard._persisted_attempt_count
+    original_write_hooks = (
+        builtins.open,
+        Path.open,
+        Path.mkdir,
+        os.open,
+        os.replace,
+        os.rename,
+        duckdb.connect,
+        _duckdb.connect,
+    )
+
+    with monkeypatch.context() as receipt_config:
+        receipt_config.setattr(guard, "_receipt_path", outer_receipt)
+        receipt_config.setattr(guard, "_persisted_attempt_count", 0)
+        with duckdb.connect(":memory:") as connection:
+            assert connection.execute("select 1").fetchone() == (1,)
+        initial_records = list(pytest_duckdb_guard.get_pytest_duckdb_guard_attempts())
+        initial_cursor = guard._persisted_attempt_count
+        assert initial_cursor == len(initial_records) > 0
+        assert initial_records[-1]["canonical_path"] == ":memory:"
+        assert initial_records[-1]["decision"] == "allow"
+        initial_receipt_bytes = outer_receipt.read_bytes()
+        assert [
+            json.loads(line) for line in initial_receipt_bytes.decode("utf-8").splitlines()
+        ] == initial_records
+
+        expected_exit = (
+            pytest.raises(_SyntheticBoundaryExit, match="synthetic owned-storage boundary exit")
+            if synthetic_failure
+            else nullcontext()
+        )
+        with expected_exit:
+            with _owned_storage_boundary(
+                monkeypatch,
+                owned_root=owned_root,
+                allowed_database=database,
+            ) as (database_opens, boundary_denials):
+                with duckdb.connect(os.fspath(database), read_only=False) as connection:
+                    assert connection.execute("select 1").fetchone() == (1,)
+                local_receipt = owned_root / "pytest-duckdb-guard-attempts.jsonl"
+                local_records = [
+                    json.loads(line)
+                    for line in local_receipt.read_text(encoding="utf-8").splitlines()
+                ]
+                assert local_records == list(pytest_duckdb_guard.get_pytest_duckdb_guard_attempts())
+                assert len(local_records) == initial_cursor + 1
+                assert local_records[-1]["canonical_path"] == os.fspath(_canonical(database))
+                assert local_records[-1]["decision"] == "allow"
+                if synthetic_failure:
+                    raise _SyntheticBoundaryExit("synthetic owned-storage boundary exit")
+
+        assert guard._receipt_path == outer_receipt
+        assert guard._persisted_attempt_count == initial_cursor
+        assert tuple(guard.allowed_roots) == allowed_roots
+        assert guard.protected_paths == protected_paths
+        assert (
+            builtins.open,
+            Path.open,
+            Path.mkdir,
+            os.open,
+            os.replace,
+            os.rename,
+            duckdb.connect,
+            _duckdb.connect,
+        ) == original_write_hooks
+        assert database_opens == [(_canonical(database), False)]
+        assert boundary_denials == []
+        assert outer_receipt.read_bytes() == initial_receipt_bytes
+        assert pytest_duckdb_guard.get_pytest_duckdb_guard_receipt_path() == outer_receipt
+        global_records = [
+            json.loads(line)
+            for line in outer_receipt.read_text(encoding="utf-8").splitlines()
+        ]
+        assert global_records == list(pytest_duckdb_guard.get_pytest_duckdb_guard_attempts())
+        assert global_records == local_records
+        assert global_records[:initial_cursor] == initial_records
+        assert guard._persisted_attempt_count == len(global_records)
+        appended_receipt_bytes = outer_receipt.read_bytes()
+        assert appended_receipt_bytes.startswith(initial_receipt_bytes)
+        assert pytest_duckdb_guard.get_pytest_duckdb_guard_receipt_path() == outer_receipt
+        assert outer_receipt.read_bytes() == appended_receipt_bytes
+
+    assert guard._receipt_path == original_receipt
+    assert guard._persisted_attempt_count == original_cursor
 
 
 def _install_supplier_and_downstream_sentinels(

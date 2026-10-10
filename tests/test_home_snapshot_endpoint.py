@@ -94,9 +94,10 @@ def test_home_snapshot_api_does_not_expose_headline_failure_payload(monkeypatch,
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from backend.app.api.routes import executive as route
-    from backend.app.services.product_category_pnl_service import ProductCategoryReadModelNotFoundError
 
     es = _executive_service()
+    # Provider reloads may replace the class; raise the type bound by this consumer.
+    ProductCategoryReadModelNotFoundError = es.ProductCategoryReadModelNotFoundError
     report_date = "2026-04-08"
     marker = "synthetic-private-headline-source"
     monkeypatch.setattr(es, "get_settings", lambda: SimpleNamespace(

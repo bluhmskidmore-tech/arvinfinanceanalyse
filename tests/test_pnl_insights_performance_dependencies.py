@@ -186,13 +186,15 @@ def test_current_materialize_completes_when_optional_dependencies_fail(
             "records": 0,
         }
     ]
-    monkeypatch.setattr(
-        pnl_materialize,
+    # Reloads keep the Actor identity while rebinding fn to a new module's globals.
+    actor_globals = pnl_materialize.materialize_pnl_facts.fn.__globals__
+    monkeypatch.setitem(
+        actor_globals,
         "precompute_pnl_by_business_payloads",
         lambda **kwargs: {"records": 1, "as_of_date": kwargs["as_of_date"]},
     )
-    monkeypatch.setattr(
-        pnl_materialize,
+    monkeypatch.setitem(
+        actor_globals,
         "_materialize_pnl_by_business_insight_dependencies",
         lambda **_kwargs: dependency_result,
     )
