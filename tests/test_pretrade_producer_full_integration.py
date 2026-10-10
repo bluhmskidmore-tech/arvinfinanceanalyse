@@ -18,9 +18,6 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.services import livermore_candidate_history_service as history_service
-from backend.app.services import (
-    livermore_signal_confluence_service as confluence_service,
-)
 from backend.app.services import market_data_livermore_service as livermore_service
 from backend.app.services import stock_analysis_workbench_service as workbench_service
 from backend.app.services.pretrade_qualification import qualify_pretrade_read_view
@@ -29,6 +26,7 @@ from scripts.run_livermore_daily_pretrade_refresh import (
     run_livermore_daily_pretrade_refresh,
 )
 from tests.test_market_data_livermore_api import (
+    _live_confluence_service,
     _seed_choice_macro_history,
     _seed_livermore_replay_window,
 )
@@ -452,6 +450,9 @@ def test_actual_pretrade_producer_closes_with_borrowed_connection(
     ready_candidate: bool,
     expected_status: str,
 ) -> None:
+    # Patch the current service used by the producer and external input capture.
+    confluence_service = _live_confluence_service()
+
     db_path = tmp_path / "actual-pretrade.duckdb"
     output_dir = tmp_path / "pretrade-output"
     catalog_path = tmp_path / "synthetic-choice-catalog.json"
