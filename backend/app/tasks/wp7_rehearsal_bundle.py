@@ -9,7 +9,7 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO, cast
 
 import duckdb
 from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
@@ -81,7 +81,7 @@ def _bound_directories(
             import ctypes
             from ctypes import wintypes
 
-            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32 = cast(Any, ctypes).WinDLL("kernel32", use_last_error=True)
             kernel32.CreateFileW.argtypes = [
                 wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
                 wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
@@ -102,7 +102,7 @@ def _bound_directories(
                 # GENERIC_READ, SHARE_READ | SHARE_WRITE (never SHARE_DELETE),
                 # OPEN_EXISTING, BACKUP_SEMANTICS | OPEN_REPARSE_POINT.
                 if handle == ctypes.c_void_p(-1).value:
-                    raise SyntheticBundleError("synthetic_bundle_directory_binding_unavailable") from ctypes.WinError()
+                    raise SyntheticBundleError("synthetic_bundle_directory_binding_unavailable") from cast(Any, ctypes).WinError()
                 stack.callback(kernel32.CloseHandle, handle)
                 _assert_no_links(directory)
             if _parent_identity(path, workspace) != expected_identity:
@@ -112,7 +112,7 @@ def _bound_directories(
 
         if not hasattr(os, "O_DIRECTORY") or not hasattr(os, "O_NOFOLLOW"):
             raise SyntheticBundleError("synthetic_bundle_directory_binding_unavailable")
-        flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW")
+        flags = os.O_RDONLY | os.O_DIRECTORY | cast(Any, os).O_NOFOLLOW
         workspace_fd = os.open(workspace, flags)
         stack.callback(os.close, workspace_fd)
         bundles_fd = os.open("bundles", flags, dir_fd=workspace_fd)
@@ -147,7 +147,7 @@ def _open_install_target(path: Path, *, directory_fd: int | None) -> BinaryIO:
         # On Windows every parent remains pinned without FILE_SHARE_DELETE.
         return path.open("xb")
     descriptor = os.open(
-        path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW"),
+        path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | cast(Any, os).O_NOFOLLOW,
         0o600, dir_fd=directory_fd,
     )
     return os.fdopen(descriptor, "wb")

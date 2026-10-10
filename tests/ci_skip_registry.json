@@ -1137,7 +1137,7 @@
     {
       "file": "tests/test_wp7_release_rehearsal.py",
       "expected_counts": {
-        "skip_call": 1
+        "skip_call": 2
       },
       "occurrences": [
         {
@@ -1151,6 +1151,18 @@
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "普通路径、相对路径、既有目录及 artifact relocation 另有不依赖符号链接权限的独立测试"
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "Windows 原生目录共享契约要求 CreateFileW 句柄不授予 FILE_SHARE_DELETE，以证明安装合成数据库时父目录无法被替换；非 Windows 平台跳过该专属探针",
+          "depends_on": [
+            "Windows 原生目录句柄与文件共享语义（os.name 为 nt）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "使用 tmp_path 合成数据，跨平台模拟不能替代 Win32 共享删除语义。backend-full-pytest 的 Windows 分片以 windows_native 标记执行（schedule、main push 或带 full-backend-regression 标签的 PR），并拒绝原生用例跳过；Linux 通用安装竞态用例覆盖 POSIX 分支，非 Windows 跳过不计为通过。"
         }
       ]
     },

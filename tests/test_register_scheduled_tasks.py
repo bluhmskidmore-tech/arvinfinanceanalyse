@@ -238,6 +238,10 @@ def test_registrar_preview_and_unregister_do_not_resolve_runtime(tmp_path: Path,
     shutil.copyfile(ROOT / "scripts/scheduling" / script_name, registrar)
     for name in ("run_daily_data_refresh_host.ps1", "market_refresh_host_common.ps1", "monthly_walk_forward.ps1"):
         (scheduling / name).write_text("# synthetic path; never executed\n", encoding="utf-8")
+    if mode == "WhatIf" and script_name == "install_data_update_queue.ps1":
+        (scheduling / "drain_data_updates.ps1").write_text(
+            "# synthetic path; never executed\n", encoding="utf-8"
+        )
     marker = tmp_path / "resolver-called.txt"
     (scripts / "dev-python.ps1").write_text(
         "function Resolve-DevPython {\n"
