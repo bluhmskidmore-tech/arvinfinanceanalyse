@@ -258,7 +258,13 @@ def test_zero_scenario_and_worst_period_quality_survive_history_json(monkeypatch
         meta["rule_version"] = "rv_" + report_date
         return {"result": None, "result_meta": meta}
 
-    monkeypatch.setattr(product, "product_category_pnl_envelope", detail)
+    # Earlier tests can replace the canonical service module after collection.
+    # Stub reads in the globals used by the route-bound history function.
+    monkeypatch.setitem(
+        route.product_category_history_envelope.__globals__,
+        "product_category_pnl_envelope",
+        detail,
+    )
     app = FastAPI()
     app.dependency_overrides[route.get_auth_context] = lambda: AuthContext(user_id="synthetic-history")
     app.include_router(route.router)

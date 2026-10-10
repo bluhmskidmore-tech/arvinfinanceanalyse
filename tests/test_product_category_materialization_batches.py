@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -16,6 +17,11 @@ from backend.app.tasks import product_category_pnl as task
 
 @pytest.fixture
 def materialization(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # Other suites evict this task after collection. Keep patched execution and
+    # the implementation fingerprint bound to the same module.
+    monkeypatch.setitem(sys.modules, task.__name__, task)
+    parent_name, _, child_name = task.__name__.rpartition(".")
+    monkeypatch.setitem(vars(sys.modules[parent_name]), child_name, task)
     database = tmp_path / "isolated.duckdb"
     governance = tmp_path / "governance"
     monkeypatch.setenv("MOSS_ENVIRONMENT", "development")

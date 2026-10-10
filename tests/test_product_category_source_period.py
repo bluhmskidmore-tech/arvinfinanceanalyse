@@ -19,7 +19,6 @@ from backend.app.services.product_category_source_service import (
     build_ledger_only_facts,
     discover_source_pairs,
 )
-from backend.app.tasks.product_category_pnl import _materialize_product_category_pnl
 
 
 def _write_ledger(
@@ -190,6 +189,9 @@ def test_ledger_only_cache_tracks_history_but_not_average_files(tmp_path: Path, 
 
 
 def test_invalid_source_period_records_failed_run_and_preserves_read_model(tmp_path: Path):
+    # Golden HTTP replays may evict this task after test collection.
+    from backend.app.tasks.product_category_pnl import _materialize_product_category_pnl
+
     source = tmp_path / "source"
     source.mkdir()
     ledger = _write_ledger(source, 1)
