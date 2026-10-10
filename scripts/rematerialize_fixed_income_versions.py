@@ -135,21 +135,23 @@ class DuckDBUnavailableError(RuntimeError):
 
 
 def _fact_report_dates(duckdb_path: str) -> list[str]:
-    import duckdb
+    from contextlib import ExitStack
 
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error as exc:
-        raise DuckDBUnavailableError(
-            f"cannot open {duckdb_path} read-only ({exc}). Stop the API/worker/keepalive processes "
-            "that hold the file, or pass --dates explicitly."
-        ) from exc
-    try:
+    import duckdb
+    from backend.app.repositories.duckdb_read_context import active_read_scope
+    from backend.app.repositories.duckdb_repo import read_only_connection
+
+    with active_read_scope(), ExitStack() as stack:
+        try:
+            conn = stack.enter_context(read_only_connection(duckdb_path))
+        except duckdb.Error as exc:
+            raise DuckDBUnavailableError(
+                f"cannot open {duckdb_path} read-only ({exc}). Stop the API/worker/keepalive processes "
+                "that hold the file, or pass --dates explicitly."
+            ) from exc
         rows = conn.execute(
             "select distinct cast(report_date as varchar) from fact_formal_bond_analytics_daily order by 1"
         ).fetchall()
-    finally:
-        conn.close()
     return [str(row[0])[:10] for row in rows if row and row[0]]
 
 

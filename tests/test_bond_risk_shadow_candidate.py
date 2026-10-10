@@ -2510,3 +2510,89 @@ def test_jsonl_reader_enforces_resource_limits(
 
     with pytest.raises(module.ShadowCandidateError, match=expected_code):
         module._load_jsonl_records(path, field_name="governance_stream")
+
+
+def test_database_fingerprint_reads_the_exact_file_read_only_and_restores_selection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import date
+
+    from backend.app.repositories.duckdb_read_context import (
+        DuckDBReadSelection,
+        current_duckdb_read_selection,
+        duckdb_read_scope,
+    )
+
+    module = _load_module()
+    source = tmp_path / "source.duckdb"
+    selected = tmp_path / "selected.duckdb"
+    _seed_source_db(source)
+    with duckdb.connect(str(selected)) as conn:
+        conn.execute("create table decoy (value integer)")
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    before = source.read_bytes()
+    original_connect = duckdb.connect
+    opens: list[str] = []
+
+    def connect(database: str, *, read_only: bool):
+        assert read_only is True
+        opens.append(database)
+        return original_connect(database, read_only=read_only)
+
+    monkeypatch.setattr(duckdb, "connect", connect)
+    selection = DuckDBReadSelection(str(source), str(selected), "fingerprint-selected")
+    with duckdb_read_scope(selection, required_online=True):
+        snapshot = module._snapshot_database(
+            source, temp_root=spool, side="source", report_date=date(2026, 5, 31),
+        )
+        assert current_duckdb_read_selection() is selection
+    assert "main.dim_static_control" in snapshot["tables"]
+    assert "main.decoy" not in snapshot["tables"]
+    assert snapshot["fingerprint"]["sha256"] == _sha256(source)
+    assert opens == [str(source)]
+    assert source.read_bytes() == before
+
+
+def test_candidate_lineage_reads_the_exact_candidate_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.app.repositories.duckdb_read_context import DuckDBReadSelection, duckdb_read_scope
+
+    module = _load_module()
+    candidate = tmp_path / "candidate.duckdb"
+    selected = tmp_path / "selected.duckdb"
+    _seed_source_db(candidate)
+    _seed_source_db(selected)
+    bond_result = {"source_version": "sv_bond", "rule_version": "rv_bond", "cache_version": "cv_bond"}
+    risk_result = {
+        "source_version": module.compose_risk_tensor_source_version(
+            upstream_source_version="sv_bond", liability_source_version="",
+        ),
+        "rule_version": "rv_risk", "cache_version": "cv_risk",
+    }
+    with duckdb.connect(str(candidate)) as conn:
+        conn.execute(
+            """update fact_formal_risk_tensor_daily
+               set source_version = ?, rule_version = ?, cache_version = ?,
+                   upstream_source_version = ?, upstream_rule_version = ?, upstream_cache_version = ?
+               where report_date = '2026-05-31'""",
+            [*risk_result.values(), *bond_result.values()],
+        )
+    before = candidate.read_bytes()
+    original_connect = duckdb.connect
+    opens: list[str] = []
+
+    def connect(database: str, *, read_only: bool):
+        assert read_only is True
+        opens.append(database)
+        return original_connect(database, read_only=read_only)
+
+    monkeypatch.setattr(duckdb, "connect", connect)
+    with duckdb_read_scope(DuckDBReadSelection(str(candidate), str(selected), "candidate-selected")):
+        proof = module._validate_candidate_risk_upstream_lineage(
+            candidate, report_date="2026-05-31", bond_result=bond_result, risk_result=risk_result,
+        )
+    assert proof["upstream_source_version"] == "sv_bond"
+    assert opens == [str(candidate)]
+    assert candidate.read_bytes() == before

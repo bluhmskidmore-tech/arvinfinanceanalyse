@@ -64,6 +64,8 @@ def _position(**overrides: object) -> dict[str, object]:
         "face_value_start": 10_000_000.0,
         "coupon_rate_start": 0.03,
         "yield_to_maturity_start": 0.032,
+        # 合成券明确半年付息，健康输入不依赖资产类别猜测频率。
+        "interest_mode_start": "semi-annual",
         "asset_class_start": "AAA企业债",
         "maturity_date_start": date(2031, 6, 30),
         "accrued_interest_start": 60_000.0,
@@ -206,6 +208,40 @@ def test_healthy_curve_pair_reports_ok_and_keeps_the_four_effects_closed():
     ] == pytest.approx(totals["total_return"], abs=1e-6)
     # 曲线真的动了：利率效应不应为 0，否则本用例失去对照意义。
     assert totals["treasury_effect"] != 0.0
+
+
+@pytest.mark.parametrize("enhanced", [False, True])
+def test_missing_coupon_frequency_is_disclosed_on_an_otherwise_healthy_book(enhanced):
+    """曲线及应计齐备不代表付息条款齐备；四、六效应均须披露频率回退。"""
+    market_start = {**_FULL_CURVE_START, **_spread(credit_spread_aaa_3y=60.0)}
+    market_end = {**_FULL_CURVE_END, **_spread(credit_spread_aaa_3y=70.0)}
+    entry = campisi_enhanced if enhanced else campisi_attribution
+    explicit = entry([_position()], market_start, market_end, _START, _END)
+    missing = entry(
+        [_position(interest_mode_start=None)], market_start, market_end, _START, _END
+    )
+    if enhanced:
+        explicit_diagnostics = explicit["diagnostics"]
+        missing_diagnostics = missing["diagnostics"]
+        explicit_totals = explicit["totals"]
+        missing_totals = missing["totals"]
+        availability = missing["effect_availability"]
+    else:
+        explicit_diagnostics = explicit.diagnostics
+        missing_diagnostics = missing.diagnostics
+        explicit_totals = explicit.totals
+        missing_totals = missing.totals
+        availability = missing.effect_availability
+
+    assert explicit_diagnostics == []
+    assert missing_diagnostics == [
+        "AVAIL-01.IB: coupon_frequency_asset_class_fallback: unknown interest_mode; "
+        "legacy asset-class inference uses 2 payments/year."
+    ]
+    # 本券历史回退亦为半年付息，数值不变；新增诊断保留条款缺失事实。
+    assert missing_totals == explicit_totals
+    for effect in ("treasury_effect", "spread_effect", "accrued_interest"):
+        assert availability[effect]["status"] == EFFECT_STATUS_OK
 
 
 # ---------------------------------------------------------------------------

@@ -187,7 +187,8 @@ BOND_ANALYTICS_LOCK = LockDefinition(
     key=_BOND_ANALYTICS_VERSION.lock_key,
     ttl_seconds=_BOND_ANALYTICS_VERSION.lock_ttl_seconds,
 )
-YIELD_CURVE_CACHE_VERSION = "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1__cv_source_nodes_v2"
+YIELD_CURVE_CACHE_VERSION = "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
+YIELD_CURVE_RESPONSE_CACHE_VERSION = f"{YIELD_CURVE_CACHE_VERSION}__cv_source_nodes_v2"
 
 
 class _MaterializeBondAnalyticsFactsProxy:
@@ -1959,7 +1960,7 @@ def _get_return_decomposition(
     meta = _apply_vendor_meta_update(
         meta,
         curve_snapshots=inputs["curve_snapshots"],
-        cache_version_suffix=YIELD_CURVE_CACHE_VERSION,
+        cache_version_suffix=YIELD_CURVE_RESPONSE_CACHE_VERSION,
         curve_unavailable=inputs["curve_unavailable"],
         curve_latest_fallback=inputs["curve_latest_fallback"],
         fx_unavailable=inputs["fx_unavailable"],
@@ -2704,7 +2705,7 @@ def _build_benchmark_excess_envelope_from_inputs(
     meta = _apply_vendor_meta_update(
         meta,
         curve_snapshots=curves["curve_snapshots"],
-        cache_version_suffix=YIELD_CURVE_CACHE_VERSION,
+        cache_version_suffix=YIELD_CURVE_RESPONSE_CACHE_VERSION,
         curve_unavailable=curves["curve_unavailable"],
         curve_latest_fallback=curves["curve_latest_fallback"],
     )
@@ -3154,7 +3155,7 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
         meta = _apply_vendor_meta_update(
             meta,
             curve_snapshots=curves["curve_snapshots"],
-            cache_version_suffix=YIELD_CURVE_CACHE_VERSION,
+            cache_version_suffix=YIELD_CURVE_RESPONSE_CACHE_VERSION,
             curve_unavailable=curves["curve_unavailable"],
             curve_latest_fallback=curves["curve_latest_fallback"],
         )

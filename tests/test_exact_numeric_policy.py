@@ -34,13 +34,6 @@ def test_exact_numeric_policy_registry_loads_with_pending_baseline_and_closed_re
     assert registry["active_exceptions"] == []
     assert registry["pending_migrations"] == [
         {
-            "path": "frontend/src/utils/format.ts",
-            "page": "dashboard-home",
-            "rule": "literal_div_1e8",
-            "count": 1,
-            "reason": "The shared formatter still performs one local yuan-to-yi division for plain-number displays, so dashboard-home remains on the compatibility path until that boundary is migrated.",
-        },
-        {
             "path": "frontend/src/features/cashflow-projection/pages/cashflowProjectionPageModel.ts",
             "page": "cashflow-projection",
             "rule": "literal_div_1e8",
@@ -149,8 +142,28 @@ def test_exact_numeric_policy_digest_binds_controlled_pages_paths_and_registry_s
     }
     assert policy["policy_sha256"] == canonical_sha256(binding)
     assert policy["compat_registry_sha256"] == binding["compat_registry_sha256"]
-    assert policy["pending_migration_count"] == 14
+    assert policy["pending_migration_count"] == 13
     assert policy["active_exception_count"] == 0
+
+
+def test_shared_amount_formatter_migration_keeps_the_path_controlled_and_release_closed() -> None:
+    registry = load_exact_numeric_compat_registry()
+    shared_path = "frontend/src/utils/format.ts"
+
+    assert shared_path in registry["controlled_paths"]
+    assert not any(
+        entry["path"] == shared_path
+        for entry in [*registry["pending_migrations"], *registry["active_exceptions"]]
+    )
+    source = (DEFAULT_REGISTRY_PATH.parents[1] / shared_path).read_text(encoding="utf-8")
+    # The retired debt was number division in formatYi. The real controlled
+    # producer now delegates to Decimal scaling; registry removal alone is not proof.
+    assert "formatScaledAmount(raw, 100_000_000, 2)" in source
+    assert "formatDecimalZh(amount.div(divisor), precision, grouped)" in source
+    assert "if (typeof raw === \"number\") return Number.isFinite(raw) ? new Decimal(raw) : null;" in source
+    assert registry["pending_migrations"]
+    assert registry["release_eligible"] is False
+    assert build_exact_numeric_policy(rehearsal_only=True)["release_eligible"] is False
 
 
 def test_pending_migrations_require_release_gate_to_stay_closed() -> None:

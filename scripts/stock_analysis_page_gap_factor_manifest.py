@@ -10,9 +10,10 @@ import logging
 import os
 import re
 import sys
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -27,6 +28,12 @@ EXIT_BLOCKED = 2
 EXIT_RUNTIME_ERROR = 3
 SUCCESS_STATUS = "gaps_found"
 _SAFE_CODE_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,180}$")
+
+
+class _CreatedOutputIdentity(NamedTuple):
+    device: int
+    inode: int
+    owner_path: Path
 
 
 def run_stock_analysis_page_gap_factor_manifest_cli(
@@ -47,7 +54,7 @@ def run_stock_analysis_page_gap_factor_manifest_cli(
     page_sha256_after: str | None = None
     database_sha256_before: str | None = None
     database_sha256_after: str | None = None
-    created_output_identity: tuple[int, int] | None = None
+    created_output_identity: _CreatedOutputIdentity | None = None
 
     try:
         trusted_root = _normalize_existing_directory(
@@ -256,6 +263,18 @@ def run_stock_analysis_page_gap_factor_manifest_cli(
             database_sha256_after=database_sha256_after,
             manifest=None,
         )
+    finally:
+        if created_output_identity is not None:
+            try:
+                _remove_output_if_same_file(
+                    output_file=created_output_identity.owner_path,
+                    created_identity=created_output_identity,
+                )
+            except OSError as cleanup_error:
+                logging.getLogger(__name__).warning(
+                    "Artifact ownership cleanup failed (%s)",
+                    type(cleanup_error).__name__,
+                )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -400,7 +419,7 @@ def _assert_no_symlink_or_junction(path: Path, *, field_name: str) -> None:
 
 def _write_json_exclusive(
     *, trusted_root: Path, output_file: Path, payload: Mapping[str, Any]
-) -> tuple[int, int]:
+) -> _CreatedOutputIdentity:
     _assert_output_within_trusted_root(
         trusted_root=trusted_root, output_file=output_file
     )
@@ -414,21 +433,40 @@ def _write_json_exclusive(
         )
         + "\n"
     )
-    created_identity: tuple[int, int] | None = None
+    created_identity: _CreatedOutputIdentity | None = None
+    published = False
     try:
-        with output_file.open("x", encoding="utf-8", newline="\n") as handle:
+        # The private hard link pins this inode after close, so replacing the
+        # public path cannot make cleanup mistake a recycled inode for ours.
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="\n", delete=False,
+            dir=output_file.parent, prefix=f".{output_file.name}.owner-",
+        ) as handle:
             created_stat = os.fstat(handle.fileno())
-            created_identity = (created_stat.st_dev, created_stat.st_ino)
+            created_identity = _CreatedOutputIdentity(
+                created_stat.st_dev, created_stat.st_ino, Path(handle.name)
+            )
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
+        # link() publishes complete content atomically and never overwrites.
+        os.link(created_identity.owner_path, output_file, follow_symlinks=False)
+        published = True
         _assert_output_within_trusted_root(
             trusted_root=trusted_root, output_file=output_file
         )
     except Exception:
-        _remove_output_if_same_file(
-            output_file=output_file, created_identity=created_identity
-        )
+        if created_identity is not None:
+            try:
+                if published:
+                    _remove_output_if_same_file(
+                        output_file=output_file, created_identity=created_identity
+                    )
+            finally:
+                _remove_output_if_same_file(
+                    output_file=created_identity.owner_path,
+                    created_identity=created_identity,
+                )
         raise
     if created_identity is None:
         raise CliRuntimeError("exclusive output creation identity is unavailable")
@@ -436,17 +474,21 @@ def _write_json_exclusive(
 
 
 def _remove_output_if_same_file(
-    *, output_file: Path, created_identity: tuple[int, int] | None
+    *, output_file: Path, created_identity: _CreatedOutputIdentity | None
 ) -> bool:
     if created_identity is None:
         return False
     try:
+        owner_stat = created_identity.owner_path.stat(follow_symlinks=False)
         current_stat = output_file.stat(follow_symlinks=False)
     except (FileNotFoundError, OSError):
         return False
     if output_file.is_symlink():
         return False
-    if (current_stat.st_dev, current_stat.st_ino) != created_identity:
+    expected = (created_identity.device, created_identity.inode)
+    if (owner_stat.st_dev, owner_stat.st_ino) != expected:
+        return False
+    if (current_stat.st_dev, current_stat.st_ino) != expected:
         return False
     try:
         output_file.unlink()
@@ -459,7 +501,7 @@ def _remove_output_file_if_same(
     *,
     trusted_root: Path,
     output_file: Path,
-    created_identity: tuple[int, int],
+    created_identity: _CreatedOutputIdentity,
 ) -> bool:
     _assert_output_within_trusted_root(
         trusted_root=trusted_root, output_file=output_file

@@ -260,6 +260,7 @@ def test_cli_persists_compact_summary_for_success(
     assert result["database_unchanged"] is True
     assert result["output_file"] == str(output.resolve())
     assert json.loads(output.read_text(encoding="utf-8")) == expected_manifest
+    assert not list(trusted_root.glob(".page-gap.json.owner-*"))
     assert (
         result["summary"]["horizon_counts"]
         == expected_manifest["summary"]["horizon_counts"]
@@ -660,6 +661,52 @@ def test_cli_removes_new_output_when_duckdb_drifts_after_persistence(
     assert (trusted_root / "page-gap.json").exists() is False
 
 
+def test_exclusive_publish_preserves_output_created_by_another_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _load_module()
+    trusted_root = tmp_path / "trusted"
+    trusted_root.mkdir()
+    output = trusted_root / "page-gap.json"
+    real_link = module.os.link
+
+    def _publish_race(source: Path, target: Path, **kwargs: object) -> None:
+        target.write_text("another-process-output", encoding="utf-8")
+        real_link(source, target, **kwargs)
+
+    monkeypatch.setattr(module.os, "link", _publish_race)
+    with pytest.raises(FileExistsError):
+        module._write_json_exclusive(
+            trusted_root=trusted_root, output_file=output, payload={"valid": True}
+        )
+
+    assert output.read_text(encoding="utf-8") == "another-process-output"
+    assert not list(trusted_root.glob(".page-gap.json.owner-*"))
+
+
+def test_exclusive_write_fails_closed_when_hardlinks_are_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _load_module()
+    trusted_root = tmp_path / "trusted"
+    trusted_root.mkdir()
+    output = trusted_root / "page-gap.json"
+
+    def _unavailable(*_args: object, **_kwargs: object) -> None:
+        raise OSError("hardlinks unavailable")
+
+    monkeypatch.setattr(module.os, "link", _unavailable)
+    with pytest.raises(OSError, match="hardlinks unavailable"):
+        module._write_json_exclusive(
+            trusted_root=trusted_root, output_file=output, payload={"valid": True}
+        )
+
+    assert not output.exists()
+    assert not list(trusted_root.glob(".page-gap.json.owner-*"))
+
+
 def test_cli_removes_partial_output_when_exclusive_flush_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -730,9 +777,11 @@ def test_cli_removes_output_when_persisted_readback_does_not_match(
     assert (trusted_root / "page-gap.json").exists() is False
 
 
+@pytest.mark.parametrize("same_content", [False, True])
 def test_cli_does_not_delete_replacement_swapped_in_after_exclusive_write(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    same_content: bool,
 ) -> None:
     module = _load_module()
     db_path, trusted_root = _files(tmp_path)
@@ -750,6 +799,9 @@ def test_cli_does_not_delete_replacement_swapped_in_after_exclusive_write(
     replacement_text = "replacement-owned-by-another-process"
 
     def _swap_then_fail(path: Path) -> dict[str, Any]:
+        nonlocal replacement_text
+        if same_content:
+            replacement_text = path.read_text(encoding="utf-8")
         path.unlink()
         path.write_text(replacement_text, encoding="utf-8")
         raise RuntimeError("simulated readback race")
@@ -767,3 +819,4 @@ def test_cli_does_not_delete_replacement_swapped_in_after_exclusive_write(
     replacement = trusted_root / "page-gap.json"
     assert result["status"] == "error"
     assert replacement.read_text(encoding="utf-8") == replacement_text
+    assert not list(trusted_root.glob(".page-gap.json.owner-*"))

@@ -54,6 +54,11 @@ class FakeCurveRepo:
         return None
 
 
+class FakeChoiceMacroRepo:
+    def credit_3y_yields_on_or_before(self, _trade_date: str) -> dict[str, Any]:
+        return {}
+
+
 def _install_repos(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -69,6 +74,16 @@ def _install_repos(
     }
     monkeypatch.setattr(svc, "_bond_repo", lambda: FakeBondRepo(row_dates, rows_by_date))
     monkeypatch.setattr(svc, "_curve_repo", lambda: FakeCurveRepo(curves or _curves()))
+    # This baseline tests bond/curve decomposition. The bridge-success case
+    # below supplies its own formal bridge after installing these repositories.
+    monkeypatch.setattr(svc, "_try_fetch_formal_bridge", lambda **_kwargs: None)
+    # The spread function is imported from campisi_attribution_service; patch
+    # its defining namespace so the legacy curve fixture remains self-contained.
+    monkeypatch.setitem(
+        svc.fetch_credit_spread_market.__globals__,
+        "_choice_macro_repo",
+        lambda _duckdb_path: FakeChoiceMacroRepo(),
+    )
 
 
 def _curves(

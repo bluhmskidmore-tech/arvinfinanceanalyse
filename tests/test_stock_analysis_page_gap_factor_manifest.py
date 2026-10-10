@@ -441,6 +441,7 @@ def test_cli_exclusively_persists_valid_manifest_and_compact_result(
     persisted = json.loads(output.read_text(encoding="utf-8"))
     valid, errors = module.validate_stock_analysis_page_gap_factor_manifest(persisted)
     assert valid, errors
+    assert not list(trusted_root.glob(".factor-targets.json.owner-*"))
 
 
 def test_cli_rejects_page_manifest_outside_trusted_root_before_builder(
@@ -620,9 +621,11 @@ def test_cli_removes_new_output_when_database_drifts_after_persistence(
     assert not (trusted_root / "factor-targets.json").exists()
 
 
+@pytest.mark.parametrize("same_content", [False, True])
 def test_cli_does_not_delete_replacement_swapped_after_exclusive_write(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    same_content: bool,
 ) -> None:
     cli = _load_cli_module()
     trusted_root = tmp_path / "trusted"
@@ -632,6 +635,9 @@ def test_cli_does_not_delete_replacement_swapped_after_exclusive_write(
     replacement_text = "replacement-owned-by-another-process"
 
     def _swap_then_fail(path: Path) -> dict[str, Any]:
+        nonlocal replacement_text
+        if same_content:
+            replacement_text = path.read_text(encoding="utf-8")
         path.unlink()
         path.write_text(replacement_text, encoding="utf-8")
         raise RuntimeError("simulated readback race")
@@ -649,6 +655,53 @@ def test_cli_does_not_delete_replacement_swapped_after_exclusive_write(
     replacement = trusted_root / "factor-targets.json"
     assert result["status"] == "error"
     assert replacement.read_text(encoding="utf-8") == replacement_text
+    assert not list(trusted_root.glob(".factor-targets.json.owner-*"))
+
+
+def test_exclusive_publish_preserves_output_created_by_another_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cli = _load_cli_module()
+    trusted_root = tmp_path / "trusted"
+    trusted_root.mkdir()
+    output = trusted_root / "factor-targets.json"
+    real_link = cli.os.link
+
+    def _publish_race(source: Path, target: Path, **kwargs: object) -> None:
+        target.write_text("another-process-output", encoding="utf-8")
+        real_link(source, target, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", _publish_race)
+    with pytest.raises(FileExistsError):
+        cli._write_json_exclusive(
+            trusted_root=trusted_root, output_file=output, payload={"valid": True}
+        )
+
+    assert output.read_text(encoding="utf-8") == "another-process-output"
+    assert not list(trusted_root.glob(".factor-targets.json.owner-*"))
+
+
+def test_exclusive_write_fails_closed_when_hardlinks_are_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cli = _load_cli_module()
+    trusted_root = tmp_path / "trusted"
+    trusted_root.mkdir()
+    output = trusted_root / "factor-targets.json"
+
+    def _unavailable(*_args: object, **_kwargs: object) -> None:
+        raise OSError("hardlinks unavailable")
+
+    monkeypatch.setattr(cli.os, "link", _unavailable)
+    with pytest.raises(OSError, match="hardlinks unavailable"):
+        cli._write_json_exclusive(
+            trusted_root=trusted_root, output_file=output, payload={"valid": True}
+        )
+
+    assert not output.exists()
+    assert not list(trusted_root.glob(".factor-targets.json.owner-*"))
 
 
 def test_cli_help_has_no_write_apply_or_execute_flags(

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import builtins
 import json
+import os
 import shutil
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -54,7 +56,9 @@ def _assert_rejected_probe(probe: object) -> None:
 
 def test_rehearsal_promotes_and_rolls_back_the_complete_bundle_with_sealed_receipt(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
     rehearsal = _load_rehearsal_module()
     workspace_root = tmp_path / "wp7-rehearsal"
 
@@ -142,7 +146,9 @@ def test_rehearsal_promotes_and_rolls_back_the_complete_bundle_with_sealed_recei
 
 def test_rehearsal_rejects_production_before_creating_workspace(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
     rehearsal = _load_rehearsal_module()
     workspace_root = tmp_path / "must-not-be-created"
 
@@ -161,6 +167,7 @@ def test_rehearsal_rejects_relative_workspace_before_creating_it(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
     rehearsal = _load_rehearsal_module()
     monkeypatch.chdir(tmp_path)
     workspace_root = Path("relative-wp7-rehearsal")
@@ -178,7 +185,9 @@ def test_rehearsal_rejects_relative_workspace_before_creating_it(
 
 def test_rehearsal_rejects_an_existing_workspace(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
     rehearsal = _load_rehearsal_module()
     workspace_root = tmp_path / "already-exists"
     workspace_root.mkdir()
@@ -196,7 +205,9 @@ def test_rehearsal_rejects_an_existing_workspace(
 
 def test_receipt_verification_rejects_relocated_artifact_even_after_rehash(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
     rehearsal = _load_rehearsal_module()
     receipt = rehearsal.run_rehearsal(
         tmp_path / "wp7-rehearsal",
@@ -275,7 +286,9 @@ def test_manifest_payload_binds_exact_numeric_policy_registry_digest() -> None:
 
 def test_receipt_verification_rejects_external_symlink_alias_after_rehash(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
     rehearsal = _load_rehearsal_module()
     receipt = rehearsal.run_rehearsal(
         tmp_path / "wp7-rehearsal",
@@ -311,6 +324,7 @@ def test_verify_path_does_not_import_duckdb(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
     rehearsal = _load_rehearsal_module()
     receipt = rehearsal.run_rehearsal(
         tmp_path / "wp7-rehearsal",
@@ -334,3 +348,267 @@ def test_verify_path_does_not_import_duckdb(
         verify_only.verify_rehearsal_receipt(receipt["receipt_path"])["status"]
         == "passed"
     )
+
+
+@pytest.mark.parametrize(
+    ("observed", "requested"),
+    [("development", "test"), ("production", "test"), ("test", "production")],
+)
+def test_rehearsal_rejects_mismatched_host_environment_before_creating_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, observed: str, requested: str,
+) -> None:
+    monkeypatch.setenv("MOSS_ENVIRONMENT", observed)
+    rehearsal = _load_rehearsal_module()
+    workspace = tmp_path / "must-not-be-created"
+    with pytest.raises(rehearsal.RehearsalError) as caught:
+        rehearsal.run_rehearsal(workspace, run_id="environment-mismatch", host_environment=requested)
+    assert caught.value.code == "host_environment_mismatch"
+    assert not workspace.exists()
+
+
+def _new_synthetic_target(tmp_path: Path) -> tuple[Path, Path]:
+    workspace = tmp_path / "synthetic-workspace"
+    (workspace / "bundles").mkdir(parents=True)
+    return workspace, workspace / "bundles" / "candidate.duckdb"
+
+
+def test_synthetic_writer_refuses_sql_outside_task_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.app.tasks import wp7_rehearsal_bundle as writer
+
+    def reject_connect(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unguarded synthetic writer must not connect")
+
+    monkeypatch.setattr(writer.duckdb, "connect", reject_connect)
+    target = tmp_path / "must-not-exist.duckdb"
+    with pytest.raises(PermissionError, match="repository task write scope"):
+        writer._write_synthetic_database(target, release_id="synthetic", ordinal=1)
+    assert not target.exists()
+
+
+def test_synthetic_task_rejects_production_before_connecting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.app.tasks import wp7_rehearsal_bundle as writer
+
+    workspace, target = _new_synthetic_target(tmp_path)
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+
+    def reject_connect(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("production rehearsal must not connect")
+
+    monkeypatch.setattr(writer.duckdb, "connect", reject_connect)
+    with pytest.raises(writer.SyntheticBundleError, match="production_environment_forbidden"):
+        writer.create_synthetic_bundle(path=target, workspace=workspace, release_id="synthetic", ordinal=1)
+    assert not target.exists()
+
+
+def test_synthetic_writer_uses_a_new_task_owned_database_and_restores_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.app.repositories.task_write_guard import require_repository_task_write_scope
+    from backend.app.tasks import wp7_rehearsal_bundle as writer
+
+    workspace, target = _new_synthetic_target(tmp_path)
+    original_connect = writer.duckdb.connect
+    opens: list[str] = []
+
+    def connect(database: str, *, read_only: bool):
+        require_repository_task_write_scope("synthetic-test")
+        assert read_only is False
+        staging = Path(database)
+        assert staging.parent.parent.resolve() == target.parent.resolve()
+        assert staging.parent.name.startswith(".synthetic-bundle-")
+        assert not staging.exists()
+        opens.append(database)
+        return original_connect(database, read_only=read_only)
+
+    monkeypatch.setattr(writer.duckdb, "connect", connect)
+    writer.create_synthetic_bundle(path=target, workspace=workspace, release_id="synthetic", ordinal=2)
+    assert len(opens) == 1
+    assert not Path(opens[0]).parent.exists()
+    with original_connect(str(target), read_only=True) as conn:
+        assert conn.execute("select * from rehearsal.bundle_metadata").fetchall() == [("synthetic", 2, True)]
+    with pytest.raises(PermissionError):
+        require_repository_task_write_scope("scope-must-be-restored")
+
+
+@pytest.mark.parametrize("invalid_target", ["existing", "outside_workspace"])
+def test_synthetic_writer_rejects_existing_or_unbound_targets_before_connecting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid_target: str,
+) -> None:
+    from backend.app.tasks import wp7_rehearsal_bundle as writer
+
+    workspace, target = _new_synthetic_target(tmp_path)
+    if invalid_target == "existing":
+        target.write_bytes(b"existing-content")
+        expected = "synthetic_bundle_path_must_be_new"
+    else:
+        target = tmp_path / "candidate.duckdb"
+        expected = "synthetic_bundle_path_outside_workspace"
+
+    def reject_connect(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalid target must not connect")
+
+    monkeypatch.setattr(writer.duckdb, "connect", reject_connect)
+    with pytest.raises(writer.SyntheticBundleError, match=expected):
+        writer.create_synthetic_bundle(path=target, workspace=workspace, release_id="synthetic", ordinal=1)
+    if invalid_target == "existing":
+        assert target.read_bytes() == b"existing-content"
+    else:
+        assert not target.exists()
+
+
+def test_synthetic_writer_rechecks_target_after_acquiring_the_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.tasks import wp7_rehearsal_bundle as writer
+
+    workspace, target = _new_synthetic_target(tmp_path)
+
+    @contextmanager
+    def lock(_definition: object, *, base_dir: Path):
+        assert base_dir.resolve() == workspace.resolve()
+        target.write_bytes(b"race-winner")
+        yield
+
+    def reject_connect(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("replaced target must not connect")
+
+    monkeypatch.setattr(writer, "acquire_lock", lock)
+    monkeypatch.setattr(writer.duckdb, "connect", reject_connect)
+    with pytest.raises(writer.SyntheticBundleError, match="synthetic_bundle_path_must_be_new"):
+        writer.create_synthetic_bundle(path=target, workspace=workspace, release_id="synthetic", ordinal=1)
+    assert target.read_bytes() == b"race-winner"
+
+
+def test_synthetic_writer_never_overwrites_a_target_created_at_installation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.tasks import wp7_rehearsal_bundle as writer
+
+    workspace, target = _new_synthetic_target(tmp_path)
+    original_open = Path.open
+    inserted = False
+
+    def insert_race_winner() -> None:
+        nonlocal inserted
+        if not inserted:
+            inserted = True
+            with original_open(target, "wb") as race_winner:
+                race_winner.write(b"race-winner")
+
+    def open_path(path: Path, mode: str = "r", *args: object, **kwargs: object):
+        if path == target and mode == "xb":
+            insert_race_winner()
+        return original_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_path)
+    original_install = getattr(writer, "_open_install_target", None)
+    if original_install is not None:
+        def open_install(path: Path, *, directory_fd: int | None):
+            insert_race_winner()
+            return original_install(path, directory_fd=directory_fd)
+
+        monkeypatch.setattr(writer, "_open_install_target", open_install)
+    with pytest.raises(writer.SyntheticBundleError, match="synthetic_bundle_path_must_be_new"):
+        writer.create_synthetic_bundle(path=target, workspace=workspace, release_id="synthetic", ordinal=1)
+    assert target.read_bytes() == b"race-winner"
+
+
+def test_synthetic_writer_never_writes_through_a_replaced_parent_at_installation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.tasks import wp7_rehearsal_bundle as writer
+
+    workspace, target = _new_synthetic_target(tmp_path)
+    displaced = workspace / "displaced-bundles"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "sentinel").write_bytes(b"outside-unchanged")
+    before_outside = {path.name: path.read_bytes() for path in outside.iterdir()}
+    original_open = Path.open
+    attempted = False
+    rename_denied = False
+
+    def replace_parent() -> None:
+        nonlocal attempted, rename_denied
+        if attempted:
+            return
+        attempted = True
+        try:
+            target.parent.rename(displaced)
+        except PermissionError:
+            rename_denied = True
+            return
+        target.parent.symlink_to(outside, target_is_directory=True)
+
+    def open_path(path: Path, mode: str = "r", *args: object, **kwargs: object):
+        if path == target and mode == "xb":
+            replace_parent()
+        return original_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_path)
+    original_install = getattr(writer, "_open_install_target", None)
+    if original_install is not None:
+        def open_install(path: Path, *, directory_fd: int | None):
+            replace_parent()
+            return original_install(path, directory_fd=directory_fd)
+
+        monkeypatch.setattr(writer, "_open_install_target", open_install)
+    rejected = False
+    try:
+        writer.create_synthetic_bundle(path=target, workspace=workspace, release_id="synthetic", ordinal=1)
+    except writer.SyntheticBundleError:
+        rejected = True
+    assert attempted, "the test must reach the installation race"
+    assert {path.name: path.read_bytes() for path in outside.iterdir()} == before_outside
+    assert not (outside / "candidate.duckdb").exists()
+    if os.name == "nt":
+        assert rename_denied, "directory handles must prevent the Windows parent replacement"
+        assert target.is_file()
+        assert not rejected
+    else:
+        assert not rename_denied
+        assert rejected
+        assert not (displaced / "candidate.duckdb").exists()
+        assert not list(displaced.glob(".synthetic-bundle-*"))
+
+
+@pytest.mark.windows_native
+def test_windows_synthetic_writer_prevents_parent_replacement_without_external_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if os.name != "nt":
+        pytest.skip("Windows directory sharing contract")
+    test_synthetic_writer_never_writes_through_a_replaced_parent_at_installation(tmp_path, monkeypatch)
+
+
+def test_synthetic_writer_rejects_reparse_parents_before_connecting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from backend.app.tasks import wp7_rehearsal_bundle as writer
+
+    workspace, target = _new_synthetic_target(tmp_path)
+    original_stat = Path.stat
+
+    def path_stat(path: Path, *args: object, **kwargs: object):
+        metadata = original_stat(path, *args, **kwargs)
+        if path == target.parent and kwargs.get("follow_symlinks") is False:
+            return SimpleNamespace(
+                st_file_attributes=0x400, st_mode=metadata.st_mode,
+                st_dev=metadata.st_dev, st_ino=metadata.st_ino,
+            )
+        return metadata
+
+    def reject_connect(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("reparse parent must not connect")
+
+    monkeypatch.setattr(Path, "stat", path_stat)
+    monkeypatch.setattr(writer.duckdb, "connect", reject_connect)
+    with pytest.raises(writer.SyntheticBundleError, match="contains_symlink_or_junction"):
+        writer.create_synthetic_bundle(path=target, workspace=workspace, release_id="synthetic", ordinal=1)
+    assert not target.exists()

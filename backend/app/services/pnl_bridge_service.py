@@ -91,13 +91,14 @@ BALANCE_ANALYSIS_CACHE_VERSION = (
 BALANCE_ANALYSIS_RULE_VERSION = "rv_balance_analysis_formal_materialize_v1"
 PNL_CACHE_KEY = "pnl:phase2:materialize:formal"
 PNL_RESULT_CACHE_VERSION = "cv_pnl_formal__rv_pnl_phase2_materialize_v7"
-YIELD_CURVE_CACHE_VERSION = "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1__cv_source_nodes_v2"
+YIELD_CURVE_CACHE_VERSION = "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
+YIELD_CURVE_RESPONSE_CACHE_VERSION = f"{YIELD_CURVE_CACHE_VERSION}__cv_source_nodes_v2"
 
 PHASE3_WARNING = (
     "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
 )
 BRIDGE_CACHE_VERSION = (
-    f"cv_pnl_bridge_formal_monthly_v6__{PNL_RESULT_CACHE_VERSION}__{BALANCE_ANALYSIS_CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}"
+    f"cv_pnl_bridge_formal_monthly_v6__{PNL_RESULT_CACHE_VERSION}__{BALANCE_ANALYSIS_CACHE_VERSION}__{YIELD_CURVE_RESPONSE_CACHE_VERSION}"
 )
 ZERO = Decimal("0")
 _PNL_BRIDGE_ENVELOPE_CACHE_TTL_SECONDS = 900.0
@@ -171,7 +172,7 @@ def _pnl_bridge_envelope_cache_key(
         *governance_identities,
         PNL_CACHE_KEY,
         BALANCE_ANALYSIS_CACHE_KEY,
-        YIELD_CURVE_CACHE_VERSION,
+        YIELD_CURVE_RESPONSE_CACHE_VERSION,
         BRIDGE_CACHE_VERSION,
     )
 

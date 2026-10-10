@@ -106,13 +106,14 @@ def test_bond_materialize_marks_failed_when_interrupted_after_committed_purge(
         .splitlines()
         if line.strip()
     ]
-    assert [record["status"] for record in run_records] == [
-        "queued",
-        "running",
-        "failed",
-    ]
-    assert run_records[-1]["run_id"] == run_id
-    assert run_records[-1]["report_date"] == REPORT_DATE
+    statuses = [record["status"] for record in run_records]
+    assert statuses[0] == "queued"
+    assert statuses[1:-1], "the run must enter running before its terminal failure"
+    assert all(status == "running" for status in statuses[1:-1])
+    assert statuses[-1] == "failed"
+    assert statuses.count("failed") == 1
+    assert all(record["run_id"] == run_id for record in run_records)
+    assert all(record["report_date"] == REPORT_DATE for record in run_records)
     assert run_records[-1]["failure_category"] == "materialize_failure"
     assert (
         "synthetic interruption after committed purge"

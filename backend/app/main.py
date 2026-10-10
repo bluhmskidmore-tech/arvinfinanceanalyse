@@ -7,7 +7,7 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager
 
 from anyio import to_thread
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -25,7 +25,7 @@ from backend.app.repositories.system_read_publication_repo import (
     resolve_system_read_publication,
     system_read_scope,
 )
-from backend.app.security.auth_context import validate_auth_startup_guardrails
+from backend.app.security.auth_context import get_auth_context, validate_auth_startup_guardrails
 from backend.app.security.local_access import LocalDevelopmentAccessMiddleware
 
 # Configured before validate_auth_startup_guardrails() so its startup security
@@ -44,6 +44,7 @@ _settings = get_settings()
 validate_auth_startup_guardrails(_settings)
 
 from backend.app.api import router as api_router  # noqa: E402
+from backend.app.api.deps import ensure_read_allowed  # noqa: E402
 from backend.app.observability import setup_opentelemetry  # noqa: E402
 from backend.app.observability.response_cache import resolve_default_ttl  # noqa: E402
 from backend.app.services.executive_service import (  # noqa: E402
@@ -117,7 +118,31 @@ class SystemReadPublicationMiddleware:
                 await self.app(scope, receive, send)
             return
 
-        requested_generation = Headers(scope=scope).get(SYSTEM_READ_GENERATION_HEADER)
+        headers = Headers(scope=scope)
+        if method in {"GET", "HEAD"} and path.rstrip("/") == "/api/system-read-publication":
+            # The handshake discloses the selected generation. Check its own
+            # read policy before loading publication artifacts or adding headers.
+            auth = get_auth_context(
+                request=Request(scope),
+                x_user_id=headers.get("X-User-Id"),
+                x_user_role=headers.get("X-User-Role"),
+            )
+            try:
+                await to_thread.run_sync(
+                    lambda: ensure_read_allowed(
+                        auth, "data_health", settings=settings, allow_dev_fallback=True,
+                    )
+                )
+            except HTTPException as exc:
+                response = JSONResponse(
+                    status_code=exc.status_code,
+                    content={"detail": exc.detail},
+                    headers=exc.headers,
+                )
+                await response(scope, receive, send)
+                return
+
+        requested_generation = headers.get(SYSTEM_READ_GENERATION_HEADER)
         response_started = False
         try:
             async with async_system_read_scope(settings, generation=requested_generation) as publication:

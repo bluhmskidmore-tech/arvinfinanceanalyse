@@ -521,6 +521,11 @@ def test_product_category_service_delegates_to_unified_analysis_service(monkeypa
         "build_analysis_service",
         lambda duckdb_path: FakeAnalysisService(),
     )
+    monkeypatch.setattr(
+        service_module,
+        "ProductCategoryPnlRepository",
+        lambda _path: SimpleNamespace(list_report_dates=lambda: ["2026-02-28"]),
+    )
 
     payload = service_module.product_category_pnl_envelope(
         duckdb_path="ignored.duckdb",
@@ -611,6 +616,11 @@ def test_product_category_service_warns_when_totals_are_incomplete(monkeypatch):
         service_module,
         "build_analysis_service",
         lambda duckdb_path: FakeAnalysisService(),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "ProductCategoryPnlRepository",
+        lambda _path: SimpleNamespace(list_report_dates=lambda: ["2026-02-28"]),
     )
 
     payload = service_module.product_category_pnl_envelope(
@@ -704,6 +714,13 @@ def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
             return []
 
     monkeypatch.setattr(service_module, "BondAnalyticsRepository", lambda *_args, **_kwargs: EmptyBondAnalyticsRepository())
+    monkeypatch.setattr(
+        service_module,
+        "PnlRepository",
+        lambda _path: SimpleNamespace(
+            merged_capital_gain_517_by_position_for_dates=lambda _dates: {},
+        ),
+    )
 
     payload = service_module.get_action_attribution(date(2026, 3, 31), "MoM")
 
@@ -785,6 +802,13 @@ def test_bond_action_service_uses_schema_default_status_when_summary_omits_it(mo
             return []
 
     monkeypatch.setattr(service_module, "BondAnalyticsRepository", lambda *_args, **_kwargs: EmptyBondAnalyticsRepository())
+    monkeypatch.setattr(
+        service_module,
+        "PnlRepository",
+        lambda _path: SimpleNamespace(
+            merged_capital_gain_517_by_position_for_dates=lambda _dates: {},
+        ),
+    )
 
     payload = service_module.get_action_attribution(date(2026, 3, 31), "MoM")
 

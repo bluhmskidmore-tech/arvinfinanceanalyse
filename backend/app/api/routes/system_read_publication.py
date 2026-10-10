@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from typing import Annotated
+
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import Settings, get_settings
 from backend.app.repositories.system_read_publication_repo import current_system_read_context
+from backend.app.security.auth_context import AuthContext, get_auth_context
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -16,8 +20,10 @@ class SystemReadPublicationStatus(BaseModel):
 
 @router.get("", response_model=SystemReadPublicationStatus)
 def system_read_publication_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     settings: Settings = Depends(get_settings),
 ) -> SystemReadPublicationStatus:
+    ensure_read_allowed(auth, "data_health", settings=settings, allow_dev_fallback=True)
     if not settings.system_read_publication_enabled:
         return SystemReadPublicationStatus(enabled=False)
 

@@ -10,9 +10,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
+from backend.app.repositories.duckdb_read_context import (
+    DuckDBReadSelection,
+    current_duckdb_read_selection,
+    duckdb_read_scope,
+)
 from scripts import rematerialize_fixed_income_versions as remat
 
 BOND_CURRENT = FIXED_INCOME_VERSION_SET.bond_analytics.rule_version
@@ -203,3 +209,45 @@ def test_main_dry_run_reports_plan_and_honours_limit(
     assert payload["plan"][0]["modules"] == ["bond_analytics", "risk_tensor"]
     assert payload["target_versions"] == {"bond_analytics": BOND_CURRENT, "risk_tensor": RISK_CURRENT}
     assert payload["boundary"]["uses_api_or_service_write_path"] is False
+
+
+def test_fact_dates_read_the_explicit_target_read_only_despite_inherited_selection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "target.duckdb"
+    selected = tmp_path / "selected.duckdb"
+    for path, report_date in ((target, "2026-05-31"), (selected, "2026-05-30")):
+        with duckdb.connect(str(path)) as conn:
+            conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+            conn.execute("insert into fact_formal_bond_analytics_daily values (?)", [report_date])
+    before = target.read_bytes()
+    original_connect = duckdb.connect
+    opens: list[str] = []
+
+    def connect(database: str, *, read_only: bool):
+        assert read_only is True
+        opens.append(database)
+        return original_connect(database, read_only=read_only)
+
+    monkeypatch.setattr(duckdb, "connect", connect)
+    selection = DuckDBReadSelection(str(target), str(selected), "selected-test")
+    with duckdb_read_scope(selection, required_online=True):
+        assert remat._fact_report_dates(str(target)) == ["2026-05-31"]
+        assert current_duckdb_read_selection() is selection
+    assert opens == [str(target)]
+    assert target.read_bytes() == before
+
+
+def test_fact_dates_do_not_create_a_missing_database(tmp_path: Path) -> None:
+    target = tmp_path / "missing.duckdb"
+    with pytest.raises(remat.DuckDBUnavailableError):
+        remat._fact_report_dates(str(target))
+    assert not target.exists()
+
+
+def test_fact_date_query_errors_keep_the_original_database_error(tmp_path: Path) -> None:
+    target = tmp_path / "no-facts.duckdb"
+    with duckdb.connect(str(target)) as conn:
+        conn.execute("create table unrelated (value integer)")
+    with pytest.raises(duckdb.CatalogException):
+        remat._fact_report_dates(str(target))

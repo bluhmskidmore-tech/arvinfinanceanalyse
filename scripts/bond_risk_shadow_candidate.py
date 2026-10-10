@@ -34,6 +34,8 @@ from backend.app.core_finance.fixed_income_version_set import (  # noqa: E402
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor  # noqa: E402
 from backend.app.duckdb_schema_bootstrap import assert_duckdb_schema_current  # noqa: E402
 from backend.app.governance.settings import get_settings  # noqa: E402
+from backend.app.repositories.duckdb_read_context import active_read_scope  # noqa: E402
+from backend.app.repositories.duckdb_repo import read_only_connection  # noqa: E402
 from backend.app.schema_registry.duckdb_loader import (  # noqa: E402
     capture_main_catalog,
     catalog_snapshot_sha256,
@@ -1357,8 +1359,8 @@ def _snapshot_database(
     report_date: dt.date,
 ) -> dict[str, object]:
     fingerprint_before = _fingerprint_file(path)
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
+    # The receipt fingerprints this exact file, not an inherited online snapshot.
+    with active_read_scope(), read_only_connection(str(path)) as conn:
         table_specs = _collect_table_specs(conn)
         main_catalog = capture_main_catalog(conn)
         persistent_catalog = _capture_persistent_catalog(conn)
@@ -1372,8 +1374,6 @@ def _snapshot_database(
             )
             for key in sorted(table_specs)
         }
-    finally:
-        conn.close()
     fingerprint_after = _fingerprint_file(path)
     if fingerprint_before.sha256 != fingerprint_after.sha256:
         raise ShadowCandidateError("readonly_snapshot_changed_source")
@@ -2023,8 +2023,7 @@ def _validate_candidate_risk_upstream_lineage(
     bond_result: Mapping[str, object],
     risk_result: Mapping[str, object],
 ) -> dict[str, object]:
-    conn = duckdb.connect(str(candidate_path), read_only=True)
-    try:
+    with active_read_scope(), read_only_connection(str(candidate_path)) as conn:
         column_names = {
             str(row[0])
             for row in conn.execute(
@@ -2056,8 +2055,6 @@ def _validate_candidate_risk_upstream_lineage(
             """,
             [report_date],
         ).fetchmany(2)
-    finally:
-        conn.close()
     if not rows:
         raise ShadowCandidateError("risk_target_rows_missing")
     if len(rows) != 1:

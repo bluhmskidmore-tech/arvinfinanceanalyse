@@ -130,13 +130,15 @@ def portable_verification_report(
     repo_root: Path = ROOT,
     docs_root: Path | None = None,
     logical_docs_root: str = "docs",
+    duckdb_path: Path | None = None,
 ) -> dict[str, object]:
     """Make embedded verifier evidence stable across worktrees and Python installs.
 
     The raw verifier report remains available to callers for diagnostics.  Only the
     copy embedded in evidence snapshots is normalized: Python executable paths become
     the stable ``python`` token, while paths within this repository become repo-
-    relative.  Absolute paths outside the repository are left untouched.
+    relative. The explicitly supplied database is represented by a stable token;
+    other absolute paths outside the repository are left untouched.
     """
 
     normalized = copy.deepcopy(report)
@@ -148,6 +150,14 @@ def portable_verification_report(
             repo_root=repo_root,
             docs_root=docs_root,
             logical_docs_root=logical_docs_root,
+        )
+    database_path = str(Path(duckdb_path).resolve()) if duckdb_path is not None else None
+    if "duckdb_path" in normalized:
+        value = normalized["duckdb_path"]
+        normalized["duckdb_path"] = (
+            "<duckdb-path>" if database_path is not None and value == database_path
+            else _portable_path(value, repo_root=repo_root, docs_root=docs_root,
+                                logical_docs_root=logical_docs_root)
         )
     results = normalized.get("results")
     if not isinstance(results, list):
@@ -168,6 +178,11 @@ def portable_verification_report(
                 )
             ):
                 portable_argv.append("python")
+            elif (
+                database_path is not None and token == database_path
+                and index > 0 and argv[index - 1] == "--duckdb-path"
+            ):
+                portable_argv.append("<duckdb-path>")
             else:
                 portable_argv.append(
                     _portable_path(
@@ -378,15 +393,20 @@ def build_snapshot(
         docs_root=Path(docs_root),
         limit=scorecard_limit,
     )
+    verifier_duckdb_path = (
+        Path(duckdb_path) if Path(duckdb_path).resolve() != DEFAULT_DUCKDB.resolve() else None
+    )
     verifier = build_report(
         limit=verifier_limit,
         expected_state=expected_state,
         docs_root=Path(docs_root),
+        duckdb_path=verifier_duckdb_path,
     )
     portable_verifier = portable_verification_report(
         verifier,
         repo_root=ROOT,
         docs_root=Path(docs_root),
+        duckdb_path=verifier_duckdb_path,
     )
     artifact_presence = build_artifact_presence_report(
         duckdb_path=duckdb_path,

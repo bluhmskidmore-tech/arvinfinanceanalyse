@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import sys
 from typing import Any
 
@@ -137,8 +137,7 @@ def _expect_repo_relative_identifier(
     if not isinstance(actual, str) or not actual:
         errors.append(f"{label} must be a non-empty repo-relative identifier")
         return
-    path = Path(actual)
-    if path.is_absolute() or path.drive:
+    if Path(actual).is_absolute() or PureWindowsPath(actual).anchor:
         errors.append(f"{label} must be repo-relative, got {actual!r}")
 
 

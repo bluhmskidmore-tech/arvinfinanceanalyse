@@ -22,7 +22,8 @@ fixture 设计原则（保证黄金值可精确手算、无舍入不确定性）
 3. 两只债均为零息（贴现）债：Macaulay 久期 = 剩余年限（整数年），绕开
    compute_macaulay_duration 闭式幂运算及其 0.0001 quantize；票息为 0 也
    使 income_return = 0，面值不进入任何分项。ytm 取 4.8%（与 4.5%~5.25%
-   的曲线水平自洽），使修正久期除数 1 + 0.048/2 = 1.024 = 2^10/10^3，
+   的曲线水平自洽），合成条款显式声明 semi-annual 名义半年复利，
+   使修正久期除数 1 + 0.048/2 = 1.024 = 2^10/10^3，
    十进制整除，修正久期为有限小数。
 4. 应计利息期初/期末均为 0（贴现债无票息应计），走全价（dirty）主线；
    曲线全 tenor、利差双侧为正——本文件不依赖任何脏输入 fallback 行为，
@@ -134,6 +135,7 @@ def _gov_zc_3y(**overrides: object) -> dict[str, object]:
         "face_value_start": 1_150_000.0,
         "coupon_rate_start": 0.0,
         "yield_to_maturity_start": 0.048,
+        "interest_mode_start": "semi-annual",
         "maturity_date_start": date(2028, 12, 31),
         "accrued_interest_start": 0.0,
         "accrued_interest_end": 0.0,
@@ -168,6 +170,7 @@ def _aaa_zc_5y(**overrides: object) -> dict[str, object]:
         "face_value_start": 1_015_000.0,
         "coupon_rate_start": 0.0,
         "yield_to_maturity_start": 0.048,
+        "interest_mode_start": "semi-annual",
         "maturity_date_start": date(2030, 12, 31),
         "accrued_interest_start": 0.0,
         "accrued_interest_end": 0.0,

@@ -151,12 +151,11 @@ def test_pnl_bridge_result_meta_dates_no_fallback(tmp_path, monkeypatch):
 
 
 def _zero_out_516_for_report_date(duckdb_path) -> None:
-    """把共享夹具行的 516 归零，保持 summary 健康。
+    """把共享夹具行的 516 归零，使会计损益残差闭合。
 
     互斥分解后（审计 PNL-01），带非零 516 且无可用曲线的 FVTPL 行会诚实地
-    产生残差与 error 标记；本测试的目的只是验证 stale 合并语义，需要一个
-    quality=ok 的背景 summary，故将公允价值变动清零（业务上等价于
-    "本期无待解释的公允变动"）。
+    产生残差与 error 标记；将公允价值变动清零，等价于本期无待解释的公允
+    变动。共享余额夹具缺少到期日，仍应披露敏感度输入不可用并保持 warning。
     """
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -190,8 +189,15 @@ def test_pnl_bridge_result_meta_dates_latest_snapshot_fallback(tmp_path, monkeyp
     assert meta["fallback_date"] is None
     assert meta["fallback_mode"] == "latest_snapshot"
     assert meta["vendor_status"] == "vendor_stale"
-    # Fixture keeps summary healthy so stale must come from latest_snapshot merge.
-    assert summary_quality == "ok"
+    # Residual closure does not turn missing sensitivity inputs into observed
+    # zero effects. Preserve that warning while merging the curve's stale flag.
+    assert summary_quality == "warning"
+    assert payload["result"]["rows"]
+    for row in payload["result"]["rows"]:
+        assert Decimal(str(row["residual"]["raw"])) == Decimal("0")
+        assert row["quality_flag"] == "warning"
+        assert row["treasury_curve_availability"] == "unavailable"
+        assert row["treasury_curve_availability_reason"] == "sensitivity_input_unavailable"
     assert meta["quality_flag"] == "stale"
     assert any("YIELD_CURVE_LATEST_FALLBACK" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()

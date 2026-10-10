@@ -5,7 +5,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.verify_system_audit_monitoring_snapshot import verify_monitoring_snapshot
+import pytest
+
+from scripts.verify_system_audit_monitoring_snapshot import (
+    _expect_repo_relative_identifier,
+    verify_monitoring_snapshot,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -134,14 +139,19 @@ def test_verify_monitoring_snapshot_fails_when_monitoring_write_flag_drifts(
     assert "monitoring write_outputs expected False, got True" in result["errors"]
 
 
+@pytest.mark.parametrize("unsafe_path", [
+    "G:\\temporary-worktree\\calculation.json",
+    "/temporary-worktree/calculation.json",
+    "\\\\server\\share\\calculation.json",
+    "G:calculation.json",
+    "\\temporary-worktree\\calculation.json",
+])
 def test_verify_monitoring_snapshot_rejects_temporary_absolute_output_paths(
-    tmp_path: Path,
+    tmp_path: Path, unsafe_path: str,
 ) -> None:
     manifest_path = _copy_monitoring_package(tmp_path)
     monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
-    monitoring["output_paths"]["calculation_owner_decision_snapshot"] = (
-        "G:\\temporary-worktree\\calculation.json"
-    )
+    monitoring["output_paths"]["calculation_owner_decision_snapshot"] = unsafe_path
     _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
 
     result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
@@ -153,9 +163,16 @@ def test_verify_monitoring_snapshot_rejects_temporary_absolute_output_paths(
     )
     assert (
         "monitoring output path calculation_owner_decision_snapshot must be "
-        "repo-relative, got 'G:\\\\temporary-worktree\\\\calculation.json'"
+        f"repo-relative, got {unsafe_path!r}"
         in result["errors"]
     )
+
+
+@pytest.mark.parametrize("identifier", ["docs/audits/calculation.json", "docs\\audits\\calculation.json"])
+def test_monitoring_path_guard_accepts_repo_relative_identifiers(identifier: str) -> None:
+    errors = []
+    _expect_repo_relative_identifier(errors, label="monitoring output path", actual=identifier)
+    assert errors == []
 
 
 def test_verify_monitoring_snapshot_fails_when_ledger_formal_use_is_promoted(

@@ -46,6 +46,9 @@ def test_bond_analytics_service_identity_constants_match_task_modules() -> None:
     assert service.BOND_ANALYTICS_LOCK.key == bond_task.BOND_ANALYTICS_LOCK.key
     assert service.BOND_ANALYTICS_LOCK.ttl_seconds == bond_task.BOND_ANALYTICS_LOCK.ttl_seconds
     assert service.YIELD_CURVE_CACHE_VERSION == yield_task.CACHE_VERSION
+    assert service.YIELD_CURVE_RESPONSE_CACHE_VERSION == (
+        f"{yield_task.CACHE_VERSION}__cv_source_nodes_v2"
+    )
 
 
 def test_bond_dashboard_service_rule_version_matches_task_module() -> None:
@@ -103,6 +106,12 @@ def test_pnl_bridge_service_identity_constants_match_task_modules() -> None:
     assert service.PNL_CACHE_KEY == pnl_task.CACHE_KEY
     assert service.PNL_RESULT_CACHE_VERSION == pnl_task.PNL_RESULT_CACHE_VERSION
     assert service.YIELD_CURVE_CACHE_VERSION == yield_task.CACHE_VERSION
+    assert service.YIELD_CURVE_RESPONSE_CACHE_VERSION == (
+        f"{yield_task.CACHE_VERSION}__cv_source_nodes_v2"
+    )
+    assert service.BRIDGE_CACHE_VERSION.endswith(
+        f"__{service.YIELD_CURVE_RESPONSE_CACHE_VERSION}"
+    )
 
 
 def test_product_category_pnl_service_identity_constants_match_task_module() -> None:
@@ -142,6 +151,28 @@ def test_macro_toolkit_service_import_does_not_load_tasks_modules() -> None:
 
 
 def test_lazy_actor_proxies_delegate_fn_and_allow_instance_override() -> None:
+    # Other suites replace task modules and actors; inspect one coherent import
+    # graph while retaining the same identity and instance-override assertions.
+    code = (
+        "import runpy, sys\n"
+        "from pathlib import Path\n"
+        "sys.path.insert(0, str(Path(sys.argv[1]).parents[1]))\n"
+        "runpy.run_path(str(Path(sys.argv[1]).with_name('conftest.py')))\n"
+        "namespace = runpy.run_path(sys.argv[1])\n"
+        "namespace['_assert_lazy_actor_proxy_contract']()\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code, str(Path(__file__).resolve())],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def _assert_lazy_actor_proxy_contract() -> None:
     proxy_specs = (
         (
             "backend.app.services.pnl_task_dispatch",

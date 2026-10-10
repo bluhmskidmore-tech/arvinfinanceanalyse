@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib
 import json
 import os
 import re
@@ -384,26 +383,21 @@ def _create_synthetic_bundle(path: Path, *, release_id: str, ordinal: int) -> No
     _assert_no_symlink_or_junction(path, field_name="synthetic_bundle_path")
     if os.path.lexists(path):
         raise RehearsalError("synthetic_bundle_path_must_be_new")
-    duckdb = importlib.import_module("duckdb")
-    connection = duckdb.connect(str(path))
+    # Lazy import keeps receipt verification independent of DuckDB.
+    from backend.app.tasks.wp7_rehearsal_bundle import (
+        SyntheticBundleError,
+        create_synthetic_bundle,
+    )
+
     try:
-        connection.execute("CREATE SCHEMA rehearsal")
-        connection.execute(
-            """
-            CREATE TABLE rehearsal.bundle_metadata (
-                release_id VARCHAR NOT NULL,
-                ordinal INTEGER NOT NULL,
-                rehearsal_only BOOLEAN NOT NULL
-            )
-            """
+        create_synthetic_bundle(
+            path=path,
+            workspace=path.parent.parent,
+            release_id=release_id,
+            ordinal=ordinal,
         )
-        connection.execute(
-            "INSERT INTO rehearsal.bundle_metadata VALUES (?, ?, TRUE)",
-            [release_id, ordinal],
-        )
-        connection.execute("CHECKPOINT")
-    finally:
-        connection.close()
+    except SyntheticBundleError as exc:
+        raise RehearsalError(exc.code) from exc
 
 
 def _assert_sha256(path: Path, expected_sha256: str, *, code: str) -> None:

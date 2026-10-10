@@ -57,8 +57,10 @@ from backend.app.repositories.system_read_publication_repo import (
     system_read_publication_root,
     system_read_scope,
 )
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.services import pnl_service
 from backend.app.services.runtime_cache import InMemoryTTLCache
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 
 
 def _seal_generation(
@@ -960,8 +962,18 @@ def test_system_scope_rechecks_fixed_generation_after_pnl_validation_wait(
 
 def test_http_middleware_pins_retained_generation_and_keeps_liveness_live(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = _settings(tmp_path)
+    auth_dsn = f"sqlite:///{(tmp_path / 'publication-reader-scope.db').as_posix()}"
+    settings.environment = "production"
+    settings.governance_sql_dsn = auth_dsn
+    settings.postgres_dsn = auth_dsn
+    monkeypatch.setenv("MOSS_USER_ID", "publication-reader")
+    monkeypatch.setenv("MOSS_USER_ROLE", "viewer")
+    UserScopeRepository(auth_dsn).grant_scope(
+        user_id="publication-reader", role=None, resource="data_health", action="read",
+    )
     older_generation, current_generation = _publish_fixture(settings)
     app = FastAPI()
     app.add_middleware(SystemReadPublicationMiddleware, settings_provider=lambda: settings)
@@ -997,6 +1009,14 @@ def test_http_middleware_pins_retained_generation_and_keeps_liveness_live(
         }
         assert handshake.headers[SYSTEM_READ_GENERATION_HEADER] == current_generation
 
+        retained_handshake = client.get(
+            "/api/system-read-publication",
+            headers={SYSTEM_READ_GENERATION_HEADER: older_generation},
+        )
+        assert retained_handshake.status_code == 200
+        assert retained_handshake.json()["generation"] == older_generation
+        assert retained_handshake.headers[SYSTEM_READ_GENERATION_HEADER] == older_generation
+
         current = client.get("/business")
         assert current.status_code == 200
         assert current.json() == {"generation": current_generation, "value": "R1"}
@@ -1024,6 +1044,110 @@ def test_http_middleware_pins_retained_generation_and_keeps_liveness_live(
         assert live.status_code == 200
         assert live.json() == {"live": True}
         assert SYSTEM_READ_GENERATION_HEADER not in live.headers
+
+
+@pytest.mark.parametrize(
+    ("environment", "client_host", "user_id", "requested_generation", "method", "path"),
+    [
+        (environment, client_host, user_id, generation, "GET", "/api/system-read-publication")
+        for environment, client_host, user_id in (
+            ("production", "127.0.0.1", None),
+            ("development", "198.51.100.7", None),
+            ("development", "127.0.0.1", "unscoped-reader"),
+        )
+        for generation in (None, "retained", "not-retained")
+    ] + [
+        ("production", "127.0.0.1", None, "not-retained", "HEAD", "/api/system-read-publication"),
+        ("production", "127.0.0.1", None, "not-retained", "GET", "/api/system-read-publication/"),
+    ],
+)
+def test_publication_handshake_denies_before_loading_or_disclosing_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    requested_generation: str | None,
+    environment: str,
+    client_host: str,
+    user_id: str | None,
+    method: str,
+    path: str,
+) -> None:
+    settings = _settings(tmp_path)
+    auth_dsn = f"sqlite:///{(tmp_path / 'publication-denied-scope.db').as_posix()}"
+    settings.environment = environment
+    settings.governance_sql_dsn = auth_dsn
+    settings.postgres_dsn = auth_dsn
+    UserScopeRepository(auth_dsn)
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
+    if user_id is not None:
+        monkeypatch.setenv("MOSS_USER_ID", user_id)
+    older_generation, _current_generation = _publish_fixture(settings)
+    if requested_generation == "retained":
+        requested_generation = older_generation
+    middleware_globals = SystemReadPublicationMiddleware.__call__.__globals__
+    resolver_globals = middleware_globals["async_system_read_scope"].__wrapped__.__globals__
+    original_resolver = resolver_globals["_resolve_system_read_context"]
+    publication_reads: list[str | None] = []
+
+    def counted_resolver(*args: object, **kwargs: object):
+        raw_generation = kwargs.get("generation")
+        publication_reads.append(None if raw_generation is None else str(raw_generation))
+        return original_resolver(*args, **kwargs)
+
+    monkeypatch.setitem(resolver_globals, "_resolve_system_read_context", counted_resolver)
+    app = FastAPI()
+    app.add_middleware(SystemReadPublicationMiddleware, settings_provider=lambda: settings)
+    app.include_router(system_read_publication_router)
+    app.dependency_overrides[get_settings] = lambda: settings
+    headers = {} if requested_generation is None else {
+        SYSTEM_READ_GENERATION_HEADER: requested_generation,
+    }
+
+    with TestClient(app, client=(client_host, 12345)) as client:
+        response = client.request(method, path, headers=headers, follow_redirects=False)
+
+    assert response.status_code == 403
+    if method == "HEAD":
+        assert response.content == b""
+    else:
+        assert response.json() == {"detail": "User is not allowed to read data_health."}
+    assert SYSTEM_READ_GENERATION_HEADER not in response.headers
+    assert publication_reads == []
+
+
+def test_publication_handshake_middleware_preserves_local_anonymous_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings(tmp_path)
+    auth_dsn = f"sqlite:///{(tmp_path / 'publication-local-scope.db').as_posix()}"
+    settings.environment = "development"
+    settings.governance_sql_dsn = auth_dsn
+    settings.postgres_dsn = auth_dsn
+    UserScopeRepository(auth_dsn)
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
+    older_generation, _current_generation = _publish_fixture(settings)
+    app = FastAPI()
+    app.add_middleware(SystemReadPublicationMiddleware, settings_provider=lambda: settings)
+    app.include_router(system_read_publication_router)
+    app.dependency_overrides[get_settings] = lambda: settings
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        response = client.get(
+            "/api/system-read-publication",
+            headers={SYSTEM_READ_GENERATION_HEADER: older_generation},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "enabled": True,
+        "generation": older_generation,
+        "coverage_dates": {"sentinel": ["2026-09-15"]},
+    }
+    assert response.headers[SYSTEM_READ_GENERATION_HEADER] == older_generation
 
 
 def test_cube_post_reads_pinned_generation_and_other_posts_stay_live(tmp_path: Path) -> None:

@@ -8,6 +8,7 @@ per rule. Does not modify source files.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import sys
@@ -322,6 +323,115 @@ def _iter_py_files(project_root: Path, rel_dir: str) -> Iterator[Path]:
     yield from base.rglob("*.py")
 
 
+def _formal_scenario_non_gate_spans(text: str) -> set[tuple[str, int, int, int]]:
+    """Exclude proven metadata/provenance expressions, never a whole file or function.
+
+    A scenario label with formal use explicitly disabled is not an admission gate.
+    Likewise a pure classifier returning only calendar-source labels does not
+    decide whether a basis/view request may proceed. Unrecognized ASTs retain
+    every regex hit so incomplete source cannot weaken the audit.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set()
+    spans: set[tuple[str, int, int, int]] = set()
+    lines = text.splitlines()
+
+    def add_span(pattern_id: str, node: ast.AST, end_column: int) -> None:
+        # AST columns count UTF-8 bytes; regex columns count Unicode characters.
+        encoded = lines[node.lineno - 1].encode("utf-8")
+        start = len(encoded[:node.col_offset].decode("utf-8"))
+        end = len(encoded[:end_column].decode("utf-8"))
+        spans.add((pattern_id, node.lineno, start, end))
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            entries = {
+                key.value: value
+                for key, value in zip(node.keys, node.values, strict=True)
+                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+            }
+            formal_use = entries.get("formal_use_allowed")
+            scenario = entries.get("scenario_flag")
+            if (
+                len(entries) == len(node.keys)
+                and all(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in node.keys)
+                and (
+                    isinstance(scenario, ast.Compare)
+                    and (
+                        isinstance(scenario.left, ast.Name) and scenario.left.id == "basis"
+                        or isinstance(scenario.left, ast.Attribute) and scenario.left.attr == "basis"
+                    )
+                )
+                and isinstance(formal_use, ast.Constant) and formal_use.value is False
+                and isinstance(scenario, ast.Compare) and len(scenario.ops) == 1
+                and isinstance(scenario.ops[0], ast.Eq)
+                and isinstance(scenario.comparators[0], ast.Constant)
+                and scenario.comparators[0].value == "scenario"
+                and scenario.lineno == scenario.end_lineno
+            ):
+                add_span("basis_eq_scenario_str", scenario, scenario.end_col_offset)
+
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        descendants = list(ast.walk(node))
+        if any(isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item is not node for item in descendants):
+            continue
+        returns = [item.value for item in descendants if isinstance(item, ast.Return)]
+        # These strings describe where ADB denominator days came from; bools,
+        # computed returns, calls, and side effects are deliberately not accepted.
+        if not returns or any(
+            not isinstance(value, ast.Constant) or not isinstance(value.value, str)
+            or not value.value.endswith("_calendar")
+            or not set(value.value.removesuffix("_calendar").split("+")) <= {"formal", "snapshot"}
+            for value in returns
+        ):
+            continue
+        statements = [item for item in descendants if isinstance(item, ast.stmt)]
+        if any(not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Assign, ast.If, ast.Return, ast.Expr)) for item in statements):
+            continue
+        if any(isinstance(item, ast.Expr) and not (isinstance(item.value, ast.Constant) and isinstance(item.value.value, str)) for item in statements):
+            continue
+        source_flags: set[str] = set()
+        for assignment in (item for item in statements if isinstance(item, ast.Assign)):
+            value = assignment.value
+            if not (
+                len(assignment.targets) == 1 and isinstance(assignment.targets[0], ast.Name)
+                and isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+                and value.func.id == "any" and len(value.args) == 1 and not value.keywords
+                and isinstance(value.args[0], ast.GeneratorExp)
+            ):
+                break
+            generator = value.args[0]
+            predicate = generator.elt
+            if not (
+                len(generator.generators) == 1
+                and isinstance(generator.generators[0].target, ast.Name)
+                and isinstance(generator.generators[0].iter, ast.Name)
+                and not generator.generators[0].ifs and not generator.generators[0].is_async
+                and isinstance(predicate, ast.Compare) and len(predicate.ops) == 1
+                and isinstance(predicate.ops[0], ast.In)
+                and isinstance(predicate.left, ast.Constant) and predicate.left.value in {"formal", "snapshot"}
+                and isinstance(predicate.comparators[0], ast.Name)
+                and predicate.comparators[0].id == generator.generators[0].target.id
+            ):
+                break
+            source_flags.add(assignment.targets[0].id)
+        else:
+            branches = [item for item in statements if isinstance(item, ast.If)]
+            if not source_flags or any(
+                any(not isinstance(test, (ast.Name, ast.BoolOp, ast.And, ast.Load)) for test in ast.walk(branch.test))
+                or any(test.id not in source_flags for test in ast.walk(branch.test) if isinstance(test, ast.Name))
+                for branch in branches
+            ):
+                continue
+            for branch in branches:
+                if branch.lineno == branch.test.end_lineno:
+                    add_span("if_formal_branch", branch, branch.test.end_col_offset + 1)
+    return spans
+
+
 def _collect_violations_for_file(
     project_root: Path,
     py_path: Path,
@@ -335,6 +445,7 @@ def _collect_violations_for_file(
     file_patterns = [p for p in patterns if p.get("full_file")]
     out: list[dict[str, Any]] = []
     suppressed = 0
+    non_gate_spans = _formal_scenario_non_gate_spans(text) if rule_id == "formal_scenario_gate" else set()
 
     for line_no, line in enumerate(lines, start=1):
         stripped = line.strip()
@@ -342,7 +453,15 @@ def _collect_violations_for_file(
             continue
         snippet = stripped[:_SNIPPET_MAX]
         for p in line_patterns:
-            if p["regex"].search(line):
+            matches = list(p["regex"].finditer(line))
+            if matches and any(
+                not any(
+                    pattern_id == p["pattern_id"] and span_line == line_no
+                    and span_start <= match.start() and match.end() <= span_end
+                    for pattern_id, span_line, span_start, span_end in non_gate_spans
+                )
+                for match in matches
+            ):
                 if _is_suppressed_by_justified_comment(rule_id, line_no, lines):
                     suppressed += 1
                     continue

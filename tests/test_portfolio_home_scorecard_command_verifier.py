@@ -5,6 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from tests.test_portfolio_home_closure_scorecard import (
+    _create_schema, _insert_blocked_data, _write_blocked_fixture_manifests,
+)
 from scripts.verify_portfolio_home_scorecard_commands import (
     ALLOWED_COMMANDS,
     _allowed_argv,
@@ -15,6 +20,14 @@ from scripts.verify_portfolio_home_scorecard_commands import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "verify_portfolio_home_scorecard_commands.py"
+
+
+@pytest.fixture
+def blocked_portfolio_duckdb(tmp_path: Path) -> Path:
+    path = tmp_path / "synthetic-blocked-portfolio.duckdb"
+    _create_schema(path)
+    _insert_blocked_data(path)
+    return path
 
 
 def _run_verifier(*args: str) -> tuple[int, dict[str, object]]:
@@ -321,8 +334,10 @@ def test_portfolio_home_scorecard_command_verifier_rejects_non_python_allowlist_
             raise AssertionError(f"unsafe pytest verification command was accepted: {unsafe_command}")
 
 
-def test_portfolio_home_scorecard_command_verifier_reports_first_evidence_command() -> None:
-    report = build_report(limit=1)
+def test_portfolio_home_scorecard_command_verifier_reports_first_evidence_command(
+    blocked_portfolio_duckdb: Path,
+) -> None:
+    report = build_report(limit=1, duckdb_path=blocked_portfolio_duckdb)
 
     assert report["verification_status"] == "matched_expected_blocked_state"
     assert report["expected_state"] == "blocked"
@@ -332,8 +347,51 @@ def test_portfolio_home_scorecard_command_verifier_reports_first_evidence_comman
     assert report["results"][0]["name"] == "full_closure_evidence"
     assert report["results"][0]["expected_exit"] == "exit_0"
     assert report["results"][0]["returncode"] == 0
+    assert report["results"][0]["argv"][-2:] == ["--duckdb-path", str(blocked_portfolio_duckdb)]
     assert "stdout_tail" not in report["results"][0]
     assert "stderr_tail" not in report["results"][0]
+
+
+def test_portfolio_home_scorecard_command_verifier_keeps_database_option_out_of_unsupported_commands(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "synthetic database.duckdb"
+    for command in ALLOWED_COMMANDS:
+        if "check_portfolio_home_business_owner_approval.py" in command or " -m pytest " in command:
+            assert _command_argv(command, duckdb_path=database) == _command_argv(command)
+    command = "python scripts/portfolio_home_full_closure_evidence.py"
+    assert _command_argv(command, duckdb_path=database)[-2:] == ["--duckdb-path", str(database)]
+    default_report = build_report(limit=0)
+    assert "duckdb_path" not in default_report
+
+
+def test_portfolio_home_evidence_snapshot_and_canonical_verifier_use_explicit_database(
+    tmp_path: Path, blocked_portfolio_duckdb: Path,
+) -> None:
+    from scripts.portfolio_home_evidence_snapshot import build_snapshot
+    from scripts.portfolio_home_evidence_packet_guard import _verification_report_canonical_blockers
+
+    docs_root = tmp_path / "docs"
+    _write_blocked_fixture_manifests(docs_root, blocked_portfolio_duckdb)
+    snapshot = build_snapshot(
+        duckdb_path=blocked_portfolio_duckdb, report_date="2026-05-31",
+        template_path=ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval-template.md",
+        scorecard_limit=2, verifier_limit=1, docs_root=docs_root,
+    )
+    report = snapshot["verification_report"]
+    assert report["verification_status"] == "matched_expected_blocked_state"
+    assert report["duckdb_path"] == "<duckdb-path>"
+    assert report["results"][0]["argv"][-2:] == ["--duckdb-path", "<duckdb-path>"]
+    assert _verification_report_canonical_blockers(
+        name="evidence_snapshot", payload=snapshot, docs_root=docs_root,
+        duckdb_path=blocked_portfolio_duckdb,
+    ) == []
+
+    report["duckdb_path"] = str(tmp_path / "unrelated-private.duckdb")
+    assert _verification_report_canonical_blockers(
+        name="evidence_snapshot", payload=snapshot, docs_root=docs_root,
+        duckdb_path=blocked_portfolio_duckdb,
+    ) == ["evidence_snapshot_verification_report_canonical_mismatch"]
 
 
 def test_portfolio_home_scorecard_command_verifier_passes_docs_root_to_supported_scripts(
@@ -453,6 +511,7 @@ def test_portfolio_home_scorecard_command_verifier_isolates_export_output_dirs(
 
 def test_portfolio_home_scorecard_command_verifier_cli_accepts_docs_root(
     tmp_path: Path,
+    blocked_portfolio_duckdb: Path,
 ) -> None:
     docs_root = tmp_path / "docs"
 
@@ -464,6 +523,8 @@ def test_portfolio_home_scorecard_command_verifier_cli_accepts_docs_root(
             "7",
             "--docs-root",
             str(docs_root),
+            "--duckdb-path",
+            str(blocked_portfolio_duckdb),
             "--require-matched",
         ],
         cwd=ROOT,
@@ -482,11 +543,15 @@ def test_portfolio_home_scorecard_command_verifier_cli_accepts_docs_root(
         "scripts/portfolio_home_krd_contract_decision_export.py",
         "--output-dir",
         str(docs_root / "portfolio" / "krd-contract-decision"),
+        "--duckdb-path",
+        str(blocked_portfolio_duckdb),
     ]
 
 
-def test_portfolio_home_scorecard_command_verifier_supports_full_score_expectations() -> None:
-    report = build_report(limit=1, expected_state="full_score")
+def test_portfolio_home_scorecard_command_verifier_supports_full_score_expectations(
+    blocked_portfolio_duckdb: Path,
+) -> None:
+    report = build_report(limit=1, expected_state="full_score", duckdb_path=blocked_portfolio_duckdb)
 
     assert report["verification_status"] == "matched_expected_full_score_state"
     assert report["expected_state"] == "full_score"
@@ -496,8 +561,12 @@ def test_portfolio_home_scorecard_command_verifier_supports_full_score_expectati
     assert report["results"][0]["matches_expected_exit"] is True
 
 
-def test_portfolio_home_scorecard_command_verifier_cli_require_matched() -> None:
-    returncode, payload = _run_verifier("--limit", "1", "--require-matched")
+def test_portfolio_home_scorecard_command_verifier_cli_require_matched(
+    blocked_portfolio_duckdb: Path,
+) -> None:
+    returncode, payload = _run_verifier(
+        "--limit", "1", "--require-matched", "--duckdb-path", str(blocked_portfolio_duckdb),
+    )
 
     assert returncode == 0
     assert payload["verification_status"] == "matched_expected_blocked_state"
@@ -541,13 +610,17 @@ def test_portfolio_home_scorecard_command_verifier_rejects_negative_limit() -> N
     assert "Portfolio-home verification limit must be non-negative: -1" in completed.stderr
 
 
-def test_portfolio_home_scorecard_command_verifier_full_score_strict_mismatches_current_blocked_state() -> None:
+def test_portfolio_home_scorecard_command_verifier_full_score_strict_mismatches_current_blocked_state(
+    blocked_portfolio_duckdb: Path,
+) -> None:
     returncode, payload = _run_verifier(
         "--limit",
         "2",
         "--expected-state",
         "full_score",
         "--require-matched",
+        "--duckdb-path",
+        str(blocked_portfolio_duckdb),
     )
 
     assert returncode == 1

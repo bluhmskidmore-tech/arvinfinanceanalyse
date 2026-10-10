@@ -4,12 +4,19 @@ import json
 import shutil
 import subprocess
 import sys
+from functools import partial
 from pathlib import Path
 
+import duckdb
 import pytest
 
 import scripts.portfolio_home_score_blocker_consistency_check as consistency_check
 from scripts.portfolio_home_score_blocker_consistency_check import build_report
+from tests.test_portfolio_home_closure_scorecard import (
+    _create_schema,
+    _insert_blocked_data,
+    _write_blocked_fixture_manifests,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,15 +31,61 @@ CURRENT_SCORE_BLOCKERS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def portfolio_duckdb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Derive the documented blocker classes from isolated synthetic facts."""
+    path = tmp_path / "portfolio-blockers.duckdb"
+    _create_schema(path)
+    _insert_blocked_data(path)
+    with duckdb.connect(str(path)) as connection:
+        connection.execute(
+            """update fact_formal_bond_analytics_daily
+               set maturity_date = '2026-05-01'
+               where instrument_code = 'BOND-ZERO-DURATION'"""
+        )
+        # The three excluded synthetic bonds total 30 + 10 + 20 = 60:
+        # two have no maturity date, and the third is matured with value 20.
+        warnings = [
+            "Non-standard tenor buckets remapped to nearest KRD bucket: 2Y, 6M",
+            (
+                "3 rows carry market_value=60.00000000 and are excluded from portfolio duration denominator: "
+                "2 without maturity_date (market_value=40.00000000); 1 matured on or before report_date "
+                "with outstanding market_value (market_value=20.00000000); 0 future-dated with non-positive "
+                "modified_duration (market_value=0.00000000). DV01 totals remain sourced from row dv01; "
+                "duration metrics ignore these rows until inputs are remediated."
+            ),
+            "Excluded 2 rows without maturity_date from liquidity gap calculation.",
+            "Excluded 1 liability rows without maturity_date from liquidity gap calculation.",
+        ]
+        connection.execute(
+            "update fact_formal_risk_tensor_daily set warnings_json = ?",
+            [json.dumps(warnings)],
+        )
+    monkeypatch.setattr(sys.modules[__name__], "build_report", partial(build_report, duckdb_path=path))
+    return path
+
+
 def _copy_portfolio_docs(tmp_path: Path) -> Path:
     docs_root = tmp_path / "docs"
-    shutil.copytree(ROOT / "docs" / "portfolio", docs_root / "portfolio")
+    shutil.copytree(
+        ROOT / "docs" / "portfolio",
+        docs_root / "portfolio",
+        ignore=shutil.ignore_patterns("krd-contract-decision", "maturity-remediation"),
+    )
     audits_root = docs_root / "audits"
     audits_root.mkdir()
     shutil.copy2(
         ROOT / "docs" / "audits" / "2026-06-05-portfolio-readiness-gate-audit.md",
         audits_root / "2026-06-05-portfolio-readiness-gate-audit.md",
     )
+    return docs_root
+
+
+@pytest.fixture
+def portfolio_docs(tmp_path: Path, portfolio_duckdb: Path) -> Path:
+    """Pair copied public document contracts with exports from synthetic facts."""
+    docs_root = _copy_portfolio_docs(tmp_path)
+    _write_blocked_fixture_manifests(docs_root, portfolio_duckdb)
     return docs_root
 
 
@@ -48,8 +101,8 @@ def _run_check(*args: str) -> tuple[int, dict[str, object]]:
     return completed.returncode, json.loads(completed.stdout)
 
 
-def test_portfolio_home_score_blocker_consistency_check_reports_current_artifacts() -> None:
-    report = build_report(docs_root=ROOT / "docs")
+def test_portfolio_home_score_blocker_consistency_check_reports_current_artifacts(portfolio_docs) -> None:
+    report = build_report(docs_root=portfolio_docs)
 
     assert report["status"] == "consistent"
     assert report["blockers"] == []
@@ -72,8 +125,12 @@ def test_portfolio_home_score_blocker_consistency_check_reports_current_artifact
         assert artifact["score_blockers"] == CURRENT_SCORE_BLOCKERS
 
 
-def test_portfolio_home_score_blocker_consistency_check_cli_require_consistent() -> None:
-    returncode, payload = _run_check("--require-consistent")
+def test_portfolio_home_score_blocker_consistency_check_cli_require_consistent(
+    portfolio_duckdb, portfolio_docs
+) -> None:
+    returncode, payload = _run_check(
+        "--duckdb-path", str(portfolio_duckdb), "--docs-root", str(portfolio_docs), "--require-consistent"
+    )
 
     assert returncode == 0
     assert payload["status"] == "consistent"
@@ -81,9 +138,9 @@ def test_portfolio_home_score_blocker_consistency_check_cli_require_consistent()
 
 
 def test_portfolio_home_score_blocker_consistency_check_blocks_drift(
-    tmp_path: Path,
+    portfolio_docs: Path,
 ) -> None:
-    docs_root = _copy_portfolio_docs(tmp_path)
+    docs_root = portfolio_docs
     portfolio = docs_root / "portfolio"
 
     snapshot = portfolio / "portfolio-home-evidence-snapshot.json"
@@ -99,9 +156,9 @@ def test_portfolio_home_score_blocker_consistency_check_blocks_drift(
 
 
 def test_portfolio_home_score_blocker_consistency_check_rejects_missing_section(
-    tmp_path: Path,
+    portfolio_docs: Path,
 ) -> None:
-    docs_root = _copy_portfolio_docs(tmp_path)
+    docs_root = portfolio_docs
     handoff = docs_root / "portfolio" / "portfolio-home-owner-handoff-packet.md"
     handoff.write_text(
         handoff.read_text(encoding="utf-8").replace("## Current Blockers", "## Blockers"),
@@ -115,9 +172,9 @@ def test_portfolio_home_score_blocker_consistency_check_rejects_missing_section(
 
 
 def test_portfolio_home_score_blocker_consistency_check_blocks_audit_drift(
-    tmp_path: Path,
+    portfolio_docs: Path,
 ) -> None:
-    docs_root = _copy_portfolio_docs(tmp_path)
+    docs_root = portfolio_docs
     audit = docs_root / "audits" / "2026-06-05-portfolio-readiness-gate-audit.md"
     audit.write_text(
         audit.read_text(encoding="utf-8").replace(
@@ -142,6 +199,7 @@ def test_portfolio_home_score_blocker_consistency_check_blocks_audit_drift(
 
 def test_portfolio_home_score_blocker_consistency_check_uses_scorecard_as_authority(
     monkeypatch: pytest.MonkeyPatch,
+    portfolio_docs: Path,
 ) -> None:
     def scorecard_with_new_blocker(**_: object) -> dict[str, object]:
         return {
@@ -155,7 +213,7 @@ def test_portfolio_home_score_blocker_consistency_check_uses_scorecard_as_author
 
     monkeypatch.setattr(consistency_check, "build_scorecard", scorecard_with_new_blocker)
 
-    report = build_report(docs_root=ROOT / "docs", limit=1)
+    report = build_report(docs_root=portfolio_docs, limit=1)
 
     assert report["status"] == "blocked"
     assert report["expected_score_blockers"] == [

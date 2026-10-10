@@ -68,7 +68,7 @@ FLAT_MARKET_END = {
 # GOV_OK：mat=2027-01-01，as_of=2026-01-01 → 剩余 365 天 = 1.0 年
 #   coupon = 0        → income_return = 0 × 1000 × 30/365 = 0
 #   coupon = 0        → Macaulay = 剩余年数 = 1
-#   ytm = 0.05, freq = 2（"国债" 非超短融）
+#   ytm = 0.05, freq = 2（合成条款明确 semi-annual 名义半年复利）
 #                     → mod_dur = 1 / (1 + 0.05/2) = 1/1.025 = 40/41
 #   bench = 0.01      → treasury = −(40/41) × 0.01 × 1000 = −400/41
 #   rating = GOV      → spread = 0
@@ -102,6 +102,7 @@ def _zero_coupon_bond(**overrides: object) -> dict[str, object]:
         "face_value_start": 1_000.0,
         "coupon_rate_start": 0.0,
         "yield_to_maturity_start": 0.05,
+        "interest_mode_start": "semi-annual",
         "asset_class_start": "国债",
         "maturity_date_start": ONE_YEAR_MATURITY,
         "accrued_interest_start": 0.0,
