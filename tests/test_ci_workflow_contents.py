@@ -514,8 +514,12 @@ def test_v1_pr_agent_eval_replay_preserves_preflight_and_archive() -> None:
 
 def test_ci_workflow_runs_frontend_production_build():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    build_job = workflow.split("\n  frontend-build:", 1)[1].split(
+        "\n  source-development-entry:", 1
+    )[0]
 
-    assert "npm run build" in workflow
+    assert "VITE_DATA_SOURCE=real npm run build" in build_job
+    assert "continue-on-error:" not in build_job
 
 
 def test_mypy_identity_gate_blocks_regressions_and_tests_the_checker():
@@ -533,19 +537,30 @@ def test_mypy_identity_gate_blocks_regressions_and_tests_the_checker():
 
 def test_frontend_checks_keep_reporting_after_an_independent_check_fails():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    job = workflow.split("\n  frontend-a11y-smoke-shard:", 1)[0].split(
-        "\n  frontend:", 1
-    )[1]
+    unit_job = workflow.split("\n  frontend-unit-tests:", 1)[1].split(
+        "\n  frontend-build:", 1
+    )[0]
+    build_job = workflow.split("\n  frontend-build:", 1)[1].split(
+        "\n  source-development-entry:", 1
+    )[0]
 
-    assert (
-        "- name: Install dependencies\n"
-        "        id: frontend_dependencies\n"
-        "        run: npm ci"
-    ) in job
-    assert "continue-on-error:" not in job
+    for job in (unit_job, build_job):
+        assert (
+            "- name: Install dependencies\n"
+            "        id: frontend_dependencies\n"
+            "        run: npm ci"
+        ) in job
+        assert "timeout-minutes: 15" in job
+        assert "continue-on-error:" not in job
+        assert "\n    needs:" not in job
+        assert "\n    if:" not in job
+        assert "\n    strategy:" not in job
+        assert "paths:" not in job
+
     for name, command in {
         "TypeScript type check": "npm run typecheck",
         "Frontend debt audit": "npm run debt:audit",
+        "Install Chromium for runtime boundary checks": "npx playwright install --with-deps chromium",
         "Production build": "VITE_DATA_SOURCE=real npm run build",
     }.items():
         assert (
@@ -553,14 +568,63 @@ def test_frontend_checks_keep_reporting_after_an_independent_check_fails():
             "        if: ${{ !cancelled() && "
             "steps.frontend_dependencies.outcome == 'success' }}\n"
             f"        run: {command}\n"
-        ) in job, name
+        ) in build_job, name
+    boundary_step = _workflow_step(build_job, "Test production mock bundle boundary")
+    assert "if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}" in boundary_step
+    assert "node --test" in boundary_step
+    for test_file in (
+        "scripts/productionMockBoundary.node-test.mjs",
+        "scripts/homeRuntimeAcceptance.test.mjs",
+        "scripts/startupBundleParsing.test.mjs",
+        "scripts/visual-compliance-audit.test.mjs",
+    ):
+        assert test_file in boundary_step
+
     assert (
         "- name: Run Vitest\n"
         "        if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}\n"
         "        run: |\n"
-    ) in job
-    assert '"${{ github.event_name }}" = "schedule"' in job
-    assert '"${{ github.ref }}" = "refs/heads/main"' in job
-    assert "npm test -- --coverage" in job
-    assert "            npm test\n" in job
-    assert "path: frontend/coverage/" in job
+    ) in unit_job
+    assert (
+        'if [ "${{ github.event_name }}" = "schedule" ] || { '
+        '[ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; }; then'
+    ) in unit_job
+    assert "npm test -- --coverage" in unit_job
+    assert "            npm test\n" in unit_job
+    coverage_step = _workflow_step(unit_job, "Upload full frontend coverage")
+    assert (
+        "if: always() && (github.event_name == 'schedule' || "
+        "(github.event_name == 'push' && github.ref == 'refs/heads/main'))"
+    ) in coverage_step
+    assert "name: frontend-coverage" in coverage_step
+    assert "path: frontend/coverage/" in coverage_step
+    assert "retention-days: 14" in coverage_step
+    assert "if-no-files-found: warn" in coverage_step
+    assert "--shard" not in unit_job
+
+
+@pytest.mark.parametrize("unit_result", ["success", "failure", "cancelled", "skipped"])
+@pytest.mark.parametrize("build_result", ["success", "failure", "cancelled", "skipped"])
+def test_frontend_required_check_rejects_incomplete_lanes(monkeypatch, unit_result, build_result):
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    summary_job = workflow.split("\n  frontend:", 1)[1].split(
+        "\n  frontend-unit-tests:", 1
+    )[0]
+    assert "name: Frontend Tests" in summary_job
+    assert "needs: [frontend-unit-tests, frontend-build]" in summary_job
+    assert "if: always()" in summary_job
+    assert "continue-on-error:" not in summary_job
+    assert "strategy:" not in summary_job
+    assert "paths:" not in summary_job
+    step = _workflow_step(summary_job, "Check frontend lane results")
+    assert "FRONTEND_UNIT_RESULT: ${{ needs.frontend-unit-tests.result }}" in step
+    assert "FRONTEND_BUILD_RESULT: ${{ needs.frontend-build.result }}" in step
+    source = textwrap.dedent(step.split("python - <<'PY'\n", 1)[1].rsplit("          PY", 1)[0])
+    monkeypatch.setenv("FRONTEND_UNIT_RESULT", unit_result)
+    monkeypatch.setenv("FRONTEND_BUILD_RESULT", build_result)
+    if unit_result == build_result == "success":
+        exec(compile(source, "<frontend-ci-results>", "exec"), {})
+    else:
+        with pytest.raises(SystemExit) as rejected:
+            exec(compile(source, "<frontend-ci-results>", "exec"), {})
+        assert rejected.value.code == 1

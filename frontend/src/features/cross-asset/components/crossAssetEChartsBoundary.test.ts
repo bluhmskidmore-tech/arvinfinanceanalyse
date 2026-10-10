@@ -1,6 +1,8 @@
+import { render, screen } from "@testing-library/react";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { createElement, Suspense } from "react";
+import { describe, expect, it, vi } from "vitest";
 
 const PAGE_PATH = resolve(
   process.cwd(),
@@ -32,4 +34,46 @@ describe("cross-asset ECharts startup boundary", () => {
     expect(pageSource).toContain("<Suspense");
     expect(yieldCurveSource).toContain("<Suspense");
   });
+
+  it("preloads the real lazy renderer once and unmounts both leaves", async () => {
+    const renderer = vi.fn(() =>
+      createElement("div", { "data-testid": "cross-asset-loaded-renderer" }),
+    );
+    const loadRenderer = vi.fn(() => ({ default: renderer }));
+    let view: ReturnType<typeof render> | undefined;
+
+    vi.resetModules();
+    vi.doMock("../../../lib/echarts", loadRenderer);
+    try {
+      const { LazyCrossAssetECharts, preloadCrossAssetECharts } = await import("./CrossAssetECharts");
+
+      preloadCrossAssetECharts();
+      await vi.dynamicImportSettled();
+      expect(loadRenderer).toHaveBeenCalledTimes(1);
+      expect(renderer).not.toHaveBeenCalled();
+      preloadCrossAssetECharts();
+      await vi.dynamicImportSettled();
+      expect(loadRenderer).toHaveBeenCalledTimes(1);
+
+      view = render(
+        createElement(
+          Suspense,
+          { fallback: createElement("div", { "data-testid": "cross-asset-renderer-loading" }) },
+          createElement(LazyCrossAssetECharts, { key: "yield", option: {} }),
+          createElement(LazyCrossAssetECharts, { key: "trend", option: {} }),
+        ),
+      );
+      expect(await screen.findAllByTestId("cross-asset-loaded-renderer")).toHaveLength(2);
+      expect(screen.queryByTestId("cross-asset-renderer-loading")).not.toBeInTheDocument();
+      expect(loadRenderer).toHaveBeenCalledTimes(1);
+
+      view.unmount();
+      expect(screen.queryAllByTestId("cross-asset-loaded-renderer")).toHaveLength(0);
+    } finally {
+      view?.unmount();
+      vi.doUnmock("../../../lib/echarts");
+      vi.resetModules();
+    }
+  });
+
 });

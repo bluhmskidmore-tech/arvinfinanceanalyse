@@ -6,8 +6,10 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
-vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="cross-asset-echarts-stub" />,
+// Stub the shared lazy canvas boundary; page staging and business UI stay real.
+vi.mock("../features/cross-asset/components/CrossAssetECharts", () => ({
+  LazyCrossAssetECharts: () => <div data-testid="cross-asset-echarts-stub" />,
+  preloadCrossAssetECharts: vi.fn(),
 }));
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";

@@ -18,7 +18,6 @@ from openpyxl import Workbook, load_workbook
 from backend.app.api.routes.product_category_pnl import router
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
-from backend.app.tasks.product_category_pnl import materialize_product_category_pnl_sync
 
 # Per currency: asset average balance, asset income credit, liability expense debit.
 # All monetary inputs are synthetic yuan amounts; no production data is loaded.
@@ -136,6 +135,10 @@ def reference_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, seed_wildcar
     get_settings.cache_clear()
     for report_date in SOURCE_AMOUNTS:
         _write_reference_workbooks(source_dir, report_date)
+    # Golden-sample replays may evict the task after collection.
+    # Import the real sync entry point when this fixture executes.
+    from backend.app.tasks.product_category_pnl import materialize_product_category_pnl_sync
+
     receipt = materialize_product_category_pnl_sync(run_id="manual-reference-initial")
     assert receipt["status"] == "completed"
     assert receipt["report_dates"] == ["2026-01-31", "2026-02-28"]
@@ -218,6 +221,8 @@ def test_historical_source_revision_updates_cumulative_amount_but_preserves_late
     workbook["综本"]["F7"] = 630_000
     workbook.save(ledger_path)
     workbook.close()
+    from backend.app.tasks.product_category_pnl import materialize_product_category_pnl_sync
+
     receipt = materialize_product_category_pnl_sync(run_id="manual-reference-january-revised")
     assert receipt["status"] == "completed"
     assert receipt["source_version"] != initial_receipt["source_version"]

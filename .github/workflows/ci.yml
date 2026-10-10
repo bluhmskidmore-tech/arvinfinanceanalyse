@@ -702,6 +702,74 @@ jobs:
   frontend:
     name: Frontend Tests
     runs-on: ubuntu-latest
+    needs: [frontend-unit-tests, frontend-build]
+    if: always()
+    timeout-minutes: 5
+
+    steps:
+      - name: Check frontend lane results
+        env:
+          FRONTEND_UNIT_RESULT: ${{ needs.frontend-unit-tests.result }}
+          FRONTEND_BUILD_RESULT: ${{ needs.frontend-build.result }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          results = {
+              "unit": os.environ.get("FRONTEND_UNIT_RESULT"),
+              "build": os.environ.get("FRONTEND_BUILD_RESULT"),
+          }
+          for lane, result in results.items():
+              print(f"Frontend {lane}: {result}")
+          if any(result != "success" for result in results.values()):
+              print("One or more frontend lanes did not complete successfully.")
+              sys.exit(1)
+          PY
+
+  frontend-unit-tests:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        id: frontend_dependencies
+        run: npm ci
+
+      - name: Run Vitest
+        if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || { [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; }; then
+            npm test -- --coverage
+          else
+            npm test
+          fi
+
+      - name: Upload full frontend coverage
+        if: always() && (github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 14
+          if-no-files-found: warn
+
+  frontend-build:
+    name: Frontend Build and Runtime Boundaries
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     defaults:
@@ -725,24 +793,6 @@ jobs:
       - name: TypeScript type check
         if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
         run: npm run typecheck
-
-      - name: Run Vitest
-        if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || { [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; }; then
-            npm test -- --coverage
-          else
-            npm test
-          fi
-
-      - name: Upload full frontend coverage
-        if: always() && (github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/
-          retention-days: 14
-          if-no-files-found: warn
 
       - name: Frontend debt audit
         if: ${{ !cancelled() && steps.frontend_dependencies.outcome == 'success' }}

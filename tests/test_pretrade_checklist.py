@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import sys
+from importlib import import_module
 from pathlib import Path
 
 import duckdb
@@ -18,7 +19,6 @@ from fastapi.testclient import TestClient
 from backend.app.core_finance.strategy_policy import POLICY
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
-from backend.app.services import pretrade_checklist_service
 from backend.app.services.pretrade_checklist_service import (
     pretrade_checklist_envelope,
 )
@@ -35,6 +35,15 @@ def _isolate_existing_checklist_formula_tests_from_qualification(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Legacy cases cover row assembly; real qualification is tested separately."""
+    pretrade_checklist_service = import_module(
+        "backend.app.services.pretrade_checklist_service"
+    )
+    # Keep direct service calls and the reloaded route on the same module.
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "pretrade_checklist_envelope",
+        pretrade_checklist_service.pretrade_checklist_envelope,
+    )
     monkeypatch.setattr(
         pretrade_checklist_service,
         "qualify_pretrade_read_view",
